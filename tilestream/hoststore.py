@@ -507,7 +507,7 @@ def build_manifest(cfg_like,
 
 
 def manifest_from_arrays(arrays: Mapping[str, Any], nz: int, ny: int, nx: int,
-                         ) -> tuple[FieldSpec, ...]:
+                         *, square_slab: bool = False) -> tuple[FieldSpec, ...]:
     """Shape RULES read off a live inventory measured at ``(nz, ny, nx)``.
 
     :func:`build_manifest` probes a throwaway NumPy ``DomainState``, which
@@ -528,9 +528,15 @@ def manifest_from_arrays(arrays: Mapping[str, Any], nz: int, ny: int, nx: int,
     ``ny`` and ``nx`` must differ, and neither may collide with ``nz`` or a
     layer count, or the positional read could resolve two ways; that is
     checked here rather than left to the caller.
+
+    ``square_slab``: the inventory is one slab of a real forecast, square only
+    because of where the split fell. The read stays positional and gives the
+    rules the same forecast's other slabs give. THE BREAKAGE THIS PREVENTS
+    (2026-10-31, a 12 -> 3 km run on a four-way box, run_2e85dd03e500d428):
+    "ny == nx == 72" stopped the forecast 8 s in.
     """
     nz, ny, nx = int(nz), int(ny), int(nx)
-    if ny == nx:
+    if ny == nx and not square_slab:
         raise HostStoreError(
             f"ny == nx == {ny}: derive the manifest on a NON-SQUARE domain so "
             "a y/x transposition cannot pass unnoticed")

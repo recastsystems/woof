@@ -1,0 +1,57 @@
+{
+  "strict": false,
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "shape": [
+    44,
+    200,
+    49
+  ],
+  "dt": 180.0,
+  "capture": "../captures/capture-000060-00002-00002.meta",
+  "capture_sha256": "b96a5618e383bcb512368faa12039a0d51b616d3a307c301ac93c400bfecdeee",
+  "scope": "fixed captured inputs repeated spatially, one warmup and five restored stage samples; WSM6 temperature prepared outside events; shared GPU, no exclusive lease",
+  "stages": {
+    "gce_column": {
+      "cuda_event_ms": [
+        1.1675519943237305,
+        1.1229439973831177,
+        1.099776029586792,
+        1.1268800497055054,
+        1.1232000589370728
+      ],
+      "median_ms": 1.1232000589370728
+    },
+    "wsm6_column": {
+      "cuda_event_ms": [
+        2.910975933074951,
+        2.8259201049804688,
+        2.8192639350891113,
+        2.797312021255493,
+        2.7810559272766113
+      ],
+      "median_ms": 2.8192639350891113
+    },
+    "gce_reflectivity": {
+      "cuda_event_ms": [
+        10.075136184692383,
+        9.946111679077148,
+        10.003456115722656,
+        9.99731159210205,
+        9.990143775939941
+      ],
+      "median_ms": 9.99731159210205
+    },
+    "wsm6_reflectivity": {
+      "cuda_event_ms": [
+        9.623519897460938,
+        9.655296325683594,
+        9.6112642288208,
+        9.606143951416016,
+        9.663488388061523
+      ],
+      "median_ms": 9.623519897460938
+    }
+  },
+  "column_ratio": 0.3984018824763105,
+  "reflectivity_ratio": 1.038841473662847
+}

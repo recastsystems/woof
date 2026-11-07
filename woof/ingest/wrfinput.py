@@ -17,8 +17,10 @@ from typing import Mapping, Sequence
 
 from woof import netcdf_bridge
 from woof.wrf_exact import ENABLED as WRF_EXACT
+from woof.core.mp_column_schemes import SIX_MASS_TABLE_SCHEMES
 import numpy as np
 from woof.ingest.wrfinput_sfire import SFIRE_INPUT_DIMENSIONS, fire_input_extents
+from woof.ingest.wrfinput_pbl import ALL_PBL_WRFINPUT, pbl_input_map, restore_pbl_scalars
 
 # Every science-field entry below has one explicit woof consumer.  The
 # importer is intentionally closed-world: variables outside these inventories
@@ -79,6 +81,22 @@ MOISTURE_MAP = {
     # required.  F_ICE_PHY/F_RAIN_PHY/F_RIMEF_PHY carry ``rhdu`` with no
     # ``i`` (:1333-1335) and are never in a wrfinput.
     "CWM": "qt",
+    "RIMI": "rimi",
+    "QICE2": "qi2", "QNICE2": "ni2", "QIR2": "qir2", "QIB2": "qib2",
+    # mp_physics=53 (P3 three-moment ice).  QNCLOUD is already above and
+    # carries its prognostic droplet number; QZI (Registry.EM_COMMON:563,
+    # IO string ``i0rhusdf``, so real.exe writes it) is the advected ice
+    # moment (N*Z)**0.5 and is new here.
+    "QZI": "qzi",
+    "QICE3": "qi3",
+    "QNICE3": "ni3",
+    "QVOLI": "qvoli",
+    "QAOLI": "qaoli",
+    "QVOLI2": "qvoli2",
+    "QAOLI2": "qaoli2",
+    "QVOLI3": "qvoli3",
+    "QAOLI3": "qaoli3",
+    "QRIMEF": "qrimef",
     # mp_physics=9 (Milbrandt-Yau double-moment, seven class).  QNCLOUD,
     # QNRAIN, QNICE, QNSNOW and QNGRAUPEL are already above and carry
     # Milbrandt's five prognostic number moments unchanged; QHAIL and
@@ -92,6 +110,11 @@ MOISTURE_MAP = {
     # separate rather than merging.
     "QHAIL": "qh", "QNHAIL": "nh",
 }
+
+# NTU's transported higher moments share their WRF names with history output.
+from woof.io.wrf_output_schema import NTU_OUTPUT_FIELDS
+MOISTURE_MAP.update({row.netcdf_name: attr for attr,row in NTU_OUTPUT_FIELDS.items()})
+NTU_MOISTURE_WRFINPUT = ("QICE", "QSNOW", "QGRAUP", "QHAIL", "QNCLOUD", "QNRAIN", "QNICE", "QNSNOW", "QNGRAUPEL", "QNHAIL") + tuple(row.netcdf_name for row in NTU_OUTPUT_FIELDS.values())
 
 # NSSL reuses several WRF Registry names carried by Morrison, but the state
 # names are scheme-native (for example QNRAIN -> qnr, not nr).  Keep this as
@@ -162,7 +185,7 @@ WDM6_NUMBER_WRFINPUT = ("QNCCN", "QNCLOUD", "QNRAIN")
 #: 9 belongs for the same reason 16 does: Milbrandt-Yau PREDICTS the
 #: droplet number (its ``scalar:qnc,...`` package), so QNCLOUD is a
 #: prognostic there, not Morrison's diagnosed convenience field.
-REQUIRED_QNCLOUD_MICROPHYSICS = frozenset({9, 16, 28, 30})
+REQUIRED_QNCLOUD_MICROPHYSICS = frozenset({9, 11, 16, 28, 29, 30, 40, 51, 52, 53, 56})
 #: mp_physics=50 (P3 one-category).  ``Registry.EM_COMMON:3038`` declares
 #: the package as ``moist:qv,qc,qr,qi;scalar:qni,qnr,qir,qib`` -- ONE ice
 #: mass, and no snow and no graupel anywhere in the package, because P3
@@ -215,12 +238,42 @@ FERRIER_OPTIONAL_MOISTURE_WRFINPUT = ("CWM",)
 #: scalar package.  QHAIL is a MASS, listed here rather than in
 #: ICE_MASS_WRFINPUT for the reason MILBRANDT_MOISTURE_WRFINPUT gives.
 WSM7_MOISTURE_WRFINPUT = ("QHAIL",)
+#: mp_physics=51 (P3 one-category, predicted droplet number):
+#: ``Registry.EM_COMMON:3039`` is mp=50's package plus ``scalar:qnc``,
+#: whose IO string carries the wrfinput stream (QNCLOUD, :541), so it is
+#: required like the four P3 scalars beside it.
+P3_NC_MOISTURE_WRFINPUT = P3_MOISTURE_WRFINPUT + ("QNCLOUD",)
+#: mp_physics=53 (P3 three-moment ice, Registry.EM_COMMON:3041,
+#: ``scalar:qnc,qni,qnr,qir,qib,qzi``): mp=50's inventory plus the two
+#: further transported prognostics, both in the wrfinput stream
+#: (QNCLOUD :541, QZI :563).
+P3_3MOM_MOISTURE_WRFINPUT = P3_MOISTURE_WRFINPUT + ("QNCLOUD", "QZI")
 NSSL_MOISTURE_WRFINPUT = (
     "QHAIL", "QNDROP", "QNRAIN", "QNICE", "QNSNOW", "QNGRAUPEL",
     "QNHAIL", "QNCCN", "QVGRAUPEL", "QVHAIL",
 )
 
 PHYSICS_FIELD_ALIASES = {
+    **{name: (name.upper(),) for name in (
+        "te_temf", "kh_temf", "km_temf", "shf_temf", "qf_temf", "uw_temf",
+        "vw_temf", "wupd_temf", "mf_temf", "thup_temf", "qtup_temf",
+        "qlup_temf", "cf3d_temf", "hd_temf", "lcl_temf", "hct_temf",
+        "cfm_temf", "wm_temf")},
+    "pek_pbl": ("PEK_PBL",), "pep_pbl": ("PEP_PBL",),
+
+    "sst": ("SST",), "sstsk": ("SSTSK",), "dtw": ("DTW",),
+
+    "td_fraction": ("TD_FRACTION",),
+    "landusef": ("LANDUSEF",), "soilctop": ("SOILCTOP",),
+    "soilcbot": ("SOILCBOT",), "imperv": ("IMPERV",), "canfra": ("CANFRA",),
+    **{name: (name.upper(),) for name in (
+        "ra", "rs", "capg", "vegf_px", "lai_px", "t2obs", "q2obs",
+        "wwlt_px", "wfc_px", "wsat_px", "clay_px", "csand_px", "fmsand_px",
+        "t2_ndg_old", "t2_ndg_new", "q2_ndg_old", "q2_ndg_new",
+        "sn_ndg_old", "sn_ndg_new", "sfcevp")},
+    **{name:(wrf,) for name,wrf in (("fdepthxy","FDEPTH"),("eqzwt","EQZWT"),("riverbedxy","RIVERBED"),("rechclim","RECHCLIM"))},
+    "season_gdd": ("SEASON_GDD",), "croptype": ("CROPTYPE",),
+    **{name:(name.upper(),) for name in ("irfract","sifract","mifract","fifract","planting","harvest")},
     "landmask": ("LANDMASK",), "xland": ("XLAND",),
     "tsk": ("TSK",), "pblh": ("PBLH",), "ivgtyp": ("IVGTYP", "LU_INDEX"),
     "isltyp": ("ISLTYP",), "vegfra": ("VEGFRA",), "tmn": ("TMN",),
@@ -239,6 +292,10 @@ PHYSICS_FIELD_ALIASES = {
     # Stock v4.6.1 names this field qke; real.exe products also use QKE.
     "qke": ("qke", "QKE"),
     "qke_adv": ("qke_adv",),
+    "keps_tke": ("TKE_PBL",), "keps_diss": ("DISS_PBL",),
+    "keps_tpe": ("TPE_PBL",), "keps_pr": ("PR_PBL",),
+    "keps_tke_adv": ("TKE_ADV",), "keps_diss_adv": ("DISS_ADV",),
+    "keps_tpe_adv": ("TPE_ADV",),
 }
 
 RUC_INPUT_FIELDS = frozenset({"ACRUNOFF", "RHOSNF", "SNOWFALLAC", "SOILT1"})
@@ -256,6 +313,7 @@ OPTIONAL_WRFINPUT = (
     "ICCG_IN_NUM", "ICCG_IN_DEN",
     "TML", "T0ML", "HML", "H0ML", "HUML", "HVML", "TMOML",
     "OM_TMP", "OM_S", "OM_U", "OM_V", "OM_DEPTH", "OM_TINI", "OM_SINI",
+    "IRRIGATION", "IRR_PH_FIELD", "ALBSI", "ICEDEPTH", "SNOWSI",
     "H_DIABATIC", "RAINNC", "RAINC", "QNCLOUD", "SST", "CANWAT", "LAKEMASK",
     "QNWFA2D", "QNIFA2D",
     "MAPFAC_MX", "MAPFAC_MY", "MAPFAC_UX", "MAPFAC_UY", "MAPFAC_VX", "MAPFAC_VY",
@@ -290,6 +348,30 @@ _WRFINPUT_GEOMETRY_DIMENSIONS = frozenset({
 # resulting shape, so a truncated variable cannot borrow an unrelated
 # dimension of the same length.
 WRFINPUT_DIMENSIONS: dict[str, tuple[str, ...]] = {
+    **{name: _MASS_3D_DIMS for name in (
+        "TE_TEMF", "KH_TEMF", "KM_TEMF", "SHF_TEMF", "QF_TEMF", "UW_TEMF",
+        "VW_TEMF", "WUPD_TEMF", "MF_TEMF", "THUP_TEMF", "QTUP_TEMF",
+        "QLUP_TEMF", "CF3D_TEMF")},
+    **{name: _MASS_2D_DIMS for name in (
+        "HD_TEMF", "LCL_TEMF", "HCT_TEMF", "CFM_TEMF", "WM_TEMF")},
+
+    **{name:_MASS_2D_DIMS for name in ("FDEPTH","EQZWT","RIVERBED","RECHCLIM")},
+    "TD_FRACTION": _MASS_2D_DIMS,
+    "CROPTYPE": ("crop_types_stag","south_north","west_east"),
+    "SEASON_GDD": _MASS_2D_DIMS,
+    **{name:_MASS_2D_DIMS for name in ("IRFRACT","SIFRACT","MIFRACT","FIFRACT","PLANTING","HARVEST")},
+    **{f"SOILCL{k}": _MASS_2D_DIMS for k in range(1, 5)},
+    "SOILCOMP": ("soil_composition_layers_stag", "south_north", "west_east"),
+    **{name+"_3D":("soil_layers_stag","south_north","west_east")
+       for name in ("SMCWLT","SMCREF","SMCMAX","BEXP","PSISAT","DKSAT","DWSAT","SMCDRY","QUARTZ")},
+    "LANDUSEF": ("land_cat_stag", "south_north", "west_east"),
+    **{name: ("soil_cat_stag", "south_north", "west_east")
+       for name in ("SOILCTOP", "SOILCBOT")},
+    **{name: _MASS_2D_DIMS for name in (
+        "IMPERV", "CANFRA", "RA", "RS", "CAPG", "VEGF_PX", "LAI_PX",
+        "T2OBS", "Q2OBS", "WWLT_PX", "WFC_PX", "WSAT_PX", "CLAY_PX",
+        "CSAND_PX", "FMSAND_PX", "SFCEVP", "T2_NDG_OLD", "T2_NDG_NEW",
+        "Q2_NDG_OLD", "Q2_NDG_NEW", "SN_NDG_OLD", "SN_NDG_NEW")},
     **{name: ("ocean_levels", "south_north", "west_east") for name in (
         "OM_TMP", "OM_S", "OM_U", "OM_V", "OM_DEPTH", "OM_TINI", "OM_SINI")},
     "ICCG_IN_NUM": _MASS_2D_DIMS, "ICCG_IN_DEN": _MASS_2D_DIMS,
@@ -300,19 +382,27 @@ WRFINPUT_DIMENSIONS: dict[str, tuple[str, ...]] = {
         "HFX_FORCE","LH_FORCE","TSK_FORCE","HFX_FORCE_TEND",
         "LH_FORCE_TEND","TSK_FORCE_TEND")},
     **{name: _MASS_2D_DIMS for name in OROGRAPHIC_WRFINPUT},
+    "AEROMCU": ("aerosol_species_cu","months_per_year","aerosol_levels_cu","south_north","west_east"),
+    "AEROPCU": ("months_per_year","aerosol_levels_cu","south_north","west_east"),
     **SFIRE_INPUT_DIMENSIONS,
+    **{name: _MASS_3D_DIMS for name in ALL_PBL_WRFINPUT},
     **{name: _MASS_3D_DIMS for name in (
-        "T", "T_INIT", "P", "PB", "AL", "ALB", "QVAPOR", "QCLOUD",
+        "T", "THM", "T_INIT", "P", "PB", "AL", "ALB", "QVAPOR", "QCLOUD",
         "QRAIN", "QICE", "QSNOW", "QGRAUP", "QNRAIN", "QNICE",
         "QNSNOW", "QNGRAUPEL", "QNCLOUD", "QHAIL", "QNDROP",
         "QNHAIL", "QNCCN", "QVGRAUPEL", "QVHAIL", "H_DIABATIC",
-        "QIR", "QIB", "QNWFA", "QNIFA", "QNBCA", "qke", "QKE", "qke_adv",
-        "CWM",
+        "QIR", "QIB", "QZI", "QICE2", "QNICE2", "QIR2", "QIB2", "QNWFA", "QNIFA", "QNBCA", "qke", "QKE", "qke_adv",
+        "QICE3", "QNICE3", "QVOLI", "QAOLI", "QVOLI2", "QAOLI2", "QVOLI3", "QAOLI3",
+        "CWM", "QRIMEF",
+        "DISS_PBL", "TPE_PBL", "PR_PBL", "TKE_ADV", "DISS_ADV", "TPE_ADV",
         "fire_smoke",
-        "QC_BL", "CLDFRA_BL",
+        "RIMI",
+        "QC_BL", "CLDFRA_BL", "PEK_PBL", "PEP_PBL",
     )},
+    **{name: _MASS_3D_DIMS for name in NTU_MOISTURE_WRFINPUT},
     "U": _U_3D_DIMS, "V": _V_3D_DIMS, "W": _W_3D_DIMS,
     "PH": _W_3D_DIMS, "PHB": _W_3D_DIMS,
+    "TKE_PBL": _W_3D_DIMS,
     **{name: _MASS_2D_DIMS for name in (
         "MU", "MUB", "HGT", "MAPFAC_M", "MAPFAC_MX", "MAPFAC_MY", "F", "E", "SINALPHA",
         "COSALPHA", "LANDMASK", "LU_INDEX", "ISLTYP", "TSK", "TMN",
@@ -322,6 +412,7 @@ WRFINPUT_DIMENSIONS: dict[str, tuple[str, ...]] = {
         "SWDOWN", "GLW", "QNWFA2D", "QNIFA2D", "FRC_URB2D",
         "PBLH", "UST", "ZNT", "HFX", "QFX", "LH", "GRDFLX", "RAINNC",
         "RAINC", "XLAT", "XLONG", "SST", "CANWAT", "LAKEMASK",
+        "IRRIGATION", "IRR_PH_FIELD", "ALBSI", "ICEDEPTH", "SNOWSI",
         "ACRUNOFF", "RHOSNF", "SNOWFALLAC", "SOILT1",
         "TML", "T0ML", "HML", "H0ML", "HUML", "HVML", "TMOML",
     )},
@@ -344,6 +435,8 @@ WRFINPUT_DIMENSIONS: dict[str, tuple[str, ...]] = {
         "SAVE_TOPO_FROM_REAL",
     )},
 }
+from woof.core.pxlsm_runtime import PX_STATE_2D
+WRFINPUT_DIMENSIONS.update({name.upper(): _MASS_2D_DIMS for name in PX_STATE_2D})
 from woof.io.wrf_input_history_schema import WRF_INPUT_HISTORY_ROWS
 WRFINPUT_DIMENSIONS.update({name: tuple(row["input_dimensions"])
                            for name, row in WRF_INPUT_HISTORY_ROWS.items()})
@@ -394,12 +487,25 @@ def _mapped_wrfinput_names() -> set[str]:
     names.update(alias for aliases in ALIASES.values() for alias in aliases)
     names.update(ALL_MOISTURE_WRFINPUT)
     names.update(OROGRAPHIC_WRFINPUT)
+    names.update(ALL_PBL_WRFINPUT)
+    from woof.core.passive_tracer_contract import TRACER_NAMES, TRACER_INPUT_NAMES
+    names.update(TRACER_INPUT_NAMES.values())
+    names.update(("CLDMASK", "CLDTOPZ", "CLDBASEZ", "BRTEMP"))
+    from woof.core.trajectory_contract import COORDINATES
+    names.update(name.upper() for name in COORDINATES)
     names.update(
         alias for aliases in PHYSICS_FIELD_ALIASES.values() for alias in aliases)
     return names
 
 
 WRFINPUT_DIMENSIONS.update({name:WRFINPUT_DIMENSIONS["QVAPOR"] for name in _FSBM_BIN_SPECIES + ("EFF_RADIUS","ICE_EFF_RADIUS","TOT_EFF_RADIUS")})
+from woof.core.passive_tracer_contract import TRACER_NAMES, TRACER_INPUT_NAMES
+WRFINPUT_DIMENSIONS.update({name: _MASS_3D_DIMS for name in TRACER_INPUT_NAMES.values()})
+WRFINPUT_DIMENSIONS.update({name: _MASS_3D_DIMS for name in ("P_HYD", "CLDFRA")})
+WRFINPUT_DIMENSIONS.update({name: ("south_north", "west_east")
+                           for name in ("CLDMASK", "CLDTOPZ", "CLDBASEZ", "BRTEMP")})
+from woof.core.trajectory_contract import COORDINATES as _TRAJECTORY_COORDINATES
+WRFINPUT_DIMENSIONS.update({name.upper(): ("num_traj_stag",) for name in _TRAJECTORY_COORDINATES})
 
 MAPPED_WRFINPUT = frozenset(_mapped_wrfinput_names())
 # Registry writes QNBCA for mp28 even when wif_input_opt != 2. In that
@@ -410,7 +516,7 @@ INACTIVE_AEROSOL_WRFINPUT = frozenset({"QNBCA"})
 # Registry.EM_COMMON:1118,3168 allocates the MYNN scalar QKE carrier.
 # With advection selected it is restored independently from diagnostic QKE.
 MYNN_SCALAR_WRFINPUT = frozenset({"qke_adv"})
-ALLOWED_WRFINPUT = (MAPPED_WRFINPUT | frozenset(EXPLICIT_AUXILIARY_WRFINPUT)
+ALLOWED_WRFINPUT = (frozenset({"AEROMCU","AEROPCU"}) | MAPPED_WRFINPUT | frozenset(EXPLICIT_AUXILIARY_WRFINPUT)
                    | INACTIVE_AEROSOL_WRFINPUT | MYNN_SCALAR_WRFINPUT)
 
 #: WRF's 1-D base-state profiles.  real.exe never assigns them
@@ -436,6 +542,8 @@ BASE_SCALAR_PROFILE_WRFINPUT = ("T_BASE", "QV_BASE")
 #: use_theta_m=0 restoration; SST/land-use climatology fields are superseded
 #: by the mapped surface restoration set.
 IGNORED_WRFINPUT = frozenset({
+    "POWER", "TKE_WINDFARM", "THRUST",  # diagnostics recomputed by resident wind physics
+
     "BATHYMETRY_FLAG", "CFN", "CFN1", "CLAT", "CLDFRA", "CPLMASK",
     "DTS", "DTSEPS", "DZS", "EROD", "FCX", "FNDALBSI", "FNDICEDEPTH",
     "FNDSNOWH", "FNDSNOWSI", "FNDSOILW", "GCX", "GOT_VAR_SSO",
@@ -578,31 +686,51 @@ RADAR_TENDENCY_VARIABLES = ("RAD_TTEN_DFI_1", "RAD_TTEN_DFI_2",
 #: an inventory for, in one table so the refusal and the reader cannot
 #: disagree about what is supported.
 SUPPORTED_MICROPHYSICS: Mapping[int, str] = MappingProxyType({
+    96: "MAD-WRF passive cloud",
+    11: "CAM Morrison-Gettelman",
+    56: "NTU multi-moment",
+    95: "Eta Ferrier",
     0: "passive water vapor (microphysics off)",
     1: "Kessler warm rain",
     2: "Purdue Lin",
     3: "WSM3",
     4: "WSM5",
     6: "WSM6",
+    7: "Goddard four-ice",
     8: "Thompson",
     106: "WSM6R (revised WSM6)",
     9: "Milbrandt-Yau double-moment (seven class)",
     10: "Morrison double-moment",
+    13: "MP13 five-class with riming intensity",
+    14: "WDM5 double-moment warm rain",
+    26: "WDM7 double-moment warm rain and hail",
+    27: "UDM seven-class with CCN, cloud and rain number",
+    40: "Morrison aerosol",
     16: "WDM6 double-moment warm rain",
     18: "NSSL double-moment",
+    19: "NSSL 1-moment",
+    21: "NSSL 1-moment lfo",
     5: "Ferrier-Aligo",
     24: "WSM7 single-moment (seven class)",
+    15: "Ferrier-Aligo, advected species",
     28: "Thompson aerosol-aware",
+    29: "RCON aerosol-aware",
     30: "FAST_SBM warm and cold spectral bin",
+    38: "Thompson graupel-hail",
     50: "P3 one-category",
+    97: "Goddard GCE three-ice",
+    51: "P3 one-category, predicted droplet number",
+    52: "P3 two-category",
+    53: "P3 one-category, three-moment ice",
+    55: "ISHMAEL adaptive-habit ice",
 })
 
 #: ``mp_physics`` values that are real WRF v4.6.1 packages this port does
 #: NOT restore, each with the reason and the remedy.  Every one of these
 #: writes a wrfinput whose hydrometeor names ArWen has no state field for,
 #: so restoring it would mean dropping prognostics on the floor.  The
-#: three P3 siblings recite ``woof.config``'s own refusal text, which is
-#: where their missing physics is argued in detail.
+#: Supported ports belong only to SUPPORTED_MICROPHYSICS, so help and
+#: refusal lookup cannot describe an admitted package as missing.
 #:
 #: The names are WRF v4.6.1's own (Registry/Registry.EM_COMMON:3014-3047,
 #: the ``package ... mp_physics==N`` rows).  A WRF package missing from
@@ -611,28 +739,12 @@ SUPPORTED_MICROPHYSICS: Mapping[int, str] = MappingProxyType({
 #: assigns them to Jensen ISHMAEL and NTU.  tests/test_wrfinput_mp_names.py
 #: pins every Registry row to this table or to SUPPORTED_MICROPHYSICS.
 UNSUPPORTED_MICROPHYSICS: Mapping[int, str] = MappingProxyType({
-    7: "Goddard 4-ice",
-    11: "CAM 5.1",
-    13: "SBU-YLin",
-    14: "WDM5",
-    15: "Ferrier-Aligo, advected species",
     17: "NSSL 2-moment 4-ice",
-    19: "NSSL 1-moment",
-    21: "NSSL 1-moment lfo",
     22: "NSSL 2-moment, no hail",
-    26: "WDM7",
     32: "HUJI spectral bin (full)",
-    38: "Thompson graupel-hail",
-    40: "Morrison + CESM aerosol",
-    51: "P3 with prognostic droplet number",
-    52: "P3, two ice categories",
-    53: "P3 one category, three-moment ice",
-    55: "Jensen ISHMAEL",
     56: "NTU multi-moment",
     95: "Ferrier (Eta, old)",
-    96: "MADWRF",
-    97: "Goddard GCE",
-    106: "WSM6 revised",
+
 })
 
 #: WRF ``sf_surface_physics`` -> (scheme name, the soil-layer count the
@@ -1015,16 +1127,43 @@ def active_moisture_inventory(cfg) -> tuple[frozenset[str], frozenset[str]]:
         # disabled. Cloud and precipitation species remain inactive.
         vapor = frozenset(("QVAPOR",))
         return vapor, vapor
+    from woof.physics_registry import consumer_row_for_selector
+    column = consumer_row_for_selector("microphysics", "column_kernel", mp_physics)
+    if column is not None:
+        inventory = consumer_row_for_selector("microphysics", "stock_wrf_export", mp_physics)
+        required = frozenset(field["netcdf_name"] for field in inventory["wrfinput_fields"])
+        return required, required
+    native = consumer_row_for_selector("microphysics", "native_column", mp_physics)
+    if native:
+        required = tuple(name for name, state_name in MOISTURE_MAP.items()
+                         if state_name in native["transport"])
+        assert len(required) == len(native["transport"])
+        return frozenset(required), frozenset(required)
+    if mp_physics == 96:
+        required = frozenset(("QVAPOR", "QCLOUD", "QICE", "QSNOW"))
+        return required, required
     required = BASE_MOISTURE_WRFINPUT
+    from woof.physics_registry import column_microphysics_binding
+    column_binding = column_microphysics_binding(mp_physics)
+    if column_binding is not None:
+        extras = column_binding['transported_extras']
+        inverse = {state_name: wrf_name for wrf_name, state_name in NSSL_MOISTURE_MAP.items()}
+        required += tuple(inverse[name] for name in extras)
+    if mp_physics == 56:
+        required += NTU_MOISTURE_WRFINPUT
     # 16 belongs with the ice-carrying set: wdm6scheme's moist inventory
     # (Registry.EM_COMMON:3031) is qv,qc,qr,qi,qs,qg -- WSM6's, character
     # for character.  WDM6 is double-moment in the WARM half only.
+    if mp_physics == 14:
+        required += ("QICE", "QSNOW")
     from woof.core.column_schemes import COLUMN_SCHEMES
     if mp_physics in COLUMN_SCHEMES:
         names = {"qi": "QICE", "qs": "QSNOW", "qg": "QGRAUP"}
         required += tuple(names[n] for n in COLUMN_SCHEMES[mp_physics].species if n in names)
-    if mp_physics in (2, 6, 8, 9, 10, 16, 18, 24, 28, 30, 106):
+    if mp_physics in (2, 6, 8, 9, 10, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 106) + SIX_MASS_TABLE_SCHEMES:
         required += ICE_MASS_WRFINPUT
+    if mp_physics == 11:
+        required += ("QICE", "QSNOW", "QNCLOUD", "QNICE", "QNRAIN", "QNSNOW")
     if mp_physics == 30:
         required += _FSBM_BIN_SPECIES + ("QNCCN","QNCLOUD","QNRAIN","QNICE","QNSNOW","QNGRAUPEL","EFF_RADIUS","ICE_EFF_RADIUS","TOT_EFF_RADIUS")
     if mp_physics == 24:
@@ -1033,18 +1172,26 @@ def active_moisture_inventory(cfg) -> tuple[frozenset[str], frozenset[str]]:
         # Milbrandt-Yau: WSM6's six masses (added just above) plus hail
         # and six number moments.  See MILBRANDT_MOISTURE_WRFINPUT.
         required += MILBRANDT_MOISTURE_WRFINPUT
-    if mp_physics == 16:
+    if mp_physics in (14, 16):
         required += WDM6_NUMBER_WRFINPUT
+    if mp_physics in (26, 27):
+        # WDM7 (Registry.EM_COMMON:3035): WDM6's inventory plus QHAIL, the
+        # one hail mass; WDM7 carries no hail number.
+        required += ("QHAIL",) + WDM6_NUMBER_WRFINPUT
     if mp_physics == 8:
         required += THOMPSON_NUMBER_WRFINPUT
-    elif mp_physics == 28:
+    elif mp_physics in THOMPSON_AEROSOL_FAMILY:
         # Thompson aerosol-aware: classic Thompson's two moments plus the
         # prognostic droplet number and the two aerosol tracers.
         required += THOMPSON_AEROSOL_NUMBER_WRFINPUT
-    elif mp_physics == 10:
+        if THOMPSON_AEROSOL_FAMILY[mp_physics].hail_aware:
+            required += ("QNGRAUPEL", "QVGRAUPEL")
+    elif mp_physics in (10, 40):
         required += MORRISON_NUMBER_WRFINPUT
     elif mp_physics == 18:
         required += nssl_moisture_wrfinput(cfg)
+    elif mp_physics == 52:
+        required += P3_MOISTURE_WRFINPUT + ("QNCLOUD", "QICE2", "QNICE2", "QIR2", "QIB2")
     elif mp_physics == 50:
         # P3 one-category.  Its whole inventory beyond the three base
         # masses arrives in one tuple because its ice mass does NOT come
@@ -1054,14 +1201,52 @@ def active_moisture_inventory(cfg) -> tuple[frozenset[str], frozenset[str]]:
         # is refused as carrying inactive moisture rather than restored
         # with two frozen species dropped on the floor.
         required += P3_MOISTURE_WRFINPUT
+    elif mp_physics == 15:
+        required += FERRIER_MOISTURE_WRFINPUT + ("QRIMEF",)
     elif mp_physics == 5:
         required += FERRIER_MOISTURE_WRFINPUT
+    elif mp_physics == 51:
+        # P3 with predicted droplet number: the mp=50 inventory plus
+        # QNCLOUD (see P3_NC_MOISTURE_WRFINPUT).
+        required += P3_NC_MOISTURE_WRFINPUT
+    elif mp_physics == 53:
+        # P3 three-moment ice: the mp=50 inventory plus QNCLOUD and QZI.
+        required += P3_3MOM_MOISTURE_WRFINPUT
+    if mp_physics == 40:
+        required += ("QNCLOUD",)
     allowed = frozenset(required)
-    if mp_physics == 10:
+    if mp_physics == 95:
+        required += ("QSNOW",)
+        # A cold start from another real.exe package has no CWM scalar.
+        # Native mp95 inputs must carry it, checked against the file's MP id.
+        allowed = frozenset(required) | {"CWM"}
+    if mp_physics in (10, 40):
         allowed |= frozenset(MORRISON_OPTIONAL_MOISTURE_WRFINPUT)
     if mp_physics == 5:
         allowed |= frozenset(FERRIER_OPTIONAL_MOISTURE_WRFINPUT)
-    return frozenset(required), allowed
+    return frozenset(required) - _nssl_cold_start_optional_moisture(cfg), allowed
+
+
+def _nssl_cold_start_optional_moisture(cfg) -> frozenset[str]:
+    """MP21's passive compatibility CCN may be absent from real.exe input.
+
+    WRF 4.7.1 module_check_a_mundo.F:3425-3433 disables the CCN package
+    for option 21, so real.exe writes no QNCCN. Our 4.6.1 compatibility
+    spelling retains that carrier. Its cold-start value is defined by
+    start_em.F:1751-1775, rather than requiring an input record. Keep the
+    other NSSL inventories (including option 19) and all restart restores
+    unchanged; the one-moment module does not consume this passive field.
+    """
+    if int(getattr(cfg, "mp_physics", 0)) != 18:
+        return frozenset()
+    from woof.core.nssl2_contract import NSSL2_SELECTOR_FIELDS, resolve_nssl2_mode
+    mode = resolve_nssl2_mode(**{
+        name: getattr(cfg, name) for name in NSSL2_SELECTOR_FIELDS
+        if getattr(cfg, name, None) is not None})
+    if (not mode.two_moment and not mode.hail and mode.predicted_ccn
+            and mode.density_moments == 0 and mode.sixth_moments == 0):
+        return frozenset(("QNCCN",))
+    return frozenset()
 
 
 def nssl_moisture_wrfinput(cfg) -> tuple[str, ...]:
@@ -1106,6 +1291,7 @@ def active_moisture_map(cfg) -> Mapping[str, str]:
 def _validate_wrfinput_geometry(name: str, variable,
                                 expected_extents: Mapping[str, int],
                                 value: np.ndarray) -> None:
+    expected_extents = dict(expected_extents,aerosol_species_cu=10,months_per_year=12,aerosol_levels_cu=30)
     expected_dimensions = WRFINPUT_DIMENSIONS.get(name)
     if expected_dimensions is None:
         raise ConfigurationRefused(f"WRF input variable {name} has no mapped geometry")
@@ -1157,12 +1343,28 @@ def read_wrfinput(path: str | Path, *, require_complete: bool = True,
     path = Path(path)
     expected_extents = _explicit_wrfinput_dimensions(expected_dimensions)
     expected_extents = {**expected_extents, **fire_input_extents(cfg, expected_extents)}
+    if (int(getattr(cfg, "sf_surface_physics", 0)) == 4
+            and int(getattr(cfg, "opt_soil", 1)) == 3):
+        # registry.noahmp's soilc axis is sand then clay, four layers each.
+        # Its extent is fixed by the selected native physics, never the file.
+        expected_extents["soil_composition_layers_stag"] = 8
+    if cfg is not None:
+        expected_extents["num_traj_stag"] = cfg.num_traj
+    if int(getattr(cfg,"sf_surface_physics",0))==4 and getattr(cfg,"opt_crop",0):expected_extents["crop_types_stag"]=5
     required_moisture, allowed_moisture = active_moisture_inventory(cfg)
+    active_pbl = pbl_input_map(cfg)
     # Foreign input: WRF real.exe's own wrfinput, decoded field by
     # field through the Rust bridge. Times is validated by file identity.
     with netcdf_bridge.open_dataset(path) as dataset:
         dimensions = {name: len(dim) for name, dim in dataset.dimensions.items()}
         attrs = {name: dataset.getncattr(name) for name in dataset.ncattrs()}
+        if cfg is not None and int(cfg.sf_surface_physics) == 7:
+            from woof.core.pxlsm import px_dataset
+            ncat = int(attrs.get("NUM_LAND_CAT", 0))
+            px_dataset(ncat)
+            expected_extents.update(land_cat_stag=ncat, soil_cat_stag=16)
+        if _integral_attribute(attrs.get("MP_PHYSICS")) == 95:
+            required_moisture = required_moisture | {"CWM"}
         from woof.ingest.wrfinput_noahmp import input_dispositions
         from woof.ingest.wrfinput_surface_statics import (
             surface_static_dispositions)
@@ -1170,9 +1372,18 @@ def read_wrfinput(path: str | Path, *, require_complete: bool = True,
                                 **surface_static_dispositions(cfg)}
         surface_dispositions.update(urban_static_input_dispositions(
             dataset, path, cfg, expected_dimensions))
+        from woof.core.noahmp_soil_options import active_soil_inputs
+        soil_inputs=(active_soil_inputs(getattr(cfg,"opt_soil",1))
+                     if int(getattr(cfg,"sf_surface_physics",0))==4 else ())
         if surface_dispositions or _integral_attribute(attrs.get("SF_SURFACE_PHYSICS")) == 4:
             from woof.ingest.wrfinput_noahmp import require_cold_start
-            require_cold_start(dataset)
+            try:
+                require_cold_start(dataset)
+            except ValueError as exc:
+                if int(getattr(cfg, "opt_crop", 0)) == 2:
+                    from woof.core.noahmp_gecros_slab import LABEL
+                    raise ValueError(f"{LABEL}. {exc}") from None
+                raise
         recorded_surface_dispositions = {
             name: reason for name, reason in surface_dispositions.items()
             if name in dataset.variables}
@@ -1185,8 +1396,9 @@ def read_wrfinput(path: str | Path, *, require_complete: bool = True,
             check_supported_schemes(attrs, source=str(path))
         unknown = sorted(
             set(dataset.variables) - ALLOWED_WRFINPUT - IGNORED_WRFINPUT
+            - {"CLDMASK", "CLDTOPZ", "CLDBASEZ", "BRTEMP"}
             - ANALYSIS_PASSTHROUGH_WRFINPUT.keys()
-            - surface_dispositions.keys())
+            - surface_dispositions.keys() - set(soil_inputs))
         if "fire_smoke" in dataset.variables and not bool(getattr(cfg, "fire_smoke", False)):
             raise ConfigurationRefused("native fire_smoke input requires the active endogenous bulk smoke profile; "
                              "enable fire_smoke to preserve its g_smoke/kg_air volume")
@@ -1202,6 +1414,9 @@ def read_wrfinput(path: str | Path, *, require_complete: bool = True,
                      " are outside every scheme it knows.")
             raise ConfigurationRefused(
                 f"{path} has unmapped WRF variable(s): {unknown}.{claim}")
+        inactive_pbl = sorted((set(dataset.variables) & ALL_PBL_WRFINPUT) - active_pbl.keys())
+        if inactive_pbl:
+            raise ValueError(f"{path} has inactive WRF PBL scalar variable(s): {inactive_pbl}; selected PBL has no state for these carriers, so restoration would discard them.")
         raw = {}
         soil_conversions = {}
         # A cycled start (cfg.cycling) continues the input's MYNN subgrid
@@ -1219,7 +1434,27 @@ def read_wrfinput(path: str | Path, *, require_complete: bool = True,
         # terrain into the nest's frame only when the file says 1
         # (woof/ingest/wrfinput_nest_initial.py).
         carried |= {"SAVE_TOPO_FROM_REAL"}
+        if getattr(cfg, "madwrf_cldinit", 0):
+            carried |= {"CLDMASK", "CLDTOPZ", "CLDBASEZ", "BRTEMP", "P_HYD", "CLDFRA"}
+        if int(getattr(cfg, "use_theta_m", 0)) == 1:
+            carried |= {"THM"}
+
+        if int(getattr(cfg,"sf_surface_physics",0))==4 and getattr(cfg,"opt_crop",0):
+            soil_inputs=(*soil_inputs,"CROPTYPE","PLANTING","HARVEST","SEASON_GDD")
+        if int(getattr(cfg,"sf_surface_physics",0))==4 and getattr(cfg,"opt_run",3)==5:
+            soil_inputs=(*soil_inputs,"FDEPTH","EQZWT","RIVERBED","RECHCLIM")
+        missing_soil=set(soil_inputs)-dataset.variables.keys()
+        if missing_soil:
+            from woof.core.noahmp_soil_options import SOIL4_LABEL
+            label = "; "+SOIL4_LABEL if getattr(cfg,"opt_soil",1)==4 else ""
+            raise ConfigurationRefused(f"Noah-MP soil parameter inputs missing: {sorted(missing_soil)}"+label)
+        for name in soil_inputs:
+            recorded_surface_dispositions[name]="consumed by native soil parameter selection"
+        if cfg is not None and int(cfg.sf_surface_physics) == 7:
+            from woof.core.pxlsm_runtime import PX_STATE_2D, PX_FRACTIONS
+            carried |= {name.upper() for name in (*PX_STATE_2D, *PX_FRACTIONS)}
         def unread(name):
+            if name in soil_inputs: return False
             return (name == "Times"
                     or (name in IGNORED_WRFINPUT and name not in carried)
                     or (name in ANALYSIS_PASSTHROUGH_WRFINPUT
@@ -1292,6 +1527,13 @@ def read_wrfinput(path: str | Path, *, require_complete: bool = True,
             f"physics: {extra_moisture}")
     if require_complete:
         missing = missing_required_wrfinput(raw, cfg)
+        # The public GSD WRF 3.9 registry marks AL/ALB as restart-only.
+        # Cold start recomputes both before physics; retain the missing
+        # fields rather than inventing file values. Warm input still needs
+        # every carried density word.
+        if ("V3.9" in str(attrs.get("TITLE", ""))
+                and int(attrs.get("FLAG_RESTART", 0)) == 0):
+            missing = [name for name in missing if name not in ("AL", "ALB")]
         if missing:
             raise ConfigurationRefused(f"{path} is missing mapped WRF variable(s): {missing}")
     mapped = MAPPED_WRFINPUT & set(raw)
@@ -1320,7 +1562,10 @@ def missing_required_wrfinput(raw: Mapping[str, np.ndarray], cfg) -> list[str]:
     non_moisture_required = set(REQUIRED_WRFINPUT) - ALL_MOISTURE_WRFINPUT
     missing = sorted(name for name in non_moisture_required if name not in raw)
     missing.extend(sorted(required_moisture - present_moisture))
-    if int(getattr(cfg, "mp_physics", 0)) == 28:
+    pbl_names = pbl_input_map(cfg).keys()
+    if pbl_names & raw.keys():
+        missing.extend(name for name in pbl_names if name not in raw)
+    if int(getattr(cfg, "mp_physics", 0)) in THOMPSON_AEROSOL_FAMILY:
         missing.extend(name for name in ("QNWFA2D", "QNIFA2D")
                        if name not in raw)
     missing.extend(sorted(
@@ -1397,6 +1642,8 @@ def _restore_active_moisture(state, raw: Mapping[str, np.ndarray], cfg,
     ``warm`` is a WRF restart: the species are the producing run's own
     evolved state, so no cold-start replacement (WDM6's CCN fill) applies.
     """
+    if warm:
+        state._native_wrf_moisture = True
     # The QNCLOUD exemption is Morrison's alone (WRF diagnoses cloud number
     # there).  For mp=28 QNCLOUD is the prognostic droplet number the whole
     # scheme turns on, and a wrfinput without it must fail here rather than
@@ -1414,6 +1661,8 @@ def _restore_active_moisture(state, raw: Mapping[str, np.ndarray], cfg,
             _expect_shape(wrf_name, raw[wrf_name], target.shape)
             target[...] = array_module.asarray(
                 raw[wrf_name], dtype=array_module.float32)
+    if cfg is not None and int(cfg.mp_physics) == 95:
+        optional_moisture = frozenset({"CWM"})
     state_names = []
     for wrf_name, state_name in active_moisture_map(cfg).items():
         target = getattr(state, state_name, None)
@@ -1426,12 +1675,19 @@ def _restore_active_moisture(state, raw: Mapping[str, np.ndarray], cfg,
             _expect_shape(wrf_name, raw[wrf_name], target.shape)
             target[...] = array_module.asarray(
                 raw[wrf_name], dtype=array_module.float32)
+        elif not warm and wrf_name in _nssl_cold_start_optional_moisture(cfg):
+            # WRF start_em.F:1756,1767-1775: the absent/zero input has
+            # MAXVAL < 1, so fill the allocated compatibility carrier.
+            # This is a cold GPU fill before the RK copy, with no step
+            # readback. A supplied record and a restart keep their words.
+            target[...] = array_module.float32(
+                np.float32(cfg.nssl_cccn) / np.float32(1.225))
         elif wrf_name not in optional_moisture:
             raise ValueError(
                 f"WRF input lacks active mp_physics={cfg.mp_physics} "
                 f"field {wrf_name}")
 
-    if cfg is not None and int(cfg.mp_physics) == 16 and not warm:
+    if cfg is not None and int(cfg.mp_physics) in (14, 16, 26, 27) and not warm:
         # WRF module_mp_wdm6.F:220-227 replaces the complete cold-start
         # CCN reservoir with ccn_conc on its first step, even when wrfinput
         # carries a nonzero QNCCN. Preserve that initialization after the
@@ -1456,13 +1712,14 @@ def wrf_coordinate_and_base(restored, hypsometric_opt=None, *, cold_start=None):
     not a restart (:func:`wrf_start_base_state`), not the file's words.
     """
     from woof.core.grid import VerticalCoord, BaseState
+    from woof.ingest.wrfinput_identity import effective_hybrid_opt
 
     raw = restored.raw
     names = ('znw', 'znu', 'dnw', 'rdnw', 'dn', 'rdn', 'fnp', 'fnm',
              'c1f', 'c2f', 'c3f', 'c4f', 'c1h', 'c2h', 'c3h', 'c4h')
     top = float(np.asarray(raw['P_TOP']).item())
     coord = VerticalCoord(**{name: raw[name.upper()] for name in names},
-                          hybrid_opt=int(restored.global_attributes['HYBRID_OPT']),
+                          hybrid_opt=effective_hybrid_opt(restored.global_attributes),
                           etac=float(restored.global_attributes['ETAC']), p_top=top)
     if hypsometric_opt is None:
         hypsometric_opt = int(restored.global_attributes.get(
@@ -1634,7 +1891,14 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
     from woof.core.state import DomainState
 
     raw = restored.raw
+    selected_theta = int(getattr(cfg, "use_theta_m", 0))
+    thermal_name = "THM" if selected_theta else "T"
+    if selected_theta and int(restored.global_attributes.get("USE_THETA_M", 0)) != 1:
+        raise ConfigurationRefused("use_theta_m=1 requires WRF input USE_THETA_M=1")
+    if thermal_name not in raw:
+        raise ConfigurationRefused("use_theta_m=1 requires the WRF 4 prognostic THM input field")
     nz, ny, nx = cfg.nz, cfg.ny, cfg.nx
+    warm = getattr(restored, "warm_start", None) is not None
     expected = {
         "U": (nz, ny, nx + 1), "V": (nz, ny + 1, nx),
         "W": (nz + 1, ny, nx), "T": (nz, ny, nx),
@@ -1645,6 +1909,8 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
         "ALB": (nz, ny, nx),
     }
     for name, shape in expected.items():
+        if name in ("AL", "ALB") and name not in raw and not warm:
+            continue
         _expect_shape(name, raw[name], shape)
     state_kwargs = {}
     if scratch_arena is not None:
@@ -1675,7 +1941,7 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
         # Keep the native perturbation word throughout integration. A round
         # trip through full theta cannot recover its low bits.
         state.thb[...] = cp.float32(300.0)
-        state.thp[...] = cp.asarray(raw["T"], dtype=cp.float32)
+        state.thp[...] = cp.asarray(raw[thermal_name], dtype=cp.float32)
         if cfg.diff_opt == 1:
             # horizontal_diffusion_3dmp uses start_em's base thermal
             # reference, not the full initial atmospheric theta. Keep the
@@ -1684,14 +1950,17 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
                 cp.asarray(cold_start["T_INIT"], dtype=cp.float32))
     else:
         state.thp[...] = cp.asarray(
-            (raw["T"].astype(np.float32) + np.float32(300.0))
+            (raw[thermal_name].astype(np.float32) + np.float32(300.0))
             - base.thb, dtype=cp.float32)
+    if selected_theta:
+        state._wrf_start_history_t = cp.asarray(raw["T"], dtype=cp.float32)
     state.p[...] = cp.asarray(raw["P"] + raw["PB"], dtype=cp.float32)
     from woof.wrf_exact import DIAGNOSTICS_ENABLED
     if DIAGNOSTICS_ENABLED:
         state.p_perturbation = cp.asarray(raw["P"], dtype=cp.float32)
-    state.al[...] = cp.asarray(raw["AL"], dtype=cp.float32)
-    state.alt[...] = cp.asarray(raw["AL"] + raw["ALB"], dtype=cp.float32)
+    if "AL" in raw and "ALB" in raw:
+        state.al[...] = cp.asarray(raw["AL"], dtype=cp.float32)
+        state.alt[...] = cp.asarray(raw["AL"] + raw["ALB"], dtype=cp.float32)
     for name in ("CF1", "CF2", "CF3"):
         source = np.asarray(raw[name]).reshape(-1)
         _expect_shape(name, source, (1,))
@@ -1700,7 +1969,7 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
     # rebuilt from FNP (start_em never recomputes it).  A file whose pair is
     # not real.exe's formula of its own DN/DNW (the direct exporter wrote a
     # template's pair before 2026-10-29) moved every top-level ph tendency:
-    # a 9 km d01 differed from wrf.exe 4.6.1 in 495,278 U words at
+    # the nested 9 km d01 differed from wrf.exe 4.6.1 in 495,278 U words at
     # step 1 with every physics scheme off.  read_wrfinput carries the pair
     # as input-history records; a file without it keeps the FNP-derived one
     # load_base installed.
@@ -1715,6 +1984,45 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
         msfv_inv=raw.get("MF_VX_INV"))
     warm = getattr(restored, "warm_start", None) is not None
     _restore_active_moisture(state, raw, cfg, cp, warm=warm)
+    restore_pbl_scalars(state, raw, cfg, cp)
+    state._madwrf_native_tracers = cfg.madwrf_opt == 2 and all(TRACER_INPUT_NAMES[name] in raw for name in ("tr_qc","tr_qi","tr_qs"))
+    # Registry package cldinit writes these only when real.exe has already
+    # applied Init_madwrf_clouds. Reapplying it here would initialize twice.
+    state._madwrf_native_clouds = (
+        "REAL_EM" in str(restored.global_attributes.get("TITLE", ""))
+        and "CLDMASK" in raw
+        and not restored.global_attributes.get("ARWEN_MADWRF_APPLY_INIT", 0))
+    if cfg.madwrf_cldinit and not state._madwrf_native_clouds:
+        state._madwrf_observations = {
+            name:cp.asarray(raw[name.upper()], dtype=cp.float32)
+            for name in ("cldmask", "cldtopz", "cldbasez", "brtemp")
+            if name.upper() in raw}
+        if "P_HYD" in raw:
+            state._madwrf_hydrostatic_pressure = cp.asarray(raw["P_HYD"], dtype=cp.float32)
+    from woof.core.passive_tracer_contract import active_tracers
+    if active_tracers(cfg):
+        for name in active_tracers(cfg):
+            input_name = TRACER_INPUT_NAMES[name]
+            if input_name in raw:
+                _expect_shape(input_name, raw[input_name], (nz, ny, nx))
+                getattr(state, name)[...] = cp.asarray(raw[input_name], dtype=cp.float32)
+    from woof.core.trajectory_contract import enabled as trajectories_enabled, COORDINATES
+    if trajectories_enabled(cfg):
+        present = [name.upper() in raw for name in COORDINATES]
+        if any(present) and not all(present):
+            raise ValueError("native trajectory input has an incomplete five-coordinate inventory")
+        if all(present):
+            for index, name in enumerate(COORDINATES):
+                value = np.asarray(raw[name.upper()]).reshape(-1)
+                _expect_shape(name.upper(), value, (cfg.num_traj,))
+                state.traj_coordinates[index] = cp.asarray(value, dtype=cp.float32)
+            # The point metadata defines the native particle roster. Native
+            # restarts need that same immutable wrfinput_traj_dNN authority.
+            from woof.core.trajectory_contract import parse_points
+            state.traj_status[0] = np.float32(len(parse_points(cfg.trajectory_input)) if cfg.dm_has_traj else 0)
+            state.traj_status[1] = 0
+        elif warm:
+            raise ValueError("native trajectory restart is missing TRAJ_I/J/K/LONG/LAT")
     if "H_DIABATIC" in raw:
         state.h_diabatic[...] = cp.asarray(raw["H_DIABATIC"], dtype=cp.float32)
     # WRF's cold start does not keep the file's P, AL or ALT either:
@@ -1728,7 +2036,15 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
     # ULP twin).  The runtime's own EOS diagnostic, so the start P is the
     # one every later stage diagnoses from the same prognostics.
     from woof.core.diagnostics import update_diagnostics
-    update_diagnostics(state, int(cfg.hypsometric_opt))
+    if warm and selected_theta:
+        # start_em.F:640 excludes restart from the cold-start EOS rebuild.
+        # These diagnostics precede the last microphysics update; rebuilding
+        # from post-physics theta/qv changes the next physics call.
+        if "ALT" in raw:
+            state.alt[...] = cp.asarray(raw["ALT"], dtype=cp.float32)
+        state._wrf_start_diagnostics_carried = True
+    else:
+        update_diagnostics(state, int(cfg.hypsometric_opt))
 
     # WRF start_domain_em diagnoses a cold-start W column after reading
     # real.exe's zero W, before its first history frame. The native door
@@ -1796,10 +2112,15 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
     import cupy as cp
     from woof.core.physics import initialize_physics
     from woof.ingest.ruc_mosaic import wrfinput_ruc_mosaic_inputs
+    from woof.core.pxlsm_runtime import wrfinput_inputs as px_inputs
     from woof.ingest.lake_physics import wrfinput_lake_physics_inputs
     from woof.surface_ocean import ocean_input_fields
 
     raw = restored.raw
+    if cfg.aercu_opt>0:
+        from woof.core.cumulus_aerosol import restore_monthly_aerosol, load_native_monthly_aerosol
+        aerosol_raw=load_native_monthly_aerosol(raw,restored.path.parent)
+        restore_monthly_aerosol(state,aerosol_raw,cfg,radiation_start_time)
     xice = _first(raw, ALIASES["XICE"])
     albbck = _first(raw, ALIASES["ALBBCK"])
     lai = _first(raw, ALIASES["LAI"])
@@ -1821,6 +2142,8 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
     from woof.ingest.wrfinput_sfire import fire_static_fields
     driver = initialize_physics(
         state, cfg, landmask=raw["LANDMASK"], tsk=raw["TSK"],
+        irrigation=raw.get("IRRIGATION"), irr_ph_field=raw.get("IRR_PH_FIELD"),
+        seaice_inputs={name.lower(): raw[name] for name in ("ALBSI", "ICEDEPTH", "SNOWSI") if name in raw},
         landuse=landuse, xland=raw.get("XLAND"),
         landuse_dataset=str(restored.global_attributes["MMINLU"]),
         sst=raw.get("SST", raw["TSK"]),
@@ -1839,8 +2162,12 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
         radiation_start_time=radiation_start_time,
         radiation_latitude=radiation_latitude,
         radiation_longitude=radiation_longitude,
+        **({"wind_legacy_static": {key: raw.get(key) for key in ("XLAT_U", "XLONG_U", "XLAT_V")}}
+           if cfg.wind_farm_scheme == "fitch_legacy" else {}),
         **wrfinput_terrain_drag_inputs(restored, cfg),
+        radiation_center_lat=restored.global_attributes.get("CEN_LAT"),
         **wrfinput_ruc_mosaic_inputs(restored, cfg),
+        **px_inputs(raw, cfg),
         **wrfinput_lake_physics_inputs(restored, cfg),
         **ocean_input_fields(cfg, raw),
         **({"fire_static_data": fire_static_fields(restored, cfg)}
@@ -1855,7 +2182,12 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
         # Breakage it prevents: on any domain the global hydro row covers,
         # `woof run --wrfinput` exited 2 with "parent runoff exchange needs
         # the actual forecast ProjectedGrid".
-        hydro_parent_geometry=hydro_parent_geometry)
+        hydro_parent_geometry=hydro_parent_geometry,
+        **({"noahmp_crop_inputs":{name.lower():raw[name] for name in ("CROPTYPE","PLANTING","HARVEST","SEASON_GDD")}}
+           if int(cfg.sf_surface_physics)==4 and cfg.opt_crop else {}),
+        **({"noahmp_groundwater_inputs":{**{name:raw[name] for name in ("FDEPTH","EQZWT","RIVERBED","RECHCLIM","HGT")},
+            "MAPFAC_MX":raw.get("MAPFAC_MX",raw["MAPFAC_M"]),"MAPFAC_MY":raw.get("MAPFAC_MY",raw["MAPFAC_M"])}}
+           if int(cfg.sf_surface_physics)==4 and cfg.opt_run==5 else {}))
     if (int(getattr(cfg, "sf_urban_physics", 0)) > 0
             and "utype_urb2d" in driver.fields):
         from woof.ingest.wrfinput_surface_statics import (
@@ -1875,6 +2207,10 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
     # pass would read a restart's staggered PBL carriers as surface inputs.
     warm = getattr(restored, "warm_start", None) is not None
     for field in (() if warm else driver.fields):
+        if int(cfg.bl_pbl_physics) == 10 and field in ("te_temf", "cf3d_temf"):
+            # TEMFINIT runs after the input read and replaces these at cold
+            # start (module_bl_temf.F:1431-1446), even if real.exe wrote them.
+            continue
         if (int(cfg.sf_surface_physics) == 3
                 and field in ("sh2o", "smfr3d", "mavail", "znt")):
             # RUCLSMINIT owns these cold-start outputs. real.exe's file
@@ -1886,17 +2222,32 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
         if (int(cfg.sf_surface_physics) == 4
                 and field in NOAHMP_INITIALIZED_SURFACE_FIELDS):
             continue
+        if int(cfg.sf_surface_physics)==4 and cfg.opt_run==5:
+            from woof.core.noahmp_groundwater_slab import CARRIERS
+            if field in (*CARRIERS,"smoiseq"):continue
         if field == "glw" and constant_glw_wm2 is not None:
             continue
         aliases = PHYSICS_FIELD_ALIASES.get(field, (field.upper(),))
         value = _first(raw, aliases, required=False)
         if value is not None:
+            if (field == "keps_tke" and value.ndim == 3
+                    and value.shape == (driver.fields[field].shape[0] + 1,
+                                        *driver.fields[field].shape[1:])):
+                # Registry TKE_PBL is staggered; KEPS writes the mass
+                # levels and never consumes the extra allocated top word.
+                value = value[:-1]
             if value.shape != driver.fields[field].shape:
                 raise ValueError(
                     f"WRF physics field {aliases[0]} shape {value.shape} != "
                     f"woof {field} shape {driver.fields[field].shape}")
             driver.fields[field][...] = cp.asarray(
                 value, dtype=driver.fields[field].dtype)
+    if not warm and int(cfg.sf_sfclay_physics) in (2, 4):
+        # WRF module_physics_init.F:1324-1325 seeds these diagnostics
+        # from the input winds before the first surface-layer call.
+        # This cold-start rule also applies to dry theta and one domain.
+        driver.fields["u10e"][...] = driver.fields["u10"]
+        driver.fields["v10e"][...] = driver.fields["v10"]
     if cfg.bl_pbl_physics == 5 and cfg.bl_mynn_tkeadvect and "qke_adv" not in raw:
         state.qke_adv[...] = driver.fields["qke"]
     if not retain_landuse_albbck:
@@ -1907,7 +2258,7 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
         driver.microphysics.rainnc[...] = cp.asarray(raw["RAINNC"], dtype=cp.float32)
     if driver.rainc is not None and "RAINC" in raw:
         driver.rainc[...] = cp.asarray(raw["RAINC"], dtype=cp.float32)
-    if (int(cfg.sf_surface_physics) == 2
+    if (int(cfg.sf_surface_physics) in (2, 7)
             and getattr(restored, "warm_start", None) is None):
         # LSMINIT follows native cold-start field restoration. A later
         # checkpoint load replaces this initial state, including SH2O.
@@ -1916,16 +2267,25 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
         # the file's SH2O is the producing run's own.
         # Native inputs already contain fractional SNOALB. WRF retains it
         # when RDMAXALB is true, but otherwise replaces it from MAXALB.
+        if int(cfg.sf_surface_physics) == 7:
+            from woof.core.noah import load_tables, pack_params
+            init_params = pack_params(load_tables(mminlu=str(restored.global_attributes["MMINLU"])))
+        else:
+            init_params = driver.noah_params
         if not cfg.rdmaxalb:
             from woof.core.noah import VEG_COLS
             from woof.static.rust_bridge import wrf_noah_snow_albedo
             driver.fields["snoalb"][...] = cp.asarray(wrf_noah_snow_albedo(
-                driver.noah_params.veg[:, VEG_COLS.index("maxalb")],
+                init_params.veg[:, VEG_COLS.index("maxalb")],
                 raw.get("IVGTYP", raw["LU_INDEX"])), dtype=cp.float32)
         from woof.core.noah import initialize_noah_liquid_water
         from woof.core.physics import NOAH_LAYER_THICKNESS_M
-        initialize_noah_liquid_water(driver.fields, driver.noah_params,
-                                    NOAH_LAYER_THICKNESS_M)
+        if int(cfg.sf_surface_physics) == 7:
+            from woof.core.pxlsm_runtime import cold_start
+            cold_start(driver.fields, init_params)
+        else:
+            initialize_noah_liquid_water(driver.fields, driver.noah_params,
+                                        NOAH_LAYER_THICKNESS_M)
     elif int(cfg.sf_surface_physics) == 3:
         # RUCLSMINIT owns the initial liquid/frozen partition, availability
         # and roughness. Native wrfinput placeholders restored above must
@@ -2675,7 +3035,8 @@ def read_wrfbdy(path: str | Path, *, run_seconds: float,
             for gpu_name, sides in raw_tables.items():
                 for side_name, (value, tendency) in sides.items():
                     if (gpu_name == "theta" and
-                            int(restored.global_attributes["USE_THETA_M"]) == 1):
+                            int(restored.global_attributes["USE_THETA_M"]) == 1
+                            and not int(getattr(cfg, "use_theta_m", 0))):
                         side_tables[gpu_name][side_name] = _moist_theta_time_law(
                             restored, side_name, raw_tables, width,
                             wrf_start, gpuwm_start)
@@ -3053,3 +3414,5 @@ __all__ = [
     "unsupported_land_surface_refusal", "unsupported_microphysics_refusal",
     "wrfbdy_coverage",
 ]
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

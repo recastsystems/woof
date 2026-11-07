@@ -334,9 +334,15 @@ class EnergyParameters:
     betais: float
     # VEGE_FLUX
     vege: VegeFluxParameters
+    # Native SNOWALB_BATS's seven transferred scalars in
+    # noahmp_radiation_gpu.BATS_PARAMETER_NAMES order. Older manually built
+    # CLASS-only handles may omit them; ALB=1 preparation must require them.
+    bats: Tuple[float, ...] | None = None
 
     @classmethod
     def from_transferred(cls, p, nsoil: int = NSOIL) -> "EnergyParameters":
+        from woof.core.noahmp_radiation_gpu import BATS_PARAMETER_NAMES
+
         def sc(name):
             return f32(float(p.scalar(name)))
 
@@ -369,6 +375,7 @@ class EnergyParameters:
                 VCMX25=sc("VCMX25"), BP=sc("BP"), MP=sc("MP"),
                 QE25=sc("QE25"), FOLNMX=sc("FOLNMX"),
             ),
+            bats=tuple(sc(name.upper()) for name in BATS_PARAMETER_NAMES),
         )
 
 

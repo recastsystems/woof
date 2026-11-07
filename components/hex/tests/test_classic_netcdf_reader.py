@@ -1,6 +1,6 @@
 """Whole-variable reads of classic netCDF files on threads return netCDF4-python's arrays (no GPU).
 
-THE COST THIS REMOVES (30 km globe, V5090 box, 2026-10-27): Mesh.from_netcdf read every grid/init variable through
+THE COST THIS REMOVES (30 km globe, reference system box, 2026-10-27): Mesh.from_netcdf read every grid/init variable through
 netCDF4 one after another on the forecast's main thread (a 30 km init: 6.3 s for 135 variables, 0.7 s on threads).
 """
 import numpy as np

@@ -405,6 +405,12 @@
       }
     },
     "config_radt_lw_scheme": {
+      "held_suarez": {
+        "engine": {
+          "ra_lw_physics": 31
+        },
+        "note": "WRF thermal relaxation plus the required pressure-dependent RK-stage edge momentum damping; shortwave is independently selected"
+      },
       "rrtmg_lw": {
         "carried": {
           "radiation_scheme": "rrtmg_legacy"
@@ -699,6 +705,37 @@
       ],
       "slot": "pbl_scheme",
       "schemes": [
+        "mynn"
+      ]
+    },
+    "tc_flux_curve": {
+      "values": [
+        "off",
+        "gz-option0",
+        "gz-option1",
+        "gz-option2",
+        "gz-psu",
+        "gz-k2d0",
+        "powell2003",
+        "donelan2004",
+        "bell2012",
+        "emanuel2003-adapted"
+      ],
+      "slot": "surface_layer_scheme",
+      "schemes": [
+        "revised_mm5",
+        "mynn"
+      ]
+    },
+    "tc_spray": {
+      "values": [
+        "off",
+        "bao2000",
+        "barr2023"
+      ],
+      "slot": "surface_layer_scheme",
+      "schemes": [
+        "revised_mm5",
         "mynn"
       ]
     }
@@ -1034,6 +1071,27 @@
   },
   "suites": [
     {
+      "name": "held_suarez",
+      "describes": "WRF selector 31 thermal relaxation with its pressure-dependent momentum damping at every RK stage on mesh edges. Other column physics is off, as in WRF's em_heldsuarez case. Initial conditions are supplied by the selected global mesh init.",
+      "selectors": {
+        "config_microp_scheme": "off",
+        "config_convection_scheme": "off",
+        "config_pbl_scheme": "off",
+        "config_sfclayer_scheme": "off",
+        "config_lsm_scheme": "off",
+        "config_gwdo_scheme": "off",
+        "config_radt_lw_scheme": "held_suarez",
+        "config_radt_sw_scheme": "off",
+        "config_radt_cld_scheme": "off"
+      },
+      "generation": {},
+      "shaped_after": "WRF em_heldsuarez column forcing on MPAS mesh geometry",
+      "differences_from_shaped_after": [
+        "MPAS edge-normal momentum and its two adjacent mass pressures replace WRF's C-grid face momentum and adjacent mass pressures; the forcing equation is unchanged",
+        "The MPAS global dycore has no latitude-longitude pole singularity and does not use WRF's polar FFT filter"
+      ]
+    },
+    {
       "name": "arwen_mpas_column",
       "default": true,
       "describes": "The proven hex column suite: WSM6, the hex convection rule by mesh spacing, YSU over the revised MM5 surface layer, Noah-MP on four soil layers, hex's YSU gravity-wave drag, legacy RRTMG with the Xu-Randall cloud fraction. Every hex anchor and receipt before named suites ran this.",
@@ -1106,7 +1164,7 @@
         "drag: WRF's GSL drag suite (module_bl_gwdo_gsl.F, gwd_opt=3) instead of UGWP MPAS_20241223; scale awareness from one nominal dx per mesh, not len_disp/meshDensity**0.25 per cell; kpblmax from a standard-atmosphere coordinate of the nominal column",
         "radiation: legacy RRTMG as WOOF ports it; its cadence is the run's --radiation-seconds (RRFS v2: 15 min at 3 km, 30 min at 12 km)",
         "12 km meshes: RRFS v2 runs New Tiedtke there; the suite selects the engine's New Tiedtke (cu_physics=16) on those meshes, whose source and coupling are WOOF's, not the workflow-pinned implementation",
-        "stochastic physics: deterministic forecasts default off; GPU spherical-harmonic SPPT/SKEB are per-member options, default on for ensembles with fewer than ten source members",
+        "stochastic physics: deterministic forecasts default off; GPU spherical-harmonic SPPT/SKEB (synthesised at each point, any mesh) are per-member options, default on for every ensemble of more than one member",
         "dycore: MPAS-A v8.4.1 instead of the workflow-pinned 8.3.1-noaa fork; the dycore settings are the run's, not the suite's"
       ]
     },
@@ -5375,7 +5433,6 @@
     "native_table_selector": "woof.hex.mpasphys.rrfs.driver_rrfs:native_table_inputs",
     "native_table_override_keyword": "override_roots",
     "native_table_stream_selector": "woof.hex.mpasphys.rrfs.driver_rrfs:native_table_stream_inputs",
-    "initial_state_selector": "woof.hex.mpasphys.rrfs.cold_start_rrfs:select_initial_state_stream",
     "native_initialization_namelist": "woof.hex.mpasphys.rrfs.driver_rrfs:stage_native_initialization_namelist",
     "native_table_streams": [
       {

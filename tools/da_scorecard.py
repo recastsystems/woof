@@ -1490,7 +1490,7 @@ def build_scorecard(args) -> int:
                 if aggregate["structure_metrics_present"] else
                 "ABSENT: this tree's tools/da_sweep_score.py does not "
                 "emit structure blocks yet (they live on "
-                "lane/da-structure-metrics); the scorecard will carry "
+                "the corresponding change); the scorecard will carry "
                 "them the run after that lane lands"),
         },
         "n_cases": len(collected),

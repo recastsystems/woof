@@ -34,7 +34,7 @@ def shape_defines(name, function, shape):
 
 
 @lru_cache(maxsize=256)
-def specialize_source(name, source, defines):
+def specialize_source(name, source, defines, *, functions=None):
     values = dict(defines)
     if not any(k in values for k in _KEYS):
         return source
@@ -46,7 +46,7 @@ def specialize_source(name, source, defines):
     # verbatim, including both strict and ordinary parameter branches.
     masked = re.sub(r"//[^\n]*|/\*.*?\*/", lambda m: " " * len(m[0]), source, flags=re.S)
     edits = []
-    for function in FUNCTIONS.get(name, ()):
+    for function in FUNCTIONS.get(name, ()) if functions is None else functions:
         match = re.search(r"\bvoid\s+" + function + r"\s*\(", masked)
         if match is None:
             raise ValueError(f"shape registry symbol missing: {name}:{function}")

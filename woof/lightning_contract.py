@@ -1,7 +1,7 @@
 """WRF v4.6.1 lightning selectors and Registry.EM_COMMON metadata.
 
 No external tables: method 2 uses geographic bounds and two scalar fractions.
-The monthly method reads the existing IC:CG input fields.
+Native monthly input has an inconsistent Registry/driver rank and is held.
 """
 import math
 LIGHTNING_DEFAULTS = {
@@ -22,7 +22,7 @@ LIGHTNING_OPTIONS = {
 }
 # Producers exposed by this engine base, distinct from WRF admission.
 CLOUD_TOP_PROVIDERS = {3: "ltng_ktop_deep", 5: "ltng_ktop_deep"}
-GRAUPEL_PROVIDERS = (2, 6, 8, 9, 10, 16, 18, 24, 28, 30, 106, 900)
+GRAUPEL_PROVIDERS = (2, 6, 7, 8, 9, 10, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 56, 97, 106, 900)
 FIELD_METADATA = {
     "ic_flashcount": {"restart": True, "history": True, "units": "#", "description": "Accumulated IC flash count"},
     "cg_flashcount": {"restart": True, "history": True, "units": "#", "description": "Accumulated CG flash count"},
@@ -53,6 +53,8 @@ def validate_lightning(cfg):
         limit = 4 if key == "iccg_method" else 2
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= limit:
             raise ValueError(f"{key}={value} has no WRF lightning implementation; use 0..{limit}")
+    if option != 3 and cfg.iccg_method == 4:
+        raise ValueError("iccg_method=4 is held: public WRF Registry.EM_COMMON:3360-3361 allocates ICCG_IN_NUM/DEN as ij, while module_ltng_iccg.F:278,300-307 reads twelve monthly planes; months 2..12 read outside the native allocation")
     for key, default in LIGHTNING_DEFAULTS.items():
         if isinstance(default, float) and not math.isfinite(getattr(cfg, key)):
             raise ValueError(f"{key} must be finite; a non-finite lightning clock or ratio has no defined output")
@@ -66,4 +68,8 @@ def drop_default_lightning_selectors(values):
     """Off defaults preserve pre-port checkpoint and preparation identity."""
     if values.get("lightning_option", 0) == 0:
         for key in LIGHTNING_DEFAULTS:
+            # The microphysics history diagnostic reads this independently
+            # of lightning. Its neutral default still preserves old bytes.
+            if key == "do_radar_ref" and values.get(key, 0) != 0:
+                continue
             values.pop(key, None)

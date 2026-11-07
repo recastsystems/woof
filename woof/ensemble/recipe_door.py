@@ -42,7 +42,7 @@ from woof.stage_timing import ledger_main
 
 
 #: Host bytes one member preparation is charged before any preparation of
-#: this launch has finished and been measured.  Defect it guards (V50
+#: this launch has finished and been measured.  Defect it guards (test host
 #: 2026-10-18, AW36): the door started all 32 distinct HRRR preparations at
 #: once on a 192-core box whose container cgroup allows 256 GiB, and the
 #: kernel killed two producers (exit -9, cgroup oom_kill 2), which stopped

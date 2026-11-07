@@ -1184,7 +1184,7 @@ impl<'a> DecodeStream<'a> {
         // in assembly, then let the writer request its canonical crop.
         if mapping.doc.get("coordinates")
             .and_then(|n| n.get("horizontal")).and_then(|n| n.get("normalization"))
-            .and_then(|n| n.as_str()) == Some("coarsest_exact_subset") {
+            .and_then(|n| n.as_str()).is_some_and(|v| ["coarsest_exact_subset", "largest_common_finite_rectangle"].contains(&v)) {
             return Ok(());
         }
         let first_key = self.keys[0].clone();
@@ -1205,7 +1205,7 @@ impl<'a> DecodeStream<'a> {
         // A projected grid's canonical axes and grid document come from
         // its declaration, checked against Section 3 here, exactly as the
         // frame header states them after the decode (`frames::source_grid`).
-        let (latitude, longitude) = if declaration.is_lambert() {
+        let (latitude, longitude) = if declaration.is_projected() {
             let Some(axes) =
                 crate::grib::declared_lambert_axes(message, index, declaration, &object.source)
             else {
@@ -1847,7 +1847,7 @@ fn pressure_ladder_survives_window(
     mapping: &Mapping,
     fields: &[crate::model::FieldSpec<'_>],
 ) -> Result<bool> {
-    if !mapping.grid_declaration()?.is_lambert() {
+    if !mapping.grid_declaration()?.is_projected() {
         return Ok(false);
     }
     let Some(field) = fields.iter().find(|field| field.name == "air_pressure") else {

@@ -290,11 +290,11 @@ def test_other_driver_errors_are_not_waited_on():
             pass
 
 
-def test_defaults_keep_small_idle_pools_and_narrow_frames():
-    """U-MPASPHYS-1: by default a boundary keeps under 8 GiB of idle blocks and frames under 4 KiB."""
+def test_explicit_single_keeps_small_idle_pools_and_narrow_frames():
+    """Legacy single policy: a boundary keeps under 8 GiB of idle blocks and frames under 4 KiB."""
     from woof.hex.device_memory_release import POOL_MIN_BYTES_DEFAULT
     cp, pool, runtime = _fake_cp()
-    release = DevicePhaseRelease(cp, environ={})
+    release = DevicePhaseRelease(cp, environ={"WOOF_HEX_MEMBER_MEMORY": "single"})
     assert release.min_frame == 4096 and release.pool_min_bytes == POOL_MIN_BYTES_DEFAULT == 8 << 30
     with release.phase("slot:gwdo"):
         runtime.stack = 2736          # GWDO/PBL frame: kept, no reset/regrow pair per step
@@ -305,7 +305,7 @@ def test_defaults_keep_small_idle_pools_and_narrow_frames():
 def test_card_pressure_returns_idle_blocks_under_the_keep():
     """U-MPASPHYS-1: the keep yields when the card has under a tenth of its memory free."""
     cp, pool, runtime = _fake_cp()
-    release = DevicePhaseRelease(cp, environ={})
+    release = DevicePhaseRelease(cp, environ={"WOOF_HEX_MEMBER_MEMORY": "single"})
     runtime.free_bytes = 5 << 30
     with release.phase("slot:pbl"):
         pool.held = 400            # this phase left idle blocks behind
@@ -313,7 +313,7 @@ def test_card_pressure_returns_idle_blocks_under_the_keep():
 
 
 def test_card_pressure_is_read_at_most_once_a_second_per_card():
-    """Host-bound V5090 2026-10-27: two cudaMemGetInfo calls per physics slot, ~1 ms each on a shared host,
+    """Host-bound reference system 2026-10-27: two cudaMemGetInfo calls per physics slot, ~1 ms each on a shared host,
     on the thread that issues the card's work.  The reading is reused for POOL_PRESSURE_RECHECK_SECONDS."""
     from woof.hex.device_memory_release import POOL_PRESSURE_RECHECK_SECONDS
     cp, pool, runtime = _fake_cp()
@@ -321,7 +321,7 @@ def test_card_pressure_is_read_at_most_once_a_second_per_card():
     real = runtime.memGetInfo
     runtime.memGetInfo = lambda: (reads.append(1), real())[1]
     now = [100.0]
-    release = DevicePhaseRelease(cp, environ={}, clock=lambda: now[0])
+    release = DevicePhaseRelease(cp, environ={"WOOF_HEX_MEMBER_MEMORY": "single"}, clock=lambda: now[0])
     for _ in range(5):                       # five slots inside one second: one reading
         with release.phase("slot:pbl"):
             pool.held = pool.used + 400      # idle under the keep: the reading decides
@@ -337,12 +337,24 @@ def test_card_pressure_is_read_at_most_once_a_second_per_card():
 _GIB = 1 << 30
 
 
+@pytest.mark.parametrize('free,total,releases', [(3,16,1),(48,96,0)])
+def test_compact_four_gib_idle_set_yields_to_pressure_but_keeps_headroom(free,total,releases):
+    cp, pool, runtime = _fake_cp()
+    runtime.free_bytes, runtime.total_bytes = free*_GIB, total*_GIB
+    pool.used, pool.held = 8*_GIB, 12*_GIB
+    release = DevicePhaseRelease(cp, environ={})
+    with release.phase('slot:pbl'):
+        pass
+    assert pool.frees == releases
+    assert release.receipt()['pool_release']['bytes_returned'] == releases*4*_GIB
+
+
 def test_big_idle_set_is_kept_while_the_card_has_room():
     """PROFILE-3KM item 4 (mv3km, RTX PRO 6000): the dycore's transients exceed the 8 GiB keep, and every step the
     surface-layer boundary returned them (25 synchronising cudaFree) on a card with 55 GB free.  Kept now."""
     cp, pool, runtime = _fake_cp()
     runtime.free_bytes, runtime.total_bytes = 55 * _GIB, 96 * _GIB
-    release = DevicePhaseRelease(cp, environ={})
+    release = DevicePhaseRelease(cp, environ={"WOOF_HEX_MEMBER_MEMORY": "single"})
     pool.used = 30 * _GIB
     for _ in range(3):                         # three steps' surface-layer boundaries
         pool.held = pool.used + 12 * _GIB      # the dycore left 12 GiB of idle blocks
@@ -360,7 +372,7 @@ def test_big_idle_set_is_returned_when_the_card_is_short():
                        (20 * _GIB, 30 * _GIB)):   # 20 % free, but less than the idle set
         cp, pool, runtime = _fake_cp()
         runtime.free_bytes, runtime.total_bytes = free, 96 * _GIB
-        release = DevicePhaseRelease(cp, environ={}, clock=lambda: now[0])
+        release = DevicePhaseRelease(cp, environ={"WOOF_HEX_MEMBER_MEMORY": "single"}, clock=lambda: now[0])
         pool.used = 40 * _GIB
         pool.held = pool.used + idle
         with release.phase("slot:surface_layer"):
@@ -369,7 +381,7 @@ def test_big_idle_set_is_returned_when_the_card_is_short():
     # Small idle sets keep the U-MPASPHYS-1 rule: kept down to a tenth free.
     cp, pool, runtime = _fake_cp()
     runtime.free_bytes, runtime.total_bytes = 12 * _GIB, 96 * _GIB
-    release = DevicePhaseRelease(cp, environ={})
+    release = DevicePhaseRelease(cp, environ={"WOOF_HEX_MEMBER_MEMORY": "single"})
     pool.held = pool.used + 2 * _GIB
     with release.phase("slot:pbl"):
         pass
@@ -391,7 +403,7 @@ def test_wide_store_is_kept_while_the_card_has_room_and_set_back_once_it_is_shor
     boundary that finds the card short sets it back, and the next WSM6 entry grows it back where a refusal is handled."""
     cp, pool, runtime = _fake_cp()
     now = [0.0]
-    release = DevicePhaseRelease(cp, environ={}, clock=lambda: now[0])
+    release = DevicePhaseRelease(cp, environ={"WOOF_HEX_MEMBER_MEMORY": "single"}, clock=lambda: now[0])
     with release.phase("slot:microphysics"):
         runtime.stack = 7216
     with release.phase("slot:pbl"):

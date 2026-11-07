@@ -269,7 +269,7 @@ def ordinary_memory_model_from_estimate(estimate, *, inventory_id="ordinary-pref
                   shared_physics_tables=int(getattr(estimate, "physics_tables_bytes", 0)),
                   column_workspace=int(estimate.workspace_bytes),
                   step_transients=int(estimate.transient_peak_bytes),
-                  # Coupled hydro's resident state (default-on hydro, the project rules 2026-10-18):
+                  # Coupled hydro's resident state (default-on hydro):
                   # preflight adds it to resident_bytes, so it is in the subtotal; its
                   # transient already rides transient_peak_bytes.  Without this row every
                   # hydro-covered ensemble was refused as "unclassified" (2.9.4 rolling

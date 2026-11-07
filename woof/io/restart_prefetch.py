@@ -62,7 +62,7 @@ def prefetch_beside(path) -> None:
     """Start reading the checkpoint ``path`` (:func:`prefetch_restart`) on a host thread.
 
     Breakage it prevents (single-core law, 2026-10-29: DA member legs
-    on woof 2.9.9, ~26 s per leg at ~1 core before the engine starts): the leg's restore read its
+    on gpuwm 2.9.9, ~26 s per leg at ~1 core before the engine starts): the leg's restore read its
     2.5-3.5 GB checkpoint archive in full twice on the main thread (``validate_manifest_checkpoint``
     reads every member to force the lazy archive, then ``_validate_restart`` loads every array again,
     each member with its zip CRC) and its header three more times, after the analysis door and the

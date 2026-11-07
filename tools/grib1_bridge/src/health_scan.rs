@@ -42,8 +42,15 @@ unsafe fn read(pointer: *const u8, dtype: u32, index: usize) -> f64 {
 unsafe fn value(desc: &HealthDescriptor, index: usize) -> f64 {
     let original = read(desc.values, desc.value_type, index);
     if desc.auxiliary_mode == 0 { return original; }
-    let auxiliary_index = if desc.auxiliary_mode == 1 { index }
+    let auxiliary_index = if desc.auxiliary_mode != 2 { index }
                           else { index / desc.plane };
+    if desc.auxiliary_mode == 3 {
+        let outgoing = index + desc.plane;
+        let activity = if outgoing < desc.size {
+            read(desc.auxiliary, desc.auxiliary_type, outgoing)
+        } else { 0.0 };
+        return if original == f64::INFINITY && activity == 0.0 { 0.0 } else { original };
+    }
     let auxiliary = read(desc.auxiliary, desc.auxiliary_type, auxiliary_index);
     // NumPy's float32 addition rounds before the finite/bound checks.
     if desc.result_type == 1 { ((original as f32) + (auxiliary as f32)) as f64 }
@@ -103,7 +110,7 @@ unsafe fn scan(descriptors: *const HealthDescriptor, count: usize, workers: usiz
         starts.push(0usize);
         for desc in descriptors {
             if desc.size >= INDEX_LIMIT || !(1..=2).contains(&desc.value_type)
-                || !(1..=2).contains(&desc.result_type) || desc.auxiliary_mode > 2
+                || !(1..=2).contains(&desc.result_type) || desc.auxiliary_mode > 3 || (desc.auxiliary_mode == 3 && desc.plane > desc.size)
                 || desc.flags & !(LOWER | UPPER | STRICT_LOWER) != 0
                 || (desc.size > 0 && desc.values.is_null())
                 || (desc.auxiliary_mode != 0 && (!(1..=2).contains(&desc.auxiliary_type)
@@ -156,6 +163,28 @@ unsafe fn scan(descriptors: *const HealthDescriptor, count: usize, workers: usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_detrainment_uses_outgoing_activity_without_mutating_values() {
+        let values = [f32::INFINITY, f32::INFINITY, f32::INFINITY, f32::NAN];
+        let flux = [1.0f32, 1.0, 0.0, 1.0];
+        let before = values.map(f32::to_bits);
+        let desc = HealthDescriptor { values: values.as_ptr() as *const u8,
+            auxiliary: flux.as_ptr() as *const u8, size: 4, plane: 2,
+            value_type: 1, auxiliary_type: 1, result_type: 1,
+            auxiliary_mode: 3, flags: 0, status_bit: 128,
+            lower: 0.0, upper: 0.0 };
+        assert_eq!(unsafe { value(&desc, 0) }, 0.0);
+        assert_eq!(unsafe { value(&desc, 1) }, f64::INFINITY);
+        assert_eq!(unsafe { value(&desc, 2) }, 0.0);
+        assert!(unsafe { value(&desc, 3) }.is_nan());
+        let mut result = HealthResult { status_bits: 0, first_field: 0,
+            first_index: 0, first_value: 0.0 };
+        assert_eq!(unsafe { gpuwm_validate_health_fields(&desc, 1, 2,
+            &mut result) }, OK);
+        assert_eq!((result.status_bits, result.first_index), (128, 1));
+        assert_eq!(values.map(f32::to_bits), before);
+    }
 
     #[test]
     fn rim_allowance_never_skips_interior_finiteness_or_ceiling() {

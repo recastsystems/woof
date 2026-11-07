@@ -242,6 +242,16 @@ def test_every_implemented_option_is_selected_by_a_registered_suite() -> None:
             "column and diagnostic conformance is measured, but no composed "
             "forecast or observation score qualifies a recommended suite; "
             "a config or imported WRF namelist selects cu_physics=5 directly",
+        ("pbl", "temf"): "the retained upper-level mass-flux recurrence produces unreasonable diagnostics; no named suite recommends this nonoperational pair",
+        ("surface_layer", "temf"): "paired TEMF upper-level mass flux is nonoperational; no named suite recommends it",
+        ("pbl", "qnse"):
+            "column conformance and a short CLI run are not observation "
+            "verification; the QNSE pair remains available by its public "
+            "WRF namelist selectors, without a recommended preset",
+        ("surface_layer", "qnse"):
+            "the QNSE surface is selected with its PBL through public "
+            "WRF namelist metadata; no preset recommends the pair before "
+            "observation verification",
         ("land_surface", "off"): "a degradation, not a suite to recommend",
         ("surface_layer", "off"): "a degradation, not a suite to recommend",
         ("microphysics", "off"): "a degradation, not a suite to recommend",
@@ -249,15 +259,50 @@ def test_every_implemented_option_is_selected_by_a_registered_suite() -> None:
         ("radiation", "analytic-clear-sky"):
             "not a forecast radiation scheme: no cloud, aerosol or gas "
             "optics, so it stays behind the expert acknowledgement",
-        ("radiation", "wrf-rrtm-dudhia"):
-            "WRF's classic 1/1 pair; every verified run used a 4/4 or "
-            "Dudhia-shortwave suite, so no preset selects it and a config "
-            "asks for it directly",
+        ("radiation", "gsfc-shortwave"):
+            "WRF old GSFC shortwave has matched column outputs but no "
+            "whole-forecast or observation score, so a component override "
+            "or an imported ra_sw_physics=2 namelist asks for it directly",
         **{("urban", option_id):
            "an urban canopy is added to a suite in its run's [shared] "
            "table for a city domain; no preset recommends one before its "
            "observation verification is recorded"
            for option_id in ("slucm", "bep", "bep-bem")},
+        # Port lanes expose these through the stock namelist and component
+        # overrides. Their native replay and individual real cases do not
+        # establish an observation-qualified recommended suite.
+        **{key: f"{selector} is available through a stock namelist or component override; its port receipt does not establish a recommended suite"
+           for key, selector in (
+               (("cumulus", "cam-deep"), "cu_physics=7"),
+               (("land_surface", "pleim-xiu"), "sf_surface_physics=7"),
+               (("microphysics", "cam-mg-mp11"), "mp_physics=11"),
+               (("microphysics", "ntu-mp56"), "mp_physics=56"),
+               (("pbl", "acm2"), "bl_pbl_physics=7"),
+               (("radiation", "relaxation-31"), "ra_lw_physics=31/ra_sw_physics=31"),
+               (("surface_layer", "pleim-xiu"), "sf_sfclay_physics=7"),
+               (("cumulus", "gfs-sas"), "cu_physics=94"),
+               (("cumulus", "kf-cup"), "cu_physics=10"),
+               (("cumulus", "kiaps-sas"), "cu_physics=14"),
+               (("microphysics", "gsfcgce-mp97"), "mp_physics=97"),
+               (("microphysics", "p3-mp51"), "mp_physics=51"),
+               (("microphysics", "p3-mp52"), "mp_physics=52"),
+               (("microphysics", "p3-mp53"), "mp_physics=53"),
+               (("pbl", "gbm"), "bl_pbl_physics=12"),
+               (("pbl", "mrf"), "bl_pbl_physics=99"),
+               (("radiation", "wrf-gfdleta"), "ra_lw_physics=99/ra_sw_physics=99"),
+               (("turbulence", "sms-3dtke"), "km_opt=5"))},
+        ("microphysics", "ishmael-mp55"):
+            "Native adaptive-habit ice is numerically checked as a column but has no observation-qualified suite; imported namelists and per-domain component overrides select it directly",
+        ("cumulus", "betts-miller-janjic"):
+            "BMJ is admitted by cu_physics=2 in configurations and imported "
+            "WRF namelists. Its column conformance and restart checks do "
+            "not establish forecast skill, so no preset recommends it "
+            "before observation verification is recorded",
+
+        ("cumulus", "kain-fritsch-cu99"):
+            "the new cu=99 port has column parity but no matched forecast "
+            "or observation qualification; public namelists and per-domain "
+            "overrides select it without recommending a preset",
         ("pbl", "uw"):
             "WRF v4.7.1's UW moist-turbulence PBL is graded word for word "
             "against WRF's own columns but has no forecast or observation "
@@ -284,12 +329,29 @@ def test_every_implemented_option_is_selected_by_a_registered_suite() -> None:
                ("wsm5-mp4", "WSM5 five-class scheme", 4),
                ("ferrier-aligo-mp5", "Ferrier-Aligo scheme", 5),
                ("wsm6r-mp106", "revised WSM6 (WSM6R)", 106),
-               ("wsm7-mp24", "WSM7 seven-class scheme with hail", 24))},
+               ("wsm7-mp24", "WSM7 seven-class scheme with hail", 24),
+                   ("sbu-ylin-mp13", "SBU-YLin five-class scheme", 13))},
         ("radiation", "new-goddard"):
             "WRF's 2017 Goddard radiation (ra_lw/ra_sw_physics = 5) is graded "
             "against WRF's own columns but has no forecast or observation "
             "score yet, so no preset recommends it; a config or an imported "
             "WRF namelist selects it directly",
+        ("radiation", "fu-liou-gu"):
+            "WRF's 7/7 pair has real-column replay and one three-hour "
+            "forecast with station comparisons, which does not qualify a "
+            "general recommended suite; a config or a stock WRF namelist "
+            "selects ra_lw_physics=7 and ra_sw_physics=7 directly",
+        **{("pbl", option):
+           f"WRF's {label} has native column and lifecycle checks but no "
+           "general observation score for a recommended suite; config and "
+           f"stock namelist import select bl_pbl_physics={selector} directly"
+           for option, label, selector in (
+               ("boulac", "BouLac", 8), ("gfs", "GFS", 3),
+               ("keps", "K-epsilon", 17))},
+        ("surface_layer", "gfs"):
+            "WRF's GFS surface layer has native column and lifecycle checks "
+            "but no general observation score for a recommended suite; "
+            "config and stock namelist import select sf_sfclay_physics=3",
         ("microphysics", "fast-sbm-mp30"):
             "WRF's FAST_SBM bin scheme (mp_physics = 30) is graded bit for "
             "bit against WRF's own column calls but has no forecast or "
@@ -305,6 +367,8 @@ def test_every_implemented_option_is_selected_by_a_registered_suite() -> None:
         if option.get("implemented") is True
         and (component_id, option_id) not in selected
         and (component_id, option_id) not in cited
+        and not (option.get("reachability", {}).get("state") == "component-override"
+                 and option.get("extensions", {}).get("preset_scope_reason"))
     )
     assert missing == [], (
         "these options are implemented and no registered template selects "
@@ -450,10 +514,10 @@ def test_the_gate_fails_when_a_template_makes_something_reachable() -> None:
 
     def mutate(registry: dict) -> None:
         registry["templates"]["wsm6-ysu-mm5-noah-no-radiation-v1"][
-            "components"]["radiation"] = "wrf-rrtm-dudhia"
+            "components"]["pbl"] = "uw"
 
     wrong = _perturbed(mutate)
-    assert "radiation.wrf-rrtm-dudhia" in wrong, wrong
+    assert "pbl.uw" in wrong, wrong
     # dudhia-shortwave does NOT flip: other templates still select it, which
     # is the asymmetry a per-option declaration captures and a per-template
     # one would not.

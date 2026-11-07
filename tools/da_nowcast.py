@@ -157,7 +157,7 @@ DEFAULT_MEMBERS = 10
 #:
 #: The nowcast background is HRRR by default (project ruling, 2026-08-06),
 #: so this named product follows the HRRR route's authoritative suite.
-#: 4193eb0da, lane/286-fork-mynn, selects GSD4.1/MP28/RUC with both legacy
+#: 4193eb0da, development branch, selects GSD4.1/MP28/RUC with both legacy
 #: RRTMG streams and no cumulus. This is source-selected configuration,
 #: not new nowcast forecast qualification. Old member/card measurements
 #: must be remeasured for this composition; explicit --physics-profile

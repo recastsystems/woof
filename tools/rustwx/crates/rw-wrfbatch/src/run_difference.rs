@@ -341,6 +341,7 @@ pub(super) fn run(mut args: Args) -> Result<(), String> {
             panel_annotations: args.annotations.clone(),
             width: args.width,
             height: args.height,
+            render_bounds: args.render_bounds,
         })
     };
     let cancel = AtomicBool::new(false);

@@ -3,7 +3,7 @@
 The report that produced this file was one word long::
 
     $ woof run configs/run60.toml --outdir out/run60
-    woof run: woof 2.6.0 -- installed wheel at .../site-packages/gpuwm
+    woof run: gpuwm 2.6.0 -- installed wheel at .../site-packages/gpuwm
     Terminated
 
 ``Terminated`` is the shell, not woof: bash saying its foreground job

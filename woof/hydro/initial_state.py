@@ -32,7 +32,7 @@ def admit(table: dict, name: str) -> dict:
     """The row, or a refusal naming why it cannot be used.
 
     Prevents: building a public product from a source whose licence was not
-    read at the source, that needs an account the project owner has not ruled on, or that
+    read at the source, that needs an account the owner has not ruled on, or that
     has no reader yet (the row says which).
     """
     rows = table["rows"]

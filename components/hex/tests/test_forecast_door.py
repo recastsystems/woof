@@ -589,11 +589,11 @@ def test_half_a_measured_footprint_row_is_refused(tmp_path: Path) -> None:
 ])
 def test_stochastic_array_threshold_agrees_with_driver_floor(tmp_path, options):
     from dataclasses import replace
-    from woof.hex.device_admission import required_free_bytes, harmonic_basis_bytes
+    from woof.hex.device_admission import required_free_bytes
     request = door.resolve_request(_namespace(tmp_path), registry=_registry())
     request = replace(request, stochastic=options)
-    from woof.hex.stochastic import StochasticConfig
-    basis = harmonic_basis_bytes(request.cells, StochasticConfig.parse(options).degree)
+    # Harmonics are synthesised on the fly: no stored basis is priced.
+    basis = 0
     arrays = door.stochastic_array_ledger(request.cells, options)
     array_bytes = sum(arrays.values())
     model = door._driver_floor_model(request)
@@ -869,6 +869,26 @@ def test_the_receipt_records_a_refusal_without_claiming_a_forecast(
 # ---------------------------------------------------------------------------
 # what the door hands the driver
 # ---------------------------------------------------------------------------
+def test_fresh_arwen_refusal_writes_its_admission_before_architecture(tmp_path, monkeypatch):
+    from woof.hex import init_physics
+    monkeypatch.setattr(door, "load_registry", lambda repo: _registry())
+    monkeypatch.setattr(door, "measure_device_memory", lambda: (1 * GIB, 16 * GIB))
+    monkeypatch.setattr(init_physics, "prepare_forecast_init", lambda init, *args: (init, None))
+    def unexpected():
+        pytest.fail("An unadmitted forecast must not reach architecture or prewarming")
+    monkeypatch.setattr(door, "admit_architecture", unexpected)
+    arguments = _namespace(tmp_path, physics_suite="arwen_mpas_column")
+    assert not arguments.out.exists()
+    with pytest.raises(door.ForecastDoorRefusal, match="Not enough GPU memory"):
+        door.run_forecast(arguments)
+    receipt = json.loads((arguments.out / "forecast-receipt.json").read_text())
+    assert receipt["status"] == "refused_by_admission"
+    assert receipt["admission"]["admitted"] is False
+    assert receipt["admission"]["measured_free_bytes"] == 1 * GIB
+    assert receipt["history"] == []
+    assert receipt["driver_argv"] == []
+
+
 def test_the_driver_vector_carries_the_run_and_maps_the_checkout_flag(
     tmp_path: Path,
 ) -> None:
@@ -978,7 +998,7 @@ def test_the_door_leaves_destination_creation_to_the_driver(
     assert rc == 1
     import importlib.util
     if importlib.util.find_spec("woof") is None or importlib.util.find_spec("woof.timeline") is None:
-        # No engine ledger (woof 2.8.7 and earlier): nothing is recorded.
+        # No engine ledger (gpuwm 2.8.7 and earlier): nothing is recorded.
         assert not (arguments.out / "timeline.jsonl").exists()
         return
     events = [json.loads(line) for line in (arguments.out / "timeline.jsonl").read_text().splitlines()]

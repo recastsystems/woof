@@ -217,6 +217,50 @@ pub fn assemble_grib_within(
         ));
     }
 
+
+    // Some regular-grid publications pad a rotated regional footprint with
+    // missing values. The intersection of selected field masks supplies the footprint. Keep the
+    // largest fully finite rectangle; all other field validations still apply.
+    let horizontal = mapping.doc.get("coordinates").and_then(|v|v.get("horizontal")).unwrap_or(&Node::Null);
+    if horizontal.get("normalization").and_then(Node::as_str)==Some("largest_common_finite_rectangle") {
+        if window.is_some() {return Err(frame_invalid("finite-rectangle normalization precedes atmospheric windowing"));}
+        let mut positions:Vec<usize>=matched.values().flatten().copied().collect();
+        positions.sort_unstable();positions.dedup();
+        let first=&records[positions[0]];let ny=first.latitude.len();let nx=first.longitude.len();
+        if positions.iter().any(|i|records[*i].values.shape()!=[ny,nx] || records[*i].latitude!=first.latitude || records[*i].longitude!=first.longitude) {
+            return Err(frame_invalid("finite rectangle requires one grid per decode batch; decode moving grids independently"));
+        }
+        let masks:Vec<_>=positions.iter().map(|i|records[*i].values.as_slice().ok_or_else(||frame_invalid("anchor must be contiguous"))).collect::<Result<_>>()?;
+        let mut heights=vec![0usize;nx];let mut best=(0usize,0usize,0usize,0usize,0usize);
+        for y in 0..ny {
+            for x in 0..nx {heights[x]=if masks.iter().all(|m|m[y*nx+x].is_finite()){heights[x]+1}else{0};}
+            let mut stack:Vec<usize>=Vec::new();
+            for x in 0..=nx {
+                let h=if x==nx{0}else{heights[x]};
+                while stack.last().is_some_and(|i|heights[*i]>h) {
+                    let k=stack.pop().unwrap();let left=stack.last().map_or(0,|i|i+1);let area=heights[k]*(x-left);
+                    if area>best.0 {best=(area,y+1-heights[k],y+1,left,x);}
+                }
+                stack.push(x);
+            }
+        }
+        let (_,y0,y1,x0,x1)=best;
+        if y1-y0<3 || x1-x0<3 {return Err(frame_invalid("finite rectangle is smaller than three cells"));}
+        if y0!=0 || y1!=ny || x0!=0 || x1!=nx {
+            use rayon::prelude::*;
+            let normalized=crate::threads::install(||records.par_iter().map(|r| {
+                if r.latitude!=first.latitude || r.longitude!=first.longitude || r.values.shape()!=[ny,nx] {
+                    return Err(frame_invalid("finite rectangle requires all records on the anchor grid"));
+                }
+                let mut out=r.clone();out.latitude=r.latitude[y0..y1].to_vec();out.longitude=r.longitude[x0..x1].to_vec();
+                out.values=r.values.slice(ndarray::s![y0..y1,x0..x1]).to_owned().into_dyn();
+                out.grid_fingerprint=format!("{}:finite-rectangle:{y0}:{y1}:{x0}:{x1}",r.grid_fingerprint);
+                Ok(out)
+            }).collect::<Vec<Result<GribRecord>>>());
+            return assemble_grib(mapping,&crate::threads::in_order(normalized)?);
+        }
+    }
+
     let selected: Vec<usize> = matched.values().flatten().copied().collect();
     let fingerprints: BTreeSet<&str> = selected
         .iter()
@@ -481,14 +525,7 @@ pub fn assemble_grib_within(
     let direct = apply_landmask_water_missing(mapping, direct)?;
     let declaration = mapping.grid_declaration()?;
     let direct = if declaration.rotates_winds() {
-        rotate_grid_relative_winds(
-            direct,
-            declaration
-                .parameters
-                .as_ref()
-                .expect("a rotating declaration carries parameters"),
-            window,
-        )?
+        rotate_grid_relative_winds(direct, &declaration, window)?
     } else {
         direct
     };
@@ -1184,9 +1221,25 @@ pub fn apply_landmask_water_missing(
 /// `mapped_source._rotate_grid_relative_winds`.
 pub fn rotate_grid_relative_winds(
     direct: BTreeMap<DirectKey, DirectValue>,
-    parameters: &crate::model::LambertParameters,
+    declaration: &crate::model::GridDeclaration,
     window: Option<([usize; 2], [usize; 2])>,
 ) -> Result<BTreeMap<DirectKey, DirectValue>> {
+    let (ny, nx) = declaration
+        .projected_shape()
+        .expect("a rotating declaration carries parameters");
+    // The family's own rotation field, over the whole grid or a window of
+    // it: the Lambert cone angle, or the rotated lattice's bearing.
+    let rotation_within = |rows: [usize; 2], columns: [usize; 2]| -> (Vec<f64>, Vec<f64>) {
+        if let Some(parameters) = &declaration.parameters {
+            crate::lambert::declared_grid_rotation_within(parameters, rows, columns)
+        } else {
+            let parameters = declaration
+                .rotated
+                .as_ref()
+                .expect("a rotating declaration carries parameters");
+            crate::rotated::declared_grid_rotation_within(parameters, rows, columns)
+        }
+    };
     // Each rotation is computed on first need: the whole grid's for a pair
     // decoded whole, the window's cells for a pair decoded over the window.
     let mut whole: Option<(Vec<f64>, Vec<f64>)> = None;
@@ -1232,16 +1285,14 @@ pub fn rotate_grid_relative_winds(
             }
             let shape = u.values.shape();
             let plane_shape = [shape[rank - 2], shape[rank - 1]];
-            let (sina, cosa) = if plane_shape == [parameters.ny as usize, parameters.nx as usize] {
-                &*whole.get_or_insert_with(|| crate::lambert::declared_grid_rotation(parameters))
+            let (sina, cosa) = if plane_shape == [ny, nx] {
+                &*whole.get_or_insert_with(|| rotation_within([0, ny], [0, nx]))
             } else {
                 match window {
                     Some((rows, columns))
                         if plane_shape == [rows[1] - rows[0], columns[1] - columns[0]] =>
                     {
-                        &*windowed.get_or_insert_with(|| {
-                            crate::lambert::declared_grid_rotation_within(parameters, rows, columns)
-                        })
+                        &*windowed.get_or_insert_with(|| rotation_within(rows, columns))
                     }
                     _ => {
                         return Err(frame_invalid(format!(

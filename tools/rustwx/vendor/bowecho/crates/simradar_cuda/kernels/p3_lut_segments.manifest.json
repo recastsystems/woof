@@ -91,5 +91,5 @@
   ],
   "ptx_virtual_architecture": "compute_75",
   "source": "p3_lut_segments.cu",
-  "source_sha256": "ba6ab252e1402f5afc7ff9dba6e5f5fc1f3b539b3d903e29c3da1830efb84780"
+  "source_sha256": "7f1294c9194fde701c05ee039e014f04c62a7cfb64962fa5bae5d33067fb53c3"
 }

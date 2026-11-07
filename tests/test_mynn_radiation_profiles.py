@@ -287,6 +287,6 @@ def test_the_mynn_option_identity_is_still_pinned_under_radiation():
     assert "bl_mynn_mixlength" not in MYNN_PBL_OPTION_IDENTITY
     validate_run_config(_cfg(**base, bl_mynn_mixlength=2))
     with pytest.raises(ValueError) as caught:
-        validate_run_config(_cfg(**base, bl_mynn_mixlength=0))
+        validate_run_config(_cfg(**base, bl_mynn_mixlength=3))
     message = str(caught.value)
     assert "bl_mynn_mixlength" in message

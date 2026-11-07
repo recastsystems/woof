@@ -1,6 +1,6 @@
 """Acquire the open source inputs a hydro fabric provider row needs for one domain.
 
-Project ruling, 2026-10-18: hydro is default on whenever a fabric covers the domain, and
+Owner, 2026-10-18: hydro is default on whenever a fabric covers the domain, and
 worldwide. A default run on a fresh install has no source tiles, so the door
 fetches exactly the tiles and archives the footprint needs into a shared cache
 (``$GPUWM_HYDRO_WORLD_TILES``, default ``~/.woof/hydro-world``), then binds the

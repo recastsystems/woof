@@ -1,0 +1,25 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+737a235b9febb01004d5bfe7a9364a0fc57e8af79cbced8239d68ab623e80e66  <wrf-4.6.1-checkout>/phys/module_bl_qnsepbl.F
+cb678bb818adda9906ab6479cf04e665285042e5bfe9f39c7ddef2e9221c7a34  <wrf-4.6.1-checkout>/phys/module_bl_mfshconvpbl.F
+5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062  <wrf-4.6.1-checkout>/share/module_model_constants.F
+044e0ff7a80f8bb485ffc8cdc525abc153118e3a681767aae3d2bc23736bb94f  <oracle-dir>/const_dump.F90
+bc7ab44d51649b46fb2e99aac5ad28578b9fd953a511bb1d5922cd7ad1251126  <oracle-dir>/init_probe.F90
+d901eaf9673e23f2110d91e0f5e50ebba06e695861d5fd56a388579d236f8845  <oracle-dir>/pow_fold_probe.F90
+071917e26bbdc1a72936f41d1cb14d7a573459ae68850114fddabd88fff06484  <oracle-dir>/run_qnse.F90
+07b6e84aa4e53997b6a2680e44ce22b37691b9bc9b872fe6f596ceb2d0e2e947  <oracle-dir>/make_cases.py
+220dd7156e1f8a5b1ec2b5bb4063435d01c7e2576b1a8bb3ec9d60c57758d37d  <oracle-dir>/pack_fixture.py
+a53e6b918fb643f767bd34af371f83c6538288440c0a0303ccab02072c4d640c  <oracle-dir>/build.sh
+57ff4c7074c37696ecc4166bbef157dd7336ddf9f5a5f2e356a7e9c9074e30b8  cases/cases-mf0.bin
+39600eab19269bce1ad0be277de9078f8351725e7a05c73d286dfa743ad79400  cases/cases-mf1.bin
+ea3a56917fe8e78ab6914f73c81a179919584f122b3887aa8a10346b0414b8a0  ref/run/mf0-s1.bin
+cb0487958bb647542b3b40c1e165b5d29c7b595a038e98cbbdb1bd93e0cd1eab  ref/run/mf0-s2.bin
+01effd802dfb8b52c641fa1150323b71e460bf76a8511740598034611744dc73  ref/run/mf0-s3.bin
+ff0b098438f24b576c5e0025db16172492d6acd810fbf671538fbac9f9549fee  ref/run/mf0-s4.bin
+66973ede538c40855f7454497647b9cdf3b7019f8e4d28ab43a8a2fec643b1cb  ref/run/mf0-static.bin
+5a51ec6016f1d11b27cf4e45f46d0af401fb616f2cb589db758998d1bca0441a  ref/run/mf1-s1.bin
+1ccc05fbf13ae1d988cfecafc8fa0be5fe4f39b6a1213bc6435013673f6e90e1  ref/run/mf1-s2.bin
+3f91333937a4b24283eed8559c104e0f51d6d94760092e421752634ea482ece0  ref/run/mf1-s3.bin
+197d1d5c6eb797753a3d4c3fa497fbb7d5326f8f0a9afce2167cbffac5310169  ref/run/mf1-s4.bin
+60cac96d25405746fa60b7af3046222df6174f1dec19e9cd63c692b8b979b12b  ref/run/mf1-static.bin
+b878bb131bd4513e66d147c6791b35daac3b168378e1851a81c69d0d33a031bb  consts.txt

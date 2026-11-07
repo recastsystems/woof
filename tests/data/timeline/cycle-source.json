@@ -1,0 +1,58 @@
+{
+    "schema":  "gpuwm.timeline.sources.v1",
+    "boundaries":  {
+                       "proxy.start":  {
+                                           "at":  1791234994,
+                                           "evidence":  "historical-cycle/cont/done.json:1#start"
+                                       },
+                       "proxy.end":  {
+                                         "at":  1791236473,
+                                         "evidence":  "historical-cycle/cont/done.json:1#start+wall_seconds"
+                                     }
+                   },
+    "unplaced":  [
+                     {
+                         "evidence":  "verification-results/historical-cycle/gate-summary.json#gate_legs[0].forecast_plus_io_s",
+                         "seconds":  281.5606997209834,
+                         "stage":  "legacy.forecast_plus_io"
+                     },
+                     {
+                         "evidence":  "verification-results/historical-cycle/gate-summary.json#gate_legs[0].analysis_plus_io_s",
+                         "seconds":  125.52628679189365,
+                         "stage":  "legacy.analysis_plus_io"
+                     },
+                     {
+                         "evidence":  "verification-results/historical-cycle/gate-summary.json#gate_legs[1].forecast_plus_io_s",
+                         "seconds":  182.1044165120693,
+                         "stage":  "legacy.forecast_plus_io"
+                     },
+                     {
+                         "evidence":  "verification-results/historical-cycle/gate-summary.json#gate_legs[1].analysis_plus_io_s",
+                         "seconds":  90.9347918680869,
+                         "stage":  "legacy.analysis_plus_io"
+                     },
+                     {
+                         "evidence":  "verification-results/historical-cycle/gate-summary.json#gate_legs[2].forecast_plus_io_s",
+                         "seconds":  165.39690148096997,
+                         "stage":  "legacy.forecast_plus_io"
+                     },
+                     {
+                         "evidence":  "verification-results/historical-cycle/gate-summary.json#gate_legs[2].analysis_plus_io_s",
+                         "seconds":  95.03959044197109,
+                         "stage":  "legacy.analysis_plus_io"
+                     },
+                     {
+                         "evidence":  "verification-results/historical-cycle/gate-summary.json#gate_legs[3].forecast_plus_io_s",
+                         "seconds":  487.50855203391984,
+                         "stage":  "legacy.forecast_plus_io"
+                     },
+                     {
+                         "evidence":  "verification-results/historical-cycle/gate-summary.json#gate_legs[3].analysis_plus_io_s",
+                         "seconds":  1.9730068743228912E-06,
+                         "stage":  "legacy.analysis_plus_io"
+                     }
+                 ],
+    "warnings":  [
+                     "Run-only proxy envelope is 1479 seconds. Leg forecast-plus-I/O timers have no measured first-step or last-step placement. They cannot establish integration FF or card busy fraction."
+                 ]
+}

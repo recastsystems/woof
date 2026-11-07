@@ -32,7 +32,7 @@ import zipfile
 
 MANIFEST = "PUBLICATION-ASSETS.json"
 BRIDGE_MANIFEST = "bridge-bundle-manifest.json"
-PROJECTS = ("recast-woof-data", "woof")
+PROJECTS = ("recast-woof-data", "gpuwm-kernels", "gpuwm-kernels-startup", "woof")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
@@ -131,8 +131,12 @@ def load_manifest(document: dict, tag: str, commit: str, repository: str) -> dic
         f"gpuwm-{version}.tar.gz",
         f"woof_data-{version}-py3-none-any.whl",
         f"woof_data-{version}.tar.gz",
+        f"gpuwm_kernels-{version}-py3-none-any.whl",
+        f"gpuwm_kernels-{version}.tar.gz",
+        f"gpuwm_kernels_startup-{version}-py3-none-any.whl",
+        f"gpuwm_kernels_startup-{version}.tar.gz",
     }
-    require(set(pypi_rows) == expected, "PyPI manifest must declare exactly the three engine wheels, engine sdist and data wheel/sdist")
+    require(set(pypi_rows) == expected, "PyPI manifest must declare exactly the three engine wheels, engine sdist and all three companion wheel/sdist pairs")
     for row in pypi_rows.values():
         require(row["bytes"] < 100_000_000, f"distribution exceeds the release size gate: {row['filename']}")
     native = {BRIDGE_MANIFEST, f"gpuwm-bridges-{tag}-linux-x86_64.zip", f"gpuwm-bridges-{tag}-win-x86_64.zip"}
@@ -162,7 +166,7 @@ def load_manifest(document: dict, tag: str, commit: str, repository: str) -> dic
         "carried_physics": carried,
         "rows": combined, "pypi": {
             project: [row for name, row in sorted(pypi_rows.items())
-                      if name.startswith("woof_data-" if project == "recast-woof-data" else "gpuwm-")]
+                      if name.startswith(project.replace("-", "_") + "-")]
             for project in PROJECTS},
         "expected_names": sorted(set(combined) | set(auxiliary) | {MANIFEST}),
     }
@@ -482,7 +486,8 @@ def _metadata(path: Path) -> tuple[email.message.Message, dict[str, bytes]]:
 def expected_python_files(repo: Path, project: str = "woof") -> set[str]:
     from setuptools import find_namespace_packages
     from setuptools.command.egg_info import FileList
-    root = repo / "recast-woof-data" if project == "recast-woof-data" else repo
+    require(project in PROJECTS, "unknown package project")
+    root = repo if project == "woof" else repo / project
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     finder = config["tool"]["setuptools"]["packages"]["find"]
     require(finder.get("where", ["."]) == ["."], "unsupported package source root")
@@ -606,7 +611,8 @@ def check_metadata(path: Path, project: str, version: str, repo: Path) -> dict:
     metadata, sources = _metadata(path)
     require(re.sub(r"[-_.]+", "-", metadata.get("Name", "")).lower() == project, f"wrong distribution name: {path.name}")
     require(metadata.get("Version") == version and Version(version).local is None, f"wrong or non-publishable version: {path.name}")
-    project_root = repo / "recast-woof-data" if project == "recast-woof-data" else repo
+    require(project in PROJECTS, "unknown package project")
+    project_root = repo if project == "woof" else repo / project
     pyproject = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
     config = pyproject["project"]
     declared = config.get("version")
@@ -731,7 +737,10 @@ def smoke(args) -> None:
     runtime = args.out / "venv"
     venv.EnvBuilder(with_pip=True).create(runtime)
     python = runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    checked_run([str(python), "-m", "pip", "install", str(wheel) + "[render]", str(assets / f"woof_data-{version}-py3-none-any.whl")], log=args.out / "install.log")
+    companions = [assets / f"{project.replace('-', '_')}-{version}-py3-none-any.whl"
+                  for project in PROJECTS if project != "woof"]
+    checked_run([str(python), "-m", "pip", "install", str(wheel) + "[render]",
+                 *map(str, companions)], log=args.out / "install.log")
     outside = args.out / "outside"
     outside.mkdir(exist_ok=True)
     home = args.out / "home"
@@ -750,7 +759,8 @@ def smoke(args) -> None:
                  "--snapshot-screen", "home", "--output", str(args.out / "runs")], cwd=outside, env=env)
     write_json(args.out / "SMOKE.json", {"schema": "gpuwm.prepared-platform-smoke.v1", "status": "PASS",
         "platform": args.platform, "commit": plan["commit"], "manifest_sha256": captured["manifest_sha256"],
-        "wheel_sha256": digest(wheel), "native_proof_sha256": digest(receipt), "forecast_started": False})
+        "wheel_sha256": digest(wheel), "companion_sha256": {p.name: digest(p) for p in companions},
+        "native_proof_sha256": digest(receipt), "forecast_started": False})
 
 
 def check_indexes(proven: dict) -> None:
@@ -767,7 +777,7 @@ def promote(args) -> None:
     require(len(smoke_rows) == 2 and {row.get("platform") for row in smoke_rows} == {"linux-x86_64", "win-x86_64"}, "both exact platform smoke proofs are required")
     for row in smoke_rows:
         require(row.get("status") == "PASS" and row.get("commit") == captured["commit"] and row.get("manifest_sha256") == captured["manifest_sha256"], "platform qualification does not match the prepared release")
-    # Both projects are read again before the first public mutation.
+    # All projects are read again before the first public mutation.
     check_indexes(proven)
     client = GitHub(captured["repository"])
     release = verify_remote(client, captured, require_public=False)
@@ -783,7 +793,7 @@ def stage_missing(args) -> None:
     proven = proof(args.proof)
     plan = proven["plan"]
     rows = plan["pypi"][args.project]
-    # Reconcile both projects before each project's upload, not only the first.
+    # Reconcile all projects before each project's upload, not only the first.
     check_indexes(proven)
     check_files(args.dists, [row for project in PROJECTS for row in plan["pypi"][project]])
     status, payload = fetch_index(args.project, plan["version"])
@@ -832,7 +842,7 @@ CI_WORKFLOW = "ci.yml"
 #: synthetic merge commit, so its success cannot qualify the release commit.
 CI_CHECKOUT_EVENTS = frozenset({"push", "workflow_dispatch"})
 #: The ci.yml jobs that gate publication, by job name prefix and the number of
-#: matrix legs each must show (Project ruling, 2026-10-20: "if we have to wait more than
+#: matrix legs each must show (Owner, 2026-10-20: "if we have to wait more than
 #: 10 minutes then ... every update is days long"). These finish in about four
 #: minutes on hosted runners (run 39451218267: syntax 1 min, imports 1-3 min,
 #: static qualification 2-4 min) and keep Windows in the gate: the imports leg

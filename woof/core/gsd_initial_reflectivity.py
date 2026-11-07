@@ -23,7 +23,7 @@ def workspace_bytes(nz, threads):
     return (int(nz)+1)*int(threads)*(FLOAT_SLOTS*4+DOUBLE_SLOTS*8+BOOL_SLOTS)
 
 
-def launch(th, pii, p, rho, qv, qc, nr, qr, qs, qg, refl, *, state_inputs=False):
+def launch(th, pii, p, rho, qv, qc, nr, qr, qs, qg, refl, *, state_inputs=False, use_theta_m=0):
     """Read-only native inputs; with state_inputs, th/pii/rho mean thb/thp/alt.
 
     The fallback is applied to a private column, never to prognostic NR.
@@ -44,7 +44,12 @@ def launch(th, pii, p, rho, qv, qc, nr, qr, qs, qg, refl, *, state_inputs=False)
     f = cp.empty(FLOAT_SLOTS*cells, cp.float32)
     d = cp.empty(DOUBLE_SLOTS*cells, cp.float64)
     b = cp.empty(BOOL_SLOTS*cells, cp.bool_)
-    get_kernel(MODULE, KERNEL)((threads//BLOCK,), (BLOCK,),
+    if use_theta_m:
+        from woof.core.kernels import get_kernel_int_defines
+        kernel = get_kernel_int_defines(MODULE, KERNEL, (("GPUWM_USE_THETA_M", 1),))
+    else:
+        kernel = get_kernel(MODULE, KERNEL)
+    kernel((threads//BLOCK,), (BLOCK,),
         (th, pii, p, rho, qv, qc, nr, qr, qs, qg, refl, f, d, b,
          np.int32(nz), np.int32(ny*nx), np.int32(state_inputs), np.int32(th.ndim == 3)))
 
@@ -54,5 +59,6 @@ def diagnose(state, cfg):
         raise ValueError("gsd_refl_first_time_step supports Thompson (8/28) only")
     refl = state.scratch(state.qv.shape, "refl_10cm")
     launch(state.thb, state.thp, state.p, state.alt, state.qv, state.qc,
-           state.nr, state.qr, state.qs, state.qg, refl, state_inputs=True)
+           state.nr, state.qr, state.qs, state.qg, refl, state_inputs=True,
+           use_theta_m=getattr(state, "use_theta_m", 0))
     return refl

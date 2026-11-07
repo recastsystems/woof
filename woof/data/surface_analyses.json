@@ -1,0 +1,194 @@
+{
+  "schema": "gpuwm-surface-source-table-v1",
+  "sources": {
+    "oisst": {
+      "latitude": "lat",
+      "longitude": "lon",
+      "time": "time",
+      "max_distance_m": 50000,
+      "interval_seconds": 86400,
+      "reference": "https://www.ncei.noaa.gov/products/optimum-interpolation-sst",
+      "fields": [
+        {
+          "variable": "sst",
+          "target": "SST",
+          "mask": "ocean",
+          "units": [
+            "Celsius",
+            "degree_Celsius",
+            "degrees C",
+            "degC"
+          ],
+          "scale": 1,
+          "offset": 273.15,
+          "min": 250,
+          "max": 350
+        },
+        {
+          "variable": "ice",
+          "target": "SEAICE",
+          "mask": "ocean",
+          "units": [
+            "%",
+            "percent"
+          ],
+          "scale": 0.01,
+          "offset": 0,
+          "min": 0,
+          "max": 1
+        }
+      ]
+    },
+    "ghrsst-l4": {
+      "latitude": "lat",
+      "longitude": "lon",
+      "time": "time",
+      "max_distance_m": 20000,
+      "interval_seconds": 86400,
+      "reference": "https://coastwatch.noaa.gov/cwn/product-families/sea-surface-temperature.html",
+      "fields": [
+        {
+          "variable": "analysed_sst",
+          "target": "SST",
+          "mask": "ocean",
+          "units": [
+            "K",
+            "kelvin"
+          ],
+          "scale": 1,
+          "offset": 0,
+          "min": 250,
+          "max": 350
+        },
+        {
+          "variable": "sea_ice_fraction",
+          "optional": true,
+          "target": "SEAICE",
+          "mask": "ocean",
+          "units": [
+            "1",
+            "fraction"
+          ],
+          "scale": 1,
+          "offset": 0,
+          "min": 0,
+          "max": 1
+        }
+      ]
+    },
+    "glsea": {
+      "classifies_lakes": true,
+      "latitude": "latitude",
+      "longitude": "longitude",
+      "time": "time",
+      "max_distance_m": 10000,
+      "interval_seconds": 86400,
+      "reference": "https://coastwatch.glerl.noaa.gov/satellite-data-products/great-lakes-surface-environmental-analysis-glsea/",
+      "fields": [
+        {
+          "variable": "sst",
+          "target": "SST",
+          "mask": "lake",
+          "units": [
+            "degree_C",
+            "Celsius",
+            "degree_Celsius",
+            "degrees_Celsius",
+            "degC",
+            "degree C"
+          ],
+          "scale": 1,
+          "offset": 273.15,
+          "min": 250,
+          "max": 350
+        }
+      ]
+    },
+    "osi-saf": {
+      "latitude": "lat",
+      "longitude": "lon",
+      "time": "time",
+      "max_distance_m": 50000,
+      "interval_seconds": 86400,
+      "reference": "https://osi-saf.eumetsat.int/products/osi-408-a",
+      "fields": [
+        {
+          "variable": "ice_conc",
+          "target": "SEAICE",
+          "mask": "ocean",
+          "units": [
+            "%",
+            "percent"
+          ],
+          "scale": 0.01,
+          "offset": 0,
+          "min": 0,
+          "max": 1
+        }
+      ]
+    },
+    "wrf-lower-boundary": {
+      "coordinates_from_grid": true,
+      "latitude": "XLAT",
+      "longitude": "XLONG",
+      "time": "Times",
+      "max_distance_m": 1,
+      "interval_seconds": 86400,
+      "reference": "WRF auxinput4",
+      "fields": [
+        {
+          "variable": "SST",
+          "target": "SST",
+          "mask": "all",
+          "units": [
+            "K"
+          ],
+          "scale": 1,
+          "offset": 0,
+          "min": -3.4028234e+38,
+          "max": 3.4028234e+38
+        },
+        {
+          "variable": "SEAICE",
+          "target": "SEAICE",
+          "mask": "all",
+          "units": [
+            "",
+            "1"
+          ],
+          "scale": 1,
+          "offset": 0,
+          "min": -3.4028234e+38,
+          "max": 3.4028234e+38
+        },
+        {
+          "variable": "VEGFRA",
+          "target": "VEGFRA",
+          "mask": "all",
+          "units": [
+            "",
+            "%",
+            "percent"
+          ],
+          "scale": 1,
+          "offset": 0,
+          "min": -3.4028234e+38,
+          "max": 3.4028234e+38
+        },
+        {
+          "variable": "ALBBCK",
+          "target": "ALBBCK",
+          "mask": "all",
+          "units": [
+            "",
+            "1"
+          ],
+          "scale": 1,
+          "offset": 0,
+          "min": -3.4028234e+38,
+          "max": 3.4028234e+38
+        }
+      ]
+    }
+  }
+}

@@ -269,7 +269,8 @@ def _parent_node(fields, *, grid_id=1):
 
 
 def _child_dc(*, i=6, j=4, grid_id=2):
-    return SimpleNamespace(grid_id=grid_id, parent_grid_ratio=_RATIO,
+    return SimpleNamespace(run=SimpleNamespace(sf_surface_physics=2, sf_lake_physics=0),
+                           grid_id=grid_id, parent_grid_ratio=_RATIO,
                            i_parent_start=i, j_parent_start=j)
 
 

@@ -127,7 +127,9 @@ def test_the_shipped_table_is_the_ceiling_over_every_recording():
     ceiling makes that promise arithmetic instead of prose.
     """
     ceiling = pf.KERNEL_MAX_LOCAL_SIZE_BYTES
-    for row in pf.KERNEL_LOCAL_FRAME_RECORDINGS:
+    rows = [measured for row in pf.KERNEL_LOCAL_FRAME_RECORDINGS
+            for measured in (row, row.strict_recording) if measured is not None]
+    for row in rows:
         for module, frame in row.frames.items():
             assert module in ceiling, (
                 f"{module}: measured on {row.box} and absent from the "
@@ -137,8 +139,10 @@ def test_the_shipped_table_is_the_ceiling_over_every_recording():
                 f"{frame} B {row.box} measured")
     derived = {}
     for row in pf.KERNEL_LOCAL_FRAME_RECORDINGS:
-        for module, frame in row.frames.items():
-            derived[module] = max(derived.get(module, 0), frame)
+        for measured in (row, row.strict_recording):
+            if measured is not None:
+                for module, frame in measured.frames.items():
+                    derived[module] = max(derived.get(module, 0), frame)
     assert dict(ceiling) == derived, (
         "the shipped table must be exactly the element-wise maximum over "
         "the recordings, so no row can drift away from every measurement")
@@ -161,7 +165,9 @@ def test_every_kernel_source_has_a_row_or_is_declared_unmeasurable():
     # These remain priced logical modules. The first two resolve retained
     # files in kernels._unit_text; rrtmg_lw._lw_coalesced_source generates
     # the third inside the same measured composed longwave translation unit.
-    sources |= {"ysu", "mynn_dmp_sibling", "rrtmg_lw_chain_coalesced"}
+    # Observation FDDA composes woof/fddaobs/{kernels,forecast}.cu through
+    # woof.fddaobs.forecast.frame_module, outside KERNEL_DIR.
+    sources |= {"ysu", "mynn_dmp_sibling", "rrtmg_lw_chain_coalesced", "fddaobs"}
     priced = (set(pf.KERNEL_MAX_LOCAL_SIZE_BYTES)
               | set(pf.UNMEASURED_KERNEL_MODULES))
     assert sources - priced == set(), sorted(sources - priced)
@@ -380,10 +386,18 @@ def test_every_gpu_extra_has_one_current_resolved_toolchain_pin():
     assert sorted(pin.extra for pin in current) == sorted(extras), (
         "exactly one current pin per gpu-cu* extra")
     for pin in current:
-        assert extras[pin.extra] == [pin.requirement], (
+        # The CuPy requirement is the extra's first entry; what follows may only narrow the NVRTC it resolves
+        # (gpu-cu13 keeps NVRTC below 13.5, 2.9.13), and the narrowed range must still admit the pinned build.
+        assert extras[pin.extra][:1] == [pin.requirement], (
             f"pyproject's {pin.extra} is {extras[pin.extra]}; the declared "
             f"resolution is of {pin.requirement!r}.  Re-resolve with "
             "`python tools/measure_noahmp_frames.py resolve` and re-declare")
+        from packaging.requirements import Requirement
+        for extra_line in extras[pin.extra][1:]:
+            constraint = Requirement(extra_line)
+            assert constraint.name in ("nvidia-cuda-nvrtc", "nvidia-nvjitlink"), (pin.extra, extra_line)
+            assert constraint.specifier.contains(pin.nvrtc_build), (
+                f"{pin.extra}'s {extra_line} excludes the pinned NVRTC {pin.nvrtc_build}; re-resolve and re-declare")
     for pin in kfr.RESOLVED_TOOLCHAIN_PINS:
         assert isinstance(pin, kfr.ResolvedToolchainPin)
         assert pin.requirement in extras.get(pin.extra, ()), pin
@@ -506,3 +520,19 @@ def test_shinhong_workspace_reading_is_on_every_platform():
     for row in rows:
         assert row.frames["shinhong"] == 0, (row.box, row.nvrtc_build)
     assert pf.KERNEL_MAX_LOCAL_SIZE_BYTES["shinhong"] == 0
+
+
+def test_new_partial_recordings_use_public_host_labels():
+    from woof.core.kernel_frame_recordings import KERNEL_LOCAL_FRAME_RECORDINGS
+    rows = [row for row in KERNEL_LOCAL_FRAME_RECORDINGS if row.box == 'measured-host']
+    assert any(dict(row.frames) == {'hail': 7392} for row in rows)
+    assert any(dict(row.frames) == {'chem_radiation': 0} for row in rows)
+    assert all(not row.complete for row in rows)
+
+
+def test_frame_census_includes_launch_bounded_production_entries():
+    """CAM's 32-thread driver must be counted with its scalar probes."""
+    from tools.vram_reserve_probe import _SYMBOL
+    names = set(_SYMBOL.findall((KERNEL_DIR / "cam3_emissivity.cu").read_text()))
+    assert {"cam_driver", "cam_log10_probe", "cam_log10_variants"} <= names
+    assert _SYMBOL.findall('extern "C" __global__ __launch_bounds__(128, 2) void tile() {}') == ["tile"]

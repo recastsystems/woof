@@ -11,10 +11,9 @@ Three properties are pinned here, and each one failed in 2.3.2:
 - the refusal fires with the network provably untouched;
 - it is a named :class:`HighresRefusal` carrying the exact install
   command, not a raw exception class;
-- ``on_refuse = "fallback-30s"`` does NOT swallow it.  That setting is a
-  statement about source *coverage*; letting it apply to a broken install
-  would hand back 900 m baseline terrain because a library was missing,
-  which is the silent degradation the whole module refuses.
+- even the retired ``on_refuse = "fallback-30s"`` spelling cannot
+  swallow it when an older caller supplies that value directly. A broken
+  install must not hand back baseline terrain because a library is missing.
 
 A fourth is pinned since the warp substrate moved to Rust, and it is the
 opposite direction: an environment carrying ONLY the shipped default --

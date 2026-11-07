@@ -121,8 +121,9 @@ def bind_physics_columns(atmosphere,fields,state,cfg,*,shortwave,longwave):
     rv=col(atmosphere["qv"])
     denom=1.0+rv
     from woof.core.moist import extra_moist_species
+    from woof.core.passive_tracer_contract import TRACER_NAMES
     base=("qv","qc","qr","qi")
-    names=base+tuple(name for name in extra_moist_species(state) if name not in base and name!="tke_edmf")
+    names=base+tuple(name for name in extra_moist_species(state) if name not in base + TRACER_NAMES and name!="tke_edmf")
     q=cp.empty((n,nz,len(names)+1),dtype=cp.float64,order="F")
     for j,name in enumerate(names):
         source=getattr(state,name,None)

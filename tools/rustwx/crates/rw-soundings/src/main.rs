@@ -5,7 +5,7 @@ pub static GPUWM_BRIDGE_SOURCE_REV_STAMP: &str =
 fn main() {
     let _ = std::hint::black_box(GPUWM_BRIDGE_SOURCE_REV_STAMP);
     if std::env::args().any(|a| a == "--abi") {
-        println!("gpuwm-soundings.v1 plain-run png json html columns-v1 json-columns rw-store-v2");
+        println!("gpuwm-soundings.v1 plain-run png json html columns-v1 json-columns rw-store-v2 columns-surface-v1 series-v1");
         return;
     }
     // One line naming the device renders would use (a real device is
@@ -27,6 +27,29 @@ fn main() {
             let req = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
             rw_soundings::columns::run(req).map(|_| ())
+        })();
+        if let Err(e) = result {
+            eprintln!("soundings: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    // `rw_soundings --series STORE_DIR [--threads N] [DOMAIN...]`: each fixed grid's point-forecast time series file.
+    if std::env::args().nth(1).as_deref() == Some("--series") {
+        let result = (|| {
+            let args: Vec<String> = std::env::args().skip(2).collect();
+            let store = args.first().ok_or("usage: rw_soundings --series STORE_DIR [--threads N] [DOMAIN...]")?;
+            let mut threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+            let mut domains = vec![];
+            let mut it = args[1..].iter();
+            while let Some(a) = it.next() {
+                if a == "--threads" {
+                    threads = it.next().and_then(|v| v.parse().ok()).ok_or("--threads takes a number")?;
+                } else {
+                    domains.push(a.clone());
+                }
+            }
+            rw_soundings::columns::series(std::path::Path::new(store), &domains, threads).map(|_| ())
         })();
         if let Err(e) = result {
             eprintln!("soundings: {e}");

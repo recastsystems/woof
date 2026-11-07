@@ -17,6 +17,7 @@ def test_pwp_inventory_has_independent_ocean_axis():
         assert shapes['fields/'+name]==(19,cfg.ny,cfg.nx)
     assert shapes['fields/_pwp_base']==(76,cfg.ny,cfg.nx)
     assert shapes['fields/_pwp_status']==(1,)
+    assert shapes['fields/om_active']==(cfg.ny,cfg.nx)
     outputs=produced_history_shapes(cfg)
     for name in ('OCEAN_SST', 'OCEAN_SST_CHANGE'):
         assert outputs[name]==(cfg.ny,cfg.nx)
@@ -33,6 +34,35 @@ def test_off_identity_omits_every_new_ocean_control():
     values=dataclasses.asdict(run_config())
     drop_inert_ocean(values)
     assert not any(name in values for name in ('ocean_levels','ocean_analysis','ocean_analysis_source','ocean_mld_climatology','omdt','ocean_z','ocean_t','ocean_s'))
+
+
+@pytest.mark.parametrize('ocean_levels', [4, 7])
+def test_pwp_history_writes_native_stagger_on_independent_ocean_axis(tmp_path, ocean_levels):
+    """Initial storm history must write every profile, even at nz levels."""
+    import netCDF4
+    import numpy as np
+    from woof.io.wrfout import WrfoutWriter
+    names = ('OM_TMP', 'OM_S', 'OM_U', 'OM_V', 'OM_DEPTH',
+             'OM_DENSITY', 'OM_TINI', 'OM_SINI')
+    shape = (ocean_levels, 3, 5)
+    fields = {name: np.full(shape, i + 1, np.float32)
+              for i, name in enumerate(names)}
+    fields['T'] = np.zeros((4, 3, 5), np.float32)
+    fields['W'] = np.zeros((5, 3, 5), np.float32)
+    fields['OM_ML'] = np.full((3, 5), 15., np.float32)
+    path = tmp_path / 'wrfout.nc'
+    with WrfoutWriter(path, nx=5, ny=3, nz=4, dx=1000., dy=1000.) as writer:
+        writer.write_frame('2024-10-08_00:00:00', fields)
+    with netCDF4.Dataset(path) as ds:
+        assert len(ds.dimensions['ocean_levels']) == ocean_levels
+        for name in names:
+            var = ds.variables[name]
+            assert var.dimensions == ('Time', 'ocean_levels', 'south_north', 'west_east')
+            assert var.stagger == 'Z'
+            np.testing.assert_array_equal(var[0], fields[name])
+        assert ds.variables['T'].stagger == ''
+        assert ds.variables['W'].stagger == 'Z'
+        assert ds.variables['OM_ML'].stagger == ''
 
 
 @pytest.mark.parametrize('changes,reason',[

@@ -189,7 +189,13 @@ def test_every_scheme_scoped_field_is_refused_off_scheme(scheme, field):
     # itself.  Requiring "requires mp_physics=<scheme>" is what separates
     # the off-scheme refusal from every other validation in the function.
     assert field in message
-    assert f"requires mp_physics={scheme}" in message
+    owners = tuple(owner for owner, fields in SCHEME_SCOPED_RUN_FIELDS.items()
+                   if field in fields)
+    # The refusal lists every scheme that reads the field ("requires
+    # mp_physics=14 or mp_physics=16 or ..."), so the owners are named
+    # inside that list rather than each right after "requires".
+    assert "requires mp_physics=" in message
+    assert all(f"mp_physics={owner}" in message for owner in owners)
 
 
 def test_the_off_scheme_assertion_rejects_a_different_validations_message():
@@ -202,8 +208,10 @@ def test_the_off_scheme_assertion_rejects_a_different_validations_message():
     nothing.  This pins that the stronger assertion actually separates the
     two, so the strengthening cannot be quietly undone.
     """
+    # On its own scheme, so the scope check passes and only the VALUE-domain
+    # check can refuse (on mp=8 the off-scheme refusal now fires first).
     base = dict(nx=4, ny=3, nz=8, dx=1000.0, dy=1000.0, ztop=10000.0,
-                dt=10.0, run_seconds=10.0, moist=True, mp_physics=8,
+                dt=10.0, run_seconds=10.0, moist=True, mp_physics=28,
                 sf_sfclay_physics=91, sf_surface_physics=2,
                 bl_pbl_physics=1, num_soil_layers=4, cu_physics=0)
     with pytest.raises(ValueError) as caught:
@@ -212,7 +220,7 @@ def test_the_off_scheme_assertion_rejects_a_different_validations_message():
     message = str(caught.value)
     assert "mp28_aerosol_source" in message      # the weak assertion holds
     assert "28" in message                       # and so does this one
-    assert "requires mp_physics=28" not in message   # the strong one does not
+    assert "requires mp_physics=" not in message   # the strong one does not
 
 
 def test_the_p3_restart_contract_string_is_the_measured_configuration():

@@ -2,14 +2,14 @@
   "schema": "diffusion-cache-source-extension-v1",
   "generator_sha256": "64137180ae6676e0c581a0298c92c4e5b67897a5f30d200ed2ebe4fecd036d90",
   "numerics": "strict",
-  "device": "b'NVIDIA RTX PRO 6000 Blackwell Workstation Edition'",
+  "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
   "nvrtc_version": [
-    12,
-    9
+    13,
+    4
   ],
   "cupy_version": "14.2.0",
   "module_source_sha256": {
-    "smag2d": "2cdfe1e9b38cfd901a837460526bed5887285bb367593992fd95b95df15e3d24",
+    "smag2d": "7dec200c373ce4a01684df3dca4d3797b511bba4c50c0c71465f979a2fb380a2",
     "diff_opt1": "9737655267fca7f30d0a4053008997de55a8e12f4fe552622a09f70ea994e271"
   },
   "module_options": {
@@ -36,8 +36,8 @@
     "bytes": 10626
   },
   "after": {
-    "bytes": 14060,
-    "sha256": "6070bc5dae66835f55d7017708d685cae9acdab4c24e5c7130f4d506b968470f"
+    "bytes": 14289,
+    "sha256": "1a4c12c807669f593e43c541d1f0c4c3adf9873d51ab06a7d26b827c145a1797"
   },
   "fields": {
     "horizontal-driver": {

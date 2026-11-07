@@ -16,7 +16,7 @@
 #   <work-dir>  private scratch; created, and everything goes under it
 #   --tables    use a local copy of the NCAR archive instead of fetching it
 #
-# CPU only. The authority is gfortran 15.2.0 on a development machine; any other compiler is
+# CPU only. The authority is gfortran 15.2.0 on the reference host; any other compiler is
 # recorded as such in out/build_info.json. Every compile and run is niced.
 # Output: <work-dir>/out/ (raw streams, layouts, controls.json,
 # build_info.json, transform diffs and anchors).

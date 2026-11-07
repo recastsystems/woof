@@ -94,6 +94,8 @@ fn field_title(field: &str) -> &str {
         "ice_accretion" => "saved-frame FRAM radial ice",
         "ice_accretion_horizontal" => "saved-frame FRAM horizontal ice", "dewpoint2" => "2 m dewpoint",
         "refl" => "composite reflectivity", "uh" => "2-5 km updraft helicity",
+        "uh01" => "0-1 km updraft helicity", "uh02" => "0-2 km updraft helicity",
+        "uh03" => "0-3 km updraft helicity",
         "humidity2" => "2 m relative humidity",
         "z500" => "500 hPa geopotential height", "mslp" => "mean sea level pressure",
         "precipitation_rate" => "precipitation rate",
@@ -109,7 +111,8 @@ fn field_recipe(field: &str) -> &str {
         "temperature2" | "temperature2_below_freezing" => "2m_temperature", "dewpoint2" => "2m_dewpoint",
         "humidity2" => "2m_relative_humidity", "wind10" => "10m_wind_speed_and_direction",
         "gust" => "10m_wind_gusts", "rain_total" => "total_qpf",
-        "refl" => "composite_reflectivity", "uh" => "uh_2to5km", other => other,
+        "refl" => "composite_reflectivity", "uh" => "uh_2to5km",
+        "uh01" => "uh_0to1km", "uh02" => "uh_0to2km", "uh03" => "uh_0to3km", other => other,
     }
 }
 
@@ -124,6 +127,9 @@ fn field_style(field: &str, units: &str) -> Option<rustwx_products::viewer::Stor
         "gust" => S::height_agl(F::WindGust, 10),
         "rain_total" | "freezing_rain_total" | "qpf_1h" | "qpf_3h" | "qpf_6h" => S::surface(F::TotalPrecipitation),
         "uh" => S::height_layer_agl(F::UpdraftHelicity, 2000, 5000),
+        "uh01" => S::height_layer_agl(F::UpdraftHelicity, 0, 1000),
+        "uh02" => S::height_layer_agl(F::UpdraftHelicity, 0, 2000),
+        "uh03" => S::height_layer_agl(F::UpdraftHelicity, 0, 3000),
         _ => return rustwx_products::viewer::operational_style_for_store_variable(
             field, &serde_json::json!({"derived": field_recipe(field)}), units, rustwx_core::ModelId::WrfGdex),
     };
@@ -371,7 +377,8 @@ pub fn render(path: &Path, out: &Path, fields: &[String], domain: &str,
                 (scale, units.clone())
             } else if kind == "spread" {
                 let upper = if units == "1" { 1.0 } else { match field.as_str() { "temperature2" | "dewpoint2" => 15.0,
-                    "humidity2" => 40.0, "refl" => 30.0, "uh" => 150.0, _ => 50.0 }
+                    "humidity2" => 40.0, "refl" => 30.0, "uh" => 150.0,
+                    "uh01" | "uh02" | "uh03" => 75.0, _ => 50.0 }
                 };
                 (scales::spread_scale(upper), units.clone())
             } else if let Some(ref style) = style {
@@ -594,7 +601,7 @@ fn compose_family_sheet(args: &[String]) -> Result<(), String> {
         row.iter().map(|path| image::open(path).map(|image| image.to_rgba8()).map_err(|e| e.to_string())).collect()
     ).collect();
     let sheet = crate::compare::compose_sheet_rows(&rows?, &crate::compare::SheetHeader {
-        title: request.title, subtitle: format!("valid {} UTC; all panels on the same model grid", request.valid_time),
+        title: request.title, subtitle: format!("valid {} UTC", request.valid_time),
     })?;
     if let Some(parent) = request.output.parent() { std::fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
     sheet.save(&request.output).map_err(|e| e.to_string())?;
@@ -671,7 +678,8 @@ mod tests {
     #[test] fn headline_fields_use_the_production_style_and_conversion() {
         for (field, units) in [("temperature2", "K"), ("dewpoint2", "K"), ("wind10", "m s-1"),
             ("humidity2", "%"), ("refl", "dBZ"), ("rain_total", "mm"), ("qpf_1h", "mm"),
-            ("qpf_3h", "mm"), ("qpf_6h", "mm"), ("gust", "m s-1"), ("uh", "m2 s-2")] {
+            ("qpf_3h", "mm"), ("qpf_6h", "mm"), ("gust", "m s-1"), ("uh", "m2 s-2"),
+            ("uh01", "m2 s-2"), ("uh02", "m2 s-2"), ("uh03", "m2 s-2")] {
             assert!(field_style(field, units).is_some(), "no production style for {field}");
         }
         assert_eq!(field_style("temperature2", "K").unwrap().display_units, "degF");

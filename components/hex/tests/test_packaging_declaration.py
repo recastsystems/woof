@@ -37,8 +37,8 @@ def declaration() -> dict:
 # ---------------------------------------------------------------------------
 def test_the_version_is_stated_in_exactly_one_place(declaration: dict) -> None:
     declared = declaration["project"]["version"]
-    assert declared == "0.4.11", (
-        "0.4.11 is the fix release after 0.4.10 (2026-10-30: the limited-area GFS boundary fix with every fold-ready row); "
+    assert declared == "0.4.14", (
+        "0.4.14 is the candidate paired with woof 2.9.12; "
         "moving it is a release decision, not an edit"
     )
 
@@ -569,18 +569,70 @@ def test_kernel_packs_and_release_assets_are_outside_the_distributions(declarati
     assert not files.files
 
 
+def _build_hex(build_lib):
+    """setup.py's real BuildHex with the native build parent replaced, so no native code compiles."""
+    module = ast.parse((ROOT / "setup.py").read_text())
+    guard = next(row for row in module.body if isinstance(row, ast.ClassDef) and row.name == "BuildHex")
+    namespace = {"Path": Path, "shutil": __import__("shutil"), "__file__": str(ROOT / "setup.py"),
+                 "BuildPy": type("BuildPy", (), {"run": lambda self: None})}
+    exec(compile(ast.Module(body=[guard], type_ignores=[]), "setup.py", "exec"), namespace)
+    command = namespace["BuildHex"]()
+    command.build_lib = str(build_lib)
+    return command
+
+
+def test_the_wheel_carries_the_native_dry_reference_and_verify_dycore_finds_it(tmp_path) -> None:
+    """`woof hex verify-dycore` runs from an installed wheel, not only from the source tree.
+
+    THE BREAKAGE THIS PREVENTS (paper B-1 rerun on the 0.4.11 wheel, 2026-11-02): the door looked only for
+    tools/native_dry_reference/ beside src/, which no wheel carries, and refused ("requires the source
+    distribution").  This lays out the wheel's package directory the way setup.py builds it, then runs the
+    door's lookup and the recipe's own Python steps from that install with no source tree on the path.
+    """
+    import os
+    import shutil
+    import subprocess
+    import sys
+    site = tmp_path / "site-packages"
+    shutil.copytree(PACKAGE, site / "hexcore", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    _build_hex(site).run()
+    source = ROOT / "tools/native_dry_reference"
+    staged = site / "woof/hex/data/native_dry_reference"
+    wanted = sorted(p.relative_to(source) for p in source.rglob("*") if p.is_file()
+                    and "__pycache__" not in p.parts and p.suffix != ".pyc")
+    assert sorted(p.relative_to(staged) for p in staged.rglob("*") if p.is_file()) == wanted
+    assert all((staged / name).read_bytes() == (source / name).read_bytes() for name in wanted)
+    # The install alone on the path: the source tree's src/ is dropped from it.
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join([str(site)] + [
+        entry for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+        if entry and Path(entry).resolve() != PACKAGE.parent.resolve()])
+    # The door finds the staged recipe; compare_dry_identity.py and compare_native_spread.py import these.
+    probe = ("from woof.hex.verify_dycore_door import reference_location\n"
+             "import woof.hex, woof.hex.driver, woof.hex.config_v841, woof.hex.dynamics_v841, woof.hex.mesh\n"
+             "import woof.hex.dycore_agreement\n"
+             "script, tree, installed = reference_location()\n"
+             "print(woof.hex.__file__); print(script); print(installed)\n")
+    found = subprocess.run([sys.executable, "-c", probe], cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert found.returncode == 0, found.stderr
+    package, script, installed = found.stdout.split()
+    assert Path(package).is_relative_to(site) and installed == "True"
+    script = Path(script)
+    assert script == staged / "check_all.sh"
+    # check_all.sh runs these by path with the door's interpreter; each imports hexcore from the install.
+    for step in ("assess_agreement.py", "compare_dry_identity.py", "compare_native_spread.py", "run_receipt.py"):
+        run = subprocess.run([sys.executable, str(script.parent / step), "--help"], cwd=tmp_path, env=env,
+                             capture_output=True, text=True)
+        assert "ModuleNotFoundError" not in run.stderr and "ImportError" not in run.stderr, (step, run.stderr)
+
+
 def test_build_refuses_a_pack_that_reaches_wheel_data(tmp_path) -> None:
     # Execute the real build guard with the native build parent replaced, so
     # this test checks a stale build directory without compiling native code.
-    module = ast.parse((ROOT / "setup.py").read_text())
-    guard = next(row for row in module.body if isinstance(row, ast.ClassDef) and row.name == "BuildHex")
-    namespace = {"Path": Path, "BuildPy": type("BuildPy", (), {"run": lambda self: None})}
-    exec(compile(ast.Module(body=[guard], type_ignores=[]), "setup.py", "exec"), namespace)
-    command = namespace["BuildHex"]()
-    command.build_lib = str(tmp_path)
+    command = _build_hex(tmp_path)
     command.run()
     path = tmp_path / "woof/hex/data/kernel-pack-accidental.json"
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{}")
     with pytest.raises(RuntimeError, match="release assets, not wheel data"):
         command.run()

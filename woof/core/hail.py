@@ -26,6 +26,26 @@ PERSISTENT = (*HISTORY, "hailcast_wup_mask", "hailcast_wdur")
 # the eligibility mask, cadence and window accumulation are shared.
 HAILCAST_KERNELS = {"wrf_39_noaa": "hailcast_columns_wrf39",
                     "wrf_461": "hailcast_columns"}
+# The generation follows the RUN, not the resume: a restored state carries the
+# one its checkpoint integrated (woof.io.restart.resume_hailcast_version), so
+# one forecast never splices two stone models into HAILCAST_RUNMAX.
+GENERATION_ATTR = "_hailcast_version"
+
+
+def generation(state, cfg):
+    """The stone model this run integrates: its checkpoint's, else cfg's."""
+    return getattr(state, GENERATION_ATTR, None) or cfg.hailcast_version
+
+
+def adopt_generation(states, version):
+    """Bind a resumed run's generation on every state that steps it."""
+    if version is None:
+        return
+    for state in states:
+        if state is not None:
+            setattr(state, GENERATION_ATTR, version)
+
+
 WINDOW = ("hail_maxk1", "hail_max2d", "hailcast_diam_max",
           "hailcast_diam_mean", "hailcast_diam_std", *EMBRYOS)
 # WRF diag_nwp's spherical PSD rows; column state supplies actual number and
@@ -111,7 +131,7 @@ def update(state, cfg):
     scratch("hailcast_wup_mask")[...] = mask
     scratch("hailcast_wdur")[...] = dur
     row=psd_parameters(cfg)
-    if row is not None and not cfg.gsd_diagnostics:
+    if row is not None and not cfg.gsd_diagnostics and not getattr(state, "_native_nwp_prepared", False):
         ng=row.get("number_g", "ng");nh=row.get("number_h", "nh")
         vg="qvolg";vh="qvolh"
         get_kernel("hail","hail_psd")(grid,block,
@@ -130,7 +150,7 @@ def update(state, cfg):
     if ((cfg.hailcast_opt == 1 or (cfg.hailcast_opt == -1 and
             cfg.dx <= 4000 and cfg.dy <= 4000 and cfg.mp_physics != 0)) and
             (interval<=0 or start==0 or int(end/interval)>int(start/interval))):
-        get_kernel("hail",HAILCAST_KERNELS[cfg.hailcast_version])(((nx*ny+31)//32,),(32,),
+        get_kernel("hail",HAILCAST_KERNELS[generation(state,cfg)])(((nx*ny+31)//32,),(32,),
             (t,z,state.p,rho,species("qv"),species("qi"),species("qc"),
              species("qr"),species("qs"),species("qg"),state.w,state.ht,dur,
              *(scratch(slot) for slot in EMBRYOS),scratch("hailcast_diam_max"),
@@ -139,7 +159,8 @@ def update(state, cfg):
 def reset_window(state):
     from woof.core.uh_diag import _zero_domain_slot
     existing = getattr(state, "existing_scratch", None)
-    gsd_active = existing is not None and existing("gsd_step_count") is not None
+    gsd_active = existing is not None and (existing("gsd_step_count") is not None
+                                            or getattr(state, "_native_nwp_prepared", False))
     for slot in WINDOW:
         if slot in ("hail_maxk1", "hail_max2d") and gsd_active:
             continue

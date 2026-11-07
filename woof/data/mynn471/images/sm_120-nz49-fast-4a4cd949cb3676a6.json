@@ -1,0 +1,21 @@
+{
+  "source_sha256": "4a4cd949cb3676a633b210db89db8f91ed64ef278928f737ae1cfc020102a3bc",
+  "image_sha256": "6acb70d0aeda1813e5f956dcdd0c144ebc9d5620e88a3a159b06bf18c6278863",
+  "mode": "fast",
+  "nz": 49,
+  "arch": "sm_120",
+  "command": [
+    "/usr/local/cuda/bin/nvcc",
+    "--cubin",
+    "-std=c++17",
+    "-arch=sm_120",
+    "--ftz=false",
+    "--fmad=true",
+    "--prec-div=true",
+    "--prec-sqrt=true",
+    "--split-compile=4",
+    "/workspace/runs/port-mynn-subopts/fold-data/images/sm_120-nz49-fast-4a4cd949cb3676a6.cu",
+    "-o",
+    "/workspace/runs/port-mynn-subopts/fold-data/images/sm_120-nz49-fast-4a4cd949cb3676a6.cubin"
+  ]
+}

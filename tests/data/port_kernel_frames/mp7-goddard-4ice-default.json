@@ -1,0 +1,62 @@
+{
+  "gsfcgce4ice": {
+    "source_sha256": "8ea87ae8e3f6ff7554fa0fc99ff9a0805b129ca7521c4844eb1b87ddec59db57",
+    "functions": {
+      "gsfc4ice_consat": {
+        "local_size_bytes": 0,
+        "num_regs": 48,
+        "shared_size_bytes": 0,
+        "max_threads_per_block": 1024
+      },
+      "gsfc4ice_column": {
+        "local_size_bytes": 0,
+        "num_regs": 226,
+        "shared_size_bytes": 0,
+        "max_threads_per_block": 256
+      }
+    },
+    "max_local_size_bytes": 0
+  },
+  "gsfcgce4ice_aux": {
+    "source_sha256": "26379fbae0fc5829646050fda3222d19547a6143c7aa965e5ff1d537865ab2d8",
+    "functions": {
+      "gsfc4ice_consat": {
+        "local_size_bytes": 0,
+        "num_regs": 48,
+        "shared_size_bytes": 0,
+        "max_threads_per_block": 1024
+      },
+      "gsfc4ice_column": {
+        "local_size_bytes": 0,
+        "num_regs": 226,
+        "shared_size_bytes": 0,
+        "max_threads_per_block": 256
+      },
+      "g4_aux_init": {
+        "local_size_bytes": 408,
+        "num_regs": 38,
+        "shared_size_bytes": 0,
+        "max_threads_per_block": 1024
+      },
+      "g4_aux_negcor": {
+        "local_size_bytes": 0,
+        "num_regs": 40,
+        "shared_size_bytes": 0,
+        "max_threads_per_block": 1024
+      },
+      "g4_aux_auto": {
+        "local_size_bytes": 0,
+        "num_regs": 31,
+        "shared_size_bytes": 0,
+        "max_threads_per_block": 1024
+      },
+      "g4_aux_refl": {
+        "local_size_bytes": 1408,
+        "num_regs": 122,
+        "shared_size_bytes": 0,
+        "max_threads_per_block": 512
+      }
+    },
+    "max_local_size_bytes": 1408
+  }
+}

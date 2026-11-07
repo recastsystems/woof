@@ -56,6 +56,10 @@ def deferred():
         return
     import cupy as cp
     import numpy as np
+    parent = _SINK.get()
+    if parent is not None:
+        parent.extend(sink)
+        return
     flat = cp.concatenate([cp.ravel(value).astype(cp.float64)
                            for value, _ in sink])
     host = cp.asnumpy(flat)
@@ -68,3 +72,23 @@ def deferred():
 
 
 __all__ = ["check", "deferred"]
+
+
+@contextmanager
+def collecting(sink):
+    """Retain immutable guard values until a compiled pass has completed."""
+    token = _SINK.set(sink)
+    try:
+        yield
+    finally:
+        _SINK.reset(token)
+
+
+def drain_collected(sink):
+    """Evaluate every captured guard after the pass boundary synchronization."""
+    if not sink:
+        return
+    with deferred():
+        for value,verdict in sink:
+            check(value,verdict)
+    sink.clear()

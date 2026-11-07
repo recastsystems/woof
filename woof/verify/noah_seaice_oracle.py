@@ -18,11 +18,11 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from pathlib import Path
+from woof import data_assets
 
 import numpy as np
 
-SEAICE_ORACLE_DIR = (Path(__file__).resolve().parents[1] / "data" / "noah"
-                     / "seaice_oracle")
+SEAICE_ORACLE_DIR = data_assets.verify_oracle_path("noah/seaice_oracle")
 
 #: fixture file -> the two arguments ``run_seaice`` was invoked with.
 SEAICE_ORACLE_FILES = {
@@ -65,6 +65,7 @@ def load_seaice_oracle(name: str = "noah-seaice.csv",
         raise ValueError(f"{name!r} is not a packaged sea-ice oracle fixture; "
                          f"expected one of {sorted(SEAICE_ORACLE_FILES)}")
     directory = Path(directory) if directory is not None else SEAICE_ORACLE_DIR
+    data_assets.require_verify_oracle(directory)
     with (directory / name).open(newline="", encoding="ascii") as fh:
         rows = list(csv.DictReader(fh))
     if not rows:

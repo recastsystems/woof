@@ -123,9 +123,9 @@ def prepare(args):
     from .init_door import resolve_engine
     engine = resolve_engine(None)
     help_result = subprocess.run([str(engine), "--help"], capture_output=True, text=True)
-    from .physics_suites import load_table, suite_row
+    from .physics_suites import load_table, suite_selectors
     from .species_row import species_row_for_scheme
-    selectors = suite_row(args.physics_suite)["selectors"]
+    selectors = suite_selectors(args.physics_suite, args.mesh)
     soil = load_table()["options"]["config_lsm_scheme"][selectors["config_lsm_scheme"]]
     target_levels = soil.get("carried", soil).get("n_soil_levels", 4)
     from .cli import build_parser

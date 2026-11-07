@@ -473,7 +473,7 @@ for dev in range(count):
                      "profile": {"name": name.decode() if isinstance(name, bytes) else str(name),
                          "multiprocessor_count": int(props["multiProcessorCount"]),
                          "max_threads_per_multiprocessor": int(props["maxThreadsPerMultiProcessor"]),
-                         "default_stack_limit_bytes": int(cp.cuda.runtime.deviceGetLimit(0))}}
+                         "default_stack_limit_bytes": (0 if cp.cuda.runtime.is_hip else int(cp.cuda.runtime.deviceGetLimit(0)))}}
 print(json.dumps({"visible_count": count, "cards": rows}))
 """
 

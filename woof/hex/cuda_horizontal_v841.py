@@ -630,8 +630,8 @@ extern "C" __global__ void pv_apvm_v841_f32(
         const float grad_n = mpas_mul(mpas_sub(
             pv_cell[lidx_v841(k, cell1, ncells)],
             pv_cell[lidx_v841(k, cell0, ncells)]), inv_dc_edge[edge]);
-        grad_pv_tangential[index] = grad_t;
-        grad_pv_normal[index] = grad_n;
+        if (grad_pv_tangential) grad_pv_tangential[index] = grad_t;
+        if (grad_pv_normal) grad_pv_normal[index] = grad_n;
         pv_edge[index] = mpas_sub(pv_edge[index], mpas_mul(scale, mpas_add(
             mpas_mul(tangential_velocity[index], grad_t),
             mpas_mul(normal_velocity[index], grad_n))));
@@ -1170,10 +1170,11 @@ class CudaHorizontalV841(CudaHorizontal):
             grad_tangential = cp.zeros_like(normal)
         elif apvm_upwinding > 0.0:
             pv_cell = cp.zeros((self.nlev, self.ncells), dtype=cp.float32)
-            # pv_apvm_v841_f32 only WRITES the two gradients (it forms pv_edge
-            # from its own registers) and nothing reads them afterwards, so
-            # one write-only sink serves both outputs.
-            grad_normal = grad_tangential = cp.empty_like(normal)
+            from .device_memory_release import shared_card_memory
+            # These outputs have no reader. Keep the native gradient values
+            # in registers for pv_edge, without allocating a write-only sink.
+            grad_normal = grad_tangential = (np.uint64(0) if shared_card_memory()
+                                             else cp.empty_like(normal))
         else:
             pv_cell = grad_normal = grad_tangential = None
         if apvm_upwinding > 0.0:
@@ -1281,6 +1282,7 @@ class CudaHorizontalV841(CudaHorizontal):
         cam_damping_levels: int = 4,
         n_cells_solve: int | None = None,
         initial_u_tendency: Any | None = None,
+        retain_scratch: bool = True,
     ) -> CudaDryMixingTendencies:
         """v8.4.1 2-D Smagorinsky mixing on device.
 
@@ -1412,8 +1414,10 @@ class CudaHorizontalV841(CudaHorizontal):
                 tend_u,
             ),
         )
-        delsq_div = cp.zeros((self.nlev, self.ncells), dtype=cp.float32)
-        delsq_vort = cp.zeros((self.nlev, self.nvertices), dtype=cp.float32)
+        delsq_div = delsq_vort = None
+        if retain_scratch or h4 > np.float32(0.0):
+            delsq_div = cp.zeros((self.nlev, self.ncells), dtype=cp.float32)
+            delsq_vort = cp.zeros((self.nlev, self.nvertices), dtype=cp.float32)
         if h4 > np.float32(0.0):
             self._launch_v841(
                 "laplacian_divergence_v841_f32",
@@ -1470,6 +1474,12 @@ class CudaHorizontalV841(CudaHorizontal):
                 ),
             )
 
+        if not retain_scratch:
+            # The momentum Laplacians have had their last read. The normal
+            # forecast consumes only the Euler tendencies and viscosity;
+            # standalone witnesses can still request the intermediate words.
+            # Reuse their pool blocks for theta/w on the same CUDA stream.
+            delsq_u = delsq_div = delsq_vort = None
         delsq_theta = cp.empty_like(theta)
         tend_theta = cp.empty_like(theta)
         self._launch_v841(
@@ -1515,6 +1525,8 @@ class CudaHorizontalV841(CudaHorizontal):
                 ),
             )
 
+        if not retain_scratch:
+            delsq_theta = None
         delsq_w = cp.empty((self.nlev, self.ncells), dtype=cp.float32)
         tend_w = cp.zeros((self.nlev + 1, self.ncells), dtype=cp.float32)
         self._launch_v841(
@@ -1560,6 +1572,8 @@ class CudaHorizontalV841(CudaHorizontal):
                 ),
             )
 
+        if not retain_scratch:
+            delsq_w = None
         return CudaDryMixingTendencies(
             kdiff=kdiff,
             h_mom_eddy_visc4=h4,

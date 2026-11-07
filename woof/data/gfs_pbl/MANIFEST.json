@@ -1,0 +1,9 @@
+{
+  "schema": "physics-table-assets/v1",
+  "assets": {
+    "gfs_pbl_constants.cuh": {
+      "bytes": 2460,
+      "sha256": "a43cc63a6ae846be573e4f550c9a9c40512ced02b8140def12fac08d27dbc9ef"
+    }
+  }
+}

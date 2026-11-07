@@ -1252,7 +1252,8 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
                          water_temperature_policy=None,
                          soil_mesh=None,
                          route=None, fractional_seaice: bool = False,
-                         seaice_threshold: float = 100.0) -> NoahSoilState:
+                         seaice_threshold: float = 100.0, target_geometry=None,
+                         inactive_soil_layers: int | None = None) -> NoahSoilState:
     """Map ERA5 layers, GFS Noah layers, or native HRRR depth nodes to Noah.
 
     This is ``module_soil_pre.F:init_soil_2_real`` with layer input:
@@ -1325,6 +1326,20 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
     soil_texture_downscale = false`` -- is the deliberate WRF-comparison
     path and is byte-identical to the historical behaviour.
     """
+    target_depths = NOAH_LAYER_MIDPOINTS_M
+    target_thickness = NOAH_LAYER_THICKNESS_M
+    if target_geometry is not None:
+        target_depths = np.asarray(target_geometry["depths_m"], dtype=np.float64)
+        target_thickness = np.asarray(target_geometry["thickness_m"], dtype=np.float64)
+        if target_depths.ndim != 1 or len(target_depths) < 2 or target_thickness.shape != target_depths.shape:
+            raise ValueError("registered soil depths and thicknesses must be matching vectors")
+        if not np.isfinite(target_depths).all() or np.any(np.diff(target_depths) <= 0) or not np.isfinite(target_thickness).all() or np.any(target_thickness < 0):
+            raise ValueError("registered soil geometry must have ordered depths and nonnegative thickness")
+        if soil_mesh is not None and not target_geometry.get("texture_downscale", True):
+            from dataclasses import replace
+            # The selected geometry is a node state, not Noah's four slabs.
+            # In particular a zero-thickness carried boundary is not a bucket.
+            soil_mesh = replace(soil_mesh, enabled=False)
     mapped_markers = (MAPPED_SOIL_TEMPERATURE, MAPPED_SOIL_MOISTURE)
     mapped_marker_count = sum(name in fields for name in mapped_markers)
     if soil_layer_contract is None:
@@ -1591,6 +1606,20 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
         snow = snowh * (1000.0 / 5.0)
     elif snow_present and not snowh_present:
         snowh = snow / 1000.0 * 5.0
+    if inactive_soil_layers is not None:
+        if inactive_soil_layers < 1:
+            raise ValueError("inactive soil axis must have a positive extent")
+        # No LSM reads these arrays. WRF supplies no depth geometry or
+        # soil initialization for selector zero. Deterministic zero words
+        # carry its unused I/O axis without inventing a Noah soil state.
+        inactive = np.zeros((inactive_soil_layers,) + shape, np.float64)
+        return NoahSoilState(
+            soil_temperature=inactive, soil_moisture=inactive.copy(),
+            liquid_moisture=inactive.copy(), deep_soil_temperature=deep,
+            tsk=tsk, landmask=landmask,
+            xland=np.where(effective_land, 1.0, 2.0), xice=xice,
+            snow_water=snow, snow_depth=snowh,
+            deep_soil_repair=deep_repair, sea_ice_cells=sea_ice)
     # real.exe's TSLB reasonableness rebuild, on every soil source alike:
     # a land column carrying a source soil temperature outside 170..400 K
     # is held at TSK through the vertical mapping below and rebuilt
@@ -1623,8 +1652,36 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
     if hrrr_nodes and np.any((soil_temperature_nodes < 170.0)
                              | (soil_temperature_nodes > 400.0)):
         raise ValueError("HRRR SOILT nodes are outside 170..400 K")
-    if mapped_layers:
-        # The horizontal mapping hands every target land cell a value: a
+    if target_geometry is not None:
+        from woof.ingest.soil_points import sample_points
+        if mapped_layers:
+            source_t, source_m = declared_temperature, declared_moisture
+            remap = declared_contract["remap"]["kind"]
+            if remap == "linear_node_samples":
+                source_depths = np.asarray(soil_node_depths(declared_contract))
+            else:
+                bounds = soil_layer_bounds(declared_contract, "source_layers")
+                # module_optional_input.F:char2int2 uses integer-centimetre
+                # layer midpoints before init_soil_2_real samples them.
+                source_depths = np.asarray([int((100*top+100*bottom)/2)/100 for top,bottom in bounds])
+        elif hrrr_nodes:
+            source_t, source_m = soil_temperature_nodes, soil_moisture_nodes
+            source_depths = HRRR_SOIL_NODE_DEPTHS_M
+        else:
+            source_t, source_m = np.stack(temperatures), np.stack(moistures)
+            source_depths = NOAH_LAYER_MIDPOINTS_M if gfs_layers else ERA5_LAYER_MIDPOINTS_M
+        if source_depths[0] > 0:
+            source_depths = np.concatenate(([0.0], source_depths))
+            source_t = np.concatenate((tsk[None], source_t),axis=0)
+            source_m = np.concatenate((source_m[:1], source_m),axis=0)
+        if source_depths[-1] < 3:
+            source_depths = np.concatenate((source_depths,[3.0]))
+            source_t = np.concatenate((source_t,deep[None]),axis=0)
+            source_m = np.concatenate((source_m,source_m[-1:]),axis=0)
+        soil_t = sample_points(source_t,source_depths,target_depths)
+        soil_m = sample_points(source_m,source_depths,target_depths)
+    elif mapped_layers:
+        # The horizontal mapping hands every target land cell a value:
         # source land cell with none is not a donor, and a target land cell
         # with no source land near it takes the WPS search's nearest one
         # (woof/ingest/horiz.py).  Only target-ocean values may be absent
@@ -1667,10 +1724,10 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
         # for ERA5 layers cannot affect these interior target depths.
         soil_t = _interp_nodes(
             soil_temperature_nodes, HRRR_SOIL_NODE_DEPTHS_M,
-            NOAH_LAYER_MIDPOINTS_M)
+            target_depths)
         soil_m = _interp_nodes(
             soil_moisture_nodes, HRRR_SOIL_NODE_DEPTHS_M,
-            NOAH_LAYER_MIDPOINTS_M)
+            target_depths)
     elif gfs_layers:
         # GFS supplies the exact four Noah slabs (0-10, 10-40, 40-100,
         # 100-200 cm).  They are layer values, not depth nodes, so copying is
@@ -1684,12 +1741,12 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
         zsource = np.concatenate(([0.0], ERA5_LAYER_MIDPOINTS_M, [3.0]))
         temp_nodes = np.stack([tsk, *temperatures, deep])
         moist_nodes = np.stack([moistures[0], *moistures, moistures[-1]])
-        soil_t = _interp_nodes(temp_nodes, zsource, NOAH_LAYER_MIDPOINTS_M)
-        soil_m = _interp_nodes(moist_nodes, zsource, NOAH_LAYER_MIDPOINTS_M)
+        soil_t = _interp_nodes(temp_nodes, zsource, target_depths)
+        soil_m = _interp_nodes(moist_nodes, zsource, target_depths)
     if temperature_repair:
         soil_t = np.array(soil_t, copy=True)
         soil_t[:, rebuilt_columns] = tsk_tmn_soil_profile(
-            NOAH_LAYER_MIDPOINTS_M, tsk, deep)[:, rebuilt_columns]
+            target_depths, tsk, deep)[:, rebuilt_columns]
     non_terrestrial = ~terrestrial
     soil_t[:, non_terrestrial] = tsk[non_terrestrial]
     soil_m[:, non_terrestrial] = 1.0
@@ -1697,7 +1754,7 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
     # a 3 m ice column (module_soil_pre.F:289-300).
     tmn = np.array(deep, dtype=np.float64, copy=True)
     tmn[sea_ice] = 271.4
-    ice_midpoints = (np.arange(4, dtype=np.float64) + 0.5) * (3.0 / 4.0)
+    ice_midpoints = (np.arange(len(target_depths), dtype=np.float64) + 0.5) * (3.0 / len(target_depths))
     for layer, midpoint in enumerate(ice_midpoints):
         soil_t[layer, sea_ice] = (
             (3.0 - midpoint) * tsk[sea_ice] + midpoint * tmn[sea_ice]
@@ -1713,7 +1770,7 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
 
         soil_t, deep_downscale_receipt = downscale_deep_soil_temperature(
             soil_t, deep_soil_temperature=tmn, terrestrial=terrestrial,
-            plan=soil_mesh, layer_midpoints_m=NOAH_LAYER_MIDPOINTS_M)
+            plan=soil_mesh, layer_midpoints_m=target_depths)
     else:
         deep_downscale_receipt = {}
     if (not np.isfinite(soil_t).all() or np.any((soil_t < 170.0) | (soil_t > 400.0))):
@@ -1768,7 +1825,7 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
         soil_m, downscale_receipt = downscale_soil_moisture(
             soil_m, soil_type=soil_type, terrestrial=terrestrial,
             params=noah_params, plan=soil_mesh,
-            layer_thickness_m=NOAH_LAYER_THICKNESS_M)
+            layer_thickness_m=target_thickness)
         downscale_receipt = dict(downscale_receipt)
         downscale_receipt["deep_soil_temperature"] = deep_downscale_receipt
     elif not _REPORTED_MISSING_SOIL_MESH:
@@ -1782,6 +1839,11 @@ def preprocess_noah_soil(fields: Mapping[str, object], *, soil_type,
             file=sys.stderr)
     else:
         downscale_receipt = {}
+    if target_geometry is not None and downscale_receipt:
+        downscale_receipt = dict(downscale_receipt)
+        downscale_receipt["selected_geometry_policy"] = (
+            "Noah texture buckets are not applied to the registered node state; "
+            + target_geometry["wrf_reference"])
     liquid_m = sh2o_init(soil_m, soil_t, soil_type, noah_params)
     liquid_m[:, sea_ice] = 0.0
 

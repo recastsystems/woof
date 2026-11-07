@@ -1,0 +1,5 @@
+executable lines reached: 400; never reached: 4
+  never 316: print*,'HFX_SEA_point',HFX(I,J)
+  never 1114: DO J=JTS,JTE
+  never 1115: DO I=ITS,ITF
+  never 1116: USTAR(I,J)=0.1

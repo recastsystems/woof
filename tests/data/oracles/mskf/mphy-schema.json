@@ -1,0 +1,422 @@
+[
+  {
+    "name": "su",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 0,
+    "size": 40
+  },
+  {
+    "name": "qu",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 40,
+    "size": 40
+  },
+  {
+    "name": "mu",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 80,
+    "size": 40
+  },
+  {
+    "name": "du",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 120,
+    "size": 40
+  },
+  {
+    "name": "cmel",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 160,
+    "size": 40
+  },
+  {
+    "name": "cmei",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 200,
+    "size": 40
+  },
+  {
+    "name": "zf",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pverp"
+    ],
+    "offset": 240,
+    "size": 41
+  },
+  {
+    "name": "pm",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 281,
+    "size": 40
+  },
+  {
+    "name": "te",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 321,
+    "size": 40
+  },
+  {
+    "name": "qe",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 361,
+    "size": 40
+  },
+  {
+    "name": "eps0",
+    "type": "double",
+    "dims": [
+      "pcols"
+    ],
+    "offset": 401,
+    "size": 1
+  },
+  {
+    "name": "jb",
+    "type": "int",
+    "dims": [
+      "pcols"
+    ],
+    "offset": 402,
+    "size": 1
+  },
+  {
+    "name": "jt",
+    "type": "int",
+    "dims": [
+      "pcols"
+    ],
+    "offset": 403,
+    "size": 1
+  },
+  {
+    "name": "jlcl",
+    "type": "int",
+    "dims": [
+      "pcols"
+    ],
+    "offset": 404,
+    "size": 1
+  },
+  {
+    "name": "msg",
+    "type": "int",
+    "dims": [],
+    "offset": 405,
+    "size": 1
+  },
+  {
+    "name": "il2g",
+    "type": "int",
+    "dims": [],
+    "offset": 406,
+    "size": 1
+  },
+  {
+    "name": "grav",
+    "type": "double",
+    "dims": [],
+    "offset": 407,
+    "size": 1
+  },
+  {
+    "name": "cp",
+    "type": "double",
+    "dims": [],
+    "offset": 408,
+    "size": 1
+  },
+  {
+    "name": "rd",
+    "type": "double",
+    "dims": [],
+    "offset": 409,
+    "size": 1
+  },
+  {
+    "name": "qc",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 410,
+    "size": 40
+  },
+  {
+    "name": "qi",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 450,
+    "size": 40
+  },
+  {
+    "name": "qr",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 490,
+    "size": 40
+  },
+  {
+    "name": "qni",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 530,
+    "size": 40
+  },
+  {
+    "name": "rprd",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 570,
+    "size": 40
+  },
+  {
+    "name": "wu",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 610,
+    "size": 40
+  },
+  {
+    "name": "eu",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 650,
+    "size": 40
+  },
+  {
+    "name": "nc",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 690,
+    "size": 40
+  },
+  {
+    "name": "ni",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 730,
+    "size": 40
+  },
+  {
+    "name": "nr",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 770,
+    "size": 40
+  },
+  {
+    "name": "ns",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 810,
+    "size": 40
+  },
+  {
+    "name": "dum2l",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 850,
+    "size": 40
+  },
+  {
+    "name": "sprd",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 890,
+    "size": 40
+  },
+  {
+    "name": "frz",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 930,
+    "size": 40
+  },
+  {
+    "name": "aer_mmr",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver",
+      "naer_cu"
+    ],
+    "offset": 970,
+    "size": 400
+  },
+  {
+    "name": "deltat",
+    "type": "double",
+    "dims": [],
+    "offset": 1370,
+    "size": 1
+  },
+  {
+    "name": "pver",
+    "type": "int",
+    "dims": [],
+    "offset": 1371,
+    "size": 1
+  },
+  {
+    "name": "pverp",
+    "type": "int",
+    "dims": [],
+    "offset": 1372,
+    "size": 1
+  },
+  {
+    "name": "gamhat",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 1373,
+    "size": 40
+  },
+  {
+    "name": "qsatzm",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 1413,
+    "size": 40
+  },
+  {
+    "name": "wu_mskf_act",
+    "type": "double",
+    "dims": [
+      "pver"
+    ],
+    "offset": 1453,
+    "size": 40
+  },
+  {
+    "name": "qc_mskf_act",
+    "type": "double",
+    "dims": [
+      "pver"
+    ],
+    "offset": 1493,
+    "size": 40
+  },
+  {
+    "name": "qi_mskf_act",
+    "type": "double",
+    "dims": [
+      "pver"
+    ],
+    "offset": 1533,
+    "size": 40
+  },
+  {
+    "name": "effc",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 1573,
+    "size": 40
+  },
+  {
+    "name": "effi",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 1613,
+    "size": 40
+  },
+  {
+    "name": "effs",
+    "type": "double",
+    "dims": [
+      "pcols",
+      "pver"
+    ],
+    "offset": 1653,
+    "size": 40
+  }
+]

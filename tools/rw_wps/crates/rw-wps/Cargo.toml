@@ -21,6 +21,7 @@ clap.workspace = true
 grib-core = { path = "../../../grib1_bridge/vendor/grib-core", default-features = false, features = ["jpeg2000"] }
 hdf5-reader = { path = "../../../rustwx/vendor/netcrust/vendor/hdf5-reader" }
 netcrust = { path = "../../../rustwx/vendor/netcrust" }
+wrf-surface = { path = "../wrf-surface" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

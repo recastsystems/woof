@@ -51,7 +51,7 @@ def native_rt_diabatic_tend_f32(theta_before, qv_before, theta_after, qv_after, 
 
 
 def engine_dry_h_diabatic(theta_before, theta_after, dt):
-    """woof 2.8.7 microphysics.moist_physics_finish: dry-theta change / dt."""
+    """gpuwm 2.8.7 microphysics.moist_physics_finish: dry-theta change / dt."""
 
     return F32(F32(F32(theta_after) - F32(theta_before)) / F32(dt))
 

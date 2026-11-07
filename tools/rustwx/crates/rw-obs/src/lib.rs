@@ -18,6 +18,8 @@ pub mod bufr_obs;
 pub mod ncep_bufr;
 pub mod errtable;
 pub mod prepbufr;
+pub mod fddaobs;
+pub mod fddaobs_policy;
 pub mod table;
 pub mod tar;
 pub mod precipitation;

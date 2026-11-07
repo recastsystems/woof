@@ -197,6 +197,108 @@ def test_selected_words_are_frozen_trimmed_and_appended(tmp_path, bridge, reside
         assert not writer._host_storage
 
 
+def test_blank_initial_time_runs_and_is_written_back_blank(tmp_path, bridge):
+    """An init whose initial_time is blank (or absent) runs, as native runs it (mpas_atm_core.F:264-277).
+
+    THE BREAKAGE THIS PREVENTS (paper B-1 rerun on 0.4.11, 2026-11-02): the writer parsed the blank as a date and
+    the forecast stopped before its first frame. Native keeps the blank: it writes it back, its CF Time units read
+    "seconds since", and its stream alarms and filenames run from the clock start.
+    """
+    state, _, _, start = session(resident=False)
+    stamp = start.strftime('%Y-%m-%d_%H:%M:%S')
+    state.native.get_text_field = lambda pool, name, **kw: '' if name == 'initial_time' else stamp
+    with PhysicsStreams(state, (stream(),), tmp_path, final_time=start+timedelta(minutes=2)) as writer:
+        assert writer.initial == start and writer.initial_time is None
+        writer.write(step=0, dt=60, receipt={})
+        writer.write(step=1, dt=60, receipt={})
+    with read_stream(tmp_path/'history.nc', scratch=tmp_path/'read') as output:
+        assert output.variables['xtime'].text == ('2023-03-31_12:00:00', '2023-03-31_12:01:00')
+        assert output.variables['Time'].attrs['units'] == 'seconds since'
+        assert all(not text.strip(' \0') for text in output.variables['initial_time'].text)
+
+
+def test_output_stream_without_xtime_appends_its_records(tmp_path, bridge):
+    """A deck output stream need not carry xtime; native writes its records into the one file.
+
+    THE BREAKAGE THIS PREVENTS (paper B-1 rerun on 0.4.11, 2026-11-02): the second frame asked the file for its
+    xtime to place the record and failed ("rw_mpas_stream: missing requested fields: [xtime]").
+    """
+    state, _, _, start = session(resident=False)
+    plain = Stream('output', ('output',), 'tracer.nc', 'none', '00:01:00', ('scalars', 'Time'))
+    with PhysicsStreams(state, (plain,), tmp_path, final_time=start+timedelta(minutes=2)) as writer:
+        writer.write(step=0, dt=60, receipt={})
+        writer.write(step=1, dt=60, receipt={})
+    with read_stream(tmp_path/'tracer.nc', scratch=tmp_path/'read') as output:
+        assert 'xtime' not in output.variables
+        assert output.variables['qv'].values.shape[0] == 2
+
+
+@pytest.mark.parametrize('writer', ['restart_v842', 'restart_rrfs'])
+def test_both_stream_writers_take_a_blank_initial_time_and_no_xtime(tmp_path, bridge, writer):
+    """The v8.4.2 and RRFS stream writers: a blank initial_time is written back blank, and an xtime-less
+    stream appends by its Time axis (the two tests above say what broke)."""
+    from dataclasses import replace
+    import importlib
+    module = importlib.import_module(f'hexcore.{writer}')
+    base = module.registry_stream('output')
+    plain = replace(base, members=(('var', 'u', ''), ('var', 'initial_time', '')))
+    mesh = SimpleNamespace(arrays={}, dimensions={'nEdges': 3, 'nVertLevels': 2}, attrs={})
+    from woof.hex.output import HistoryField
+    fields = {'u': HistoryField(np.arange(6, dtype=np.float32).reshape(2, 3), ('nVertLevels', 'nEdges'))}
+    path = tmp_path/'tracer.nc'
+    module.write_stream(path, plain, mesh, fields, '2001-01-01_00:00:00', initial_time='')
+    plain = replace(plain, options={**plain.options, 'clobber_mode': 'append'})
+    module.write_stream(path, plain, mesh, fields, '2001-01-01_06:00:00', initial_time='', record_index=1)
+    with pytest.raises(ValueError, match='existing record'):
+        module.write_stream(path, plain, mesh, fields, '2001-01-01_06:00:00', initial_time='', record_index=1)
+    with read_stream(path, scratch=tmp_path/'read') as output:
+        assert 'xtime' not in output.variables
+        assert output.variables['u'].values.shape == (2, 3, 2)
+        assert not output.variables['initial_time'].text[0].strip(' \0')
+
+
+def test_unset_filename_interval_opens_one_file_per_output_time(tmp_path, bridge):
+    """A deck stream with no filename_interval writes one file per output time, as native does
+    (xml_stream_parser.c:1137-1194).
+
+    THE BREAKAGE THIS PREVENTS (paper B-1 rerun on 0.4.11, 2026-11-02): hex read the unset value as none and wrote
+    all 21 six-hourly records of the paper's tracer stream into one file, where native wrote 21 files.
+    """
+    from woof.hex.mpasphys import resolve_namelist
+    from woof.hex.mpasphys.forecast_v842 import read_streams
+    from woof.hex.mpasphys.framework_backend_v842 import registry_source
+    from woof.hex.mpasphys.pool_v842 import RegistryLayout
+
+    text = '&physics\nconfig_physics_suite="convection_permitting"\n/'
+    layout = RegistryLayout(registry_source(), resolve_namelist(text), text,
+        dict(nCells=2, nEdges=3, nVertices=2, maxEdges=6, maxEdges2=12, vertexDegree=3, nVertLevels=55))
+    deck = tmp_path/'streams.atmosphere'
+    deck.write_text('''<streams>
+<immutable_stream name="input" type="input" filename_template="x1.init.nc" input_interval="initial_only" />
+<immutable_stream name="restart" type="input;output" filename_template="restart.$Y-$M-$D_$h.$m.$s.nc"
+    input_interval="initial_only" output_interval="none" />
+<stream name="tracer_oracle" type="output" filename_template="tracer.$Y-$M-$D_$h.$m.$s.nc" output_interval="0_06:00:00">
+  <var name="rho_zz"/> <var name="theta_m"/>
+</stream>
+<stream name="once" type="output" filename_template="once.nc" filename_interval="output_interval"
+    output_interval="initial_only"><var name="theta_m"/></stream>
+</streams>''')
+    buckets = {s.name: s.filename_interval for s in read_streams(deck, layout)}
+    assert buckets == {'input': 'none', 'restart': 'none', 'tracer_oracle': '0_06:00:00', 'once': 'none'}
+    # The writer then opens a file per output time.
+    state, _, _, start = session(resident=False)
+    timed = Stream('tracer_oracle', ('output',), 'tracer.$Y-$M-$D_$h.$m.$s.nc', 'none', '00:01:00',
+                   ('scalars', 'Time', 'xtime'), filename_interval='00:01:00')
+    with PhysicsStreams(state, (timed,), tmp_path/'out', final_time=start+timedelta(minutes=2)) as writer:
+        writer.write(step=0, dt=60, receipt={})
+        writer.write(step=1, dt=60, receipt={})
+    files = sorted(p.name for p in (tmp_path/'out').glob('tracer.*.nc'))
+    assert files == ['tracer.2023-03-31_12.00.00.nc', 'tracer.2023-03-31_12.01.00.nc']
+    for name in files:
+        with read_stream(tmp_path/'out'/name, scratch=tmp_path/'read') as output:
+            assert len(output.variables['xtime'].text) == 1
+
+
 def test_background_failure_propagates_on_close(tmp_path):
     state, _, _, start = session(resident=True)
     writer = PhysicsStreams(state, (stream(),), tmp_path, final_time=start+timedelta(minutes=2))
@@ -566,7 +668,7 @@ def test_restart_momentum_and_initialized_words_use_their_authority(tmp_path, br
         reads.append((pool, name))
         return fields[pool, name].copy()
     state.native.get_field = get
-    state.device_pools.cp = SimpleNamespace(asarray=lambda x: np.asarray(x).view(DeviceArray),
+    state.device_pools.cp = SimpleNamespace(asarray=lambda x, order=None: np.asarray(x, order=order).view(DeviceArray),
         ascontiguousarray=lambda x: x.copy().view(DeviceArray), uint32=np.uint32)
     provider.cp = state.device_pools.cp
     provider.bind = lambda writer: None
@@ -619,7 +721,7 @@ def test_acoustic_restart_words_are_retained_only_for_due_frames(tmp_path, bridg
         assert name in initial
         return fields[pool, name].copy()
     state.native.get_field = get
-    state.device_pools.cp = SimpleNamespace(asarray=lambda x: np.asarray(x).view(DeviceArray),
+    state.device_pools.cp = SimpleNamespace(asarray=lambda x, order=None: np.asarray(x, order=order).view(DeviceArray),
         ascontiguousarray=lambda x: x.copy().view(DeviceArray), uint32=np.uint32)
     committed = [start]
     state.native.clock_state = SimpleNamespace(current_time=SimpleNamespace(
@@ -741,3 +843,49 @@ def test_an_explicitly_bound_registry_input_stream_is_read_once_at_the_start(tmp
     bound = streams(tmp_path / 'bound' / 'streams.atmosphere', bound_inputs={'invariant': 'invariant.nc'})
     assert bound['invariant'].get('input_interval') == 'initial_only'
     assert bound['input'].get('input_interval') == 'initial_only'
+
+
+def test_restart_from_a_blank_initial_time_run_keeps_the_blank_and_its_time_word(tmp_path):
+    """A restart of a run whose init carried a blank initial_time restores, as native restores it.
+
+    THE BREAKAGE THIS PREVENTS (paper B-1 follow-up, 2026-11-02): the blank-initial_time run itself was fixed, but
+    its restart parsed the blank as a date twice (NativePoolStreams.restore and runtime_v842.restore_state_time)
+    and refused. Native keeps the blank and the Time word its restart stream carried (mpas_atm_core.F:264-277).
+    """
+    from contextlib import contextmanager
+    from woof.hex.restart_v842 import NativePoolStreams
+    from woof.hex.mpasphys.runtime_v842 import restore_state_time
+
+    start = datetime(2023, 3, 31, 18)
+    pool = {('state', 'Time'): np.zeros((), np.float32)}
+    texts = {}
+    native = SimpleNamespace(
+        get_field=lambda p, f, level=1: pool[p, f],
+        put_field=lambda p, f, v, level=1, nlevels=1: pool.__setitem__((p, f), np.asarray(v, np.float32)),
+        put_text_field=lambda p, f, t, level=1, nlevels=1: texts.__setitem__((p, f), t),
+        get_text_field=lambda p, f, level=1: texts[p, f])
+    source = SimpleNamespace(global_attrs={}, variables={
+        'initial_time': SimpleNamespace(text=('',), attrs={}, dimensions=(), values=None),
+        'Time': SimpleNamespace(text=None, attrs={}, dimensions=(), values=np.array(21600, np.float32))})
+
+    @contextmanager
+    def read_restart(*args, **kwargs):
+        yield source
+
+    contract = SimpleNamespace(writer=SimpleNamespace(read_restart=read_restart),
+                               alarms=lambda streams, start_, initial, *rest: ('alarms', start_, initial))
+    writer = object.__new__(NativePoolStreams)
+    writer.__dict__['_contract'] = contract
+    writer.native = native
+    writer.layout = SimpleNamespace(packages=frozenset(), dimensions={})
+    writer.streams = {'restart': object()}
+    writer.rows = {'initial_time': (dict(pool='state', pool_name='initial_time', kind='character', nlevels=2), None),
+                   'Time': (dict(pool='state', pool_name='Time', kind='real', nlevels=2), None)}
+    writer.start, writer.initial, writer.final, writer.control = start, start, start + timedelta(hours=1), None
+    writer.attrs, writer.field_attrs = {}, {}
+    assert writer.restore(tmp_path / 'restart.nc', scratch=tmp_path) == ('initial_time', 'Time')
+    assert writer.initial_time is None and writer.initial == start
+    assert writer.alarms == ('alarms', start, start)
+    native.clock_state = SimpleNamespace(start_time=SimpleNamespace(stamp=lambda: '2023-03-31_18:00:00'))
+    assert restore_state_time(native) == 21600.0
+    assert float(pool['state', 'Time']) == 21600.0

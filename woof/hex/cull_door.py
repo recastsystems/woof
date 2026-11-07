@@ -156,7 +156,10 @@ def cull_one(
         help_result = subprocess.run([str(engine), "--help"], capture_output=True, text=True)
         engine_help = help_result.stdout + help_result.stderr
         if provenance_grid is not None and "--cull-provenance-grid" in engine_help:
-            argv += ["--cull-provenance-grid", str(provenance_grid)]
+            from .restart_v842 import inspect_stream
+            header = inspect_stream(parent, scratch=out.parent / 'cull-header')
+            if 'rw_static_provenance_json' in header['global_attrs']:
+                argv += ["--cull-provenance-grid", str(provenance_grid)]
         if mark_parent is not None and "--cull-mark-parent" in engine_help:
             argv += ["--cull-mark-parent", str(mark_parent)]
     if clobber:

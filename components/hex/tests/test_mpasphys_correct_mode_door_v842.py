@@ -52,6 +52,10 @@ def native_preflight(monkeypatch):
     # These door tests fake the forecast itself; the ported-route suite refusal
     # (resident_v842.ported_route_refusal, tested in test_mpasphys_resident_v842) is not their subject.
     monkeypatch.setattr("woof.hex.mpasphys.resident_v842.ported_route_refusal", lambda config: None)
+    monkeypatch.setattr(door, 'admit_native_device', lambda *a: None)
+    # The MPAS memory admission (a801558f) reads the init's dimensions and probes the card,
+    # like the device admission faked above; the placeholder init.nc is not NetCDF.
+    monkeypatch.setattr("woof.hex.mpasphys.memory_admission.admit", lambda arguments: None)
     layout = SimpleNamespace(configs={"config_start_time": "2023-03-31_12:00:00", "config_dt": 360.0,
                                       "config_run_duration": "0_01:00:00", "config_do_restart": False})
     monkeypatch.setattr(forecast_v842, "decode_registry_pools", lambda *a, **k: layout)
@@ -68,9 +72,11 @@ def native_preflight(monkeypatch):
 
 
 def mode_lines(err: str) -> list[str]:
-    """stderr without the suite route's own step and start lines (routeb-door b4477dcd, 1146680c)."""
+    """stderr without the suite route's own step and start lines (routeb-door b4477dcd, 1146680c)
+    and its memory admission record (a801558f)."""
     return [line for line in err.splitlines()
-            if not line.startswith(("woof hex: MPAS suite timestep ", "woof hex: MPAS suite start "))]
+            if not line.startswith(("woof hex: MPAS suite timestep ", "woof hex: MPAS suite start ",
+                                    '{"native_memory_admission": '))]
 
 
 def run_door(arguments) -> dict:
@@ -309,6 +315,9 @@ def test_verify_mpas_runs_exact_when_the_deck_names_no_mode(tmp_path, monkeypatc
     argv = seen[0]
     assert argv[:3] == [verifier.sys.executable, "-m", "woof.hex.cli"]
     out = str((tmp_path / "work").resolve() / "hex-output")
+    # A proof run draws no detached map products inside the folder it compares (f073a2e1).
+    assert argv[-1] == "--no-products"
+    argv = argv[:-1]
     # Every proof names strict kernel numerics (owner ruling 2026-10-16: fast is the door default).
     assert argv[-2:] == ["--numerics", "strict"]
     argv = argv[:-2]

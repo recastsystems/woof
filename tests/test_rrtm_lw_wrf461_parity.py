@@ -12,7 +12,7 @@ MM5ATM's 0.01 overcast test, negative and subnormal mixing ratios, integer-
 kelvin temperatures, icloud = 0, Kessler's registry flags).  The model top
 takes 25, 13, 3, 1 and 0 Cavallo buffer layers across the sets.
 
-MEASURED on that fixture (lane/verify-rrtm-lw, 2026-10-07): every word WOOF
+MEASURED on that fixture (development branch, 2026-10-07): every word WOOF
 writes -- RTHRATEN, RTHRATENC, GLW, OLR, and every MM5ATM / SETCOEF / GASABS /
 RTRN intermediate and every rrtm_lookuptable table -- is WRF's word, on the
 NumPy path, on the GPU under GPUWM_WRF_EXACT=1 and on the GPU under default

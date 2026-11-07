@@ -101,12 +101,52 @@ class NativeDevicePoolViews(Mapping):
         self._before_resident_allocation()
         # ascontiguousarray promotes rank-zero arrays to length one. Registry
         # scalars must keep rank zero through publication and scheme bindings.
-        packed=self.cp.ascontiguousarray(self.cp.asarray(selected)).reshape(selected.shape)
+        # Choose the device layout during the host upload. Uploading in host
+        # order first can leave both a Fortran copy and a C copy on the card.
+        packed=self.cp.asarray(selected, order='C').reshape(selected.shape)
         self.buffers[key]=(host,packed,selection)
         if self.resident:
             self.resident_buffers[key] = self.buffers[key]
             self.transfers['initial_upload_bytes'] += packed.nbytes
         return packed
+
+    def resident_field(self, pool, name, *, level=1):
+        """Existing device authority, without uploading an output-only field.
+
+        Before a field's first device binding its initialized native storage
+        is still authoritative. History can read that storage directly.
+        """
+        key = (pool, name, level if pool == 'state' else 1)
+        cached = self.resident_buffers.get(key)
+        if cached is None:
+            cached = self.buffers.get(key)
+        return None if cached is None else cached[1]
+
+    def adopt_tendency(self, name, value):
+        """Publish a resident assembler result without retaining a second copy.
+
+        The assembler owns a fresh contiguous solve allocation. Registry
+        publication may hold that allocation directly until the next call.
+        Callers that subsequently modify a source must first copy that source.
+        """
+        if not self.resident:
+            raise ValueError('adopting a tendency requires resident device authority')
+        row = next(r for r in self.session.layout.fields
+                   if r['pool'] == 'tend' and name in (r['name'], r['pool_name']))
+        key = ('tend', row['pool_name'], 1)
+        cached = self.resident_buffers.get(key)
+        if cached is None:
+            storage = getattr(self.native, 'field_storage', None)
+            host = (storage('tend', row['pool_name'], level=1) if storage is not None
+                    else self.native.get_field('tend', row['pool_name'], level=1))
+            selection = (..., slice(0, self.session.layout.dimensions['nCellsSolve']))
+        else:
+            host, _, selection = cached
+        if (value.shape != host[selection].shape or value.dtype != host.dtype
+                or not value.flags.c_contiguous):
+            raise ValueError(f'resident tendency {name} shape/dtype/layout differs')
+        self.buffers[key] = self.resident_buffers[key] = (host, value, selection)
+        return value
 
     def prepared(self, name):
         """Native i,k,j globals become k,i views; mpas_atmphys_vars.F:179-217; mpas_atmphys_vars.F:934-942."""
@@ -135,7 +175,7 @@ class NativeDevicePoolViews(Mapping):
         # Surface globals are i,j; profiles are i,k,j. MPAS vars.F:934-942.
         view=host[:count,:,0,:].transpose(2,1,0) if host.ndim==4 else host[:count,:,0].T if host.ndim==3 else host[:count,0]
         self._before_resident_allocation()
-        packed=self.cp.ascontiguousarray(self.cp.asarray(view))
+        packed=self.cp.asarray(view, order='C')
         self.buffers[key]=(host,packed,lower)
         if self.resident:
             self.resident_buffers[key] = self.buffers[key]
@@ -463,6 +503,17 @@ def _session_landuse(provider):
 def register_cuda_slots(registry,config,provider,resources=None):
     """Register only table-selected CUDA callbacks; mpas_atmphys_driver.F:209-384."""
     rows=load_table()[getattr(config,'table_key','mpasphys_v842')]['slots']
+    tc = None
+    if getattr(config, 'tc_surface', None):
+        from .tc_surface import NativeSurface
+        tc = NativeSurface(config, provider)
+        provider.tc_exchange = tc
+        provider.session.hooks.external['tc_surface_spray'] = tc.spray
+    pwp = None
+    if getattr(config, 'ocean_pwp', None):
+        # --ocean-mode pwp: the PWP columns take the OML slot's place (woof.hex.mpasphys.ocean_pwp_v842).
+        from .ocean_pwp_v842 import register as register_pwp
+        pwp = register_pwp(config, provider)
     for slot,scheme in config.selectors.items():
         if not config.active(slot) or config.backends[slot]!=Backend.HEX_CUDA:continue
         descriptor=rows[slot].get('cuda_entries',{}).get(scheme)
@@ -473,6 +524,8 @@ def register_cuda_slots(registry,config,provider,resources=None):
         except ModuleNotFoundError as exc:
             raise RuntimeError(f'MPAS CUDA slot module {descriptor["module"]} is not in this merged tree') from exc
         callback=getattr(module,descriptor['call'])
+        if pwp is not None and slot == 'oml':
+            callback=pwp.launch_slot
         resource=descriptor.get('resources')
         if resource:
             if resources is None:
@@ -518,7 +571,11 @@ def register_cuda_slots(registry,config,provider,resources=None):
             # WOOF_HEX_POOL_RELEASE, GPUWM_HEX_LMEM_RELEASE).
             with phase_release('slot:'+slot):
                 prepared=provider.begin(call,descriptor)
+                if tc is not None and slot == 'surface_layer':
+                    tc.prepare()
                 result=callback(replace(call,pools=prepared))
+                if tc is not None and slot == 'surface_layer':
+                    tc.exchange()
                 provider.commit()
             return result
         registry.register(slot,scheme,Backend.HEX_CUDA,invoke,

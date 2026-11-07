@@ -183,6 +183,9 @@ _MP28_EDGE_ENTRY_VALUES = {
 #: mapping is named before the run rather than found in a receipt.  A
 #: scheme whose every moment maps from the parent has no row here.
 MIXED_EDGE_ENTRY_NOTES = {
+    13: ("SBU-YLin child: RIMI is diagnosed from cloud water, snow and "
+         "density using WRF 4.6.1 module_mp_sbu_ylin.F:500-520, including "
+         "the first column maximum propagated downward."),
     16: ("WDM6 child: nc and nr enter at zero and the CCN reservoir nn at "
          "this domain's wdm6_ccn_conc, the seed a WDM6 inflow face uses."),
     28: ("Thompson aerosol-aware child: nr and ni are carried from a "
@@ -254,7 +257,7 @@ def mixed_edge_entry_note(contract) -> str | None:
 #: target's moments are diagnosed from target mass by the arms already in
 #: the kernel and the departing scheme's reservoir/aerosol fields are
 #: dropped, which is what ``species_actions`` has always receipted.
-PORTED_MP_PHYSICS = (1, 6, 8, 10, 18, 50, 9, 16, 28, 2, 24)
+PORTED_MP_PHYSICS = (1, 6, 8, 10, 18, 50, 9, 16, 28, 2, 24, 13)
 
 #: Selectors that carry graupel and hail as SEPARATE prognostic categories,
 #: so ``qg`` means graupel unambiguously and ``qh`` is its own species.
@@ -273,7 +276,7 @@ _DUAL_RIMED_SELECTORS = (9, 18, 24)
 #: "the scheme is not implemented" when in fact only the edge closure is
 #: missing.
 #:
-#: EMPTY, and that is the finished state rather than a stub.  mp=50 left it
+#: WDM5 (14) awaits its five-class entry closure. The mp=50 row left this list
 #: when its rime-pair closure was ratified; mp=16 and mp=28 left it
 #: together (R-004) when the closures described on
 #: :data:`PORTED_MP_PHYSICS` were ratified -- each is an operation this
@@ -286,10 +289,12 @@ _DUAL_RIMED_SELECTORS = (9, 18, 24)
 #:
 #: mp=3 (WSM3) is a member for a reason of its own: WSM3 has no
 #: moments at all; what a mixed edge lacks for it is a PHASE closure.
-UNVALIDATED_MIXED_EDGE_SELECTORS: tuple[int, ...] = (3, 5, 30)
+UNVALIDATED_MIXED_EDGE_SELECTORS: tuple[int, ...] = (3, 5, 14, 15, 26, 27, 29, 30, 38, 40, 52, 55, 56, 95, 97)
 
 _MASS_FIELDS = {
     2: ("qv", "qc", "qr", "qi", "qs", "qg"),
+    13: ("qv", "qc", "qr", "qi", "qs"),
+    56: ("qv", "qc", "qr", "qi", "qs", "qg", "qh"),
     1: ("qv", "qc", "qr"),
     # Milbrandt-Yau (Registry.EM_COMMON:3025): the six-species set plus a
     # separate hail category, the same mass shape NSSL carries.
@@ -314,6 +319,7 @@ _MASS_FIELDS = {
 }
 _MOMENT_FIELDS = {
     2: (),
+    13: ("rimi",),
     1: (),
     # A number moment for every one of the six hydrometeors; the WRF
     # driver binds qnc/qnr/qni/qns/qng/qnh at
@@ -360,7 +366,7 @@ _CARRIED_NUMBERS = ("nr", "ni")
 #: have a stable host field code, so appending the selector to
 #: :data:`PORTED_MP_PHYSICS` extends the code table and reorders nothing.
 #:
-#: EMPTY: mp=50's row left when its rime-pair closure was ratified, and
+#: WDM5's number row remains. mp=50 left when its rime-pair closure was ratified;
 #: mp=16's and mp=28's left together with theirs.  The moments the two
 #: rows described are now REAL rows in :data:`_MOMENT_FIELDS` with real
 #: field codes (nn = 24 for WDM6; nwfa = 25 and nifa = 26 for
@@ -369,11 +375,28 @@ _CARRIED_NUMBERS = ("nr", "ni")
 #: followed and no pre-existing code moved.
 from woof.core.fast_sbm_contract import BIN_SPECIES as _FSBM_BIN_SPECIES
 UNVALIDATED_MIXED_EDGE_MOMENTS: dict[int, tuple[str, ...]] = {
+    40: ("nr", "ni", "ns", "ng", "nc"),
     # WSM3 carries no number moment; its refusal is about the phase split
     # of its two condensate masses (see its reason below).
+    97: (),
     3: (),
+    14: WDM6_NUMBER_SPECIES,
+    26: ("qh",) + WDM6_NUMBER_SPECIES,
+    27: ("qh",) + WDM6_NUMBER_SPECIES,
     5: ("f_rimef",),
+    15: ("qrimef",),
     30: _FSBM_BIN_SPECIES,
+    52: ("nc", "ni", "qir", "qib", "ni2", "qir2", "qib2"),
+    55: ("nr", "ni", "ni2", "ni3", "qvoli", "qaoli", "qvoli2", "qaoli2", "qvoli3", "qaoli3"),
+    29: ("nc", "nr", "ni", "nwfa", "nifa"),
+    38: ("ng", "qvolg"),
+    # NTU (mp=56): the six numbers lead (nr/ni/ns/ng already hold field
+    # codes), then the aerosol budget and the ice volume, shape and
+    # moment fields no other scheme carries.
+    56: ("nr", "ni", "ns", "ng", "nc", "nh", "qdcn", "qtcn",
+         "qccn", "qrcn", "qnin", "fi", "fs", "vi", "vs", "vg",
+         "ai", "as_", "ag", "ah", "i3m"),
+    95: ("qt", "f_ice_phy", "f_rain_phy", "f_rimef_phy"),
 }
 
 #: The scheme's own name, and the paragraph that says why ITS closure is
@@ -384,7 +407,7 @@ UNVALIDATED_MIXED_EDGE_MOMENTS: dict[int, tuple[str, ...]] = {
 #: completes "... but it has no validated cross-scheme entry closure for
 #: its moments (...) -- ".
 #:
-#: EMPTY, with :data:`UNVALIDATED_MIXED_EDGE_SELECTORS`.  The two rows that
+#: WDM5 and MP38 name their missing entry closures below. The two rows that
 #: stood here (WDM6's CCN reservoir, Thompson-aerosol's three aerosol
 #: numbers) were retired by R-004: both named a seeding operation as
 #: unmeasured while the same operation shipped as the correct one on the
@@ -392,6 +415,12 @@ UNVALIDATED_MIXED_EDGE_MOMENTS: dict[int, tuple[str, ...]] = {
 #: they asked for are now on :data:`PORTED_MP_PHYSICS`, with the WRF lines
 #: that define them.
 _UNVALIDATED_MIXED_EDGE_REASONS: dict[int, tuple[str, str]] = {
+    97: ("Goddard GCE three-ice",
+         "gsfcgce_hail selects the meaning of qg and gsfcgce_2ice removes "
+         "frozen classes; a mixed edge has no defined mapping for those "
+         "switches and could populate a removed class or relabel hail as graupel"),
+    55: ("ISHMAEL", "A mixed edge has no closure for both volume moments of all three adaptive-habit categories; copying mass alone would change particle habit and deposition rates"),
+    40: ("Morrison aerosol", "Mixed-scheme conversion of the passive aercu_opt=0 QNC tracer has no native closure. Use a same-scheme edge."),
     3: ("WSM3",
         "WSM3 keeps cloud ice inside qc and snow inside qr below 0 C "
         "(phys/module_mp_wsm3.F:172-180, the phase split its own "
@@ -406,7 +435,40 @@ _UNVALIDATED_MIXED_EDGE_REASONS: dict[int, tuple[str, str]] = {
         "without a rime-factor closure changes sedimentation. Same-scheme "
         "nests preserve the Ferrier state; mixed edges need that closure."),
     30: ("FAST_SBM", "142 spectral distributions have no validated cross-scheme entry closure; transferring bulk moisture would not specify their shape"),
+    14: ("WDM5", "a mixed edge can introduce rain or cloud mass without its transported number, and this five-class entry closure has not been validated"),
+    52: ("P3 two-category", "a mixed edge would need a category partition and moment closure for both free ice populations; the one-category closure cannot preserve that inventory"),
+    27: ("UDM", "A mixed edge has no validated graupel/hail partition and cloud/rain/CCN number closure."),
+    29: ("RCON", "No mixed-scheme entry closure has been qualified for RCON aerosol and hydrometeor number moments."),
+    38: ("Thompson graupel-hail", "A cross-scheme edge has no density-consistent graupel number and volume closure."),
+    15: ("Ferrier-Aligo advected rime", "no cross-scheme mass-weighted rime "
+         "closure; a child would lose QRIMEF and change ice fall speeds"),
+    56: ("NTU multi-moment",
+         "its pristine-ice, snow, graupel and hail volume, shape and "
+         "second/third moments and its five-field aerosol budget have "
+         "no ratified entry closure from another scheme's two moments, "
+         "and inventing one would hand the child an ice habit and a "
+         "CCN cut-off the parent never had; a same-scheme NTU edge "
+         "interpolates every field and is not affected"),
+    95: ("Eta Ferrier", "no cross-scheme closure for total qt with carried phase and rime fractions"),
 }
+
+# P3 with predicted droplet number (mp=51) runs same-scheme nests (an
+# mp=51 parent and child carry the same field set, woof/core/nest_fields.py
+# forcing nc with the rest).  A MIXED edge into or out of it is refused by
+# name: the cross-scheme P3 closure is the ``target_mp == 50`` /
+# ``source_mp == 50`` arm of kernels/nest_microphysics.cu, which carries no
+# droplet number.  Entering MP51 through it would hand the child cloud water
+# with no matching nc (P3 then rebuilds nc from its lambda limiter,
+# module_mp_p3.F:6679-6685, a number no scheme predicted); leaving it would
+# drop nc where the target carries one (code 22, mp=9/16/28).
+UNVALIDATED_MIXED_EDGE_SELECTORS += (51,)
+UNVALIDATED_MIXED_EDGE_MOMENTS[51] = ("nc", "nr", "ni", "qir", "qib")
+_UNVALIDATED_MIXED_EDGE_REASONS[51] = (
+    "P3 one-category, predicted droplet number",
+    "the P3 entry/exit closure of kernels/nest_microphysics.cu (its "
+    "mp == 50 arms) carries no droplet number, so an edge into MP51 would "
+    "seed nc from P3's lambda limiter rather than from any predicted "
+    "number and an edge out of it would drop nc")
 
 # Named schemes (woof.microphysics_schemes) run same-scheme nests; a mixed
 # edge into or out of one has no validated entry closure for its moments
@@ -420,11 +482,33 @@ for _s in _NAMED_MP_SCHEMES.values():
         "a named WOOF scheme whose cross-scheme moment closure (graupel "
         "number and volume included) has not been written or measured")
 
+# P3 three-moment ice (mp=53) runs same-scheme nests (the generic SINT rows
+# carry its nc and qzi, woof/ingest/nest_init.py).  A MIXED edge into it
+# would have to diagnose the sixth ice moment Z -- carried as qzi =
+# (N*Z)**0.5 -- and a prognostic droplet number from a parent that has
+# neither, and no WRF operation defines that closure: real.exe seeds no P3
+# moment at all, and a qzi of zero is not neutral, because p3_main floors Z
+# at zsmall and then clamps it to the mu_i = 20 bound (module_mp_p3.F:2612,
+# :2654-2660), so every child ice PSD would enter at the narrowest shape
+# the table allows.  An edge OUT of it would drop Z silently from a
+# parent-side receipt that never names it.  Refused by name until that
+# closure is written and measured.
+UNVALIDATED_MIXED_EDGE_SELECTORS += (53,)
+UNVALIDATED_MIXED_EDGE_MOMENTS[53] = ("nr", "ni", "qir", "qib", "nc", "qzi")
+_UNVALIDATED_MIXED_EDGE_REASONS[53] = (
+    "P3 three-moment ice",
+    "the edge would have to invent the sixth ice moment (qzi) and a "
+    "prognostic droplet number from a parent that carries neither, and a "
+    "zero qzi puts every child ice PSD at the mu_i = 20 bound on its first "
+    "call (module_mp_p3.F:2612, :2654-2660)")
+
 # A selector may not join UNVALIDATED_MIXED_EDGE_SELECTORS without bringing
 # its own moments and its own sentence.  Adding 16 to the selector tuple and
 # not to the moments table turned the named refusal into a bare KeyError(16),
 # with every advertised gate still claiming the refusal worked; this check
 # turns that into an import-time failure that no code path can reach past.
+_UNVALIDATED_MIXED_EDGE_REASONS[26] = ("WDM7", "a mixed edge needs a conservative graupel/hail partition and hail exit, which are not implemented")
+
 _missing_edge_rows = sorted(
     mp for mp in UNVALIDATED_MIXED_EDGE_SELECTORS
     if mp not in UNVALIDATED_MIXED_EDGE_MOMENTS
@@ -541,6 +625,10 @@ class MicrophysicsTransitionContract:
     #: seeds the reservoir from the DOMAIN's own value rather than from a
     #: constant restated in the kernel.  Inert unless the target is mp=16.
     target_wdm6_ccn_conc: float = 1.0e8
+    #: The target NSSL domain's concentration. Its entry closure uses the
+    #: same REAL ABS(cccn)/1.225 seed as its cold-start and inflow paths.
+    target_nssl_cccn: float = 0.5e9
+    target_nssl_shapes: tuple[float, float] = (0.0, 1.0)
     #: Which way this contract runs, in words, for the receipt.  A FORCE
     #: edge diagnoses on the parent and interpolates; a FEEDBACK edge
     #: diagnoses on the child and restricts.  The kernel is the same and is
@@ -695,7 +783,11 @@ class MicrophysicsTransitionContract:
             # The seeded entries name their VALUE and its authority, so a
             # receipt reader can see what a mixed edge put in the child
             # rather than only that something was diagnosed.
-            if self.mixed and self.target_mp_physics == 16:
+            if self.mixed and self.target_mp_physics == 13:
+                row["reason"] = "wrf_sbu_ylin_cloud_snow_riming_diagnosis"
+                row["units"] = "fraction"
+                row["source"] = "WRF 4.6.1 module_mp_sbu_ylin.F:500-520"
+            elif self.mixed and self.target_mp_physics == 16:
                 row["reason"] = _WDM6_EDGE_ENTRY_REASONS[target]
                 row["seeded_value"] = (
                     self.target_wdm6_ccn_conc if target == "nn"
@@ -796,11 +888,17 @@ class MicrophysicsTransitionContract:
                     name: "ignored_due_to_scheme_closure_mismatch"
                     for name in _IGNORED_SOURCE_FIELDS
                 },
-                "nssl2_background_ccn_per_kg":
-                    NSSL2_BACKGROUND_CCN_PER_KG,
+                "nssl2_background_ccn_per_kg": float(
+                    _nssl2_background_ccn(self.target_nssl_cccn)),
                 "canonicalization_thresholds": dict(
                     _CANONICALIZATION_THRESHOLDS),
             })
+        if self.target_mp_physics == 18 and self.target_nssl_cccn != 0.5e9:
+            receipt["nssl2_cccn"] = self.target_nssl_cccn
+            receipt["nssl2_background_ccn_per_kg"] = float(
+                _nssl2_background_ccn(self.target_nssl_cccn))
+        if self.target_mp_physics == 18 and self.target_nssl_shapes != (0.0, 1.0):
+            receipt["nssl2_shapes"] = list(self.target_nssl_shapes)
         # Every edge touching P3 records the closure it executes, the same
         # way the ratified pair records its constants: the diagnosis is a
         # DEFINED ArWen behaviour where WRF defines nothing, so the receipt
@@ -1056,6 +1154,13 @@ def resolve_microphysics_transition(
             source_mp_physics=source, target_mp_physics=target,
             policy_id=policy, mixed=False)
 
+    from woof.physics_registry import column_microphysics_binding
+    for mp in (source, target):
+        binding = column_microphysics_binding(mp)
+        if binding is not None and binding.get('mixed_edge_refusal'):
+            raise ValueError(f'mixed nest microphysics edge MP{source}->MP{target}: '
+                             + binding['mixed_edge_refusal'])
+
     # NAMED refusal before the generic "not a ported selector" message,
     # for a scheme that IS ported but whose cross-scheme entry closure is
     # missing: an operator who reads "ported selectors are (...)" would
@@ -1073,8 +1178,9 @@ def resolve_microphysics_transition(
         raise ValueError(
             f"mixed nest microphysics edge MP{source}->MP{target} is REFUSED: "
             f"MP{mp} ({scheme}) is ported and runs, but it has "
-            f"no cross-scheme entry closure for its moments "
-            f"({moments}) -- {reason}.  Configure both domains with "
+            f"no defined cross-scheme entry mapping "
+            f"(number moments: {moments or 'none'}) because {reason}. "
+            f"Configure both domains with "
             f"mp_physics={mp}, or keep MP{mp} on a single domain.")
 
     if source not in PORTED_MP_PHYSICS or target not in PORTED_MP_PHYSICS:
@@ -1123,6 +1229,10 @@ def resolve_microphysics_transition(
         target_morrison_rimed_density=target_density,
         target_wdm6_ccn_conc=float(
             getattr(child_cfg, "wdm6_ccn_conc", 1.0e8)),
+        target_nssl_cccn=(float(_nssl2_concentration(
+            getattr(child_cfg, "nssl_cccn", 0.5e9))) if target == 18 else 0.5e9),
+        target_nssl_shapes=(float(getattr(child_cfg,"nssl_alphah",0.0)),
+                            float(getattr(child_cfg,"nssl_alphahl",1.0))),
     )
 
 
@@ -1291,6 +1401,7 @@ def transition_source_window(state, window):
     thb = getattr(state, "thb", None)
     fields["thb"] = (None if thb is None else cp.ascontiguousarray(cp.asarray(
         thb if thb.ndim == 1 else thb[(...,)+window])))
+    fields["use_theta_m"] = int(getattr(state, "use_theta_m", 0) or 0)
     fields.update(c1h=cp.ascontiguousarray(cp.asarray(state.c1h)),
                   c2h=cp.ascontiguousarray(cp.asarray(state.c2h)))
     return SimpleNamespace(**fields)
@@ -1383,7 +1494,6 @@ def launch_microphysics_edge_field(
     the FEEDBACK path passes the child and ``coupled=False``.
     """
 
-    from woof.core.kernels import get_kernel
 
     if not transition_handles_field(contract, field_name):
         raise ValueError(
@@ -1393,7 +1503,9 @@ def launch_microphysics_edge_field(
         raise TypeError("coupled must be bool")
     if (contract.source_mp_physics, contract.target_mp_physics) == (8, 18):
         return launch_mp8_to_mp18_parent_field(
-            state, field_name, out=out, coupled=coupled)
+            state, field_name, out=out, coupled=coupled,
+            nssl_cccn=contract.target_nssl_cccn,
+            nssl_shapes=contract.target_nssl_shapes)
     if (contract.number_source(field_name) is not None
             and getattr(state, field_name, None) is not None):
         # A parent that does not hold the number (a frame written without
@@ -1405,6 +1517,22 @@ def launch_microphysics_edge_field(
     shape = transition_source_field_shape(state, field_name)
     _validate_transition_arrays(contract, state, out, shape)
     placeholder = state.qv
+    if contract.target_mp_physics == 13 and field_name == "rimi":
+        # Preserve the existing mass translations and field-code authorities.
+        # This column diagnostic carries no source moment across an edge.
+        from woof.core.kernels import get_kernel
+        snow = getattr(state, "qs", None)
+        columns = shape[1] * shape[2]
+        get_kernel("sbu_ylin_edge", "sbu_ylin_edge_rimi")(
+            ((columns + _THREADS - 1) // _THREADS,), (_THREADS,), (
+                state.alt, state.qc, placeholder if snow is None else snow,
+                getattr(state, "qi", placeholder), getattr(state, "qir", placeholder),
+                getattr(state, "qib", placeholder),
+                state.mub2d, state.mup, state.c1h, state.c2h, out,
+                np.int32(snow is not None), np.int32(contract.source_mp_physics),
+                np.int32(coupled),
+                np.int32(shape[0]), np.int32(columns)))
+        return out
     source_arrays = []
     for name in ("qv", "qc", "qr", "qi", "qs", "qg", "qh"):
         value = getattr(state, name, None)
@@ -1454,7 +1582,10 @@ def launch_microphysics_edge_field(
                 mass_sources[slot] = _SOURCE_MASS_CODES[name]
     count = int(out.size)
     ny, nx = shape[1:]
-    get_kernel("nest_microphysics", "microphysics_edge_field")(
+    kernel, ccn_args = _nssl2_edge_kernel(
+        "microphysics_edge_field", contract.target_nssl_cccn, contract.target_nssl_shapes,
+        extra_defines=(("GPUWM_USE_THETA_M", 1),) if getattr(state, "use_theta_m", 0) else ())
+    kernel(
         ((count + _THREADS - 1) // _THREADS,), (_THREADS,), (
             state.alt, *source_arrays, *rime_arrays, *my2_arrays,
             state.mub2d, state.mup,
@@ -1468,6 +1599,7 @@ def launch_microphysics_edge_field(
             np.float32(contract.target_wdm6_ccn_conc),
             np.int32(coupled), np.int32(shape[0]), np.int32(ny),
             np.int32(nx),
+            *ccn_args,
         ))
     return out
 
@@ -1514,12 +1646,36 @@ def _carry_number_field(state, source_name: str, *, out, coupled: bool):
     return out
 
 
+def _nssl2_concentration(value):
+    from woof.core.nssl2_contract import nssl2_cccn_concentration
+    return nssl2_cccn_concentration(value)
+
+
+def _nssl2_background_ccn(value):
+    from woof.core.nssl2_contract import nssl2_background_ccn_per_kg
+    return nssl2_background_ccn_per_kg(value)
+
+
+def _nssl2_edge_kernel(name, nssl_cccn, nssl_shapes=(0.0, 1.0), *, extra_defines=()):
+    from woof.core.kernels import get_kernel, get_kernel_int_defines
+    from woof.core.nssl2_shape import shape_defines
+    defines = () if nssl_shapes == (0.0, 1.0) else shape_defines(nssl_shapes)
+    defines += tuple(extra_defines)
+    coefficient_args = ()
+    if _nssl2_concentration(nssl_cccn) != np.float32(0.5e9):
+        defines += (("NSSL2_VARIABLE_CCCN", 1),)
+        coefficient_args = (_nssl2_background_ccn(nssl_cccn),)
+    kernel = (get_kernel_int_defines("nest_microphysics", name, tuple(sorted(defines)))
+              if defines else get_kernel("nest_microphysics", name))
+    return kernel, coefficient_args
+
+
 def launch_mp8_to_mp18_parent_field(
-        state, field_name: str, *, out, coupled: bool) -> object:
+        state, field_name: str, *, out, coupled: bool,
+        nssl_cccn: float = 0.5e9, nssl_shapes=(0.0, 1.0)) -> object:
     """Original bit-specified MP8 -> MP18 translation entry point."""
 
     import cupy as cp
-    from woof.core.kernels import get_kernel
 
     if field_name not in _FIELD_CODES:
         raise ValueError(f"unsupported MP8->MP18 transition field {field_name!r}")
@@ -1554,12 +1710,15 @@ def launch_mp8_to_mp18_parent_field(
                 f"MP8 transition {name} must be float32 with shape {expected}")
 
     count = int(out.size)
-    get_kernel("nest_microphysics", "mp8_to_mp18_mass_diagnosed_field")(
+    kernel, ccn_args = _nssl2_edge_kernel(
+        "mp8_to_mp18_mass_diagnosed_field", nssl_cccn, nssl_shapes)
+    kernel(
         ((count + _THREADS - 1) // _THREADS,), (_THREADS,), (
             state.alt, state.qv, state.qc, state.qr, state.qi, state.qs,
             state.qg, state.mub2d, state.mup, state.c1h, state.c2h, out,
             np.int32(_FIELD_CODES[field_name]), np.int32(coupled),
             np.int32(shape[0]), np.int32(ny), np.int32(nx),
+            *ccn_args,
         ))
     return out
 
@@ -1609,6 +1768,7 @@ __all__ = [
 # selectors in neither tuple are cited by defect id; a mixed edge touching
 # them falls through to the generic refusal today.
 MIXED_EDGE_ABSENCES = {
+    96: "MAD-WRF has no qualified mixed-scheme cloud/tracer nest edge.",
     4: "WSM5 has no validated mixed-edge closure for parent graupel entering its five-class package; same-scheme edges do not convert species.",
     0: ("mp_physics=0 carries no hydrometeors to close a mixed edge "
         "over; a 0->X or X->0 edge falls through to the generic "
@@ -1621,6 +1781,12 @@ MIXED_EDGE_ABSENCES = {
           "is consulted"),
 }
 
+
+def _column_unvalidated_options():
+    from woof.physics_registry import component_options
+    return {int(option['selectors']['mp_physics']): option
+            for option in component_options('microphysics').values()
+            if option.get('extensions', {}).get('column_kernel', {}).get('mixed_edge_refusal')}
 
 def _require_agreement_with_the_registry() -> None:
     from woof.physics_registry import require_consumer_rows_agreement
@@ -1647,7 +1813,9 @@ def _require_agreement_with_the_registry() -> None:
         "woof.core.microphysics_transition (PORTED_MP_PHYSICS, "
         "UNVALIDATED_MIXED_EDGE_SELECTORS, _MASS_FIELDS, _MOMENT_FIELDS)",
         "microphysics", "nest_transition", observed, project=project,
-        cited_absences=MIXED_EDGE_ABSENCES)
+        cited_absences={**MIXED_EDGE_ABSENCES, **{
+            mp: option['extensions']['column_kernel']['mixed_edge_refusal']
+            for mp, option in _column_unvalidated_options().items()}})
 
 
 _require_agreement_with_the_registry()

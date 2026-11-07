@@ -204,12 +204,27 @@ def test_a_domain_off_a_projected_source_is_refused_in_the_source_plane():
     assert f"lat/lon ({corner_lat:.4f}, {corner_lon:.4f})" in message
 
 
-def test_the_series_must_declare_one_source_projection():
+def test_each_source_projection_has_independent_coverage():
     first = _projected_snapshot()
     second = _projected_snapshot(latin1=25.0)
     grid = _target_grid(ref_lat=35.3115, ref_lon=-97.5059, dx=3000.0,
                         e_we=191, e_sn=153)
-    with pytest.raises(ValueError, match="source grid changes between"):
+    receipt = _spatial_coverage_receipt(
+        (first, second, first), (grid,), _experiment(1), "declared")
+    assert receipt["schema"].endswith("-v3")
+    assert [r["forcing_indices"] for r in receipt["source_grids"]] == [[0, 2], [1]]
+    for item, snapshot in zip(receipt["source_grids"], (first, second)):
+        assert item["coverage"] == _spatial_coverage_receipt(
+            (snapshot,), (grid,), _experiment(1), "declared")
+
+
+def test_later_source_grid_still_requires_complete_target_coverage():
+    from dataclasses import replace
+    first = _projected_snapshot()
+    second = replace(first, longitude=first.longitude + 1000)
+    grid = _target_grid(ref_lat=35.3115, ref_lon=-97.5059, dx=3000.0,
+                        e_we=191, e_sn=153)
+    with pytest.raises(ValueError, match="outside|halo"):
         _spatial_coverage_receipt(
             (first, second), (grid,), _experiment(1), "declared")
 
@@ -294,13 +309,16 @@ def test_an_unevaluated_projection_family_is_refused_by_name():
         valid_time=datetime(2026, 8, 25, 18),
         levels_hpa=np.array([1000.0]),
         latitude=np.arange(5.0), longitude=np.arange(5.0), fields={},
-        projection={"family": "rotated_latitude_longitude",
+        # rotated_latitude_longitude was this test's example until the
+        # HRDPS/RDPS rows taught the pairing that family (feat/hrdps-source);
+        # polar stereographic is still unevaluated.
+        projection={"family": "polar_stereographic",
                     "parameters": {}})
     for reader in (declared_source_projection, source_coordinate_transform,
                    source_axis_space):
         with pytest.raises(SourceProjectionRefusal) as raised:
             reader(snapshot)
-        assert "rotated_latitude_longitude" in str(raised.value)
+        assert "polar_stereographic" in str(raised.value)
         assert "lambert_conformal" in str(raised.value)
 
 

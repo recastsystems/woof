@@ -2,7 +2,7 @@
   "schema": "native-initializer-both-cards-v1",
   "source_revision": "3431d240846128fc63f5ede110030c31f1e0a467",
   "source_sha256": {
-    "woof/core/sfire_ideal.py": "1e8c9cc1c4a571fe80b68abc4198f8a7e4345d6727c5a2e6b400e59a85d4bcc8",
+    "woof/core/sfire_ideal.py": "c88d61d713f6fe088accf579a6f8df85695e408cbbf516c5619c78ef6d743e9b",
     "woof/core/kernels/sfire_ideal.cu": "fb453b222c1915be8bce43f491a5ab634c11ccad6e688644bce27f8711251adc",
     "woof/core/sfire_ideal_atmos.py": "798825d20bef6a9937d728b3b2a8e164896a7287c5766acaecc7aa75d80dc707",
     "woof/core/kernels/sfire_ideal_atmos.cu": "4a3676370effcee9c4a4413b1d649b19f25335b798080c770060e27dfa28751a"

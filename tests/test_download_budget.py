@@ -1,6 +1,6 @@
 """A run's download and its preparation are priced before it starts, everywhere its disk is priced.
 
-Breakage these prevent, all measured on a development machine on 2026-09-26:
+Breakage these prevent, all measured on test host 4 on 2026-09-26:
 
 * the review estimate said download "no [fetch] in this plan" with null
   bytes, and null disk bytes, for an 18 hour HRRR plan whose fetch took

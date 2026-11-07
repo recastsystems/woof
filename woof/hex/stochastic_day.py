@@ -157,7 +157,14 @@ def score_day(request, *, reader, work, audit=None, grib_bridge=None):
         if not bool(cp.all(cp.isfinite(result) & (result > 0) & (result == cp.floor(result)))):
             raise ValueError("cell identities must be finite positive integers")
         return result
+    # The RRFS fork's history and diagnostics streams carry no indexToCellID: a request may
+    # declare that its forecasts are written in the geometry file's own cell order.
+    mesh_order = request.get("cell_order") == "mesh"
+
     def aligned(data):
+        if mesh_order and "indexToCellID" not in data:
+            check_clock(data, "xtime", request["valid_time"])
+            return
         actual = ids(data)
         if actual.shape != cell_ids.shape or not bool(cp.all(actual == cell_ids)):
             raise ValueError("input cell identities/order differ from verification mesh")
@@ -193,19 +200,27 @@ def score_day(request, *, reader, work, audit=None, grib_bridge=None):
         raise ValueError("height_kind must declare geopotential mass or MPAS constant-gravity interfaces")
     del data
     arms = []
+    # 2 m temperature is "t2" on the ArWen route's history and "t2m" in the MPAS
+    # suite route's (the hex default) history and diagnostics streams. THE BREAKAGE
+    # THIS PREVENTS: every MPAS-route ensemble failed scoring with "variable not
+    # found ... t2" (feat/stochastic-physics, 2026-10-29).
+    t2_name = request.get("t2_variable", "t2")
+    if t2_name not in ("t2", "t2m"):
+        raise ValueError("t2_variable must be t2 (WOOF route) or t2m (MPAS suite route)")
     for roster in (control, stochastic):
         members = {}
         for member, spec in roster.items():
             # A separate diagnostics file may hold t2, as on native MPAS.
-            data = read(spec["path"], ["pressure", "indexToCellID", "xtime"]
-                        + ([] if spec.get("diagnostics") else ["t2"]))
+            id_names = [] if mesh_order else ["indexToCellID"]
+            data = read(spec["path"], ["pressure", *id_names, "xtime"]
+                        + ([] if spec.get("diagnostics") else [t2_name]))
             aligned(data)
             pressure = field(data, "pressure", ("nCells", "nVertLevels"), ("Pa",))
             surface = data
             if spec.get("diagnostics"):
-                surface = read(spec["diagnostics"], ["t2", "indexToCellID", "xtime"])
+                surface = read(spec["diagnostics"], [t2_name, *id_names, "xtime"])
                 aligned(surface)
-            t2 = field(surface, "t2", ("nCells",), ("K",))
+            t2 = field(surface, t2_name, ("nCells",), ("K",))
             members[member] = forecast_fields_gpu(pressure, height, t2)
             del data, surface, pressure, t2
         arms.append(members)

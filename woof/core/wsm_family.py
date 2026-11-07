@@ -351,7 +351,8 @@ def prepare_fields(state, theta, rho, pii, dz, z8w, *, rounded_exner=False):
     from woof.core.state import DTYPE
     thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
     phb = state.phb if state.phb.ndim == 3 else state.phb[:, None, None]
-    theta[...] = thb + state.thp
+    theta[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
     rho[...] = 1.0 / state.alt
     if rounded_exner:
         from woof.core.microphysics import prepare_microphysics_exner

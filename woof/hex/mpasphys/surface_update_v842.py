@@ -5,6 +5,8 @@ The caller owns stream decoding (Rust), halo exchange, restart and the clock.
 No forecast/default suite selection is performed here.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from dataclasses import dataclass
@@ -147,7 +149,7 @@ def _module_on(device: int):
     # subnormal accumulation words. Direct NVRTC preserves --ftz=false.
     binary, _ = compiler.compile_using_nvrtc(
         _CUDA, options=(*_hex_numerics.options(CUDA_OPTIONS, keep_ftz=True), f"-I{directory}"),
-        arch=cp.cuda.Device(device).compute_capability)
+        arch=_compilation_target(device, xp=cp))
     with cp.cuda.Device(device):
         module = cp.cuda.function.Module()
         module.load(binary)

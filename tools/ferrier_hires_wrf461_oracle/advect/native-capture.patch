@@ -1,0 +1,63 @@
+diff --git a/phys/module_mp_fer_hires.F b/phys/module_mp_fer_hires.F
+index bfb5a1e..4367016 100755
+--- a/phys/module_mp_fer_hires.F
++++ b/phys/module_mp_fer_hires.F
+@@ -537,6 +537,9 @@ INTEGER, PARAMETER :: MAX_ITERATIONS=10
+ 
+       INTEGER :: I,J,K,KFLIP
+       REAL :: WC
++      INTEGER :: capunit
++      CHARACTER(LEN=256) :: capname
++      LOGICAL :: capture
+ !
+ !-----------------------------------------------------------------------
+ !**********************************************************************
+@@ -558,6 +561,28 @@ INTEGER, PARAMETER :: MAX_ITERATIONS=10
+ !
+ !----------
+ !2015-03-30, recalculate some constants which may depend on phy time step
++      capture = (itimestep == 1 .or. itimestep == 11 .or. &
++                 itimestep == 21 .or. itimestep == 41)
++      IF (capture) THEN
++        WRITE(capname,'(A,I0,A,I0,A,I0,A)') &
++          'mp15-capture-i',its,'-j',jts,'-t',itimestep,'.bin'
++        OPEN(NEWUNIT=capunit,FILE=TRIM(capname),ACCESS='stream', &
++             FORM='unformatted',STATUS='replace',CONVERT='little_endian')
++        WRITE(capunit) 150471,its,ite,jts,jte,kts,kte,itimestep,gid
++        WRITE(capunit) dt,dx,dy
++        WRITE(capunit) th_phy(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qv(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qc(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qr(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qi(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qrimef(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) rho_phy(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) p_phy(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) pi_phy(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) dz8w(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) RAINNC(its:ite,jts:jte)
++        WRITE(capunit) RAINNCV(its:ite,jts:jte)
++      ENDIF
+           CALL MY_GROWTH_RATES (DT)
+ 
+ !--- CIACW is used in calculating riming rates
+@@ -709,6 +734,19 @@ INTEGER, PARAMETER :: MAX_ITERATIONS=10
+ 
+ !-----------------------------------------------------------------------
+ 
++
++      IF (capture) THEN
++        WRITE(capunit) th_phy(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qv(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qc(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qr(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qi(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) qrimef(its:ite,kts:kte,jts:jte)
++        WRITE(capunit) RAINNC(its:ite,jts:jte)
++        WRITE(capunit) RAINNCV(its:ite,jts:jte)
++        WRITE(capunit) SR(its:ite,jts:jte)
++        CLOSE(capunit)
++      ENDIF
+   END SUBROUTINE FER_HIRES_ADVECT
+ 
+ !-----------------------------------------------------------------------

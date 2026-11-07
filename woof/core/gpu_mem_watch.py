@@ -178,7 +178,7 @@ class TransientProbeError(RuntimeError):
 def _run_nvidia_smi_text(arguments: list[str]) -> str:
     try:
         result = subprocess.run(
-            ["nvidia-smi", *arguments], check=False, capture_output=True,
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(), *arguments], check=False, capture_output=True,
             text=True, encoding="utf-8", errors="replace",
             timeout=NVIDIA_SMI_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:

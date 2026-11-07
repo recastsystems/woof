@@ -741,6 +741,16 @@ fn read_history_body(
     match (missing_centre, mesh) {
         (None, _) => {
             own_centres = Some((file.read_f64("latCell")?, file.read_f64("lonCell")?));
+            // A history that carries its own centres may still keep some
+            // mapped fields only in its diag stream (refl10cm_max): read
+            // those from the diag file beside it when it is this run's (same
+            // cells), and only the fields the history lacks.
+            if let Some(path) = diag_companion(history_path).filter(|p| p.is_file()) {
+                let opened = netcrust::File::open(&path)?;
+                if opened.dimension("nCells").map(|d| d.len()) == Some(n_cells) {
+                    diag = Some(opened);
+                }
+            }
         }
         (Some(name), None) => {
             return Err(MpasError::Refusal(format!("history has no {name}")));
@@ -895,6 +905,29 @@ fn read_history_body(
     if let Some((rate, 1)) = fields.get("CUPREC").map(|(v, l)| (v.clone(), *l)) {
         if let Some((refc, 1)) = fields.get_mut("REFC").map(|(v, l)| (v, *l)) {
             crate::fieldmap::add_convective_reflectivity(refc, &rate);
+        }
+    }
+
+    // HGT (`ter`) is static. A history that does not repeat it (hex's 72 h
+    // TC run) takes it from the run's init, else its static (`--mesh`)
+    // file, when that file is this run's (same cell count). Without it the
+    // frame had no terrain, so MSLP and every column product (simulated IR)
+    // were refused.
+    if requested("HGT") && !fields.contains_key("HGT") {
+        let candidates = init
+            .map(|i| i.path.clone())
+            .into_iter()
+            .chain(mesh.map(|m| m.source_path.clone()));
+        for path in candidates {
+            let Ok(other) = netcrust::File::open(&path) else { continue };
+            if other.dimension("nCells").map(|d| d.len()) != Some(n_cells) {
+                continue;
+            }
+            if let Ok(Some(value)) = read_cell_field(&other, "ter", n_cells) {
+                fields.insert("HGT".to_string(), value);
+                absent.retain(|name| name != "HGT");
+                break;
+            }
         }
     }
 
@@ -1375,7 +1408,10 @@ mod tests {
 
     /// The surface set decodes only its own rows: an unrequested profile is
     /// never read (so its non-finite value cannot refuse the frame), while
-    /// the full set still reads and refuses it.
+    /// the full set still reads and refuses it.  The profile is rain (`qr`),
+    /// which no surface deliverable reads.  Cloud water (`qc`) joined the
+    /// surface set for the cloud-cover maps (2c49173f80b), so it is a
+    /// requested surface row now and cannot stand in for an unrequested one.
     #[test]
     fn surface_read_does_not_decode_an_unrequested_nonfinite_profile() {
         use rw_store::netcdf_classic::{NcClassicWriter, NcData, NcDim, NcFormat, NcType, NcVarDef};
@@ -1402,7 +1438,7 @@ mod tests {
                 NcVarDef::new("latCell", NcType::Double, vec![0]),
                 NcVarDef::new("lonCell", NcType::Double, vec![0]),
                 NcVarDef::new("t2", NcType::Float, vec![0]),
-                NcVarDef::new("qc", NcType::Float, vec![0, 1]),
+                NcVarDef::new("qr", NcType::Float, vec![0, 1]),
             ],
             0,
         )
@@ -1411,7 +1447,7 @@ mod tests {
         writer.put("lonCell", NcData::Doubles(&[0.0, 0.01])).unwrap();
         writer.put("t2", NcData::Floats(&[280.0, 281.0])).unwrap();
         writer
-            .put("qc", NcData::Floats(&[1.0e-4, 2.0e-4, 3.0e-4, f32::NAN]))
+            .put("qr", NcData::Floats(&[1.0e-4, 2.0e-4, 3.0e-4, f32::NAN]))
             .unwrap();
         writer.finish().unwrap();
         let time = Some(Timestamp::parse("2026-01-01_00:00:00").unwrap());
@@ -1419,12 +1455,12 @@ mod tests {
             read_history_on_mesh_with_field_set(&fixture.0, None, time, None, None, "surface")
                 .expect("unrequested profile is not decoded");
         assert_eq!(surface.fields["T2"].0, [280.0, 281.0]);
-        assert!(!surface.fields.contains_key("QCLOUD"));
-        assert!(!surface.absent.iter().any(|name| name == "QCLOUD"));
+        assert!(!surface.fields.contains_key("QRAIN"));
+        assert!(!surface.absent.iter().any(|name| name == "QRAIN"));
         let error = read_history_on_mesh(&fixture.0, None, time, None, None)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("history qc is not finite"), "{error}");
+        assert!(error.contains("history qr is not finite"), "{error}");
         let unknown =
             read_history_on_mesh_with_field_set(&fixture.0, None, time, None, None, "nope")
                 .unwrap_err()

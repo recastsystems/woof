@@ -20,9 +20,9 @@ is paired with something that must fail if the mechanism is wrong:
    transplant does not write: the SINT base state and the map factors,
    which a null move recomputes from scratch and must reproduce exactly,
    and the RK time-t copies, which are checked against WRF
-   ``start_domain``'s post-condition rather than against their pre-move
-   values -- they are per-step scratch that ``dycore.step()`` rewrites
-   before reading, which is why the restart contract excludes them.
+   ``start_domain``'s post-condition. The moist-theta previous thermal
+   time level is carried separately and checked by the overlap witness;
+   the remaining copies are workspaces refreshed before their next use.
 2. ``parent_bitwise_unchanged`` -- the parent's serialised state digest,
    taken around each relocation.  A re-grid reads the parent; if it ever
    writes one, the registered non-mutating-coupling property is gone.
@@ -93,7 +93,8 @@ MIN_TREATED_OVERLAP_FRACTION = 0.10
 
 def short_scaffold(*, run_seconds: float = LEG_SECONDS,
                    i_parent_start: int | None = None,
-                   j_parent_start: int | None = None):
+                   j_parent_start: int | None = None,
+                   use_theta_m: int = 0):
     """The N2c geometry over one short leg, optionally re-placed."""
     exp = load_scaffold()
     root, child = exp.domains
@@ -101,11 +102,11 @@ def short_scaffold(*, run_seconds: float = LEG_SECONDS,
     root = replace(
         root, history_interval_s=history,
         run=replace(root.run, run_seconds=run_seconds,
-                    output_interval_s=history))
+                    output_interval_s=history, use_theta_m=use_theta_m))
     child = replace(
         child, history_interval_s=history,
         run=replace(child.run, run_seconds=run_seconds,
-                    output_interval_s=history))
+                    output_interval_s=history, use_theta_m=use_theta_m))
     if i_parent_start is not None:
         child = replace(child, i_parent_start=int(i_parent_start),
                         j_parent_start=int(j_parent_start))
@@ -131,7 +132,7 @@ def _bit_mismatches(actual: np.ndarray, expected: np.ndarray) -> int:
 def snapshot_child(state) -> dict[str, np.ndarray]:
     """Host copies of everything a relocation is required to carry."""
     out = {}
-    for name in relocatable_attrs():
+    for name in relocatable_attrs(state):
         value = getattr(state, name, None)
         if value is not None:
             out[name] = _host(value)
@@ -156,23 +157,22 @@ def snapshot_derived(state) -> dict[str, np.ndarray]:
 
 
 def rk_seed_consistency(state) -> dict[str, object]:
-    """After a move, every RK time-t copy must equal its current field.
+    """Check the refreshed RK copies after a move.
 
-    NOT "must equal what it was before the move".  The ``*0`` arrays are
-    per-step scratch: ``woof/core/dycore.py:2446-2453`` rewrites every one
-    of them from its current field at the top of ``step()``, before
-    anything reads them, which is also why the restart-serialised contract
-    excludes them and why a checkpoint does not carry them.  Their
-    inter-step value is dead, so preserving it would be a claim about
-    nothing.  What IS defined is WRF ``start_domain``'s post-condition,
-    and that is what this checks -- it catches a reseed that never ran, or
-    one that ran BEFORE the transplant and so seeded the cold-start values
-    over ground the transplant had already corrected.
+    Most time-t arrays are workspaces rewritten before their next use,
+    so WRF start_domain seeds them from the current state. With moist
+    theta, thp0 instead supplies the previous thermal time level to the
+    physics tendency conversion. It belongs to the carried inventory,
+    checked by the independent overlap comparison below.
     """
     from woof.ingest.nest_init import RK_TIME_T_SEED_PAIRS
 
     fields = {}
     for current, seed in RK_TIME_T_SEED_PAIRS:
+        if seed == "thp0" and getattr(state, "use_theta_m", 0):
+            # Moist physics reads the previous thermal time level before
+            # small_step_prep; overlap_component checks its carried words.
+            continue
         value = getattr(state, current, None)
         copy = getattr(state, seed, None)
         if value is None or copy is None:
@@ -183,8 +183,9 @@ def rk_seed_consistency(state) -> dict[str, object]:
         }
     return {
         "note": ("RK time-t copies equal their current field, per WRF "
-                 "start_domain; the pre-move value is per-step scratch "
-                 "(dycore.py:2446-2453 rewrites it) and is not preserved"),
+                 "start_domain (selected moist thp0 is carried separately); "
+                 "the other pre-move values are per-step scratch "
+                 "and are refreshed before their next use"),
         "fields": fields,
         "compared_fields": len(fields),
         "pass": bool(fields and all(item["bit_mismatches"] == 0
@@ -309,7 +310,8 @@ def _adopting_initializer(state, grid):
 
 def run(outdir: str | Path, *,
         move_parent_cells: int = DEFAULT_MOVE_PARENT_CELLS,
-        leg_seconds: float = LEG_SECONDS) -> dict[str, object]:
+        leg_seconds: float = LEG_SECONDS,
+        use_theta_m: int = 0) -> dict[str, object]:
     """Integrate, relocate twice, integrate again, and score five components."""
     from woof.core.dycore import stability_report
     from woof.static.lambert import grids_from_projection_config
@@ -324,7 +326,8 @@ def run(outdir: str | Path, *,
         raise RuntimeError("the N2c boundary gate kind/threshold changed")
 
     outdir = Path(outdir)
-    exp = short_scaffold(run_seconds=float(leg_seconds))
+    exp = short_scaffold(run_seconds=float(leg_seconds),
+                         use_theta_m=use_theta_m)
     root_dc, child_dc = exp.domains
     start_placement = Placement(
         grid_id=child_dc.grid_id,
@@ -434,7 +437,8 @@ def run(outdir: str | Path, *,
     exp_b = short_scaffold(
         run_seconds=float(leg_seconds),
         i_parent_start=moved_to.i_parent_start,
-        j_parent_start=moved_to.j_parent_start)
+        j_parent_start=moved_to.j_parent_start,
+        use_theta_m=use_theta_m)
     model_b = assemble_idealized_tree(
         exp_b, model.root.state,
         grids=grids_from_projection_config(exp_b),
@@ -493,6 +497,7 @@ def run(outdir: str | Path, *,
     }
     report = {
         "case": "nest_relocate_r3",
+        "use_theta_m": int(use_theta_m),
         "geometry": {
             "parent": [child_dc.parent_grid_ratio,
                        int(root_dc.run.nx), int(root_dc.run.ny),
@@ -525,9 +530,10 @@ def main(argv=None) -> int:
     parser.add_argument("--move-parent-cells", type=int,
                         default=DEFAULT_MOVE_PARENT_CELLS)
     parser.add_argument("--leg-seconds", type=float, default=LEG_SECONDS)
+    parser.add_argument("--use-theta-m", type=int, choices=(0, 1), default=0)
     args = parser.parse_args(argv)
     report = run(args.outdir, move_parent_cells=args.move_parent_cells,
-                 leg_seconds=args.leg_seconds)
+                 leg_seconds=args.leg_seconds, use_theta_m=args.use_theta_m)
     print(json.dumps(
         {name: report["components"][name]["pass"] for name in COMPONENTS},
         indent=2, sort_keys=True))

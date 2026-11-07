@@ -58,7 +58,7 @@ def test_the_five_are_on_demand_and_out_of_the_wheel():
         assert name not in wheel, name
     # The forecast's own tools stay in the wheel.
     for default in ("rw_wrfbatch", "rw_netcdf", "netcdf_writer", "gpuwm_mapped_engine",
-                    "rw_fetch", "static_fields", "rw_nexrad", "rw_grib2export", "rw_zarr"):
+                    "rw_fetch", "static_fields"):
         assert default in wheel, default
 
 
@@ -153,3 +153,17 @@ def test_doctor_reports_the_on_demand_row(pip_install, monkeypatch):
     for check in (doctor._forecast_scoreboard_check(), doctor._tc_fields_check()):
         assert check.brief == "on demand; staged by its first fetch", check
         assert check.severity == doctor.SEVERITY_OPT_IN and not check.blocking
+
+
+def test_doctor_reports_the_history_grib2_exporter_on_demand(pip_install, monkeypatch):
+    """rw_history_grib2 went on demand in 2.9.12 (SIZE-01); its row read "not staged; its doors
+    cannot run" on the Windows wheel smoke (R12) where every other on-demand row says on demand."""
+    from woof import doctor
+    import woof.bridge_partial as bridge_partial
+    monkeypatch.setattr(bridge_partial, "fetch_partial",
+                        lambda *a, **k: pytest.fail("doctor downloaded"))
+    monkeypatch.setattr(bridges, "find_artifact", lambda env, filename, **kw: None)
+    monkeypatch.delenv("WOOF_RW_HISTORY_GRIB2", raising=False)
+    check = doctor._history_grib2_check()
+    assert check.brief == "on demand; staged by its first fetch", check
+    assert check.severity == doctor.SEVERITY_OPT_IN and not check.blocking

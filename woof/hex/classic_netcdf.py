@@ -1,6 +1,6 @@
 """Read whole numeric variables of a classic (CDF-1/2/5) netCDF file on several threads.
 
-THE COST THIS REMOVES (30 km globe, x1.655362, V5090 box, 2026-10-27): ``Mesh.from_netcdf`` read every grid and
+THE COST THIS REMOVES (30 km globe, x1.655362, reference system box, 2026-10-27): ``Mesh.from_netcdf`` read every grid and
 init variable through netCDF4-python one after another on the forecast's main thread (netCDF-C is not thread safe),
 about 13 s of each 30 km member start while four cards waited.  A classic file stores each variable's words
 big-endian at an offset its header names, so the words can be read straight from those offsets on many threads
@@ -12,7 +12,7 @@ dtype, the same shape (a record variable of a one-record file keeps its leading 
 caller reads it through netCDF4 as before: character data, 0-d variables, attributes netCDF4 acts on
 (``scale_factor``, ``add_offset``, ``_Unsigned``), and record variables of a file with other than one record.
 
-THE COST ``WholeReads`` REMOVES (own24 zoom globe, 167,254 cells x 55 levels, DA member leg on an RTX 5090,
+THE COST ``WholeReads`` REMOVES (own24 zoom globe, 167,254 cells x 55 levels, state analysis member leg on an RTX 5090,
 hex 0.4.9, 2026-10-28): after the mesh, the vertical-grid and initial-state loaders (woof.hex.driver) still read
 about 1 GB of the init (zb, zb3, zxu, zgrid, zz, dss, rho, theta, qv, u, w, rho_base, theta_base) through
 netCDF4 one variable after another on the main thread while the card waited.  ``WholeReads`` starts every one of

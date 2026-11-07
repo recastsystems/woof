@@ -1,3 +1,6 @@
+// One shared column kernel for selectors 5 and 15.
+// mp15 derives rime factor from QRIMEF/QI (:615), keeps QT/F_* local,
+// and writes QRIMEF=QI*F_RIMEF_PHY after repartition (:690).
 // gpuwm/core/kernels/fer_hires.cu
 //
 // Ferrier-Aligo microphysics, WRF mp_physics = 5 (package fer_mp_hires),
@@ -445,7 +448,8 @@ void fer_hires_column(real* __restrict__ th, real* __restrict__ qv,
                       real* __restrict__ sr,
                       real* __restrict__ refl,
                       const real* __restrict__ tab,
-                      real dt, int gid, int refl_due, int nz, int ny, int nx, int analysis_only)
+                      real dt, int gid, int refl_due, int nz, int ny, int nx,
+                      int analysis_only, real* __restrict__ qrimef, int advected_rime)
 {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (col >= ny * nx) return;
@@ -523,7 +527,7 @@ void fer_hires_column(real* __restrict__ th, real* __restrict__ qv,
             if (t_phy < FH_T_ICEK) Fice = 1.f;
         } else {
             Fice = fh_max(0.f, fh_min(1.f, qi_in / QTk));
-            FrimeF = f_rimef[idx];
+            FrimeF = advected_rime ? qrimef[idx] / qi_in : f_rimef[idx];
         }
         if (qr_in <= FH_EPSQ) Frain = 0.f;
         else Frain = qr_in / (qr_in + qc_in);
@@ -1224,13 +1228,17 @@ void fer_hires_column(real* __restrict__ th, real* __restrict__ qv,
             if (Frain_o >= 1.f) { QRo = QCo; QCo = 0.f; }
             else { QRo = Frain_o * QCo; QCo = QCo - QRo; }
         }
-        qt[idx] = WCo;
+        if (!advected_rime) qt[idx] = WCo;
         qi[idx] = QIo;
         qr[idx] = QRo;
         qc[idx] = QCo;
-        f_ice[idx] = Fice_o;
-        f_rain[idx] = Frain_o;
-        f_rimef[idx] = FrimeF_o;
+        if (advected_rime) {
+            qrimef[idx] = QIo * FrimeF_o;
+        } else {
+            f_ice[idx] = Fice_o;
+            f_rain[idx] = Frain_o;
+            f_rimef[idx] = FrimeF_o;
+        }
     }
 
     if (analysis_only) return;

@@ -48,9 +48,18 @@ STREAM_DOORS = {"rw_igra2", "rw_amv", "rw_ndbc", "rw_gnssro", "rw_wis2", "rw_pre
                 # 2.9.11 (PyPI per-file limit): opt-in simulated radar, ML export, the wind-farm
                 # table decoder and the opt-in hydro door's payload library, each staged by its first use.
                 "rw_simradar", "rw_mlexport", "rw-wind-table", "nextgen_hydrofabric",
-                # WOOF 1.1.0 r16 (PyPI per-file limit): European radar, and the three MPAS bridges every
-                # hex door reads from the hex helpers first.
-                "rw_odim", "rw_mpas_geometry", "rw_mpas_convert", "rw_mpas_lbc"}
+                # 3.0 opt-in doors (FDDA, waves, TC verification) and, for the PyPI per-file
+                # limit (SIZE-01), the opt-in history GRIB2, ODIM, TC and aerosol tools and the
+                # gpuwm-hex-side MPAS tools, each fetched on first use.
+                "rw_fddaobs", "rw_waves_data", "rw_waves_coupled_prepare", "rw_tc_rmw_score", "tc-verify",
+                "rw_history_grib2", "rw_odim", "rw_mpas_static", "rw_mpas_lbc",
+                "rw_mpas_convert", "rw_mpas_geometry", "rw_mpas_mesh",
+                "rw_storm_merge", "rw_tc_vitals", "public-aerosol-build",
+                "aerosol-grid",
+                # WOOF 1.1.6 (PyPI per-file limit: the platform wheel built at 105.5 MB): the
+                # ERA5 ARCO reader, the GRIB2 exporter, the radar ingest and superob, and the
+                # hydro forcing library, each fetched on first use.
+                "rw_zarr", "rw_grib2export", "rw_nexrad", "rw_superob", "arwen_nextgen_forcing"}
 PLATFORMS = ("linux-x86_64", "win-x86_64")
 REVISION = "a" * 40
 FETCH = "woof fetch-bridges"
@@ -84,7 +93,7 @@ def test_restored_tools_and_default_paths_are_carried():
     from _woof_snapshot import without_left_out_artifacts
     for default in sorted(without_left_out_artifacts(
             ("rw_wrfbatch", "rw_netcdf", "netcdf_writer", "gpuwm_mapped_engine",
-             "rw_fetch", "static_fields", "rw_nexrad", "arwen-tui"))):
+             "rw_fetch", "static_fields", "arwen-tui"))):
         assert default in {a.name for a in bridge_assets.wheel_artifacts()}, default
 
 
@@ -370,9 +379,10 @@ def test_missing_restored_artifact_still_has_the_fetch_remedy(pip_install, artif
 
 
 def test_the_remedy_for_any_other_artifact_is_unchanged(pip_install):
+    # (WOOF 1.1.6) rw_nexrad went on demand; rw_netcdf is carried by every platform wheel.
     remedy = bridges.artifact_remedy(
-        env_var="WOOF_RW_NEXRAD", filename="rw_nexrad", subject="the radar front door",
-        crate_relative=bridges.RUSTWX_CRATE_RELATIVE, artifact="rw_nexrad")
+        env_var="WOOF_RW_NETCDF", filename="rw_netcdf", subject="the NetCDF decoder",
+        crate_relative=bridges.RUSTWX_CRATE_RELATIVE, artifact="rw_netcdf")
     assert _first_command(remedy) == FETCH
     assert "fetched on demand" not in remedy
 

@@ -554,11 +554,21 @@ extern "C" __global__ void nonles_scalar_lap4_842(
 
 # MPAS mpas_atm_core.F:1134-1160; use the shared GNU powf authority.
 _SCALING_SOURCE = r"""
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_40000000_DEFINED
+#define HEX_DIVISOR_40000000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40000000 = 2.0f;
+#else
+static const float hex_divisor_40000000 = 2.0f;
+#endif
+#endif
+
 extern "C" __global__ void nonles_scaling842(const int* coe,
     const float* density,int ne,int enabled,float* del2,float* del4) {
     int e=blockIdx.x*blockDim.x+threadIdx.x;if(e>=ne)return;
     del2[e]=1.0f;del4[e]=1.0f;if(!enabled)return;
-    float mean=mpas_div(mpas_add(density[coe[2*e]],density[coe[2*e+1]]),2.0f);
+    float mean=mpas_div(mpas_add(density[coe[2*e]],density[coe[2*e+1]]),hex_divisor_40000000);
     del2[e]=mpas_div(1.0f,mpas_native_powf_positive(mean,0.25f));
     del4[e]=mpas_div(1.0f,mpas_native_powf_positive(mean,0.75f));
 }

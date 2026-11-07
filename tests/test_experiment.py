@@ -878,7 +878,7 @@ def test_experiment_path_runs_runconfig_invariant_battery(tmp_path):
     probe cases that previously loaded cleanly all fail loudly."""
     with pytest.raises(ValueError, match="mp_physics"):
         load_experiment(_write(tmp_path,
-                               shared="moist = true\nmp_physics = 55"))
+                               shared="moist = true\nmp_physics = 95"))
     with pytest.raises(ValueError, match="time_step_sound must be even"):
         load_experiment(_write(tmp_path, shared="time_step_sound = 3"))
     # Constant K on these boundaries was refused while km_opt=1 was a
@@ -1263,7 +1263,7 @@ def test_is_experiment_toml_sniff(tmp_path):
 # cannot see it: no ModuleNotFoundError escapes -- the refusal is the door
 # working as designed.  NOT marked gpu: no device is opened, and gpu
 # implies a skip wherever local GPU work is banned, which would retire
-# this on the machine that runs the CPU battery.  Measured on a development machine,
+# this on the machine that runs the CPU battery.  Measured on test host 1,
 # 2026-09-17.
 @requires_cupy
 def test_cli_routes_experiment_toml_to_experiment_path(tmp_path, capsys):
@@ -1295,7 +1295,7 @@ def test_cli_routes_experiment_toml_to_experiment_path(tmp_path, capsys):
 # cannot see it: no ModuleNotFoundError escapes -- the refusal is the door
 # working as designed.  NOT marked gpu: no device is opened, and gpu
 # implies a skip wherever local GPU work is banned, which would retire
-# this on the machine that runs the CPU battery.  Measured on a development machine,
+# this on the machine that runs the CPU battery.  Measured on test host 1,
 # 2026-09-17.
 @requires_cupy
 def test_cli_single_domain_summary_needs_no_transition_fields(

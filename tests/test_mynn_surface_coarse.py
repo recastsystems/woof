@@ -670,8 +670,8 @@ GPU_ULP_BY_TOOLCHAIN = {
 #: (cupy-cuda12x), reads the sm_120 row A146 re-recorded under 13.4: every
 #: reading this file's tests take, and the device result behind each, is
 #: bit-identical under the two compilers.  Before this row 12.9.86 failed
-#: here by name (tests/_toolchain_rows.py).  MEASURED 2026-10-01 on a development machine's
-#: RTX 5070 Ti and a development machine's RTX 5090, two processes per compiler, at
+#: here by name (tests/_toolchain_rows.py).  MEASURED 2026-10-01 on test host 4's
+#: RTX 5070 Ti and test host 2's RTX 5090, two processes per compiler, at
 #: integrate/2.8 9dbb4a2db.
 GPU_ULP_BY_TOOLCHAIN[("120", (12, 9))] = (
     GPU_ULP_BY_TOOLCHAIN[("120", (13, 4))])
@@ -680,7 +680,7 @@ GPU_ULP_BY_TOOLCHAIN[("120", (12, 9))] = (
 #: returns the RTX 5090's words for every output these gates compare:
 #: 16,518 words, zero differing, NVRTC 13.4, 2026-10-05.  The default row,
 #: recorded before those pins, no longer describes it: it failed 31 gates
-#: on the RTX 4090 with no kernel change.  MEASURED on a development machine's RTX 4090
+#: on the RTX 4090 with no kernel change.  MEASURED on test host 1's RTX 4090
 #: under NVRTC 12.9, 13.3 and 13.4: every gate passes on the sm_120 row.
 GPU_ULP_BY_TOOLCHAIN[("89", (12, 9))] = GPU_ULP_BY_TOOLCHAIN[("120", (13, 4))]
 GPU_ULP_BY_TOOLCHAIN[("89", (13, 3))] = GPU_ULP_BY_TOOLCHAIN[("120", (13, 4))]

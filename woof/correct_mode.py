@@ -130,7 +130,7 @@ CORRECTIONS: tuple[Correction, ...] = (
             "and the atmosphere unchanged"),
         # Classic Thompson (8) and aerosol-aware Thompson (28) both drop the
         # cloud water their fallout takes out of the lowest level.
-        carriers=(("mp_physics", (8, 28)),),
+        carriers=(("mp_physics", (8, 28, 38)),),
     ),
     Correction(
         finding="WB4",
@@ -182,9 +182,10 @@ KEY_SCOPE: Mapping[str, tuple[str, tuple[int, ...]]] = {
     "wsm3_conservative_surface": ("mp_physics", (3,)),
     "wsm5_conservative_surface": ("mp_physics", (4,)),
     "wsm7_conservative_surface": ("mp_physics", (24,)),
-    # Classic (8) and aerosol-aware (28) Thompson run the same cloud fallout
-    # and both drop the flux out of the lowest level.
-    "thompson_cloud_surface_booking": ("mp_physics", (8, 28)),
+    # Classic (8), aerosol-aware (28), and graupel-hail (38) Thompson
+    # all book settled cloud. Scope must include every writer so restart
+    # allocates and restores the carried total before the first step.
+    "thompson_cloud_surface_booking": ("mp_physics", (8, 28, 38)),
     # HN1: the schemes whose number moments the handover closure writes.
     "hydrometeor_handover_numbers": ("mp_physics", (8, 10, 28)),
 }

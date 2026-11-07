@@ -697,13 +697,24 @@ def test_artifact_filenames_agree_with_the_resolvers_on_this_host():
     from woof.isobaric_bridge import library_names as isobaric_names
     from woof.obs.superob_bridge import library_name as superob_name
     from woof.core.tempo_rust import library_name as tempo_name
+    from woof.core.p3_rust import library_name as p3_name
+    from woof.core.cam3_tables import library_name as cam_name
+
+    from woof.core.cam3_tables import library_name as cam_tables_name
+    from woof.core.dfi_runtime import library_name as dfi_name
+    from woof.tslist_bridge import library_name as tslist_name
+    from woof.core.cu99_launch import library_name as cu99_launch_name
+    from woof.tc.mapped_vortex import library_name as tc_frames_name
+    from woof.core.dfi_runtime import library_name as dfi_name
+    from woof.tslist_bridge import library_name as tslist_name
     from woof.hydrofabric import library_names as hydrofabric_names
     from woof.hydro.forcing_inputs import library_names as forcing_names
 
     # One expected filename per library, from the resolver that actually
     # searches for it: libraries with one shared expectation would
     # pass while a bundle staged a file nothing looks for.
-    libraries = {"nextgen_hydrofabric": hydrofabric_names()[0],
+    libraries = {"arwen_dfi": dfi_name(), "gpuwm_tslist": tslist_name(),
+                 "nextgen_hydrofabric": hydrofabric_names()[0],
                  "arwen_nextgen_forcing": forcing_names()[0],
                  "gpuwm_preprocess_cpu": cpu_bridge_candidates()[-1].name,
                  "region_global_dealias": region_library_name(),
@@ -714,6 +725,14 @@ def test_artifact_filenames_agree_with_the_resolvers_on_this_host():
                  "rw_isobaric": isobaric_names()[0],
                  "rw_superob": superob_name(),
                  "rw_tempo": tempo_name(),
+                 "rw_p3": p3_name(),
+                 "rw_cam_tables": cam_name(),
+
+                 "rw_cam_tables": cam_tables_name(),
+                 "arwen_dfi": dfi_name(),
+                 "gpuwm_tslist": tslist_name(),
+                 "rw_cu99_launch": cu99_launch_name(),
+                 "tc_frames_io": tc_frames_name(),
                  # Resolved by woof hex (woof.hex.hrrr_intermediate), which
                  # spells it this way on each platform.
                  "rw_projected_intermediate": (

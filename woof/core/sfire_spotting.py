@@ -598,4 +598,5 @@ def prepare_atmosphere(state,cfg):
             padded=cp.zeros(nz+1,cp.float32);padded[:nz]=value;value=padded
         packed[key]=value
     return prepare_native_fields(packed,p_top=float(state.p_top),rdx=float(np.float32(1.)/np.float32(cfg.dx)),
-        rdy=float(np.float32(1.)/np.float32(cfg.dy)),theta_total=True)
+        rdy=float(np.float32(1.)/np.float32(cfg.dy)),theta_total=True,
+        use_theta_m=bool(getattr(state,"use_theta_m",0)))

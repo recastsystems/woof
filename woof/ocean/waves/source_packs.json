@@ -1,0 +1,56 @@
+{
+  "schema": "gpuwm.waves.source-packs/v1",
+  "integration": "joint-diagonal-implicit-v1; DIA diagonal; HJ and positivity limits; collective tail stress",
+  "references": {
+    "wind": "Janssen (1991), JPO 21, 1631-1642, doi:10.1175/1520-0485(1991)021<1631:QLTOWW>2.0.CO;2",
+    "st4": "Ardhuin et al. (2010), JPO 40, 1917-1941, doi:10.1175/2010JPO4324.1, equations 8-24 and Tables A1-A2",
+    "swell": "Ardhuin, Chapron and Collard (2009), GRL 36 L06607, doi:10.1029/2008GL037030",
+    "janssen": "Bidlot, Janssen and Abdalla (2007), ECMWF Technical Memorandum 509, doi:10.21957/m97gmhqze, equations 4-13",
+    "limiter": "Hersbach and Janssen (1999), JAOT 16, 884-892, doi:10.1175/1520-0426(1999)016<0884:IOTSFB>2.0.CO;2; coefficient as revised in Bidlot et al. 2007 equation 13",
+    "swell_update": "2016 GRL43,3423-3430, doi:10.1002/2015GL067566, equations3-4 and section3"
+  },
+  "st4": {
+    "beta_max": 1.52,
+    "zalpha": 0.006,
+    "alpha0": 0.0095,
+    "z0_base_max": 0.002,
+    "shelter": 1.0,
+    "saturation_coefficient": 2.2e-05,
+    "saturation_threshold": 0.0009,
+    "isotropic_fraction": 0.3,
+    "cumulative_coefficient": 0.4,
+    "cumulative_frequency_ratio": 0.5,
+    "swell_fe": 0.0037,
+    "swell_laminar_coefficient": 1.2,
+    "dia_coefficient": 25000000.0,
+    "tail_factor": 9.9,
+    "swell_viscous_theory_factor": 1.0
+  },
+  "janssen": {
+    "beta_max": 1.2,
+    "zalpha": 0.011,
+    "alpha0": 0.0095,
+    "z0_base_max": 0.002,
+    "shelter": 0.0,
+    "white_coefficient": 2.1,
+    "white_quadratic_fraction": 0.6,
+    "dia_coefficient": 27800000.0,
+    "tail_factor": 2.5
+  },
+  "common": {
+    "g": 9.80665,
+    "rho_water": 1025.0,
+    "kappa": 0.41,
+    "air_viscosity": 1.5e-05,
+    "linear_seed": 0.0015,
+    "bottom_friction": 0.038,
+    "breaking_gamma": 0.73,
+    "increment_limiter": 3e-07
+  },
+  "choices": [
+    "Constant swell friction uses the independent1050-track median fe=.0037 from2016 GRL, not buoy fitting. The same paper corrects the old factor-two viscous error. Cdsv1.2 and the2010 Reynolds switch remain. This empirical population update is not an exact universal closure.",
+    "Saturation coefficient follows published Table A2 (2.2e-5); surrounding prose gives a different exponent. This choice must be assessed by the growth smoke.",
+    "The roughness base cap is active for both packs as the high-wind safeguard; this is a declared change to uncapped BAJ.",
+    "No release-default source-pack skill claim before the two case comparisons."
+  ]
+}

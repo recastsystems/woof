@@ -1,6 +1,6 @@
 """Statics may not depend on the SOURCE WINDOW a build happened to read.
 
-THE BREAKAGE THIS PREVENTS, measured on a development machine 2026-08-20: a prepared
+THE BREAKAGE THIS PREVENTS, measured on test host 1 2026-08-20: a prepared
 moving-nest run refused every relocation with
 
     footprint-rebuilt statics differ from the outgoing child's on shared

@@ -98,12 +98,37 @@ REAL_DATA_STRIP_FILL_SOURCE = (
 #: serialized-state transplant.  Accumulators (RAINC/RAINNC lineage) are
 #: deliberately NOT here: they are re-initialised at the new placement --
 #: leg 1's documented contract -- and the receipt says so.
+from woof.ocean.mixed_layer import STATE_FIELDS as PWP_CONTINUATION_FIELDS
+
 LAND_SURFACE_CONTINUATION_FIELDS = (
     "tsk", "tslb", "smois", "sh2o", "smcrel",
     "canwat", "snow", "snowh", "snowc", "snotime",
     "xice", "qsfc", "ust",
     "psfc", "t2", "q2", "th2", "u10", "v10",
+    *PWP_CONTINUATION_FIELDS,
 )
+
+
+def surface_continuation_fields(cfg, *, interpolate=False):
+    """Carry active surface state; only Registry ``d`` fields interpolate.
+
+    DTW and TSK_SAVE have restart flags only. They survive a relocation's
+    overlap transplant, but a newborn column retains its own initialization.
+    Domain counters NDAY/NYEAR travel separately, without interpolation.
+    """
+    names = list(LAND_SURFACE_CONTINUATION_FIELDS)
+    if getattr(cfg, "sst_update", 0):
+        names += ["sst", "xicem", "tmn", "xland", "ivgtyp", "isltyp",
+                  "vegfra", "albedo", "albbck", "emiss", "embck"] if not interpolate else ["xicem", "tmn", "vegfra"]
+        if not interpolate:
+            names += ["xice_save", "tsk_save"]
+    if getattr(cfg, "sst_skin", 0):
+        names += ["sstsk"]
+        if not interpolate:
+            names += ["dtw"]
+    if getattr(cfg, "tmn_update", 0):
+        names += ["tmn", "tyr", "tyra", "tdly", "tlag"]
+    return tuple(dict.fromkeys(names))
 
 #: Statics the overlap-equality assertion refuses on.  Everything the
 #: model or driver consumes; compared bitwise on shared ground.
@@ -685,7 +710,7 @@ def real_relocation_initializer(*, catalog=None, vertical, child_config,
                              static_fields["HGT_M"], blended=blended,
                              column_mass_correction=False)
         undershoot = clamp_interpolation_undershoot(state)
-        seed_rk_time_t_copies(state)
+        seed_rk_time_t_copies(state, preserve_thermal=True)
         del ht_int, mub_int, phb_int, save_mub, blended
         adjust_seconds = time.perf_counter() - adjust_started
 

@@ -1,0 +1,1 @@
+Source-bound startup compiler images for woof. This required companion has the same version as the engine. Images are split from gpuwm-kernels so each wheel fits the release per-file size limit. The loader checks the original compiler and source identities. Apache-2.0; third-party notices are included.

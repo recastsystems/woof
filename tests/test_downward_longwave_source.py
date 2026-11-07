@@ -81,6 +81,16 @@ def test_a_longwave_scheme_owns_the_buffer_and_preserves_its_mode_fill(monkeypat
         assert value == (0.0 if exact else 300.0)
 
 
+@pytest.mark.parametrize("exact", [False, True])
+def test_selector31_initial_surface_flux_matches_its_native_zero(monkeypatch, exact):
+    import woof.core.physics as physics
+    monkeypatch.setattr(physics, "WRF_EXACT", exact)
+    value, provenance = _resolve_initial_glw(
+        None, ra_lw_physics=31, radiation_active=True, sf_surface_physics=2)
+    assert np.float32(value).tobytes() == np.float32(0).tobytes()
+    assert provenance == "scheme"
+
+
 def test_a_typed_value_is_a_declaration_and_is_used_verbatim():
     """The idealised route: the caller says the number out loud."""
     value, provenance = _resolve_initial_glw(
@@ -272,13 +282,13 @@ def test_the_load_guard_names_the_consumer_the_classifier_returned(
         monkeypatch.setattr(
             physics_compat, "downward_longwave_disposition",
             lambda **kw: (("consumed", consumer)
-                          if int(kw["sf_surface_physics"]) == 7
+                          if int(kw["sf_surface_physics"]) == 5
                           else ("scheme", None)))
-        assert 7 not in physics_compat._GLW_CONSUMING_SURFACE_SCHEMES
-        refusal = physics_compat.constant_longwave_refusal([run(7)])
+        assert 5 not in physics_compat._GLW_CONSUMING_SURFACE_SCHEMES
+        refusal = physics_compat.constant_longwave_refusal([run(5)])
         assert refusal is not None, "consumed must refuse, not admit"
         assert expected in refusal
-        assert "sf_surface_physics 7" in refusal
+        assert "sf_surface_physics 5" in refusal
         assert CONSTANT_DOWNWARD_LONGWAVE_ACK in refusal   # the remedy
 
 

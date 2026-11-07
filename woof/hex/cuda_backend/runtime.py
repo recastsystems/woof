@@ -33,7 +33,8 @@ class CudaRefusal(RuntimeError):
 
 def _cupy() -> Any:
     try:
-        import cupy as cp
+        from woof.backend import array_module
+        cp = array_module()
     except Exception as error:  # pragma: no cover - exercised on non-CUDA hosts
         raise CudaRefusal(f"CuPy CUDA backend is unavailable: {error}") from error
     return cp
@@ -52,7 +53,8 @@ def _cache_directory(device_id: int, compute: tuple[int, int], raw: str | Path |
         )
     result = Path(declared).expanduser().resolve()
     result.mkdir(parents=True, exist_ok=True)
-    os.environ["CUPY_CACHE_DIR"] = str(result)
+    from .cupy_cache import bind
+    bind(result)
     return result
 
 
@@ -69,6 +71,9 @@ class CudaCapability:
     nvrtc_version: tuple[int, int]
     cupy_version: str
     cache_directory: str
+    architecture: str | None = None
+    backend: str = "cuda"
+    warp_size: int = 32
 
     @property
     def compute(self) -> tuple[int, int]:
@@ -76,19 +81,23 @@ class CudaCapability:
 
     @property
     def sm(self) -> str:
-        return f"sm_{self.compute_major}{self.compute_minor}"
+        return self.architecture or f"sm_{self.compute_major}{self.compute_minor}"
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "backend": self.backend,
+            "warp_size": self.warp_size,
+            "architecture": self.sm,
             "device_id": self.device_id,
             "name": self.name,
-            "compute_capability": f"{self.compute_major}.{self.compute_minor}",
+            "compute_capability": (None if self.backend=="hip" else f"{self.compute_major}.{self.compute_minor}"),
             "sm": self.sm,
             "total_memory_bytes": self.total_memory_bytes,
             "multiprocessor_count": self.multiprocessor_count,
             "runtime_version": self.runtime_version,
             "driver_version": self.driver_version,
-            "nvrtc_version": list(self.nvrtc_version),
+            "nvrtc_version": (None if self.backend=="hip" else list(self.nvrtc_version)),
+            **({"hiprtc_version":list(self.nvrtc_version)} if self.backend=="hip" else {}),
             "cupy_version": self.cupy_version,
             "cache_directory": self.cache_directory,
         }
@@ -134,13 +143,15 @@ def require_cuda(
     59 times a forecast step on the 43,884-cell point mesh, and
     ``cudaGetDeviceProperties`` costs 1.05 ms a call on the CUDA 13.3
     driver: 62-82 ms of host time per 0.38 s step, measured in
-    the 2026-09-13 performance profile, spent re-deciding a
+    ``evidence/hex-perf-profile-2026-09-13``, spent re-deciding a
     question whose answer cannot change while the process lives.  A
     refusal is never memoised, so a refused configuration is re-measured
     every time it is asked.
     """
 
     cp = _cupy()
+    if getattr(cp.cuda.runtime,'is_hip',False):
+        return _require_hip(cp, device_id=device_id, cache_dir=cache_dir)
     if device_id is None:
         device_id = int(cp.cuda.runtime.getDevice())
     key = (
@@ -213,6 +224,7 @@ def require_cuda(
         nvrtc_version=tuple(int(value) for value in nvrtc.getVersion()),
         cupy_version=str(cp.__version__),
         cache_directory=str(cache),
+        backend=("hip-nvidia" if os.environ.get("WOOF_BACKEND")=="hip-nvidia" else "cuda"),
     )
     _ADMISSIONS[key] = (cp, admitted)
     return admitted
@@ -444,7 +456,8 @@ class KernelCache:
             if shared is not None:
                 module, effective_compile, load_source = shared
         if module is None:
-            os.environ["CUPY_CACHE_DIR"] = str(self.cache_directory)
+            from .cupy_cache import bind
+            bind(self.cache_directory)
             module, load_reason, aot_entry = self._aot_pack.load(
                 cp, self.cache_directory, stable_module_key, source,
                 requested_options, self.capability.sm,
@@ -624,7 +637,7 @@ def launch_checked(
     No event is recorded and nothing is synchronized: the launch is queued
     and the host moves on.  This is the step path's launch; ``launch_timed``
     below is the benchmark's, and the difference is what the profile
-    measured (the 2026-09-13 performance profile): every
+    measured (``evidence/hex-perf-profile-2026-09-13``): every
     recovery kernel that went through ``launch_timed`` with
     ``timing_repeats=1`` was launched twice, event-synchronized twice and
     stream-synchronized once, 36 host stalls and 10.7 ms of repeated device
@@ -687,3 +700,36 @@ __all__ = [
     "launch_timed",
     "require_cuda",
 ]
+
+
+def _require_hip(cp, *, device_id=None, cache_dir=None):
+    """Admit measured HIP capabilities without CUDA SM/runtime fiction."""
+    device_id = int(cp.cuda.runtime.getDevice() if device_id is None else device_id)
+    key = ("hip", device_id, str(cache_dir))
+    remembered = _ADMISSIONS.get(key)
+    if remembered is not None and remembered[0] is cp: return remembered[1]
+    if not 0 <= device_id < cp.cuda.runtime.getDeviceCount():
+        raise CudaRefusal(f"hip.device_id={device_id} unavailable")
+    from woof.hip_runtime import wait_mode
+    from .schedule import requested as requested_wait
+    wait_mode(requested_wait(), [device_id])
+    cp.cuda.Device(device_id).use()
+    from woof.hip_backend import architecture, install
+    install()
+    arch = architecture(cp)
+    if not arch.startswith('gfx'): raise CudaRefusal('HIP device has no gfx architecture')
+    cache = Path(cache_dir or os.environ.get('CUPY_CACHE_DIR') or Path.home()/'.cache/gpuwm-hex/hip'/arch)
+    cache.mkdir(parents=True, exist_ok=True)
+    os.environ['CUPY_CACHE_DIR'] = str(cache)
+    out = cp.zeros(1, dtype=cp.int32)
+    cp.RawKernel('extern "C" __global__ void hip_admission(int* p){p[0]=7;}', 'hip_admission')((1,), (1,), (out,))
+    if int(out.get()[0]) != 7: raise CudaRefusal('HIP compile/launch admission failed')
+    props=cp.cuda.runtime.getDeviceProperties(device_id)
+    name=props['name']; name=name.decode() if isinstance(name,bytes) else str(name)
+    from woof.hiprtc import identity
+    result=CudaCapability(device_id,name,int(props['major']),int(props['minor']),
+        int(props['totalGlobalMem']),int(props['multiProcessorCount']),
+        int(cp.cuda.runtime.runtimeGetVersion()),int(cp.cuda.runtime.driverGetVersion()),
+        tuple(identity()['version']),str(cp.__version__),str(cache),arch,'hip',int(props['warpSize']))
+    _ADMISSIONS[key]=(cp,result)
+    return result

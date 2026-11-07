@@ -1,0 +1,86 @@
+{
+  "schema": "gpuwm-native-source-pin-v1",
+  "module": "sf_surface_physics=1",
+  "native_tag": "v4.7.1",
+  "fixture_tag": "v4.6.1",
+  "licence_review": {
+    "status": "public-domain",
+    "authority": "https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt",
+    "scope": "WRF-distributed module_sf_slab.F, module_surface_driver.F, module_soil_pre.F and LANDUSE.TBL; no file-local conflicting licence or external dependency in module_sf_slab.F; Registry.EM_COMMON and interp_fcn.F are also WRF-distributed files under that statement, with no conflicting file-local terms",
+    "tables": "LANDUSE.TBL is distributed by WRF under its root public-domain statement; no sale-limiting term found"
+  },
+  "files": [
+    {
+      "path": "v4.6.1_phys_module_sf_slab.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_sf_slab.F",
+      "bytes": 27896,
+      "sha256": "c44f26777b163234da249373b09a02fa92cb953209bd35a6fe3c30c2158200cb"
+    },
+    {
+      "path": "v4.6.1_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+      "bytes": 1027,
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    {
+      "path": "v4.6.1_run_LANDUSE.TBL",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/run/LANDUSE.TBL",
+      "bytes": 40650,
+      "sha256": "7f661318ff5f06aed6b4b5508e4d077dc794cff03d5fb4447fe59c88d0ed2ece"
+    },
+    {
+      "path": "v4.6.1_phys_module_surface_driver.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_surface_driver.F",
+      "bytes": 396169,
+      "sha256": "fde0533233b2b11524ef78da1e48178c867bde0de08a4de03d97d410b103b4fb"
+    },
+    {
+      "path": "v4.6.1_share_module_soil_pre.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/share/module_soil_pre.F",
+      "bytes": 139826,
+      "sha256": "f981a2cce2cd1a8ca5b8ced100bf2d34eb2725d1d0bc7c42daf05fd05aa2c074"
+    },
+    {
+      "path": "v4.7.1_phys_module_sf_slab.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_sf_slab.F",
+      "bytes": 27896,
+      "sha256": "c44f26777b163234da249373b09a02fa92cb953209bd35a6fe3c30c2158200cb"
+    },
+    {
+      "path": "v4.7.1_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "bytes": 1027,
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    {
+      "path": "v4.7.1_run_LANDUSE.TBL",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/run/LANDUSE.TBL",
+      "bytes": 40650,
+      "sha256": "7f661318ff5f06aed6b4b5508e4d077dc794cff03d5fb4447fe59c88d0ed2ece"
+    },
+    {
+      "path": "v4.7.1_phys_module_surface_driver.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_surface_driver.F",
+      "bytes": 396530,
+      "sha256": "a653965f9ffd1db5e4c42aa79e41b4d111755b6fca0f1a3b91f3a93455813ffd"
+    },
+    {
+      "path": "v4.7.1_share_module_soil_pre.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_soil_pre.F",
+      "bytes": 139826,
+      "sha256": "f981a2cce2cd1a8ca5b8ced100bf2d34eb2725d1d0bc7c42daf05fd05aa2c074"
+    },
+    {
+      "path": "v4.7.1_Registry_Registry.EM_COMMON",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "bytes": 437707,
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a"
+    },
+    {
+      "path": "v4.7.1_share_interp_fcn.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/interp_fcn.F",
+      "bytes": 220644,
+      "sha256": "680881db48904396f38856ca1dd2578a84e8eb0a9cdd05d49f4c63cd8ce9bdaa"
+    }
+  ]
+}

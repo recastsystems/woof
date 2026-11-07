@@ -79,16 +79,15 @@ def test_validate_run_config_admits_mp_physics_28():
 def test_the_schema_message_names_28_when_it_refuses_a_neighbour():
     """A refusal must list what IS available, or 28 is invisible.
 
-    ``38`` is WRF's Thompson graupel-hail aerosol scheme -- the nearest
-    unported neighbour, and exactly the value a user who read the WRF
-    Registry might try next.  Pre-WP-11a the message it got did not mention
+    ``38`` is now ported. Selector 37 remains outside the admitted menu
+    and keeps this refusal check about an unsupported value.  Pre-WP-11a the message it got did not mention
     28 at all.
     """
     with pytest.raises(ValueError) as caught:
-        validate_run_config(_cfg(mp_physics=38))
+        validate_run_config(_cfg(mp_physics=37))
     message = str(caught.value)
     assert "28 (Thompson aerosol-aware)" in message
-    assert "got 38" in message
+    assert "got 37" in message
 
 
 def test_mp28_still_requires_moisture():
@@ -137,7 +136,7 @@ def test_the_two_aerosol_source_selectors_exist_as_config_fields():
 def test_every_unimplemented_aerosol_source_value_fails_closed(name, value):
     """Fail CLOSED, and name what is missing.
 
-    RE-BASELINED (lane/wif-default).  This used to parametrize all four
+    RE-BASELINED (development branch).  This used to parametrize all four
     non-default values WRF defines and assert every one refused.  Two of
     them -- ``aer_init_opt=1`` with ``wif_input_opt=1`` -- are the
     climatology pair, which is now IMPLEMENTED and is the default source, so
@@ -219,7 +218,7 @@ def test_the_deliberate_deviation_is_published_and_cites_the_wrf_refusal():
     a published constant and reaches the namelist importer's printed
     receipt -- it is not buried in a comment.
     """
-    # RE-BASELINED (lane/wif-default).  The old pin asserted a DEVIATION
+    # RE-BASELINED (development branch).  The old pin asserted a DEVIATION
     # constant: that ArWen's mp=28 aerosol state came from thompson_init's
     # synthetic profile, and that a comparison against a WIF-initialized WRF
     # run was not equivalent.  Reconstructing the old assertion from the new
@@ -302,7 +301,7 @@ def test_apply_still_refuses_an_unported_scheme_and_lists_28():
     from woof.core import microphysics
 
     with pytest.raises(ValueError) as caught:
-        microphysics.apply(_StubState(), _cfg(mp_physics=38), 1.0)
+        microphysics.apply(_StubState(), _cfg(mp_physics=37), 1.0)
     assert "28 = Thompson aerosol-aware" in str(caught.value)
 
 
@@ -573,7 +572,7 @@ def test_compute_refl_10cm_admits_28_and_names_it_when_refusing():
     from woof.core.refl import compute_refl_10cm
 
     with pytest.raises(ValueError) as caught:
-        compute_refl_10cm(_StubState(), _cfg(mp_physics=38))
+        compute_refl_10cm(_StubState(), _cfg(mp_physics=37))
     # The list widened when WDM6 landed; what this test is about is that 28
     # is IN it and that the refusal names the admitted set rather than a
     # bare "unsupported".
@@ -809,12 +808,16 @@ def test_the_two_netcdf_name_maps_stand_in_the_declared_relation():
     declares", and that is what is asserted here.
     """
     from woof.io.wrf_output_schema import (
-        HISTORY_FIELDS_BY_NETCDF_NAME, OUTPUT_FIELDS_BY_NETCDF_NAME,
+        AVGFLX_OUTPUT_FIELDS, HISTORY_FIELDS_BY_NETCDF_NAME, OUTPUT_FIELDS_BY_NETCDF_NAME,
         PRECIPITATION_OUTPUT_FIELDS, SCHEME_OUTPUT_FIELDS,
         SFIRE_OUTPUT_FIELDS, SURFACE_IDENTITY_OUTPUT_FIELDS,
-        THOMPSON_AEROSOL_OUTPUT_FIELDS, WRF_INPUT_ECHO_OUTPUT_FIELDS)
+        THOMPSON_AEROSOL_OUTPUT_FIELDS, WRF_INPUT_ECHO_OUTPUT_FIELDS,
+        NTU_OUTPUT_FIELDS, MSKF_OUTPUT_FIELDS)
 
     model_state_groups = {
+        "AVGFLX_OUTPUT_FIELDS": AVGFLX_OUTPUT_FIELDS,
+        "NTU_OUTPUT_FIELDS": NTU_OUTPUT_FIELDS,
+        "MSKF_OUTPUT_FIELDS": MSKF_OUTPUT_FIELDS,
         "THOMPSON_AEROSOL_OUTPUT_FIELDS": THOMPSON_AEROSOL_OUTPUT_FIELDS,
         "SURFACE_IDENTITY_OUTPUT_FIELDS": SURFACE_IDENTITY_OUTPUT_FIELDS,
         # The SFIRE Registry rows (woof.io.sfire_schema), a model-state
@@ -825,11 +828,12 @@ def test_the_two_netcdf_name_maps_stand_in_the_declared_relation():
         # WRF_INPUT_ECHO_OUTPUT_FIELDS (the exact chain, 2.9.1).
         "WRF_INPUT_ECHO_OUTPUT_FIELDS": WRF_INPUT_ECHO_OUTPUT_FIELDS,
     }
-    declared = set().union(*(set(group)
+    declared = set().union(*({field.netcdf_name for field in group.values()}
                              for group in model_state_groups.values()))
 
     assert len(OUTPUT_FIELDS_BY_NETCDF_NAME) == (
-        len(SCHEME_OUTPUT_FIELDS) + len(PRECIPITATION_OUTPUT_FIELDS))
+        len({field.netcdf_name for field in SCHEME_OUTPUT_FIELDS.values()}
+                   | set(PRECIPITATION_OUTPUT_FIELDS)))
     assert set(HISTORY_FIELDS_BY_NETCDF_NAME) == (
         set(OUTPUT_FIELDS_BY_NETCDF_NAME) | declared)
     # The four mp=28 carriers this file speaks for are still exactly the
@@ -838,11 +842,17 @@ def test_the_two_netcdf_name_maps_stand_in_the_declared_relation():
     # a real claim rather than a census.
     assert set(THOMPSON_AEROSOL_OUTPUT_FIELDS) == {
         "QNWFA", "QNIFA", "QNWFA2D", "QNIFA2D"}
+    assert not (set(THOMPSON_AEROSOL_OUTPUT_FIELDS)
+                & set(OUTPUT_FIELDS_BY_NETCDF_NAME))
     for label, group in model_state_groups.items():
-        assert not (set(group) & set(OUTPUT_FIELDS_BY_NETCDF_NAME)), label
-        assert set(group) <= set(HISTORY_FIELDS_BY_NETCDF_NAME), label
+        # SST is both an ocean diagnostic and a retained surface identity.
+        # The schema builder permits shared names only with equal metadata.
+        external = {field.netcdf_name: field for field in group.values()}
+        for name in set(external) & set(OUTPUT_FIELDS_BY_NETCDF_NAME):
+            assert external[name] == OUTPUT_FIELDS_BY_NETCDF_NAME[name], (label, name)
+        assert set(external) <= set(HISTORY_FIELDS_BY_NETCDF_NAME), label
     for name, field in OUTPUT_FIELDS_BY_NETCDF_NAME.items():
-        assert HISTORY_FIELDS_BY_NETCDF_NAME[name] is field
+        assert HISTORY_FIELDS_BY_NETCDF_NAME[name] == field
 
 
 def test_aerosol_metadata_lives_in_exactly_one_table():
@@ -935,7 +945,7 @@ def test_mp28_is_a_translation_not_a_substitution():
     substitutions = {wrf for wrf, (mapped, _w, _g) in _MP_MAP.items()
                      if mapped != wrf}
     assert substitutions == set()
-    assert 55 not in _MP_MAP
+    assert 37 not in _MP_MAP
 
 
 def test_every_wrf_mp28_aerosol_namelist_key_is_answered():
@@ -949,7 +959,7 @@ def test_every_wrf_mp28_aerosol_namelist_key_is_answered():
 
     assert set(_MP28_AEROSOL_NAMELIST_KEYS["physics"]) == {
         "qna_update", "scalar_pblmix",
-        "grav_settling", "wif_fire_emit", "wif_fire_inj", "dust_emis"}
+        "wif_fire_emit", "wif_fire_inj", "dust_emis"}
     # ANSWERED IS NOT REFUSED.  The WIF key triple left this table when the
     # ingest landed a front door: `use_aero_icbc` (&physics) and
     # `wif_input_opt`/`num_wif_levels` (&domains) are now CONSUMED by the
@@ -974,7 +984,7 @@ def test_the_refusal_reasons_cite_wrfs_silent_overwrites():
     from woof.namelist_import import _MP28_AEROSOL_NAMELIST_KEYS
 
     physics = _MP28_AEROSOL_NAMELIST_KEYS["physics"]
-    assert "module_check_a_mundo.F:2459-2474" in physics["grav_settling"]
+    assert "grav_settling" not in physics  # consumed by the shared fog door
     assert "module_check_a_mundo.F:2477-2495" in physics["scalar_pblmix"]
     assert _MP28_AEROSOL_NAMELIST_KEYS["domains"] == {}
 
@@ -1432,7 +1442,7 @@ def test_the_import_receipt_names_the_aerosol_source_where_a_user_sees_it(
         tmp_path, monkeypatch):
     """Not a comment, not a docstring: the printed report.
 
-    RE-BASELINED (lane/wif-default).  The old pin required the rendered
+    RE-BASELINED (development branch).  The old pin required the rendered
     report to contain "thompson_init" and
     "dyn_em/module_initialize_real.F:2735-2736" -- the deviation sentence.
     The channel is unchanged and the requirement that it be NEVER SILENT is
@@ -1505,11 +1515,9 @@ def test_the_import_receipt_names_the_aerosol_source_where_a_user_sees_it(
 @pytest.mark.parametrize("section,key,value", [
     ("physics", "use_aero_icbc", ".true."),
     ("physics", "qna_update", ".true."),
-    ("physics", "grav_settling", "1"),
     ("physics", "wif_fire_emit", "1"),
     ("physics", "wif_fire_inj", "1"),
     ("physics", "dust_emis", "1"),
-    ("domains", "wif_input_opt", "1"),
 ])
 def test_each_mp28_aerosol_key_is_refused_by_name(tmp_path, section, key,
                                                   value):
@@ -1540,7 +1548,6 @@ def test_each_mp28_aerosol_key_is_refused_by_name(tmp_path, section, key,
 
 @pytest.mark.parametrize("section,key,value", [
     ("physics", "use_aero_icbc", ".false."),
-    ("physics", "grav_settling", "1"),
     ("domains", "wif_input_opt", "0"),
 ])
 def test_mp28_aerosol_keys_drop_as_inert_under_another_scheme(
@@ -1836,7 +1843,6 @@ def test_the_wif_key_triple_imports_instead_of_dead_ending(tmp_path,
 
 @pytest.mark.parametrize("physics_extra,domains_extra,fragment", [
     (" use_aero_icbc = .true.,\n", "", "wrote half of it"),
-    ("", " wif_input_opt = 1,\n", "wrote half of it"),
     (" use_aero_icbc = .true.,\n", " wif_input_opt = 2,\n", "qnbca"),
     (" use_aero_icbc = .true.,\n",
      " wif_input_opt = 1,\n num_wif_levels = 20,\n", "30 sigma levels"),
@@ -1860,6 +1866,21 @@ def test_the_wif_triple_refuses_every_half_written_form(
                          acknowledgements=_CONSTANT_GLW_ACK)
     assert fragment in str(caught.value)
 
+
+
+
+def test_wif_without_aerosol_icbc_selects_the_analytic_zero_arm(tmp_path):
+    from woof.namelist_import import import_namelists
+    wps, inp = _namelist_pair(tmp_path, mp=28,
+                              domains_extra=" wif_input_opt = 1,\n")
+    toml, _report = import_namelists(wps, inp, name="mp28-wif-zero",
+                                    acknowledgements=_CONSTANT_GLW_ACK)
+    assert "wif_input_opt = 1" in toml
+    # The importer may omit the registry default; verify its resolved value.
+    import tomllib
+    from woof.experiment import build_experiment
+    experiment = build_experiment(tomllib.loads(toml), source="mp28-wif-zero")
+    assert experiment.domains[0].run.aer_init_opt == 0
 
 def test_a_mixed_column_asking_for_28_anywhere_still_refuses_the_wif_key(
         tmp_path):

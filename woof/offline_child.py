@@ -108,6 +108,11 @@ _WRF_TO_STATE = MappingProxyType({
     # diagnostics every scheme (P3 included, module_mp_p3.F:2280-2282)
     # rebuilds before reading, never inherited state.
     "QIR": "qir", "QIB": "qib",
+    "QICE2": "qi2", "QNICE2": "ni2", "QIR2": "qir2", "QIB2": "qib2",
+    # mp_physics=53 (P3 three-moment ice, :3041): its droplet number rides
+    # QNCLOUD above; the advected ice moment (N*Z)**0.5 is QZI (:563).
+    "QZI": "qzi",
+    "QRIMEF": "qrimef",  # MP15: mass-weighted rime, transported with ice.
 })
 
 #: mp_physics=28 surface aerosol emission tendencies (# kg-1 s-1).  NOT
@@ -184,7 +189,11 @@ def _scheme_wrf_to_state(source_mp_physics: int) -> Mapping[str, str]:
         return _MY2_WRF_TO_STATE
     if source_mp == 16:
         return _WDM6_WRF_TO_STATE
-    return _WRF_TO_STATE
+    if source_mp == 56:
+        from woof.io.wrf_output_schema import NTU_OUTPUT_FIELDS
+        return MappingProxyType({**_MY2_WRF_TO_STATE,
+                                 **{row.netcdf_name: name for name,row in NTU_OUTPUT_FIELDS.items()}})
+    return {**_WRF_TO_STATE, "RIMI": "rimi"} if source_mp == 13 else _WRF_TO_STATE
 
 
 #: Parent microphysics schemes this offline-child route can carry.
@@ -1027,13 +1036,13 @@ class ParentPhysicsBinding:
                 _unsupported_parent_clause(self.mp_physics, what="bound"))
         if int(self.domain_id) < 1:
             raise OfflineChildContractError("bound parent domain_id must be >= 1")
-        if int(self.mp_physics) == 10 and self.morr_rimed_ice not in {0, 1}:
+        if int(self.mp_physics) in (10, 40) and self.morr_rimed_ice not in {0, 1}:
             raise OfflineChildContractError(
                 "bound Morrison parent requires morr_rimed_ice=0/1")
-        if (int(self.mp_physics) != 10
+        if (int(self.mp_physics) not in (10, 40)
                 and self.morr_rimed_ice is not None):
             raise OfflineChildContractError(
-                "morr_rimed_ice evidence is only valid for mp_physics=10")
+                "morr_rimed_ice evidence is only valid for mp_physics=10 or 40")
         if self.hail_opt is not None:
             if int(self.mp_physics) not in {6, 16}:
                 raise OfflineChildContractError(
@@ -1095,13 +1104,19 @@ def bind_parent_physics_from_gpuwm_restart(
     if int(microphysics.get("scheme_id", -2)) != mp_physics:
         raise OfflineChildContractError(
             f"{path} config and resolved microphysics identities disagree")
+    if mp_physics == 40 and int(config.get("aercu_opt", 0)) != 0:
+        raise OfflineChildContractError(
+            "MP40 offline parent requires aercu_opt=0; positive coupling "
+            "requires the CU11/aerosol coupling identity absent from the archived-parent binding; use an online coupled nest")
     domain_id = int(header.get("grid_id", config.get("grid_id", 0)))
     morr = None
-    if mp_physics == 10:
+    if mp_physics in (10, 40):
         morr = int(config.get("morr_rimed_ice", -1))
-        resolved = microphysics.get("morrison_rimed_ice")
+        resolved = microphysics.get("morrison_rimed_ice" if mp_physics == 10
+                                    else "morrison_aero")
+        selection = "selection" if mp_physics == 10 else "morr_rimed_ice"
         if (not isinstance(resolved, dict)
-                or int(resolved.get("selection", -2)) != morr):
+                or int(resolved.get(selection, -2)) != morr):
             raise OfflineChildContractError(
                 f"{path} Morrison rimed-ice config/setup identities disagree")
     evidence = {
@@ -1144,8 +1159,12 @@ def bind_parent_physics_from_wrf_namelist(
         return values[min(domain_id - 1, len(values) - 1)]
 
     mp_physics = int(domain_value("mp_physics", required=True))
+    if mp_physics == 40 and int(domain_value("aercu_opt", required=False, default=0)) != 0:
+        raise OfflineChildContractError(
+            "MP40 offline parent requires aercu_opt=0; positive coupling "
+            "requires the CU11/aerosol coupling identity absent from the archived-parent binding; use an online coupled nest")
     morr = None
-    if mp_physics == 10:
+    if mp_physics in (10, 40):
         morr = int(domain_value(
             "morr_rimed_ice", required=False, default=1))
     hail_opt = None
@@ -1216,6 +1235,10 @@ def _infer_mp_physics(
     # Without this arm an NSSL stream matched the Morrison arm below on
     # {QNSNOW, QNGRAUPEL} -- and NSSL is an ADMITTED offline parent, so
     # the mislabel reached a receipt for a supported configuration.
+    # NTU shares all six number names with MY2; its aerosol/shape moments
+    # identify it before the less specific mass-and-number inventories.
+    if {"QDCN", "QTCN", "QCCN", "QRCN", "QNIN", "I3M"} <= inventory:
+        return 56
     if {"QVGRAUPEL", "QVHAIL"} <= inventory:
         return 18
     # Milbrandt-Yau (Registry.EM_COMMON:3025) is the other package that
@@ -2687,7 +2710,7 @@ def _validate_parent_mass_fields(moisture):
                 f"parent history mass field {name} is non-finite or negative before interpolation")
 
 
-def _raw_parent_state(dataset, source_mp_physics: int):
+def _raw_parent_state(dataset, source_mp_physics: int, *, use_theta_m=0):
     raw = {
         name: _read_record(dataset, name)
         for name in (
@@ -2695,6 +2718,12 @@ def _raw_parent_state(dataset, source_mp_physics: int):
             "MAPFAC_U", "MAPFAC_V", "ZNU", "ZNW", "P_TOP",
         )
     }
+    if use_theta_m:
+        if int(getattr(dataset, "USE_THETA_M", 0)) != 1:
+            raise OfflineChildContractError(
+                "use_theta_m=1 offline child requires parent archive USE_THETA_M=1 "
+                "and native THM; dry history T cannot supply selected thermal interpolation")
+        raw["THM"] = _read_record(dataset, "THM")
     moisture = {}
     wrf_mapping = _scheme_wrf_to_state(int(source_mp_physics))
     inverse = {state_name: wrf_name for wrf_name, state_name in wrf_mapping.items()}
@@ -2833,10 +2862,11 @@ def _remap_initial_state_to_child_ladder(
 
     # Total potential temperature, then the perturbation against 300 K (the
     # child's own base theta is derived downstream from the new PB/PHB).
-    theta = remap_layer_means(tot_src, host["T"] + 300.0, tot_dst)
-    receipts.append(remap_receipt("theta", tot_src, host["T"] + 300.0,
+    thermal = "THM" if "THM" in host else "T"
+    theta = remap_layer_means(tot_src, host[thermal] + 300.0, tot_dst)
+    receipts.append(remap_receipt("theta", tot_src, host[thermal] + 300.0,
                                   tot_dst, theta))
-    out["T"] = theta - 300.0
+    out[thermal] = theta - 300.0
 
     out["W"] = remap_interface_values(tot_src, host["W"], tot_dst)
     if "P" in host:
@@ -2860,6 +2890,8 @@ def _remap_initial_state_to_child_ladder(
         receipts.append(remap_receipt(name, tot_src, array, tot_dst, remapped))
         child_mixing[name] = remapped
 
+    if thermal == "THM":
+        out["T"] = theta / (1.0 + float(c.RVOVRD) * child_mixing["qv"]) - 300.0
     znu = 0.5 * (np.asarray(child_znw)[:-1] + np.asarray(child_znw)[1:])
     out["ZNW"] = np.asarray(child_znw, dtype=np.float64)
     out["ZNU"] = znu
@@ -2952,7 +2984,8 @@ def interpolate_parent_initial_state(
         raise OfflineChildContractError(
             f"parent history mass grid {actual} != placement parent grid {expected}")
     started = time.perf_counter()
-    initial_fields = _INITIAL_CORE_FIELDS
+    use_theta_m = int(getattr(child_cfg, "use_theta_m", 0))
+    initial_fields = _INITIAL_CORE_FIELDS + (("THM",) if use_theta_m else ())
     if int(source_mp_physics) == 28:
         # Read them as REQUIRED.  A missing QNWFA2D is not a stream a child
         # may be silently built from: nothing downstream re-derives it (see
@@ -2960,7 +2993,8 @@ def interpolate_parent_initial_state(
         # produce a finite, bounded, aerosol-emission-free forecast.
         initial_fields = initial_fields + _AEROSOL_SURFACE_EMISSION_WRF
     with _ParentHistory(path) as dataset:
-        raw, moisture = _raw_parent_state(dataset, int(source_mp_physics))
+        raw, moisture = _raw_parent_state(dataset, int(source_mp_physics),
+                                          use_theta_m=getattr(child_cfg, "use_theta_m", 0))
         for name in initial_fields:
             if name not in raw:
                 raw[name] = _read_record(dataset, name)
@@ -3025,6 +3059,10 @@ def interpolate_parent_initial_state(
     fields = {name: _to_host(value) for name, value in interpolated.items()}
     fields.update({name: np.array(raw[name], copy=True, dtype=np.float32)
                    for name in constants})
+    if use_theta_m:
+        fields["T"] = ((fields["THM"] + np.float32(300.0))
+                       / (np.float32(1.0) + np.float32(c.RVOVRD)
+                          * _to_host(source_mixing["qv"])) - np.float32(300.0))
     # The child's own ladder, when it declares one.  A child that declares
     # nothing never reaches this branch and its state is bitwise what it was
     # before per-domain ladders existed.
@@ -3080,6 +3118,13 @@ def interpolate_parent_initial_state(
     else:
         source_mixing = {name: _to_host(value)
                          for name, value in source_mixing.items()}
+    if use_theta_m:
+        # Derive history/closure theta from the exact FP32 fields the child
+        # stores, after any host FP64 vertical remap and terrain rebalance.
+        vapour = np.asarray(source_mixing["qv"], dtype=np.float32)
+        fields["T"] = ((np.asarray(fields["THM"], dtype=np.float32) + np.float32(300.0))
+                       / (np.float32(1.0) + np.float32(c.RVOVRD) * vapour)
+                       - np.float32(300.0))
     receipt = MappingProxyType({
         "path": str(Path(path).resolve()),
         "valid_time": info.valid_time.isoformat(),
@@ -3090,6 +3135,7 @@ def interpolate_parent_initial_state(
             None if physics_binding is None else dict(physics_binding.receipt())),
         "target_mp_physics": target_mp,
         "backend": backend,
+        **({"use_theta_m": 1} if use_theta_m else {}),
         "positive_definite_clamp": initial_clamp,
         "terrain_policy": ("sint-parent-inherited" if terrain_receipt is None
                            else terrain_receipt["policy"]),
@@ -3223,6 +3269,11 @@ def _onto_child_terrain(fields, source_mixing, *, geography, child_cfg,
         "P": np.asarray(columns.p, dtype=np.float32),
         "PSFC": np.asarray(columns.psfc, dtype=np.float32),
     })
+    if getattr(child_cfg, "use_theta_m", 0):
+        out["THM"] = ((out["T"] + np.float32(300.0))
+                      * (np.float32(1.0) + np.float32(c.RVOVRD)
+                         * np.asarray(_to_host(source_mixing["qv"]), dtype=np.float32))
+                      - np.float32(300.0))
     change = terrain_child - terrain_interpolated
     receipt = {
         "policy": OWN_TERRAIN_POLICY,
@@ -3635,7 +3686,12 @@ def build_offline_child_domain_state(
             ("u", "U"), ("v", "V"), ("w", "W"),
             ("php", "PH"), ("mup", "MU")):
         assign(state_name, initial.fields[wrf_name])
-    total_theta = np.asarray(initial.fields["T"], dtype=np.float32) + np.float32(300.0)
+    thermal = "THM" if cfg.use_theta_m else "T"
+    if int(initial.receipt.get("use_theta_m", 0)) != cfg.use_theta_m:
+        raise OfflineChildContractError(
+            "offline child thermal selector differs from its prepared archive interpolation; "
+            "prepare initial and boundary fields with the child use_theta_m value")
+    total_theta = np.asarray(initial.fields[thermal], dtype=np.float32) + np.float32(300.0)
     state.thp[...] = xp.asarray(
         total_theta - np.asarray(base.thb, dtype=np.float32), dtype=xp.float32)
     state.set_map_coriolis(
@@ -3700,7 +3756,7 @@ def build_offline_child_domain_state(
     return state
 
 
-def _couple_parent(raw, moisture, coeffs, backend: str):
+def _couple_parent(raw, moisture, coeffs, backend: str, *, use_theta_m=0):
     arrays = {name: _backend_array(value, backend) for name, value in raw.items()}
     scalars = {name: _backend_array(value, backend)
                for name, value in moisture.items()}
@@ -3722,7 +3778,7 @@ def _couple_parent(raw, moisture, coeffs, backend: str):
         "u": (c1h * mux[None] + c2h) * arrays["U"] / arrays["MAPFAC_U"][None],
         "v": (c1h * muy[None] + c2h) * arrays["V"] / arrays["MAPFAC_V"][None],
         "w": chf * arrays["W"] / arrays["MAPFAC_M"][None],
-        "theta": chm * arrays["T"],
+        "theta": chm * arrays["THM" if use_theta_m else "T"],
         "phi": chf * arrays["PH"],
         "mu": arrays["MU"][None],
     }
@@ -3782,7 +3838,8 @@ def interpolate_parent_boundary_snapshot(
     started = time.perf_counter()
     child_znw = resolve_child_ladder(child_eta_levels)
     with _ParentHistory(path) as dataset:
-        raw, moisture = _raw_parent_state(dataset, int(source_mp_physics))
+        raw, moisture = _raw_parent_state(dataset, int(source_mp_physics),
+                                          use_theta_m=getattr(child_cfg, "use_theta_m", 0))
         coeffs, hybrid_opt, etac, p_top = _vertical_coefficients(raw, dataset)
         if child_znw is not None or transition is not None:
             # Needed to make the child's geopotential a perturbation
@@ -3826,7 +3883,8 @@ def interpolate_parent_boundary_snapshot(
             coupled=True, backend=backend, hypsometric_opt=hypsometric_opt)
         conversion_receipt = converted.receipt()
     coupled, raw_device, parent_chm = _couple_parent(
-        raw, {} if converted is not None else moisture, coeffs, backend)
+        raw, {} if converted is not None else moisture, coeffs, backend,
+        use_theta_m=getattr(child_cfg, "use_theta_m", 0))
     if converted is not None:
         # Already coupled by the kernel with the parent's own hybrid mass.
         coupled.update({name: _backend_array(value, backend)
@@ -3882,6 +3940,7 @@ def interpolate_parent_boundary_snapshot(
             None if physics_binding is None else dict(physics_binding.receipt())),
         "target_mp_physics": target_mp,
         "backend": backend,
+        **({"use_theta_m": 1} if getattr(child_cfg, "use_theta_m", 0) else {}),
         "positive_definite_clamp": boundary_clamp,
         "hybrid_opt": hybrid_opt,
         "etac": etac,
@@ -3956,7 +4015,7 @@ def _own_geography_boundary_snapshot(
         "u": (c1h * mux[None] + c2h) * host("U") / host("MAPFAC_U")[None],
         "v": (c1h * muy[None] + c2h) * host("V") / host("MAPFAC_V")[None],
         "w": chf * host("W") / host("MAPFAC_M")[None],
-        "theta": chm * host("T"),
+        "theta": chm * host("THM" if getattr(child_cfg, "use_theta_m", 0) else "T"),
         "phi": chf * host("PH"),
         "mu": mu[None],
     }
@@ -3974,6 +4033,7 @@ def _own_geography_boundary_snapshot(
         "source_physics_binding": receipt["source_physics_binding"],
         "target_mp_physics": receipt["target_mp_physics"],
         "backend": receipt["backend"],
+        **({"use_theta_m": 1} if receipt.get("use_theta_m", 0) else {}),
         "positive_definite_clamp": receipt["positive_definite_clamp"],
         "hybrid_opt": receipt["hybrid_opt"],
         "etac": receipt["etac"],

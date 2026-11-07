@@ -1,0 +1,3613 @@
+{
+  "utc": "2026-11-02T02:13:05.637691+00:00",
+  "source_tip": "0c5d1fc86d871612b58258be1e8afb0402eb30ef",
+  "estimator_rows": 40,
+  "estimator_matches_scratch008": true,
+  "inventories": 247,
+  "int32": [
+    "surface.ebal",
+    "surface.isltyp",
+    "surface.isnowxy",
+    "surface.ivgtyp",
+    "surface.kpbl",
+    "surface.ktop_plume",
+    "surface.pgsxy"
+  ],
+  "rows": [
+    {
+      "selectors": [
+        0,
+        0,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        1
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        5
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        7
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        8
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        9
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        11
+      ],
+      "fields": 220,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        12
+      ],
+      "fields": 221,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        16
+      ],
+      "fields": 220,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        17
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        99
+      ],
+      "fields": 219,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        0,
+        901
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        0
+      ],
+      "fields": 219,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        1
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        5
+      ],
+      "fields": 237,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        7
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        8
+      ],
+      "fields": 228,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        9
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        11
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        12
+      ],
+      "fields": 225,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        16
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        17
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        99
+      ],
+      "fields": 223,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        1,
+        901
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        1
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        5
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        7
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        8
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        9
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        11
+      ],
+      "fields": 220,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        12
+      ],
+      "fields": 221,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        16
+      ],
+      "fields": 220,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        17
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        99
+      ],
+      "fields": 219,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        2,
+        901
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        0
+      ],
+      "fields": 257,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        1
+      ],
+      "fields": 260,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        5
+      ],
+      "fields": 275,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        7
+      ],
+      "fields": 260,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        8
+      ],
+      "fields": 266,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        9
+      ],
+      "fields": 271,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        11
+      ],
+      "fields": 262,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        12
+      ],
+      "fields": 263,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        16
+      ],
+      "fields": 262,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        17
+      ],
+      "fields": 271,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        99
+      ],
+      "fields": 261,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        3,
+        901
+      ],
+      "fields": 260,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        0
+      ],
+      "fields": 270,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        1
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        5
+      ],
+      "fields": 288,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        7
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        8
+      ],
+      "fields": 279,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        9
+      ],
+      "fields": 284,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        11
+      ],
+      "fields": 275,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        12
+      ],
+      "fields": 276,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        16
+      ],
+      "fields": 275,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        17
+      ],
+      "fields": 284,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        99
+      ],
+      "fields": 274,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        4,
+        901
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        0
+      ],
+      "fields": 241,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        1
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        5
+      ],
+      "fields": 259,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        7
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        8
+      ],
+      "fields": 250,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        9
+      ],
+      "fields": 255,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        11
+      ],
+      "fields": 246,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        12
+      ],
+      "fields": 247,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        16
+      ],
+      "fields": 246,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        17
+      ],
+      "fields": 255,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        99
+      ],
+      "fields": 245,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        1,
+        7,
+        901
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        0,
+        2
+      ],
+      "fields": 236,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        0,
+        8
+      ],
+      "fields": 240,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        0,
+        16
+      ],
+      "fields": 237,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        1,
+        2
+      ],
+      "fields": 240,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        1,
+        8
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        1,
+        16
+      ],
+      "fields": 241,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        2,
+        2
+      ],
+      "fields": 236,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        2,
+        8
+      ],
+      "fields": 240,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        2,
+        16
+      ],
+      "fields": 237,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        3,
+        2
+      ],
+      "fields": 278,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        3,
+        8
+      ],
+      "fields": 282,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        3,
+        16
+      ],
+      "fields": 279,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        4,
+        2
+      ],
+      "fields": 291,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        4,
+        8
+      ],
+      "fields": 295,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        4,
+        16
+      ],
+      "fields": 292,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        7,
+        2
+      ],
+      "fields": 262,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        7,
+        8
+      ],
+      "fields": 266,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        2,
+        7,
+        16
+      ],
+      "fields": 263,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        0,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        0,
+        3
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        0,
+        8
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        0,
+        9
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        1,
+        0
+      ],
+      "fields": 219,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        1,
+        3
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        1,
+        8
+      ],
+      "fields": 228,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        1,
+        9
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        2,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        2,
+        3
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        2,
+        8
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        2,
+        9
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        3,
+        0
+      ],
+      "fields": 257,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        3,
+        3
+      ],
+      "fields": 260,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        3,
+        8
+      ],
+      "fields": 266,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        3,
+        9
+      ],
+      "fields": 271,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        4,
+        0
+      ],
+      "fields": 270,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        4,
+        3
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        4,
+        8
+      ],
+      "fields": 279,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        4,
+        9
+      ],
+      "fields": 284,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        7,
+        0
+      ],
+      "fields": 241,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        7,
+        3
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        7,
+        8
+      ],
+      "fields": 250,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        3,
+        7,
+        9
+      ],
+      "fields": 255,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        4,
+        0,
+        4
+      ],
+      "fields": 248,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        4,
+        1,
+        4
+      ],
+      "fields": 252,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        4,
+        2,
+        4
+      ],
+      "fields": 248,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        4,
+        3,
+        4
+      ],
+      "fields": 290,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        4,
+        4,
+        4
+      ],
+      "fields": 303,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        4,
+        7,
+        4
+      ],
+      "fields": 274,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        0,
+        0
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        0,
+        5
+      ],
+      "fields": 236,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        0,
+        9
+      ],
+      "fields": 232,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        0,
+        16
+      ],
+      "fields": 223,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        0,
+        17
+      ],
+      "fields": 232,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        1,
+        0
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        1,
+        5
+      ],
+      "fields": 240,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        1,
+        9
+      ],
+      "fields": 236,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        1,
+        16
+      ],
+      "fields": 227,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        1,
+        17
+      ],
+      "fields": 236,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        2,
+        0
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        2,
+        5
+      ],
+      "fields": 236,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        2,
+        9
+      ],
+      "fields": 232,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        2,
+        16
+      ],
+      "fields": 223,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        2,
+        17
+      ],
+      "fields": 232,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        3,
+        0
+      ],
+      "fields": 280,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        3,
+        5
+      ],
+      "fields": 298,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        3,
+        9
+      ],
+      "fields": 294,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        3,
+        16
+      ],
+      "fields": 285,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        3,
+        17
+      ],
+      "fields": 294,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        4,
+        0
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        4,
+        5
+      ],
+      "fields": 291,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        4,
+        9
+      ],
+      "fields": 287,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        4,
+        16
+      ],
+      "fields": 278,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        4,
+        17
+      ],
+      "fields": 287,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        7,
+        0
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        7,
+        5
+      ],
+      "fields": 262,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        7,
+        9
+      ],
+      "fields": 258,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        7,
+        16
+      ],
+      "fields": 249,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        5,
+        7,
+        17
+      ],
+      "fields": 258,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        0,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        0,
+        7
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        0,
+        9
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        1,
+        0
+      ],
+      "fields": 219,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        1,
+        7
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        1,
+        9
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        2,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        2,
+        7
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        2,
+        9
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        3,
+        0
+      ],
+      "fields": 257,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        3,
+        7
+      ],
+      "fields": 260,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        3,
+        9
+      ],
+      "fields": 271,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        4,
+        0
+      ],
+      "fields": 270,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        4,
+        7
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        4,
+        9
+      ],
+      "fields": 284,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        7,
+        0
+      ],
+      "fields": 241,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        7,
+        7
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        7,
+        7,
+        9
+      ],
+      "fields": 255,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        10,
+        0,
+        10
+      ],
+      "fields": 238,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        10,
+        1,
+        10
+      ],
+      "fields": 242,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        10,
+        2,
+        10
+      ],
+      "fields": 238,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        10,
+        3,
+        10
+      ],
+      "fields": 280,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        10,
+        4,
+        10
+      ],
+      "fields": 293,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        10,
+        7,
+        10
+      ],
+      "fields": 264,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        1
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        5
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        7
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        8
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        9
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        11
+      ],
+      "fields": 220,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        12
+      ],
+      "fields": 221,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        16
+      ],
+      "fields": 220,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        17
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        99
+      ],
+      "fields": 219,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        0,
+        901
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        0
+      ],
+      "fields": 219,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        1
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        5
+      ],
+      "fields": 237,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        7
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        8
+      ],
+      "fields": 228,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        9
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        11
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        12
+      ],
+      "fields": 225,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        16
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        17
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        99
+      ],
+      "fields": 223,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        1,
+        901
+      ],
+      "fields": 222,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        0
+      ],
+      "fields": 215,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        1
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        5
+      ],
+      "fields": 233,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        7
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        8
+      ],
+      "fields": 224,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        9
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        11
+      ],
+      "fields": 220,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        12
+      ],
+      "fields": 221,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        16
+      ],
+      "fields": 220,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        17
+      ],
+      "fields": 229,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        99
+      ],
+      "fields": 219,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        2,
+        901
+      ],
+      "fields": 218,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        0
+      ],
+      "fields": 257,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        1
+      ],
+      "fields": 260,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        5
+      ],
+      "fields": 275,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        7
+      ],
+      "fields": 260,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        8
+      ],
+      "fields": 266,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        9
+      ],
+      "fields": 271,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        11
+      ],
+      "fields": 262,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        12
+      ],
+      "fields": 263,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        16
+      ],
+      "fields": 262,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        17
+      ],
+      "fields": 271,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        99
+      ],
+      "fields": 261,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        3,
+        901
+      ],
+      "fields": 260,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        0
+      ],
+      "fields": 270,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        1
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        5
+      ],
+      "fields": 288,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        7
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        8
+      ],
+      "fields": 279,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        9
+      ],
+      "fields": 284,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        11
+      ],
+      "fields": 275,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        12
+      ],
+      "fields": 276,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        16
+      ],
+      "fields": 275,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        17
+      ],
+      "fields": 284,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        99
+      ],
+      "fields": 274,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        4,
+        901
+      ],
+      "fields": 273,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.isnowxy",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.pgsxy"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        0
+      ],
+      "fields": 241,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        1
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        5
+      ],
+      "fields": 259,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl",
+        "surface.ktop_plume"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        7
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        8
+      ],
+      "fields": 250,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        9
+      ],
+      "fields": 255,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        11
+      ],
+      "fields": 246,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        12
+      ],
+      "fields": 247,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        16
+      ],
+      "fields": 246,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        17
+      ],
+      "fields": 255,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        99
+      ],
+      "fields": 245,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    },
+    {
+      "selectors": [
+        91,
+        7,
+        901
+      ],
+      "fields": 244,
+      "int32": [
+        "surface.ebal",
+        "surface.isltyp",
+        "surface.ivgtyp",
+        "surface.kpbl"
+      ]
+    }
+  ],
+  "command": "python3 run_checked.py --log logs/batch007-common-host-review.log --lock-name scratch --cpu-offset 6 --cwd . -- <testbox>/venv313/bin/python review_batch007_common_host_fixes.py",
+  "source": "review_batch007_common_host_fixes.py:1",
+  "scope": "Host allocation and fixture review only; no source files changed and no numerical claim",
+  "previous_review": "docs/public/receipts/estimator-inventory-batch008-20261101.json",
+  "imported_patches": [
+    {
+      "path": "patches/batch007-common-host-a384bd50de59.patch",
+      "bytes": 5396,
+      "sha256": "87747084e8fa27de9c2eadcb0328075c4eb72d0dbdf437200a4c2fc9f22ed3c0",
+      "source_commit": "a384bd50de5986bd48206027af6c2ea837cb9ebf",
+      "selected": [
+        "tests/test_health_integer_policy.py",
+        "tools/health_field_census.py"
+      ]
+    },
+    {
+      "path": "patches/batch007-common-host-509fa6d414fe.patch",
+      "bytes": 944,
+      "sha256": "321b132ed331456850b67dccc402d393ce243984cde56e07fc429228564d3ca6",
+      "source_commit": "509fa6d414fe8660e16db340aaaa52eee144ddd9",
+      "selected": [
+        "tests/test_health_integer_policy.py"
+      ]
+    },
+    {
+      "path": "patches/batch007-common-host-d227212ec97c.patch",
+      "bytes": 55757,
+      "sha256": "d34caac6043579f0b263a637f059e6f8985f6bcbf29eaacf89e7e2db9c98ba54",
+      "source_commit": "d227212ec97caff39dce35f85a231b9f75d88c52",
+      "selected": [
+        "tests/fixtures/noahmp_estimator_baseline_snapshots.json",
+        "tests/test_noahmp_frame_provenance.py",
+        "docs/public/receipts/estimator-inventory-batch008-20261101.json"
+      ]
+    }
+  ],
+  "reason": "All40 estimator rows and247 routed host inventories independently match the reviewed common repairs before this commit."
+}

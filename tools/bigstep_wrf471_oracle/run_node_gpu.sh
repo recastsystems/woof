@@ -4,7 +4,7 @@
 set -euo pipefail
 python_bin=$1; source_root=$2; log_prefix=$3; shift 3
 owner="$HOME/card-lease/OWNER"
-lane=sol-oracle-bigstep-prep
+lane=oracle-bigstep-prep
 claimed=0
 release() {
     rc=$?

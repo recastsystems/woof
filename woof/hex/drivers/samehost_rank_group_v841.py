@@ -151,6 +151,8 @@ def op_construct(ctx, *, local, attach, arwen_checkout, stop_on_refusal, compile
         elif isinstance(local, str) and local == "context":
             local = ctx.host   # a rank process's host is already its own slices (child_host)
         try:
+            from woof.hex.cuda_suite_physics_v841 import bind_domain_ocean_ice
+            bind_domain_ocean_ice(ctx.host.get("domain_ocean_ice", False))
             stack = proof._construct_device_stack(host=local, cache=cache, arwen_checkout=arwen_checkout,
                                                    backend_builder=forecast._backend_builder(ctx.host, arwen_checkout),
                                                    physics_rollback_snapshot=bool(stop_on_refusal),
@@ -158,7 +160,7 @@ def op_construct(ctx, *, local, attach, arwen_checkout, stop_on_refusal, compile
                                                       if restart_entry is not None else {}))
             from woof.hex.arwen_surface_update import attach_host
             attach_host(stack["backend"], attach if attach is not None else ctx.host, ctx.schedule, ctx.output_root,
-                        dt=float(forecast.DT_SECONDS), layout=layout)
+                        dt=float(forecast.DT_SECONDS), layout=layout, wave_ranks=(ctx.rank, ctx.layouts))
             stack["restart_forcing"] = (restart.restore_forcing(restart_entry, stack)
                                          if restart_entry is not None else None)
             from woof.hex.partition_overlap_v841 import interior_edges
@@ -178,6 +180,13 @@ def op_construct(ctx, *, local, attach, arwen_checkout, stop_on_refusal, compile
                 stack["driver"].horizontal.ncells: layout.n_owned_cells,
                 edge_extent: layout.n_owned_edges,
             }
+            # The 2-5 km updraft-helicity maximum (and the 0-x km layers when asked for), as the one-card
+            # ArWen driver writes it. THE BREAKAGE THIS PREVENTS (both-routes matrix, woof hex 0.4.14
+            # candidate, 2026-11-06): the ranks never armed the layers, so a multi-card ArWen run rendered no
+            # UH maps while the same run on one card did.
+            from woof.hex.uh_layers import attach_rank
+            stack["uh_layers_receipt"] = attach_rank(stack, local["prepared"].mesh, cp,
+                                                     initial=restart_entry is None)
         finally:
             # Construction also enqueues device-table uploads. Finish
             # them before a failed constructor releases scoped owners.
@@ -247,6 +256,12 @@ def op_capture(ctx, *, step, deferred):
     return _capture_rank(ctx.proof, ctx.host, ctx.stack, step, ctx.schedule["labels"][step], deferred=deferred)
 
 
+def op_release_preparation(ctx):
+    from woof.hex.host_lifetime import release_preparation
+    release_preparation(ctx.host)
+    return None
+
+
 def op_first_call(ctx):
     from woof.hex import f000_first_call
     return f000_first_call.read_arwen_first_call(ctx.stack["backend"], ctx.cp)
@@ -281,6 +296,9 @@ def op_advance(ctx, *, step, refl_due, first, card_selection, last=False, expect
     atmosphere = stack["driver"].atmosphere
     exchanger.round_step_boundary(atmosphere.state, atmosphere.saved, result.dynamics_tendencies)
     exchanger.end_step()
+    # After the boundary round: the halo edges around every owned cell's vertices hold this step's words.
+    from woof.hex.uh_layers import rank_update
+    rank_update(stack)
     ctx.previous = result.committed.surface_updates
     ctx.forcing = result.dynamics_tendencies
     return {"driver": asdict(result.committed.receipt),
@@ -335,7 +353,58 @@ def op_final(ctx):
     return out
 
 
+def op_wave_take(ctx):
+    """A rank other than 0: its owned wave forcing of the step just ended (None elsewhere or with waves off)."""
+    from woof.hex.waves import ArwenRankBinding
+    binding = getattr(ctx.stack["backend"], "wave_binding", None)
+    return binding.take() if isinstance(binding, ArwenRankBinding) else None
+
+
+def op_wave_roughness(ctx, *, values=None):
+    """A rank other than 0: its local columns' surface roughness from rank 0's wave service."""
+    from woof.hex.waves import ArwenRankBinding
+    binding = getattr(ctx.stack["backend"], "wave_binding", None)
+    if isinstance(binding, ArwenRankBinding):
+        binding.set_roughness(values)
+    return None
+
+
+def couple_waves(group, *, initial=False):
+    """The coordinator's wave step for a rank group: rank 0's one service gets every rank's owned forcing.
+
+    After every shared step (and once before step 1, ``initial``, for the first roughness), on rank 0's card and
+    stream. THE BREAKAGE THIS PREVENTS: every rank process built its own whole-mesh wave model on its own cells'
+    winds and they all wrote the same waves/ files (waves.attach_arwen). No-op with waves off or one rank.
+    """
+    from woof.hex import waves
+    ctx0 = group.contexts[0]
+    binding = getattr(ctx0.stack["backend"], "wave_binding", None)
+    if binding is None or not getattr(binding, "peers", None):
+        return
+    pending = None if initial else group.call("wave_take")[1:]
+    device, stream = ctx0.device_scope()
+    with device, stream:
+        values = waves.peer_roughness(binding) if initial else waves.couple_rank_group(binding, pending)
+        ctx0.cp.cuda.get_current_stream().synchronize()
+    if binding.service.options["roughness_feedback"]:
+        group.call("wave_roughness", per_rank=[{"values": None}] + [{"values": value} for value in values])
+
+
+def wave_output(group, endpoint):
+    """Rank 0 writes the run's wave frame at an output boundary (the one-card route's capture does the same)."""
+    ctx0 = group.contexts[0]
+    binding = getattr(ctx0.stack["backend"], "wave_binding", None)
+    if binding is None:
+        return
+    device, stream = ctx0.device_scope()
+    with device, stream:
+        binding.service.output(float(endpoint))
+        ctx0.cp.cuda.get_current_stream().synchronize()
+
+
 OPS = {
+    "wave_take": op_wave_take, "wave_roughness": op_wave_roughness,
+    "release_preparation": op_release_preparation,
     "construct": op_construct, "initial_surface": op_initial_surface, "describe": op_describe,
     "setup_exchange": op_setup_exchange, "iau": op_iau, "collect_owned": op_collect_owned,
     "capture": op_capture, "first_call": op_first_call, "advance": op_advance, "clock": op_clock,
@@ -439,9 +508,10 @@ class ThreadRankGroup:
                                    streams=self.streams)
         return self
 
-    def call(self, name, **kwargs):
+    def call(self, name, *, per_rank=None, **kwargs):
         operation = OPS[name]
-        return self.ranks.call(lambda rank: operation(self.contexts[rank], **kwargs))
+        return self.ranks.call(lambda rank: operation(self.contexts[rank], **kwargs,
+                                                      **({} if per_rank is None else per_rank[rank])))
 
     def step(self, step, *, dt, last, **kwargs):
         def advance(rank):
@@ -610,7 +680,7 @@ class ProcessRankGroup:
 
     executor = "processes"
 
-    def __init__(self, contexts0, devices, tables, *, job, timeout):
+    def __init__(self, contexts0, devices, tables, *, job, timeout, owner_paths=()):
         from woof.hex.rank_processes import RankProcesses
         self.ctx = contexts0
         self.contexts = [contexts0]
@@ -619,7 +689,8 @@ class ProcessRankGroup:
         self.timeout = float(timeout)
         neighbours = {rank: [int(peer.peer) for peer in tables[rank].peers] for rank in range(self.size)}
         self.neighbours = neighbours
-        self.group = RankProcesses(self.devices, neighbours, module=MODULE, timeout=self.timeout, job=str(job))
+        self.group = RankProcesses(self.devices, neighbours, module=MODULE, timeout=self.timeout,
+                                   job=str(job), owner_paths=owner_paths)
         self.failed = False
         self.failure = None
         self.time_seconds = None
@@ -633,20 +704,38 @@ class ProcessRankGroup:
 
     def start(self, requests):
         """Start the children and hand each its request (module replay, layouts, tables, its rank's inputs)."""
+        from woof.hex.rank_processes import SharedObjects
+        sources = {}
+        for request in requests[1:]:
+            mesh = request["host"]["prepared"].mesh
+            source = getattr(mesh, "partition_source_mesh", None)
+            if source is not None and source is not mesh:
+                sources.setdefault(id(source), source)
+        # Each partition keeps its global mesh for mixing. Send those bytes once, as the MPAS route does,
+        # instead of retaining a complete private copy in every child for the whole forecast.
+        shared = (SharedObjects({f"partition-source-mesh-{index}": source
+                                 for index, source in enumerate(sources.values())},
+                                threads=max(1, min(os.cpu_count() or 1, 32))) if sources else None)
+        if shared is not None:
+            self.group.shared_fd = shared.fd
         self.group.on_failure(self._child_failed)
-        self.group.start()
-        self.started = True
-        self.halo_links = {peer: (self.group.halo_sockets[peer], self.group.halo_flags.pop(peer))
-                           for peer in self.neighbours[0]}
+        try:
+            self.group.start()
+            self.started = True
+            self.halo_links = {peer: (self.group.halo_sockets[peer], self.group.halo_flags.pop(peer))
+                               for peer in self.neighbours[0]}
 
-        def send(rank):
-            self.group.step_links[rank].send(requests[rank])
-            requests[rank] = None   # the child holds its own copy now
-        # Every child's request at once (Link.send copies with the GIL released), as run_process_ranks sends the
-        # MPAS route's: one after another, 8 ranks' host slices took seconds each before any child could build.
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=max(1, self.size - 1), thread_name_prefix="hex-rank-request") as pool:
-            list(pool.map(send, range(1, self.size)))
+            def send(rank):
+                self.group.step_links[rank].send(requests[rank], None if shared is None else shared.persistent_id)
+                requests[rank] = None
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=max(1, self.size - 1), thread_name_prefix="hex-rank-request") as pool:
+                list(pool.map(send, range(1, self.size)))
+        finally:
+            # Children inherited their own descriptors before request delivery. Keep the parent's object IDs
+            # alive until every sender has finished, then release both its descriptor and its references.
+            if shared is not None:
+                shared.close()
         return {"rank_processes": [dict(rank=rank, pid=process.pid) for rank, process in self.group.processes.items()],
                 "rank_process_parent_pid": os.getpid()}
 
@@ -665,7 +754,7 @@ class ProcessRankGroup:
 
     def abort(self, reason):
         """Rank 0's own abort point (the coordinator thread): a child's failure need not end this process."""
-        self.group.rank0_responded()
+        self.group.abort(reason)
         self.failed = True
         if self.failure is None:
             self.failure = str(reason)
@@ -815,6 +904,10 @@ class ProcessRankGroup:
                 self.group.step_links[rank].send(("close",))
             except Exception:
                 pass
+        # NCCL/RCCL communicator destruction may rendezvous with its peers.
+        # Join it before waiting for the children's close acknowledgements.
+        if transport is not None and getattr(transport, "collective_close", False):
+            transport.close()
         records = {}
         for rank in range(1, self.size):
             try:
@@ -873,7 +966,7 @@ class _StepScope:
 
 def worker(job, rank, spec_text):
     """A rank process: rebuild the module state, build this rank's context, then serve the coordinator."""
-    from woof.hex.rank_processes import (Link, install_parent_kernel_store, process_cpu_record,
+    from woof.hex.rank_processes import (Link, SharedObjectsView, install_parent_kernel_store, process_cpu_record,
                                         set_parent_death_signal)
     set_parent_death_signal()
     # Before the request arrives: the forecast process's warm kernel store (rank_processes).
@@ -890,7 +983,8 @@ def worker(job, rank, spec_text):
     ctx = None
     code = 0
     try:
-        request = link.recv()
+        shared = spec.get("shared")
+        request = link.recv(None if shared is None else SharedObjectsView(int(shared)).resolve)
         ctx = _child_context(rank, spec, request)
         while True:
             try:
@@ -904,6 +998,9 @@ def worker(job, rank, spec_text):
             try:
                 result = _child_call(ctx, name, kwargs)
                 link.send(("ok", result, (ctx.sync_seconds, ctx.sync_calls)))
+                # The coordinator owns the delivered frame now. Do not keep
+                # a second rank-sized history capture while waiting for RPC.
+                result = None
             except BaseException as error:
                 text = f"{type(error).__name__}: {error}"
                 trace = traceback.format_exc()
@@ -955,7 +1052,7 @@ def _child_context(rank, spec, request):
     import cupy as cp
     from woof.hex.drivers.samehost_forecast_v841 import _StepLoopGarbage
     from woof.hex.drivers.samehost_physics_scope_v841 import scoped_physics_resources
-    from woof.hex.partition_process_transport_v841 import ProcessHaloTransport
+    from woof.hex.process_transport import process_halo_transport as ProcessHaloTransport
 
     cp.cuda.Device(0).use()
     stream = None

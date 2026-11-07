@@ -11,7 +11,7 @@ every output word of every call:
   its own, so one rounding difference would compound into later calls;
 * ``replay``: each call starts from WRF's previous outputs.
 
-What makes it exact (lane/verify-kessler-mp1), all default-on:
+What makes it exact (development branch), all default-on:
 
 1. the six ``REAL**REAL`` powers and the one ``EXP`` call WOOF's own float32
    ``gfk_pow``/``gfk_exp`` (kernels/__init__.py ``_EXTRA_HEADERS``), not

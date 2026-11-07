@@ -62,6 +62,8 @@ translation units rather than a change this lane makes to them.
 """
 
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from dataclasses import dataclass
@@ -815,6 +817,179 @@ extern "C" __global__ void acoustic_column_solve_regional_v841(
     }
 }
 
+/* acoustic_column_solve_regional_v841, split at its level-independent loops:
+   the shape acoustic_column_{pre,sweep,post_w,post_rt}_v841 gave the global
+   substep.  F:4093-4103 order is kept element by element.
+   - pre: the specified-zone branch reads and writes only its own
+     (level, cell), so it runs whole here, one thread per element; the
+     interior's first loop (k = 1..nlev-1) writes rw_p and ww_avg at its own
+     level and reads rho_pp/rtheta_pp, which nothing in this pass writes for
+     an interior column.
+   - sweep: the two tridiagonal recurrences, serial per column in native
+     order.  The value just stored is carried in a register instead of being
+     reloaded; the loads the recurrence does not depend on are issued four
+     levels ahead.
+   - post_w: the damping loop, one thread per (level, cell), k = 1..nlev-1.
+   - post_rt: the rho/theta update, which reads rw_p at k and k+1, after
+     post_w has finished every level.
+   Every value is the same helper sequence on the same operands, so the four
+   kernels write the bits the one kernel writes. */
+extern "C" __global__ void acoustic_column_pre_regional_v841(
+    const int nlev, const int ncells, const float dts,
+    const float *zz, const float *tend_rw, const float *tend_rho,
+    const float *tend_rt, const float *rs, const float *ts,
+    const float *spec_zone_mask_cell,
+    const float *cofwr, const float *cofwz, const float *cofwt,
+    const float *etp, const float *etm, const float *ewp, const float *ewm,
+    float *rw_p, float *rho_pp, float *rtheta_pp, float *ww_avg)
+{
+    REGIONAL_ELEMENT_LOOP(nlev * ncells) {
+        const int cell = element % ncells;
+        const int k = element / ncells;
+        const int i = RC2(k, cell, ncells);
+        if (spec_zone_mask_cell[cell] != 0.0f) {
+            rho_pp[i] = mpas_add(rho_pp[i], mpas_mul(dts, tend_rho[i]));
+            rtheta_pp[i] = mpas_add(rtheta_pp[i], mpas_mul(dts, tend_rt[i]));
+            rw_p[i] = mpas_add(rw_p[i], mpas_mul(dts, tend_rw[i]));
+            ww_avg[i] = mpas_add(ww_avg[i], mpas_mul(ewp[k], rw_p[i]));
+            continue;
+        }
+        if (k == 0) continue;
+        const int im = RC2(k - 1, cell, ncells);
+        ww_avg[i] = mpas_add(ww_avg[i], mpas_mul(ewm[k], rw_p[i]));
+
+        const float theta_implicit = mpas_sub(
+            mpas_mul(mpas_mul(etp[k], zz[i]), ts[i]),
+            mpas_mul(mpas_mul(etp[k - 1], zz[im]), ts[im]));
+        const float theta_explicit = mpas_sub(
+            mpas_mul(mpas_mul(etm[k], zz[i]), rtheta_pp[i]),
+            mpas_mul(mpas_mul(etm[k - 1], zz[im]), rtheta_pp[im]));
+        const float density_implicit = mpas_add(
+            mpas_mul(etp[k], rs[i]), mpas_mul(etp[k - 1], rs[im]));
+        const float density_explicit = mpas_add(
+            mpas_mul(etm[k], rho_pp[i]),
+            mpas_mul(etm[k - 1], rho_pp[im]));
+        const float heat_upper = mpas_add(
+            mpas_mul(etp[k], ts[i]), mpas_mul(etm[k], rtheta_pp[i]));
+        const float heat_lower = mpas_add(
+            mpas_mul(etp[k - 1], ts[im]),
+            mpas_mul(etm[k - 1], rtheta_pp[im]));
+
+        float inner = mpas_sub(tend_rw[i], mpas_mul(cofwz[i],
+            mpas_add(theta_implicit, theta_explicit)));
+        inner = mpas_sub(inner, mpas_mul(cofwr[i],
+            mpas_add(density_implicit, density_explicit)));
+        inner = mpas_add(inner, mpas_mul(cofwt[i], heat_upper));
+        inner = mpas_add(inner, mpas_mul(cofwt[im], heat_lower));
+        rw_p[i] = mpas_add(rw_p[i], mpas_mul(dts, inner));
+    }
+}
+
+extern "C" __global__ void acoustic_column_sweep_regional_v841(
+    const int nlev, const int ncells, const float dts,
+    const float *spec_zone_mask_cell,
+    const float *a_tri, const float *alpha_tri, const float *gamma_tri,
+    float *rw_p)
+{
+    const int cell = blockDim.x * blockIdx.x + threadIdx.x;
+    if (cell >= ncells) return;
+    if (spec_zone_mask_cell[cell] != 0.0f) return;
+    const float dts2 = mpas_mul(dts, dts);
+    float previous = rw_p[RC2(0, cell, ncells)];
+    for (int k = 1; k < nlev; k += 4) {
+        float value[4], lower[4], inverse[4];
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            if (k + j < nlev) {
+                const int i = RC2(k + j, cell, ncells);
+                value[j] = rw_p[i];
+                lower[j] = a_tri[i];
+                inverse[j] = alpha_tri[i];
+            }
+        }
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            if (k + j < nlev) {
+                previous = mpas_mul(mpas_sub(value[j], mpas_mul(mpas_mul(
+                    dts2, lower[j]), previous)), inverse[j]);
+                rw_p[RC2(k + j, cell, ncells)] = previous;
+            }
+        }
+    }
+    previous = rw_p[RC2(nlev, cell, ncells)];
+    for (int k = nlev - 1; k >= 0; k -= 4) {
+        float value[4], upper[4];
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            if (k - j >= 0) {
+                const int i = RC2(k - j, cell, ncells);
+                value[j] = rw_p[i];
+                upper[j] = gamma_tri[i];
+            }
+        }
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            if (k - j >= 0) {
+                previous = mpas_sub(value[j], mpas_mul(upper[j], previous));
+                rw_p[RC2(k - j, cell, ncells)] = previous;
+            }
+        }
+    }
+}
+
+extern "C" __global__ void acoustic_column_post_w_regional_v841(
+    const int nlev, const int ncells, const float dts,
+    const float *zz, const float *rho_zz,
+    const float *fzm, const float *fzp,
+    const float *dss, const float *w, const float *rw, const float *rw_save,
+    const float *spec_zone_mask_cell,
+    const float *ewp, float *rw_p, float *ww_avg)
+{
+    REGIONAL_ELEMENT_LOOP((nlev - 1) * ncells) {
+        const int cell = element % ncells;
+        const int k = 1 + element / ncells;
+        if (spec_zone_mask_cell[cell] != 0.0f) continue;
+        const int i = RC2(k, cell, ncells);
+        const int im = RC2(k - 1, cell, ncells);
+        const float delta_saved = mpas_sub(rw_save[i], rw[i]);
+        /* MPAS v8.4.2 mpas_atm_time_integration.F:4059-4063:
+           the damping product is evaluated from left to right. */
+        const float zz_interface = mpas_add(
+            mpas_mul(fzm[k], zz[i]), mpas_mul(fzp[k], zz[im]));
+        const float rho_interface = mpas_add(
+            mpas_mul(fzm[k], rho_zz[i]), mpas_mul(fzp[k], rho_zz[im]));
+        float value = mpas_add(rw_p[i], delta_saved);
+        value = mpas_sub(value, mpas_mul(mpas_mul(mpas_mul(mpas_mul(
+            dts, dss[i]), zz_interface), rho_interface), w[i]));
+        value = mpas_div(value, mpas_add(1.0f, mpas_mul(dts, dss[i])));
+        rw_p[i] = mpas_sub(value, delta_saved);
+        ww_avg[i] = mpas_add(ww_avg[i], mpas_mul(ewp[k], rw_p[i]));
+    }
+}
+
+extern "C" __global__ void acoustic_column_post_rt_regional_v841(
+    const int nlev, const int ncells, const float dts,
+    const float *rdzw, const float *rs, const float *ts,
+    const float *spec_zone_mask_cell,
+    const float *coftz, const float *cofrz, const float *ewp,
+    const float *rw_p, float *rho_pp, float *rtheta_pp)
+{
+    REGIONAL_ELEMENT_LOOP(nlev * ncells) {
+        const int cell = element % ncells;
+        const int k = element / ncells;
+        if (spec_zone_mask_cell[cell] != 0.0f) continue;
+        const int i = RC2(k, cell, ncells);
+        rho_pp[i] = mpas_sub(rs[i], mpas_mul(mpas_mul(dts, cofrz[k]),
+            mpas_sub(mpas_mul(ewp[k + 1], rw_p[RC2(k + 1, cell, ncells)]),
+                mpas_mul(ewp[k], rw_p[i]))));
+        rtheta_pp[i] = mpas_sub(ts[i], mpas_mul(mpas_mul(dts, rdzw[k]),
+            mpas_sub(mpas_mul(mpas_mul(ewp[k + 1],
+                    coftz[RC2(k + 1, cell, ncells)]),
+                rw_p[RC2(k + 1, cell, ncells)]),
+                mpas_mul(mpas_mul(ewp[k], coftz[i]), rw_p[i]))));
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* the regional scalar-transport branches                               */
 /* ------------------------------------------------------------------ */
@@ -982,6 +1157,48 @@ extern "C" __global__ void transport_standard_finish_regional_v841(
 """
 
 
+def _slot_major_rs_ts(source: str) -> str:
+    """``acoustic_rs_ts_regional_v841`` reading ``edgesOnCell`` and
+    ``edgesOnCell_sign`` slot-major (``[slot][cell]``), derived from the
+    kernel's own text so nothing but the two table reads can differ.
+
+    Consecutive threads hold consecutive cells, so a slot's table words are
+    one contiguous run instead of a ``maxEdges``-strided gather; every
+    arithmetic statement, operand and slot order is the cell-major kernel's.
+    The cell-major kernel stays: the LTS gather and the fusion derive from it.
+    """
+
+    name = "acoustic_rs_ts_regional_v841"
+    marker = f'extern "C" __global__ void {name}('
+    start = source.index(marker)
+    first = source.index(")\n{", start) + 2
+    depth = 1
+    last = first + 1
+    while depth:
+        depth += (source[last] == "{") - (source[last] == "}")
+        last += 1
+    text = source[start:last]
+    replacements = (
+        (f"void {name}(", "void acoustic_rs_ts_slot_regional_v841("),
+        ("edges_on_cell[RCES(cell, slot, max_edges)]",
+         "edges_on_cell[RSLOT(slot, cell, ncells)]"),
+        ("edge_sign_on_cell[RCES(cell, slot, max_edges)]",
+         "edge_sign_on_cell[RSLOT(slot, cell, ncells)]"),
+    )
+    for old, new in replacements:
+        if text.count(old) != 1:
+            raise ValueError(f"{name}: expected one {old!r}, found {text.count(old)}")
+        text = text.replace(old, new)
+    return (
+        "\n/* Derived by cuda_regional_v841._slot_major_rs_ts: the kernel above"
+        "\n   with its two edgesOnCell table reads slot-major. */"
+        "\n#define RSLOT(s,c,nc) ((s)*(nc) + (c))\n" + text + "\n"
+    )
+
+
+_CUDA_SOURCE = _CUDA_SOURCE + _slot_major_rs_ts(_CUDA_SOURCE)
+
+
 def _regional_source() -> str:
     """The translation unit with its zone constants bound to the CPU lane.
 
@@ -1023,7 +1240,12 @@ REGIONAL_KERNELS: tuple[str, ...] = (
     "regional_clamp_negative_scalars_v841",
     "acoustic_ru_regional_v841",
     "acoustic_rs_ts_regional_v841",
+    "acoustic_rs_ts_slot_regional_v841",
     "acoustic_column_solve_regional_v841",
+    "acoustic_column_pre_regional_v841",
+    "acoustic_column_sweep_regional_v841",
+    "acoustic_column_post_w_regional_v841",
+    "acoustic_column_post_rt_regional_v841",
     "transport_edge_values_regional_v841",
     "transport_standard_finish_regional_v841",
 )
@@ -1161,7 +1383,7 @@ def _direct_regional_module(device_id: int, platform_sha256: str) -> tuple[Any, 
         with NvrtcCompileCapture() as capture:
             binary, _ = compiler.compile_using_nvrtc(
                 CUDA_REGIONAL_SOURCE, options=_hex_numerics.options(REGIONAL_CUDA_OPTIONS),
-                arch=cp.cuda.Device(device_id).compute_capability,
+                arch=_compilation_target(device_id, xp=cp),
             )
         module = cp.cuda.function.Module()
         module.load(binary)

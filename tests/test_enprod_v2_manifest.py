@@ -8,7 +8,7 @@ read only ``gpuwm-ensemble-manifest.v1``: on the run folder it found no
 manifest, and on the domain folder it warned about the schema, handed the
 manifest to ``rw_ensbatch``, which refused it ("'members' must be a list")
 and printed its usage text, and enprod reported the usage line as the
-reason.  Measured on a development machine with a real 2-member time-lagged run kept with
+reason.  Measured on test host 1 with a real 2-member time-lagged run kept with
 --keep-member-files: exit 1, "rw_ensbatch --list-fields | --help | --abi".
 """
 from __future__ import annotations

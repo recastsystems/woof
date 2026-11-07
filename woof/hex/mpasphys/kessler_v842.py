@@ -42,6 +42,16 @@ __device__ float mpas_sqrtf(float x) { return __fsqrt_rn(x); }
 # Explicit operations retain the GNU strict source evaluation order. Keep this
 # source usable by the test-only host-glibc witness, without a second algorithm.
 CUDA_SOURCE = r"""
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_438F8000_DEFINED
+#define HEX_DIVISOR_438F8000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_438f8000 = 287.0f;
+#else
+static const float hex_divisor_438f8000 = 287.0f;
+#endif
+#endif
+
 #define A(a,b) __fadd_rn((a),(b))
 #define S(a,b) __fsub_rn((a),(b))
 #define M(a,b) __fmul_rn((a),(b))
@@ -111,7 +121,7 @@ extern "C" __global__ void kessler_v842(
   qr[p]=S(A(qr[p],prodk[p]),qr[p]);
   qr[p]=MAX(A(qr[p],qrprod),0.0f);
   float temp=M(pii[p],t[p]);
-  float pressure=M(1.0e5f,mpas_powf(pii[p],(1004.0f/287.0f)));
+  float pressure=M(1.0e5f,mpas_powf(pii[p],(1004.0f/hex_divisor_438f8000)));
   float gam=D(2.5e6f,M(1004.0f,pii[p]));
   float es=M(M(1000.0f,svp1),mpas_expf(D(M(svp2,S(temp,svpt0)),S(temp,svp3))));
   es=MIN(es,M(0.99f,pressure));

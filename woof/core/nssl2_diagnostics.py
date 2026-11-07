@@ -9,12 +9,30 @@ independently testable diagnostic; this module does not enable option 18.
 from __future__ import annotations
 
 import numpy as np
+from woof.core.device_cache import cuda_cache
 
-from woof.core.kernels import get_kernel
+from woof.core.kernels import get_kernel, get_kernel_int_defines
 from woof.core.state import DTYPE
+from woof.core.nssl2_shape import DEFAULT_SHAPES, shape_kernel
 
 
 _TPB = 256
+
+
+@cuda_cache(maxsize=None)
+def _radar_kernel(shapes=DEFAULT_SHAPES):
+    """Match the selected native libm without changing fast/default images.
+
+    glibc 2.41 replaced log10f's split binary32 evaluation. The native WRF
+    source pin alone therefore does not identify its radar words. Use the
+    existing strict referee ABI selector, also used by surface-layer tables.
+    """
+    from woof.wrf_exact import ENABLED, referee_glibc
+    if ENABLED and referee_glibc() >= (2, 41):
+        return shape_kernel(
+            "nssl2_diagnostics", "nssl2_radardd02", shapes,
+            (("NSSL2_ROUNDED_LOG10", 1),))
+    return shape_kernel("nssl2_diagnostics", "nssl2_radardd02", shapes)
 
 
 def _validate_fields(fields: dict[str, object]) -> tuple[tuple[int, ...], int]:
@@ -51,7 +69,7 @@ def launch_radardd02(
         qnr, qni, qns, qng, qnh, qvolg, qvolh, refl_10cm, *,
         output_due: bool,
         concentration_space: bool = False,
-        validate_values: bool = True) -> bool:
+        validate_values: bool = True, shapes=DEFAULT_SHAPES) -> bool:
     """Diagnose NSSL ``refl_10cm`` in dBZ when an output is due.
 
     All arrays are contiguous FP32 ``(nz, ny, nx)`` fields.  Mass and volume
@@ -98,7 +116,7 @@ def launch_radardd02(
         _validate_values(inputs)
 
     blocks = (size + _TPB - 1) // _TPB
-    get_kernel("nssl2_diagnostics", "nssl2_radardd02")(
+    _radar_kernel(shapes)(
         (blocks,), (_TPB,),
         (air_density, temperature_k,
          qr, qi, qs, qg, qh,
@@ -111,7 +129,7 @@ def launch_radardd02(
 def diagnose_radardd02_if_due(
         state, air_density, temperature_k, refl_10cm, *, output_due: bool,
         concentration_space: bool = False,
-        validate_values: bool = True):
+        validate_values: bool = True, shapes=DEFAULT_SHAPES):
     """State adapter for :func:`launch_radardd02`, without output stashing.
 
     The caller owns both the pre-admitted output buffer and history-frame
@@ -137,7 +155,7 @@ def diagnose_radardd02_if_due(
         state.qnr, state.qni, state.qns, state.qng, state.qnh,
         state.qvolg, state.qvolh, refl_10cm,
         output_due=True, concentration_space=concentration_space,
-        validate_values=validate_values)
+        validate_values=validate_values, shapes=shapes)
     return refl_10cm
 
 

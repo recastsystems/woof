@@ -27,6 +27,7 @@
 
 pub mod capi;
 mod fields;
+mod wrf_tables;
 
 use std::collections::HashMap;
 use std::fs;

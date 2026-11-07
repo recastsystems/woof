@@ -8,7 +8,7 @@ while [ $(date +%s) -lt $STOP ]; do
   n=$(ls $W4/results/rows/*.json 2>/dev/null | wc -l)
   echo "$(date -u +%FT%TZ) loop4 $TAG: $n of $total rows" >> $W4/logs/events.log
   [ $n -ge $total ] && break
-  card-lease tclock --cards 1 --est 1800 --wait 1800 $W4/batch4.sh $JOBS $NPROC 1500 $HARD $TAG >> $W4/logs/mutex-$TAG.log 2>&1
+  ${GPU_MUTEX_DIR:?set GPU_MUTEX_DIR}/run.sh tclock --cards 1 --est 1800 --wait 1800 $W4/batch4.sh $JOBS $NPROC 1500 $HARD $TAG >> $W4/logs/mutex-$TAG.log 2>&1
   sleep 5
 done
 echo "$(date -u +%FT%TZ) loop4 $TAG: end" >> $W4/logs/events.log

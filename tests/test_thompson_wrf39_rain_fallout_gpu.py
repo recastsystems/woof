@@ -119,7 +119,7 @@ def test_fork_rain_fallout_is_the_frozen_pass_except_the_surface_test(seed):
     # calls), where the byte-frozen thompson.cu keeps CUDA's powf.  The two
     # words differ by one ulp on some arguments, and the sub-stepped fallout
     # carries that a few ulps further, so the copy is held to the frozen pass
-    # within the spread lane/verify-thompson-aerosol-mp28 measured on these
+    # within the spread development branch measured on these
     # three seeds: qr 3 ulps, nr 8, surface rain 2.
     for name, bound in (("qr", 3), ("nr", 8)):
         assert _ulps(fork[name], v461[name]).max() <= bound, name
@@ -158,7 +158,7 @@ def test_the_adapter_routes_rain_by_generation():
     """The coupled adapter sends the fork generation to the fork pass and
     v4.6.1 to its tendency-form accumulator pass (the mp=28 accumulator
     rework), whose pptrain the surface totals then add in mp_gt_driver's
-    order (lane/mp28fix-sedim-refl); no generation reaches the classic
+    order (development branch); no generation reaches the classic
     in-place rain launcher."""
     text = (_ROOT / "woof" / "core" / "microphysics_aerosol.py").read_text(
         encoding="utf-8")

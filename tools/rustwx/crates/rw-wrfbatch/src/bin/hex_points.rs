@@ -20,9 +20,9 @@ use rayon::prelude::*;
 use rw_mpas::history::{Timestamp, read_history_cells_on_mesh};
 use rw_mpas::points::{Column, PointSampler, PointSpec, columns, parse_points};
 
-/// Every WRF name [`columns`] reads (the last three are optional there).
-const POINT_FIELDS: [&str; 14] = [
-    "T", "PB", "QVAPOR", "U", "V", "PHB", "T2", "Q2", "PSFC", "U10", "V10", "RAINC", "RAINNC", "REFL_10CM",
+/// Every WRF name [`columns`] reads (the last four are optional there).
+const POINT_FIELDS: [&str; 15] = [
+    "T", "PB", "QVAPOR", "U", "V", "PHB", "T2", "Q2", "PSFC", "U10", "V10", "RAINC", "RAINNC", "REFL_10CM", "W",
 ];
 use rw_mpas::remap::read_mesh_topology;
 use rw_mpas::weights::{read_mesh_cell_spacing, read_mesh_coordinates};
@@ -33,20 +33,23 @@ usage: rw_hex_points --mesh FILE --init FILE --history FILE... --out-dir DIR
                      --points 'Name@LAT,LON;Name@LAT,LON'
                      [--simulation-start YYYY-MM-DD_HH:MM:SS] [--model-label NAME]
                      [--grid-label TEXT] [--brand TEXT] [--sounding-every-hours H]
-                     [--json FILE]
+                     [--json FILE] [--columns-json FILE] [--soundings-only]
 
 Writes, per point:
   <slug>/sounding_<slug>_<YYYYMMDD_HHMM>_f<LLL>.png   skew-T log-p at each
         frame whose lead is a multiple of --sounding-every-hours (default 6)
   <slug>/meteogram_<slug>_<YYYYMMDD_HH>.png            every frame, one chart
-and a JSON receipt with every value drawn.  --brand puts the model's name and
+and a JSON receipt with every value drawn.  --columns-json writes the one
+frame's columns as an rw_soundings JSON column frame (one --history file only),
+so the site's own sounding window can draw this point; --soundings-only skips
+the meteogram, and the skew-T when --columns-json stands in for it.  --brand puts the model's name and
 start in bold at the top right of every picture (e.g. 'WOOF Hex · Global
 120 km · Init GFS 22 Oct 2026 00Z'); without it the top right names the
 model and its start ('WOOF Hex · Init 22 Oct 2026 00Z').  A
 point off a limited-area mesh is refused by name rather than drawn from the
 boundary ring.";
 
-const ABI: &str = "gpuwm-rw-hex-points-v1\tPOINT\tSOUNDING\tMETEOGRAM\tFINISHED";
+const ABI: &str = "gpuwm-rw-hex-points-v1\tPOINT\tSOUNDING\tMETEOGRAM\tFINISHED\tCOLUMNS-JSON";
 
 /// `GPUWM_BRIDGE_SOURCE_REV=<40-hex commit>`: the source revision this
 /// binary was built from (the crate's `build.rs` injects it), so the release
@@ -69,6 +72,8 @@ struct Args {
     brand: Option<String>,
     sounding_every_hours: f64,
     json: Option<PathBuf>,
+    columns_json: Option<PathBuf>,
+    soundings_only: bool,
 }
 
 fn parse() -> Result<Args, String> {
@@ -83,6 +88,8 @@ fn parse() -> Result<Args, String> {
     let mut brand: Option<String> = None;
     let mut sounding_every_hours = 6.0;
     let mut json = None;
+    let mut columns_json = None;
+    let mut soundings_only = false;
     let mut raw = std::env::args().skip(1).peekable();
     while let Some(flag) = raw.next() {
         let mut value = || raw.next().ok_or_else(|| format!("{flag} needs a value"));
@@ -109,6 +116,8 @@ fn parse() -> Result<Args, String> {
                     .map_err(|_| "--sounding-every-hours takes a number".to_string())?
             }
             "--json" => json = Some(PathBuf::from(value()?)),
+            "--columns-json" => columns_json = Some(PathBuf::from(value()?)),
+            "--soundings-only" => soundings_only = true,
             "--history" => {
                 while let Some(next) = raw.peek() {
                     if next.starts_with("--") {
@@ -133,9 +142,14 @@ fn parse() -> Result<Args, String> {
         brand,
         sounding_every_hours,
         json,
+        columns_json,
+        soundings_only,
     };
     if history_empty {
         return Err("--history needs at least one file".to_string());
+    }
+    if args.columns_json.is_some() && args.history.len() != 1 {
+        return Err("--columns-json writes one frame: give exactly one --history file".to_string());
     }
     if !(args.sounding_every_hours > 0.0) {
         return Err("--sounding-every-hours must be positive".to_string());
@@ -1095,6 +1109,52 @@ fn json_num(v: f64) -> String {
     if v.is_finite() { format!("{v:.4}") } else { "null".to_string() }
 }
 
+/// One frame's columns as an `rw_soundings` JSON column frame (rw-soundings `input.rs`, JsonFrame): lowest level
+/// first, in the bridge's units (hPa, m MSL, C, m/s, Pa/s), with the surface anchor and what the run says about itself.
+/// Omega comes from the frame's W by the column store's formula; a frame with no W leaves it out and the reader fills
+/// it as missing. THE BREAKAGE THIS PREVENTS (the project owner, 2026-10-30): a hex box sounding drew this tool's own skew-T, not the
+/// site's sounding window the column store draws; and then (the post-switch check, 2026-10-31) that window with no OMEGA
+/// panel, because this frame carried none.
+fn column_frame(valid: &Timestamp, init: &Timestamp, shape: Option<&str>, cols: &[Column]) -> serde_json::Value {
+    let num = |v: f64| if v.is_finite() { serde_json::json!(v) } else { serde_json::Value::Null };
+    let list = |v: Vec<f64>| v.into_iter().map(num).collect::<Vec<_>>();
+    let columns: Vec<serde_json::Value> = cols
+        .iter()
+        .map(|c| {
+            let t: Vec<f64> = c.temperature_k.iter().map(|t| t - 273.15).collect();
+            let td: Vec<f64> = c.pressure_pa.iter().zip(&c.qv).zip(&t)
+                .map(|((p, q), t)| dewpoint_c(*p, *q).min(*t))
+                .collect();
+            let t2_c = c.t2_k - 273.15;
+            let mut column = serde_json::json!({
+                "p": list(c.pressure_pa.iter().map(|p| p / 100.0).collect()),
+                "z": list(c.height_m.clone()),
+                "t": list(t),
+                "td": list(td),
+                "u": list(c.u.clone()),
+                "v": list(c.v.clone()),
+                "sfc": {
+                    "psfc_hpa": num(c.psfc_pa / 100.0),
+                    "orog_m": num(c.terrain_m),
+                    "t2_c": num(t2_c),
+                    "td2_c": num(dewpoint_c(c.psfc_pa, c.q2).min(t2_c)),
+                    "u10": num(c.u10),
+                    "v10": num(c.v10),
+                },
+            });
+            if let Some(omega) = &c.omega_pa_s {
+                column["omega"] = serde_json::json!(list(omega.clone()));
+            }
+            column
+        })
+        .collect();
+    let mut frame = serde_json::json!({ "valid": format!("{}Z", valid.iso()), "init": format!("{}Z", init.iso()), "model": "Hex", "columns": columns });
+    if let Some(shape) = shape {
+        frame["shape"] = serde_json::json!(shape);
+    }
+    frame
+}
+
 fn run() -> Result<(), String> {
     let args = parse()?;
     let started = std::time::Instant::now();
@@ -1173,6 +1233,18 @@ fn run() -> Result<(), String> {
         cells.len(),
         read_started.elapsed().as_secs_f64()
     );
+    if let Some(path) = &args.columns_json {
+        let (valid, _) = &frames[0];
+        let body = serde_json::to_string(&column_frame(valid, &init, args.grid_label.as_deref(), &frame_columns[0]))
+            .map_err(|e| e.to_string())?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(path, body).map_err(|e| e.to_string())?;
+        println!("COLUMNS\t{}\tpoints={}", path.display(), n);
+    }
+    // The site's window draws these columns: the tool's own skew-T would be CPU spent beside the forecast for nothing.
+    let draw_pictures = !(args.soundings_only && args.columns_json.is_some());
     for ((valid, _), cols) in frames.iter().zip(frame_columns.iter()) {
         let lead_h = valid.seconds_since(&init) as f64 / 3600.0;
         for (k, c) in cols.iter().enumerate() {
@@ -1191,7 +1263,7 @@ fn run() -> Result<(), String> {
             s.mslp_hpa.push(c.mslp_pa() / 100.0);
             s.precip_in.push(c.precip_mm / 25.4);
             let whole = (lead_h / args.sounding_every_hours).round() * args.sounding_every_hours;
-            if (lead_h - whole).abs() < 1e-6 {
+            if draw_pictures && (lead_h - whole).abs() < 1e-6 {
                 let p = &sampler.points[k];
                 let idx = sounding_indices(c, p.lat);
                 let file = args.out_dir.join(p.slug()).join(format!(
@@ -1251,6 +1323,9 @@ fn run() -> Result<(), String> {
             init.day,
             init.hour
         ));
+        if args.soundings_only {
+            continue;
+        }
         draw_meteogram(&file, &series[k], p, &headline, brand.as_deref(), &init)?;
         println!("METEOGRAM\t{}\t{}\tframes={}", p.slug(), file.display(), series[k].leads_h.len());
         let s = &series[k];
@@ -1322,6 +1397,52 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_column_frame_is_in_the_sounding_windows_units_and_shape() {
+        let init = Timestamp::parse("2026-10-23_18:00:00").unwrap();
+        let valid = Timestamp::parse("2026-10-23_21:00:00").unwrap();
+        let column = Column {
+            pressure_pa: vec![90000.0, 50000.0],
+            temperature_k: vec![290.0, 260.0],
+            qv: vec![0.008, 1e-9],
+            height_m: vec![1000.0, 5500.0],
+            u: vec![5.0, 20.0],
+            v: vec![-1.0, f64::NAN],
+            terrain_m: 900.0,
+            psfc_pa: 91000.0,
+            t2_k: 291.15,
+            q2: 0.009,
+            u10: 3.0,
+            v10: -2.0,
+            precip_mm: 0.0,
+            refl_max_dbz: None,
+            omega_pa_s: Some(vec![-0.25, f64::NAN]),
+        };
+        let frame = column_frame(&valid, &init, Some("Zoom globe"), std::slice::from_ref(&column));
+        assert_eq!(frame["valid"], "2026-10-23T21:00:00Z");
+        assert_eq!(frame["init"], "2026-10-23T18:00:00Z");
+        assert_eq!(frame["model"], "Hex");
+        assert_eq!(frame["shape"], "Zoom globe");
+        let c = &frame["columns"][0];
+        assert_eq!(c["p"][0].as_f64(), Some(900.0));
+        assert!((c["t"][0].as_f64().unwrap() - 16.85).abs() < 1e-9);
+        assert!(c["td"][0].as_f64().unwrap() <= c["t"][0].as_f64().unwrap());
+        assert_eq!(c["z"][1].as_f64(), Some(5500.0));
+        // JSON has no NaN: a missing wind is null, which the sounding reader takes back as missing.
+        assert!(c["v"][1].is_null());
+        assert_eq!(c["sfc"]["psfc_hpa"].as_f64(), Some(910.0));
+        assert_eq!(c["sfc"]["orog_m"].as_f64(), Some(900.0));
+        assert!((c["sfc"]["t2_c"].as_f64().unwrap() - 18.0).abs() < 1e-9);
+        assert_eq!(c["omega"][0].as_f64(), Some(-0.25));
+        assert!(c["omega"][1].is_null());
+    }
+
+    #[test]
+    fn the_abi_line_keeps_the_marker_older_doors_look_for_and_names_the_column_frame() {
+        assert!(ABI.starts_with("gpuwm-rw-hex-points-v1\tPOINT\tSOUNDING\tMETEOGRAM\tFINISHED"));
+        assert!(ABI.split('\t').any(|w| w == "COLUMNS-JSON"));
+    }
 
     #[test]
     fn no_brand_still_names_the_model_and_its_start() {

@@ -13,7 +13,7 @@ use.  The device driver must land on every output word of every step:
   steps from its own output, so a single rounding difference anywhere would
   compound into later steps.
 
-What makes it exact (lane/mynn-exact, the YSU recipe): the unit compiles
+What makes it exact (development branch, the YSU recipe): the unit compiles
 with ``--fmad=false`` (woof/core/kernels/__init__.py ``_NO_FMAD_MODULES``)
 and calls WOOF's own float32 exponential, logarithm, arctangent, hyperbolic
 tangent and power routines, graded against the oracle host's elementary

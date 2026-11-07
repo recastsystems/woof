@@ -155,3 +155,51 @@ def test_the_held_caches_fit_the_preflight_price():
     held = (device_bytes(params._surface_layout_cache)
             + device_bytes(params._slab_parameter_cache))
     assert held <= ny * nx * slab_cache_bytes_per_column()
+
+
+@requires_gpu
+def test_prepared_footprint_switch_has_no_host_classification(monkeypatch):
+    import cupy as cp
+    from woof.core.noahmp_runtime import SLAB_COLUMN_CHUNK
+    from woof.core.noahmp_slab_libm import take_slab_rows
+
+    params = NoahmpRuntimeParameters()
+    params.static_surface_identity = True
+    fields = {"xland": cp.ones((3, 4), dtype=cp.float32),
+              "xice": cp.zeros((3, 4), dtype=cp.float32),
+              "ivgtyp": cp.full((3, 4), 10, dtype=cp.int32),
+              "isltyp": cp.full((3, 4), 6, dtype=cp.int32)}
+    expected = {}
+    snapshots = {}
+    for token in (0, 1):
+        fields["xland"][0, 0] = 1 + token
+        fields["ivgtyp"][1, 1] = 10 + 6 * token
+        params.prepare_surface_footprint(token, fields, nsoil=4)
+        saved = params._surface_footprints[token][2]
+        expected[token] = params.slab_parameter_chunks(
+            saved["keys"], saved["inverse"], nsoil=4,
+            chunk_width=SLAB_COLUMN_CHUNK)[0]
+        snapshots[token] = {k: v.copy() for k, v in fields.items()}
+
+    original = cp.asnumpy
+    def refuse(*args, **kwargs):
+        raise AssertionError("prepared footprint attempted D2H classification")
+    for token in (0, 1, 0, 1):
+        for k, v in snapshots[token].items():
+            fields[k][...] = v
+        with monkeypatch.context() as m:
+            m.setattr(cp, "asnumpy", refuse)
+            params.bind_surface_footprint(token)
+            layout = params.surface_layout(fields, nsoil=4,
+                                            chunk_width=SLAB_COLUMN_CHUNK)
+            actual = take_slab_rows(layout["device_inverse"],
+                                     layout["parameter_table"],
+                                     len(layout["keys"]))
+        assert layout["census"]["land"] == 12 - token
+        for name, wanted in expected[token].items():
+            np.testing.assert_array_equal(original(actual[name]).view(np.uint32),
+                                          original(wanted).view(np.uint32))
+
+    fields["isltyp"][2, 2] = 7
+    with pytest.raises(RuntimeError, match="static surface identity changed"):
+        params.surface_layout(fields, nsoil=4, chunk_width=SLAB_COLUMN_CHUNK)

@@ -211,10 +211,9 @@ _AUTHORED_RUSTWX_CRATES = (
 #: it is debt with a name, and `test_the_crlf_debt_does_not_rot` fails
 #: the moment an entry is fixed or deleted without being struck off.
 _CRLF_DEBT = frozenset({
-    # the repository root -- CRLF since before v2.3.3, and the only root
-    # file that is: CHANGELOG.md and pyproject.toml were flipped by the
-    # 2.4 line and are LF again.
-    ".gitignore",
+    # the repository root: .gitignore left this list in the 3.0 fold (the
+    # public-aerosol merge 00c2d5939cd wrote it back LF); CHANGELOG.md and
+    # pyproject.toml were flipped by the 2.4 line and are LF again.
     # gpuwm/ -- the wheel's own sources.  woof/core/kernels/shinhong.cu
     # left this list at A146: its constant-divisor rewrite (a98f2482e) wrote
     # the file back LF, and restoring the CR bytes is a commit the line-ending
@@ -241,9 +240,7 @@ _CRLF_DEBT = frozenset({
     # tests/
     "tests/data/wrfout_global_attribute_set_v1.json",
     "tests/goes_pack_fixtures.py",
-    "tests/test_certification_capsule.py",
     "tests/test_goes_cwp.py",
-    "tests/test_goes_pack_crosslane.py",
     "tests/test_grayzone_nest_config.py",
     "tests/test_inflow_fetch_meter.py",
     "tests/test_les_tornado_attempt1_config.py",

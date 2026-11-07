@@ -273,7 +273,8 @@ def test_the_sdist_carries_the_configs_too(
     from setuptools._distutils.filelist import FileList
     from tools.release_exclusions import matches, read_exclusions
 
-    rules = read_exclusions(REPO_ROOT)
+    rules = (read_exclusions(REPO_ROOT)
+             if (REPO_ROOT / "RELEASE-EXCLUDE.txt").is_file() else [])
     public = {name for name in present if not matches(name, rules)}
     files = FileList()
     files.allfiles = [os.fspath(Path(name)) for name in sorted(in_sdist)]

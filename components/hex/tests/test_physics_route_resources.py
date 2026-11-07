@@ -32,12 +32,13 @@ def _sha(path: Path) -> str:
 
 
 def test_the_pool_reader_is_gpuwm_24b6f08_plus_the_field_parallel_transport():
-    # woof 24b6f08c carries ecd4936f: zero-sized fork Registry dimensions allocate associated
+    # gpuwm 24b6f08c carries ecd4936f: zero-sized fork Registry dimensions allocate associated
     # empty arrays (MPAS-Model-rrfs mpas_field_routines.F:261-299); 0ec69a6 refused them.
     # hex fix/U-H3 then moved the transport onto a worker pool (same bytes per field), and
     # fix/rrfs-c3km-startup-split split one large field over threads (same bytes per field).
     source = ROOT / "rust/physics-pool/src/bin/rw_mpas_physics_pool.rs"
-    assert _sha(source) == "1a42521cdcaa87bf8931b3ce5b5869bfe16f61c7519d9463903580a295886e83"
+    # The public source changes only the host alias in a comment (9d726c42).
+    assert _sha(source) == "cd6196b4a7d00f42f59d9472631da6070f9e4d277db330b2548d2f5e0aac0cff"
     cargo = (ROOT / "rust/physics-pool/Cargo.toml").read_text()
     assert 'name = "rw_mpas_physics_pool"' in cargo
     lock = (ROOT / "rust/physics-pool/Cargo.lock").read_text()

@@ -2,7 +2,7 @@
 GPU marker.
 
 This file used to run the fork's plain-powf receipt guard (b0556bd76,
-lane/286-fork-thompson).  The two fork sites that receipt covered now call
+development branch).  The two fork sites that receipt covered now call
 WOOF's own powf word like every other mp=28 site, so the guard is the
 all-sites rule in tests/test_thompson_aerosol_device_helpers.py.
 """

@@ -1,0 +1,3 @@
+369bad7e4b528953dc4047ad38bf0b0d88120190f75541667be635c55edf1783  /work/wrf/src/WRF-4.6.1/phys/module_cam_shr_kind_mod.F
+49fa938132d5d49da279a387315bca8ff23c5de332b939a1065e95a063371bf0  /work/wrf/src/WRF-4.6.1/phys/module_cam_error_function.F
+4bca54b294def08ffc98ef69a30650c943e2c394f34802e75e50c7f1a2896fcb  /work/wrf/src/WRF-4.6.1/phys/module_cu_mskf.F

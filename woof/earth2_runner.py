@@ -174,7 +174,7 @@ def scaled_noise(operation, scale):
 # Bytes of one expanded DISCO slice (batch x channels x kernel x lat x lon,
 # float32). Breakage it prevents: the whole expansion is ~20 GiB at 0.25
 # degrees and FCN3 did not fit a 32 GB card beside the model (2.9.4
-# follow-up, V58 2026-10-21).
+# follow-up, test host 2026-10-21).
 DISCO_CHUNK_BYTES = 2 * 2**30
 
 
@@ -211,7 +211,7 @@ def _band_contracted_disco(capability=None):
       and ``DiscreteContinuousConvTransposeS2`` contract in their own
       ``forward`` on every card, so both are patched.
 
-    Breakage it prevents (2.9.4 follow-up, V58 2026-10-21): on the 0.8.1
+    Breakage it prevents (2.9.4 follow-up, test host 2026-10-21): on the 0.8.1
     stack the 0.9 patch found no ``disco.optimized`` module and returned
     without patching, FCN3 peaked at 60,212 MiB (49.3 GiB allocated) and
     every 32 GB card was refused. Returns the patched layout, or ``False``

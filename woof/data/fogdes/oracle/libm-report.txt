@@ -1,0 +1,8 @@
+# O0 module_bl_fogdes.o: 1 powf import(s); calls: 3
+# O0 module_sf_fogdes.o: 1 powf import(s); calls: 5
+# wrfopt module_bl_fogdes.o: 1 powf import(s); calls: 3
+# wrfopt module_sf_fogdes.o: 1 powf import(s); calls: 3
+# wrfexe: /work/wrf/build/scalar/WRF-4.6.1 objects agree byte for byte
+# 3bef2950650247778bf218ee78d04a03e5e7a3014a1b42948287c346684678d1  module_bl_fogdes.o
+# 64bd04fbac4a3fde6d86c1ac525850b8f26001b23df726eae7b2284fe9bb5708  module_sf_fogdes.o
+# 085fcabbfe011e8f0f650b820dfa6d65d41ab3cae0fd6b767fe871aff23d3c87  module_model_constants.o

@@ -77,7 +77,7 @@ def test_memory_profile_reads_requested_card_without_repricing_default_callers(m
         seen.append(device)
         return dict(name=f"card-{device}", multiProcessorCount=120 + device,
                     maxThreadsPerMultiProcessor=2048)
-    cp = SimpleNamespace(cuda=SimpleNamespace(runtime=SimpleNamespace(
+    cp = SimpleNamespace(cuda=SimpleNamespace(runtime=SimpleNamespace(is_hip=False, 
         getDeviceProperties=properties, deviceGetLimit=lambda _: 1024)))
     monkeypatch.setattr(preflight, "read_compile_platform", lambda: ("120", "test"))
     default = preflight.local_memory_profile_from_device(cp)

@@ -1,0 +1,435 @@
+DECL
+MaPhysics A(cfg.aercu_opt>0 ? wsa+ms_lane_offset(MSKF_ASLOTS,ext) : nullptr);
+MaArena& arena=A.arena;
+const int PCOLS=1,NAER_CU=10;
+MaArray<double> MUU;
+if(cfg.aercu_opt>0) MUU=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> SU;
+if(cfg.aercu_opt>0) SU=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> QUU;
+if(cfg.aercu_opt>0) QUU=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> DUU;
+if(cfg.aercu_opt>0) DUU=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> EUU;
+if(cfg.aercu_opt>0) EUU=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> CMEL;
+if(cfg.aercu_opt>0) CMEL=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> CMEI;
+if(cfg.aercu_opt>0) CMEI=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> ZFU;
+if(cfg.aercu_opt>0) ZFU=arena.make<double>(1,PCOLS,KTS,(KTE+1));
+MaArray<double> ZF_WRF;
+if(cfg.aercu_opt>0) ZF_WRF=arena.make<double>(0,KTE);
+MaArray<double> PRU;
+if(cfg.aercu_opt>0) PRU=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> TEE;
+if(cfg.aercu_opt>0) TEE=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> QEE;
+if(cfg.aercu_opt>0) QEE=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> QSATZM;
+if(cfg.aercu_opt>0) QSATZM=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> GAMHAT;
+if(cfg.aercu_opt>0) GAMHAT=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> AER_MMR;
+if(cfg.aercu_opt>0) AER_MMR=arena.make<double>(1,PCOLS,KTS,KTE,1,NAER_CU);
+MaArray<double> AQNEWIC;
+if(cfg.aercu_opt>0) AQNEWIC=arena.make<double>(KTS,KTE);
+MaArray<double> AQNEWLQ;
+if(cfg.aercu_opt>0) AQNEWLQ=arena.make<double>(KTS,KTE);
+MaArray<double> WU_MSKF_ACT;
+if(cfg.aercu_opt>0) WU_MSKF_ACT=arena.make<double>(KTS,KTE);
+MaArray<double> QC_MSKF_ACT;
+if(cfg.aercu_opt>0) QC_MSKF_ACT=arena.make<double>(KTS,KTE);
+MaArray<double> QI_MSKF_ACT;
+if(cfg.aercu_opt>0) QI_MSKF_ACT=arena.make<double>(KTS,KTE);
+MaArray<double> EFFC;
+if(cfg.aercu_opt>0) EFFC=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> EFFI;
+if(cfg.aercu_opt>0) EFFI=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> EFFS;
+if(cfg.aercu_opt>0) EFFS=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> QSATU;
+if(cfg.aercu_opt>0) QSATU=arena.make<double>(KTS,KTE);
+MaArray<double> OLDQU;
+if(cfg.aercu_opt>0) OLDQU=arena.make<double>(KTS,KTE);
+MaArray<double> OLDTU;
+if(cfg.aercu_opt>0) OLDTU=arena.make<double>(KTS,KTE);
+MaArray<double> EPSI0;
+if(cfg.aercu_opt>0) EPSI0=arena.make<double>(1,PCOLS);
+MaArray<double> DLFMZMP;
+if(cfg.aercu_opt>0) DLFMZMP=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> DIFMZMP;
+if(cfg.aercu_opt>0) DIFMZMP=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> OLDPPTLIQ;
+if(cfg.aercu_opt>0) OLDPPTLIQ=arena.make<double>(KTS,KTE);
+MaArray<double> OLDPPTICE;
+if(cfg.aercu_opt>0) OLDPPTICE=arena.make<double>(KTS,KTE);
+MaArray<double> WUMP;
+if(cfg.aercu_opt>0) WUMP=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> ZMQLIQ;
+if(cfg.aercu_opt>0) ZMQLIQ=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> ZMQICE;
+if(cfg.aercu_opt>0) ZMQICE=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> ZMQRAIN;
+if(cfg.aercu_opt>0) ZMQRAIN=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> ZMQSNOW;
+if(cfg.aercu_opt>0) ZMQSNOW=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> NCMP;
+if(cfg.aercu_opt>0) NCMP=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> NIMP;
+if(cfg.aercu_opt>0) NIMP=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> NRMP;
+if(cfg.aercu_opt>0) NRMP=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> NSMP;
+if(cfg.aercu_opt>0) NSMP=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> ZMCCN;
+if(cfg.aercu_opt>0) ZMCCN=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> RPRD;
+if(cfg.aercu_opt>0) RPRD=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> SPRD;
+if(cfg.aercu_opt>0) SPRD=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<double> FRZ;
+if(cfg.aercu_opt>0) FRZ=arena.make<double>(1,PCOLS,KTS,KTE);
+MaArray<int> JBB;
+if(cfg.aercu_opt>0) JBB=arena.make<int>(1,1);
+MaArray<int> JTT;
+if(cfg.aercu_opt>0) JTT=arena.make<int>(1,1);
+MaArray<int> JLCL;
+if(cfg.aercu_opt>0) JLCL=arena.make<int>(1,1);
+int KQ=0,JK=0,MSG1=0,IL2G=1,NLEVZM=KTE,NLEVZMP1=KTE+1,I=1,J=1;
+float EPS1U=0.622f,ALATENT=2.54E6f,DENSPLUME=0,TC_HU10,SF_HU10,A1KAY;
+double CPIN=CP,RDRY=R,GRAV=G,DTZMP=DT,PSH_FAC;
+const float P1_HU10=7.6725f,P2_HU10=1.0118f,P3_HU10=0.1422f,P4_HU10=0.0106f,P5_HU10=3.39E-4f,P6_HU10=3.95E-6f;
+#define AEROCU(I,K,J,S) in.aerocu[(((size_t)(S)-1)*nz+((K)-1))*ncol+col]
+
+INIT
+// WRF:4717
+if((cfg.aercu_opt>0)) {
+// WRF:4718
+ZF_WRF(0) = 0.0f;
+// WRF:4719
+for(KQ=KTS; KQ<=KTE; KQ+=1) {
+// WRF:4720
+ZF_WRF(KQ) = (ZF_WRF((KQ-1))+DZQ(KQ));
+// WRF:4721
+AQNEWLQ(KQ) = 0.0f;
+// WRF:4722
+AQNEWIC(KQ) = 0.0f;
+// WRF:4723
+RPRD(1,KQ) = 0.0f;
+// WRF:4724
+WUMP(1,KQ) = 0.0f;
+// WRF:4725
+NCMP(1,KQ) = 0.0f;
+// WRF:4726
+NIMP(1,KQ) = 0.0f;
+// WRF:4727
+SPRD(1,KQ) = 0.0f;
+// WRF:4728
+FRZ(1,KQ) = 0.0f;
+// WRF:4729
+JK = KQ;
+// WRF:4730
+MUU(1,JK) = 0.0f;
+// WRF:4731
+DUU(1,JK) = 0.0f;
+// WRF:4732
+EUU(1,JK) = 0.0f;
+// WRF:4733
+CMEL(1,JK) = 0.0f;
+// WRF:4734
+CMEI(1,JK) = 0.0f;
+// WRF:4735
+OLDTU(KQ) = T0(KQ);
+// WRF:4736
+OLDQU(KQ) = Q0(KQ);
+// Defined-read reference: QSATu outside the plume.
+QSATU(KQ)=0.0;
+// WRF:4737
+}
+// WRF:4739
+}
+
+OLD
+// WRF:4749
+if((cfg.aercu_opt>0)) {
+// WRF:4750
+OLDQU(NK) = QU(NK);
+// WRF:4751
+OLDTU(NK) = TU(NK);
+// WRF:4752
+}
+
+FRC1
+// WRF:4801
+if((cfg.aercu_opt>0)) {
+// WRF:4802
+if((TU(NK1)>TBFRZ)) {
+// WRF:4803
+TC_HU10 = (TU(NK1)-273.15f);
+// WRF:4804
+SF_HU10 = ((-1.0f)*((((((P1_HU10+((P2_HU10*TC_HU10)))+((P3_HU10*(ma_powi<2>(TC_HU10)))))+((P4_HU10*(ma_powi<3>(TC_HU10)))))+((P5_HU10*(ma_powi<4>(TC_HU10)))))+((P6_HU10*(ma_powi<5>(TC_HU10)))))));
+// WRF:4806
+FRC1 = (1.0f-((1.0f/((1.0f+ma_exp(SF_HU10))))));
+// WRF:4807
+} else {
+// WRF:4808
+FRC1 = 1.f;
+// WRF:4809
+IFLAG = 1;
+// WRF:4810
+}
+// WRF:4811
+}
+
+QSATU
+// WRF:4827
+if((cfg.aercu_opt>0)) {
+// WRF:4828
+QSATU(NK) = (QSu/((1.f+QSu)));
+// WRF:4829
+AQNEWLQ(NK) = QNEWLQ;
+// WRF:4830
+AQNEWIC(NK) = QNEWIC;
+// WRF:4831
+}
+
+LEVEL
+// WRF:5006
+if((cfg.aercu_opt>0)) {
+// WRF:5007
+EPS1U = 0.622f;
+// WRF:5008
+ALATENT = 2.54e6f;
+// WRF:5009
+KQ = NK;
+// WRF:5010
+JK = ((KTE-KQ)+1);
+// WRF:5011
+MUU(1,JK) = (UMF(KQ)/VMFLCL);
+// WRF:5012
+DUU(1,JK) = ((UDR(KQ)/DZQ(KQ))/VMFLCL);
+// WRF:5013
+EUU(1,JK) = ((UER(KQ)/DZQ(KQ))/VMFLCL);
+// WRF:5014
+CMEL(1,JK) = ((MUU(1,JK)*AQNEWLQ(KQ))/DZQ(KQ));
+// WRF:5015
+CMEI(1,JK) = ((MUU(1,JK)*AQNEWIC(KQ))/DZQ(KQ));
+// WRF:5016
+GAMHAT(1,JK) = ((((((QSATU(KQ)*((1.f+(QSATU(KQ)/EPS1U))))*EPS1U)*ALATENT)/((R*ma_powi<2>(OLDTU(KQ)))))*ALATENT)/CP);
+// WRF:5018
+WU_MSKF_ACT(JK) = WU(KQ);
+// WRF:5019
+QC_MSKF_ACT(JK) = AQNEWLQ(KQ);
+// WRF:5020
+QI_MSKF_ACT(JK) = AQNEWIC(KQ);
+// WRF:5021
+}
+
+COLUMN
+if(cfg.aercu_opt>0) {
+// WRF:5030
+ZFU(1,(KTE+1)) = 0.0f;
+// WRF:5032
+CPIN = CP;
+// WRF:5034
+EPSI0(1) = 2.0e-4f;
+// WRF:5035
+for(KQ=KTS; KQ<=KTE; KQ+=1) {
+// WRF:5036
+JK = ((KTE-KQ)+1);
+// WRF:5037
+ZFU(1,JK) = ZF_WRF(KQ);
+// WRF:5038
+SU(1,JK) = ((OLDTU(KQ)*((1.0f+(0.622f*QSATU(KQ)))))+(((G*ZF_WRF(KQ)))/CP));
+// WRF:5039
+QUU(1,JK) = (OLDQU(KQ)/((1.f+OLDQU(KQ))));
+// WRF:5040
+PRU(1,JK) = (P0(KQ)/100.0f);
+// WRF:5041
+TEE(1,JK) = T0(KQ);
+// WRF:5042
+QEE(1,JK) = (Q0(KQ)/((1.f+Q0(KQ))));
+// WRF:5044
+QEE(1,JK) = (OLDQU(KQ)/((1.f+OLDQU(KQ))));
+// WRF:5045
+QSATZM(1,JK) = QSATU(KQ);
+// WRF:5049
+DENSPLUME = (P0(KQ)/((R*OLDTU(KQ))));
+// WRF:5050
+PSH_FAC = (1.0e-09f/DENSPLUME);
+// WRF:5052
+AER_MMR(1,JK,1) = ((cfg.aercu_fct*AEROCU(I,KQ,J,6))*PSH_FAC);
+// WRF:5053
+AER_MMR(1,JK,2) = ((cfg.aercu_fct*AEROCU(I,KQ,J,5))*PSH_FAC);
+// WRF:5054
+AER_MMR(1,JK,3) = (((cfg.aercu_fct*1.44f)*AEROCU(I,KQ,J,1))*PSH_FAC);
+// WRF:5055
+AER_MMR(1,JK,4) = (((cfg.aercu_fct*1.44f)*AEROCU(I,KQ,J,2))*PSH_FAC);
+// WRF:5056
+AER_MMR(1,JK,5) = (((cfg.aercu_fct*1.44f)*AEROCU(I,KQ,J,3))*PSH_FAC);
+// WRF:5057
+AER_MMR(1,JK,6) = (((cfg.aercu_fct*1.44f)*AEROCU(I,KQ,J,4))*PSH_FAC);
+// WRF:5058
+AER_MMR(1,JK,7) = (((cfg.aercu_fct*1.54f)*AEROCU(I,KQ,J,9))*PSH_FAC);
+// WRF:5059
+AER_MMR(1,JK,8) = (((cfg.aercu_fct*1.37f)*AEROCU(I,KQ,J,7))*PSH_FAC);
+// WRF:5060
+AER_MMR(1,JK,9) = (((cfg.aercu_fct*1.25f)*AEROCU(I,KQ,J,10))*PSH_FAC);
+// WRF:5061
+AER_MMR(1,JK,10) = (((cfg.aercu_fct*1.37f)*AEROCU(I,KQ,J,8))*PSH_FAC);
+// WRF:5064
+GAMHAT(1,JK) = ((((((QSATU(KQ)*((1.f+(QSATU(KQ)/EPS1U))))*EPS1U)*ALATENT)/((R*ma_powi<2>(OLDTU(KQ)))))*ALATENT)/CP);
+// WRF:5067
+}
+// WRF:5068
+JTT(1) = ((KX-NK)+1);
+// WRF:5069
+JBB(1) = ((KX-K)+1);
+// WRF:5070
+if((JTT(1)>JBB(1))) {
+// WRF:5071
+JTT(1) = JBB(1);
+// WRF:5072
+}
+// WRF:5073
+JLCL(1) = (JBB(1)-1);
+// WRF:5074
+MSG1 = 0;
+// WRF:5075
+IL2G = 1;
+// WRF:5076
+GRAV = G;
+// WRF:5077
+RDRY = R;
+// WRF:5078
+DTZMP = DT;
+// WRF:5082
+NLEVZM = ((KTE-KTS)+1);
+// WRF:5083
+NLEVZMP1 = (NLEVZM+1);
+// WRF:5085
+if((JTT(1)==1)) {
+atomicOr(out.status, MSKF_FATAL_CLOUD_BASE); return;
+// WRF:5089
+}
+// WRF:5090
+if((JBB(1)==KTE)) {
+atomicOr(out.status, MSKF_FATAL_CLOUD_TOP); return;
+// WRF:5094
+}
+// WRF:5095
+if((cfg.aercu_opt>0)) {
+// WRF:5101
+A.mskf_mphy(SU,QUU,MUU,DUU,CMEL,CMEI,ZFU,PRU,TEE,QEE,EPSI0,JBB,JTT,JLCL,MSG1,IL2G,GRAV,CPIN,RDRY,ZMQLIQ,ZMQICE,ZMQRAIN,ZMQSNOW,RPRD,WUMP,EUU,NCMP,NIMP,NRMP,NSMP,ZMCCN,SPRD,FRZ,AER_MMR,DTZMP,NLEVZM,NLEVZMP1,GAMHAT,QSATZM,WU_MSKF_ACT,QC_MSKF_ACT,QI_MSKF_ACT,EFFC,EFFI,EFFS); if(A.error) {atomicOr(out.status,A.error);return;}
+// WRF:5105
+}
+// WRF:5126
+if((cfg.aercu_opt>0)) {
+// WRF:5127
+for(KQ=KTS; KQ<=KTE; KQ+=1) {
+// WRF:5128
+QLIQ(KQ) = 0.0f;
+// WRF:5129
+QICE(KQ) = 0.0f;
+// WRF:5130
+QRAIN(KQ) = 0.0f;
+// WRF:5131
+QSNOW(KQ) = 0.0f;
+// WRF:5132
+NLIQ(KQ) = 0.0f;
+// WRF:5133
+NICE(KQ) = 0.0f;
+// WRF:5134
+NRAIN(KQ) = 0.0f;
+// WRF:5135
+NSNOW(KQ) = 0.0f;
+// WRF:5136
+CCN(KQ) = 0.0f;
+// WRF:5137
+EFFCH(KQ) = 2.51f;
+// WRF:5138
+EFFIH(KQ) = 4.99f;
+// WRF:5139
+EFFSH(KQ) = 9.99f;
+// WRF:5140
+PPTLIQ(KQ) = 0.0f;
+// WRF:5141
+PPTICE(KQ) = 0.0f;
+// WRF:5142
+QLQOUT(KQ) = 0.0f;
+// WRF:5143
+QICOUT(KQ) = 0.0f;
+// WRF:5144
+DETLQ(KQ) = 0.0f;
+// WRF:5145
+DETIC(KQ) = 0.0f;
+// WRF:5146
+}
+// WRF:5147
+TRPPT = 0.0f;
+// WRF:5148
+for(KQ=KTS; KQ<=KTE; KQ+=1) {
+// WRF:5150
+JK = ((KX-KQ)+1);
+// WRF:5152
+QLIQ(KQ) = ma_max(0.,ZMQLIQ(1,JK));
+// WRF:5153
+QICE(KQ) = ma_max(0.,ZMQICE(1,JK));
+// WRF:5155
+QRAIN(KQ) = ma_max(0.,ZMQRAIN(1,JK));
+// WRF:5156
+QSNOW(KQ) = ma_max(0.,ZMQSNOW(1,JK));
+// WRF:5157
+NLIQ(KQ) = ma_max(0.,NCMP(1,JK));
+// WRF:5158
+NICE(KQ) = ma_max(0.,NIMP(1,JK));
+// WRF:5159
+NRAIN(KQ) = ma_max(0.,NRMP(1,JK));
+// WRF:5160
+NSNOW(KQ) = ma_max(0.,NSMP(1,JK));
+// WRF:5161
+CCN(KQ) = ma_max(0.,ZMCCN(1,JK));
+// WRF:5162
+EFFCH(KQ) = ma_max(2.49,ma_min(EFFC(1,JK),50.));
+// WRF:5163
+EFFIH(KQ) = ma_max(4.99,ma_min(EFFI(1,JK),125.));
+// WRF:5164
+EFFSH(KQ) = ma_max(9.99,ma_min(EFFS(1,JK),999.));
+// WRF:5166
+DETLQ(KQ) = (QLIQ(KQ)*UDR(KQ));
+// WRF:5167
+DETIC(KQ) = (QICE(KQ)*UDR(KQ));
+// WRF:5171
+if((RPRD(1,JK)<0.0f)) { RPRD(1,JK) = 0.0f; }
+// WRF:5172
+if((SPRD(1,JK)<0.0f)) { SPRD(1,JK) = 0.0f; }
+// WRF:5174
+QLQOUT(KQ) = (RPRD(1,JK)*DZQ(KQ));
+// WRF:5175
+QICOUT(KQ) = (SPRD(1,JK)*DZQ(KQ));
+// WRF:5176
+PPTLIQ(KQ) = (QLQOUT(KQ)*VMFLCL);
+// WRF:5177
+PPTICE(KQ) = (QICOUT(KQ)*VMFLCL);
+// WRF:5179
+TRPPT = ((TRPPT+PPTLIQ(KQ))+PPTICE(KQ));
+// WRF:5191
+}
+// WRF:5193
+}
+}
+
+FRZ
+// WRF:6178
+if((cfg.aercu_opt>0.0f)) {
+// WRF:6179
+JK = ((KX-NK)+1);
+// WRF:6180
+A1KAY = (((FRZ(1,JK)*DZA(NK))*3.337e5f)/CP);
+// WRF:6181
+A1KAY = (A1KAY*(ma_pow(((1.e5f/P0(NK))),ROCP)));
+// WRF:6182
+THETEU(NK) = (A1KAY+THETEU(NK));
+// WRF:6183
+}

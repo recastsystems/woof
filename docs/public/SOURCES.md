@@ -87,7 +87,7 @@ mass points are outside it.  icon-eu's grid is centred at (50.00, 19.50)
 whose coverage includes this domain
 ```
 
-(Verbatim, `woof 2.5.0`, exit 2, nothing written.)
+(Verbatim, `gpuwm 2.5.0`, exit 2, nothing written.)
 
 That is the same answer the preparation stage gives on real bytes, in the
 same coordinates, arrived at from the registry instead of from a download.

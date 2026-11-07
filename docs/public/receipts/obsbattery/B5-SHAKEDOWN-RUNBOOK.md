@@ -251,7 +251,7 @@ the engine, the registration discipline and the readers as libraries with
 nothing wiring them together. `tools/obs_battery_score.py` is that wiring.
 
 **Its reading half is already exercised, on a real WRF v4.6.1 `wrfout`**
-(a Thompson 500 m all-domains run of 2026-07-22, 13 frames,
+(13 frames,
 200 x 250 at dx 12 km):
 
 ```

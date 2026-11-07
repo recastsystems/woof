@@ -1478,8 +1478,8 @@ def load_mapping(
     )
     if "normalization" in horizontal and (
             horizontal["kind"] != "embedded_grid" or source_format != "grib2"
-            or horizontal["normalization"] != "coarsest_exact_subset"):
-        raise ValueError("GRIB normalization must declare coarsest_exact_subset")
+            or horizontal["normalization"] not in {"coarsest_exact_subset", "largest_common_finite_rectangle"}):
+        raise ValueError("unknown GRIB horizontal normalization")
     if horizontal["kind"] == "embedded_grid":
         if source_format == "netcdf":
             raise ValueError("NetCDF mappings require latitude/longitude selectors")
@@ -4001,6 +4001,18 @@ def _build_grib2_tools() -> tuple[Path, Path]:
 
 GRID_FAMILY_REGULAR = "regular_latitude_longitude"
 GRID_FAMILY_LAMBERT = "lambert_conformal"
+#: GRIB2 GDT 3.1, a regular lattice in a rotated spherical frame (ECCC's
+#: HRDPS and RDPS).  Projected like Lambert: canonical axes are distances
+#: along the lattice in PROJECTED_AXIS_UNIT_M units, never degrees.
+GRID_FAMILY_ROTATED = "rotated_latitude_longitude"
+#: Every declared family whose axes are plane distances.
+PROJECTED_GRID_FAMILIES = (GRID_FAMILY_LAMBERT, GRID_FAMILY_ROTATED)
+
+_ROTATED_PARAMETER_KEYS = frozenset({
+    "lat1", "lon1", "dlat_deg", "dlon_deg", "nx", "ny",
+    "south_pole_lat", "south_pole_lon", "rotation_angle",
+    "earth_radius_m", "shape_of_earth",
+})
 
 #: Axis unit for projected regular grids: one unit = 100 km along the
 #: projection plane.  The whole downstream coordinate machinery
@@ -4094,10 +4106,13 @@ def _validate_grid_declaration(
                 "a rotated basis requires a projected family"
             )
         return {"family": GRID_FAMILY_REGULAR, "wind_basis": "earth_relative"}
+    if family == GRID_FAMILY_ROTATED:
+        return _validate_rotated_declaration(grid, source_format)
     if family != GRID_FAMILY_LAMBERT:
         raise ValueError(
             f"unsupported mapping.grid.family {family!r}; supported: "
-            f"{GRID_FAMILY_REGULAR}, {GRID_FAMILY_LAMBERT}"
+            f"{GRID_FAMILY_REGULAR}, {GRID_FAMILY_LAMBERT}, "
+            f"{GRID_FAMILY_ROTATED}"
         )
     if source_format not in {"grib2", "netcdf"}:
         raise ValueError(
@@ -4163,6 +4178,92 @@ def _validate_grid_declaration(
            if same_grid_pairing is not None else {}),
         **({"published_first_points": published} if published else {}),
     }
+
+
+def _validate_rotated_declaration(
+    grid: Mapping[str, object], source_format: str,
+) -> dict[str, object]:
+    """``mapping.grid`` for a rotated latitude/longitude lattice (GDT 3.1).
+
+    The Rust mapped engine is the twin (``model::RotatedParameters``):
+    the same keys, the same bounds, the same span limit.
+    """
+
+    if source_format != "grib2":
+        raise ValueError(
+            f"mapping.grid.family {GRID_FAMILY_ROTATED!r} requires GRIB2")
+    if grid.get("published_first_points") is not None:
+        raise ValueError(
+            "mapping.grid.published_first_points is a Lambert admission; a "
+            f"{GRID_FAMILY_ROTATED} grid declares one first point")
+    wind_basis = grid.get("wind_basis")
+    if wind_basis not in {"earth_relative", "grid_relative_with_rotation"}:
+        raise ValueError(
+            f"a {GRID_FAMILY_ROTATED} grid must declare wind_basis "
+            "'earth_relative' or 'grid_relative_with_rotation'")
+    parameters = _object(
+        grid.get("parameters"),
+        "mapping.grid.parameters",
+        allowed=set(_ROTATED_PARAMETER_KEYS),
+        required=set(_ROTATED_PARAMETER_KEYS),
+    )
+    for key in ("lat1", "lon1", "dlat_deg", "dlon_deg", "south_pole_lat",
+                "south_pole_lon", "rotation_angle", "earth_radius_m"):
+        parameters[key] = _number(parameters[key], f"mapping.grid.parameters.{key}")
+    for key in ("nx", "ny"):
+        parameters[key] = _integer(
+            parameters[key], f"mapping.grid.parameters.{key}",
+            minimum=2, maximum=1_000_000,
+        )
+    parameters["shape_of_earth"] = _integer(
+        parameters["shape_of_earth"], "mapping.grid.parameters.shape_of_earth",
+        minimum=0, maximum=11,
+    )
+    if parameters["dlat_deg"] <= 0.0 or parameters["dlon_deg"] <= 0.0:
+        raise ValueError("mapping.grid.parameters dlat_deg/dlon_deg must be positive")
+    if not 6.2e6 <= parameters["earth_radius_m"] <= 6.5e6:
+        raise ValueError(
+            "mapping.grid.parameters.earth_radius_m must be a plausible "
+            "Earth radius in metres")
+    for key in ("lat1", "south_pole_lat"):
+        if not -90.0 <= parameters[key] <= 90.0:
+            raise ValueError(
+                f"mapping.grid.parameters.{key} must be within [-90, 90] degrees")
+    metres_per_degree = math.pi / 180.0 * parameters["earth_radius_m"]
+    span_units = max(
+        parameters["nx"] * parameters["dlon_deg"],
+        parameters["ny"] * parameters["dlat_deg"],
+    ) * metres_per_degree / PROJECTED_AXIS_UNIT_M
+    if span_units >= 180.0:
+        raise ValueError(
+            "declared projected grid spans "
+            f"{span_units * PROJECTED_AXIS_UNIT_M / 1000.0:.0f} km; the "
+            "projected-axis representation covers grids below 18,000 km")
+    return {
+        "family": GRID_FAMILY_ROTATED,
+        "wind_basis": wind_basis,
+        "parameters": parameters,
+    }
+
+
+def declared_projected_source_grid(projection: Mapping[str, object]):
+    """The source grid a projected frame descriptor declares, by family.
+
+    ``projection`` is ``{"family", "parameters"}`` as a frame header (or a
+    snapshot) states it.  Both answers offer ``latlon_to_ij`` and
+    ``ij_to_latlon`` in one-based grid coordinates whose spacing is the
+    descriptor's ``dx_m``/``dy_m``, so a pairing never names a family.
+    """
+
+    family = str(projection["family"])
+    parameters = projection["parameters"]
+    if family == GRID_FAMILY_LAMBERT:
+        return declared_lambert_source_grid(parameters)
+    if family == GRID_FAMILY_ROTATED:
+        from woof.static.rotated_latlon import RotatedLatLonGrid
+
+        return RotatedLatLonGrid.from_parameters(parameters)
+    raise ValueError(f"no declared projected source grid for family {family!r}")
 
 
 def _validate_published_first_points(
@@ -4635,6 +4736,16 @@ def _grib2_records(
             )
             nx = int(row["nx"])
             ny = int(row["ny"])
+            if declared_family == GRID_FAMILY_ROTATED:
+                # The inventory/dump TSV this workaround engine reads has no
+                # GDT 3.1 pole columns, so it cannot prove a record sits on
+                # the declared rotated lattice; the default Rust engine
+                # (gpuwm_mapped_engine) checks every Section 3 number.
+                raise ValueError(
+                    "the Python mapped engine cannot verify a "
+                    f"{GRID_FAMILY_ROTATED} record (its GRIB2 inventory "
+                    "carries no rotation pole); decode this source with the "
+                    "default Rust engine (unset GPUWM_MAPPED_ENGINE)")
             if declared_family == GRID_FAMILY_LAMBERT:
                 if gdt != 30 or scan != 0x40:
                     raise ValueError(
@@ -4980,6 +5091,8 @@ def _assemble_grib(
 ) -> _DecodedCollection:
     if not records:
         raise ValueError("no mapped GRIB records were decoded")
+    if mapping["coordinates"]["horizontal"].get("normalization") == "largest_common_finite_rectangle":
+        raise ValueError("finite-rectangle normalization requires the native mapped engine")
     source_format = str(mapping["format"])
     matched: dict[tuple[datetime, str | None, str], list[_GribRecord]] = {}
     for field_name, field in mapping["fields"].items():

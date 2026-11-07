@@ -30,7 +30,7 @@ and diagnoses P/AL exactly as step 4 does.  :func:`press_adj_mu` is step
 
 Every operation is FP32 in Fortran's order with glibc 2.39's ``powf``,
 ``logf`` and ``expf`` (the pinned strict wrf.exe 4.6.1 recipe).  Measured
-on a 9 km/3 km pair (physics off, feedback = 1) against that build:
+on the nested 9 km/3 km pair (physics off, feedback = 1) against that build:
 the nest's HGT, MUB, PB, PHB, MU and P are wrf.exe's word for word
 (tools/wrf461_nest_initial/nest_initial_oracle.py).  Before this, the door
 restored each nest file as it is: at t = 0 the nest's P differed from
@@ -114,8 +114,8 @@ def _es(tc):
     return _a(f32(610.78) * _expf(_a(_a(f32(17.0809) * tc) / _a(f32(234.175) + tc))))
 
 
-def adjust_tempqv_fp32(th, qv, pp, mub_save, mub, c3h, c4h, p_top):
-    """adjust_tempqv (nest_init_utils.F:812-890, use_theta_m = 0) in FP32.
+def adjust_tempqv_fp32(th, qv, pp, mub_save, mub, c3h, c4h, p_top, *, use_theta_m=0):
+    """adjust_tempqv (nest_init_utils.F:812-890) in FP32 for either theta.
 
     ``th`` is WRF's t_2 (perturbation potential temperature), ``pp`` the
     perturbation pressure start_domain derived on the file, ``mub_save``
@@ -127,25 +127,37 @@ def adjust_tempqv_fp32(th, qv, pp, mub_save, mub, c3h, c4h, p_top):
     th, qv, pp = _a(th), _a(qv), _a(pp)
     c3h, c4h = _a(c3h)[:, None, None], _a(c4h)[:, None, None]
     p_old = _a(_a(_a(c4h + _a(c3h * _a(mub_save)[None])) + p_top) + pp)
-    tc = _a(_a(_a(th + f32(300.0)) * powf_array(_a(p_old / f32(1.e5)), _TWO7))
-            - f32(273.15))
+    if use_theta_m == 1:
+        # WRF divides after multiplying by Exner, before Celsius conversion.
+        tc = _a(_a(_a(_a(th + f32(300.0)) * powf_array(
+            _a(p_old / f32(1.e5)), _TWO7)) /
+            _a(f32(1.0) + _a(_RVOVRD * qv))) - f32(273.15))
+    else:
+        tc = _a(_a(_a(th + f32(300.0)) * powf_array(_a(p_old / f32(1.e5)), _TWO7))
+                - f32(273.15))
     e = _a(_a(qv * p_old) / _a(f32(0.622) + qv))
     rh = _a(e / _es(tc))
     p_new = _a(_a(_a(c4h + _a(c3h * _a(mub)[None])) + p_top) + pp)
     thloc = _a(th + f32(300.0))
+    if use_theta_m == 1:
+        thloc = _a(thloc / _a(f32(1.0) + _a(_RVOVRD * qv)))
     total, step = _a(p_new + p_old), _a(p_new - p_old)
     dth1 = _a(_a(_a(f32(-191.86e-3) * thloc) / total) * step)
     dth = _a(_a(_a(f32(-191.86e-3) * _a(thloc + _a(f32(0.5) * dth1))) / total) * step)
     th_new = _a(_a(thloc + dth) - f32(300.0))
+    if use_theta_m == 1:
+        # Rebuild theta_m with OLD qv, exactly as WRF before updating qv.
+        th_new = _a(_a(_a(thloc + dth) * _a(f32(1.0) +
+                      _a(_RVOVRD * qv))) - f32(300.0))
     tc = _a(_a(_a(thloc + dth) * powf_array(_a(p_new / f32(1.e5)), _TWO7))
             - f32(273.15))
     e = _a(rh * _es(tc))
     return th_new, _a(_a(f32(0.622) * e) / _a(p_new - e))
 
 
-def start_perturbation_pressure(base, raw, *, hypsometric_opt: int):
+def start_perturbation_pressure(base, raw, *, hypsometric_opt: int, use_theta_m=0):
     """start_em.F:774-842's AL then P on a cold start (t_1 = t_2, ph_1 =
-    ph_2, mu_1 = mu_2), use_theta_m = 0, FP32.  Returns (al, p)."""
+    ph_2, mu_1 = mu_2), FP32. THM is prognostic at 1; T is dry history."""
     from woof.core.noahmp_libm import logf_array, powf_array
 
     def col(name):
@@ -153,6 +165,8 @@ def start_perturbation_pressure(base, raw, *, hypsometric_opt: int):
 
     p_top = f32(np.asarray(raw["P_TOP"]).reshape(-1)[0])
     ph1, mu1, t1, qv = (_a(raw[n]) for n in ("PH", "MU", "T", "QVAPOR"))
+    if use_theta_m == 1:
+        t1 = _a(raw["THM"])
     mub, pb, alb, phb = (_a(base[n]) for n in ("MUB", "PB", "ALB", "PHB"))
     c1h, c2h, c3h, c4h, c3f, c4f = (col(n) for n in (
         "C1H", "C2H", "C3H", "C4H", "C3F", "C4F"))
@@ -173,7 +187,8 @@ def start_perturbation_pressure(base, raw, *, hypsometric_opt: int):
                           + _a(rdnw * _a(ph1[1:] - ph1[:-1]))))
     else:
         raise ValueError(f"hypsometric_opt must be 1 or 2, got {hypsometric_opt}")
-    qvf = _a(f32(1.0) + _a(_RVOVRD * qv))
+    qvf = (_a(f32(1.0) + _a(_RVOVRD * qv)) if use_theta_m == 0
+           else f32(1.0))
     ratio = _a(_a(_a(_R_D * _a(_T0 + t1)) * qvf) / _a(_P1000 * _a(al + alb)))
     return al, _a(_a(_P1000 * powf_array(ratio, _CPOVCV)) - pb)
 
@@ -189,7 +204,7 @@ def press_adj_mu(mu, al1, alb1, ht, ht_fine):
 
 def nest_input_start(nest, parent, *, i_parent_start: int, j_parent_start: int,
                      ratio: int, spec_bdy_width: int, blend_width: int,
-                     hypsometric_opt: int) -> NestInputStart:
+                     hypsometric_opt: int, use_theta_m=0) -> NestInputStart:
     """Steps 1-3 of med_nest_initial on a door nest's restored file.
 
     ``parent`` is the parent's restored file AS WRF HOLDS IT when the nest
@@ -212,7 +227,7 @@ def nest_input_start(nest, parent, *, i_parent_start: int, j_parent_start: int,
     # 1. start_domain on the file: mub_save and adjust_tempqv's pp.
     file_base = wrf_start_base_state(raw, int(hypsometric_opt))
     _, p_file = start_perturbation_pressure(
-        file_base, raw, hypsometric_opt=int(hypsometric_opt))
+        file_base, raw, hypsometric_opt=int(hypsometric_opt), use_theta_m=use_theta_m)
     mub_save = _a(file_base["MUB"])
     # 2. the parent's HGT and REBUILT MUB on the nest grid, blended.
     save_topo = np.asarray(raw.get("SAVE_TOPO_FROM_REAL", 0)).reshape(-1)
@@ -227,18 +242,21 @@ def nest_input_start(nest, parent, *, i_parent_start: int, j_parent_start: int,
             _a(sint(_a(parent_base["MUB"]), reg, preparation=True)), mub_save, **width)
     # 3. adjust_tempqv.
     th, qv = adjust_tempqv_fp32(
-        raw["T"], raw["QVAPOR"], p_file, mub_save, mub,
-        np.asarray(raw["C3H"]).reshape(-1), np.asarray(raw["C4H"]).reshape(-1), p_top)
+        raw["THM" if use_theta_m == 1 else "T"], raw["QVAPOR"], p_file, mub_save, mub,
+        np.asarray(raw["C3H"]).reshape(-1), np.asarray(raw["C4H"]).reshape(-1), p_top,
+        use_theta_m=use_theta_m)
     updated = dict(raw)
-    updated.update(HGT=ht, T=th, QVAPOR=qv)
+    updated.update(HGT=ht, QVAPOR=qv)
+    updated["THM" if use_theta_m == 1 else "T"] = th
     # 4. start_domain(nest) on the blended terrain: AL from the file's PH
     # and MU with the adjusted T/QV, then press_adj.
     start_base = wrf_start_base_state(updated, int(hypsometric_opt))
     al, _ = start_perturbation_pressure(
-        start_base, updated, hypsometric_opt=int(hypsometric_opt))
+        start_base, updated, hypsometric_opt=int(hypsometric_opt), use_theta_m=use_theta_m)
     mu_adj = press_adj_mu(raw["MU"], al[0], _a(start_base["ALB"])[0], ht, ht_fine)
     receipt = {
         "transaction": "WRF 4.6.1 med_nest_initial, input_from_file",
+        "use_theta_m": int(use_theta_m),
         "blend_terrain": ("SAVE_TOPO_FROM_REAL = 1: parent HGT and rebuilt MUB "
                           f"blended over spec_bdy_width {int(spec_bdy_width)} + "
                           f"blend_width {int(blend_width)} rows")
@@ -452,6 +470,10 @@ def restart_parent_domain(parent, parent_restored) -> None:
 
     state, run = parent.state, parent.cfg.run
     update_diagnostics(state, int(run.hypsometric_opt))
+    # The second start_domain refreshes history pressure at either theta.
+    physics_fields = getattr(getattr(state, "physics", None), "fields", {})
+    if "p_hyd" in physics_fields:
+        physics_fields["p_hyd"][...] = state.p
     initialize_wrfinput_vertical_velocity(
         state, parent_restored, run,
         periodic_x=not (run.open_x or run.specified or run.nested),

@@ -2,6 +2,10 @@
 
 MPAS-Atmosphere v8.4.2 on the GPU, driven from the WOOF engine.
 
+CUDA remains the default. The [experimental AMD backend](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/amd-backend.md)
+is opt-in with `--backend amd` or `WOOF_BACKEND=amd`; the linked page records
+the installation paths, measured single-card scope and numerical limits.
+
 woof hex ports MPAS-A v8.4.2 to Python and CUDA, fully device-resident: the
 dynamical core on its unstructured global mesh with regional refinement, the
 MPAS physics suites, initialization and static fields, the incremental analysis
@@ -15,17 +19,17 @@ at the end of every run, and an experimental storm-following region.
 is an independent port and is not affiliated with or endorsed by them. The name
 is used here only to say which model was ported.)*
 
-**New here? Start with the [User Manual](docs/manual/index.md):** a
+**New here? Start with the [User Manual](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/manual/index.md):** a
 plain-language introduction, a quickstart in which every command was run
 before it was printed, task guides for each door, and a troubleshooting index
 built from the doors' own refusals. This README is the capability contract;
-the manual is how you walk it. [What's new in 0.4](docs/manual/10-whats-new-0.4.md)
+the manual is how you walk it. [What's new in 0.4](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/manual/10-whats-new-0.4.md)
 gives each new piece its command, its proof, a picture and what it does not
 yet do.
 
 ## 0.4 in short
 
-[Physics routes and measured comparison scopes](docs/physics-routes-0.4.1.md) describe the MPAS physics route (the default since 0.4.6), the WOOF route and public licence exclusions.
+[Physics routes and measured comparison scopes](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/physics-routes-0.4.1.md) describe the MPAS physics route (the default since 0.4.6), the WOOF route and public licence exclusions.
 
 0.3.3 (2026-09-29) was the MPAS-A dynamical core on the GPU, running WOOF's
 physics. 0.4.1 is the whole of MPAS-A v8.4.2 on the GPU, each piece proven
@@ -91,7 +95,7 @@ its glibc. Against an optimised native build, hex
 differs exactly as much as two native builds differ from each other. Not
 claimed for the dycore alone: other meshes, more ranks, several cards, and
 local time stepping, which is a different time scheme by design and is never
-called identical. [MPAS compatibility](docs/mpas-compatibility.md) has the
+called identical. [MPAS compatibility](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/mpas-compatibility.md) has the
 tables; `woof hex verify-dycore` rebuilds the reference and checks it.
 
 ### MPAS physics, all on the GPU (the headline)
@@ -112,7 +116,7 @@ One 24-hour forecast of the `convection_permitting` suite on the public
 The same gate runs both MPAS suites (`mesoscale_reference` and
 `convection_permitting`) with every scheme on the native backend, and they are
 bitwise in every written field too (`x1.2562`, 24 h, one process). The decks
-are in [`verification/gates/`](verification/gates/README.md) and the
+are in [`verification/gates/`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/verification/gates/README.md) and the
 reference recipe in `tools/native_physics_reference/`.
 
 ### Every other MPAS-A physics scheme
@@ -163,7 +167,7 @@ proof above was run in exact mode. `--physics-correct-skip ID` leaves one
 correction out, for an observation A/B arm. On the WOOF physics route the
 same flags, and correct mode by default, apply the corrections the installed
 woof carries (WB4, New Tiedtke's dry-mass coupling; WB5, WSM6's surface
-integral) and name the rest as gaps. Details: [MPAS physics seam](docs/manual/mpas-physics-seam.md#correct-mode-and-exact-mode).
+integral) and name the rest as gaps. Details: [MPAS physics seam](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/manual/mpas-physics-seam.md#correct-mode-and-exact-mode).
 
 ### Initialization, statics and the services around the forecast
 
@@ -185,18 +189,18 @@ speaking `hex-vertical-v1`, MPAS streams and restart use `rw_mpas_stream`,
 and a mesh generated at a point needs an `rw_mpas_static` whose statics hold
 the binary64 coordinates they declare. No released woof carries any of the
 three in the version this release needs, so the wheel carries them in
-`woof/hex/libexec` ([engine bridges](docs/engine-bridges.md)). A door that
+`woof/hex/libexec` ([engine bridges](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/engine-bridges.md)). A door that
 needs one and cannot find it refuses by name.
 
 **A forecast from an analysis.** `woof hex forecast --analysis BUNDLE` starts
-a forecast from an MPAS analysis bundle ([analysis bundle](docs/analysis-bundle.md)):
+a forecast from an MPAS analysis bundle ([analysis bundle](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/analysis-bundle.md)):
 by direct insertion, with an IAU window from the bundle's increment, as a
 cycling restart, or with a remap onto another mesh. Measured on one convective
 case (WOOF physics): with no bundle every history file is byte-identical to
 the run before this release, and in correct mode a zero increment is bitwise a
 plain run. IAU also runs across a restart (the checkpoint carries its window),
 on the explicit MPAS suite route, on same-host multi-card ranks and in member
-rosters ([analysis bundle](docs/analysis-bundle.md)); IAU on multi-card local
+rosters ([analysis bundle](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/analysis-bundle.md)); IAU on multi-card local
 time stepping is refused by name.
 
 ### Hex global, in one command
@@ -206,21 +210,20 @@ goes from a global row and a cycle to a scored, drawn and exported forecast:
 the NCAR-published mesh (fetched and pinned), the native static, the init, the
 forecast on as many cards as the mesh needs, products, export and scores.
 Rows are defined at 120, 60, 30 and 15 km, on WOOF physics and on the
-woof global suite; the measured runs are the 120 km rows. **Hex global is
-WOOF's global model** (the spectral global model was retired in WOOF
-1.1.1). Hex global starts from an analysis you supply
-(`woof hex forecast --analysis`).
+Morrison suite (Morrison, Grell-Freitas, YSU, revised MM5, Noah, RRTMGP); the
+measured runs are the 120 km rows. Hex global starts from an analysis you
+supply (`woof hex forecast --analysis`).
 
 On one case (GFS 2026-10-11 12Z, 24 h), the 500 hPa height error against the
-GFS analysis was 10.0 m for hex at 120 km, against 14.9 and 13.5 m for the
-spectral global model's T127 and T255 runs (retired in WOOF 1.1.1); T255, at twice hex's resolution, was best on
+GFS analysis was 10.0 m for hex at 120 km, against 14.9 and 13.5 m for T127
+and T255 runs of a spectral global model; T255, at twice hex's resolution, was best on
 250 hPa wind (4.80 against 4.87 m/s). One case is not a skill claim. On the
-120 and 60 km rows the physics step is capped at 300 s on woof 2.9.0: at the
+120 and 60 km rows the physics step is capped at 300 s on gpuwm 2.9.0: at the
 mesh's own step the YSU boundary layer and New Tiedtke left single layers up to
 24 K too hot, and one row ran away to 381 K. The cause is explicit tendencies
 overshooting their donor layers; an engine carrying both donor bounds runs the
 WOOF rows at the mesh's own step with no hot layer, and the door retires the
-cap there by itself. See [Hex global](docs/global-door.md).
+cap there by itself. See [Hex global](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/global-door.md).
 
 ### Storm-following region (experimental)
 
@@ -230,7 +233,7 @@ measured runs used WOOF physics). One case file drives `stage`, `prepare`,
 `run` and `fixed` (the matched control); `woof hex moving check` tests an
 install with no inputs. With no moving command and no `WOOF_HEX_MOVING_*`
 variable set, a run is unchanged (`tests/test_moving_inactive_noop.py`).
-Guide: [Moving nests](docs/moving-nest.md).
+Guide: [Moving nests](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/moving-nest.md).
 
 Measured: three tropical cyclones, 48 hours each, five moves each, one card,
 a 3 km region about 450 km in radius.
@@ -244,7 +247,7 @@ a 3 km region about 450 km in radius.
   (1.5004 and 1.81). The balance fix is now the default; on `woof hex
   moving check` it brings the worst post-move jolt from 16.2 to 1.01 on a
   card with local time stepping and from 21.4 to 1.04 on the CPU (ordinary
-  integrator); see [the jolt report](docs/moving-jolt-report.md). A
+  integrator); see [the jolt report](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/moving-jolt-report.md). A
   full-cyclone replay of those two moves with the fix is not yet run. MPAS-A
   v8.4.2 suites move too, on one card: each move carries the suite's physics
   state, and on a 2 h western Pacific case with every convection_permitting
@@ -285,9 +288,10 @@ The measured RRFS GPU-port run used these schemes on `hrrrv5`:
 TEMPO, MYNN-EDMF, the MYNN surface layer, RUC land and sea ice,
 RRTMG longwave and shortwave and the cloud fraction (GFL, MYJ and the fork's
 MYNN surface layer when a suite selects them). Each port is bitwise to the
-native fork build as a module replay on real captured calls, except two RUC
-sea-ice calls on an RTX 5090 that differ in one `tsnav` word each where the
-native code reads an uninitialised value.
+native fork build as a module replay on real captured calls. (History, against
+calls captured from the pristine build: two RUC sea-ice calls on an RTX 5090
+differed in one `tsnav` word each, where pristine native reads the
+uninitialised local `ilnb`; the reference of record sets it, see below.)
 
 **With every slot on the GPU and no native library, a whole `hrrrv5` forecast
 is bitwise to the native fork build (strict numerics):** a 6 h `x1.2562` run
@@ -295,11 +299,47 @@ is bitwise to the native fork build (strict numerics):** a 6 h `x1.2562` run
 diagnostics words from the native reference at every hour f000-f006. The run
 names the reference's own strict-built TEMPO lookup tables with
 `--native-physics-tables` (native ran with them too; a default run reads the
-fork's shipped tables). With hourly restart files as well, 57 of 129,371,634
-words differ, all of them RUC's snow temperature `tsnav` at thin-snow cells,
-where native reads an uninitialised local (`ilnb`); a native build with that
-local set to 0 matches the GPU run in every word. Scope: that case and
-process count. `config_<slot>_backend = 'native-cpu'` puts one slot back on
+fork's shipped tables). With hourly restart files as well, the run matches
+the reference of record (the patched referee below) in every word, `tsnav`
+included. (History, against the pristine build: 57 of 129,371,634 words
+differed, all RUC's snow temperature `tsnav` at thin-snow cells, where pristine
+native reads the uninitialised local `ilnb`.) Scope: that case and process
+count.
+
+**At the operational shape, 8 ranks, the whole `hrrrv5` forecast is bitwise to
+the reference of record (strict numerics):** on `x1.40962` (120 km, 59 levels,
+2023-03-31 12Z, every physics slot on the GPU), 8 same-host ranks on one card
+against native at 8 MPI ranks on the same partition differ in 0 of
+1,958,644,100 history, diagnostics and restart words over 24 h; one card
+against native at one rank differs in 0 of 786,309,080 words over 24 h.
+
+**Restart.** A native MPAS restart file restarts the dynamics from the restart
+stream on every MPAS physics suite. With `--numerics strict` a restart
+reproduces native MPAS's own restart: hex restarted from its own 24 h restart
+matches native restarted from native's in 0 of 540,860,379 words (`x1.40962`,
+one card against one rank). Native MPAS's own restart does not continue its
+run exactly (it starts its step counter again, and first-step scheme blocks
+run again). On the default route a restart continues the run that wrote it
+exactly: restarted against uninterrupted, 0 of 1,208,871,000 words on
+`x1.40962` at 8 ranks and 0 of 452,696,265 words on `x1.163842` (60 km, 8
+ranks, restarted at +24 h, compared to +30 h). A restart file native MPAS
+wrote keeps native's restart behaviour on either route.
+
+**The RRFS reference of record is patched, and says so.** It is the pinned
+RRFS-MPAS 44c0849 source built with the strict recipe plus exactly four
+labelled lines, each where native reads a value it never set: two
+`nullify(smoke_fine_fg, dust_fine_fg, dust_coarse_fg)` lines in the
+initializer (native's case-7/9 init otherwise crashes on unset optional
+smoke/dust pointers) and two `ilnb = 0` lines in RUC land and sea ice before
+the snow calls (native otherwise reads an unset local for snow thinner than
+`snth` and picks the `tsnav` formula from a stale stack word, which then feeds
+snow compaction). Pristine against patched native reproduces the
+hex-vs-pristine divergence word for word, and patched native is 0 different
+run to run. It is rebuilt with
+`RRFS_44C0849_REFEREE=patched tools/rrfs_44c0849_reference/rebuild.sh REF NEW_WORK atmosphere`
+(and `init_atmosphere`); every binary it builds carries `referee: patched`
+and the exact `source-correction.diff`. It is never called pristine. The
+restart-word `tsnav` exclusion used against the pristine build is retired. `config_<slot>_backend = 'native-cpu'` puts one slot back on
 the native library.
 
 `hrrrv5` needs no native library: a 6 h `x1.2562` run (2023-03-31 12Z, one
@@ -316,7 +356,7 @@ Noah-MP v5.0 stays a licence stub unless that build and the run opt in.
 The wheel bundles the three Rust programs the fork's dycore calls.
 `woof hex init --physics-suite hrrrv5` makes `init.nc`, the fork static and
 the hourly boundaries from GFS, the fork's init ported to Rust
-([RRFS init](docs/rrfs-init.md)). The deck's invariant file is read by default
+([RRFS init](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/rrfs-init.md)). The deck's invariant file is read by default
 from the deck's directory or the init's (`--stream-input invariant=FILE` names
 another).
 
@@ -424,7 +464,7 @@ Also proven:
   route (`--physics-suite arwen_mpas_column`) is not identical to native MPAS, and the dycore check does not
   qualify one. Its measured differences from native MPAS are registered, with
   mechanism, magnitude and observational referee, in
-  [Declared divergences](docs/declared-divergences.md). Its referee is skill
+  [Declared divergences](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/declared-divergences.md). Its referee is skill
   against observations (MRMS, Stage-IV, ASOS, radiosondes), not agreement
   with another model; a bias that is wrong against observations is still
   wrong.
@@ -452,7 +492,7 @@ Also proven:
 | IAU on multi-card local time stepping, and `--balance-series` off one card | the LTS block executor has no held-tendency hook and the ranks no balance sampler; refused by name |
 | A combined correct-mode native referee | one native build carrying every fix is a follow-up |
 | A hex-specific maths-library pin | it changes the dycore arithmetic and needs every native reference rebuilt |
-| YSU and New Tiedtke single hot layers at long steps on woof 2.9.0 | WOOF-physics runs with YSU at a step above about 300 s (meshes coarser than about 50 km at MPAS's 6 s per km) can show the single hot layers the global door caps away. The cause is YSU's explicit boundary-layer-top entrainment and New Tiedtke's explicit rates overshooting their donor layers. An engine whose YSU and New Tiedtke identities are `ysu-wrf-v4.8.0-entrainment-courant-v2` and `new-tiedtke-wrf461-cumastrn-donor-bound-v2` bounds both, and `woof hex global` then runs the WOOF arm at the mesh's own step. woof 2.9.0 predates this release's engine floor and has neither, so on it every door's default step with YSU is capped at 300 s (`woof hex global` and a bare `woof hex forecast` alike); an explicit `--dt` runs as given |
+| YSU and New Tiedtke single hot layers at long steps on gpuwm 2.9.0 | WOOF-physics runs with YSU at a step above about 300 s (meshes coarser than about 50 km at MPAS's 6 s per km) can show the single hot layers the global door caps away. The cause is YSU's explicit boundary-layer-top entrainment and New Tiedtke's explicit rates overshooting their donor layers. An engine whose YSU and New Tiedtke identities are `ysu-wrf-v4.8.0-entrainment-courant-v2` and `new-tiedtke-wrf461-cumastrn-donor-bound-v2` bounds both, and `woof hex global` then runs the WOOF arm at the mesh's own step. gpuwm 2.9.0 predates this release's engine floor and has neither, so on it every door's default step with YSU is capped at 300 s (`woof hex global` and a bare `woof hex forecast` alike); an explicit `--dt` runs as given |
 
 ---
 
@@ -463,11 +503,11 @@ Also proven:
 | Python | 3.11 or newer |
 | GPU | A CUDA device: any NVIDIA card of compute capability 7.5 (Turing) or newer runs, on a CUDA 12 or CUDA 13 driver, with no flag. sm_86 and sm_89 are anchored (the numerical contract measured again on that architecture), sm_120 is the proven contract floor where it was first measured, and any other card runs unanchored and its receipt says so; `woof hex doctor` names your card and its status. Memory is set by mesh size *and* by the card, and not by a line through the two: the footprint is a per-card core, plus the Grell-Freitas and YSU column workspaces charged at `min(cells, tile)`, plus a per-cell term, all in `woof.hex.device_admission`. Measured 2026-08-26 on an RTX 5090 at the merged tip: the published 40,962-cell global mesh (x1.40962, about 120 km) peaked at **8,874 MiB, inside a 12 GiB card's budget**; the 163,842-cell mesh (x4.163842, about 24 km) peaked at **20,446 MiB**, and every free-memory gate admits at the measured floor (the prediction plus that card's own margin, **about 21.7 GiB free at x4**), so x4 remains in practice a 32 GiB-card configuration. The core is a property of the card, not the mesh, and the door reads the card's multiprocessor count at the decision rather than assuming a 5090: the 16 GiB and 10 GiB parts each carry their own measured row, and a card nobody has measured gets a derived row that is labelled derived. A card with its own per-allocation ledger can still supply it with `--device-fixed-mib` / `--device-bytes-per-cell`. |
 | CUDA | CuPy matching your driver's CUDA major. There is no way for pip to detect it, so you choose (below). |
-| Engine | The `woof` distribution, 2.9 (`woof>=2.9.11,<2.10`), which pip resolves for you: the WOOF physics seam, and the bundle that carries the MPAS bridge binaries the doors drive (including `met_intermediate` for init-source and the renderers for products). The forecast runs on the installed engine; a git clone at `v2.9.0` is optional (receipts then name its commit). See *The engine pin*. woof 2.8.9 cannot serve 0.4: it has no `met_intermediate`, its renderer knows none of the product windows, and it has no `rw_hex_points`. |
+| Engine | The `woof` distribution, 2.9 (`gpuwm>=2.9.12,<2.10`), which pip resolves for you: the WOOF physics seam, and the bundle that carries the MPAS bridge binaries the doors drive (including `met_intermediate` for init-source and the renderers for products). The forecast runs on the installed engine; a git clone at `v2.9.12` is optional (receipts then name its commit). See *The engine pin*. gpuwm 2.8.9 cannot serve 0.4: it has no `met_intermediate`, its renderer knows none of the product windows, and it has no `rw_hex_points`. |
 | Platforms | Linux x86_64 with glibc 2.28 or newer installs the prebuilt wheel (`manylinux_2_28`: RHEL 8 and 9, Ubuntu 20.04 and later). Anywhere else pip builds the sdist, which needs a Rust toolchain (`cargo`) for the bundled helpers; the observation scorer is built only when `GPUWM_HEX_ENGINE_SOURCE` names a woof source checkout, and otherwise `woof hex score` refuses by name and `doctor` reports the gap (forecasts are unaffected). There is no prebuilt Windows wheel. |
 | Assets | A mesh grid file, a matching static file, and (for the init door) a vertical-grid declaration, normally a `--vertical-spec` JSON; a native-minted init file as a capsule is the compatibility mode. `woof hex global` fetches its published meshes itself; otherwise **woof hex ships none of these**. See *Assets you must supply*. |
 | Rust binaries | The field engines (`rw_mpas_init`, `rw_mpas_static`, `rw_mpas_convert`, `rw_mpas_lbc`, `rw_wrfbatch` and the others) come from woof's bridge bundle or a woof source build. Eight of them ship in this wheel, with its own helpers: `rw_mpas_geometry`, `rw_mpas_stream`, `rw_mpas_static`, `rw_mpas_lbc` (native case-9 boundaries), `rw_igra2` (IGRA2 radiosondes for `woof hex score`) and the RRFS fork dycore's three programs. See *Getting the Rust engines*. |
-| MPAS physics suites | The MPAS-A framework uses the wheel's helpers and pinned DATA from `physics-resources-v0.4.1`. `woof hex physics-resources fetch --from DIR` stages an offline mirror; `WOOF_HEX_PHYSICS_RESOURCES_FROM=DIR` selects it at first use. RRFS `hrrrv5`, both RRFS alias suites and New Tiedtke run on the same terms; selections without resident CUDA table entries require a site-built native library. See [MPAS physics resources](docs/physics-resources.md). |
+| MPAS physics suites | The MPAS-A framework uses the wheel's helpers and pinned DATA from `physics-resources-v0.4.1`. `woof hex physics-resources fetch --from DIR` stages an offline mirror; `WOOF_HEX_PHYSICS_RESOURCES_FROM=DIR` selects it at first use. RRFS `hrrrv5`, both RRFS alias suites and New Tiedtke run on the same terms; selections without resident CUDA table entries require a site-built native library. See [MPAS physics resources](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/physics-resources.md). |
 
 ### Install
 
@@ -514,14 +554,15 @@ required item is missing, so it works as a gate in a script.
 - `woof hex global-cycle` repeats a global row with schedule, retention
   and status records.
 - `woof hex moving-ensemble` runs the members of a prepared storm-following case,
-  each with its own SPPT/SKEB forcing ([moving-region ensembles](docs/moving-ensemble.md)).
+  each with its own SPPT/SKEB forcing ([moving-region ensembles](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/moving-ensemble.md)).
 - `woof hex chem-sources` lists, fetches and prepares smoke, composition, dust and
-  sea-salt source files for aerosol transport ([chemistry sources](docs/chemistry-sources.md)).
+  sea-salt source files for aerosol transport ([chemistry sources](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/chemistry-sources.md)).
 
 ### Kernel packs
 
-Kernel packs are pinned assets of the `kernel-packs-v0.4.9` release, for CUDA 12.9, 13.0 and 13.4
-NVRTC, and hold the WOOF and MPAS physics kernels.
+Kernel packs are pinned assets for NVRTC 12.9, 13.0, 13.2, 13.4 (13.4.59 and 13.4.92) and 13.5 (release
+`kernel-packs-v0.4.14`), and hold the WOOF and MPAS physics kernels of this release.
+The `gpu-cu13` extra installs NVRTC 13.5.37 at most, so a fresh install loads a prebuilt pack.
 `woof hex fetch-assets --list` lists them. Run
 `woof hex fetch-assets` to stage them in the cache, or
 `woof hex fetch-assets --from DIR` to verify and stage an offline copy.
@@ -530,8 +571,9 @@ NVRTC, and hold the WOOF and MPAS physics kernels.
 `WOOF_HEX_ASSETS_FIRST_USE=off` disables first-use downloads.
 `--cache DIR` chooses a cache and `--only NAME` selects an asset.
 Each fetch checks the pinned size and SHA-256 and writes a receipt.
-`woof hex doctor` reports staged and on-demand assets without fetching.
-A run without a matching pack compiles its kernels through NVRTC.
+`woof hex doctor` reports staged and on-demand assets without fetching, and warns when the
+loaded NVRTC matches no pinned pack. A run without a matching pack compiles its kernels through
+NVRTC.
 
 ### The import namespace
 
@@ -549,13 +591,11 @@ is unchanged.
 
 ### The engine pin
 
-woof hex 0.4.2 requires woof 2.9 (`woof>=2.9.4,<2.10`). The sixteen seam
-files were measured against woof 2.9.0 at its public tag `v2.9.0` (`0db04746`),
-from the three platform wheels PyPI serves
-(`verification/engine-verdicts/repin-290-20261014.json`).
+woof hex 0.4.14 requires gpuwm 2.9.12 or newer inside 2.9 (`gpuwm>=2.9.12,<2.10`). The installed
+engine version and seam digests are recorded in each forecast receipt.
+The bridge source commit and measured helper source sets ship in the package manifests.
 
-- **The range admits woof 2.9.4 and newer patches below 2.10.** 0.3.3's one-patch range replaced
-  woof 2.8.7 with 2.8.0; that is why the range changed.
+- **The range admits gpuwm 2.9.12 and newer patches below 2.10.**
 - **An engine inside the range whose radiation helper set this release has
   not measured is refused at the forecast door, by name:** the installed
   version, the version this release was measured on, and both remedies
@@ -639,7 +679,7 @@ engine does not invent the vertical grid.
   mint is schema-complete (134/134 variables), the constructed vertical sits
   within 3.9 mm of native `zgrid` with the per-field cost quantified, and the
   minted init runs the dycore; boundary in
-  [`docs/native-free-init-admission.md`](docs/native-free-init-admission.md).
+  [`docs/native-free-init-admission.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/native-free-init-admission.md).
 - **Native-capsule compatibility mode:** pass `--capsule`/`--reference` naming
   a native-minted init-class file; the door reads `zgrid, zz, fzm, fzp, dzu,
   rdzw, zb, zb3` and the smoothed terrain out of it and asserts the capsule's
@@ -675,7 +715,7 @@ binaries. The wheel carries sixteen compiled programs of its own in
   `rw_mpas_rrfs_connectivity`, `rw_mpas_rrfs_damping` and
   `rw_mpas_rrfs_deformation`. Their bytes are pinned in
   `woof/hex/data/engine-bridges.json`; see
-  [engine bridges](docs/engine-bridges.md).
+  [engine bridges](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/engine-bridges.md).
 
 That is the prebuilt Linux wheel. A build from the sdist (it needs `cargo`)
 always builds the host-preparation helper and the table decoders; the pool
@@ -757,10 +797,10 @@ MPAS physics suite*). MPAS streams and restart need `rw_mpas_stream`, the
 real-data initialization needs an `rw_mpas_geometry` that speaks
 `hex-vertical-v1`, and `mesh-plan --point --generate` needs an
 `rw_mpas_static` that gives a generated grid a static holding the binary64
-coordinates it declares (woof 2.9.0's does not, and the door refuses its
+coordinates it declares (gpuwm 2.9.0's does not, and the door refuses its
 statics by name). No released woof carries any of the three, so this wheel
 carries them in `woof/hex/libexec`, pinned by SHA-256 to the woof commit they
-were built from ([engine bridges](docs/engine-bridges.md)). A flag or variable
+were built from ([engine bridges](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/engine-bridges.md)). A flag or variable
 still wins over the bundled copy (`WOOF_HEX_RW_MPAS_STREAM` names the stream
 program), and a door that needs one refuses by name when it is absent or too
 old.
@@ -798,16 +838,16 @@ each one changes the numbers in a file that opens cleanly and reads plausibly
 either way, so a default would be a silent wrong answer. Each refusal prints the
 native namelist key it corresponds to, so a captured `namelist.init_atmosphere`
 transcribes without guessing. Full detail, including the sixteen named refusals:
-[`docs/init-door.md`](docs/init-door.md).
+[`docs/init-door.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/init-door.md).
 
 What the door accepts is not a promise but a measured table:
-[`docs/source-matrix.md`](docs/source-matrix.md) drives every source in the
+[`docs/source-matrix.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/source-matrix.md) drives every source in the
 RW-WPS registry with real bytes through intermediate, init and a
 five-composite-step forecast, and records one verdict per source, a green
 run with receipts, or the chain's refusal, verbatim.
 
 `--vertical-spec` is the native-free path (see *Assets you must supply* and
-[`docs/native-free-init-admission.md`](docs/native-free-init-admission.md));
+[`docs/native-free-init-admission.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/native-free-init-admission.md));
 `--capsule`/`--reference` with a native-minted init file is the compatibility
 mode. The two are mutually exclusive.
 
@@ -833,7 +873,7 @@ inside it, and is deleted after a clean run.
 
 There is no fallback plotter. If the Rust renderer is absent the door refuses by
 name; it never draws a weather field in Python. Full detail:
-[`docs/render-door.md`](docs/render-door.md).
+[`docs/render-door.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/render-door.md).
 
 ## Four smaller doors
 
@@ -892,7 +932,7 @@ mesh (never a checkout edit), cuts the cull and mints its vertical.
 lat-lon WPS intermediate the init and boundary engines read, through the
 engine's own decoder and interpolation operator; `woof hex lbc` builds the
 boundary series from the hourly intermediates. The whole chain, with what it
-measured, is [`docs/hex-point-hrrr.md`](docs/hex-point-hrrr.md).
+measured, is [`docs/hex-point-hrrr.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/hex-point-hrrr.md).
 
 ### Placement and cycling
 
@@ -901,7 +941,7 @@ sea-level-reduced pressure, a declarative threat grammar, commensurable
 ranking across phenomena that carry different units, and hysteresis so a grid
 does not chase noise. `woof hex cycle` runs the loop: a coarse parent, the
 corridors placed inside it, and the next cycle's re-detection. See
-[`docs/cycle-door.md`](docs/cycle-door.md).
+[`docs/cycle-door.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/cycle-door.md).
 
 ### Local time stepping, opt-in
 
@@ -993,7 +1033,7 @@ SLOWER: every dycore kernel on a mesh this size runs in one wave on the card,
 so the fine class costs what the whole mesh costs and each coarse-class
 launch is a further wave. The corridor cull (40,520 cells, GFS-driven) gives
 the same numbers (0.989x, 1.068x). What the forced interface does to the
-fields is in [`docs/local-timestep-lam.md`](docs/local-timestep-lam.md).
+fields is in [`docs/local-timestep-lam.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/local-timestep-lam.md).
 
 #### The full-step form, measured to a no-go
 
@@ -1101,11 +1141,43 @@ dewpoint and temperature worse on three. So `reference` stays the default and
 `fast` is there for when time matters more than the near-surface forecast.
 The same measurement is in `docs/hex-point-hrrr.md`.
 
+### Stochastic physics (SPPT, SKEB)
+
+hex carries its own SPPT and SKEB, written from the published methods. SPPT
+follows Buizza, Miller & Palmer (1999) and Palmer et al. (2009); SKEB follows
+Shutts (2005) and Berner et al. (2009). They run on the GPU on every route
+and on every mesh: global, zoom globe, limited area, RRFS included.
+`--sppt` and `--skeb` on `forecast` and `global --members` turn them on.
+They are on by default in every hex ensemble of more than one member, and
+`--no-sppt` or `--no-skeb` turns them off. On the RRFS suite route, `--sppt`
+takes NOAA's RRFS v2 ensemble settings (one scale: 0.8, 450 km, 6 h).
+[Stochastic physics](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/stochastic-physics.md) has the method, the
+controls and the measured pattern statistics.
+
+Measured on 2026-10-29:
+
+- **Pattern statistics** (450 km, 6 h): correlation falls to `exp(-1/2)`
+  at 450.5 km (Gaussian fit 451.0 km). Point variance is 1.001 and the lag
+  time is 5.996 h.
+- **Spread and skill** (10 GEFS members, 120 km, 2026-10-27 00Z, +6 h
+  against the GFS analysis):
+
+  | | z500 spread | z500 mean RMSE | t2m spread | t2m mean RMSE |
+  | --- | --- | --- | --- | --- |
+  | SPPT and SKEB off | 3.21 m | 4.065 m | 0.44 K | 1.698 K |
+  | SPPT and SKEB on | 3.50 m | 4.078 m | 0.51 K | 1.692 K |
+
+- **Cost:** under 1 % of the step.
+- **Restart:** a run restarted from a 3 h checkpoint is identical to the
+  straight run in every word.
+- **Both off:** forecasts are identical, word for word, to those of the
+  release before this change.
+
 ### Running an MPAS physics suite
 
 **MPAS physics is the default (0.4.6).** Every door (`forecast`, `global`,
 `mesh-plan --run`, `regional`, `country`, `moving`, ensembles, `cycle`, Hex
-with Regional parents, JEDI backgrounds) runs MPAS-A's own physics on the
+with Regional parents, backgrounds) runs MPAS-A's own physics on the
 MPAS route when the run names no physics. The suite follows MPAS-A practice by
 mesh (`src/hexcore/data/profiles/physics-default.v1.json`):
 
@@ -1152,7 +1224,7 @@ woof hex forecast --mesh x1.2562 --grid x1.2562.grid.nc --init x1.2562.init.nc \
   entries require its separate site build,
   `woof hex physics-resources build --pin-set rrfs`, and a public install
   refuses the missing entry by name. See
-  [MPAS physics resources](docs/physics-resources.md).
+  [MPAS physics resources](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/physics-resources.md).
 - **The mode** is correct unless `--physics-mode exact` is given (see
   *Correct mode* above).
 
@@ -1256,7 +1328,7 @@ obs-skill comparison, which is the verification of record for WOOF's physics,
 ran on 2026-08-25 and reaches two of the three; the register of
 all three (the mechanism, the magnitude, the named observational referee and
 now what that referee said) is
-[`docs/declared-divergences.md`](docs/declared-divergences.md).
+[`docs/declared-divergences.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/declared-divergences.md).
 
 Measured over 24 h, two independent weather cases, two mixing regimes,
 163,842-cell mesh, cell-aligned with no interpolation.
@@ -1268,10 +1340,10 @@ What can be established is a ceiling: the commit that introduced them pinned
 engine `629ddb6f0`, so they were measured at or before that pin. Ten engine
 pin moves have landed since: `0d04db712` (2026-08-24), `26daaab7e`
 (2026-08-25), `659962929` (2026-08-28), `7e34a48` (2026-08-31, woof
-`2.6.0`), `df5f34c5c` (2026-09-01, woof 2.6.1), `636ab1b4b`
-(2026-09-02, woof 2.6.3), `d60b883e7` (2026-09-02, woof 2.6.4),
-`a7785421e` (2026-09-13, woof 2.7.3), `ed957997f` (2026-09-15, woof
-2.7.4) and `0164ae0f2` (2026-09-29, woof 2.8.0). The **2.5.8** move is measured to change nothing: a four-arm byte A/B
+`2.6.0`), `df5f34c5c` (2026-09-01, gpuwm 2.6.1), `636ab1b4b`
+(2026-09-02, gpuwm 2.6.3), `d60b883e7` (2026-09-02, gpuwm 2.6.4),
+`a7785421e` (2026-09-13, gpuwm 2.7.3), `ed957997f` (2026-09-15, woof
+2.7.4) and `0164ae0f2` (2026-09-29, gpuwm 2.8.0). The **2.5.8** move is measured to change nothing: a four-arm byte A/B
 on one card found the old and new pins identical on the atmosphere half of
 the per-step fingerprint at all 31 steps and on 0 of 138 history variables, one mesh, one case, one hour. The
 **2.6.0** move also crosses the executed seam (`woof/core/rrtmg_legacy.py`
@@ -1425,13 +1497,13 @@ hourly boundaries with `rw_mpas_lbc`, earns a fresh configuration's runtime
 mint, checks the contract on its rings, runs `forecast --lbc-dir`, and invokes
 the products door. Mesh rows and contract evidence are passed internally.
 The source and run shape are limited-area rows in the init-source and country
-tables. See [the point/HRRR guide](docs/hex-point-hrrr.md).
+tables. See [the point/HRRR guide](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/hex-point-hrrr.md).
 
 Measured 2026-10-20 on an RTX PRO 6000: the command above completed a 43,360-cell,
 55-level forecast with 2,160 steps at 5 s and four history frames. The forecast
 stage took 1,908.79 s on a shared RTX PRO 6000 Blackwell Server Edition, with
 CUDA graphs disabled. This used the installed hex 0.4.1 native binaries and
-woof 2.9.3 dependencies with this branch's Python overlay. The published
+gpuwm 2.9.3 dependencies with this branch's Python overlay. The published
 `rw_mpas_lbc` wrote the complete hourly boundary set and the forecast consumed
 it. The maps rendered 70 products, skipped two expected hour-zero products
 and failed none, using only the refined-core view.
@@ -1441,7 +1513,7 @@ Stage walls were mesh 1,246.24 s, intermediate 328.85 s, init 3.44 s,
 boundaries 9.11 s, contract 85.19 s and forecast 1,908.79 s. These are shared
 host timings. The original command hung in the engine's `rw_hex_points`
 bridge after the forecast passed. The engine fix on
-`lane/improve-32b-hex-points-hang` (for 2.9.4) masks missing surface wind
+`development branch` (for 2.9.4) masks missing surface wind
 values and bounds raster work to the image canvas. The exact retained bridge
 invocation then completed in 0.53 s. Products-only recovery on
 the retained forecast completed in 13.81 s with 70 maps and
@@ -1506,8 +1578,8 @@ third-party term in the distribution is permissive; `NOTICE` section 2 names
 the one routine kept on a stated reliance instead (Numerical Recipes'
 log-gamma in WSM6's reflectivity constants, as MMM-physics carries it).
 
-WOOF's RTE+RRTMGP radiation, which any WOOF-route run that selects it
-runs, reads a trace-gas and ozone
+WOOF's RTE+RRTMGP radiation, which the global rows' Morrison suite runs
+(as does any WOOF-route run that selects it), reads a trace-gas and ozone
 table that woof's data package ships under CC-BY-SA-4.0. woof hex does not
 carry it. It is data: the licence permits sale, and its share-alike reaches
 only adaptations of that table (`NOTICE` section 10).
@@ -1552,7 +1624,7 @@ PYTHONPATH=src python -m pytest tests -q
 ```
 
 Three tiers gate themselves and each names why it is skipping: see
-[`tools/battery/README.md`](tools/battery/README.md) for what each covers and
+[`tools/battery/README.md`](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/tools/battery/README.md) for what each covers and
 how to run the gated ones:
 
 | tier | selector | needs |
@@ -1569,8 +1641,8 @@ configured for the engine behaves the same) bans device contact outright.
 
 `woof hex s2s --row global-120km --source gfs --members 4 --days 30
 --cycle 2026-10-17T00 --devices 0 --work-dir s2s-run` drives the persistent
-ensemble workflow. See [the S2S door](docs/s2s/README.md) for lagged starts,
+ensemble workflow. See [the S2S door](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/s2s/README.md) for lagged starts,
 checkpoint recovery, products, baseline interpretation and measured costs.
 Use `--dry-run` to inspect the plan.
 
-Native forecast stores: [Icechunk output](docs/icechunk.md).
+Native forecast stores: [Icechunk output](https://github.com/FahrenheitResearch/gpuwm-hex/blob/v0.4.14/tree/docs/icechunk.md).

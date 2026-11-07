@@ -1,0 +1,326 @@
+{
+  "release": "7.2.4",
+  "scope": "Provider installed external dependencies; no ROCm binaries vendored into model wheels",
+  "licenses": [
+    {
+      "component": "ROCm-Device-Libs",
+      "path": "share/doc/rocm-device-libs/LICENSE.TXT",
+      "sha256": "a4e8e3ba6e9255928a29d3085f929de402e61413cb0c49276e16b558effa8a2a",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1952
+    },
+    {
+      "component": "amd_comgr",
+      "path": "share/doc/amd_comgr/LICENSE.txt",
+      "sha256": "6ad4983498652cb8c73c70a705a0d9175c5e3ff5db93c799d8e09557a04af140",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 15014,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "hip",
+      "path": "share/doc/hip/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080
+    },
+    {
+      "component": "hipblas",
+      "path": "share/doc/hipblas/LICENSE.md",
+      "sha256": "fec91d5fe42b9fef3e0d8088e769c113f8dd6eda614b6bc5a646feacb16c88a4",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 3479,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "hipblas-common",
+      "path": "share/doc/hipblas-common/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "hipcc",
+      "path": "share/doc/hipcc/LICENSE.txt",
+      "sha256": "0c421a032ba7b3ce6cc1fa0282b5d33d4a2d646404c07b90b3b2c1bd073286d6",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1079,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "hipcub",
+      "path": "share/doc/hipcub/LICENSE.txt",
+      "sha256": "af1b0bce89e2ab523e43a09ddb8a2e52838e8d772fe89d4c29e86965cb627bc1",
+      "licenses": [
+        "BSD family"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1671,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "hipfft",
+      "path": "share/doc/hipfft/LICENSE.md",
+      "sha256": "dc73cef4d65dbb7ef98c9dc1af26edd3528d5d2f6dca59f78d6b5cb6940204bc",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 2799,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "hipify-clang",
+      "path": "share/doc/hipify-clang/LICENSE.txt",
+      "sha256": "b58df09f5bc9378a9e0f9ca10089330f5754fe70309d3f37887233d4c8c28345",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1073,
+      "same_as_audited_643": true
+    },
+    {
+      "component": "hiprand",
+      "path": "share/doc/hiprand/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080
+    },
+    {
+      "component": "hipsolver",
+      "path": "share/doc/hipsolver/LICENSE.md",
+      "sha256": "67db69484a5bb6ec5a2d6e7738f036eb76d2d611fde7b763bab4ff1edfcd5e13",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1090,
+      "same_as_audited_643": true
+    },
+    {
+      "component": "hipsparse",
+      "path": "share/doc/hipsparse/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "hsa-runtime64",
+      "path": "share/doc/hsa-rocr/LICENSE.md",
+      "sha256": "dac0a5360f50972cceaed16767bc9e94642aa497d558a74471e842f7192c7403",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1770
+    },
+    {
+      "component": "rocblas",
+      "path": "share/doc/rocblas/LICENSE.md",
+      "sha256": "b57f384b03b348ca6dc3694dafa3ed7e69003a910fcd9e402eca514f4d86af83",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 9200,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "rocfft",
+      "path": "share/doc/rocfft/LICENSE.md",
+      "sha256": "bff8e2d1d03f313c95f39be2aa1fbdb545baa170bd07b077172539f1114afd0b",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 2800,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "rocm-core",
+      "path": "share/doc/rocm-core/copyright",
+      "sha256": "aa84e508c15e6ef02bfd7473e47b1c2e3d45b83581eab50af1a463e2acb6c266",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1317,
+      "same_as_audited_643": true
+    },
+    {
+      "component": "rocm-llvm",
+      "path": "share/doc/rocm-llvm/LICENSE.TXT",
+      "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee",
+      "licenses": [
+        "Apache-2.0 with LLVM exception",
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 15141,
+      "same_as_audited_643": true
+    },
+    {
+      "component": "rocm_smi",
+      "path": "share/doc/rocm-smi-lib/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080
+    },
+    {
+      "component": "rocprim",
+      "path": "share/doc/rocprim/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080
+    },
+    {
+      "component": "rocprofiler-register",
+      "path": "share/doc/rocprofiler-register/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080
+    },
+    {
+      "component": "rocrand",
+      "path": "share/doc/rocrand/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080
+    },
+    {
+      "component": "rocsolver",
+      "path": "share/doc/rocsolver/LICENSE.md",
+      "sha256": "a037bdde286c83bb33b905fbabe2aa4187553b7abe41ae281aa1b2dab89ef95a",
+      "licenses": [
+        "BSD family"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 5128,
+      "same_as_audited_643": true
+    },
+    {
+      "component": "rocsparse",
+      "path": "share/doc/rocsparse/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080,
+      "same_as_audited_643": false
+    },
+    {
+      "component": "rocthrust",
+      "path": "share/doc/rocthrust/LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 10174,
+      "same_as_audited_643": true
+    },
+    {
+      "component": "roctracer",
+      "path": "share/doc/roctracer/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080
+    },
+    {
+      "component": "hipblaslt",
+      "path": "share/doc/hipblaslt/LICENSE.md",
+      "sha256": "b185aaa652b0bf066c37a0d6314ce4bf4521e4a3c9bf46edd2f6a777ac522223",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false,
+      "exists": true,
+      "bytes": 1080,
+      "same_as_audited_643": false
+    }
+  ],
+  "review": {
+    "all_component_files_found": true,
+    "all_grants_permissive": true,
+    "families": [
+      "MIT",
+      "BSD",
+      "Apache-2.0 with LLVM exception"
+    ],
+    "rocm_vendored_in_models": false,
+    "cupy_wheel": "Private local ROCm CuPy 14.2 build; compiled against provider libraries, no toolkit binaries bundled"
+  }
+}

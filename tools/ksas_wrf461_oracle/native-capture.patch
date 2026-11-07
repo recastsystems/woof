@@ -1,0 +1,67 @@
+--- a/phys/module_cu_ksas.F
++++ b/phys/module_cu_ksas.F
+@@ -141,2 +141,7 @@
+    integer ::  i,j,k,kp, kbmax,kbm,kmax
++   integer :: capture_in, capture_out, capture_status
++   logical, save :: capture_done = .false.
++   logical :: capture_now
++   character(len=2048) :: capture_prefix
++   character(len=32) :: capture_rank
+ !
+@@ -144,2 +149,36 @@
+ !
++   capture_prefix = ''
++   capture_rank = ''
++   call get_environment_variable('GPUWM_KSAS_CAPTURE_PREFIX', capture_prefix, status=capture_status)
++   call get_environment_variable('OMPI_COMM_WORLD_RANK', capture_rank)
++   capture_now = .not.capture_done .and. len_trim(capture_prefix)>0 .and. &
++                 trim(capture_rank)=='0' .and. itimestep>=21
++   if (capture_now) then
++     open(newunit=capture_in,file=trim(capture_prefix)//'-inputs.bin', &
++       access='stream',form='unformatted',status='replace',convert='little_endian')
++     write(capture_in) 1
++     write(capture_in) (ite-its+1)*(jte-jts+1), kte-kts+1, stepcu, mp_physics, &
++       merge(1,0,F_QC),merge(1,0,F_QI),dx_factor_nsas,itimestep
++     write(capture_in) dt,dx
++     write(capture_in) znu(kts:kte)
++     write(capture_in) (((p3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((pi3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((t3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((qv3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((qc3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((qi3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((rho3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((dz8w(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((u3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((v3d(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_in) (((p3di(i,k,j),i=its,ite),j=jts,jte),k=kts,kte+1)
++     write(capture_in) (((w(i,k,j),i=its,ite),j=jts,jte),k=kts,kte+1)
++     write(capture_in) ((xland(i,j),i=its,ite),j=jts,jte)
++     write(capture_in) ((hpbl(i,j),i=its,ite),j=jts,jte)
++     write(capture_in) ((hpbl_hold(i,j),i=its,ite),j=jts,jte)
++     write(capture_in) ((hfx(i,j),i=its,ite),j=jts,jte)
++     write(capture_in) ((qfx(i,j),i=its,ite),j=jts,jte)
++     close(capture_in)
++   endif
++
+    if (mp_physics .eq. 0) then
+@@ -296,2 +335,19 @@
+ !
++   if (capture_now) then
++     open(newunit=capture_out,file=trim(capture_prefix)//'-outputs.bin', &
++       access='stream',form='unformatted',status='replace',convert='little_endian')
++     write(capture_out) (((rthcuten(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_out) (((rqvcuten(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_out) (((rqccuten(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_out) (((rqicuten(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_out) (((rucuten(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_out) (((rvcuten(i,k,j),i=its,ite),j=jts,jte),k=kts,kte)
++     write(capture_out) ((raincv(i,j),i=its,ite),j=jts,jte)
++     write(capture_out) ((pratec(i,j),i=its,ite),j=jts,jte)
++     write(capture_out) ((hbot(i,j),i=its,ite),j=jts,jte)
++     write(capture_out) ((htop(i,j),i=its,ite),j=jts,jte)
++     close(capture_out)
++     capture_done=.true.
++   endif
++
+    return

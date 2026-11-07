@@ -1,0 +1,74 @@
+{
+  "schema": "gpuwm-pbl-land-real-forecast-stage-v1",
+  "status": "measured",
+  "runtime_source": "5200f1a286deb433a80fd64c313bbf1b03838db3",
+  "forecast_seconds": 3600,
+  "forecast_steps": 300,
+  "card": "RTX PRO 6000 Blackwell 96GB, GPU-7e7487ff-bb4f-193b-29d2-1b60c982f5a1",
+  "timed_wrapper": "/workspace/bin/timed-card1 spd-retime-pbl-fixed-worker-exit",
+  "stage_ratios": {
+    "qnse": {
+      "stage_ratio": 1.033530449818007,
+      "baseline": "myj",
+      "clean_samples": 254,
+      "all_samples": 298,
+      "median_ratio": 0.48449622155443794,
+      "p10_ratio": 0.7237808912029823,
+      "minimum_ratio": 1.033530449818007,
+      "complete": true,
+      "decision": "under 1.2 on all three diagnostics"
+    },
+    "gbm": {
+      "stage_ratio": 0.6207600787499977,
+      "baseline": "myj",
+      "clean_samples": 265,
+      "all_samples": 298,
+      "median_ratio": 0.28823965748894326,
+      "p10_ratio": 0.4376611977047404,
+      "minimum_ratio": 0.6207600787499977,
+      "complete": true,
+      "decision": "under 1.2 on all three diagnostics"
+    },
+    "eeps": {
+      "stage_ratio": 0.7295513981756702,
+      "baseline": "ysu",
+      "clean_samples": 274,
+      "all_samples": 298,
+      "median_ratio": 0.7295513981756702,
+      "p10_ratio": 0.722148939971399,
+      "minimum_ratio": 0.6864388636055393,
+      "complete": true,
+      "decision": "under 1.2 on all three diagnostics"
+    },
+    "keps": {
+      "stage_ratio": 0.3878939990255865,
+      "baseline": "myj",
+      "clean_samples": 262,
+      "all_samples": 298,
+      "median_ratio": 0.19817301115759753,
+      "p10_ratio": 0.2841814025356111,
+      "minimum_ratio": 0.3878939990255865,
+      "complete": true,
+      "decision": "under 1.2 on all three diagnostics"
+    },
+    "ssib": {
+      "stage_ratio": 1.941566877979707,
+      "baseline": "noah",
+      "clean_samples": 289,
+      "all_samples": 298,
+      "median_ratio": 0.5111516632690882,
+      "p10_ratio": 1.941566877979707,
+      "minimum_ratio": 1.3902244521063805,
+      "complete": true,
+      "decision": "native-work opt-in",
+      "baseline_arm": "ysu"
+    }
+  },
+  "qualification_statistic": "Conservative audit number: maximum of clean-pair ratio of medians, ratio of p10 and ratio of minima. Chosen after the run exposed residual baseline spread; it is not a typical-time estimate or a formal upper bound. Every original sample is retained.",
+  "raw_receipt": "WRF-PORTS-2026-11-01/evidence/spd-retime-pbl/forecast-stage-summary.json",
+  "method_document": "../pbl-land-stage.md",
+  "input_archive_sha256": "7cf0184ed0bb3ab20581fbb1d8c27032828f33d50790648ac24b0e4eef574dc2",
+  "native_evidence_root": "datasets/paper/wrf-ports/spd-retime-pbl",
+  "ssib_native_profile": "datasets/paper/wrf-ports/spd-retime-pbl/sf8/ssib-native-profile.tar.zst",
+  "limits": "MYJ and Noah median spread persists with zero involuntary switches. Their favorable median ratios are not used alone. No general skill or cross-card speed claim."
+}

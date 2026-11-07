@@ -402,7 +402,7 @@ def geog_refusal(root: Path | None) -> str | None:
             "looked here, and none of them is a directory:\n"
             f"{looked}\n"
             "what does work:\n"
-            "  woof fetch-geog, which stages into the second path above\n"
+            "  woof fetch-geog, which stages into the default geography path\n"
             "  --geog DIR pointing at a WPS_GEOG archive\n"
             "  set GPUWM_WPS_GEOG to an archive that is already on this box\n"
             "  --no-static to write the grid alone and accept that it is not "

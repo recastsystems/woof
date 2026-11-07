@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }
+rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

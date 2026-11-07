@@ -1,0 +1,90 @@
+{
+ "plain-dx12k": [],
+ "plain-dx3k-lsm": [
+  {
+   "step": 3,
+   "field": "qfx",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  },
+  {
+   "step": 3,
+   "field": "lh",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  },
+  {
+   "step": 4,
+   "field": "qfx",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  },
+  {
+   "step": 4,
+   "field": "lh",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  }
+ ],
+ "plain-restart": [
+  {
+   "step": 1,
+   "field": "qfx",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  },
+  {
+   "step": 1,
+   "field": "lh",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  },
+  {
+   "step": 2,
+   "field": "qfx",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  },
+  {
+   "step": 2,
+   "field": "lh",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  }
+ ],
+ "ice-002": [],
+ "ice-05-tice": [
+  {
+   "step": 1,
+   "field": "qfx",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  },
+  {
+   "step": 1,
+   "field": "lh",
+   "column": 59,
+   "family": "edge",
+   "scalar": "00000000",
+   "O0": "80000000"
+  }
+ ]
+}

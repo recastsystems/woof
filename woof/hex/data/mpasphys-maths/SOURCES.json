@@ -32,8 +32,8 @@
     },
     "glibc_flt32.cuh": {
       "licence": "Apache-2.0; Arm optimized-routines transcriptions MIT (notice inline and in LICENSE-third-party.txt)",
-      "origin": "gpuwm engine source, gpuwm/core/kernels/glibc_flt32.cuh (byte copy)",
-      "sha256": "b647335d355aefb5d9ece1726ff23667a01f09c8b263c136bd8a94764e904d4f"
+      "origin": "gpuwm engine source, gpuwm/core/kernels/glibc_flt32.cuh; one local instruction-file comment label replaced",
+      "sha256": "a576cad20c41610c64c096841ad0db65af0227affb85eae6a825cc78440ee06a"
     },
     "glibc_flt64.cuh": {
       "licence": "Apache-2.0; Arm optimized-routines and CORE-MATH transcriptions MIT (notices inline)",
@@ -66,9 +66,9 @@
     "LICENSE.core-math": "81830875362f4d477637de58eecd6d458db108cc90c40904fca3694807b86de3"
   },
   "outputs": {
-    "bl-mynn-shared-maths.cuh": "90d9c883180c2edc7ca26f9067d06519228c55e88252edc1e857f0351c302fea",
-    "mp-tempo-rrfs-maths.cuh": "13b194710cacf584f00a794dd311dcb6bf6d351179609a5feb1c10e23bd233c4",
-    "mp-thompson-glibc243-log10-maths.cuh": "1819ce9648539d700544837ff3f81e017f045f153dc51725fbca08920258a49e"
+    "bl-mynn-shared-maths.cuh": "968ce2a44ba2f157ec8b3efaf21e7f64505efba8f793ef5b1dab6182d86a649b",
+    "mp-tempo-rrfs-maths.cuh": "55520aa6dd47693bd83a3eb565d8b8a16c7efe717ce59a2f8895cf9e1fc9d66e",
+    "mp-thompson-glibc243-log10-maths.cuh": "9c8452218ca53330b4c112e0d1cfe5c0873d969c091eafd5ea0551aff9c047c2"
   },
   "purpose": "Inputs of the shared device maths the MPAS hex-cuda bl_mynn and mp_thompson slots and the RRFS fork's mp_tempo slot bind. hexcore.mpasphys.resources_build assembles them by the recipes the scheme ports were certified with and refuses any output whose SHA-256 differs from 'outputs'.",
   "schema": "gpuwm-hex.mpasphys-maths-sources/v1"

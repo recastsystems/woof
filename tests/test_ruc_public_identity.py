@@ -41,7 +41,7 @@ def _historical_schema(exp):
     neutral = {"swint_opt": 0, "aer_opt": 0, "alb_sol": 0}
     for name, default in neutral.items():
         assert getattr(domain.run, name) == default
-    # The keyword-only fire block (lane/ec-sfire) postdates it too.
+    # The keyword-only fire block (development branch) postdates it too.
     omitted = (set(PRE_FIELD_OMISSIONS) | set(CHEM_RUN_FIELDS)
                | set(FIRE_RUN_FIELDS))
     old_fields = [field for field in fields(domain.run) if field.name not in omitted]

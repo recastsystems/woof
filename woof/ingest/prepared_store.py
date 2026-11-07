@@ -262,7 +262,7 @@ def _hold_domain_carrier(dst: np.ndarray, src, name: str, index: int) -> None:
             f"{host.shape}, not its fixed shape {dst.shape}")
     if index == 0:
         dst[...] = host
-    elif not np.array_equal(dst.view(np.uint8), np.ascontiguousarray(host).view(np.uint8)):
+    elif not np.array_equal(dst.reshape(-1).view(np.uint8), np.ascontiguousarray(host).reshape(-1).view(np.uint8)):
         raise PreparedStoreError(
             f"slab {index} built domain carrier {name!r} with words that "
             "differ from slab 0's; a domain-owned carrier must be "
@@ -394,34 +394,11 @@ def _slab_state(cfg_slab, coord, base_slab, static_slab, cache_rows,
         # Made explicit so the cost is visible and the behaviour is not a
         # property of which CuPy is installed.
         target[...] = cp.asarray(np.ascontiguousarray(rows))
-    refuse_strict_streamed_base(state.thb)
+    # Match the resident cache door before any physics or inventory reads.
+    # The original base remains in the immutable cache/bundle for identity.
+    from woof.core.state import adopt_wrf_theta_carrier
+    adopt_wrf_theta_carrier(state)
     return state
-
-
-def refuse_strict_streamed_base(thb) -> None:
-    """Strict WRF mode refuses a tile-streamed prepared slab whose base theta is not 300 K.
-
-    THE BREAKAGE THIS PREVENTS (2.9.1): every strict kernel reads ``thp`` as
-    WRF's ``t = theta - 300`` (``thb == 300``).  The resident prepared door
-    re-expresses its state that way (woof.core.state.adopt_wrf_theta_carrier);
-    this tile-streamed road keeps the preparation's base profile in ``thb``,
-    so strict mode would read theta up to 164 K low and stop non-finite in its
-    first steps (measured on the resident road before its fix).  The road's
-    setup fingerprint binds that base per slab, so it is refused here by name
-    rather than re-expressed.  Default mode, and a base already at 300 K, pass.
-    """
-    from woof.wrf_exact import ENABLED
-    if not ENABLED:
-        return
-    host = thb.get() if hasattr(thb, "get") else np.asarray(thb)
-    if bool((host == np.float32(300.0)).all()):
-        return
-    raise PreparedStoreError(
-        "strict WRF mode (GPUWM_WRF_EXACT=1) does not run a tile-streamed prepared "
-        "domain: this road holds the preparation's base theta, not WRF's "
-        "T = theta - 300 that every strict kernel reads, so it would stop "
-        "non-finite; run strict mode on a domain that fits on the card resident, "
-        "or through the WRF-input door (woof run --wrfinput)")
 
 
 class _CachePayload:
@@ -956,7 +933,7 @@ def store_from_prepared_cache(path, *, expected_identity, cfg, static,
         if not allocated:
             allocated = True
             manifest = hoststore.manifest_from_arrays(
-                inv, nz, int(rows), nx)
+                inv, nz, int(rows), nx, square_slab=True)
             geo_shapes = {
                 name: (tuple(arr.shape[:-2])
                        + (ny + (int(arr.shape[-2]) - int(rows)),

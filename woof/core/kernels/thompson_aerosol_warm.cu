@@ -1,3 +1,13 @@
+#if defined(THOMPSON_AA_HAIL)
+#define pow thompson_aa_pow
+#define exp thompson_aa_exp
+#define log thompson_aa_log
+#define log10 thompson_aa_log10
+#define powf thompson_aa_powf
+#define expf thompson_aa_expf
+#define logf thompson_aa_logf
+#define log10f thompson_aa_log10f
+#endif
 // gpuwm/core/kernels/thompson_aerosol_warm.cu
 //
 // WP-07.  Aerosol-aware (mp_physics=28) WARM source network plus the
@@ -646,7 +656,7 @@ __device__ __forceinline__ void thompson_aa_warm_rain_rates(
 // tests/test_thompson_aerosol_warm_gpu.py compares the device values against
 // those printed digits, so this block cannot drift into "close enough".
 //
-// WRITING pow(ilamg, 3.89) INSTEAD IS A MEASURABLE ERROR, NOT A COSMETIC ONE.
+// WRITING thompson_aa_pow(ilamg, 3.89) INSTEAD IS A MEASURABLE ERROR, NOT A COSMETIC ONE.
 // ilamg is below 1, so a LARGER exponent gives a SMALLER factor: the decimal
 // 3.89 exceeds cge(9,5) by 1.335e-7 absolute, which lowers ilamg**cge(9) by
 // |ln(ilamg)|*1.335e-7 -- 9.2e-7 at ilamg = 1e-3 and 1.5e-6 at ilamg = 1e-5,
@@ -1319,8 +1329,16 @@ extern "C" __global__ void thompson_aa_warm_source_network(
     float* __restrict__ qsten,
     float* __restrict__ qgten,
     float* __restrict__ ngten,
+    const float* __restrict__ graupel_volume,
+    float* __restrict__ qbten,
     float dt, int size)
 {
+#if !defined(THOMPSON_AA_HAIL)
+    (void)graupel_volume;
+    (void)qgten;
+    (void)ngten;
+    (void)qbten;
+#endif
     // WRF's cold source kernel already owns every sub-freezing level.  This
     // companion owns the remaining ambient-warm levels, while still using
     // WRF's wet-bulb temperature to select the inverse (melting) collision
@@ -1340,7 +1358,7 @@ extern "C" __global__ void thompson_aa_warm_source_network(
     snow_melt_marker[idx] = 0.0f;
     if (!entry_warm) return;
 
-#if !defined(THOMPSON_AA_WRF39)
+#if !defined(THOMPSON_AA_WRF39) && !defined(THOMPSON_AA_HAIL)
     {
         ThompsonAaFrozenTables T;
         T.tpi_ide = nullptr; T.tps_iaus = nullptr; T.tni_iaus = nullptr;
@@ -1431,6 +1449,40 @@ extern "C" __global__ void thompson_aa_warm_source_network(
         l_qc, cloud_mass, cloud_number, cloud_mvd, nwfa_m3, nifa_m3,
         rho, temp0, wet_bulb, rho_factor, inverse_dt,
         snow_cloud_efficiency, &frozen);
+#if defined(THOMPSON_AA_HAIL)
+    // The hail-aware graupel replaces every graupel member of `frozen`:
+    // the prognostic ng1d/qb1d distribution on its density bin (:1915-1949,
+    // :2135-2139) and the riming/scavenging rates on it (:2414-2471), with
+    // the Ef_gw*0.1 melting factor and the pbg_gcw rime volume both decided
+    // by the wet-bulb temperature as WRF decides them.  visco(k) is the
+    // tempc >= 0 branch of :1993.
+    ThompsonAaHailGraupel hail;
+    thompson_aa_hail_graupel_entry(qg[idx], graupel_number_per_kg[idx],
+                                   graupel_volume[idx], rho, &hail);
+    const float hail_visco = thompson_aa_mul(
+        thompson_aa_add(1.718f, thompson_aa_mul(0.0049f, tempc)), 1.0e-5f);
+    ThompsonAaHailCollect hail_collect;
+    thompson_aa_hail_graupel_collect(
+        &hail, l_qc, cloud_mvd, cloud_mass, cloud_number, nwfa_m3, nifa_m3,
+        rho, temp0, wet_bulb, rho_factor, hail_visco, inverse_dt,
+        &hail_collect);
+    frozen.l_qg = hail.l_qg;
+    frozen.rg = hail.rg;
+    frozen.ng_m3 = hail.ng;
+    frozen.lamg = hail.lamg;
+    frozen.ilamg = hail.ilamg;
+    frozen.n0_g = hail.n0_g;
+    frozen.prg_gcw = hail_collect.prg_gcw;
+    frozen.pnc_gcw = hail_collect.pnc_gcw;
+    frozen.pna_gca = hail_collect.pna_gca;
+    frozen.pnd_gcd = hail_collect.pnd_gcd;
+    // pbg_rcg and the melt/sublimation volume and number terms, each
+    // captured where WRF forms it (before the conservation passes).
+    double hail_pbg_rcg = 0.0;
+    double hail_pbg_gml = 0.0;
+    double hail_png_rcg = 0.0;
+    double hail_png_gde = 0.0;
+#endif
 
     // WRF's rs(k) and rg(k): the mass content where L_qs/L_qg hold, and the
     // R1 placeholder otherwise (:1908-1911, :1918-1946).  Everything below
@@ -1560,6 +1612,47 @@ extern "C" __global__ void thompson_aa_warm_source_network(
             rain_graupel_graupel_rate = -rain_graupel_rain_rate;
             rain_graupel_rain_number_rate = -5.0 * tnr_gacr[table_idx];
         }
+#elif defined(THOMPSON_AA_HAIL)
+        // :2522-2547 on the nine-slab tables at the level's density bin.
+        // The branch is the wet-bulb's: below T_0 rain freezes onto the
+        // graupel (pbg_rcg at ice density, :2535), above it the graupel
+        // sheds into rain, losing number (png_rcg) and volume at its own
+        // density (:2543), with the -1.5*tnr_gacr break-up (:2545).
+        if (graupel_mass >= 1.0e-6f) {
+            int graupel_mass_bin = 0;
+            int graupel_intercept_bin = 36;
+            if (graupel_mass > 1.0e-6f) {
+                graupel_mass_bin = thompson_aa_decade_index(
+                    graupel_mass, -6, 37);
+                graupel_intercept_bin = thompson_aa_hail_intercept_bin(&hail);
+            }
+            const size_t table_idx = thompson_aa_hail_rain_graupel_index(
+                graupel_intercept_bin, graupel_mass_bin, hail.idx_bg,
+                rain_intercept_bin, rain_bin);
+            if (wet_bulb < 273.15f) {
+                rain_graupel_graupel_rate = fmin(
+                    (double)thompson_aa_mul(rain_mass, inverse_dt),
+                    tmr_racg[table_idx] + tcr_gacr[table_idx]);
+                rain_graupel_rain_rate = -rain_graupel_graupel_rate;
+                rain_graupel_rain_number_rate = fmin(
+                    (double)thompson_aa_mul(rain_number, inverse_dt),
+                    tnr_racg[table_idx] + tnr_gacr[table_idx]);
+                hail_pbg_rcg = rain_graupel_graupel_rate
+                    / (double)THOMPSON_AA_HAIL_RHO_I;
+            } else {
+                rain_graupel_rain_rate = fmin(
+                    (double)thompson_aa_mul(graupel_mass, inverse_dt),
+                    tcg_racg[table_idx]);
+                rain_graupel_graupel_rate = -rain_graupel_rain_rate;
+                rain_graupel_number_rate = fmin(
+                    (double)thompson_aa_mul(graupel_number, inverse_dt),
+                    tnr_racg[table_idx]);
+                hail_png_rcg = rain_graupel_number_rate;
+                hail_pbg_rcg = rain_graupel_graupel_rate
+                    / (double)THOMPSON_AA_HAIL_RHO_G[hail.idx_bg];
+                rain_graupel_rain_number_rate = -1.5 * tnr_gacr[table_idx];
+            }
+        }
 #endif
     }
 
@@ -1621,7 +1714,100 @@ extern "C" __global__ void thompson_aa_warm_source_network(
 
     double graupel_melt_rate = 0.0;
     double graupel_melt_number_rate = 0.0;
+#if defined(THOMPSON_AA_HAIL)
+    // Melting and sublimation of the hail-aware graupel, :2802-2834, in
+    // WRF's REAL/DOUBLE order on the level's density bin.  The melted
+    // volume leaves at the melt-scaled density (:2821-2823, so the bulk
+    // density rises while it melts) and the drops shed carry the
+    // wet-bulb-scaled number (:2825).  Sublimation (:2826-2833) needs
+    // prr_gml <= 0 and ssati < 0 and carries no rate_max of its own; the
+    // shared vapor limiter below scales it with the snow's.
+    const float hail_diffu = thompson_aa_hail_diffu(temp0, pressure0);
+    const float hail_tcond = thompson_aa_hail_tcond(tempc);
+    const float hail_rhof2 = sqrtf(rho_factor);
+    const float hail_vsc2 = sqrtf(thompson_aa_div(rho, hail_visco));
+    double hail_prg_gde = 0.0;
     if (l_qg) {
+        const float delqvs = fmaxf(0.0f, thompson_aa_sub(
+            thompson_rslf(pressure0, 273.15f), qv0));
+        double n0_melt = hail.n0_g;
+        if (thompson_aa_mul(graupel_mass, graupel_number) < 1.0e-4f) {
+            const double lamg = 1.0 / hail.ilamg;
+            n0_melt = (double)thompson_aa_mul(
+                thompson_aa_div(1.0e-4f, graupel_mass),
+                THOMPSON_AA_HAIL_OGG2) * lamg;
+        }
+        float t2_qg_me = thompson_aa_mul(THOMPSON_AA_PI, 4.0f);
+        t2_qg_me = thompson_aa_mul(t2_qg_me, THOMPSON_AA_HAIL_C_CUBE);
+        t2_qg_me = thompson_aa_mul(t2_qg_me, THOMPSON_AA_HAIL_OLFUS);
+        t2_qg_me = thompson_aa_mul(t2_qg_me, 0.28f);
+        t2_qg_me = thompson_aa_mul(t2_qg_me, THOMPSON_AA_HAIL_SC3);
+        t2_qg_me = thompson_aa_mul(
+            t2_qg_me, sqrtf(THOMPSON_AA_HAIL_AV_G[hail.idx_bg]));
+        t2_qg_me = thompson_aa_mul(t2_qg_me, THOMPSON_AA_HAIL_CGG[11]);
+        const float melt_prefix = thompson_aa_sub(
+            thompson_aa_mul(tempc, hail_tcond),
+            thompson_aa_mul(thompson_aa_mul(2.5e6f, hail_diffu), delqvs));
+        double prr_gml = (double)melt_prefix * n0_melt
+            * ((double)THOMPSON_AA_HAIL_T1_QG_ME
+                   * thompson_aa_pow(hail.ilamg, (double)THOMPSON_AA_HAIL_CGE[10])
+               + (double)thompson_aa_mul(thompson_aa_mul(t2_qg_me,
+                                                         hail_rhof2),
+                                         hail_vsc2)
+                   * thompson_aa_pow(hail.ilamg, (double)THOMPSON_AA_HAIL_CGE[11]));
+        prr_gml = fmin((double)thompson_aa_mul(graupel_mass, inverse_dt),
+                       fmax(0.0, prr_gml));
+        graupel_melt_rate = prr_gml;
+        if (prr_gml > 0.0) {
+            const float melt_f = (float)fmax(
+                (double)0.05f,
+                fmin(prr_gml * (double)dt / (double)graupel_mass, 1.0));
+            hail_pbg_gml = prr_gml / (double)fmaxf(fminf(
+                thompson_aa_mul(melt_f, THOMPSON_AA_HAIL_RHO_G[hail.idx_bg]),
+                1000.0f), 50.0f);
+            graupel_melt_number_rate = prr_gml * (double)graupel_number
+                / (double)graupel_mass
+                * (double)gfk_pow(10.0f, thompson_aa_mul(
+                    -0.33f, thompson_aa_sub(wet_bulb, 273.15f)));
+        } else {
+            float hail_ssati = thompson_aa_sub(
+                thompson_aa_div(qv0, thompson_rslf(pressure0, temp0)), 1.0f);
+            if (fabsf(hail_ssati) < 1.0e-15f) hail_ssati = 0.0f;
+            if (hail_ssati < 0.0f) {
+                float rvs = 0.0f;
+                const float t1_subl = thompson_aa_hail_t1_subl(
+                    temp0, rho, thompson_rslf(pressure0, temp0), hail_diffu,
+                    hail_tcond, hail_ssati, &rvs);
+                const float t2_qg_sd = thompson_aa_mul(
+                    thompson_aa_mul(
+                        thompson_aa_mul(0.28f, THOMPSON_AA_HAIL_SC3),
+                        sqrtf(THOMPSON_AA_HAIL_AV_G[hail.idx_bg])),
+                    THOMPSON_AA_HAIL_CGG[11]);
+                const float prefix = thompson_aa_mul(thompson_aa_mul(
+                    thompson_aa_mul(thompson_aa_mul(THOMPSON_AA_HAIL_C_CUBE,
+                                                    t1_subl),
+                                    hail_diffu), hail_ssati), rvs);
+                hail_prg_gde = (double)prefix * hail.n0_g
+                    * ((double)THOMPSON_AA_HAIL_T1_QG_SD
+                           * thompson_aa_pow(hail.ilamg,
+                                 (double)THOMPSON_AA_HAIL_CGE[10])
+                       + (double)thompson_aa_mul(
+                             thompson_aa_mul(t2_qg_sd, hail_vsc2),
+                             hail_rhof2)
+                           * thompson_aa_pow(hail.ilamg,
+                                 (double)THOMPSON_AA_HAIL_CGE[11]));
+                hail_prg_gde = fmax(
+                    (double)thompson_aa_mul(-graupel_mass, inverse_dt),
+                    hail_prg_gde);
+                hail_png_gde = hail_prg_gde * (double)graupel_number
+                    / (double)graupel_mass;
+            }
+        }
+    }
+    if (false) {
+#else
+    if (l_qg) {
+#endif
         const double inverse_lambda = frozen.ilamg;
         const double graupel_intercept = frozen.n0_g;
         double melt_intercept = graupel_intercept;
@@ -1683,7 +1869,13 @@ extern "C" __global__ void thompson_aa_warm_source_network(
     const float snow_capacitance = 0.5f;
 #else
     const bool snow_sublimates = l_qs && snow_melt_rate <= 0.0;
+#if defined(THOMPSON_AA_HAIL)
+    // The hail-aware graupel sublimation was formed above; it joins the
+    // shared vapor limiter here.
+    const bool graupel_sublimates = hail_prg_gde != 0.0;
+#else
     const bool graupel_sublimates = l_qg && graupel_melt_rate <= 0.0;
+#endif
     const float snow_capacitance = 0.15f;
 #endif
     if (ssati < 0.0f && (snow_sublimates || graupel_sublimates)) {
@@ -1738,6 +1930,10 @@ extern "C" __global__ void thompson_aa_warm_source_network(
                 graupel_vapor_rate);
             graupel_vapor_number_rate = graupel_vapor_rate
                 * (double)graupel_number / (double)graupel_mass;
+#if defined(THOMPSON_AA_HAIL)
+            graupel_vapor_rate = hail_prg_gde;
+            graupel_vapor_number_rate = hail_png_gde;
+#endif
         }
 
         // :2862-2876, REAL sump / rate_max / ratio (:1615) as for the
@@ -1938,14 +2134,55 @@ extern "C" __global__ void thompson_aa_warm_source_network(
         nr[idx] = fmaxf(0.0f, thompson_aa_add(nr[idx],
             thompson_aa_mul((float)(rain_number_rate * (double)orho), dt)));
     }
+#if defined(THOMPSON_AA_HAIL)
+    // :3094-3097, the ambient-warm snow source before sedimentation.
+    qsten[idx] = (float)((double)qsten[idx] + snow_rate * (double)orho);
+#else
     qs[idx] = fmaxf(0.0f, thompson_aa_add(qs[idx],
         thompson_aa_mul((float)(snow_rate * (double)orho), dt)));
+#endif
+#if defined(THOMPSON_AA_HAIL)
+    {
+        // :3099-3116 for an ambient-warm level, in WRF's order with its
+        // zero members dropped (adding an exact 0.0 to a DOUBLE sum is the
+        // identity): prg_scw, prg_rfz, prg_rci and prg_ihm are sub-freezing
+        // terms, and pbg_sml is never set.  qg, ng and qb stay the read-only
+        // entry state for the terminal apply.
+        (void)graupel_rate;
+        (void)graupel_number_rate;
+        float hail_qgten = (float)((double)qgten[idx]
+            + ((((graupel_vapor_rate + rain_graupel_graupel_rate)
+                 + graupel_cloud_rate) + rain_snow_graupel_rate)
+               - graupel_melt_rate) * (double)orho);
+        float hail_ngten = (float)((double)ngten[idx]
+            + (((-hail_png_rcg + rain_snow_number_rate) + hail_png_gde)
+               - graupel_melt_number_rate) * (double)orho);
+        const double pbg_rcs = rain_snow_graupel_rate
+            / (double)THOMPSON_AA_HAIL_RHO_I;                     // :2511
+        float hail_qbten = (float)((double)qbten[idx]
+            + ((((hail_collect.pbg_gcw + pbg_rcs) + hail_pbg_rcg)
+                - hail_pbg_gml)
+               + graupel_vapor_rate
+                 / (double)THOMPSON_AA_HAIL_RHO_G[hail.idx_bg])
+              * (double)orho);
+        const float qg_entry = qg[idx] > THOMPSON_AA_R1 ? qg[idx] : 0.0f;
+        const float ng_entry = qg[idx] > THOMPSON_AA_R1
+            ? graupel_number_per_kg[idx] : 0.0f;
+        thompson_aa_hail_graupel_balance(
+            qg_entry, ng_entry, hail.qb_entry, hail.idx_bg, rho, orho,
+            inverse_dt, dt, &hail_qgten, &hail_ngten, &hail_qbten);
+        qgten[idx] = hail_qgten;
+        ngten[idx] = hail_ngten;
+        qbten[idx] = hail_qbten;
+    }
+#else
     qg[idx] = fmaxf(0.0f, thompson_aa_add(qg[idx],
         thompson_aa_mul((float)(graupel_rate * (double)orho), dt)));
+#endif
     // Keep classic ng1d raw through source and fallout tendencies.  WRF
     // diagnoses a separate qg-based number for fallout velocity and applies
     // the private moment's sole size bound only in the final state pass.
-#if defined(THOMPSON_AA_WRF39)
+#if defined(THOMPSON_AA_WRF39) || defined(THOMPSON_AA_HAIL)
     (void)graupel_number_rate;
 #else
     graupel_number_per_kg[idx] = thompson_aa_add(
@@ -1991,7 +2228,8 @@ extern "C" __global__ void thompson_aa_warm_source_network(
     // reads that number: without the balance the saved reflectivity differs
     // from WRF v4.6.1 by up to 8.7 dB in 505 to 939 cells of every saved
     // forecast frame, and graupel at or below R1 as a concentration survives.
-#if defined(THOMPSON_AA_WRF39)
+#if defined(THOMPSON_AA_WRF39) || defined(THOMPSON_AA_HAIL)
+    // (The hail-aware build ran its balance in tendency form above.)
     (void)qg_entry_wrf;
     (void)ng_entry_wrf;
     if (false)

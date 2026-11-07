@@ -14,7 +14,7 @@ calm-wave period and direction use zero. A dry cell's stored eta may equal its
 bed elevation; water-level products include only ocean or inundated cells.
 """
 from __future__ import annotations
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, is_dataclass
 from typing import Any, Mapping, Protocol, runtime_checkable
 import math
 
@@ -91,10 +91,11 @@ def validate_plane(array: DeviceArray, shape: tuple[int,int], name: str) -> None
         raise ValueError(f"{name} needs a non-null writable device buffer")
 
 def validate_fields(value: Any, grid: OceanGrid) -> None:
-    for f in fields(value):
-        item=getattr(value,f.name)
-        if f.name not in ("datum", "source", "time_seconds"):
-            validate_plane(item,grid.shape,f.name)
+    items=({f.name:getattr(value,f.name) for f in fields(value)} if is_dataclass(value)
+           else value if isinstance(value,Mapping) else vars(value))
+    for name,item in items.items():
+        if name not in ("datum", "source", "time_seconds"):
+            validate_plane(item,grid.shape,name)
 
 @runtime_checkable
 class WaveSolver(Protocol):

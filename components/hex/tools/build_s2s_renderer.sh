@@ -7,7 +7,8 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 python3 - "$engine" "$out" <<'PY'
 import pathlib, shutil, sys
 engine, out = map(pathlib.Path, sys.argv[1:])
-for name in ('rustwx', 'grib1_bridge', 'region_global_dealias'):
+# Cargo resolves the workspace's WRF surface members even for an MPAS target.
+for name in ('rustwx', 'grib1_bridge', 'region_global_dealias', 'rw_wps'):
     source = engine / 'tools' / name
     def ignore(directory, names):
         ignored = shutil.ignore_patterns('.git', '.env', '.env.*')(directory, names)

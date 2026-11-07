@@ -229,7 +229,7 @@ def test_stochastic_policy_is_resolved_before_card_groups(tmp_path):
     assert len({m["stochastic"]["member"] for m in four["members"]}) == 4
     assert len({m["stochastic"]["seed"] for m in four["members"]}) == 4
     thirty = s2s_door.plan(arguments(tmp_path, "--source", "gefs", "--members", "30"))
-    assert not thirty["stochastic"]["sppt"] and not thirty["stochastic"]["skeb"]
+    assert thirty["stochastic"]["sppt"] and thirty["stochastic"]["skeb"]
     assert s2s_door.science_arguments(four)[0] == "--stochastic"
     s2s_door.update_manifests(four, {"attempts": [], "completed": []})
     manifest = json.loads(Path(four["members"][0]["manifest"]).read_text())

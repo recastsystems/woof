@@ -990,7 +990,7 @@ def write_background(analysis: str | Path, increment: str | Path, out: str | Pat
     precision = increment_precision(increment)
     # The increment's decode runs on a host thread beside the analysis's: two independent rw_netcdf decodes
     # that ran one after the other on the analysis door's thread (single-core law,
-    # 2026-10-29: DA member legs on woof 2.9.9 spent ~26 s at ~1 core before the engine
+    # 2026-10-29: DA member legs on gpuwm 2.9.9 spent ~26 s at ~1 core before the engine
     # started; these two decodes were the largest part of the door).  The same reads; the increment's own
     # refusal is still raised first.
     import threading

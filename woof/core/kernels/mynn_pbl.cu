@@ -3840,6 +3840,8 @@ void mynn_dmp_mf_columns(
     real* __restrict__ work_scratch_raw, int nz, int ncol
 #if defined(MYNN_GSD41)
     , const real* __restrict__ sgm_gsd41_raw
+    , real* __restrict__ mf_at_base_o, int* __restrict__ kbot_o,
+    int* __restrict__ nupdraft_o
 #endif
     )
 {
@@ -3847,6 +3849,8 @@ void mynn_dmp_mf_columns(
     if (column >= ncol) return;
 #if defined(MYNN_GSD41)
     MynnColumn<const real> sgm_gsd41 = {sgm_gsd41_raw + column, (size_t)ncol};
+    mf_at_base_o[column] = 0.0f;
+    kbot_o[column] = 0;
 #endif
     MynnColumn<const real> dz = {dz_raw + column, (size_t)ncol};
     MynnColumn<const real> p = {p_raw + column, (size_t)ncol};
@@ -4473,6 +4477,14 @@ void mynn_dmp_mf_columns(
                 real product = MYNN_MUL(edmf_a_o[base + k],
                                         edmf_w_o[base + k]);
                 if (product > maxmf) maxmf = product;
+#if defined(MYNN_GSD41)
+                // Native GSD DMP_mf:5833-5837; the last cloud onset wins.
+                if (k > 0 && edmf_qc_o[base + k] > 0.0f
+                        && edmf_qc_o[base + k - 1] == 0.0f) {
+                    kbot_o[column] = k + 1;
+                    mf_at_base_o[column] = product;
+                }
+#endif
             }
         }
 
@@ -4674,7 +4686,36 @@ void mynn_dmp_mf_columns(
     ktop_o[column] = ktop;
     ztop_o[column] = ztop;
     maxmf_o[column] = maxmf;
+#if defined(MYNN_GSD41)
+    nupdraft_o[column] = (int)nup2;
+#endif
 }
+
+#if defined(MYNN_GSD41)
+// Native GSD mynn_bl_driver:4477-4485, GRIMS diagnostics. One device thread
+// per column, retaining the native FP32 operator and real-power order.
+extern "C" __global__
+void mynn_gsd41_grims_diagnostics(
+    const real* th, const real* qv, const real* rho, const real* hfx,
+    const real* qfx, const real* ust, const real* pblh,
+    real* wstar, real* delta, int ncol)
+{
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= ncol) return;
+    real cpm = MYNN_MUL(CP, MYNN_ADD(1.0f, MYNN_MUL(0.84f, qv[c])));
+    real govrth = MYNN_DIV(9.81f, th[c]);
+    real ep1 = MYNN_SUB(MYNN_DIV(461.6f, 287.0f), 1.0f);
+    real sflux = MYNN_ADD(MYNN_DIV(MYNN_DIV(hfx[c], rho[c]), cpm),
+        MYNN_MUL(MYNN_MUL(MYNN_DIV(qfx[c], rho[c]), ep1), th[c]));
+    real w3 = MYNN_MUL(MYNN_MUL(govrth, mynn_max2(sflux, 0.0f)), pblh[c]);
+    wstar[c] = mynn_powf(w3, 0.33333335f);
+    real wm3 = MYNN_ADD(w3, MYNN_MUL(5.0f, mynn_powf(ust[c], 3.0f)));
+    real wm2 = mynn_powf(wm3, 0.6666667f);
+    real delb = MYNN_MUL(MYNN_MUL(govrth, 0.001f), pblh[c]);
+    delta[c] = mynn_min2(MYNN_ADD(MYNN_MUL(0.02f, pblh[c]),
+        MYNN_DIV(MYNN_MUL(0.05f, wm2), delb)), 100.0f);
+}
+#endif
 
 // ===========================================================================
 // module_bl_mynn.F:mynn_bl_driver assembly.

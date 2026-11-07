@@ -54,6 +54,48 @@ _ALLOWED_AEROSOL_MODULES = frozenset({
 #: at max_ulp 0, which is a stronger gate than source identity and the only
 #: reason the trade was takeable.
 _EXPECTED_HEADERS = {
+    # Final fog/MAD, Noah sea-ice/fractional and sfclay_dx ports have retained
+    # native captures; each grant remains explicit and source-pinned.
+    "fogdes": ("glibc_flt32.cuh",),
+    "madwrf": ("glibc_flt32.cuh",),
+    "noah_fractional": ("glibc_flt32.cuh",),
+    "noah_seaice_options": ("glibc_flt32.cuh", "noah_seaice_options.cuh", "noah.cu"),
+    "sfclay_dx2d": ("glibc_flt32.cuh", "sfclay_classic.cuh", "sfclay_dx2d.cuh", "sfclay.cu"),
+    "solar_eclipse": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
+    "wrf_stock_aer3": ("glibc_flt32.cuh", "rrtmg_aer3.cu"),
+    "gsfcgce4ice": ("glibc_flt32.cuh", "glibc_flt64.cuh", "gsfcgce4ice_log10.cuh"),
+    "gsfcgce4ice_aux": ("glibc_flt32.cuh", "glibc_flt64.cuh", "gsfcgce4ice_log10.cuh",
+                        "gsfcgce4ice.cu", "radar_backscatter_common.cuh"),
+    "gsfcgce": ("glibc_flt32.cuh",),
+    "gsfcgce_refl": ("refl.cu",),
+    "eeps": ("glibc_flt32.cuh",),
+    "sas": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh",
+            "atan_scalar_flt32.cuh", "wrf_atan_f32.cuh"),
+    "slab": ("glibc_flt32.cuh",),
+    "gfdleta_init": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
+    "gfdleta_lw_helpers": ("portable_libm64.cuh",),
+    "gfdleta_tables": ("glibc_flt32.cuh", "gfdleta_table_coefficients.cuh"),
+    "gfdleta_math_probe": ("glibc_flt32.cuh", "glibc_flt32_extra.cuh", "glibc_trig_flt32.cuh", "portable_libm64.cuh", "gfdleta_support.cuh"),
+    "gfdleta_co2_init": ("glibc_flt32.cuh", "glibc_flt32_extra.cuh", "glibc_trig_flt32.cuh", "portable_libm64.cuh", "gfdleta_support.cuh", "gfdleta_co2_init.cuh"),
+    "gfdleta_table_runtime": ("glibc_flt32.cuh",),
+    "gfdleta_column": ("glibc_flt32.cuh", "glibc_flt32_extra.cuh", "glibc_trig_flt32.cuh", "portable_libm64.cuh", "gfdleta_support.cuh", "gfdleta_column.cuh"),
+    "morrison_aero": ("noahmp_leaves.cu",),
+    "morrison_aero_refl": ("noahmp_leaves.cu", "refl.cu"),
+    "cam3_prepare": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh", "swint.cu"),
+    "cam3_paths": ("glibc_flt64.cuh",),
+    "cam3_emissivity": ("glibc_flt64.cuh",),
+    "gsfcsw": ("glibc_flt32.cuh",),
+
+    "cldfra3": ("glibc_flt32.cuh", "wrf471_log10f.cuh"),
+    "farms": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh", "portable_libm64.cuh", "wrf471_log10f.cuh"),
+    "idealized_forcing": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
+    # Global ideal operators are separate units; ordinary dycore sources
+    # retain their existing header grants and assembled source bytes.
+    "global_ideal_init": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
+    "global_polar": ("glibc_trig_flt32.cuh",),
+    "global_hydrostatic": ("glibc_flt32.cuh",),
+    "global_rotation": ("glibc_trig_flt32.cuh",),
+    "global_geometry": ("glibc_flt32.cuh",),
     "gsd_initial_reflectivity": ("glibc_flt32.cuh", "glibc_flt64.cuh",
                                  "thompson_fork_constants.cuh", "thompson_fork.cu"),
     # A new full-column generation unit; existing classic and aerosol units
@@ -62,8 +104,11 @@ _EXPECTED_HEADERS = {
                         "thompson_aerosol_libm.cuh", "thompson_column_support.cuh",
                         "thompson_column_radar.cuh", "thompson_column_generated.cuh"),
     "wsm7": ("glibc_flt32.cuh", "glibc_flt64.cuh"),
+    "temf": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
+    "temf_sfclay": ("glibc_flt32.cuh", "temf_log10_flt32.cuh"),
     # Selected diffusion and surface sources have independently pinned headers.
     "acoustic": ("glibc_trig_flt32.cuh",),
+    "sf_gfs": ("glibc_flt64.cuh",),
     "myjsfc": ("glibc_flt32.cuh", "flt32_expf_fma.cuh"),
     "mynn_surface": ("mynn_libm.cuh", "surface_subnormal.cuh"),
     "sfclay": ("glibc_flt32.cuh", "sfclay_classic.cuh"),
@@ -78,27 +123,34 @@ _EXPECTED_HEADERS = {
     "rrtmg_aer1": (),
     # aer_opt = 2 column aerosol (WRF float32 math): a new unit.
     "aer_opt2": ("glibc_flt32.cuh",),
+    "sstskin": ("glibc_flt32.cuh",),
+
+    "kf_old": ("glibc_flt32.cuh",),
+    "ssib": ("glibc_flt32.cuh", "glibc_flt64.cuh"),
     "upper_wind_limiter": ("glibc_flt32.cuh",),
     # New order-five scalar eta entry, qualified against the native fork.
     # No existing translation unit gains a header through this grant.
     "pd_vertical_sl": ("pd_advection.cu",),
-    # The SFIRE port (lane/ec-sfire): native ideal initialization and the
+    # The SFIRE port (development branch): native ideal initialization and the
     # geographic coupling take glibc words, and the ideal fire state takes
     # the CORE-MATH tanhf of sfire_libm.cuh; new units, no existing grant.
     "sfire_coupling": ("glibc_trig_flt32.cuh",),
     "sfire_ideal": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh", "sfire_libm.cuh"),
     "sfire_ideal_atmos": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
-    # noah.cu carries WRF's seaice_noah (lane/290-A5-fixes), which calls
+    # noah.cu carries WRF's seaice_noah (development branch), which calls
     # glibc's float32 expf/powf; the ordinary land column calls neither.
     "noah_init": ("glibc_flt32.cuh", "noah.cu"),
     "noah": ("glibc_flt32.cuh",),
+    "noah_ua": ("glibc_flt32.cuh", "noah_ua_plain.cuh", "noah_mosaic.cu", "noah_ua.cuh", "noah.cu"),
+    "noah_mosaic_ua": ("glibc_flt32.cuh", "noah_ua.cuh", "noah_mosaic.cu"),
+    "noah_ua_sfcdiags": ("glibc_flt32.cuh",),
     "horizontal": ("portable_libm64.cuh",),
     # Test-only bit grading, with the same shared header future callers use.
     "portable_libm64_grade": ("portable_libm64.cuh",),
     "vert_interp": ("glibc_flt32.cuh",),
     "thompson_cold_start": ("glibc_flt32.cuh", "portable_libm64.cuh"),
     "chem_prep": ("glibc_flt32.cuh",),
-    # The GOCART ports (lane/aq-gocart) take WRF-Chem's float32 exp/log/pow
+    # The GOCART ports (development branch) take WRF-Chem's float32 exp/log/pow
     # from the same header; each is held by its own oracle parity tests at
     # 0 ULP (tests/test_chem_*_wrf471_parity.py), not by source identity.
     **{name: ("glibc_flt32.cuh",) for name in (
@@ -116,13 +168,20 @@ _EXPECTED_HEADERS = {
     "rrtmgp_rte": ("rrtmgp_libm.cuh", "rrtmgp_planck_common.cuh"),
     "gf": ("glibc_flt32.cuh", "gf_wrf_normalization.cuh"),
     "g3": ("glibc_flt32.cuh",),
+    "bmj": ("glibc_flt32.cuh",),
+    # OSAS is a separate binary64 column unit. Existing modules retain
+    # their source and option identity checks below.
+    "cu_osas": ("glibc_flt64.cuh", "column_r8.cuh", "cu_osas_table_seeds.cuh"),
     "ntiedtke": ("glibc_flt32.cuh",),
+    "kfcup": ("glibc_flt32.cuh",),
+    "pxlsm": ("glibc_flt32.cuh",),
     # The original cu6 kernel: a new module whose GPU column oracle
     # (tools/tiedtke_wrf461_oracle/check.py --gpu) grades it bitwise.
     "tiedtke": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh",
                 "tiedtke_support.cuh", "tiedtke_routines.cuh"),
     # A new module, so no pre-hook source to stay identical to; its WRF
     # v4.7.1 parity suites grade it bitwise.
+    "mrf": ("glibc_flt32.cuh",),
     "urban_ucm": ("glibc_flt32.cuh",),
     "urban_ucm480": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh",
                      "urban_ucm.cu", "urban_ucm480_support.cuh", "urban_ucm480.cuh"),
@@ -133,13 +192,19 @@ _EXPECTED_HEADERS = {
     # oracle (tests/test_myjpbl_wrf461_parity.py): gfk_pow and the
     # contracted gfk_exp_fma.
     "myjpbl": ("glibc_flt32.cuh", "flt32_expf_fma.cuh"),
+    "qnsepbl": ("glibc_flt32.cuh",),
+    "qnsesfc": ("glibc_flt32.cuh", "flt32_expf_fma.cuh"),
+
+    # BouLac (bl_pbl_physics=8): a new module, so no existing unit moves;
+    # its WRF v4.6.1 column oracle grades it word for word.
+    "boulac": ("glibc_flt32.cuh",),
     # YSU's topo_wind arm (ysu_column_topo) takes glibc's powf; the default
     # entry points compile to byte-identical PTX with the header present
     # (tests/test_mp8_frozen.py, the ysu re-pin).
     "ysu": ("glibc_flt32.cuh", "ysu_topo_default.cuh"),
     # WRF 4.8 YSU generation (ysu_version = "wrf_480"), its own unit.
     "ysu_480": ("glibc_flt32.cuh", "ysu_480_topo.cuh"),
-    # Shin-Hong takes glibc's powf/expf since lane/parity-pbl-libm; its WRF
+    # Shin-Hong takes glibc's powf/expf since development branch; its WRF
     # v4.6.1 oracle grades the unit bitwise (tests/test_shinhong_wrf461_parity.py).
     "shinhong": ("glibc_flt32.cuh",),
     # Lane 286-aer-swint: WRF swint_opt = 1 and aer_opt = 3, graded
@@ -154,10 +219,22 @@ _EXPECTED_HEADERS = {
     # against the WRF v4.6.1 column oracle (tests/test_dudhia_sw_wrf461_parity.py).
     "dudhia_sw": ("glibc_flt32.cuh",),
     # The UW moist-turbulence PBL: a new module, so no existing unit moves.
+    "gfs_sas": ("glibc_flt64.cuh",),
+
+    "camzm": ("glibc_flt32.cuh", "glibc_flt64.cuh", "uwpbl_common.cuh",
+               "uwpbl_wvsat.cuh", "cam5_support.cuh"),
+    "uwshcu": ("glibc_flt64.cuh", "uwpbl_common.cuh", "uwpbl_wvsat.cuh",
+                "cam5_error_function.cuh", "uwshcu_cam.cuh", "uwshcu_column.cuh"),
+    "cammgmp": ("glibc_flt32.cuh", "glibc_flt64.cuh",
+                "uwpbl_common.cuh", "uwpbl_wvsat.cuh", "cam5_error_function.cuh", "cammgmp_words.cuh",
+                "cammgmp_support.cuh", "cammgmp_aero.cuh", "cammgmp_micro.cuh"),
     "uwpbl": ("glibc_flt64.cuh", "uwpbl_common.cuh", "uwpbl_wvsat.cuh",
               "uwpbl_vdiff.cuh", "uwpbl_zisocl.cuh", "uwpbl_caleddy.cuh",
               "uwpbl_eddy.cuh", "uwpbl_driver.cuh"),
     "real_init_math": ("real_init_common.cuh", "portable_libm64.cuh"),
+    # The GFS nonlocal PBL: a new module, so no existing unit moves.
+    "gfs_pbl": ("glibc_flt32.cuh", "glibc_flt64.cuh",
+                "../../data/gfs_pbl/gfs_pbl_constants.cuh"),
     # gp-device: only the new REAL unit receives its NaN/rounding vocabulary.
     "real_init": ("real_init_common.cuh",),
     # A new module; the WRF v4.7.1 Noah mosaic column oracle grades it
@@ -165,7 +242,7 @@ _EXPECTED_HEADERS = {
     "noah_mosaic": ("glibc_flt32.cuh",),
     # RUC LOG/EXP mixture words and the new lake driver's REAL32 power
     # use the shared WRF-oracle float32 functions.  RUC's soil-resistance
-    # COS takes glibc_cosf (lane/verify-ruc-lsm).
+    # COS takes glibc_cosf (development branch).
     "ruc": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
     "lake": ("glibc_flt32.cuh", "f64cr.cuh", "lake_support.cuh", "lake_wrf.cuh"),
     # Kain-Fritsch: WOOF's own float32 expf/logf/powf for its WRF 4.6.1
@@ -224,15 +301,19 @@ def _module_names() -> list[str]:
 
 @pytest.mark.parametrize("strict", [False, True])
 def test_lake_compile_options_do_not_change_existing_modules(monkeypatch, strict):
+    import woof.numerics as numerics
+    monkeypatch.setattr(numerics, "is_strict", lambda: strict)
     import woof.wrf_exact as exact
+    import woof.numerics as numerics
     monkeypatch.setattr(exact, "ENABLED", strict)
+    monkeypatch.setattr(numerics, "mode", lambda: "strict" if strict else "fast")
     # These are closed literal grants for the selected source: the six
     # no-FMA units, four surface units and five diffusion units. In
     # particular MYNN PBL carries both the no-FMA and no-FTZ requirements.
     # A global option change must still fail for every other actual module.
-    no_fmad = {"lake", "g3", "ysu", "shinhong", "mynn_pbl", "mynn_dmp_sibling",
+    no_fmad = {"soil_points", "gsfcsw", "gsfcgce", "gsfcgce_refl", "lake", "g3", "ysu", "shinhong", "mynn_pbl", "mynn_dmp_sibling",
                "wsm6", "kessler", "myjpbl", "milbrandt2", "milbrandt2_zet",
-               "wdm6", "wdm6_refl", "wsm3", "wsm6r", "noah", "climate_diagnostics"}
+               "wdm6", "wdm6_refl", "wsm3", "wsm6r", "noah", "climate_diagnostics", "pxlsm"}
     if strict:
         no_fmad |= {"morrison", "rrtmgp_rte", "noah_init", "wdm6",
             "milbrandt2_zet", "wdm6_refl", "rrtmgp_gas", "milbrandt2",
@@ -240,12 +321,17 @@ def test_lake_compile_options_do_not_change_existing_modules(monkeypatch, strict
             "myjpbl", "wsm6",
             # labs/windfarm (2.9.11): the Fitch unit joins the strict no-FMA set.
             "wind_farm"}
-    no_ftz = {"g3", "sfclay", "myjsfc", "mynn_surface", "mynn_pbl", "thompson_column",
+    no_ftz = {"kf_old", "camzm", "cammgmp", "uwshcu", "gsfcsw", "sbu_ylin", "sbu_ylin_edge", "kfcup", "gsfcgce", "gsfcgce_refl", "g3", "sfclay", "myjsfc", "mynn_surface", "mynn_pbl", "thompson_column",
               "ysu_480", "wsm6r", "aer_opt2"}
-    diffusion = {"smag2d", "diffusion", "diff_opt1", "diff6", "diff6_seam"}
+    diffusion = {"smag2d", "km5", "km5_geometry", "diffusion", "diff_opt1", "diff6", "diff6_seam", "sfs_output"}
     expected = {name: ("-std=c++17", "--fmad=false") for name in no_fmad}
     expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false")
                      for name in no_ftz})
+    # CU99 selects its native scalar helpers by the numerics policy, which is
+    # independent of the WRF_EXACT compatibility switch parametrized here.
+    from woof.numerics import is_strict
+    if is_strict():
+        expected["kf_old"] += ("-DGPUWM_KF_OLD_STRICT=1",)
     expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false",
                            "--prec-div=true", "--prec-sqrt=true",
                            "-DGPUWM_WRF_EXACT_C_DIFFUSION=1")
@@ -259,18 +345,125 @@ def test_lake_compile_options_do_not_change_existing_modules(monkeypatch, strict
                      for name in ("urban_ucm", "urban_bep", "urban_bep_couple")})
     expected["urban_ucm480"] = ("-std=c++17", "--ftz=false", "--fmad=false")
     expected['nsas'] = ('-std=c++17', '--ftz=false', '--fmad=false')
+    expected['sas'] = (('-std=c++17', '--ftz=false', '--fmad=false')
+                       if strict else ('-std=c++17', '--ftz=false'))
     # The lightning unit's own direct NVRTC route (lane order of flags).
     expected["lightning"] = ("-std=c++17", "--ftz=false", "--fmad=false")
     # WRF's ocean mixed layer (2.9.1) compiles as the column-exact ports do.
     expected["oml"] = ("-std=c++17", "--fmad=false", "--ftz=false")
-    # WRF's HAILCAST diagnostics (lane/cap-hail 97e9a3ca061) compile without
+    # WRF's HAILCAST diagnostics (development branch 97e9a3ca061) compile without
     # FMA, like the other column-exact WRF ports.
+    if strict:
+        expected["boulac"] = ("-std=c++17", "--fmad=false", "--ftz=false")
     expected["hail"] = ("-std=c++17", "--fmad=false")
+    expected.update({name: (("-std=c++17", "--ftz=false", "--fmad=false")
+                            if strict else
+                            ("-std=c++17", "--ftz=false", "--fmad=true"))
+                     for name in ("temf", "temf_sfclay")})
+    # FLG component oracles retain strict arithmetic. The resident forecast
+    # column and driver use fast FMA by default and strict arithmetic on opt-in.
+    expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false")
+                     for name in ("flg", "flg_gases", "flg_streams")})
+    expected.update({name: ("-std=c++17",
+                            "--fmad=false" if strict else "--fmad=true",
+                            "--ftz=false")
+                         for name in ("flg_driver",)})
+    expected["flg_column"] = ("-std=c++17", "--fmad=false", "--ftz=false")
+    for name in ("wdm5", "wdm7", "wdm7_refl"):
+        expected[name] = (("-std=c++17", "--fmad=false", "--ftz=false") if strict
+                          else ("-std=c++17", "--ftz=false"))
+    expected.update({name: ("-std=c++17", "--ftz=false") for name in (
+        "cam3_emissivity", "eeps", "gsfcgce4ice_aux", "sstskin",
+        "gfdleta_init", "gfdleta_lw_helpers", "gfdleta_tables", "gfdleta_column",
+        "gfdleta_math_probe", "gfdleta_co2_init", "gfdleta_table_runtime",
+        "qnsepbl", "qnsesfc")})
+    if strict:
+        expected.update({name: ("-std=c++17", "--ftz=false", "--fmad=false", "-DGPUWM_GFDLETA_STRICT=1")
+                         for name in kernel_loader._GFDLETA_MODULES})
+    expected["ishmael"] = (("-std=c++17", "--ftz=false", "--fmad=false")
+                           if strict else ("-std=c++17", "--ftz=false"))
+    expected["bmj"] = ("-std=c++17", "--fmad=false", "--ftz=false")
+    expected["gd"] = ("-std=c++17", "--fmad=false", "--ftz=false")
+    from woof.numerics import mode
+    gfs_options = ("-std=c++17", "--ftz=false")
+    if mode() == "strict":
+        gfs_options += ("--fmad=false", "-DGPUWM_WRF_EXACT=1")
+    expected["gfs_pbl"] = gfs_options
+    expected["sf_gfs"] = gfs_options
+    if strict:
+        expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false",
+            "--prec-div=true", "--prec-sqrt=true", "-DGPUWM_QNSE_STRICT=1")
+            for name in ("qnsepbl", "qnsesfc")})
+
+    if strict:
+        expected["pxsfclay"] = ("-std=c++17", "--fmad=false", "--ftz=false")
+
+    # Strict switches are applied globally at the final NVRTC boundary.
+    for name in ("cldfra3", "farms"):
+        expected[name] = ("-std=c++17", "--ftz=false")
+    # Native wind ports have a fast production route and strict proof route.
+    for name in ("wind_mav", "wind_legacy"):
+        expected[name] = (("-std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true") if strict
+                          else ("-std=c++17", "--ftz=false"))
+    # Reviewed batch007 lane compiler policies. Keep exact flag order and
+    # test both policies independently from the production dispatch table.
+    expected.update({name: (("-std=c++17", "--fmad=false", "--ftz=false")
+                            if strict else
+                            ("-std=c++17", "--ftz=false", "-DGPUWM_CAM_FAST=1"))
+                     for name in ("camzm", "cammgmp", "uwshcu")})
+    expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false")
+                     for name in ("clwrf", "gd")})
+    expected.update({name: ("-std=c++17", "--fmad=false")
+                     for name in ("cumulus_aerosol", "cumulus_feedback", "thompson_collision")})
+    expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false",
+                           "-DGPUWM_MSKF_OPERATION_ORDER=1")
+                     for name in ("mskf", "mskf_aerosol_replay")})
+    expected.update({name: (("-std=c++17", "--ftz=false", "--fmad=false")
+                            if strict else ("-std=c++17", "--ftz=false"))
+                     for name in ("lightning", "native_surface_diagnostics")})
+    if strict:
+        expected.update({name: ("-std=c++17", "--fmad=false")
+                         for name in ("pxlsm_init", "pxlsm_driver", "ssib")})
+        expected.update({name: ("-std=c++17", "--ftz=false", "--fmad=false")
+                         for name in ("trajectory", "tslist")})
+    expected.update({name: ("-std=c++17", "--ftz=false")
+                     for name in ("afwa_diagnostics", "dfi_reset", "global_advection",
+                                  "global_geometry", "global_hydrostatic", "global_polar",
+                                  "level_diagnostics", "nssl2_shape_gs", "nwp_windows", "idealscmsfclay",
+                                  "wrf_stock_aer3",
+                                  # 11037cf6b0a: diagnostic quotients keep IEEE division.
+                                  "afwa_buoyancy", "afwa_severe", "misc_diag_print",
+                                  "snow_papers")})
+    if not strict:
+        expected.update({name: ("-std=c++17", "--ftz=false")
+                         for name in ("pxsfclay", "ssib", "trajectory", "tslist")})
+    else:
+        expected["ssib"] = ("-std=c++17", "--fmad=false", "--ftz=false")
+    expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false")
+                     for name in ("grims", "shcu_nscv", "deng")})
+    if not strict:
+        expected["deng"] = ("-std=c++17", "--fmad=true", "--ftz=false")
+        expected["eeps"] = ("-std=c++17", "--ftz=false", "--prec-div=false")
+        expected["keps"] = ("-std=c++17", "--maxrregcount=112")
+    expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false")
+                     for name in ("noah_ua", "noah_mosaic_ua", "noah_ua_sfcdiags")})
+    expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false")
+                     for name in ("fogdes", "noah_fractional",
+                                  "noah_seaice_options", "sfclay_dx2d")})
+    expected.update({name: (("-std=c++17", "--ftz=false", "--fmad=false", "-DGPUWM_WRF_EXACT=1")
+                            if strict else ("-std=c++17", "--ftz=false"))
+                     for name in ("udm", "rcon")})
+    expected["kfcup"] = (("-std=c++17", "--fmad=false", "--ftz=false")
+                          if strict else ("-std=c++17", "--fmad=true", "--ftz=false"))
+    if not strict:
+        expected["flg_column"] = ("-std=c++17", "--fmad=true", "--ftz=false")
     names = _module_names()
     assert set(expected) <= set(names), sorted(set(expected) - set(names))
-    for name in names:
-        assert kernel_loader.module_options(name) == expected.get(
-            name, ("-std=c++17",)), name
+    mismatches = {name: (kernel_loader.module_options(name),
+                         expected.get(name, ("-std=c++17",)))
+                  for name in names
+                  if kernel_loader.module_options(name) != expected.get(name, ("-std=c++17",))}
+    assert not mismatches, mismatches
 
 
 def _strict_header_text(name: str) -> str:
@@ -376,11 +569,27 @@ def test_allow_listed_headers_exist_and_translation_units_are_explicit():
             path = _KDIR / header
             assert path.is_file(), f"missing device header {header}"
             assert path.suffix == ".cuh" or (module, header) in (
+                ("wrf_stock_aer3", "rrtmg_aer3.cu"),
+                ("tracer_pblmix", "mynn_scalar_mix.cu"),
+                ("pxlsm_init", "noah.cu"),
                 ("noah_init", "noah.cu"), ("pd_vertical_sl", "pd_advection.cu"),
+                ("tc_mixing", "smag2d.cu"),
                 ("urban_ucm480", "urban_ucm.cu"),
-                ("lin_refl", "refl.cu"),
+                ("sfs_output", "smag2d.cu"),
+                ("km5_geometry", "smag2d.cu"),
+                ("lin_refl", "refl.cu"), ("gsfcgce_refl", "refl.cu"),
+                ("morrison_aero", "noahmp_leaves.cu"),
+                ("morrison_aero_refl", "noahmp_leaves.cu"),
+                ("morrison_aero_refl", "refl.cu"),
+                ("cam3_prepare", "swint.cu"),
+                ("keps", "mynn_pbl.cu"),
+                ("gsfcgce4ice_aux", "gsfcgce4ice.cu"),
                 ("gsd_helicity", "uh_diag.cu"),
-                ("gsd_initial_reflectivity", "thompson_fork.cu")), (
+                ("gsd_initial_reflectivity", "thompson_fork.cu"),
+                ("noah_ua", "noah.cu"), ("noah_ua", "noah_mosaic.cu"),
+                ("noah_mosaic_ua", "noah_mosaic.cu"),
+                ("noah_seaice_options", "noah.cu"),
+                ("sfclay_dx2d", "sfclay.cu")), (
                 "only the explicitly reused initialization and scalar units may supply a .cu header")
 
 
@@ -480,3 +689,7 @@ def test_noah_initialization_reuses_device_physics_without_moving_forecast_sourc
     assert kernel_loader.module_source("noah_init") == (
         kernel_loader._preamble() + glibc + reused + body)
     assert "__device__ static real noah_frh2o(" not in body
+
+
+def test_cam3_paths_use_default_compile_policy():
+    assert kernel_loader.module_options("cam3_paths") == ("-std=c++17",)

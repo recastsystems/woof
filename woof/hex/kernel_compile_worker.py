@@ -109,6 +109,10 @@ def _identity():
 
 
 def compile_request(arguments, arch, identity, warm=None):
+    from woof.hip_backend import active
+    if active():
+        from woof.kernel_compile_worker import compile_request as hip_compile
+        return hip_compile(arguments, arch, identity, trace=True)
     from cupy.cuda import compiler
     from cupy_backends.cuda.libs import nvrtc
     from .cuda_backend.aot import preserve_final_options
@@ -154,7 +158,13 @@ def raw_compile(arguments, arch):
 
     target = str(arch).removeprefix("sm_")
     source, options, filename = arguments["source"], tuple(arguments["options"]), arguments["filename"]
-    compile_image = functools.partial(raw_nvrtc, source, options, target, filename)
+    from woof.hip_backend import active, compile_aot
+    if active():
+        def compile_image():
+            selected = "sm_" + target if target.isdigit() else target
+            return compile_aot(source, options, selected)[0]
+    else:
+        compile_image = functools.partial(raw_nvrtc, source, options, target, filename)
     if kernel_warm._STATE is None:
         return compile_image()
     return kernel_warm.raw_image(source, options, target, filename, compile_image)

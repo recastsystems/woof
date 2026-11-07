@@ -1,0 +1,69 @@
+{
+  "licence": "WRF public domain",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027,
+      "path": "evidence/v4.6.1-LICENSE.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_ra_gfdleta.F",
+      "sha256": "b6b2e9e006eff0b61f637a30e31a70f21b3c2bd8275182acb3c49aaf3fac0b4a",
+      "bytes": 390403,
+      "path": "evidence/v4.6.1-module_ra_gfdleta.F"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027,
+      "path": "evidence/v4.7.1-LICENSE.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_ra_gfdleta.F",
+      "sha256": "b6b2e9e006eff0b61f637a30e31a70f21b3c2bd8275182acb3c49aaf3fac0b4a",
+      "bytes": 390403,
+      "path": "evidence/v4.7.1-module_ra_gfdleta.F"
+    }
+  ],
+  "dependencies": [
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_mp_etanew.F",
+      "bytes": 113257,
+      "sha256": "566a18b529a403f7f56bc9f8bcd94ea5a54521626398b6771d71139c11cfcefe",
+      "licence": "WRF v4.6.1 LICENSE.txt public-domain statement; no separate restriction detected"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/share/module_model_constants.F",
+      "bytes": 8280,
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "licence": "WRF v4.6.1 LICENSE.txt public-domain statement; no separate restriction detected"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/run/tr49t85",
+      "bytes": 748503,
+      "sha256": "b7b6aff5c9dbf05d7a0b8ecf08fd13b2762690aa4d0de77030b81a9167608e89",
+      "licence": "WRF v4.6.1 LICENSE.txt public-domain statement; no separate restriction detected"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/run/tr49t67",
+      "bytes": 748503,
+      "sha256": "97501d7f0dc6b93a03803e5c59e57732010dd543686aa55404a1400dc62ae039",
+      "licence": "WRF v4.6.1 LICENSE.txt public-domain statement; no separate restriction detected"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/run/tr67t85",
+      "bytes": 748503,
+      "sha256": "92a3320df2b0a9eb6fa6e4d62819969d7f410823fe11f3959090202c2a486388",
+      "licence": "WRF v4.6.1 LICENSE.txt public-domain statement; no separate restriction detected"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/run/co2_trans",
+      "bytes": 48000,
+      "sha256": "bdffafa58f96769b19112ccdce15dd02eb74df9b5c2025061b9fd3cb76651ea8",
+      "licence": "WRF v4.6.1 LICENSE.txt public-domain statement; no separate restriction detected"
+    }
+  ],
+  "numerical_source": "WRF v4.6.1 module_ra_gfdleta.F, byte-identical in v4.7.1",
+  "prior_port": "620c59eded393cbe8eed86167d8e39d5c0bcc51f"
+}

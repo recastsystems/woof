@@ -214,6 +214,8 @@ def add_mesh_plan_parser(commands: argparse._SubParsersAction) -> None:
     add_point_arguments(parser)
     from woof.output_formats import add_arguments
     add_arguments(parser)
+    from .wave_options import add_arguments as add_wave_arguments
+    add_wave_arguments(parser)
     global_group = parser.add_argument_group("generated global variable-resolution forecast")
     from .products_door import add_label_arguments
 
@@ -233,6 +235,8 @@ def add_mesh_plan_parser(commands: argparse._SubParsersAction) -> None:
                                    "0..N-1 when --forecast-arg names none")
     global_group.add_argument("--source", default=None, help="an init-source table row")
     global_group.add_argument("--cycle", default=None, help="YYYY-MM-DDTHH")
+    global_group.add_argument("--boundary-cycle", default=None, metavar="YYYY-MM-DDTHH",
+                              help="for a named blend: outside source cycle, possibly earlier than the start")
     global_group.add_argument("--lead-hours", type=int, default=0, metavar="H",
                               help="with --run: start from this forecast hour of --cycle (a forecast source's own "
                                    "cadence, e.g. GFS 2026-10-23T18 --lead-hours 348); the run's start is cycle + H")
@@ -468,6 +472,11 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
     plan_flags = with_default_physics([str(item) for item in getattr(arguments, "forecast_arg", None) or ()], finest,
                                       context=recipe_context)
     planned = planned_physics(plan_flags)
+    from .mpasphys.rrfs.cold_start_rrfs import producer_for_suite
+    producer = producer_for_suite(planned.get("suite"))
+    if producer:
+        # The suite replaces the generic vertical at init; price the grid the forecast actually reads.
+        levels = int(producer[1]["vertical"]["levels"])
     physics = {"route": argv_physics_route(plan_flags), "suite": planned.get("suite"),
                "profile": planned.get("profile")}
     cards = plan_cards(arguments, plan_flags)
@@ -508,11 +517,28 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
 
         # Refused before minutes of mesh and static: a cycle the source never posted or posted without what
         # the init needs (the row's cycles block).
+        from .blend_start import blend_rows, effective_row
+        horizon_cycle, horizon_lead = issued, lead
+        if source.get("blend"):
+            outside, inside = blend_rows(source_table, source)
+            admit_cycle(inside, issued)
+            outside_issued = Cycle.parse(arguments.boundary_cycle or arguments.cycle)
+            from .regional_door import admit_boundary_cycle
+            admit_boundary_cycle(outside, outside_issued)
+            outside_lead = int((cycle.when - outside_issued.when).total_seconds() // 3600)
+            if outside_lead < 0:
+                raise MpasPortError(f"{outside['id']} outside cycle is later than the run's start")
+            from .init_sources import template_context
+            template_context(outside_issued, outside, arguments.member, outside_lead)
+            horizon_cycle, horizon_lead = outside_issued, outside_lead
+        elif arguments.boundary_cycle:
+            raise MpasPortError("--boundary-cycle applies to a named blend source on a globe")
         admit_cycle(source, issued)
+        source = effective_row(source_table, source)
         resolve_writer(None)
         resolve_vtable(source)
         from .source_horizon import beyond_source, label as horizon_label
-        extension = beyond_source(source, issued.when, lead, arguments.hours)
+        extension = beyond_source(source, horizon_cycle.when, horizon_lead, arguments.hours)
         if extension and not getattr(arguments, "brand", None):
             # Every sounding of a run past its source says so, top right (the host's own --brand wins).
             from .source_horizon import brand as horizon_brand
@@ -522,7 +548,7 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
             from .init_sources import template_context
 
             # Refused here, before minutes of mesh and static: a lead off the row's cadence or past its horizon.
-            template_context(issued, source, arguments.member, lead)
+            template_context(horizon_cycle, source, arguments.member, horizon_lead)
         seconds = arguments.hours * 3600
         cadence = arguments.history_every_minutes * 60
         if (not math.isfinite(seconds) or seconds <= 0 or cadence <= 0 or
@@ -624,6 +650,11 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
     prefix = [sys.executable, "-m", "woof.hex.cli"]
     prefetch = None
     live_export = None
+    # The forecast's own outcome, for the live export. THE BREAKAGE THIS PREVENTS (both-routes matrix, woof hex
+    # 0.4.14 candidate, 2026-11-06): one products view refused after a finished forecast, and the failure path told the
+    # live export the forecast had failed, so it was stopped within 30 s instead of exporting the last frames it had
+    # still to close: a map failure took the run's export with it.
+    forecast_finished = False
     try:
         static_engine = resolve(STATIC, arguments.static_exe)
         geog = mesh_point.resolve_geog(arguments.geog)
@@ -634,7 +665,7 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
             "static": {"path": str(static_engine), "sha256": mesh_rows.sha256_file(static_engine)}}
         # The mesh and its static depend on the spec and the geography alone, never the cycle: a premade library
         # entry (woof.hex.prep_store, WOOF_HEX_PREP_STORE: a directory or an S3 ticket) is fetched instead of built,
-        # byte-identical by its SHA-256. Measured 2026-10-23: the 60->15 km globe's mesh and static
+        # byte-identical by its SHA-256. Measured on 2026-10-23: the 60->15 km globe's mesh and static
         # took minutes to build and a library fetch takes seconds.
         from . import prep_store
 
@@ -652,6 +683,8 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
                            "--jobs", arguments.jobs, *init_flags(extra)]
             for path in arguments.staged:
                 init_common += ["--staged", path]
+            if arguments.boundary_cycle:
+                init_common += ["--boundary-cycle", arguments.boundary_cycle]
             if arguments.source_table:
                 init_common += ["--table", arguments.source_table]
             if arguments.member is not None:
@@ -824,12 +857,15 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
             step = [] if lts else door_step(named, dt, finest)
             from woof.output_formats import argument_values
             extra += argument_values(arguments)
+            from .wave_options import argument_values as wave_arguments
+            extra += wave_arguments(arguments)
             measured = stage("forecast", [*prefix, "forecast", "--mesh", row.name,
                 "--grid", grid, "--static", static, "--init", root / "init" / "init.nc",
                 "--init-source", f"{arguments.source} {issued_label}; spec {receipt['spec_sha256']}",
                 "--start-time", cycle.start_time, "--hours", arguments.hours,
                 *step, "--history-every-minutes", arguments.history_every_minutes,
                 "--out", run, "--scratch", root / "scratch", "--no-products", *extra, *samehost])
+            forecast_finished = True
             receipt["first_look"] = look.finish()
             # The forecast was the run's last GPU work; the products are CPU work in Rust binaries, so a card
             # queue gets its card back now instead of after the maps (woof.hex.card_lease).
@@ -853,7 +889,7 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
         if prefetch is not None:
             prefetch.cancel()  # the door failed before the init needed it
         if live_export is not None:
-            receipt["live_export"] = live_export.finish(forecast_ok=False)
+            receipt["live_export"] = live_export.finish(forecast_ok=forecast_finished)
         if not isinstance(error, Exception):
             raise
         receipt["status"] = "failed"

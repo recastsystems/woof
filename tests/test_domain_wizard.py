@@ -1625,7 +1625,7 @@ def test_the_gray_zone_advisory_warns_and_never_refuses(tmp_path, capsys):
     # say the proper tool "is a 3-D turbulence closure (SASE, planned)";
     # every closure it names is implemented now, so pointing a user at
     # vapourware would be worse than saying nothing.  SASE ships on this
-    # line (lane/sase-sota, bl_pbl_physics = 900), so the old
+    # line (development branch, bl_pbl_physics = 900), so the old
     # ``"SASE" not in lines[0]`` vapourware guard is superseded -- what
     # survives of it is that a SASE mention MUST carry its maturity
     # label, so nobody is pointed at an unverified closure unlabeled.
@@ -2575,7 +2575,7 @@ def test_native_hrrr_polygon_fits_about_the_emitted_cell_center(tmp_path):
         [lon - .005, lat - .005]]]}), encoding="utf-8")
     footprint = load_polygon_footprint(polygon)
     x, y = source.latlon_to_ij(footprint.center_lat, footprint.center_lon)
-    # 6a69b356f, lane/hrrr-statics, snaps exact-spacing roots to source
+    # 6a69b356f, development branch, snaps exact-spacing roots to source
     # mass points. This center is nearly half a root cell from that lattice,
     # amplified by 27 on d04; sizing before the snap used to clip the polygon.
     assert abs(float(x) - (round(float(x) - .5) + .5)) > .45
@@ -2805,11 +2805,11 @@ def test_no_fit_advice_names_only_profiles_the_same_source_accepts(
         south, west, north, east = window.envelope()
         point = f"{0.5 * (south + north):.2f},{0.5 * (west + east):.2f}"
 
-    # 315803306, lane/20cr-site, admits the historical 1836..2015 archive.
+    # 315803306, development branch, admits the historical 1836..2015 archive.
     # Advice ranking needs a valid request to reach memory sizing, not a
     # 2026 window refused by the source's unchanged temporal guard.
     cycle = "1957-12-18T12" if source == "20crv3-cf" else "2026-08-12T00"
-    # The dated GEFS archive rows (lane/cap-gefs-archive, 11c73fea3b9 and
+    # The dated GEFS archive rows (development branch, 11c73fea3b9 and
     # 6a3b8fd50bf) are closed publication eras, and the GEFS reforecast
     # publishes no f000: the request is placed inside the source's own
     # declared era and starts at its own first published lead, both read

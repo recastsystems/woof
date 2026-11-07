@@ -93,6 +93,7 @@ _UPPER = 1 << 1
 _STRICT_LOWER = 1 << 2
 _ADD_AUX = 1 << 3
 _AUX_LEVEL = 1 << 4
+_INACTIVE_POSINF = 1 << 6
 _INT32_STORAGE = 1 << 5
 
 # Chunk sizing for the fused gate.  One block per descriptor left the whole
@@ -114,6 +115,12 @@ _MIN_CHUNK_ELEMENTS = 4096
 # Every other non-float32 field fails descriptor construction unless it has an
 # explicit range policy below.
 GPU_INTEGER_EXCLUSIONS = frozenset({
+    # CAM ZM gather diagnostics are never consumed by forecast physics.
+    # Native IDEEP/JT are undefined on the no-convection early return
+    # (module_cu_camzm.F:669-680); CUDA uses -1 on that path. MAXG/LENGATH
+    # describe the native gather, rather than physical weather bounds.
+    "surface.ideep2d", "surface.jt2d", "surface.maxg2d", "surface.lengath2d",
+
     # WRF tile categories are integer indices, not physical bounds.
     "surface.mosaic_cat_index",
     "surface.ivgtyp",
@@ -140,12 +147,29 @@ GPU_INTEGER_EXCLUSIONS = frozenset({
 _GPU_RANGE_CHECKED_INT32 = frozenset({
     # PWP atomically ORs solver failure bits; only zero is healthy.
     "surface._pwp_status",
+    "surface._ssib_status",
     # G3 stores its four cloud levels and averaging clock as native integers.
     "surface.g3_isfc", "surface.g3_diag_clock",
+    # WRF TMNUPDATE's annual-day accumulator. Zero is the year-reset value.
+    # A fixed 366-day cap would assume the day-boundary predicate never misses
+    # a calendar window. Preserve the native nonnegative signed-int32 range.
+    "surface.nyear",
+    # GFDL Eta cloud-sample counts, incremented at module_ra_gfdleta.F:1437-1445.
+    # A negative value indicates an invalid restart or counter overflow.
+    "surface.ncfrst", "surface.ncfrcv",
+    "surface.gd_band", "surface.gd_ktop_deep", "surface.gd_kbcon",
+    "surface.gd_ktop", "surface.gd_ierr", "surface.gd_k22",
+    "surface.isnow",  # SSiB: 0 multi-layer, 1 single-layer.
     # Noah writes one of four energy-balance solution cases.
     "surface.ebal",
     # YSU writes a one-based model level; zero is the pre-first-call value.
     "surface.kpbl",
+    # Deng cloud top/base and retained updraft top are native level indices
+    # (module_shcu_deng.F:2899-2900,3449), initialized to 1 (:3660-3662).
+    "surface.ltopb", "surface.kdcldtop", "surface.kdcldbas",
+    # Static irrigation phases are int32 and validated against irr_freq
+    # before upload. Keep a nonnegative integer corruption check here.
+    "surface.irr_ph_field",
     # MYNN's EDMF plume top, also a one-based model level, but capped one
     # level lower than kpbl: module_bl_mynn.F:6392 ends DMP_mf with the
     # unconditional ``ktop=MIN(ktop,KTE-1)`` on every exit path, and the
@@ -175,6 +199,10 @@ _GPU_RANGE_CHECKED_INT32 = frozenset({
     # module_sf_noahmpdrv.F:1397 writes the unchanged INOUT back.  So [0, 8]
     # bounds both the crop and the no-crop case.
     "surface.pgsxy",
+    # Native TRIGGER_IRRIGATION starts these event counters at zero and
+    # increments by one per triggered event (WRF-v4 LSM:8381-8413).
+    "surface.cropcat",
+    "surface.irnumsi", "surface.irnummi", "surface.irnumfi",
     # WRF's terrain shadow mask (topo_shading = 1, woof.core.topo_radiation).
     # toposhad_init and toposhad (module_radiation_driver.F:4505, :4661) zero
     # it and the four quadrant searches set 1 (:4694, :4712, :4730, :4748);
@@ -184,6 +212,8 @@ _GPU_RANGE_CHECKED_INT32 = frozenset({
     "surface.shadowmask",
     # WRF eclipse states: clear=0, partial=1, total=2, annular=3.
     "surface.ecmask",
+    # CuP's native logical flags are stored as int32 for GPU/history IO.
+    "surface.cupflag", "surface.cu_act_flag",
 })
 
 #: ``NSNOW``, WRF's fixed snow-layer count (``module_sf_noahmpdrv.F:628``), and
@@ -309,6 +339,10 @@ class HealthField:
     """One array plus optional auxiliary values used by a derived check.
 
     ``aux_mode='direct'`` checks ``values + auxiliary`` elementwise.
+    ``aux_mode='inactive-positive-infinity'`` admits positive infinity
+    only where an associated outgoing activity is exactly zero. ``plane_size`` shifts
+    activity one vertical interface upward, with zero above the top. This preserves
+    native QNSE detrainment diagnostics without changing model/history words.
     ``aux_mode='level'`` broadcasts a one-dimensional auxiliary profile over
     each horizontal plane (the theta base profile case).
     """
@@ -482,7 +516,7 @@ def rule_for_field(name: str, *, p_top: float | None = None) -> FieldRule:
             # :3979-3982 and keeps its transport residual
             # (kernels/thompson_aerosol_state.cu, "THE NO-MICROPHYSICS
             # COLUMN").  Stock WRF 4.6.1 (pinned strict build, dmpar 16,
-            # a two-domain mp=28 WIF case, 2026-08-21 00Z) writes
+            # the two-domain nested mp=28 WIF case, 2026-08-21 00Z) writes
             # QNIFA -3.70e-6, -3.29e-6 and -2.80e-6 on d01's top layer at
             # (j, i) = (87, 61), (58, 111) and (90, 50) at +1 h: interior
             # points, outside the nest and the 5-row boundary zone.  The
@@ -538,32 +572,49 @@ def rule_for_field(name: str, *, p_top: float | None = None) -> FieldRule:
         # lifted.  Finiteness and the 1.0 ceiling stand.
         return FieldRule("soil_moisture", None, 1.0)
     if lower_name.startswith("surface."):
+        if leaf == "_ssib_status":
+            return FieldRule("surface", 0.0, 0.0,
+                             bound_note="SSiB fatal bits: 1 unmapped vegetation; 2 unsupported land-use map; 4 negative snow pore volume")
         if leaf == "_pwp_status":
             return FieldRule("surface", 0.0, 0.0,
                              bound_note="PWP failure bits: 1 Richardson mixing did not converge; 2 nonfinite ocean state")
+        if leaf == "nyear":
+            return FieldRule("surface", 0.0, float(np.iinfo(np.int32).max))
+        if leaf in ("ncfrst", "ncfrcv"):
+            return FieldRule("surface", 0.0)
+        if leaf == "irr_ph_field":
+            return FieldRule("surface", 0.0, float(np.iinfo(np.int32).max))
         if leaf == "ebal":
             # Noah's energy-balance case (kernels/noah.cu): 0-3 are the land
             # SFLX branches, 4 marks an SFLX_GLACIAL (land-ice) column.
             # With the bound at 3, the first land-ice point of a real
             # forecast failed the post-d01-sync health gate (g16 ports-pbl).
             return FieldRule("surface", 0.0, 4.0)
-        if leaf == "kpbl":
+        if leaf in ("kpbl", "ltopb", "kdcldtop", "kdcldbas"):
             # collect_state_fields supplies the state-dependent nz cap.
             return FieldRule("surface", 0.0)
         if leaf == "ktop_plume":
             # collect_state_fields supplies the state-dependent nz-1 cap.
             return FieldRule("surface", 0.0)
+        if leaf == "isnow":
+            return FieldRule("surface", 0.0, 1.0)
         if leaf == "isnowxy":
             # Noah-MP counts ACTIVE snow layers downward from the surface, so
             # the index is negative: 0 is snow-free and -NSNOW is a full pack.
             # Fixed by module_sf_noahmpdrv.F:628, not by the domain, so this
             # needs no state-dependent cap.  See _GPU_RANGE_CHECKED_INT32.
             return FieldRule("surface", float(-NOAHMP_SNOW_LAYERS), 0.0)
+        if leaf == "cropcat":
+            return FieldRule("surface",0.0,5.0)
         if leaf == "pgsxy":
             return FieldRule("surface", 0.0,
                              float(NOAHMP_MAX_GROWTH_STAGE))
+        if leaf in ("irnumsi", "irnummi", "irnumfi"):
+            return FieldRule("surface", 0.0)
         if leaf == "ecmask":
             return FieldRule("surface", 0.0, 3.0)
+        if leaf in ("cupflag", "cu_act_flag"):
+            return FieldRule("surface", 0.0, 1.0)
         if leaf == "ecobsc":
             return FieldRule("surface", 0.0, 1.0)
         if leaf == "shadowmask":
@@ -682,6 +733,26 @@ def collect_state_fields(state: Any, *, backend: str = "cpu",
                     p_top=p_top))
         else:
             result.append(field_from_array(name, value, p_top=p_top))
+        if (getattr(state, "cldfra_old_mp", None) is not None
+                and name in ("qc", "qr", "qi", "qs", "nc", "nr", "ni", "ns")):
+            # Native CAMMGMP's real +1 h restart contains signed interior
+            # mass and number residuals (QCLOUD=-1.124e-9 kg/kg,
+            # QNCLOUD=-69242.4765625 /kg). Keep those native words on
+            # restart, rather than silently clipping the trajectory.
+            # This selector-specific rule retains the ceiling and NaN/Inf
+            # checks; other microphysics keep their existing sign rules.
+            field = result[-1]
+            result[-1] = dataclasses.replace(field, rule=dataclasses.replace(
+                field.rule, lower=None,
+                bound_note="CAMMGMP keeps WRF's witnessed signed scalar residuals"))
+    if getattr(state, "_native_wrf_moisture", False):
+        # Native ordinary RK moisture can be signed at a completed step.
+        # Its restart must retain those words in fast and strict modes.
+        result = [dataclasses.replace(field, rule=dataclasses.replace(
+                    field.rule, lower=None, strict_lower=False,
+                    bound_note="native WRF restart preserves signed moisture residues"))
+                  if field.rule.status_class in ("moisture", "moment") else field
+                  for field in result]
     if getattr(state,"fast_sbm_bins",None) is not None:
         from woof.core.fast_sbm_contract import BIN_SPECIES
         for name in BIN_SPECIES:
@@ -720,6 +791,19 @@ def collect_state_fields(state: Any, *, backend: str = "cpu",
                          and driver.scheme_dispatch.get(
                              "sf_surface_physics", "") is None)
         for field in surface_fields:
+            if (field.name == "surface.detr_edkf"
+                    and (getattr(driver,"scheme_dispatch",None) or {}).get("bl_pbl_physics") == "_run_qnse_pbl"
+                    and "massflux_edkf" in driver.fields):
+                # Native COMPUTE_ENTR_DETR :970-971 is unmasked after a
+                # plume stops. PLUP == interface midpoint gives +inf at
+                # zero outgoing mass flux. The step-112 and step-480 native
+                # witnesses are receipts/qnse-native-detr-witness.json.
+                # Preserve that output; gate every value with outgoing flux, NaN and
+                # negative infinity, including inactive ones.
+                field = dataclasses.replace(field,
+                    auxiliary=driver.fields["massflux_edkf"],
+                    aux_mode="inactive-positive-infinity",
+                    plane_size=int(np.prod(field.values.shape[-2:])))
             if no_land_model and field.name in _INERT_WITHOUT_LAND_MODEL:
                 # sf_surface_physics = 0: no scheme reads or writes the soil
                 # columns; they carry real.exe's words (all zero for TSLB)
@@ -727,11 +811,22 @@ def collect_state_fields(state: Any, *, backend: str = "cpu",
                 # every no-land-model WRF-file run at the initial gate
                 # (2026-10-07 combo sweep), so only finiteness is checked.
                 field = dataclasses.replace(field, rule=_FINITE)
-            if field.name == "surface.g3_isfc":
+            if field.name == "surface.gd_isfc":
+                # GRELLDRV cloud levels and its native outcome code. These
+                # are views, so the gate reads the canonical restart fields.
+                for index, name in enumerate(("ktop_deep", "kbcon", "ktop", "ierr", "k22")):
+                    result.append(dataclasses.replace(field,
+                        name="surface.gd_" + name, values=field.values[index],
+                        rule=FieldRule("surface", 0.0, 221.0 if name == "ierr" else float(nz))))
+                continue
+            if field.name == "surface.gd_band":
+                field = dataclasses.replace(field, rule=FieldRule("surface", 0.0, 2.0))
+            elif field.name == "surface.g3_isfc":
                 field = dataclasses.replace(field, rule=FieldRule("surface", 0.0, float(nz)))
             elif field.name == "surface.g3_diag_clock":
                 field = dataclasses.replace(field, rule=FieldRule("surface", 0.0, float(2**31-1)))
-            elif field.name == "surface.kpbl":
+            elif field.name in ("surface.kpbl", "surface.ltopb",
+                                "surface.kdcldtop", "surface.kdcldbas"):
                 field = dataclasses.replace(
                     field, rule=FieldRule("surface", 0.0, float(nz)))
             elif field.name == "surface.ktop_plume":
@@ -815,6 +910,17 @@ def _cpu_values(field: HealthField) -> np.ndarray:
     if field.auxiliary is None:
         return values
     auxiliary = np.asarray(field.auxiliary)
+    if field.aux_mode == "inactive-positive-infinity":
+        if auxiliary.shape != values.shape:
+            raise ValueError(f"{field.name} activity shape differs from values")
+        if field.plane_size:
+            plane=field.plane_size
+            if plane > values.size:
+                raise ValueError("native diagnostic plane exceeds its values")
+            activity=np.zeros_like(auxiliary).reshape(-1)
+            activity[:-plane]=auxiliary.reshape(-1)[plane:]
+            auxiliary=activity.reshape(values.shape)
+        return np.where(np.isposinf(values) & (auxiliary == 0), 0, values)
     if field.aux_mode == "direct":
         if auxiliary.shape != values.shape:
             raise ValueError(
@@ -961,7 +1067,11 @@ def _native_health_descriptor(field):
         auxiliary = np.asarray(field.auxiliary)
         if auxiliary.dtype not in types or not auxiliary.flags.c_contiguous:
             return None
-        if field.aux_mode == "direct" and auxiliary.shape == values.shape:
+        if field.aux_mode == "inactive-positive-infinity" and auxiliary.shape == values.shape:
+            mode, plane = 3, field.plane_size
+            if plane < 0 or plane > values.size:
+                return None
+        elif field.aux_mode == "direct" and auxiliary.shape == values.shape:
             mode = 1
         elif (field.aux_mode == "level" and values.ndim > 0 and auxiliary.ndim == 1
               and values.shape[0] == auxiliary.size):
@@ -1171,21 +1281,29 @@ def _store_health_descriptors(state, carriers, store, *, domain_shape,
                 f"horizontal extent is not this domain's {(ny, nx)}: the "
                 "full-state gate must not report a verdict taken over one "
                 "slab as a verdict over the domain")
-        auxiliary, aux_mode, plane = field.auxiliary, field.aux_mode, 0
+        auxiliary, aux_mode, plane = field.auxiliary, field.aux_mode, field.plane_size
         if auxiliary is not None:
-            if field.name not in auxiliaries:
+            carrier_aux_key = key_by_id.get(id(auxiliary))
+            if field.aux_mode == "inactive-positive-infinity" and carrier_aux_key in store:
+                auxiliary = store[carrier_aux_key]
+            elif field.name not in auxiliaries:
                 raise ValueError(
                     f"gated field {field.name!r} is checked against an "
                     "auxiliary array and no domain-shaped substitute for it "
                     "was supplied; validating a domain field against the "
                     "template's slab is the defect this gate exists to avoid")
-            auxiliary = auxiliaries[field.name]
+            else:
+                auxiliary = auxiliaries[field.name]
             if not device:
                 auxiliary = np.asarray(auxiliary)
             # collect_state_fields' own rule, restated over the substituted
             # pair rather than inherited: a 1-D auxiliary broadcasts over each
             # horizontal plane, and the plane is the DOMAIN's, not the slab's.
-            if auxiliary.ndim == 1:
+            if aux_mode == "inactive-positive-infinity":
+                plane = int(np.prod(values.shape[-2:])) if plane else 0
+                if auxiliary.shape != values.shape:
+                    raise ValueError("native diagnostic activity shape differs from store")
+            elif auxiliary.ndim == 1:
                 aux_mode = "level"
                 plane = int(np.prod(values.shape[1:], dtype=np.int64))
             else:
@@ -1336,7 +1454,12 @@ class StateHealthValidator:
                 auxiliaries[index] = _cuda_pointer(
                     field.auxiliary, field.name + " auxiliary")
                 flags[index] |= _ADD_AUX
-                if field.aux_mode == "level":
+                if field.aux_mode == "inactive-positive-infinity":
+                    if field.auxiliary.shape != field.values.shape:
+                        raise ValueError("native diagnostic activity shape differs from values")
+                    flags[index] |= _INACTIVE_POSINF
+                    planes[index] = field.plane_size
+                elif field.aux_mode == "level":
                     flags[index] |= _AUX_LEVEL
                     planes[index] = field.plane_size
                 elif field.aux_mode != "direct":
@@ -1390,7 +1513,7 @@ class StateHealthValidator:
             if field.aux_mode == "direct":
                 value += float(cp.asnumpy(
                     field.auxiliary.reshape(-1)[flat]))
-            else:
+            elif field.aux_mode == "level":
                 value += float(cp.asnumpy(
                     field.auxiliary.reshape(-1)[flat // field.plane_size]))
         return ValidationReport(

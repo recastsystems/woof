@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections import deque
 import numpy as np
 import cupy as cp
-from woof.wind_table import read_table
+from woof.wind_table import read_table, domain_index_turbines
 from woof.core.kernels import get_kernel
 
 
@@ -51,8 +51,9 @@ class WindCost:
 
 
 class WindFarm:
-    def __init__(self, cfg, shape, *, latitude=None, longitude=None, msf=None, z_interface=None, prepared=None, cell_layout=False):
-        self.data, self.table_sha256 = prepared or read_table(cfg.wind_farm_table, cfg.wind_farm_scheme)
+    def __init__(self, cfg, shape, *, latitude=None, longitude=None, msf=None, z_interface=None, prepared=None, cell_layout=False, projection=None):
+        self.data, self.table_sha256 = prepared or read_table(
+            cfg.wind_farm_table, cfg.wind_farm_scheme, windfarm_ij=getattr(cfg, "windfarm_ij", 0))
         self.scheme = "fitch" if cfg.wind_farm_scheme == "auto" else cfg.wind_farm_scheme
         self.shape = tuple(shape)
         nz, ny, nx = self.shape
@@ -101,6 +102,8 @@ class WindFarm:
                 np.int32(ny), ll, cp.ascontiguousarray(cp.asarray(latitude, dtype=cp.float32)),
                 cp.ascontiguousarray(cp.asarray(longitude, dtype=cp.float32)), xy))
         valid = ((xy[:, 0] >= 0) & (xy[:, 0] < nx) & (xy[:, 1] == 0)) if cell_layout else ((xy >= 1).all(axis=1) & (xy < cp.asarray([nx-2, ny-2])).all(axis=1))
+        if not cell_layout and (getattr(cfg, "windfarm_ij", 0) == 1 or all(s.get("wrf_curve") for s in self.data["types"].values())):
+            valid = (xy >= 0).all(axis=1) & (xy < cp.asarray([nx, ny])).all(axis=1)
         if bool(cp.any(~cp.isfinite(xy))) or not bool(cp.all(valid)):
             raise ValueError("every turbine must be inside the domain, outside its boundary ring")
         self.col = cp.ascontiguousarray((cp.rint(xy[:, 1]).astype(cp.int32)*nx + cp.rint(xy[:, 0]).astype(cp.int32)))
@@ -277,7 +280,12 @@ class WindFarm:
 
 def attach_wind_farm(cfg, shape, **kwargs):
     """Setup-only detection. A rejected condition installs no step callback."""
-    data, digest = read_table(cfg.wind_farm_table, cfg.wind_farm_scheme)
+    ij = getattr(cfg, "windfarm_ij", 0)
+    data, digest = read_table(cfg.wind_farm_table, cfg.wind_farm_scheme, windfarm_ij=ij)
+    if cfg.wind_farm_scheme == "mav":
+        from woof.core.wind_mav import MavFarm
+        farm = MavFarm(cfg, shape, prepared=(data, digest), **kwargs)
+        return farm, dict(requested="mav", enabled=True, turbine_count=farm.nt, table_sha256=digest)
     receipt = dict(requested=cfg.wind_farm_scheme, enabled=False, table_sha256=digest,
                    candidate_max_dx_m=cfg.wind_farm_max_dx_m)
     reason = None
@@ -287,6 +295,13 @@ def attach_wind_farm(cfg, shape, **kwargs):
         elif cfg.bl_pbl_physics != 5 or not cfg.bl_mynn_tkeadvect or cfg.bldt != 0:
             reason = "requires every-step MYNN with advected TKE"
     rows = data["turbines"]
+    if ij == 1:
+        nz, ny, nx = shape
+        input_count = len(rows)
+        data = domain_index_turbines(data, nx, ny)
+        rows = data["turbines"]
+        receipt.update(coordinates="domain-local WRF indices", input_turbine_count=input_count,
+                       outside_domain_count=input_count-len(rows))
     if not reason and rows:
         nz, ny, nx = shape
         if not any("grid_x" in t for t in rows):
@@ -295,14 +310,28 @@ def attach_wind_farm(cfg, shape, **kwargs):
                 raise ValueError("geographic turbines require domain latitude/longitude")
             ll = cp.asarray([[t["latitude"], t["longitude"]] for t in rows], dtype=cp.float32)
             xy = cp.empty((len(rows), 2), cp.float32)
-            get_kernel("wind_farm", "wind_locate")(((len(rows)+127)//128,), (128,),
-                (np.int32(len(rows)), np.int32(nx), np.int32(ny), ll,
-                 cp.ascontiguousarray(cp.asarray(lat, dtype=cp.float32)),
-                 cp.ascontiguousarray(cp.asarray(lon, dtype=cp.float32)), xy))
+            projection = kwargs.get("projection")
+            native = all(spec.get("wrf_curve") for spec in data["types"].values())
+            if native and projection is not None:
+                if cfg.map_proj not in (1,2,3):
+                    raise ValueError("Native WRF turbine geographic input requires Lambert, polar stereographic or Mercator projection")
+                columns=cp.empty(len(rows),cp.int32)
+                get_kernel("wind_mav","mav_project_ll")(((len(rows)+127)//128,),(128,),
+                    (ll,cp.ascontiguousarray(lat,dtype=cp.float32),cp.ascontiguousarray(lon,dtype=cp.float32),columns,
+                     np.int32(len(rows)),np.int32(nx),np.int32(ny),np.int32(cfg.map_proj),np.float32(cfg.dx),
+                     np.float32(projection.truelat1),np.float32(projection.truelat2),np.float32(projection.stand_lon)))
+                xy[:,0]=cp.where(columns>=0,columns%nx,-1)
+                xy[:,1]=cp.where(columns>=0,columns//nx,-1)
+            else:
+                get_kernel("wind_farm", "wind_locate")(((len(rows)+127)//128,), (128,),
+                    (np.int32(len(rows)), np.int32(nx), np.int32(ny), ll,
+                     cp.ascontiguousarray(cp.asarray(lat, dtype=cp.float32)),
+                     cp.ascontiguousarray(cp.asarray(lon, dtype=cp.float32)), xy))
             positions = cp.asnumpy(xy)  # one setup transfer, never a step transfer
             selected = []
             for t, (x, y) in zip(rows, positions):
-                if np.isfinite(x) and np.isfinite(y) and 1 <= x < nx-2 and 1 <= y < ny-2:
+                inside = 0 <= x < nx and 0 <= y < ny if native else 1 <= x < nx-2 and 1 <= y < ny-2
+                if np.isfinite(x) and np.isfinite(y) and inside:
                     selected.append(dict(t, grid_x=float(x), grid_y=float(y)))
             data = dict(data, turbines=selected)
             rows = selected
@@ -312,6 +341,9 @@ def attach_wind_farm(cfg, shape, **kwargs):
                    turbine_count=len(rows))
     if reason:
         return None, receipt
+    if getattr(cfg, "windfarm_induction", 0):
+        from woof.core.wind_induction import InductionFarm
+        return InductionFarm(cfg, shape, prepared=(data, digest), **kwargs), receipt
     return WindFarm(cfg, shape, prepared=(data, digest), **kwargs), receipt
 
 
@@ -323,7 +355,7 @@ def attach_voronoi_wind_farm(cfg, *, latitude, longitude, area, z_interface):
     kernel used by rectangular domains.
     """
     from types import SimpleNamespace
-    data, digest = read_table(cfg.wind_farm_table, "fitch")
+    data, digest = read_table(cfg.wind_farm_table, "fitch", windfarm_ij=getattr(cfg, "windfarm_ij", 0))
     rows = data["turbines"]
     if not rows:
         return None

@@ -353,7 +353,17 @@ def configuration_text(*, cycle: str, point: tuple[float, float], hours: int = 6
     # a memory budget is wider and its floor admits more.
     child["follow"] = {**follow_table_for_nest(*dims[1]),
                        "track": {"path": "storm-track.d02.csv"}}
+    if inner_nest is not None:
+        # The inner core can move relative to the coarse parent vortex.
+        # Carrying a centered inner grid with a parent-only fix lost the
+        # eye outside the fine footprint in the whole storm run. Refine
+        # steering on the existing inner state before moving both grids.
+        child["follow"]["refine_grid_id"] = raw["domain"][-1]["grid_id"]
     if track_selection is not None:
+        import re
+        identifier = str(track_selection["lineage"].get("track_id", "")).upper()
+        if re.fullmatch(r"[A-Z]{2}[0-9]{6}", identifier):
+            child["follow"]["track"]["storm_id"] = identifier
         from woof.cyclone_tracks import toml_lineage
         grid = dw._root_grid(projection, *dims[0], root_dx_m)
         x, y = grid.latlon_to_ij(lat, lon)
@@ -1719,7 +1729,9 @@ def plan_cyclone(*, cycle: str, point: tuple[float, float], sizing, target_machi
         # dimensions this proposal settled on, so the desktop reads the
         # numbers the toml beside it holds rather than the preset's
         # unfitted ones.
-        "follow": follow_table_for_nest(*_following_nest_dims(experiment)),
+        "follow": {**follow_table_for_nest(*_following_nest_dims(experiment)),
+                   **({"refine_grid_id": experiment.domains[1].follow.tracker.refine_grid_id}
+                      if experiment.domains[1].follow.tracker.refine_grid_id is not None else {})},
         "follow_preset_source": VORTEX_PRESET_SOURCE,
         # THE NEST AS A DECISION, not just as two numbers in `domains`.
         # A reader sizing a card asks three questions of a following nest

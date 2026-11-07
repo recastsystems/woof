@@ -48,6 +48,24 @@ def _fields(state):
     )
 
 
+def test_cd_carry_binding_owns_rebuilt_scratch():
+    from dataclasses import replace
+
+    state = _State()
+    binding = default_hooks.make_nssl2_production_binding(
+        state, 1.0, shapes=(0.0, 1.0, 7, 2))
+    assert binding.workspace.drag_cd.shape == (7, 4, 1, 2)
+    assert binding.with_step(2.0).workspace.drag_cd is binding.workspace.drag_cd
+    missing = replace(binding, workspace=replace(binding.workspace, drag_cd=None))
+    with pytest.raises(default_hooks.NSSL2ProductionConfigurationError,
+                       match='gathered CD scratch was not prepared'):
+        missing.validate(state, 1.0)
+    state._scratch['nssl2_drag_cd_carry'] = np.empty((7, 4, 1, 2), np.float32)
+    with pytest.raises(default_hooks.NSSL2ProductionConfigurationError,
+                       match='canonical DomainState identity'):
+        binding.validate(state, 1.0)
+
+
 def test_default_hook_binds_direct_workspace_nucond_once(monkeypatch):
     state = _State()
     workspace = _workspace()
@@ -100,6 +118,8 @@ def test_default_hook_binds_direct_workspace_nucond_once(monkeypatch):
         # The resolved variant reaches NUCOND through the hook, so the
         # default lane must be seen asking for predicted CCN explicitly.
         "predicted_ccn": True,
+        "nssl_cccn": 0.5e9,
+        "shapes": (0.0, 1.0),
         "validate_values": False,
     }
 

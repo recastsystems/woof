@@ -50,6 +50,8 @@ class _Payload:
             original = source.hydration.records[row['pool'], row['name']]
             record = {key: row[key] for key in ('pool', 'name', 'kind', 'dimensions', 'shape')}
             record['dimensions'], record['shape'] = list(row['dimensions']), list(row['shape'])
+            if row['pool'] == 'tend_iau':
+                record['unpartitioned_sha256'] = original.get('unpartitioned_sha256') or original.get('sha256')
             for key in ('fill', 'text', 'origins'):
                 if key in original:
                     record[key] = original[key]

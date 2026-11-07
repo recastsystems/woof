@@ -288,7 +288,10 @@ def _assert_spawn_streaming_ownership(tree):
     loop = _only([statement for statement in walk.body
                   if isinstance(statement, ast.While)], "spawn leg loop")
     leg_execute = _body_call(loop.body, "execute_experiment")
-    assert any(kw.arg is None and _same_expression(kw.value, "execute_kwargs")
+    # Each leg passes the incoming keywords on (leg_kwargs is execute_kwargs,
+    # less a schedule stop that belongs to a later leg).
+    assert any(kw.arg is None and (_same_expression(kw.value, "execute_kwargs")
+                                   or _same_expression(kw.value, "leg_kwargs"))
                for kw in leg_execute.keywords), "spawn walk dropped incoming steppers"
     for owner in (scheduled, walk):
         assert any(isinstance(statement, ast.ImportFrom)
@@ -594,7 +597,11 @@ def test_the_streaming_inventory_carries_what_restart_deliberately_does_not():
     # Strict acoustic mass carriers survive the gap between steps too.
     # Exact restart now retains these too; tracker windows remain stream-only.
     acoustic_slots = {"wrf_exact_muts", "wrf_exact_mu_halo"}
-    assert added == {f"scratch/{s}" for s in uh_diag.TRACKER_WINDOW_SLOTS}
+    # The physics-tendency output's pre-microphysics vapor (3.0) is carried
+    # through the stream and rewritten before its first use after a restart
+    # (woof.core.physics_tendency_output; preflight lifetime 'carrying').
+    assert added == ({f"scratch/{s}" for s in uh_diag.TRACKER_WINDOW_SLOTS}
+                     | {"scratch/tendency_qv_before"})
     for slot in acoustic_slots:
         assert restart.classify_scratch_slot(slot) == "carry"
         assert slot not in restart.SERIALIZED_SCRATCH_SLOTS

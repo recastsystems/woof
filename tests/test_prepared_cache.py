@@ -785,7 +785,7 @@ def test_prepared_cache_refuses_identity_drift_and_payload_corruption(tmp_path):
 
     # The refusal names the release that wrote the cache and the exact
     # fields, rather than asserting that something differs: the old
-    # wording sent a a development machine pilot to their experiment TOML after a
+    # wording sent a test host 7 pilot to their experiment TOML after a
     # package upgrade had changed the identity document.
     with pytest.raises(PreparedCacheMismatchError,
                        match="these identity fields differ: source"):
@@ -989,7 +989,7 @@ def test_select_prepared_met_fields_keeps_legacy_soil_only_when_required():
 # strict equality, and a v1.0.1 header was serialized before the field
 # existed, so after upgrading the wheel EVERY prepared tree in the field
 # refused with "d01 cache domain config differs from experiment" -- a
-# sentence naming the experiment TOML, which was innocent.  A a development machine
+# sentence naming the experiment TOML, which was innocent.  A test host 7
 # validation run diffed the two documents on a real preserved 1.0.1
 # tree: eleven cached top-level keys against twelve live ones, exactly
 # one added key, and zero value differences among the eleven shared keys
@@ -1441,6 +1441,39 @@ def test_a_nested_run_field_absent_from_the_header_but_IN_USE_still_refuses():
     assert differing == ["run.bl_mynn_edmf"]
 
 
+@pytest.mark.parametrize("name,default,selected", [
+    ("afwa_buoy_opt", 0, 1),
+    ("afwa_severe_opt", 0, 1),
+    ("diag_print", 0, 1),
+    ("waves", "off", "spectral"),
+    ("waves_options", "", '{"wind_input": true}'),
+    ("wtddt", 30.0, 15.0),
+    ("snicar_snowshape_opt", 3, 1),
+    ("snicar_snowbc_intmix", True, False),
+    ("snicar_snowdust_intmix", False, True),
+    ("snicar_bc_ppb", 0.0, 1.0),
+    ("snicar_dust_ppm", 0.0, 1.0),
+    ("snicar_ice_density", 900.0, 910.0),
+    ("snicar_bubble_radius_um", 1000.0, 900.0),
+])
+@pytest.mark.parametrize("at_default", [True, False])
+def test_pre_diagnostic_header_accepts_only_the_inactive_default(
+        name, default, selected, at_default):
+    """Older headers can omit a runtime control only at its prior default.
+
+    A newly selected option still needs an explicit identity rather than being
+    silently treated as the older header's inactive selection.
+    """
+    from woof.ingest.prepared_cache import compare_prepared_domain_config
+
+    value = default if at_default else selected
+    tolerated, differing = compare_prepared_domain_config(
+        {"run": {}}, {"run": {name: value}}, not_in_use=_undelayed())
+    path = f"run.{name}"
+    assert tolerated == ([path] if at_default else [])
+    assert differing == ([] if at_default else [path])
+
+
 def _diagnostic_switch_values(name):
     """The not-in-use value of an output-only switch, and a set one."""
 
@@ -1697,6 +1730,99 @@ def test_a_prepared_root_restores_to_host_arrays_without_cupy(tmp_path):
     assert completed.stdout.startswith("host-restore"), completed.stdout
 
 
+@pytest.mark.parametrize("change", ["none", "map", "independent-inverse"])
+def test_pre_inverse_prepared_cache_binds_old_words_and_derived_inverse(
+        tmp_path, change):
+    """A genuine old digest restores; different setup still refuses."""
+    import subprocess
+    import sys
+
+    script = _HOST_RESTORE_WITHOUT_CUPY.replace(
+        "write_prepared_cache(path, identity=identity, initial_result=initial,",
+        """import woof.state_serialization_contract as contract
+current_arrays = contract.STATE_SETUP_ARRAYS
+contract.STATE_SETUP_ARRAYS = tuple(n for n in current_arrays if n != 'msfv_inv')
+old_digest = contract.setup_fingerprint(state)
+write_prepared_cache(path, identity=identity, initial_result=initial,""").replace(
+        "restored = restore_prepared_cache(",
+        """contract.STATE_SETUP_ARRAYS = current_arrays
+assert contract.setup_fingerprint(state) != old_digest
+if sys.argv[2] == 'map':
+    static['F'] = static['F'] + 1.e-6
+elif sys.argv[2] == 'independent-inverse':
+    static['MF_VX_INV'] = np.nextafter(
+        np.float32(1.) / np.asarray(static['MAPFAC_V'], dtype=np.float32),
+        np.float32(0.))
+restored = restore_prepared_cache(""")
+    if change == "none":
+        script += """
+assert restored.receipt['setup_fingerprint_compatibility'] == 'derived-map-inverse-v1'
+assert restored.receipt['setup_fingerprint'] == contract.setup_fingerprint(back)
+assert restored.receipt['setup_fingerprint'] != old_digest
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path), change],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True,
+        text=True, check=False)
+    if change == "none":
+        assert completed.returncode == 0, completed.stderr[-4000:]
+    else:
+        assert completed.returncode != 0
+        assert "different setup fingerprint" in completed.stderr[-4000:]
+
+
+def test_legacy_prepared_digest_refuses_independent_inverse_words():
+    from woof.state_serialization_contract import (
+        legacy_derived_map_setup_fingerprint, setup_fingerprint)
+
+    initial, _, _ = _fixture()
+    state = initial.state
+    state.msfv = np.full((3, 2), np.float32(1.03))
+    state.msfv_inv = np.float32(1.) / state.msfv
+    old = legacy_derived_map_setup_fingerprint(state)
+    current = setup_fingerprint(state)
+    assert old is not None and old != current
+    state.msfv_inv = np.nextafter(state.msfv_inv, np.float32(0.))
+    assert legacy_derived_map_setup_fingerprint(state) is None
+    assert setup_fingerprint(state) != current
+
+
+def test_strict_seal_host_read_preserves_published_theta_words(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    script = _HOST_RESTORE_WITHOUT_CUPY.replace(
+        'sys.meta_path.insert(0, RejectCupy())', '').replace(
+        'assert "cupy" not in sys.modules, "the host restore imported CuPy"', '').replace(
+        'thb=np.full((nz, ny, nx), 300.0)',
+        'thb=np.full((nz, ny, nx), 290.0)').replace(
+        'terrain_opt=1)', 'terrain_opt=1, diff_opt=1)').replace(
+        'array_module=np)\nback =',
+        'array_module=np, adopt_dynamics_carrier=False)\nback =')
+    assert 'adopt_dynamics_carrier=False' in script
+    script += '''
+live = restore_prepared_cache(path, expected_identity=identity, cfg=cfg,
+    static=static, array_module=np).initial_result.state
+assert (live.thb == np.float32(300)).all()
+assert not np.array_equal(live.thp, state.thp)
+reference = live.existing_scratch('diff1_theta_initial')
+assert reference is not None, 'reference must precede initial feedback and FORCE'
+expected = live.thp + live.thb
+expected -= np.float32(300)
+np.testing.assert_array_equal(reference.view(np.uint32), expected.view(np.uint32))
+before = reference.copy()
+live.thp += np.float32(.125)
+from woof.core.streaming import prime_coordinate_reference
+prime_coordinate_reference(live, cfg)
+np.testing.assert_array_equal(reference.view(np.uint32), before.view(np.uint32))
+'''
+    completed = subprocess.run([sys.executable, '-c', script, str(tmp_path)],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+        env=dict(os.environ, GPUWM_WRF_EXACT='1'))
+    assert completed.returncode == 0, completed.stderr[-4000:]
+
+
 def test_a_restore_array_module_other_than_numpy_or_the_default_is_refused(
         tmp_path):
     """Only the two supported targets exist; anything else is a caller
@@ -1712,3 +1838,19 @@ def test_a_restore_array_module_other_than_numpy_or_the_default_is_refused(
         prepared_cache_module.restore_prepared_cache(
             path, expected_identity=identity, cfg=None, static={},
             array_module=SimpleNamespace())
+
+
+@pytest.mark.parametrize("changed", [None, ("polar", True), ("fft_filter_lat", 60.0)])
+def test_old_regional_header_accepts_only_default_polar_controls(changed):
+    from woof.ingest.prepared_cache import compare_prepared_domain_config
+
+    live = _live_domain_identity()
+    cached = {**live, "run": {key: value for key, value in live["run"].items()
+                               if key not in ("polar", "fft_filter_lat")}}
+    if changed is not None:
+        live["run"][changed[0]] = changed[1]
+    tolerated, differing = compare_prepared_domain_config(
+        cached, live, not_in_use=_undelayed())
+    assert differing == ([] if changed is None else ["run." + changed[0]])
+    assert sorted(tolerated) == sorted("run." + key for key in ("polar", "fft_filter_lat")
+                                      if changed is None or key != changed[0])

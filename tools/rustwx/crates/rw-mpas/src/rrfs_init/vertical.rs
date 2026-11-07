@@ -143,7 +143,17 @@ fn smooth_terrain<T: Real>(r: &Request) -> Vec<T> {
 
 /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_cases.F:4448-4905 at 1d6e370e.
 fn write<T: Real>(out: &mut impl Write, values: &[T]) -> Result<(),String> {
-    for &v in values { v.encode(out)?; }
+    // The file-to-file caller writes gigabytes into a Vec. Encoding one word
+    // per Write call serialized that phase even when the grid used all cores.
+    // Encode bounded, ordered blocks in parallel, keeping every stored bit.
+    let words = (32 << 20) / T::WIDTH;
+    let mut bytes = vec![0u8; values.len().min(words) * T::WIDTH];
+    for block in values.chunks(words) {
+        let encoded = &mut bytes[..block.len() * T::WIDTH];
+        encoded.par_chunks_mut(T::WIDTH).zip(block.par_iter())
+            .try_for_each(|(mut slot, &value)| value.encode(&mut slot))?;
+        out.write_all(encoded).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

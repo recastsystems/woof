@@ -60,11 +60,11 @@ recorded, and the gap is worth naming rather than papering over. What can be
 established is a ceiling: the commit that introduced them pinned engine
 `629ddb6f0`, so the run happened at or before that pin. Ten engine pin moves
 have landed since -- `0d04db712` (2026-08-24), `26daaab7e` (2026-08-25),
-`659962929` (2026-08-28, woof 2.5.8), `7e34a48` (2026-08-31, woof
-2.6.0), `df5f34c5c` (2026-09-01, woof 2.6.1), `636ab1b4b`
-(2026-09-02, woof 2.6.3), `d60b883e7` (2026-09-02, woof 2.6.4),
-`a7785421e` (2026-09-13, woof 2.7.3), `ed957997f` (2026-09-15, woof
-2.7.4) and `0164ae0f2` (2026-09-29, woof 2.8.0).
+`659962929` (2026-08-28, gpuwm 2.5.8), `7e34a48` (2026-08-31, woof
+2.6.0), `df5f34c5c` (2026-09-01, gpuwm 2.6.1), `636ab1b4b`
+(2026-09-02, gpuwm 2.6.3), `d60b883e7` (2026-09-02, gpuwm 2.6.4),
+`a7785421e` (2026-09-13, gpuwm 2.7.3), `ed957997f` (2026-09-15, woof
+2.7.4) and `0164ae0f2` (2026-09-29, gpuwm 2.8.0).
 
 The 2.5.8 move crosses the executed seam and **has been measured**, in
 the strongest form available short of a re-run: a four-arm byte A/B on one
@@ -84,7 +84,7 @@ F001 history byte-identical to the 2.5.8 proof's -- one SHA-256, two
 engines.  One mesh, one
 case, one hour, same caveat as above.
 
-The 2026-09-01 move (woof 2.6.1) and the 2026-09-02 move (woof 2.6.3)
+The 2026-09-01 move (gpuwm 2.6.1) and the 2026-09-02 move (gpuwm 2.6.3)
 both cross the executed seam at its centre -- the seam's own batch driver
 `woof/core/mpas_column_batch.py` gains restart schema v2 and the P3
 transport at 2.6.1, and the aerosol-aware Thompson species row at 2.6.3 --
@@ -93,7 +93,7 @@ four snapshots byte-identical to the 2.6.0 proof's; the 2.6.3 move's arm was not
 run separately, because the 2.6.4 arm below covers it by inclusion.  One mesh, one case,
 one hour, same caveat.
 
-The 2026-09-02 move to woof 2.6.4, three hours after the 2.6.3 one,
+The 2026-09-02 move to gpuwm 2.6.4, three hours after the 2.6.3 one,
 crosses the executed seam more widely than any move since 2.5.8: six of
 the sixteen pinned files moved between the two published wheels, measured
 wheel against wheel
@@ -117,7 +117,7 @@ The published 2.6.5 (2026-09-02, ninety minutes after 2.6.4) moved none of
 the sixteen pinned files, measured wheel against wheel, so it is
 admitted by the range without a pin move and the 2.6.4 arm covers it.
 
-The 2026-09-13 move to woof 2.7.3 crosses the executed seam more widely
+The 2026-09-13 move to gpuwm 2.7.3 crosses the executed seam more widely
 than any before it -- eleven of the sixteen pinned files moved between the
 published 2.6.5 and 2.7.3 wheels, measured wheel against wheel
 (`../verification/engine-verdicts/repin-273-20260913.json`) -- and it is
@@ -165,7 +165,7 @@ is byte-identical to 2.7.3 on all 500 arrays of that profile
 That the manifest does not reach the boundary-layer kernel is a named
 follow-up; it is not a claim this page makes.
 
-The 2026-10-05 move to the woof 2.8.6 candidate (an unpublished
+The 2026-10-05 move to the gpuwm 2.8.6 candidate (an unpublished
 2.8.6 engine build) moved ten of the sixteen pinned files
 against the 2.8.0 manifest, measured against the engine tree:
 `woof/config.py`, `woof/core/gf.py`, `woof/core/kernels/gf.cu`,
@@ -195,7 +195,7 @@ frame (`622248ed...` against `30152b7a...`). Repeated runs on the 2.8.6
 candidate are byte-identical to each other. Under the hex law the
 referee for this move is observations, not the previous engine.
 
-The 2026-09-29 move to woof 2.8.0 moved eight of the sixteen pinned
+The 2026-09-29 move to gpuwm 2.8.0 moved eight of the sixteen pinned
 files between the published 2.7.4 and 2.8.0 wheels, measured wheel against
 wheel (`../verification/engine-verdicts/repin-280-20260929.json`):
 `woof/config.py`, `woof/core/gf.py` and `woof/core/kernels/gf.cu`
@@ -215,7 +215,7 @@ the two published engines, on an RTX 5090.  A 10-minute forecast on a
 generated 937.5 m point cull (`q0.9375.120.12795.n45.43w119.07`, 12,795
 cells, 55 levels, 120 steps of 5 s, HRRR 2026-01-23 22Z init and hourly
 boundaries, the same card) wrote both history frames byte-identical under
-this release on woof 2.8.0 and under the 2.7.4-pinned tree on woof 2.7.4
+this release on gpuwm 2.8.0 and under the 2.7.4-pinned tree on gpuwm 2.7.4
 (22:00Z `81fbc736...`, 22:10Z `aad66b5c...`), 51.6 s and 51.2 s of
 integration.  The cull's own contract deck on the 2.8.0 install is 8 of 8
 decks bitwise against the v8.4.1 CPU authority, 22 of 22 regional kernels
@@ -224,7 +224,7 @@ covered, dual run identical, at the same regional kernel-set digest
 2.7.3 and 2.7.4.  Nothing is declared for this move, because nothing
 moved at any scope measured.
 
-The 2026-09-15 move to woof 2.7.4 is the narrowest since 2.6.5: two of
+The 2026-09-15 move to gpuwm 2.7.4 is the narrowest since 2.6.5: two of
 the sixteen pinned files moved between the published 2.7.3 and 2.7.4
 wheels, measured wheel against wheel
 (`../verification/engine-verdicts/repin-274-20260915.json`) --
@@ -249,7 +249,7 @@ published engines, on an RTX 5070 Ti and again on an RTX 5090.
 The one-hour point-cull forecast (`q0.9375.120.43884.n41.95w94.79`,
 43,884 cells, 55 levels, 720 steps of 5 s, HRRR 2026-09-13 15Z init and
 hourly boundaries, an RTX 5090 with no other process on the card)
-under woof 2.7.4 wrote both history frames byte-identical to the frames
+under gpuwm 2.7.4 wrote both history frames byte-identical to the frames
 of record under 2.7.3 (15Z `85cb8196...`, 16Z `4ed8001f...`), at
 0.2617 s per step after the first (median typical step 0.2453 s,
 peak 8,914 MiB), the same figures the same tree measured under 2.7.3 over
@@ -313,7 +313,7 @@ levels to a 30 km lid, 72 h from the GFS 2026-10-01 00Z analysis, scored
 against the GFS 0.25-degree analyses at 24, 48 and 72 h. The analysis is
 interpolated in ln p to each cell's model pressure, area weighted. This is an
 analysis referee, not radiosondes. It is one case on one mesh, run on an
-RTX 4090 with the woof 2.8.0 engine. Against an analysis, the drift
+RTX 4090 with the gpuwm 2.8.0 engine. Against an analysis, the drift
 measured above against native is three separate defects with three
 different causes:
 

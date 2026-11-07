@@ -22,7 +22,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 WSM6_CU = ROOT / "woof" / "core" / "kernels" / "wsm6.cu"
-#: The published 2.8.7 kernels/wsm6.cu, kept byte for byte as a fixture.  Until lane/292-mem-cuts (052440f32b4)
+#: The published 2.8.7 kernels/wsm6.cu, kept byte for byte as a fixture.  Until development branch (052440f32b4)
 #: exact mode WAS that file once the correct-mode arm was stripped; the lane moved the column arrays into a
 #: launcher-owned workspace (placement only), so the claim is now held where it matters: exact mode computes
 #: every output word the published source computes (the CPU mirror below, and the column-exact GPU tests).
@@ -46,7 +46,7 @@ def _strip_correct_block(text: str) -> str:
 
 def test_wb5_exact_mode_is_the_published_287_kernel_byte_for_byte():
     """The fixture is the published 2.8.7 translation unit, byte for byte, and the tree's exact mode differs
-    from it only where lane/292-mem-cuts moved the column arrays to the workspace (the column offset and the
+    from it only where development branch moved the column arrays to the workspace (the column offset and the
     workspace arguments): the correct-mode arm stripped, no other WSM6 arithmetic line was touched."""
     assert hashlib.sha256(WSM6_287_CU.read_bytes()).hexdigest() == WSM6_287_SHA256
     stripped = _strip_correct_block(WSM6_CU.read_text(encoding="utf-8"))
@@ -320,7 +320,7 @@ def test_wb4_dry_mass_budget_fails_in_exact_mode_and_closes_in_correct_mode():
         assert np.all(np.isfinite(out_fixed[name]))
 
 
-# ------------------------------------------------- WB5 in WDM6 (lane/290-A4) --
+# ------------------------------------------------- WB5 in WDM6 (development branch) --
 WDM6_CU = ROOT / "woof" / "core" / "kernels" / "wdm6.cu"
 
 #: sha256 of kernels/wdm6.cu on integrate/2.9.0 before correct mode
@@ -436,7 +436,7 @@ def test_wb5_wdm6_on_the_card_budget_and_atmosphere():
                                       err_msg=name)
 
 
-# ------------------------------------------- WB1 in Thompson (lane/290-A4) --
+# ------------------------------------------- WB1 in Thompson (development branch) --
 def _thompson_call(cp, booking):
     import dataclasses
 
@@ -587,7 +587,7 @@ def test_wb1_resume_keeps_drops_or_zero_fills_the_total_by_the_live_booking(tmp_
     assert "predates the serialized accumulator 'mp_cloudnc'" in capsys.readouterr().out
 
 
-# ------------------------- WB1 in aerosol-aware Thompson (lane/291-fix) --
+# ------------------------- WB1 in aerosol-aware Thompson (development branch) --
 def _require_card():
     cp = pytest.importorskip("cupy")
     try:
@@ -772,7 +772,7 @@ def test_wb1_mp28_exact_mode_issues_the_2_9_0_launch_sequence():
 
 
 
-# ---------------------------- WB5 in WSM3, WSM5, WSM7 (lane/291-fix-correct-mode-5) --
+# ---------------------------- WB5 in WSM3, WSM5, WSM7 (development branch) --
 #: sha256 of each unit on integrate/2.9.0 (c6539b1f1), before its WB5 arm:
 #: the WRF v4.6.1 word-for-word column kernels exact mode must keep.
 WSM_290_SHA256 = {

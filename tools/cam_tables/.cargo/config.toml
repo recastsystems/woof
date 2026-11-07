@@ -1,0 +1,6 @@
+# Use the same checked-in dependency sources as the other native helpers.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../rustwx/vendor/crates-io"

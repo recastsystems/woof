@@ -3,9 +3,10 @@
 
     python compare.py <fixdir> <ref_dir> <cand_dir> [--json out.json] [--quiet]
 
-Every frame (1..nsteps), every one of the 22 output fields, every element.
+Every frame (1..nsteps), every output field the fixture set's index.json
+names (22 for mp=50; 24 for mp=53, which adds nc and qzi), every element.
 "Match" means the float32 bit patterns are equal (NaN matches NaN only when
-both are NaN).  ULP distance is the monotonic int32 ordering, exact across
+their payload and sign bits agree).  ULP distance is the monotonic int32 ordering, exact across
 zero (woof.core.fp32_ulp); a NaN on one side only is reported as a NaN
 mismatch, never folded into a ULP number.
 """
@@ -25,16 +26,17 @@ OUT3D = ["th", "qv", "qc", "qr", "nr", "qi", "ni", "qir", "qib",
 OUT2D = ["rainnc", "rainncv", "sr", "snownc", "snowncv"]
 
 
-def read(path, ncol, nk, nsteps):
+def read(path, ncol, nk, nsteps, out3d=None):
+    out3d = OUT3D if out3d is None else out3d
     buf = np.fromfile(path, dtype="<f4")
-    per = len(OUT3D) * ncol * nk + len(OUT2D) * ncol
+    per = len(out3d) * ncol * nk + len(OUT2D) * ncol
     if buf.size != per * (nsteps + 1):
         raise SystemExit(f"{path}: {buf.size} floats, expected "
                          f"{per * (nsteps + 1)}")
     frames = buf.reshape(nsteps + 1, per)
     out = {}
     o = 0
-    for f in OUT3D:     # -> (nsteps+1, nk, ncol)
+    for f in out3d:     # -> (nsteps+1, nk, ncol)
         out[f] = frames[:, o:o + ncol * nk].reshape(nsteps + 1, nk, ncol)
         o += ncol * nk
     for f in OUT2D:     # -> (nsteps+1, 1, ncol)
@@ -43,21 +45,22 @@ def read(path, ncol, nk, nsteps):
     return out
 
 
-def compare_case(case, ref_dir, cand_dir):
+def compare_case(case, ref_dir, cand_dir, out3d=None):
+    out3d = OUT3D if out3d is None else out3d
     name = case["name"]
     ncol, nk, nsteps = case["ncol"], case["nk"], case["nsteps"]
-    R = read(pathlib.Path(ref_dir) / (name + ".ref"), ncol, nk, nsteps)
-    C = read(pathlib.Path(cand_dir) / (name + ".ref"), ncol, nk, nsteps)
+    R = read(pathlib.Path(ref_dir) / (name + ".ref"), ncol, nk, nsteps, out3d)
+    C = read(pathlib.Path(cand_dir) / (name + ".ref"), ncol, nk, nsteps, out3d)
     res = {"name": name, "ncol": ncol, "nk": nk, "nsteps": nsteps,
            "fields": {}, "n_elements": 0, "n_differing": 0, "max_ulp": 0,
            "max_abs": 0.0, "max_rel": 0.0, "nan_mismatch": 0,
            "first_differing_step": None, "columns_differing": [],
            "in_claim": case.get("in_claim", True)}
     col_bad = np.zeros(ncol, dtype=bool)
-    for f in OUT3D + OUT2D:
+    for f in list(out3d) + OUT2D:
         r, c = R[f][1:], C[f][1:]
         rn, cn = np.isnan(r), np.isnan(c)
-        same = (r.view(np.uint32) == c.view(np.uint32)) | (rn & cn)
+        same = r.view(np.uint32) == c.view(np.uint32)
         nanmis = int(np.count_nonzero(rn ^ cn))
         diff = ~same
         nd = int(np.count_nonzero(diff))
@@ -98,7 +101,7 @@ def compare_case(case, ref_dir, cand_dir):
                                           for i in res["columns_differing"]]
     # step-1 only numbers (before any feedback through later steps)
     s1 = 0
-    for f in OUT3D + OUT2D:
+    for f in list(out3d) + OUT2D:
         r, c = R[f][1], C[f][1]
         fin = ~(np.isnan(r) | np.isnan(c))
         s1 = max(s1, int(np.where(fin, np.abs(ordered(r) - ordered(c)),
@@ -116,11 +119,15 @@ def main():
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
     index = json.loads((pathlib.Path(a.fixdir) / "index.json").read_text())
+    out3d = index.get("out3d", OUT3D)
+    if not index["cases"]:
+        raise SystemExit("P3 oracle has no cases; no proof was checked")
     rows = []
+    missing = []
     for case in index["cases"]:
-        if not (pathlib.Path(a.cand_dir) / (case["name"] + ".ref")).exists():
-            continue
-        r = compare_case(case, a.ref_dir, a.cand_dir)
+        if not (pathlib.Path(a.cand_dir) / (case["name"] + ".ref")).is_file():
+            raise SystemExit(f"Missing P3 candidate: {case['name']}.ref")
+        r = compare_case(case, a.ref_dir, a.cand_dir, out3d)
         rows.append(r)
         bad = {f: e for f, e in r["fields"].items() if e["n_differing"]}
         print(f"{r['name']:24s} {'' if r['in_claim'] else '(outside claim) '}"
@@ -139,7 +146,8 @@ def main():
     summary = {
         "cases": len(rows),
         "claim_cases": len(claim),
-        "claim_bit_identical": all(r["n_differing"] == 0 for r in claim),
+        "missing_cases": missing,
+        "claim_bit_identical": bool(claim) and not missing and all(r["n_differing"] == 0 for r in claim),
         "claim_max_ulp": max((r["max_ulp"] for r in claim), default=0),
         "claim_max_abs": max((r["max_abs"] for r in claim), default=0.0),
         "claim_max_rel": max((r["max_rel"] for r in claim), default=0.0),
@@ -151,7 +159,7 @@ def main():
     if a.json:
         pathlib.Path(a.json).write_text(json.dumps(
             {"summary": summary, "cases": rows}, indent=1))
-    return 0
+    return 0 if claim and summary["claim_bit_identical"] else 1
 
 
 if __name__ == "__main__":

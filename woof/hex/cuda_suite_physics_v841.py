@@ -66,6 +66,7 @@ from .cuda_arwen_physics_v841 import (
     _json_digest,
     _positive_real,
     _snapshot_nbytes,
+    history_cumulus_rain_rate,
 )
 from .diagnostic_export import diagnostic_export
 from .cuda_backend.containers import require_resident_array
@@ -116,6 +117,8 @@ _SELECTOR_KEYS = (
 #: Engine files whose bytes the suite row executes, by selected slot.  The
 #: pin records their digests; the forecast's git verifier keeps them clean.
 _ALWAYS_PINNED = (
+    "woof/core/held_suarez_mesh.py",
+    "woof/core/kernels/held_suarez_mesh.cu",
     "woof/core/mpas_column_suite.py",
     "woof/core/mpas_column_batch.py",
     "woof/core/physics.py",
@@ -134,8 +137,7 @@ _SLOT_PINNED = {
         "woof/core/kernels/tempo/tempo_diags.cuh",
         "woof/core/kernels/tempo/tempo_cloud_ml.cuh",
         "woof/core/kernels/glibc_flt64.cuh",
-        "tools/rustwx/crates/rw-tempo/src/lib.rs",
-        "tools/rustwx/crates/rw-tempo/src/fields.rs"),
+        ),
     ("surface_layer_scheme", "mynn"): (
         "woof/core/mynn_sfclay.py", "woof/core/mynn_surface.py"),
     ("pbl_scheme", "mynn"): (
@@ -1062,7 +1064,8 @@ def _engine_root(checkout: str | Path | None) -> Path:
                     "woof was already imported from a different tree than "
                     f"the named engine checkout {requested}"
                 )
-        elif str(requested) not in sys.path:
+        elif not any(isinstance(entry, str) and Path(entry or ".").resolve() == requested.resolve()
+                     for entry in sys.path):
             sys.path.insert(0, str(requested))
     import woof.core.mpas_column_suite as suite_module
 
@@ -1080,6 +1083,10 @@ def _measure_engine(root: Path, selection: Mapping[str, str], microphysics=None)
                 f"the suite row executes {relative}, absent from {root}"
             )
         manifest[relative] = sha256(path.read_bytes()).hexdigest()
+    if selection.get("microphysics") == "tempo":
+        from woof.core.tempo_rust import resolve
+        library = resolve()
+        manifest["runtime/rw-tempo/" + library.name] = sha256(library.read_bytes()).hexdigest()
     try:
         from importlib.metadata import version as _version
 
@@ -1197,6 +1204,13 @@ def _load_suite_factory(checkout: str | Path | None, selection: Mapping[str, str
     return factory, root, _measure_engine(root, selection, microphysics)
 
 
+def _manifest_path(root: Path, relative: str) -> Path:
+    if relative.startswith("runtime/rw-tempo/"):
+        from woof.core.tempo_rust import resolve
+        return resolve()
+    return root / relative
+
+
 def pin_column_batch(checkout: str | Path, row_name: str | None = None) -> dict[str, Any]:
     """The byte record the forecast's git verifier gates for this row."""
 
@@ -1207,7 +1221,7 @@ def pin_column_batch(checkout: str | Path, row_name: str | None = None) -> dict[
         None if suite.get("physics") is not None
         else registered_species_rows()[suite["microphysics"]].engine_scheme)
     files = {
-        relative: {"sha256": digest, "bytes": (root / relative).stat().st_size}
+        relative: {"sha256": digest, "bytes": (_manifest_path(root, relative)).stat().st_size}
         for relative, digest in identity.manifest.items()
     }
     return {
@@ -1244,7 +1258,7 @@ def pin_problem(checkout: str | Path, row_name: str | None = None) -> str | None
         return (
             f"the engine tree at {root} cannot run the {suite['id']} column "
             f"suite: it carries no {missing}.  REMEDY: an engine carrying "
-            "woof.core.mpas_column_suite (woof 2.8.8 or later)"
+            "woof.core.mpas_column_suite (gpuwm 2.8.8 or later)"
         )
     if suite.get("physics") is not None:
         from . import engine_registry
@@ -1265,7 +1279,7 @@ def pin_problem(checkout: str | Path, row_name: str | None = None) -> str | None
                 f"{sorted(generation)}, and the engine tree at {root} carries a "
                 "woof.core.mpas_column_suite with no resolve_generation, so the "
                 "selectors could not reach its RunConfig.  REMEDY: an engine "
-                "carrying the generation selectors (woof 2.8.8 or later), or drop the "
+                "carrying the generation selectors (gpuwm 2.8.8 or later), or drop the "
                 "generation selectors"
             )
     return None
@@ -1310,6 +1324,41 @@ def suite_correct_mode_receipt(constructor: Any) -> tuple[Mapping[str, Any] | No
         constructor.physics_mode, constructor.physics_correct_skip,
         seam=seam, seam_label="MpasColumnSuitePhysics")
     return MappingProxyType(dict(resolved["receipt"])), bool(resolved["engine_takes_mode"])
+
+
+#: Whether the whole mesh holds ocean ice, on a run whose ranks each hold a part of it (bind_domain_ocean_ice).
+_DOMAIN_OCEAN_ICE = False
+
+
+def bind_domain_ocean_ice(present: bool) -> None:
+    """What rank construction says of the whole mesh, before this rank builds its seam."""
+
+    global _DOMAIN_OCEAN_ICE
+    _DOMAIN_OCEAN_ICE = bool(present)
+
+
+def prime_rank_ocean_ice(seam: Any) -> list[str]:
+    """Give a rank whose own columns hold no ocean ice the engine's sea-ice carriers; returns the ones it made.
+
+    The engine's sea ice activates only on a domain containing ocean ice, so the carriers are a property of the
+    DOMAIN (woof.ocean.seaice.prime_like says so of a tile).  A rank's columns are not the domain.  THE BREAKAGE
+    THIS PREVENTS (rrfs_v2_dev on four cards, 3 km zoom globe, 2026-10-31): the rank with no polar columns held none,
+    its fingerprint boundary differed from rank 0's by 18 fields, and the whole forecast stopped at its end with
+    "boundary entry paths diverge".  It would also have stepped those columns differently from a run on one card, which
+    runs the ice kernel on every water column.  Each kernel is column-local, so this seeds them exactly as the domain's.
+    """
+
+    from woof.ocean.seaice import COLD_SEEDED, cold_seed_in_place
+    import cupy as cp
+
+    fields, cfg = seam._driver.fields, seam._cfg
+    if "ice_volume" in fields or not cfg.seaice_prognostic or not cfg.sf_surface_physics:
+        return []
+    absent = sorted(key for key in COLD_SEEDED if key not in fields)
+    for key in absent:
+        fields[key] = cp.zeros_like(fields["tsk"])
+    cold_seed_in_place(fields, cfg, frozenset(absent))
+    return absent
 
 
 class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackendV841):
@@ -1405,7 +1454,19 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
         kernel_prewarm.start_static(self._seam._cfg)
 
     def _new_seam(self) -> Any:
-        seam = self._factory(**self._engine_kwargs())
+        kwargs = self._engine_kwargs()
+        physics = kwargs.get("physics", {})
+        longwave = physics.get("ra_lw_physics")
+        if longwave is None:
+            longwave = physics.get("ra_physics")
+        if longwave == 31:
+            from woof.core.held_suarez_mesh import HeldSuarezMeshMomentum
+            # Rollback reconstructs the column seam. The stateless RK binding
+            # remains attached to the same dycore and must survive that rebuild.
+            if getattr(self, "_held_suarez_momentum", None) is None:
+                self._held_suarez_momentum = HeldSuarezMeshMomentum()
+            kwargs["rk_momentum"] = self._held_suarez_momentum
+        seam = self._factory(**kwargs)
         expected = {
             "run_phase1", "run_phase2", "export_state", "restore_state",
             "accumulated_precipitation", "surface_classification", "selection",
@@ -1416,21 +1477,35 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
         if dict(seam.selection) != self._constructor.selection:
             raise ValueError("the suite seam was built with another selection")
         self._validate_surface_classification(seam)
+        if _DOMAIN_OCEAN_ICE:
+            prime_rank_ocean_ice(seam)
         # A coupled hex ocean owns ocean ice through the Noah-MP sea-ice hook,
         # as on the frozen route. Without it here the ocean was attached but
         # never stepped, woof's own ice model stayed live, and every
         # storm-following move republished the frozen ocean ice over the
         # engine's: polar columns flipped water/sea ice/glacier, the history
         # census refused, Noah-MP's glacier water budget failed and the next
-        # move refused "carried ice volume has no carried ice area" (Milton
+        # move refused "carried ice volume has no carried ice area" (the storm
         # hex storm-following, box M 2026-10-27). Prescribed runs keep the
-        # route's published ice owner. In this release the coupled hex ocean
-        # is the prognostic mixed layer (woof.hex.ocean_mixed_layer).
-        from .ocean_mixed_layer import mode as _ocean_mode
-        if _ocean_mode() == "prognostic" and self._constructor.selection.get("land_surface_scheme") == "noahmp":
+        # route's published ice owner.
+        from .ocean_pwp import hex_owns_ice
+        if hex_owns_ice() and self._constructor.selection.get("land_surface_scheme") == "noahmp":
             from .arwen_seaice import install_noahmp_seaice
             install_noahmp_seaice(self, seam)
         return seam
+
+    def noahmp_routing_census(self) -> dict[str, Any] | None:
+        """Noah-MP's pre-LSM layout counts; a run on another land surface has none to give.
+
+        THE BREAKAGE THIS PREVENTS (rrfs_v2_dev, one card and four, 2026-10-31): the frozen backend's receipt reads
+        this census, whose keys only a Noah-MP classification carries, so every column-suite run on RUC or Noah
+        stopped building its physics with KeyError 'sflx_land_columns' from 0.4.5 on.  Every reader takes None
+        as "no census" and judges this one only when the land surface is Noah-MP.
+        """
+
+        if self._constructor.selection["land_surface_scheme"] != "noahmp":
+            return None
+        return super().noahmp_routing_census()
 
     def _validate_noahmp_census(self, *, require: bool) -> Mapping[str, Any] | None:
         """The land surface's own census (RUC's or Noah-MP's)."""
@@ -1570,6 +1645,13 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
             self._restore_boundary(self._boundary_snapshot)
             raise
         receipt = dict(self._last_receipt)
+        cfg = self._seam._cfg
+        if not any(getattr(cfg, key) for key in
+                   ("sf_sfclay_physics", "sf_surface_physics", "bl_pbl_physics")):
+            # A forcing-only selection has no surface stack to schedule.
+            # Retain actual counters so a stray call still fails the proof.
+            receipt["cadence"] = {
+                **receipt["cadence"], "surface_pbl_enabled": False}
         if extra:
             receipt["extra_scalar_rates"] = list(extra)
         census = receipt.pop("noahmp_census", None)
@@ -1627,31 +1709,14 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
         rebuilt.validate(n_vert_levels=shape[0], n_cells=shape[1])
         return rebuilt, tuple(sorted(rates))
 
-    def history_diagnostic_snapshot(self):
-        """The history frame's snapshot on the suite seam.
-
-        THE BREAKAGE THIS PREVENTS: the parent's history path calls
-        ``diagnostic_snapshot(selective=True, resident=True)``, a keyword pair
-        this seam's export does not take, so every column-suite run (rrfs_v2_dev,
-        the HRRR-shape overrides) died with a TypeError writing its hour-0
-        frame.  The suite seam exports through the host, so the frame gets the
-        full snapshot: fresh device copies, the same fields, hashes included.
-        """
-
-        return self.diagnostic_snapshot()
-
-    def diagnostic_snapshot(self, *, selective: bool = False, resident: bool = False) -> CudaArwenDiagnosticSnapshotV841:
-        """The frozen snapshot with the row's soil width.
-
-        ``selective`` and ``resident`` are accepted for the parent's signature;
-        the suite seam's export has one host path, so both are ignored.
-        """
+    def diagnostic_snapshot(self, *, selective=False, resident=False) -> CudaArwenDiagnosticSnapshotV841:
+        """The frozen snapshot with the row's soil width."""
 
         if self._phase != "boundary":
             raise RuntimeError("diagnostic_snapshot is legal only at a committed boundary")
         self._private_binding_guard()
         names = (*_REQUIRED_ARWEN_EXPORT_FIELDS, *_OPTIONAL_ARWEN_EXPORT_FIELDS)
-        exported, export_inventory = diagnostic_export(self._seam, names)
+        exported, export_inventory = diagnostic_export(self._seam, names, selective=selective, resident=resident)
         if (
             not isinstance(exported, Mapping)
             or set(exported) != {"identity", "arrays", "scalars"}
@@ -1668,11 +1733,13 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
         h2d = 0
         for name in names:
             key = f"fields/{name}"
+            if key not in export_arrays and f"diag/{name}" in export_arrays:
+                key = f"diag/{name}"
             if key not in export_arrays:
                 if name in _REQUIRED_ARWEN_EXPORT_FIELDS:
                     raise ValueError(f"suite export lacks required {key!r}")
                 continue
-            host = np.asarray(export_arrays[key])
+            host = export_arrays[key] if resident else np.asarray(export_arrays[key])
             if host.dtype != np.dtype(np.float32):
                 raise TypeError(f"suite export {key!r} is not FP32")
             if name in _SOIL_DIAGNOSTIC_FIELDS:
@@ -1699,12 +1766,16 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
                 if normalized.shape != (ncol,):
                     raise ValueError(f"suite export {key!r} has shape {host.shape}")
                 shape = (ncol,)
-            normalized = np.array(normalized, copy=True, order="C")
-            resident = cp.asarray(normalized)
-            require_resident_array(f"suite_diagnostic.{name}", resident, dtype=np.float32, shape=shape)
-            selected[name] = resident
-            hashes[key] = _array_identity(normalized)
-            h2d += int(resident.nbytes)
+            if resident:
+                device_value = cp.ascontiguousarray(normalized)
+            else:
+                normalized = np.array(normalized, copy=True, order="C")
+                device_value = cp.asarray(normalized)
+            require_resident_array(f"suite_diagnostic.{name}", device_value, dtype=np.float32, shape=shape)
+            selected[name] = device_value
+            if not resident:
+                hashes[key] = _array_identity(normalized)
+                h2d += int(device_value.nbytes)
         public_precip = self._seam.accumulated_precipitation()
         required_precip = required_precipitation_keys(
             generic=self._constructor.physics is not None,
@@ -1724,6 +1795,7 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
             "rvbldiff": cp.zeros((nlev, ncol), dtype=cp.float32),
         }
         surface = {k: v for k, v in selected.items() if k not in _SOIL_DIAGNOSTIC_FIELDS}
+        surface.update(history_cumulus_rain_rate(self, self._seam, precipitation["rainc"], cp))
         soil = {k: v for k, v in selected.items() if k in _SOIL_DIAGNOSTIC_FIELDS}
         classification = self._validate_surface_classification()
         census = self._validate_noahmp_census(require=False)
@@ -1872,6 +1944,102 @@ def physics_suite_record(row_name: str) -> Mapping[str, Any]:
 _SUITE_CONFIG_CLASSES: dict[tuple, type] = {}
 
 
+def _suite_config_base(run_type: type) -> type:
+    """The non-GWDO counterpart a suite run records (see :func:`suite_config`, "The drag")."""
+
+    from .config_v841 import (
+        V841MpasColumnPhysicsConfig,
+        V841MpasColumnPhysicsGwdoConfig,
+        V841UpperDampingColumnConfig,
+    )
+
+    if not issubclass(run_type, V841MpasColumnPhysicsGwdoConfig):
+        return run_type
+    from dataclasses import fields
+
+    if any(item.name == "config_number_cam_damping_levels" for item in fields(run_type)):
+        return V841UpperDampingColumnConfig
+    return V841MpasColumnPhysicsConfig
+
+
+def _suite_config_class(run_type: type, profile_id: str, selectors: Mapping[str, str]) -> type:
+    """The configuration class of one (run type, profile, selectors), built once per process.
+
+    The class is made here because the fields a suite records depend on the run's type, so no module attribute
+    can name it.  THE BREAKAGE ``__reduce__`` PREVENTS (rrfs_v2_dev on four cards, run_fb4825f5121040b2,
+    2026-10-31): each rank process's request carries the run's configuration, pickle finds a class by its module
+    attribute, and every column-suite run on rank processes stopped before its first step with PicklingError.  An
+    instance now travels as what built its class plus its field values, and the rank's class comes from this
+    function, so rank 0 and a rank process hold one recipe and the same words.
+    """
+
+    from dataclasses import fields, make_dataclass
+
+    selectors = dict(selectors)
+    key = (run_type, profile_id, tuple(sorted(selectors.items())))
+    cls = _SUITE_CONFIG_CLASSES.get(key)
+    if cls is not None:
+        return cls
+    base = _suite_config_base(run_type)
+    base_fields = [item.name for item in fields(base)]
+    defaults = {item.name: item.default for item in fields(run_type)}
+    unknown = sorted(name for name in selectors if name not in defaults)
+    if unknown:
+        raise ConfigurationRefusal(
+            "physics_suite", profile_id,
+            f"the profile names selectors {unknown} the configuration "
+            f"type {run_type.__name__} does not carry",
+            "a profile whose selectors are configuration fields",
+        )
+
+    def validate(self) -> None:
+        neutral = {name: getattr(self, name) for name in base_fields}
+        for name in selectors:
+            if name != "config_microp_scheme":
+                neutral[name] = defaults[name]
+        # Every frozen value through the run's own type, its YSU-GWDO
+        # composer fields at the values the run's bind gave them (held,
+        # not executed).
+        neutral.update(dict(self.config_frozen_lane_drag_fields))
+        run_type(**neutral).validate()
+        for name, want in selectors.items():
+            if getattr(self, name) != want:
+                raise ConfigurationRefusal(
+                    name, getattr(self, name),
+                    f"the {profile_id} column suite executes {want!r}",
+                    f"{name}={want!r}",
+                )
+        if self.config_physics_suite_profile != profile_id:
+            raise ConfigurationRefusal(
+                "config_physics_suite_profile",
+                self.config_physics_suite_profile,
+                "the configuration names another physics-suite profile",
+                f"config_physics_suite_profile={profile_id!r}",
+            )
+
+    def __reduce__(self):
+        values = {item.name: getattr(self, item.name) for item in fields(self) if item.init}
+        return _restore_suite_config, (run_type, profile_id, tuple(sorted(selectors.items())), values)
+
+    cls = make_dataclass(
+        f"{run_type.__name__}Suite",
+        [("config_physics_suite_profile", str, ""),
+         ("config_frozen_lane_drag_fields", tuple, ())],
+        bases=(base,),
+        frozen=True,
+        slots=True,
+        namespace={"validate": validate, "__reduce__": __reduce__, "__module__": __name__},
+    )
+    _SUITE_CONFIG_CLASSES[key] = cls
+    return cls
+
+
+def _restore_suite_config(run_type: type, profile_id: str, selectors: tuple, values: Mapping[str, Any]) -> Any:
+    """Pickle's way back: the instance's class from its recipe, this process's own copy of it."""
+
+    return _suite_config_class(run_type, profile_id, dict(selectors))(**values)
+
+
 def suite_config(
     config: Any, row_name: str, mpas_selectors: Mapping[str, str] | None = None
 ) -> Any:
@@ -1900,13 +2068,7 @@ def suite_config(
     what selects the schemes, and this is the record of it.
     """
 
-    from dataclasses import fields, make_dataclass
-
-    from .config_v841 import (
-        V841MpasColumnPhysicsConfig,
-        V841MpasColumnPhysicsGwdoConfig,
-        V841UpperDampingColumnConfig,
-    )
+    from dataclasses import fields
 
     suite = _suite_for_row(row_name)
     # A named suite records the MPAS spelling it was resolved from (the
@@ -1915,14 +2077,7 @@ def suite_config(
     # selection is what the seam is built with either way.
     selectors = dict(suite["mpas_selectors"] if mpas_selectors is None else mpas_selectors)
     run_type = type(config)
-    if issubclass(run_type, V841MpasColumnPhysicsGwdoConfig):
-        base = (
-            V841UpperDampingColumnConfig
-            if hasattr(config, "config_number_cam_damping_levels")
-            else V841MpasColumnPhysicsConfig
-        )
-    else:
-        base = run_type
+    base = _suite_config_base(run_type)
     base_fields = [item.name for item in fields(base)]
     dropped = sorted({item.name for item in fields(run_type)} - set(base_fields))
     if any(not name.startswith("gwdo_") for name in dropped):
@@ -1933,55 +2088,7 @@ def suite_config(
             "external YSU-GWDO composer's fields may be dropped",
             "a run type whose non-drag fields the column configuration carries",
         )
-    key = (run_type, str(suite["id"]), tuple(sorted(selectors.items())))
-    cls = _SUITE_CONFIG_CLASSES.get(key)
-    if cls is None:
-        defaults = {item.name: item.default for item in fields(run_type)}
-        unknown = sorted(name for name in selectors if name not in defaults)
-        if unknown:
-            raise ConfigurationRefusal(
-                "physics_suite", suite["id"],
-                f"the profile names selectors {unknown} the configuration "
-                f"type {run_type.__name__} does not carry",
-                "a profile whose selectors are configuration fields",
-            )
-        profile_id = str(suite["id"])
-
-        def validate(self) -> None:
-            neutral = {name: getattr(self, name) for name in base_fields}
-            for name in selectors:
-                if name != "config_microp_scheme":
-                    neutral[name] = defaults[name]
-            # Every frozen value through the run's own type, its YSU-GWDO
-            # composer fields at the values the run's bind gave them (held,
-            # not executed).
-            neutral.update(dict(self.config_frozen_lane_drag_fields))
-            run_type(**neutral).validate()
-            for name, want in selectors.items():
-                if getattr(self, name) != want:
-                    raise ConfigurationRefusal(
-                        name, getattr(self, name),
-                        f"the {profile_id} column suite executes {want!r}",
-                        f"{name}={want!r}",
-                    )
-            if self.config_physics_suite_profile != profile_id:
-                raise ConfigurationRefusal(
-                    "config_physics_suite_profile",
-                    self.config_physics_suite_profile,
-                    "the configuration names another physics-suite profile",
-                    f"config_physics_suite_profile={profile_id!r}",
-                )
-
-        cls = make_dataclass(
-            f"{run_type.__name__}Suite",
-            [("config_physics_suite_profile", str, ""),
-             ("config_frozen_lane_drag_fields", tuple, ())],
-            bases=(base,),
-            frozen=True,
-            slots=True,
-            namespace={"validate": validate, "__module__": __name__},
-        )
-        _SUITE_CONFIG_CLASSES[key] = cls
+    cls = _suite_config_class(run_type, str(suite["id"]), selectors)
     values = {name: getattr(config, name) for name in base_fields}
     values.update(selectors)
     held = tuple((name, getattr(config, name)) for name in dropped)

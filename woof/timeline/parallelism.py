@@ -159,11 +159,11 @@ class CardSampler:
         self.samples = []          # (t_mono, max utilisation over the visible cards)
         self.proc = None
         self.interval = interval_ms / 1000.0
-        exe = shutil.which("nvidia-smi")
+        exe = __import__('woof.gpu_smi', fromlist=['executable']).executable()
         from woof.local_gpu import no_local_gpu
         if exe is None or no_local_gpu():
             return
-        command = [exe, "--query-gpu=index,utilization.gpu", "--format=csv,noheader,nounits",
+        command = [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=index,utilization.gpu", "--format=csv,noheader,nounits",
                    f"-lms={int(interval_ms)}"]
         visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
         if visible and all(x.strip().isdigit() for x in visible.split(",")):

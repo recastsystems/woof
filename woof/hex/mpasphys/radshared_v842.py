@@ -8,6 +8,8 @@ reader. The remaining bindings allocate buffers and launch CUDA. No default
 suite or WOOF implementation is changed by importing this module.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from dataclasses import dataclass
@@ -81,6 +83,40 @@ def radiation_options(config: Mapping[str, object]) -> RadiationOptions:
 # Arithmetic pins come from the shared glibc device header. --fmad=false
 # protects all ordinary expressions; FADD/FMUL/FDIV additionally pin steps.
 CUDA_SOURCE = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_43340000_DEFINED
+#define HEX_DIVISOR_43340000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43340000 = 180.f;
+#else
+static const float hex_divisor_43340000 = 180.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_43E6CCCD_DEFINED
+#define HEX_DIVISOR_43E6CCCD_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43e6cccd = 461.6f;
+#else
+static const float hex_divisor_43e6cccd = 461.6f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_447B0000_DEFINED
+#define HEX_DIVISOR_447B0000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_447b0000 = 1004.f;
+#else
+static const float hex_divisor_447b0000 = 1004.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_44BB8000_DEFINED
+#define HEX_DIVISOR_44BB8000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_44bb8000 = 1500.f;
+#else
+static const float hex_divisor_44bb8000 = 1500.f;
+#endif
+#endif
+
 // MPAS src/core_atmosphere/physics/mpas_atmphys_functions.F:156-217 (RSLF / RSIF)
 __device__ float sat(float p, float t, bool ice) {
     const float water[9]={.611583699E03f,.444606896E02f,.143177157E01f,
@@ -126,7 +162,7 @@ extern "C" __global__ void cloud_simple(int n,int scheme,int fqc,int fqi,
             FSUB(t[i],273.15f)),FSUB(t[i],35.86f))));
         float esi=FMUL(1000.f*.61078f,gfk_exp(FDIV(FMUL(21.8745584f,
             FSUB(t[i],273.15f)),FSUB(t[i],7.66f))));
-        const float ep2=287.f/461.6f;
+        const float ep2=287.f/hex_divisor_43e6cccd;
         float sw=FDIV(FMUL(ep2,esw),FSUB(p[i],esw));
         float si=FDIV(FMUL(ep2,esi),FSUB(p[i],esi));
         float qcld=FADD(FADD(c[i],ice[i]),snow[i]);
@@ -209,7 +245,7 @@ __device__ void find_layers(float *qvs,float *cf,const float *t,
     float *theta,float *dz,int nz) {
     int m12=-1,m40=-1;
     for(int k=nz-1;k>=0;--k) {
-        theta[k]=FMUL(t[k],gfk_pow(FDIV(100000.f,p[k]),287.05f/1004.f));
+        theta[k]=FMUL(t[k],gfk_pow(FDIV(100000.f,p[k]),287.05f/hex_divisor_447b0000));
         if(FSUB(t[k],273.16f)>-40.f) m40=max(m40,k);
         if(FSUB(t[k],273.16f)>-12.f) m12=max(m12,k);
     }
@@ -222,7 +258,7 @@ __device__ void find_layers(float *qvs,float *cf,const float *t,
     int k;
     for(k=nz-4;k>=0;--k) {
         float h1=pressure_height(p[k]),h2=pressure_height(p[k+2]);
-        if(FDIV(FSUB(theta[k+2],theta[k]),FSUB(h2,h1))<10.f/1500.f
+        if(FDIV(FSUB(theta[k+2],theta[k]),FSUB(h2,h1))<10.f/hex_divisor_44bb8000
            && h1<19000.f && h1>4000.f) break;
     }
     int tropo=max(2,k+2);
@@ -310,7 +346,7 @@ extern "C" __global__ void ozone_latitude(int nc,int nl,const float *lat,
     int idx=blockIdx.x*blockDim.x+threadIdx.x;
     if(idx>=nc*nl*12) return;
     int m=idx%12,lev=(idx/12)%nl,col=idx/(nl*12);
-    float y=FDIV(lat[col],3.1415926f/180.f);
+    float y=FDIV(lat[col],3.1415926f/hex_divisor_43340000);
     int i1=0,i2=0;
     // Native F:164-167 overruns at the exact final latitude. Full strict
     // executable repetitions witness unstable words. The in-bounds endpoint
@@ -418,6 +454,16 @@ extern "C" __global__ void profile_to_mpas(int nc,int nz,int ntotal,
 
 '''
 
+# Keep the calendar arithmetic literally the same for the streamed layout.
+# Only the addresses change: two native [level,cell] planes replace a
+# transposed [cell,level,12] copy. The native monthly field stays on the host.
+_ozone_time_source = CUDA_SOURCE.split('extern "C" __global__ void ozone_time(', 1)[1]
+_ozone_time_source = _ozone_time_source.split('\n}\n', 1)[0] + '\n}\n'
+CUDA_SOURCE += ('\nextern "C" __global__ void ozone_time_pair('
+                + _ozone_time_source.replace('int n,float julian', 'int n,int nc,float julian')
+                .replace('monthly[idx*12+prev]', 'monthly[(idx% (n/nc))*nc+idx/(n/nc)]')
+                .replace('monthly[idx*12+next]', 'monthly[n+(idx% (n/nc))*nc+idx/(n/nc)]'))
+
 
 def _cp():
     """CUDA allocation ABI for mpas_atmphys_driver_cloudiness.F:64-75."""
@@ -450,7 +496,7 @@ def _module_on(device: int):
     # native RKIND subnormals in the ozone interpolation multiply/add chain.
     binary, _ = compiler.compile_using_nvrtc(
         header.read_text()+"\n"+CUDA_SOURCE, options=_hex_numerics.options(CUDA_OPTIONS),
-        arch=_cp().cuda.Device(device).compute_capability)
+        arch=_compilation_target(device, xp=_cp()))
     with _cp().cuda.Device(device):
         module = function.Module()
         module.load(binary)
@@ -766,10 +812,43 @@ def bind_native_ozone_pools(provider, call):
     shared=getattr(provider,'radshared_v842_state',None)
     if shared is None:
         shared={};provider.radshared_v842_state=shared
-    return {'nCellsSolve':int(provider.session.layout.dimensions['nCellsSolve']),
-            'atm_input':provider['atm_input'],'diag_physics':provider['diag_physics'],
-            'julian':provider.session.arguments.calendar['julian'],
-            'current_date':provider.session.arguments.calendar['current_date'],'radshared':shared}
+    nc=int(provider.session.layout.dimensions['nCellsSolve'])
+    calendar=provider.session.arguments.calendar
+    pools={'nCellsSolve':nc,'diag_physics':provider['diag_physics'],
+           'julian':calendar['julian'],'current_date':calendar['current_date'],'radshared':shared}
+    from ..device_memory_release import shared_card_memory
+    if provider.resident and shared_card_memory():
+        # Initialization published all months into native host storage. They
+        # never change during integration. Upload only the adjacent months
+        # consumed by this calendar interval, once per pair and provider.
+        months=_ozone_month_pair(calendar['julian'])
+        cached=shared.get('ozone_month_pair')
+        if cached is None or cached[0] != (months,nc):
+            storage=getattr(provider.native,'field_storage',None)
+            host=(storage('atm_input','ozmixm',level=1) if storage is not None
+                  else provider.native.get_field('atm_input','ozmixm',level=1))
+            if host.ndim != 3 or host.shape[0] != 12 or not 0 <= nc <= host.shape[2]:
+                raise ValueError('MPAS monthly ozone must be [12,level,cell] with cell extent')
+            pair=provider.cp.asarray(np.ascontiguousarray(host[list(months),:,:nc]))
+            cached=((months,nc),pair)
+            shared['ozone_month_pair']=cached
+            provider.transfers['initial_upload_bytes'] += pair.nbytes
+        pools['ozone_month_pair']=cached[1]
+    else:
+        pools['atm_input']=provider['atm_input']
+    return pools
+
+
+def _ozone_month_pair(julian):
+    """Select addresses only, with ozone_time's float32 calendar rounding."""
+    day=float(np.float32(np.float32(julian)+np.float32(1)))
+    iday=int(day)
+    day-=iday
+    iday=iday%365 or 365
+    day+=iday
+    dates=(16,45,75,105,136,166,197,228,258,289,319,350)
+    next_month=next((m for m,d in enumerate(dates) if d>day),0)
+    return (next_month-1)%12,next_month
 
 
 def bind_native_ozone_initial_pools(provider, call):
@@ -803,8 +882,15 @@ def ozone_slot(call):
     Tables and calendar metadata remain in the caller-owned restart pools.
     """
     pools=call.pools
-    local=_monthly_from_pool(pools,int(pools["nCellsSolve"]))
-    out=o3climatology_from_MPAS(pools["julian"],local)
+    if 'ozone_month_pair' in pools:
+        pair=pools['ozone_month_pair'];nc=int(pools['nCellsSolve'])
+        _array(pair,(2,pair.shape[1],nc),'MPAS ozone month pair')
+        out=_cp().empty((nc,pair.shape[1]),dtype=_cp().float32)
+        _launch('ozone_time_pair',out.size,
+                (np.int32(out.size),np.int32(nc),np.float32(pools['julian']),pair,out))
+    else:
+        local=_monthly_from_pool(pools,int(pools["nCellsSolve"]))
+        out=o3climatology_from_MPAS(pools["julian"],local)
     _to_public(out,pools["diag_physics"]["o3clim"])
     pools.setdefault("radshared",{})["o3clim"]=out
     return out

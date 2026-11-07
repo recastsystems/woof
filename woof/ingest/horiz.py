@@ -285,7 +285,7 @@ def global_longitude_period_columns(longitude, *, tolerance=1.0e-9):
 #: evaluates.  A declared family is a promise about what the source's
 #: coordinate arrays MEAN, so an unevaluated one has no safe reading --
 #: hence a named refusal here rather than degrees somewhere they are not.
-SUPPORTED_SOURCE_PROJECTIONS = ("lambert_conformal",)
+SUPPORTED_SOURCE_PROJECTIONS = ("lambert_conformal", "rotated_latitude_longitude")
 
 
 def declared_source_projection(snapshot):
@@ -344,11 +344,11 @@ def source_coordinate_transform(snapshot):
 
         return identity, False
     from woof.ingest.source_coverage import lattice_identity
-    from woof.mapped_source import declared_lambert_source_grid
+    from woof.mapped_source import declared_projected_source_grid
     from woof.static.projection import EARTH_RADIUS_M
 
     parameters = projection["parameters"]
-    source = declared_lambert_source_grid(parameters)
+    source = declared_projected_source_grid(projection)
     unit = float(parameters["axis_unit_m"])
     dx = float(parameters["dx_m"])
     dy = float(parameters["dy_m"])
@@ -359,8 +359,9 @@ def source_coordinate_transform(snapshot):
         x, y = source.latlon_to_ij(
             np.asarray(lat, dtype=np.float64),
             np.asarray(lon, dtype=np.float64))
-        # LambertGrid coordinates are one-based; axis zero sits on the
-        # first grid point, so the axis value of point i is (i-1)*dx.
+        # Declared-grid coordinates (Lambert or rotated) are one-based;
+        # axis zero sits on the first grid point, so the axis value of
+        # point i is (i-1)*dx.
         y_index = np.asarray(y, dtype=np.float64) - 1.0
         x_index = np.asarray(x, dtype=np.float64) - 1.0
         if parameters.get("same_grid_pairing") == "identity":
@@ -2251,12 +2252,33 @@ class DailyMeanAirTemperature:
         self._snapshots = snapshots
         self._hours = float(hours)
         self._value = None
-        self._by_shape = {}
+        self._by_grid = {}
+        self._grid_keys = {}
+
+    @staticmethod
+    def _grid_key(snapshot):
+        import json
+        return tuple((a.shape, a.tobytes()) for a in (
+            np.asarray(snapshot.latitude, dtype=np.float64),
+            np.asarray(snapshot.longitude, dtype=np.float64))) + (
+                json.dumps(snapshot.projection, sort_keys=True, default=dict),)
 
     def __call__(self, snapshot):
         shape = tuple(np.shape(snapshot.fields["SKINTEMP"]))
-        if shape in self._by_shape:
-            return self._by_shape[shape]
+        key = self._grid_key(snapshot)
+        if key in self._by_grid:
+            return self._by_grid[key]
+        from woof.ingest.source_metadata import snapshot_metadata
+        for i in self._posted(list(range(len(self._snapshots)))):
+            if i not in self._grid_keys:
+                self._grid_keys[i] = self._grid_key(snapshot_metadata(self._snapshots, i))
+        if any(other != key for other in self._grid_keys.values()):
+            # Initial analyses and moving sources can have different grids,
+            # including equal shapes at different locations. Group BEFORE
+            # adding arrays, not after a broadcast has already failed.
+            result = self._same_grid_mean(shape, snapshot)
+            self._by_grid[key] = result
+            return result
         if self._value is None:
             times = tuple(getattr(self._snapshots, "valid_times", None)
                           or (item.valid_time for item in self._snapshots))
@@ -2310,7 +2332,7 @@ class DailyMeanAirTemperature:
             # times): the mean for THIS time is the mean over the times on
             # its own grid, which is what a per-source WPS avg_tsfc would be.
             field, receipt = self._same_grid_mean(shape, snapshot)
-        self._by_shape[shape] = (field, receipt)
+        self._by_grid[key] = (field, receipt)
         return field, receipt
 
     def _posted(self, chosen):
@@ -2344,16 +2366,19 @@ class DailyMeanAirTemperature:
         start = min(times)
         reader = getattr(self._snapshots, "surface_field_values", None)
         total, used = None, []
+        key = self._grid_key(snapshot)
         posted = set(self._posted(list(range(len(times)))))
         for index, when in enumerate(times):
             if (when - start).total_seconds() >= self._hours * 3600.0:
                 continue
-            if index not in posted:
+            if index not in posted or self._grid_keys[index] != key:
                 continue
             value = (reader(index, _INLAND_AIR_FIELD) if reader is not None
                      else self._snapshots[index].fields.get(_INLAND_AIR_FIELD))
             if value is None:
-                continue
+                value = self._snapshots[index].fields.get(_INLAND_AIR_FIELD)
+                if value is None:
+                    raise ValueError(f"forcing time {when} carries no {_INLAND_AIR_FIELD}")
             value = _as_host_float64(value)
             if tuple(value.shape) != shape:
                 continue

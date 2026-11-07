@@ -1,8 +1,8 @@
 """The operational 3 km namelist at the door: its smoke maps, or is refused.
 
 The file (NOAA-EMC/HRRR v4.1.21 parm/conus/hrrr_wrf.nl, pinned by hash)
-carries groups for machinery WOOF does not run as WRF does: the digital
-filter, MPI log routing, the fork's extra diagnostics -- each read whole,
+carries groups for DFI startup, MPI log routing and the fork's extra
+diagnostics -- each read whole,
 inert when off, a declared divergence the report prints when on -- and the
 fork's HRRR-Smoke chemistry (chem_opt = 18).  Since 2026-10-12 (the owner's
 ruling) chemistry is never imported to run with none: the smoke maps onto
@@ -63,6 +63,7 @@ def test_unmodified_operational_namelist_imports_every_smoke_setting(
     assert shared["chem_sets"] == "smoke"
     assert shared["chem_sources"] == "rave-3km,rap-native-smoke,hrrr-native-smoke"
     assert shared["simple_dir_fdb"] == 1
+    assert shared["rrtmg_aer3_source"] == "operational_fork"
     assert shared["enh_vermix"] is True
     assert shared["flam_part"] == 0.75
     assert shared["aer_drydep_opt"] == 111
@@ -126,8 +127,7 @@ def test_operational_namelist_imports_with_its_smoke_mapped(tmp_path):
                          ("logging", "stderr_logging"),
                          ("chem", "phot_opt"),
                          ("chem", "simple_dir_fdb"),
-                         ("physics", "co2tf"),
-                         ("dynamics", "tke_mix6_off")):
+                         ("physics", "co2tf")):
         assert (section, key) in dropped, (section, key)
     # 2.9.1: the Grell ensemble dimensions size only Grell 3D /
     # Grell-Devenyi closure arrays, so with no Grell-family cumulus they
@@ -137,11 +137,19 @@ def test_operational_namelist_imports_with_its_smoke_mapped(tmp_path):
     assert ("physics", "grav_settling") in fixed
     assert ("domains", "zap_close_levels") in fixed
     assert ("dynamics", "scalar_mix6_off") in fixed
+    # km_opt=4 has no prognostic TKE filter. The supplied switch is
+    # receipted as inert rather than emitted as an unread run setting.
+    assert "tke_mix6_off" not in shared
+    assert "prognostic TKE" in dropped[("dynamics", "tke_mix6_off")]
 
 
 def test_requested_digital_filter_is_refused_by_name(tmp_path):
     # A declared divergence until 2026-10-12 ("forecast from the unfiltered
-    # analysis"); the filter changes the state the forecast integrates from.
+    # analysis"), then refused while DFI was unported.  aafa2776c8b ports
+    # DFI, so the operational file's dfi_opt = 3 is admitted when its window
+    # is given; this file gives no stop dates, so the Registry's 2004
+    # defaults fall years before the start and the door refuses by name
+    # (it raised a bare ValueError from the run validator before).
     path = _input(tmp_path, lambda t: t.replace(
         "dfi_opt                             = 0,",
         "dfi_opt                             = 3,"))
@@ -149,7 +157,33 @@ def test_requested_digital_filter_is_refused_by_name(tmp_path):
         import_namelists(_wps(tmp_path), path)
     message = str(caught.value)
     assert "&dfi_control dfi_opt = " in message
-    assert "Next: set dfi_opt = 0." in message
+    assert "does not bracket the start" in message
+    assert "or set dfi_opt = 0." in message
+
+
+@pytest.mark.parametrize("nfilter", [7, 8])
+def test_requested_digital_filter_reaches_startup(tmp_path, nfilter):
+    def enable(text):
+        text = text.replace("dfi_opt                             = 0,",
+                            "dfi_opt                             = 3,")
+        text = text.replace("dfi_nfilter                         = 7,",
+                            f"dfi_nfilter                         = {nfilter},")
+        text = text.replace("dfi_cutoff_seconds                  = 3600,",
+                            "dfi_cutoff_seconds                  = 240,")
+        return text.replace("&dfi_control", "&dfi_control\n"
+                            " dfi_bckstop_year=2018, dfi_bckstop_month=8,\n"
+                            " dfi_bckstop_day=26, dfi_bckstop_hour=11,\n"
+                            " dfi_bckstop_minute=58, dfi_bckstop_second=0,\n"
+                            " dfi_fwdstop_year=2018, dfi_fwdstop_month=8,\n"
+                            " dfi_fwdstop_day=26, dfi_fwdstop_hour=12,\n"
+                            " dfi_fwdstop_minute=1, dfi_fwdstop_second=0,")
+    text, report = import_namelists(_wps(tmp_path), _input(tmp_path, enable))
+    shared = tomllib.loads(text)["shared"]
+    assert shared["dfi_opt"] == 3
+    assert shared["dfi_nfilter"] == nfilter
+    assert shared["dfi_bckstop_seconds"] == -120
+    assert shared["dfi_fwdstop_seconds"] == 60
+    assert not {d.key for d in report.dropped} & {"dfi_opt", "dfi_nfilter"}
 
 
 def test_chemistry_off_is_inert(tmp_path):

@@ -54,11 +54,16 @@ EXPECTED_SOURCE_IDS = (
     "hrrr",
     "hrrr-prs",
     "gem-gdps",
+    "gem-hrdps",
+    "gem-rdps",
     "icon-global",
     "icon-eu",
     "icon-d2",
     "hrrr-ak",
     "gfs",
+    "gfs-pressure",
+    "hafs-a",
+    "hafs-b",
     "gdas",
     "gefs-v11-flat",
     "gefs-reforecast",
@@ -147,10 +152,15 @@ def test_registry_covers_bound_inventory_and_external_source_routes_including_ea
         "hrrr",
         "hrrr-prs",
         "gem-gdps",
+    "gem-hrdps",
+    "gem-rdps",
         "icon-global",
         "icon-eu",
         "icon-d2",
         "gfs",
+        "gfs-pressure",
+        "hafs-a",
+        "hafs-b",
         "gdas",
         "gefs-v11-flat",
         "gefs-reforecast",
@@ -575,7 +585,7 @@ def test_a_refusal_with_nothing_to_add_does_not_echo_its_own_status(capsys, monk
     The reason fell back to the status value, which is already printed
     two tokens earlier, so an adapter carrying neither a composition
     requirement nor notes said the same thing twice -- and a doubled
-    token reads as a truncated message, which sent a a development machine pilot
+    token reads as a truncated message, which sent a test host 8 pilot
     looking for the rest of a sentence that was never there.  Fixed
     source-agnostically: bare rows (and every adapter added later
     with nothing yet to say) were still echoing.  `rap` and then

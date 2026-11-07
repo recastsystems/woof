@@ -146,3 +146,15 @@ def test_a_column_helper_block_runs_on_the_shared_threads_and_waits_for_its_task
     with real._column_pool(4) as executor:
         executor.submit(task, 0).result()
     assert all(name.startswith("gpuwm-host") for name in seen)
+
+
+
+def test_a_running_block_survives_a_larger_pool_being_made():
+    """OK-WOFS 2026-11-02 20:40Z: a shared_executor block held the shared pool while another caller asked for more
+    threads; the old pool was shut and the block's next submit raised 'cannot schedule new futures after shutdown'."""
+    from woof.ingest import host_parallel as H
+    with H.shared_executor(2) as ex:
+        first = ex.submit(lambda: 1)
+        H._shared_pool(H._pool_size + 8)          # another caller grows the pool mid-block
+        second = ex.submit(lambda: 2)             # the block's pool must still take work
+    assert (first.result(), second.result()) == (1, 2)

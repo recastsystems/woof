@@ -433,7 +433,7 @@ class _Exchanger:
     #: species in the route's passes (cuda_transport_v841.limiter_species_per_pass, one
     #: species per pass by default) instead of all at once.  THE BREAKAGE THIS PREVENTS
     #: (hex 48/3 km Milton storm-following, 353,352 cells, four rate classes, one RTX 5090,
-    #: V8X/V5090 2026-10-27): with no declaration every class step ran all six species in
+    #: eight-card system/reference system 2026-10-27): with no declaration every class step ran all six species in
     #: one pass, so the 264,024-column class held a six-species limiter block (three
     #: 998 MiB edge arrays and ten 332 MiB cell arrays, about 5.7 GiB) on top of the four
     #: classes' resident state, and the run stopped at base step 16, in that class's limiter,

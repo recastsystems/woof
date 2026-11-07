@@ -306,7 +306,7 @@ SEG1_COMPUTED = ("sice", "sneqvo", "qvap", "qdew", "edir")
 _ERROR_ZEROS = ("firr", "irmirate", "irfirate")
 
 
-def sflx_post_seg2(s) -> dict:
+def sflx_post_seg2(s, *, carbon=None) -> dict:
     """CARBON's zeros, ERROR, the urban override, the snow clamp, the albedo.
 
     ``s`` is the state at WATER's return.  It must carry:
@@ -341,8 +341,8 @@ def sflx_post_seg2(s) -> dict:
     # FSH are :1042-1045's ``+= 0.0`` and ``-= 0.0``, exact identities on
     # binary32 for the values that reach them; they are carried through under
     # their own names so a caller reads the post-irrigation quantity.
-    carbon = {name: cp.zeros(n, dtype=cp.float32)
-              for name in ("nee", "gpp", "npp")}
+    carbon = ({name:carbon[name] for name in ("nee","gpp","npp")} if carbon else
+              {name: cp.zeros(n,dtype=cp.float32) for name in ("nee","gpp","npp")})
     prcp = _col(cp, s, "prcp", n, where)
     fsh = _col(cp, s, "fsh", n, where)
 
@@ -430,7 +430,7 @@ def _error_slab(cp, s, n, where, *, prcp, fsh) -> dict:
     values["prcp"] = prcp
     values["fsh"] = fsh
     zeros = cp.zeros(n, dtype=cp.float32)
-    values.update({name: zeros for name in _ERROR_ZEROS})
+    values.update({name: _col(cp,s,name,n,where) if name in s else zeros for name in _ERROR_ZEROS})
 
     unknown = sorted(set(values) - set(slots))
     if unknown:
@@ -480,7 +480,29 @@ def _raise_for_status(cp, status, out, outs) -> None:
     offending column named.  Reporting instead of aborting is a change in
     mechanism, not in behaviour.
     """
-    codes = cp.asnumpy(status)
+    from woof.core import health_ledger
+    from woof.core.noahmp_surface_device import active_probe
+    ledger = health_ledger.active()
+    if ledger is not None:
+        # OR categories across columns and steps. A callback retaining the
+        # last slab would lose an earlier failure when that slab was healthy.
+        def refuse(flags):
+            errors = ((1, ShortwaveBalanceError, "Shortwave budget"),
+                      (2, EnergyBalanceError, "Energy budget"),
+                      (4, WaterBalanceError, "Water budget"))
+            for bit, kind, name in errors:
+                if flags & bit:
+                    raise kind(f"{name} problem in NOAHMP LSM"
+                               + health_ledger.deferred_note())
+        flags = cp.zeros(1, dtype=cp.uint32)
+        for code in (1, 2, 3):
+            flags |= active_probe(status == code).any().astype(cp.uint32) << (code - 1)
+        ledger.record("noahmp.post.native_budgets", flags, refuse)
+        return
+    n = int(status.size)
+    if status.shape != (n,):
+        raise ValueError("Noah-MP slab status must contain one value per column")
+    codes = cp.asnumpy(cp.where(active_probe(cp.ones(n, dtype=cp.bool_)), status, 0))
     tripped = np.flatnonzero(codes)
     if not tripped.size:
         return

@@ -187,7 +187,7 @@ RUC_SURFACE_ORACLE_CASES = (
     "lai2d_preserve",
     "grass_short_season",
 )
-#: The two mosaic fixtures were rebuilt on box W1 (lane/verify-ruc-lsm) with
+#: The two mosaic fixtures were rebuilt on test host (development branch) with
 #: gfortran 13.3.0 on glibc 2.39, the toolchain of every other RUC WRF
 #: oracle, by tools/ruc_mosaic_wrf461_oracle/build.sh.  The earlier build
 #: (gfortran 15.2 on another C library) recorded that library's float32

@@ -1,7 +1,7 @@
 """The forward-only git hooks in tools/git-hooks refuse amend, rebase,
 reset and force push, and leave every forward operation alone.
 
-the project rules, "Forward commits only": no reset, rebase, amend or force-push.
+The project policy, "Forward commits only": no reset, rebase, amend or force-push.
 Origin (2026-10-20): two agents chained `git commit --amend` seconds after
 a commit.  Each case below is the real git command in a scratch repository
 with the hooks installed by tools/git-hooks/install.sh, plus the hook run

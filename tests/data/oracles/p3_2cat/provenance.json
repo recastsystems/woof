@@ -1,0 +1,16 @@
+{
+  "wrf_source": {
+    "phys/module_mp_p3.F": "716950a3081ec4e338c9a918d26ec80f7ee0e40b3e284283f070423237f6a3c6",
+    "run/p3_lookupTable_1.dat-v5.4_2momI": "be1ab6fb03481e376e47c6c79d808af5d8ab069f2b242931e9c54801bad4ae84",
+    "run/p3_lookupTable_2.dat-v5.3": "c9103041ead719cf9e2e215cf846e0ef81b2004f29386156444a079af6b24d97"
+  },
+  "drivers": {
+    "tools/p3_wrf461_oracle/p3_ref_driver_2cat.f90": "ae189cf2b1f649cc9b68dd9bd5c4b030b34bc9a172224e3a577edb4ca66c8a3a",
+    "evidence/p3-fortran-oracle-20260828/harness/p3_ref_driver.f90": "109b1412ff332bf85218d96bca1d47a0457a13927de2048497b4dd2c4aeac86a"
+  },
+  "commands": [
+    "bash tools/p3_wrf461_oracle/build.sh $WRF_SOURCE_ROOT $L/oracle",
+    "bash tools/p3_wrf461_oracle/run_fortran.sh $L/oracle $L/oracle/fixtures-2cat A B CR"
+  ],
+  "toolchain": "GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39\nmodule_mp_p3.F 716950a3081ec4e338c9a918d26ec80f7ee0e40b3e284283f070423237f6a3c6\ndriver 109b1412ff332bf85218d96bca1d47a0457a13927de2048497b4dd2c4aeac86a\ndriver_2cat ae189cf2b1f649cc9b68dd9bd5c4b030b34bc9a172224e3a577edb4ca66c8a3a\nfma instructions in arm A: 0\nfma instructions in arm B: 0\nlibmvec calls in arm B: 7\n"
+}

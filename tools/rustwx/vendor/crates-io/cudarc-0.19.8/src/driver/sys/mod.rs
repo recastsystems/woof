@@ -9,7 +9,8 @@ extern crate alloc;
 extern crate no_std_compat as std;
 #[cfg(feature = "dynamic-loading")]
 fn load<F: Copy>(name: &str) -> F {
-    unsafe { *culib().get::<F>(name.as_bytes()).unwrap_or_else(|e| panic!("Missing symbol {name}: {e}")) }
+    let selected = if crate::gpuwm_hip::requested() { format!("gpuwm_{name}") } else { name.to_owned() };
+    unsafe { *culib().get::<F>(selected.as_bytes()).unwrap_or_else(|e| panic!("Missing symbol {name}: {e}")) }
 }
 pub use self::cudaError_enum as CUresult;
 pub use self::CUDA_POINTER_ATTRIBUTE_ACCESS_FLAGS_enum as CUDA_POINTER_ATTRIBUTE_ACCESS_FLAGS;
@@ -16106,6 +16107,7 @@ pub unsafe fn cuWaitExternalSemaphoresAsync(extSemArray: *const CUexternalSemaph
 }
 #[cfg(feature = "dynamic-loading")]
 pub unsafe fn is_culib_present() -> bool {
+    if crate::gpuwm_hip::requested() { return crate::gpuwm_hip::driver_path().map(|p| ::libloading::Library::new(p).is_ok()).unwrap_or(false); }
     let lib_names = ["cuda", "nvcuda"];
     let choices = lib_names.iter().map(|l| crate::get_lib_name_candidates(l)).flatten();
     for choice in choices {
@@ -16119,6 +16121,10 @@ pub unsafe fn is_culib_present() -> bool {
 pub unsafe fn culib() -> &'static ::libloading::Library {
     static LIB: OnceLock<::libloading::Library> = OnceLock::new();
     LIB.get_or_init(|| {
+        if crate::gpuwm_hip::requested() {
+            let path = crate::gpuwm_hip::driver_path().unwrap_or_else(|e| panic!("HIP Rust driver: {e}"));
+            return ::libloading::Library::new(path).unwrap_or_else(|e| panic!("HIP Rust driver load: {e}"));
+        }
         let lib_names = std::vec!["cuda", "nvcuda"];
         let choices: std::vec::Vec<_> = lib_names.iter().map(|l| crate::get_lib_name_candidates(l)).flatten().collect();
         for choice in choices.iter() {

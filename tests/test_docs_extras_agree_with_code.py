@@ -512,6 +512,11 @@ def test_every_command_the_docs_print_names_a_real_door():
         "dump:\n  " + "\n  ".join(offenders))
 
 
+#: The commands woof/cli.py passes as local_backend_commands to
+#: consume_backend_option: their own parsers own --backend.
+_LOCAL_BACKEND_COMMANDS = ("tc-tracks", "spectral-op")
+
+
 def test_every_flag_the_docs_pass_is_defined_by_that_door():
     doors = _doors()
     root = _repo_root()
@@ -539,6 +544,13 @@ def test_every_flag_the_docs_pass_is_defined_by_that_door():
             # of the options the selected program takes.
             defined |= {mode for mode, door in _MODE_DOORS.items()
                         if door == name}
+            # woof.backend.consume_backend_option takes --backend before or
+            # after the command word (woof/cli.py), except on the doors that
+            # parse their own --backend, so `woof go CASE.toml --backend amd`
+            # runs as pasted.
+            if (name.startswith("woof ")
+                    and name.split()[1] not in _LOCAL_BACKEND_COMMANDS):
+                defined.add("--backend")
             for flag in _FLAG.findall(body):
                 if flag not in defined:
                     offenders.append(

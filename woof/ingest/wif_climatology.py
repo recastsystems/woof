@@ -876,7 +876,7 @@ def is_wif_intermediate_file(path) -> bool:
         return False
 
 
-# ONE exception class, not two.  lane/static-dataset-door landed a second
+# ONE exception class, not two.  development branch landed a second
 # MissingWifClimatologyDataset in woof/ingest/wif_dataset.py.  That would
 # have made `except MissingWifClimatologyDataset` catch the refusal from
 # one module and let the identical refusal from the other escape -- and a
@@ -990,7 +990,7 @@ def resolve_wif_climatology(path=None, *, env=None, cwd=None,
             + str(WIF_REFERENCE_BYTES) + " bytes, " + WIF_REFERENCE_SOURCE
             + ").")
 
-    # THE STAGED ROOT (lane/static-dataset-door).  `woof fetch-tables
+    # THE STAGED ROOT (development branch).  `woof fetch-tables
     # --wif` installs the dataset into $WOOF_WIF_DATA_ROOT, defaulting to
     # ~/.woof/wif, verified against the pin before it is moved into place.
     # Without this rung that command would stage a 225 MB file the DEFAULT

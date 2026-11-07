@@ -32,7 +32,7 @@ The breakage each gate prevents, named:
    response to a one-unit nudge of every input, or four float32 units of
    the largest value the cell held; under mp=8 also the two named rules
    for the rates rounding decides there, see fixture_check.py -- mp=28 has
-   none since lane/mp28fix-warm-network repaired the transcription
+   none since development branch repaired the transcription
    differences they covered).  Every process rate and
    every final-state quantity must have none.  (Until the no-micro column
    exit and the terminal vapour floor were repaired the final vapour was

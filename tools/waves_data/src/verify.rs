@@ -7,6 +7,29 @@ pub struct Series{label:String,times:Vec<i64>,fields:BTreeMap<String,Vec<f64>>,s
 fn nearest(times:&[i64],t:i64,tolerance:i64)->Option<usize>{let at=times.partition_point(|v|*v<t);[at.checked_sub(1),if at<times.len(){Some(at)}else{None}].into_iter().flatten().filter(|&i|(times[i]-t).abs()<=tolerance).min_by_key(|&i|((times[i]-t).abs(),times[i]))}
 fn load(row:&Value,stations:&[Value],target_times:&[i64])->Result<Series>{
     let label=text(row,"label")?.to_string();let ns=stations.len();let mut spectral=BTreeMap::new();
+    if let Some(files)=row["files"].as_array(){
+        if files.is_empty(){return Err("segmented point series needs at least one file".into());}
+        let parts:Vec<Series>=files.iter().map(|p|load(&json!({"label":label,"points":p}),stations,target_times)).collect::<Result<_>>()?;
+        let times:Vec<i64>=parts.iter().flat_map(|s|s.times.iter().copied()).collect::<BTreeSet<_>>().into_iter().collect();
+        let nt=times.len();let keys:BTreeSet<_>=parts[0].fields.keys().cloned().collect();
+        if parts.iter().any(|s|s.fields.keys().cloned().collect::<BTreeSet<_>>()!=keys){return Err("segmented bulk field inventories differ".into());}
+        let mut fields:BTreeMap<String,Vec<f64>>=keys.iter().map(|k|(k.clone(),vec![f64::NAN;ns*nt])).collect();
+        let mut seen=BTreeSet::new();
+        for part in parts{
+            for(j,&t)in part.times.iter().enumerate(){let at=times.binary_search(&t).unwrap();
+                for(k,target)in &mut fields{let input=&part.fields[k];for i in 0..ns{let value=input[i*part.times.len()+j];
+                    if seen.contains(&t)&&target[i*nt+at].to_bits()!=value.to_bits(){return Err(format!("checkpoint overlap differs for {k} at {t}").into());}
+                    target[i*nt+at]=value;}}
+                seen.insert(t);
+            }
+            for(key,spectrum)in part.spectra{
+                if let Some(old)=spectral.get(&key){let old:&Spectrum=old;
+                    if old.frequency!=spectrum.frequency||old.from!=spectrum.from||old.efth!=spectrum.efth{return Err("checkpoint spectral overlap differs".into());}}
+                spectral.insert(key,spectrum);
+            }
+        }
+        return Ok(Series{label,times,fields,spectra:spectral});
+    }
     if row["kind"]=="station_ascii" {
         let root=Path::new(text(row,"case")?);let acq:Value=serde_json::from_slice(&fs::read(root.join("ACQUIRED.json"))?)?;
         let jobs:Vec<_>=acq["files"].as_array().ok_or("missing acquisition files")?.iter().filter(|f|f["error"].is_null()&&f["path"].as_str().is_some_and(|p|p.starts_with("station-spectra/"))).collect();
@@ -20,16 +43,17 @@ fn load(row:&Value,stations:&[Value],target_times:&[i64])->Result<Series>{
     let path=Path::new(text(row,"points")?);let f=netcrust::open(path).map_err(|e|e.to_string())?;
     let times:Vec<i64>=arrays::read_nc(path,"time")?.into_iter().map(|v|v as i64).collect();if times.is_empty()||times.windows(2).any(|w|w[1]<=w[0]){return Err("point times must strictly increase".into());}
     let nt=times.len();let ids=f.read_strings("station_id").map_err(|e|format!("station_id is required to prevent pairing another buoy's data: {e}"))?;
-    if ids.len()!=ns||ids.iter().zip(stations).any(|(a,b)|Some(a.trim())!=b["id"].as_str()){return Err("point station order differs from prepared station table".into());}
-    let mut fields=BTreeMap::new();for(k,_)in KEYS{if let Some(v)=f.variable(k){if v.shape()!=[ns,nt]{return Err(format!("{k} must have [station,time] shape").into());}fields.insert(k.into(),arrays::read_nc(path,k)?);}}
-    if let Some(spectral_var)=f.variable("efth"){let shape=spectral_var.shape();if shape.len()!=4||shape[0]!=ns||shape[1]!=nt||shape[2]<2||shape[3]<4{return Err("efth must have [station,time,frequency,direction] shape".into());}
+    if ids.iter().map(|s|s.trim()).collect::<BTreeSet<_>>().len()!=ids.len(){return Err("point station IDs are duplicated".into());}
+    let order:Vec<usize>=stations.iter().map(|s|{let id=text(s,"id")?;ids.iter().position(|v|v.trim()==id).ok_or_else(||format!("point file lacks requested station {id}").into())}).collect::<Result<_>>()?;
+    let mut fields=BTreeMap::new();for(k,_)in KEYS{if let Some(v)=f.variable(k){if v.shape()!=[ids.len(),nt]{return Err(format!("{k} must have [station,time] shape").into());}let raw=arrays::read_nc(path,k)?;let selected=order.par_iter().flat_map_iter(|&i|raw[i*nt..(i+1)*nt].iter().copied()).collect::<Vec<_>>();fields.insert(k.into(),selected);}}
+    if let Some(spectral_var)=f.variable("efth"){let shape=spectral_var.shape();if shape.len()!=4||shape[0]!=ids.len()||shape[1]!=nt||shape[2]<2||shape[3]<4{return Err("efth must have [station,time,frequency,direction] shape".into());}
         let frequency_name=row["frequency_coordinate"].as_str().unwrap_or("frequency");
         let direction_name=if let Some(name)=row["direction_coordinate"].as_str(){name.to_string()}else if f.variable("direction").is_some_and(|v|v.shape()==[shape[3]]){"direction".into()}else{
             spectral_var.attribute("coordinates").and_then(|a|a.as_string()).unwrap_or("").split_whitespace().find(|name|f.variable(name).is_some_and(|v|v.shape()==[shape[3]]&&v.attribute("standard_name").and_then(|a|a.as_string())==Some("sea_surface_wave_from_direction"))).ok_or("efth needs a one-dimensional FROM direction coordinate in CF coordinates or direction_coordinate metadata")?.to_string()
         };
-        let freq=arrays::read_nc(path,frequency_name)?;let from=arrays::read_nc(path,&direction_name)?;let efth=arrays::read_nc(path,"efth")?;let nf=freq.len();let nd=from.len();if shape!=[ns,nt,nf,nd]{return Err("spectral coordinate lengths differ from efth dimensions".into());}
+        let freq=arrays::read_nc(path,frequency_name)?;let from=arrays::read_nc(path,&direction_name)?;let efth=arrays::read_nc(path,"efth")?;let nf=freq.len();let nd=from.len();if shape!=[ids.len(),nt,nf,nd]{return Err("spectral coordinate lengths differ from efth dimensions".into());}
         if freq.iter().any(|v|!v.is_finite()||*v<=0.)||freq.windows(2).any(|w|w[1]<=w[0])||from.iter().any(|v|!v.is_finite())||efth.par_iter().any(|v|!v.is_finite()||*v<0.){return Err("invalid spectral coordinates or negative/nonfinite variance".into());}
-        for i in 0..ns{for(ti,&t)in times.iter().enumerate(){let offset=(i*nt+ti)*nf*nd;spectral.insert((i,t),Spectrum{epoch:t,id:text(&stations[i],"id")?.into(),lat:stations[i]["lat"].as_f64().unwrap_or(f64::NAN),lon:stations[i]["lon"].as_f64().unwrap_or(f64::NAN),frequency:freq.clone(),from:from.clone(),efth:efth[offset..offset+nf*nd].to_vec()});}}
+        for i in 0..ns{for(ti,&t)in times.iter().enumerate(){let offset=(order[i]*nt+ti)*nf*nd;spectral.insert((i,t),Spectrum{epoch:t,id:text(&stations[i],"id")?.into(),lat:stations[i]["lat"].as_f64().unwrap_or(f64::NAN),lon:stations[i]["lon"].as_f64().unwrap_or(f64::NAN),frequency:freq.clone(),from:from.clone(),efth:efth[offset..offset+nf*nd].to_vec()});}}
     }
     Ok(Series{label,times,fields,spectra:spectral})
 }
@@ -119,10 +143,37 @@ fn event_summary(times:&[i64],hs:&[Option<f64>],tp:&[Option<f64>])->Value{
 pub fn run(r:&Value,out:&Path)->Result<Value>{
     let prepared=Path::new(text(r,"prepared")?);let manifest:Value=serde_json::from_slice(&fs::read(prepared.join("manifest.json"))?)?;
     if manifest["schema"]!="gpuwm.waves.prepared/v1"{return Err("prepared schema differs".into());}
-    let stations=manifest["request"]["stations"].as_array().ok_or("prepared station recipes missing")?;let target:Vec<i64>=manifest["times"].as_array().ok_or("prepared times missing")?.iter().map(|v|v.as_i64().ok_or("bad time")).collect::<std::result::Result<_,_>>()?;
-    let models:Vec<Series>=r["models"].as_array().ok_or("models required")?.iter().map(|row|load(row,stations,&target)).collect::<Result<_>>()?;if models.is_empty(){return Err("at least one series required".into());}
+    let prepared_stations=manifest["request"]["stations"].as_array().ok_or("prepared station recipes missing")?;
+    let model_rows=r["models"].as_array().ok_or("models required")?;
+    let policy=r["station_policy"].as_str().unwrap_or("all");if policy!="all"&&policy!="intersection"{return Err("station_policy must be all or intersection".into());}
+    let mut included:BTreeSet<String>=prepared_stations.iter().map(|s|text(s,"id").map(str::to_owned)).collect::<Result<_>>()?;
+    if policy=="intersection"{for row in model_rows{
+        if row["kind"]=="station_ascii"{continue;}
+        let files:Vec<&str>=if let Some(files)=row["files"].as_array(){files.iter().map(|p|p.as_str().ok_or_else(||"station files must be paths".into())).collect::<Result<_>>()?}else{vec![text(row,"points")?]};
+        for path in files{let file=netcrust::open(path).map_err(|e|e.to_string())?;let ids=file.read_strings("station_id").map_err(|e|e.to_string())?;
+            included.retain(|id|ids.iter().any(|s|s.trim()==id));}
+    }}
+    let stations:Vec<Value>=prepared_stations.iter().filter(|s|s["id"].as_str().is_some_and(|id|included.contains(id))).cloned().collect();
+    if stations.is_empty(){return Err("no common observed stations in the requested model domains".into());}
+    let station_selection=json!({"policy":policy,"included":included,"excluded":prepared_stations.iter().filter(|s|!stations.iter().any(|v|v["id"]==s["id"])).map(|s|s["id"].clone()).collect::<Vec<_>>()});
+    let mut target:Vec<i64>=manifest["times"].as_array().ok_or("prepared times missing")?.iter().map(|v|v.as_i64().ok_or("bad time")).collect::<std::result::Result<_,_>>()?;
+    let bound=|key:&str,default:i64|->Result<i64>{match r.get(key){None=>Ok(default),Some(v)=>Ok(chrono::DateTime::parse_from_rfc3339(v.as_str().ok_or("verification time bound must be RFC3339 text")?)?.timestamp())}};
+    let begin=bound("start",*target.first().ok_or("empty target times")?)?;
+    let end=bound("end",*target.last().ok_or("empty target times")?)?;
+    if end<begin{return Err("verification end precedes start".into());}
+    target.retain(|&t|t>=begin&&t<=end);
+    if target.is_empty(){return Err("verification window contains no prepared target times".into());}
+    let mut models:Vec<Series>=model_rows.iter().map(|row|load(row,&stations,&target)).collect::<Result<_>>()?;if models.is_empty(){return Err("at least one series required".into());}
+    // Keep charts and sampled peak/arrival summaries inside the same declared
+    // window as scores, including references with longer source trajectories.
+    for model in &mut models{
+        let old_nt=model.times.len();let indices:Vec<usize>=model.times.iter().enumerate().filter(|(_,t)|**t>=begin&&**t<=end).map(|(i,_)|i).collect();
+        if indices.is_empty(){return Err(format!("{} has no samples inside the verification window",model.label).into());}
+        for values in model.fields.values_mut(){*values=(0..stations.len()).into_par_iter().flat_map_iter(|i|indices.iter().map(move |&j|i*old_nt+j)).map(|i|values[i]).collect();}
+        model.times=indices.iter().map(|&i|model.times[i]).collect();
+        model.spectra.retain(|(_,t),_|*t>=begin&&*t<=end);
+    }
     let tolerance=r["match_seconds"].as_i64().unwrap_or(1800);if !(0..=3600).contains(&tolerance){return Err("matching tolerance must be 0..3600 seconds".into());}
-    let begin=target[0];let end=*target.last().ok_or("empty target times")?;
     let results:Vec<Result<Value>>=stations.par_iter().enumerate().map(|(si,station)|{
         let obs=observations::stdmet(Path::new(text(station,"stdmet")?),begin,end)?;
         let mut pairs=Vec::new();let mut stats=Vec::new();let mut used=BTreeSet::new();
@@ -158,6 +209,8 @@ pub fn run(r:&Value,out:&Path)->Result<Value>{
     for station in &results{for row in station["spectral_scores"]["scores"].as_array().into_iter().flatten(){let s=&row["scores"];csv.push_str(&format!("{},{},{},{},{},{},{},{},{}\n",text(station,"station")?,text(row,"model")?,row["frequency_hz"],text(row,"metric")?,s["n"],s["bias"],s["rmse"],s["scatter_index"],s["correlation"]));}}
     fs::write(out.join("spectral-scores.csv"),csv)?;
     let result=json!({"schema":"gpuwm.waves.verification/v1","status":"complete","prepared_manifest_sha256":arrays::sha(&prepared.join("manifest.json"))?,"request":r,"match_seconds":tolerance,"pairing":"one nearest observation per target valid time, no reused observation; common finite pairs across providers of each metric","scatter_index_definition":"standard deviation of prediction minus observation divided by observed mean; bias removed","direction_error":"wrapped to [-180,180), bias is circular mean, RMSE is wrapped-error RMS","period_note":"Tm02 vs NDBC APD is the matching spectral moment; Tm01 vs APD is a labelled diagnostic comparison","direction_note":"dp matches NDBC mean direction at dominant period; integrated dir vs MWD is diagnostic only","pooled":pooled,"stations":results});
+    let mut result=result;result["station_selection"]=station_selection;
+    result["verification_window"]=json!({"start_epoch":begin,"end_epoch":end,"target_times":target.len(),"interval":"inclusive"});
     fs::write(out.join("verification.json"),serde_json::to_vec_pretty(&result)?)?;Ok(json!({"status":"complete","stations":stations.len(),"series":models.len(),"pooled":pooled}))
 }
 

@@ -136,7 +136,7 @@ def test_source_mutation_is_refused_and_reported_once(prepared):
 
 def test_native_plot_cli_requires_exact_sequence_and_cache():
     from woof.cli import build_parser
-    args = build_parser().parse_args(["remote", "sync-native-plots", "--host", "host-1", "--python", "/python",
+    args = build_parser().parse_args(["remote", "sync-native-plots", "--host", "test-host-1", "--python", "/python",
         "--workspace", "/work", "--job", "job-1", "--domain", "2", "--sequence", "3", "--cache-root", "cache"])
     assert args.remote_action == "sync-native-plots" and args.sequence == 3 and args.domain == 2
 
@@ -193,7 +193,7 @@ def test_a_panel_size_outside_the_renderers_range_names_that_range(prepared):
 
 def test_the_gallery_door_registers_its_render_options():
     from woof.cli import build_parser
-    args = build_parser().parse_args(["remote", "sync-native-plots", "--host", "host-1", "--python", "/python",
+    args = build_parser().parse_args(["remote", "sync-native-plots", "--host", "test-host-1", "--python", "/python",
         "--workspace", "/work", "--job", "job-1", "--sequence", "3", "--cache-root", "cache",
         "--products", "2m_temperature,var:T2", "--width", "800", "--height", "600"])
     assert plots.request_options(args) == {"products": ["2m_temperature", "var:T2"],
@@ -285,7 +285,7 @@ def test_explicit_theme_and_auto_layout_reach_the_compact_renderer(prepared):
 def test_remote_theme_and_layout_are_explicit_parser_options():
     from woof.cli import build_parser
     args = build_parser().parse_args([
-        "remote", "sync-native-plots", "--host", "host-1", "--python", "/python",
+        "remote", "sync-native-plots", "--host", "test-host-1", "--python", "/python",
         "--workspace", "/work", "--job", "job-1", "--sequence", "3", "--cache-root", "cache",
         "--theme", "/site/theme.json", "--layout", "auto"])
     assert plots.request_options(args) == {"theme": "/site/theme.json", "layout": "auto"}

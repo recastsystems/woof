@@ -102,6 +102,15 @@ def _synthetic_tree(tmp_path: Path, pins: dict | None) -> Path:
     bridges.mkdir(parents=True)
     (tree / "woof" / "__init__.py").write_text("", encoding="utf-8")
     shutil.copyfile(SETUP, tree / "setup.py")
+    # setup.py reads VERIFY_ORACLE_TREES from woof/data_assets.py (by ast,
+    # never importing it) to keep the oracle trees out of every wheel, so a
+    # tree driven by the real setup.py carries that declaration too.
+    shutil.copyfile(SETUP.parent / "woof" / "data_assets.py",
+                    tree / "woof" / "data_assets.py")
+    # (WOOF 1.1.6) and WHEEL_XZ_DATA from woof/packed_data.py, the members every
+    # wheel carries xz-compressed (PyPI's per-file limit).
+    shutil.copyfile(SETUP.parent / "woof" / "packed_data.py",
+                    tree / "woof" / "packed_data.py")
     (tree / "pyproject.toml").write_text(
         '[build-system]\n'
         'requires = ["setuptools"]\n'

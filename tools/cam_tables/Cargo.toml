@@ -1,0 +1,14 @@
+[package]
+name = "rw_cam_tables"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+[lib]
+crate-type = ["rlib", "cdylib"]
+[workspace]
+[profile.release]
+opt-level = 2
+[dependencies]
+sha2 = "0.10.9"
+serde_json = "1"
+rayon = "1.11"

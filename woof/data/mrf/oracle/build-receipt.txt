@@ -1,0 +1,37 @@
+# module_bl_mrf.F sha256 a1306d0063043d001fa4a53b9219031b931999c7d7daea172fd97518bc9b19eb
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# referee object: /work/wrf/build/scalar/WRF-4.6.1/phys/module_bl_mrf.o
+#   sha256 19bf18e442288ad9c9407193d5719ade9895eac6314f39eaae3624848539bf3a
+#   PROMOTION       =       #-fdefault-real-8
+#   FCOPTIM         =       -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize
+#   FORMAT_FREE     =       -ffree-form -ffree-line-length-none
+#   FCCOMPAT        =        -fallow-argument-mismatch -fallow-invalid-boz
+#   FCBASEOPTS_NO_G =       -w $(FORMAT_FREE) $(BYTESWAPIO) $(FCCOMPAT)
+# referee undefined symbols:
+#   U expf
+#   U free
+#   U malloc
+#   U memcpy
+#   U memset
+#   U powf
+# referee libm call sites (objdump -dr relocations):
+#   powf: 4
+#   expf: 1
+#   logf: 0
+#   sqrtf: 0
+#   sqrtss: 3
+# rebuild libm call sites (objdump -dr relocations):
+#   powf: 4
+#   expf: 1
+#   logf: 0
+#   sqrtf: 0
+#   sqrtss: 3
+# o0 libm call sites (objdump -dr relocations):
+#   powf: 5
+#   expf: 1
+#   logf: 1
+#   sqrtf: 0
+#   sqrtss: 3
+# referee and rebuild outputs byte-identical: adb9e2a8f3f47b31c1ea6032cd495d6d616ba943efd507e2b9b51b6bf7415ce4
+# diagnostic -O0 arm: 86 of 196520 words differ from the referee (the unfolded ZFAC**PFAC powf call)

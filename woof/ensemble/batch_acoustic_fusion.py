@@ -223,6 +223,13 @@ def prepare_acoustic_substep_launch(state, cfg, dtau, coefficients, *, mudf=None
     options = _runtime_audit_options(mu_spec)
     fused, names, receipt = fusion_source(source, mu_spec, w_spec, options,
                                          shared_intermediates=shared_intermediates)
+    # The member-batched fused entry compiles generic (runtime nz/ny/nx), as
+    # qualified in 3e2d23212e. 248b9f57e9 specialized it with the shape
+    # constants; under default (fast) numerics that compile contracts the
+    # mapped Mu/W column differently from the scalar route, so members
+    # differed from single runs by 1-4 ULP in w_pp/u_pp (40 reds in
+    # test_ensemble_batch_acoustic_fusion*_gpu). The scalar route keeps its
+    # own specialization; only word identity with it decides this text.
     pointer_names = []
     for spec in (mu_spec, w_spec):
         for pointer in spec.pointers:

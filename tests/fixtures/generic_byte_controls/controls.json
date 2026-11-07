@@ -119,7 +119,7 @@
       "gpuwm/source_cycles.py": {
         "bytes": 19303,
         "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
-        "sha256": "c89085b03b0d22c734879aab61736caed01f8c845c704dafce4b0a5a3d1b8e2c"
+        "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
       }
     },
     "1077c6e8abe502aab59de103d7e6d70dbb8588a1": {
@@ -226,7 +226,7 @@
       "gpuwm/source_cycles.py": {
         "bytes": 19303,
         "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
-        "sha256": "c89085b03b0d22c734879aab61736caed01f8c845c704dafce4b0a5a3d1b8e2c"
+        "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
       }
     },
     "32261e42e85fadb9fa4b934f65aba0a22586d5f1": {
@@ -333,7 +333,7 @@
       "gpuwm/source_cycles.py": {
         "bytes": 19303,
         "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
-        "sha256": "c89085b03b0d22c734879aab61736caed01f8c845c704dafce4b0a5a3d1b8e2c"
+        "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
       }
     },
     "425e3e068012eafae8d9e6f4ccfb1249151ae91e": {
@@ -440,7 +440,7 @@
       "gpuwm/source_cycles.py": {
         "bytes": 19303,
         "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
-        "sha256": "c89085b03b0d22c734879aab61736caed01f8c845c704dafce4b0a5a3d1b8e2c"
+        "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
       }
     },
     "7ab2e3dcf59acb668015e3172feefc0418ee91b3": {
@@ -547,7 +547,7 @@
       "gpuwm/source_cycles.py": {
         "bytes": 19303,
         "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
-        "sha256": "c89085b03b0d22c734879aab61736caed01f8c845c704dafce4b0a5a3d1b8e2c"
+        "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
       }
     }
   },

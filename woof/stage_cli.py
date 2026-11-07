@@ -524,7 +524,7 @@ def _continuation_head_bundle(root: Path) -> dict | None:
     forecast was, at its head (``--prepared-head-sha256``).
 
     THE BREAKAGE (run_515470d250a1060a, 2026-10-26, GFS streamed 3 km,
-    woof 2.9.7): ``go --prepared-root PREFIX --restart`` refused such a
+    gpuwm 2.9.7): ``go --prepared-root PREFIX --restart`` refused such a
     prefix as "carries none of proof.json, receipt.json", so a forecast
     that failed mid-run, or a spot resume on a new box, could not continue
     from its checkpoint.  The refusal's teeth are kept where they belong:
@@ -1371,6 +1371,8 @@ def register_cli(subparsers) -> None:
                     "yourself.")
     from woof.output_formats import add_arguments
     add_arguments(sim)
+    from woof.ocean.settings import add_arguments as add_wave_arguments
+    add_wave_arguments(sim)
     sim.add_argument("prepared_root", type=Path, metavar="PREPARED_ROOT",
                      help="a prepared tree written by `woof prep "
                           "--output-root`, by the rw-wps console script, "

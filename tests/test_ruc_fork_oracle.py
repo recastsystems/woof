@@ -134,8 +134,8 @@ def test_sfctmp_matches_the_branch_with_pinned_residue_and_snowfall_units():
 #: committed branch build, measured.  The committed oracle_fork CSVs were built
 #: with gfortran 15.2 on a different C library (build.sh header), and these
 #: are that library's float32 libm words, not the port's arithmetic: rebuilt
-#: on box W1 with the glibc 2.39 toolchain every other RUC oracle uses
-#: (lane/verify-ruc-lsm), this fixture reproduces with no residue at all.
+#: on test host with the glibc 2.39 toolchain every other RUC oracle uses
+#: (development branch), this fixture reproduces with no residue at all.
 #: The v4.6.1 fixture carried the same eleven-cell map until RUC moved to
 #: WOOF's float32 libm.  Replacing the committed fork CSVs with the 2.39
 #: build is a named follow-up for the fork lineage's owner: the rebuild also

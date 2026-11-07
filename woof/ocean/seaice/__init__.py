@@ -60,6 +60,9 @@ def initialize(fields, cfg):
     """
     import cupy as cp
     validate(cfg)
+    from woof.core.noah_fractional_seaice import prescribed
+    if prescribed(cfg):
+        return
     if not cfg.seaice_prognostic or not cfg.sf_surface_physics:
         return
     mask = ((fields["xice"] > 0) & (fields["lakemask"] < .5))

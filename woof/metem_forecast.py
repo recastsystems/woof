@@ -73,7 +73,10 @@ class MetemInitialization:
         def physics():
             from woof.core.cam_ozone import cam_ozone_setup, ozone_parent_for
             cam = cam_ozone_setup(exp=self.inputs.experiment, dc=domain, grid=grid)
-            return initialize_prepared_physics(restored.initial_result, domain.run,
+            cfg = domain.run
+            if cfg.sst_update:
+                cfg = replace(cfg, surface_analysis=str(self.inputs.surface_analyses[domain.grid_id]))
+            return initialize_prepared_physics(restored.initial_result, cfg,
                 restored.met, restored.surface, bundle.static_fields,
                 bundle.geog_selection.landuse_global_attrs(), grid, start_time,
                 constant_glw_wm2=declared_constant_glw(self.inputs.experiment),
@@ -497,6 +500,12 @@ def prepare_metem_run(run, directory, *, run_seconds=None, preprocess_backend=No
     sources = {'namelist_input':run.namelist_input, 'adapter_code':Path(__file__).resolve(),
                'field_adapter_code':Path(__file__).with_name('ingest')/'metem.py',
                **{f'met_em_d{gid:02d}_{index}':path for gid,files in run.paths.items() for index,path in enumerate(files)}}
+    if any(domain.run.sst_update for domain in exp.domains):
+        from woof.surface_analysis import SOURCE_TABLE
+        sources['surface_source_table'] = SOURCE_TABLE
+        sources['surface_adapter'] = Path(__file__).with_name('surface_analysis.py')
+        from woof.netcdf_bridge import resolve_netcdf_bin
+        sources['surface_producer'] = resolve_netcdf_bin()
     source_digests = {name:_sha(path) for name,path in sources.items()}
     # THE FIT, BEFORE ANYTHING IS INTERPOLATED.  The price is built from
     # the met_em files' own inventory: auto prepares on the CPU when the
@@ -572,6 +581,7 @@ def prepare_metem_run(run, directory, *, run_seconds=None, preprocess_backend=No
          for domain in exp.domains],
         announce=_announce_adaptation)
     bundles, domain_receipts = [], {}
+    surface_analyses = {}
     root_boundaries = None
     fractional = run.controls.get('physics', {}).get('fractional_seaice', [0])[0] == 1
     # Every forcing time is built before the forecast starts; say so, the
@@ -582,6 +592,22 @@ def prepare_metem_run(run, directory, *, run_seconds=None, preprocess_backend=No
         cfg = domain.run
         frames = StateBoundaryFrames(spec_bdy_width=cfg.spec_bdy_width, spec_zone=cfg.spec_zone, relax_zone=cfg.relax_zone)
         files = run.paths[domain.grid_id]
+        if cfg.sst_update:
+            from woof.surface_analysis import prepare_analysis, produce_wrflowinp
+            stream = directory/f'wrflowinp_d{domain.grid_id:02d}'
+            manifest = directory/f'surface-d{domain.grid_id:02d}'/'manifest.json'
+            producer_receipt = directory/f'wrflowinp-d{domain.grid_id:02d}.json'
+            if not reused:
+                produced = produce_wrflowinp(files, stream, surface_physics=cfg.sf_surface_physics)
+                _json(producer_receipt, produced)
+                manifest = prepare_analysis(stream, [('wrf-lower-boundary',stream)],
+                    manifest.parent, interval_seconds=run.interval_seconds)
+            if not manifest.is_file() or not producer_receipt.is_file():
+                raise ValueError(f'incomplete stream-4 preparation: {stream}')
+            surface_analyses[domain.grid_id] = manifest
+            artifacts[f'surface_manifest_d{domain.grid_id:02d}'] = manifest
+            artifacts[f'surface_stream_d{domain.grid_id:02d}'] = stream
+            artifacts[f'surface_producer_d{domain.grid_id:02d}'] = producer_receipt
         series = {}
         coord = vertical_coord_for(exp.vertical, cfg.nz)
         # Children use parent runtime forcing; only their own initial state
@@ -695,7 +721,7 @@ def prepare_metem_run(run, directory, *, run_seconds=None, preprocess_backend=No
     return WrfTreeInputs(directory,config_path,exp,grids,tuple(bundles),
         tuple((parse_met_em_name(path)[1]-exp.start_time).total_seconds()/3600 for path in run.paths[1]),
         run.interval_seconds,MappingProxyType({'handoff':'WPS metgrid','forcing_origin':'not declared by input files'}),
-        resolve_execution_plan(exp),MappingProxyType(hashes),MappingProxyType(artifacts),root_boundaries,source='met_em')
+        resolve_execution_plan(exp),MappingProxyType(hashes),MappingProxyType(artifacts),root_boundaries,source='met_em',surface_analyses=MappingProxyType(surface_analyses))
 
 
 DOOR = 'woof run --met-em'

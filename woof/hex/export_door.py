@@ -679,9 +679,11 @@ def run_export(args: argparse.Namespace) -> int:
     }
     # The any-point column store, every output hour (column_store.py): from the frames just delivered, one store per
     # domain of the stack (<out>/columns/dNN/).
-    from .column_store import write as write_columns
+    from .column_store import write as write_columns, write_series
     value["columns"] = write_columns([Path(row["frame"]) for row in delivered], out / "columns",
                                      field_set=args.field_set)
+    # The export is finished: each grid's point-forecast series from the store just written.
+    value["columns"]["series"] = write_series(out / "columns")
     out.mkdir(parents=True, exist_ok=True)
     (out / RECEIPT_NAME).write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if not args.keep_scratch:

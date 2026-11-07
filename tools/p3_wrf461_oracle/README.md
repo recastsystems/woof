@@ -147,3 +147,128 @@ tests/test_p3_cuda_gpu.py).  WRF defects documented, not copied: X01
 words in WRF).  Open: the CPU reference arm (`p3_backend = "reference"`)
 is not bit-identical to WRF (run_reference_arm.py: 5,138 of 54,720 R01
 words in one step).
+
+
+## Two-category port (mp_physics=52)
+
+The shared kernels are instantiated at n_cat=1 and n_cat=2. The second
+instance carries prognostic droplet number and qi2/ni2/qir2/qib2, reads
+table 2 for inter-category collection, selects destination categories,
+enables rime splintering, merges close populations, and sediments and
+diagnoses both categories. The CPU reference remains one-category and
+refuses mp=52 because it lacks those operations.
+
+The check is `tests/test_p3_2cat_gpu.py`. It generates the column deck,
+runs default and GPUWM_WRF_EXACT=1 through all four launch arms, and uses
+`check_hashes.py` against the pinned WRF 4.6.1 CR referee. The fingerprints
+cover every post-wrapper state and diagnostic and each successive-state
+net tendency. Internal transient process rates are not wrapper outputs.
+The negative control flips one bit in qicol[cc][c] after its limiter and
+must fail the same state/tendency gate. Missing cases and empty manifests
+also fail the comparison command.
+
+The resumed lane's historical receipts report per arm: 5,880,930 MP52 state words and their net tendencies;
+2,559,870 MP50 state words and their net tendencies. Both modes match
+exactly. The inherited CR referee uses the original Fortran object with
+its established rounding shim. The stock-linkage arm A is separately
+reported and is not claimed bit-identical. The cold-start fixture remains
+outside the column claim, following the MP50 oracle's established first-
+call saturation guard distinction.
+
+Full-state hashes from the 600-second public-input CLI forecasts are
+retained by `forecast_receipt.py`. The input extension helper reads and
+writes through Rust and checks every original field in its wire dtype.
+Weather planes are derived by `rw_p3_planes` and rendered by rw_wrfbatch.
+The plane helper is supplied as Rust source and built with Cargo's locked,
+offline recipe. The older prebuilt executable is not part of this port.
+
+No matched WRF full-forecast trajectory or observation skill is claimed.
+Mixed-scheme nest edges and offline parent ingestion of MP52 have explicit
+category-partition refusals. Same-scheme transport includes all categories.
+
+### Candidate qualification (2026-11-01)
+
+The MP52 lane uses the WRF v4.6.1 public-domain source and tables. The P3
+source in the native v4.7.1 build is byte-identical to that pin. Source and
+asset hashes, commands, private instrumentation, configs, logs and Rust
+figures are retained in the lane evidence under
+`<reports>/WRF-PORTS-2026-11-01/evidence/port-mp52-p3-2cat/`.
+`qualification_20261101.json` records the portable receipt totals.
+
+The real case is 2024-05-25 18–21 UTC, Oklahoma/north Texas, 150×150 mass
+columns, 49 levels, 3 km, 12-second steps. Native WRF completed all 900
+steps using four MPI ranks. The instrumentation captures real P3 wrapper
+inputs and native outputs at iterations 2, 300, 600 and 900, four stripes
+per iteration. CUDA strict replay compares all 16 calls: **1,456,320 words,
+zero differences**, with both ice populations and prognostic cloud number
+active in the later captures. Native initialization of table 2 compares
+all **500,000 words exactly**. Rimed mass is zero in the selected real
+stripes; the historical synthetic fixtures exercise that branch but do
+not establish real rimed-cloud agreement.
+
+A complete default-fast `woof go` forecast completed 900 steps in 64.4
+model wall seconds on a shared RTX 5090. Reflectivity, 2 m temperature and
+accumulated precipitation were inspected using `woof.rustwx` and the Rust
+renderer at 19, 20 and 21 UTC beside native WRF and public MRMS composite
+reflectivity. Both models produce weak convection and miss the stronger
+observed north-Texas storms. Similar temperature gradients and small
+precipitation totals are visible; no observation skill is claimed. This
+comparison is visual, not a whole-model bitwise WRF trajectory comparison,
+and the registry maturity remains conservative pending ratification.
+
+The real run exposed pointer-table uploads on every MP52 call. Persistent
+workspace bindings now retain those device tables. Before/after forecasts
+are byte-identical across all four hourly files. CUDA-event medians for
+22,500 columns × 49 levels on RTX 5090 are:
+
+| stage | MP50 (ms) | MP52 (ms) |
+|---|---:|---:|
+| prepare | 0.215808 | 0.256672 |
+| process | 0.222880 | 0.378528 |
+| sedimentation | 0.122528 | 0.171680 |
+| finish | 0.075424 | 0.130720 |
+| total | 0.647520 | 0.937312 |
+
+The historical **1.448×** result missed the 1.2× target. It did not establish
+a physics-cost exception: ordinary native REAL expressions still used
+replay math with binary64 internals in fast mode. The 2026-11-02 speed
+change selects CUDA float transcendental leaves for default-fast MP52.
+Both strict selectors retain the replay leaves and operation order; the
+native source's explicit double exponentials remain double.
+
+One paired, interleaved run on a shared RTX PRO 6000 Blackwell measured
+MP50 **0.743696 ms**, MP52 before **1.034368 ms**, and MP52 after
+**0.735168 ms**, or **0.989× MP50**. These are medians of per-sample sums
+of four kernel times, using the same real iteration-300 stripe and grid
+size as above. Separate counter profiles on RTX 5070 Ti showed FP64
+pipeline use falling from 77.82% to zero in prepare and from 50.86% to
+2.64% in process, while memory traffic stayed about 439 MB per step.
+There are still four launches and no scheme host sync. The strict real
+replay remains **0/1,456,320 differing words**. Commands, raw samples,
+profiles and the forecast receipt are in the speed lane's report and
+`qualification_20261102.json`. The earlier JSON receipt remains a record
+of the earlier code. Shared-device launch gaps are not device stage times.
+
+A 19→21 UTC GPU checkpoint continuation matches **41,012,238 history words
+exactly**. Same-scheme parent/child runs with feedback 0 and 1 each match
+**47,578,866 words exactly** after checkpoint continuation, across both
+domains. All P3 number, second-ice and old-thermodynamic carriers are in
+the saved members. These runs exposed a missing serialized shortwave
+provenance flag, now retained in resident and streamed checkpoints.
+Independent seeded ensemble members execute both categories without state
+aliasing. Streamed diagnostics retain canonical state-array identities.
+
+A native `wrfrst` warm start completes one strict step. It maps `QICE2`,
+`QNICE2`, `QIR2`, `QIB2`, `TH_OLD` and `QV_OLD` without inventing carriers.
+This actual native file contains finite negative moisture/number residues;
+strict mode preserves their words and records the minima/counts. Default
+fast mode retains its existing negative-input refusal. The strict solar
+ASIN gate now accepts the native scalar profile witnessed by the bundled
+Fortran probe as well as its previously qualified profile; unknown profiles
+still refuse. No default-fast numerical path is changed by that gate.
+
+Stock WRF namelist admission/import, histories, restart inventories and
+both same-scheme nest feedback modes are wired. Mixed-scheme nest edges
+and offline-parent ingestion still refuse because no verified category
+partition contract exists. MP53 is not advertised or substituted. Merge
+the MP51 lane before this lane and reconcile only the P3 registry entries.

@@ -43,7 +43,7 @@ def test_verification_door_dispatches_the_requested_native_operation(monkeypatch
 
 def device():
     if os.environ.get("GPUWM_NO_LOCAL_GPU") == "1":
-        pytest.skip("GPU tests run under the V58 shared lease")
+        pytest.skip("GPU tests are disabled for this run")
     cp = pytest.importorskip("cupy")
     try:
         if cp.cuda.runtime.getDeviceCount() < 1:
@@ -171,12 +171,12 @@ def test_shared_solver_abi_advances_device_sources_and_tracks_water_depth(monkey
     bath=SimpleNamespace(depth=cp.full(shape,1000,cp.float32),wet=wet)
     s=create_solver(grid,bath,config={})
     wind=cp.full(shape,15,cp.float32);zero=cp.zeros(shape,cp.float32)
-    forcing=SimpleNamespace(u10=wind,v10=zero)
+    forcing=SimpleNamespace(u10=wind,v10=zero,rho_air=cp.full(shape,1.225,cp.float32))
     pointers=tuple(a.data.ptr for a in (s.outputs.hs,s.outputs.tp,s.outputs.direction))
     # The legacy standalone path synchronizes for a global source bound.
     # Accidentally delegating to it violates the asynchronous shared contract.
     def reject(*args,**kwargs):raise AssertionError('host synchronization/copy in shared ABI')
-    monkeypatch.setattr(s.model,'step',reject)
+    monkeypatch.setattr(WaveModel,'step',reject)
     monkeypatch.setattr(cp,'asnumpy',reject)
     monkeypatch.setattr(cp.cuda.runtime,'deviceSynchronize',reject)
     s.set_forcing(forcing)
@@ -185,7 +185,7 @@ def test_shared_solver_abi_advances_device_sources_and_tracks_water_depth(monkey
     assert tuple(a.data.ptr for a in (s.outputs.hs,s.outputs.tp,s.outputs.direction))==pointers
     assert float(cp.max(s.outputs.hs))>.1
     assert bool(cp.all(cp.isfinite(s.outputs.hs)))
-    assert bool(cp.all(s.model.depth[1:]==1002))
+    assert bool(cp.all(s.backend.depth==1002))
     assert bool(cp.all(s.outputs.hs[0]==0))
     assert bool(cp.all(s.outputs.tp[0]==0))
     assert bool(cp.allclose(s.outputs.direction[5:-5,5:-5],90,atol=2))
@@ -229,13 +229,15 @@ def test_shared_solver_near_calm_outputs_share_the_diagnostic_energy_threshold(m
         wet = cp.ones(shape, cp.float32)
         wet[0] = 0
         solver = create_solver(grid, SimpleNamespace(depth=cp.full(shape, 1000, cp.float32), wet=wet))
-        m = solver.model
+        m = solver
         # Include Hs below 1e-7, the reported invalid band (1e-7, sqrt(16e-15)],
         # and both sides of the diagnostic's float32 variance cutoff.
         variance = cp.asarray([0, 4e-16, 7.5e-16, 1e-15, 1.0001e-15, 2e-15, 1e-6], cp.float32)
-        m.spectrum[:, 4:11, 14, 0] = variance[None, :] / (m.df[14] * m.f(2*math.pi/m.nd))
+        columns = m.backend.wet_to_full % shape[1]
+        for column, value in enumerate(variance, start=4):
+            m.state[columns == column, 14, 0] = value / (m.df[14] * (2*math.pi/m.nd) * (2*math.pi*m.frequency[14]))
         zero = cp.zeros(shape, cp.float32)
-        solver.set_forcing(SimpleNamespace(u10=zero, v10=zero))
+        solver.set_forcing(SimpleNamespace(u10=zero, v10=zero, rho_air=cp.full(shape,1.225,cp.float32)))
         pointers = tuple(a.data.ptr for a in (solver.outputs.hs, solver.outputs.tp, solver.outputs.direction))
         launched_streams = []
         launch = m._launch
@@ -248,25 +250,27 @@ def test_shared_solver_near_calm_outputs_share_the_diagnostic_energy_threshold(m
             guards.setattr(m, "_launch", checked_launch)
             guards.setattr(cp, "asnumpy", reject)
             guards.setattr(cp.cuda.runtime, "deviceSynchronize", reject)
-            solver.step(1e-12)
-        actual_variance = m.moments[:, 0].reshape(shape)
-        calm = (m.depth <= 0) | (actual_variance <= m.f(1e-15))
+            solver.refresh_outputs()
+        actual_variance = cp.zeros(shape, cp.float32)
+        actual_variance.ravel()[m.backend.wet_to_full] = m.moments[:, 0]
+        calm = (wet == 0) | (actual_variance <= cp.float32(1e-15))
         moving = ~calm
         # Prove the regression actually exercises the coupled run's failing band.
-        assert bool(cp.any((m.diagnostics[0] > 1e-7) & (m.diagnostics[0] <= m.f(math.sqrt(16e-15))) & (m.depth > 0)))
+        assert bool(cp.any((actual_variance > 1e-14/16) & (actual_variance <= cp.float32(1e-15))))
         assert bool(cp.any(moving))
         fields = (solver.outputs.hs, solver.outputs.tp, solver.outputs.direction)
         assert all(bool(cp.all(cp.isfinite(field))) for field in fields)
         for field in fields:
             assert bool(cp.all(field[calm] == 0))
         assert bool(cp.all(solver.outputs.hs[moving] > 0))
-        assert bool(cp.allclose(solver.outputs.tp[moving], 1/m.frequency[14], atol=1e-6))
+        # The current diagnostic interpolates the spectral peak within its bin.
+        assert bool(cp.allclose(solver.outputs.tp[moving], 1/m.frequency[14],
+                               rtol=math.sqrt(m.spectral.ratio)-1))
         assert bool(cp.allclose(solver.outputs.direction[moving], 90, atol=1e-4))
         assert tuple(a.data.ptr for a in (solver.outputs.hs, solver.outputs.tp, solver.outputs.direction)) == pointers
         assert launched_streams and set(launched_streams) == {stream.ptr}
-        # Missing diagnostics in a genuinely invalid wet spectrum must still be
-        # observable by the coupler, rather than being converted into calm water.
-        m.spectrum.fill(cp.nan)
-        solver.step(1e-12)
-        assert bool(cp.all(cp.isnan(solver.outputs.tp[1:])))
-        assert bool(cp.all(cp.isnan(solver.outputs.direction[1:])))
+        # The output-cadence validation barrier must reject invalid wet action.
+        m.state.fill(cp.nan)
+        solver.refresh_outputs()
+        with pytest.raises(RuntimeError, match="nonfinite"):
+            solver.collect()

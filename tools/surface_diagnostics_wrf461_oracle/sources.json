@@ -1,0 +1,48 @@
+{
+  "wrf": {
+    "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+    "native_pin": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+    "licence": "public domain",
+    "licence_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+    "source_equivalence": "RASM/solar target modules identical in v4.6.1 and v4.7.1; immutable hashes in the lane source manifest"
+  },
+  "tables": [],
+  "reused_support": "glibc_flt32.cuh and glibc_trig_flt32.cuh, existing MIT Arm/Core-Math notices retained",
+  "sources": [
+    {
+      "path": "phys/module_diag_rasm.F",
+      "bytes": 46421,
+      "sha256": "1bd86fd585eebce07ce49ceeab7ec19584a963ded694eaf598ae2b29abd742d2",
+      "licence": "WRF public domain; no additional restrictive notice",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_diag_rasm.F"
+    },
+    {
+      "path": "phys/module_diag_solar.F",
+      "bytes": 18267,
+      "sha256": "95fca753e8874b8b74da533317771a840f0d9694290a2dab1879c9756128adf6",
+      "licence": "WRF public domain; no additional restrictive notice",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_diag_solar.F"
+    },
+    {
+      "path": "phys/module_radiation_driver.F",
+      "bytes": 250279,
+      "sha256": "779875651512709c47d50ef6c1e1216ad94726f1996c5e45a0db8eb800733ffa",
+      "licence": "WRF public domain; no additional restrictive notice",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_radiation_driver.F"
+    },
+    {
+      "path": "Registry/registry.rasm_diag",
+      "bytes": 11677,
+      "sha256": "3be086896cd8f6703bcca889917e0c653847fae2ebf252e2033434149e9e3a0f",
+      "licence": "WRF public domain; no additional restrictive notice",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/Registry/registry.rasm_diag"
+    },
+    {
+      "path": "Registry/registry.solar_fields",
+      "bytes": 10049,
+      "sha256": "40254d5deeb59d247b977de121d092ff7a8f4e180255f82251fb1320967d78f5",
+      "licence": "WRF public domain; no additional restrictive notice",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/Registry/registry.solar_fields"
+    }
+  ]
+}

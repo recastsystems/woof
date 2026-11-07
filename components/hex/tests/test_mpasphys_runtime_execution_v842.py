@@ -251,8 +251,11 @@ def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
         return step in (0, steps)
 
     class Output:
-        def __init__(self, session, streams, out, *, final_time, diagnostics=None):
+        def __init__(self, session, streams, out, *, final_time, alarms=None, diagnostics=None,
+                     contract=None, history_from_minutes=0.0):
+            # Mirrors PhysicsStreams.__init__ (streams_output_v842).
             self.missing = {}
+            assert history_from_minutes == 0.0
             assert diagnostics is not None
 
         def __enter__(self):
@@ -313,7 +316,8 @@ def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
     monkeypatch.setattr(resident_v842, 'ResidentPhysicsGlue', glue)
     for name, value in dict(NativePhysics=Native, NativePhysicsSession=Session,
             ResidentNativeCoupling=Coupling, load_native_dynamics_inputs=load,
-            native_table_roots=lambda *args: [], fold_lake_class=lambda *args: 0,
+            native_table_roots=lambda *args: [],
+            fold_lake_class=lambda *args, preserve_tc_mask=False: 0,
             _configure_streams=lambda *args: [],
             initialize_native_output=lambda *args, **kwargs: events.append(('output-initialize',)),
             native_publication_required=publication,

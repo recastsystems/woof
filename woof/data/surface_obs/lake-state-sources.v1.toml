@@ -54,7 +54,7 @@ licence = "CC-BY-4.0"
 licence_url = "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land?tab=overview"
 citation = "Copernicus Climate Change Service (C3S), ERA5-Land hourly data, doi:10.24381/cds.e2161bac"
 # CC-BY-4.0 permits commercial use with attribution (the citation above), as for the
-# CAMS rows (lane/cap-fix-c 0a059824451): no named acceptance is needed.
+# CAMS rows (commit 0a059824451): no named acceptance is needed.
 research_only = false
 latitude = "latitude"
 longitude = "longitude"

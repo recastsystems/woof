@@ -156,6 +156,7 @@ _DOMAIN_PREPARATION_OVERRIDES = frozenset({
     "bl_pbl_physics", "km_opt", "c_s", "c_k", "diff_6th_opt",
     "mix_isotropic", "mix_upper_bound", "isfflx",
     "tke_heat_flux", "tke_drag_coefficient", "tke_upper_bound",
+    "tke_adv_opt", "tke_mix2_off", "tke_mix6_off", "sfs_opt", "m_opt",
     # The P3 inflow-seeding keys, for the third time the same finding:
     # preparation never reads them, and this drift check refused them
     # AFTER the expensive preparation.  The ruling that they are
@@ -341,13 +342,8 @@ def _require_raw_stock_delta(
     At WRF's default the stock arm's history frames carry no REFL_10CM
     at all, and every reflectivity score on that arm is unanswerable.
 
-    ``use_theta_m`` is NOT a delta: both files declare 0.  The engine
-    integrates dry theta and the stock-WRF export holds dry theta
-    (:data:`woof.wrf_physics_inventory.EXPORT_USE_THETA_M`), so a stock
-    namelist that says 1 stops wrf.exe at its input gate.  It was a delta
-    (0 -> 1) while the export declared ``USE_THETA_M = 1``; that pair
-    carried dry-coupled boundary rows under a moist header, which a
-    moist-theta wrf.exe read as a boundary colder than the analysis.
+    ``use_theta_m`` is shared by both files and the export. The selected
+    prognostic and its boundary rows must agree with that declaration.
 
     The fork-only ``alb_sol`` is optional in the native file and must be
     absent from the stock file. WRF 4.6.1 has no key, so retaining it
@@ -471,19 +467,13 @@ def _require_raw_stock_delta(
             "native hierarchy namelist must declare one explicit "
             "ra_lw_physics entry per domain, each 0 (longwave off) or 4 "
             f"(RRTMG); got {native_lw}")
-    if (not _same_typed_values(native_theta, [0])
-            or not _same_typed_values(stock_theta, [EXPORT_USE_THETA_M])):
+    if (not isinstance(native_theta, list) or len(native_theta) != 1
+            or type(native_theta[0]) is not int or native_theta[0] not in (0, 1)
+            or not _same_typed_values(stock_theta, native_theta)):
         raise ValueError(
-            "native and stock namelists must both declare "
-            f"&dynamics/use_theta_m = {EXPORT_USE_THETA_M} (dry theta); "
-            f"got native {native_theta}, stock {stock_theta}. The engine "
-            "integrates dry theta and the stock-WRF files it exports hold "
-            f"dry theta (USE_THETA_M = {EXPORT_USE_THETA_M} on wrfinput "
-            "and wrfbdy), so a stock namelist that says otherwise stops "
-            "wrf.exe at its input gate with 'use_theta_m values must be "
-            "consistent'. A stock namelist generated before the export "
-            "wrote dry theta says use_theta_m = 1: change that line to "
-            f"{EXPORT_USE_THETA_M}, or regenerate the pair")
+            "native and stock namelists must both declare the same scalar "
+            "&dynamics/use_theta_m = 0 or 1, matching the exported "
+            f"prognostic variable; got native {native_theta}, stock {stock_theta}")
     stock_lw_expected = [1 if value == 0 else value for value in native_lw]
     if (not _same_typed_values(stock_lw, stock_lw_expected)
             or "ghg_input" in native["physics"]
@@ -548,8 +538,8 @@ def _require_raw_stock_delta(
             "physics.ghg_input": {"native": None, "stock": [0]},
             "physics.do_radar_ref": {"native": None, "stock": [1]},
         },
-        "shared_dry_theta": {
-            "dynamics.use_theta_m": [EXPORT_USE_THETA_M]},
+        ("shared_moist_theta" if native_theta[0] else "shared_dry_theta"): {
+            "dynamics.use_theta_m": list(native_theta)},
     }
     if native_chem is not None and "chem" not in stock:
         receipt["allowed_deltas"]["chem"] = {

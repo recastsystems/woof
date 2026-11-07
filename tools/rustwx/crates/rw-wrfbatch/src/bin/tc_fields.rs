@@ -656,6 +656,32 @@ fn te(r: &Value) -> Result<()> {
     w.finish()?;
     Ok(())
 }
+/// The inscribed coordinate box used by storm-centred loop crops. Reads and
+/// perimeter reductions stay native, including when several frames render at once.
+fn extent(path: &Path) -> Result<Value> {
+    let source = Source::open(path)?;
+    let meta = source.meta("XLAT")?;
+    if meta.shape.len() < 2 { return Err("XLAT needs two horizontal axes".into()); }
+    let ny = meta.shape[meta.shape.len()-2];
+    let nx = meta.shape[meta.shape.len()-1];
+    if nx == 0 || ny == 0 { return Err("empty coordinate grid".into()); }
+    let select: BTreeMap<String, usize> = meta.dims[..meta.dims.len()-2]
+        .iter().map(|d| (d.clone(), 0)).collect();
+    let lat = source.read("XLAT", &select)?;
+    let lon = source.read("XLONG", &select)?;
+    if lat.len() != nx*ny || lon.len() != nx*ny {
+        return Err("coordinate shapes differ".into());
+    }
+    let west = (0..ny).map(|j| lon[j*nx]).fold(f64::NEG_INFINITY, f64::max);
+    let east = (0..ny).map(|j| lon[j*nx+nx-1]).fold(f64::INFINITY, f64::min);
+    let south = lat[..nx].iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let north = lat[(ny-1)*nx..].iter().copied().fold(f64::INFINITY, f64::min);
+    if ![west,east,south,north].iter().all(|x| x.is_finite()) || west >= east || south >= north {
+        return Err("grid has no finite non-wrapping inscribed crop".into());
+    }
+    Ok(json!([west,east,south,north]))
+}
+
 fn main() {
     let _ = std::hint::black_box(GPUWM_BRIDGE_SOURCE_REV_STAMP);
     let args: Vec<_> = std::env::args().collect();
@@ -665,6 +691,7 @@ fn main() {
                 "gpuwm.tc-fields.v1 inspect extract tempest table-units masked-quarter-degree"
             ),
             Some("inspect") => println!("{}", inspect(Path::new(args.get(2).ok_or("path")?))?),
+            Some("extent") => println!("{}", extent(Path::new(args.get(2).ok_or("path")?))?),
             Some("extract") => extract(&load(Path::new(args.get(2).ok_or("request")?))?)?,
             Some("tempest") => te(&load(Path::new(args.get(2).ok_or("request")?))?)?,
             _ => {

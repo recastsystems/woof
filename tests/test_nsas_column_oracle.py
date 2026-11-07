@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _run_config_fake import run_config_fake
 from conftest import requires_gpu
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -170,7 +171,7 @@ def test_production_launcher_returns_wrfs_held_rate():
     h = fx["hdr_f"][i]
     fields = {n: cp.full((1, 1), h[j], cp.float32)
               for n, j in (("xland", 3), ("pblh", 4), ("hfx", 5), ("qfx", 6))}
-    cfg = SimpleNamespace(dx=float(h[1]), dt=float(h[0]), clock_dt=0.,
+    cfg = run_config_fake(dx=float(h[1]), dt=float(h[0]), clock_dt=0.,
                           sas_pgcon=float(h[2]), mp_physics=6,
                           nsas_dx_factor=int(fx["hdr_i"][i, 5]))
     launcher = ColumnCumulus(96)

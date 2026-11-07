@@ -16,7 +16,7 @@ def _fake_native_thread_budget(monkeypatch):
     The slot-ordering cases below fake every other native call; this was the
     one that reached the library.  On the Windows cpu leg, which builds no
     natives, both refused with SuperobBridgeMissing before any slot drained
-    (E3 a1388eae7, emulated on a development machine).  The real operation is checked by
+    (E3 a1388eae7, emulated on test host 4).  The real operation is checked by
     tests/test_obs_parallel_native.py and rw-superob's own cargo test.
     """
     from woof.obs import superob_bridge

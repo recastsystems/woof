@@ -124,10 +124,11 @@ def test_every_init_spelling_this_tree_writes_is_read(spelling, expected):
     assert run_stamp.parse_time(spelling) == expected
 
 
-def test_a_stamp_round_trips_through_its_own_parser():
-    name = run_stamp.format_stamp(launch=_LAUNCH, init=_INIT)
+@pytest.mark.parametrize("init", [_INIT, _INIT.replace(year=1)])
+def test_a_stamp_round_trips_through_its_own_parser(init):
+    name = run_stamp.format_stamp(launch=_LAUNCH, init=init)
     parsed = run_stamp.parse_stamp(name)
-    assert parsed == {"launch": _LAUNCH, "init": _INIT, "ordinal": 1}
+    assert parsed == {"launch": _LAUNCH, "init": init, "ordinal": 1}
     assert run_stamp.is_run_folder(name)
     assert run_stamp.is_run_folder(Path("/anywhere") / name)
 

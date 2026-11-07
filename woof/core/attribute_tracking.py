@@ -160,6 +160,10 @@ def attribute_plane(state, config, *, window=None):
         elif base is not None:
             term = base[k] if base.ndim == 1 else base[k, j0:j1, i0:i1]
             layer += _float64_layer(term, xp)
+            if getattr(state, "use_theta_m", 0):
+                from woof.core.constants import RVOVRD
+                vapour = streaming.domain_field(state, "qv")
+                layer /= 1.0 + RVOVRD * _float64_layer(vapour[k, j0:j1, i0:i1], xp)
         layer[~xp.isfinite(layer)] = xp.nan
         if reduced is None:
             reduced = layer

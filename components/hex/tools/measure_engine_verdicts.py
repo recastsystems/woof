@@ -12,7 +12,7 @@ the table it writes.
 WHAT IT MEASURES, per engine version, from 2.5.0 up:
 
 * ``on_pypi`` -- whether PyPI serves at least one un-yanked file for the
-  version.  A git tag is not a release; ``woof>=2.5.5`` once named a
+  version.  A git tag is not a release; ``gpuwm>=2.5.5`` once named a
   version pip could not install.
 * ``moved`` -- the manifest paths whose bytes in the PUBLISHED WHEEL differ
   from the manifest.  Every wheel of a version is downloaded (the 2.7 line

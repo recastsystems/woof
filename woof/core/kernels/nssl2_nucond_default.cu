@@ -133,7 +133,13 @@ extern "C" __global__ void nssl2_nucond_default(
     int n,
     int nz,
     int horizontal_size,
+#ifdef NSSL2_VARIABLE_CCCN
+    int predicted_ccn,
+    float background_ccn_per_kg,
+    float nssl_cccn)
+#else
     int predicted_ccn)
+#endif
 {
     const int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx >= n) return;
@@ -170,9 +176,22 @@ extern "C" __global__ void nssl2_nucond_default(
         0.523599f * (80.0e-6f * 80.0e-6f * 80.0e-6f);
     const float rain_max_volume =
         0.523599f * (6.0e-3f * 6.0e-3f * 6.0e-3f);
+#ifdef NSSL2_VARIABLE_CCCN
+    const float qccn_concentration = rho * background_ccn_per_kg;
+    // Keep the established fast default arithmetic. For an override,
+    // follow WRF NUCOND: multiply the concentration before dividing.
+    const float background_ccn = nssl_cccn == 0.5e9f
+        ? rho * background_ccn_per_kg
+        : __fdiv_rn(__fmul_rn(nssl_cccn, rho), 1.225f);
+#else
     const float background_ccn = rho * 408163264.0f;
+#endif
     const float input_background_ccn =
+#ifdef NSSL2_VARIABLE_CCCN
+        concentration_space ? qccn_concentration : background_ccn_per_kg;
+#else
         concentration_space ? background_ccn : 408163264.0f;
+#endif
 
     float temperature = theta * exner_local;
     float saturation = nssl2_qvs(temperature, pressure);
@@ -294,7 +313,11 @@ extern "C" __global__ void nssl2_nucond_default(
                 theta -= latent_over_cp_exner * cloud;
                 ccn_number = fmaxf(
                     ccn_number,
+#ifdef NSSL2_VARIABLE_CCCN
+                    fminf(qccn_concentration, ccn_number + cloud_number));
+#else
                     fminf(background_ccn, ccn_number + cloud_number));
+#endif
                 cloud = 0.0f;
                 cloud_number = 0.0f;
             } else {
@@ -305,7 +328,11 @@ extern "C" __global__ void nssl2_nucond_default(
                     0.9f * evaporated * cloud_number / old_cloud;
                 ccn_number = fmaxf(
                     ccn_number,
+#ifdef NSSL2_VARIABLE_CCCN
+                    fminf(qccn_concentration, ccn_number + removed_number));
+#else
                     fminf(background_ccn, ccn_number + removed_number));
+#endif
                 cloud_number -= removed_number;
                 theta -= latent_over_cp_exner * evaporated;
             }
@@ -603,8 +630,13 @@ extern "C" __global__ void nssl2_nucond_default(
             (qs[idx] >= 1.0e-13f && qns[idx] > 0.0f) ? qs[idx] : 0.0f;
         if (ccn_number > 1.0f
                 && retained_ice + retained_snow < 1.0e-13f) {
+#ifdef NSSL2_VARIABLE_CCCN
+            ccn_number = qccn_concentration
+                - fmaxf(0.0f, qccn_concentration - ccn_number)
+#else
             ccn_number = background_ccn
                 - fmaxf(0.0f, background_ccn - ccn_number)
+#endif
                     * expf(__fdiv_rn(-dt, 3600.0f));
         }
     }

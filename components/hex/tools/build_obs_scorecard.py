@@ -6,6 +6,7 @@ Run on a compute box, not on the desktop.
 import argparse
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import tomllib
@@ -50,7 +51,7 @@ def write_project(engine: Path, out: Path) -> Path:
     target.write_text(manifest, encoding="utf-8")
     lock = out / "Cargo.lock"
     if not lock.exists():
-        shutil.copyfile(root / "Cargo.lock", lock)
+        shutil.copyfile(Path(__file__).resolve().parents[1] / "rust/obs-scorecard/Cargo.lock", lock)
     return target
 
 
@@ -64,14 +65,24 @@ def main():
     root = args.engine.resolve() / "tools/rustwx"
     source = Path(__file__).resolve().parents[1] / "rust/obs-scorecard/main.rs"
     target = write_project(args.engine, args.out)
-    # Cargo's target override is used by lane/release builds to keep scratch
+    # Cargo's target override is used by development branch builds to keep scratch
     # off the source disk. Copy from that same location after compilation.
     target_dir = Path(os.environ.get("CARGO_TARGET_DIR", args.out.resolve() / "target"))
     if not target_dir.is_absolute():
         target_dir = root / target_dir
-    code = subprocess.call(["cargo", "test" if args.test else "build", "--release", "--offline",
-                            "--jobs", os.environ.get("CARGO_BUILD_JOBS", "4"),
-                            "--target-dir", str(target_dir), "--manifest-path", str(target)], cwd=root)
+    env = dict(os.environ)
+    # Rust panic locations otherwise embed the random build-via-sdist root.
+    # Keep caller flags and remap the three source/project roots consistently.
+    encoded = env.get("CARGO_ENCODED_RUSTFLAGS")
+    flags = encoded.split("\x1f") if encoded is not None else shlex.split(env.get("RUSTFLAGS", ""))
+    for path, stable in ((args.engine.resolve(), "/gpuwm"),
+                         (Path(__file__).resolve().parents[1], "/gpuwm-hex"),
+                         (args.out.resolve(), "/hex-obs-scorecard-build")):
+        flags.append(f"--remap-path-prefix={path}={stable}")
+    env["CARGO_ENCODED_RUSTFLAGS"] = "\x1f".join(flags)
+    code = subprocess.call(["cargo", "test" if args.test else "build", "--release", "--offline", "--locked",
+                            "--jobs", os.environ.get("CARGO_BUILD_JOBS", "8"),
+                            "--target-dir", str(target_dir), "--manifest-path", str(target)], cwd=root, env=env)
     if code == 0 and args.install:
         destination = source.parents[2] / "src/hexcore/libexec"
         destination.mkdir(parents=True, exist_ok=True)

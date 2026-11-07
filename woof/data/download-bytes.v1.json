@@ -96,7 +96,13 @@
    "measured": "Content-Length of the 2026-09-25 00Z f000 and f006 pres and sfc objects of the default member, read on 2026-09-26; its GDAS donor is priced by the gdas full-file row"},
   {"source": "gem-gdps", "mode": "full-file",
    "objects": {"state": 1058000, "analysis-invariant": 190600, "terrain": 723800},
-   "measured": "mean of 1044 state, 4 analysis-invariant and 2 terrain objects, 2026-09-26 00Z f00 to f06, two fetches"}
+   "measured": "mean of 1044 state, 4 analysis-invariant and 2 terrain objects, 2026-09-26 00Z f00 to f06, two fetches"},
+  {"source": "gem-hrdps", "mode": "full-file",
+   "objects": {"state": 1592749, "analysis-invariant": 1360524},
+   "measured": "Content-Length (HEAD) of every routed object of the 2026-10-28 12Z cycle: 151 state objects at PT000H (mean 1,744,149 B) and 151 at PT003H (mean 1,441,348 B), and the 2 analysis-invariant objects; read 2026-10-29"},
+  {"source": "gem-rdps", "mode": "full-file",
+   "objects": {"state": 423125, "analysis-invariant": 131817, "terrain": 301793},
+   "measured": "Content-Length (HEAD) of every routed object of the 2026-10-28 12Z PT000H lead: 174 state, 2 analysis-invariant and 1 terrain object; read 2026-10-29"}
  ],
  "preparation": {
   "prepared:hrrr": {

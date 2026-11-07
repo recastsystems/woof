@@ -1521,17 +1521,23 @@
     },
     {
       "path": "crates/simradar_cuda/kernels/p3_lut_segments.cu",
-      "bytes": 5867,
-      "sha256": "ba6ab252e1402f5afc7ff9dba6e5f5fc1f3b539b3d903e29c3da1830efb84780",
+      "bytes": 5898,
+      "sha256": "7f1294c9194fde701c05ee039e014f04c62a7cfb64962fa5bae5d33067fb53c3",
       "origin_revision": "6b752c0a923d8fcef45d58f165b96a20886964d1",
-      "origin_path": "crates/simradar_cuda/kernels/p3_lut_segments.cu"
+      "origin_path": "crates/simradar_cuda/kernels/p3_lut_segments.cu",
+      "upstream_sha256": "ba6ab252e1402f5afc7ff9dba6e5f5fc1f3b539b3d903e29c3da1830efb84780",
+      "origin": "vendoring",
+      "change": "AMD backend: portable canonical source and its digest; select HIP source compilation and architecture reporting through the namespaced driver adapter. CUDA artifact selection is retained."
     },
     {
       "path": "crates/simradar_cuda/kernels/p3_lut_segments.manifest.json",
-      "bytes": 2934,
-      "sha256": "bce6d3d2533b0347fa951297925bc411ed8da1cf21574da87f4a3bfd00fe610b",
+      "bytes": 2935,
+      "sha256": "cba439bf7c0b58abbef968f95a19a6a9dfda204d102df358155691f77b62686d",
       "origin_revision": "6b752c0a923d8fcef45d58f165b96a20886964d1",
-      "origin_path": "crates/simradar_cuda/kernels/p3_lut_segments.manifest.json"
+      "origin_path": "crates/simradar_cuda/kernels/p3_lut_segments.manifest.json",
+      "upstream_sha256": "bce6d3d2533b0347fa951297925bc411ed8da1cf21574da87f4a3bfd00fe610b",
+      "origin": "vendoring",
+      "change": "AMD backend: portable canonical source and its digest; select HIP source compilation and architecture reporting through the namespaced driver adapter. CUDA artifact selection is retained."
     },
     {
       "path": "crates/simradar_cuda/kernels/p3_lut_segments.ptx",
@@ -1633,17 +1639,23 @@
     },
     {
       "path": "crates/simradar_cuda/src/kernel.rs",
-      "bytes": 36027,
-      "sha256": "7fb7f90805d2770f109a64c13d64d2ec52f05733ae976045effd1059c07708e5",
+      "bytes": 36480,
+      "sha256": "e8d84c4fc8bf233a9048e57e22648cd6768641d6b3a9da67a386e16b4129d037",
       "origin_revision": "6b752c0a923d8fcef45d58f165b96a20886964d1",
-      "origin_path": "crates/simradar_cuda/src/kernel.rs"
+      "origin_path": "crates/simradar_cuda/src/kernel.rs",
+      "upstream_sha256": "7fb7f90805d2770f109a64c13d64d2ec52f05733ae976045effd1059c07708e5",
+      "origin": "vendoring",
+      "change": "AMD backend: portable canonical source and its digest; select HIP source compilation and architecture reporting through the namespaced driver adapter. CUDA artifact selection is retained."
     },
     {
       "path": "crates/simradar_cuda/src/lib.rs",
-      "bytes": 9304,
-      "sha256": "5b764a58b2bb8f6cf9123866802cdcb25e67f67b311d6031cb4a8d741bedc392",
+      "bytes": 9539,
+      "sha256": "d8d0fccee0872a3828abfcd172a937e0ef04a4311b000f13bb8fa29fbf0315ff",
       "origin_revision": "6b752c0a923d8fcef45d58f165b96a20886964d1",
-      "origin_path": "crates/simradar_cuda/src/lib.rs"
+      "origin_path": "crates/simradar_cuda/src/lib.rs",
+      "upstream_sha256": "5b764a58b2bb8f6cf9123866802cdcb25e67f67b311d6031cb4a8d741bedc392",
+      "origin": "vendoring",
+      "change": "AMD backend: portable canonical source and its digest; select HIP source compilation and architecture reporting through the namespaced driver adapter. CUDA artifact selection is retained."
     },
     {
       "path": "crates/simradar_cuda/src/prepared.rs",

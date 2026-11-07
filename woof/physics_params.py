@@ -52,7 +52,7 @@ REGISTRY_SCHEMA = "gpuwm.physics-params-registry/v1"
 REGISTRY_PATH = Path(__file__).with_name("physics_params_registry_v1.json")
 
 #: Keys a [physics_params] table may carry.
-TABLE_KEYS = ("name", "values", "set")
+TABLE_KEYS = ("name", "values", "set", "knobs")
 
 WRFOUT_NAME_ATTR = "WOOF_PHYSICS_PARAMS"
 WRFOUT_SHA_ATTR = "GPUWM_PHYSICS_PARAMS_SHA256"
@@ -261,7 +261,7 @@ def make_set(name: str, values: Mapping[str, object], *,
 
 def parse_table(table, *, source: str,
                 base_dir: Path | None = None,
-                _set_paths: tuple[Path, ...] = ()) -> PhysicsParamSet:
+                _set_paths: tuple[Path, ...] = ()) -> PhysicsParamSet | None:
     """``[physics_params]`` of an experiment: ``name`` and ``values``, or
     ``set = "file.toml"`` naming a set file that carries both."""
     if not isinstance(table, Mapping):
@@ -273,6 +273,9 @@ def parse_table(table, *, source: str,
             f"[physics_params] of {source}: unknown key(s) {unknown}; known "
             f"{list(TABLE_KEYS)}. No key is ignored, because an ignored key "
             "runs the default under the set's name.")
+    if "knobs" in table:
+        from woof.knobs.physics import parse_parameter_table
+        return parse_parameter_table(table, source=source)
     if "set" in table:
         if "values" in table:
             raise PhysicsParamsError(
@@ -295,10 +298,11 @@ def parse_table(table, *, source: str,
         inner = document.get("physics_params", document)
         pset = parse_table(inner, source=f"{source} (set file {path})",
                            base_dir=path.parent, _set_paths=(*_set_paths, path))
-        if "name" in table and table["name"] != pset.name:
+        resolved_name = None if pset is None else pset.name
+        if "name" in table and table["name"] != resolved_name:
             raise PhysicsParamsError(
                 f"[physics_params] of {source} names the set "
-                f"{table['name']!r} but {path} is {pset.name!r}")
+                f"{table['name']!r} but {path} is {resolved_name!r}")
         return pset
     return make_set(table.get("name"), table.get("values", {}), source=source)
 
@@ -422,7 +426,7 @@ def reset_for_tests() -> None:
 
 
 # --------------------------------------------------------------------------- kernel source
-def edit_kernel_source(module: str, text: str) -> str:
+def edit_kernel_source(module: str, text: str, *, value_expressions=None) -> str:
     """``text`` with the active set's literals written in.
 
     With no active set, or a set that edits nothing in ``module``, the
@@ -434,6 +438,10 @@ def edit_kernel_source(module: str, text: str) -> str:
     edits = []
     for name in pset.changed():
         row = registry()[name]
+        # Family-owned source transformations retain sites in the registry
+        # for validation and process binding, and apply their own edits.
+        if row.kind == "family-source":
+            continue
         for site in row.sites:
             if site.module == module:
                 edits.append((row, site))
@@ -448,16 +456,20 @@ def edit_kernel_source(module: str, text: str) -> str:
                 f"expects {site.count}. The kernel changed and the constant "
                 "no longer reaches the literal it names; update the registry "
                 "row against the new source.")
-        replacement = site.anchor.replace(
-            site.literal, c_float_literal(pset.value(row.name)))
+        expression = ((value_expressions or {}).get(row.name)
+                      or c_float_literal(pset.value(row.name)))
+        replacement = site.anchor.replace(site.literal, expression)
         text = text.replace(site.anchor, replacement)
     return text
 
 
-def note_compiled(module: str) -> None:
+def note_compiled(module: str, compiled_module=None) -> None:
     """Record which set a kernel module was compiled under."""
     from woof.kernel_plan import refuse_while_capturing
     refuse_while_capturing()  # a static-plan capture compiled nothing for the run
+    binder = getattr(edit_kernel_source, "bind_module", None)
+    if binder is not None and compiled_module is not None:
+        binder(module, compiled_module)
     compiled = dict(_STATE["compiled"])
     compiled[module] = _active_sha()
     _STATE["compiled"] = compiled

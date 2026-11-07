@@ -132,7 +132,7 @@ NAMELIST_ROWS = (
     ("physics", "hailcast_opt", "hailcast_opt"),
     ("physics", "haildt", "haildt"),
     ("chem", "aer_ra_feedback", "aer_ra_feedback"),
-    # HRRR-Smoke (chem_opt = 18), 2026-10-21 lane/hrrr-v4-gaps.
+    # HRRR-Smoke (chem_opt = 18), 2026-10-21 development branch.
     ("chem", "chemdt", "chemdt"),
     ("chem", "biomass_burn_opt", "biomass_burn_opt"),
     ("chem", "plumerisefire_frq", "plumerisefire_frq"),

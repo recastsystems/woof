@@ -402,6 +402,9 @@ def test_the_production_call_site_the_page_names_is_real():
 
     class _NotMp28:
         mp_physics = 8
+        # MAD-WRF's cloud initialisation shares the hook (RunConfig defaults).
+        madwrf_opt = 0
+        madwrf_cldinit = 0
 
     receipt = microphysics.microphysics_init(object(), _NotMp28())
     assert receipt == {}, (
@@ -1403,7 +1406,7 @@ _SIBLING_TEXTS: dict[str, tuple[str, tuple[str, ...]]] = {
     "docs/public/CONFIGURATION.md": ("CONFIGURATION.md", (
         r"(?i)\bruns?\s+it\s+on\s+`?thompson_init`?'s\s+\*?synthetic",
     )),
-    # RETIRED (lane/wif-default).  This row scanned the imported constant
+    # RETIRED (development branch).  This row scanned the imported constant
     # woof.config.MP28_AEROSOL_SOURCE_DEVIATION for the sentence "comes
     # from thompson_init's synthetic profile".  The constant no longer
     # exists -- the default it described was flipped to WRF's monthly WIF
@@ -1669,9 +1672,12 @@ def test_this_publication_gate_has_no_unaudited_skip_site():
     tests = [function.name for function in functions
              if function.name.startswith("test_")]
     skipping = {name for name, _ in _SKIP_SITES}
-    assert len(tests) - len(skipping) == 20, (
-        f"{len(tests)} tests, {len(skipping)} of which can skip; the "
-        "evidence document says twenty are host-only and never skip")
+    # Five documentary assertions leave the snapshot with their excluded inputs.
+    # Keep exact counts in both trees; every retained public assertion still runs.
+    expected_host_only = 20 if (ROOT / "RELEASE-EXCLUDE.txt").is_file() else 15
+    assert len(tests) - len(skipping) == expected_host_only, (
+        f"{len(tests)} tests, {len(skipping)} of which can skip; "
+        f"expected {expected_host_only} host-only assertions in this tree")
 
 
 if __name__ == "__main__":  # pragma: no cover

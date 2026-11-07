@@ -234,6 +234,7 @@ class StateFields:
     columns: Mapping[str, np.ndarray] | None = None
     surface: Mapping[str, np.ndarray] | None = None
     cloud: PointCloud | None = None
+    diagnostic_arrays: Mapping[str, np.ndarray] | None = None
 
     def points(self) -> PointCloud:
         if self.cloud is None:
@@ -290,6 +291,8 @@ class Fix:
     guess: list | None = None
     search_km: float | None = None
     steering_ms: list | None = None
+    field_fix: dict | None = None
+    field_fix_error: str | None = None
 
     def as_dict(self):
         return {k: v for k, v in asdict(self).items() if v is not None}
@@ -422,7 +425,7 @@ class TCFixer:
                     xc, yc = _centroid(lat_, ring - p, x0, y0, c.centroid_km)
                     xc, yc = _centroid(lat_, ring - p, xc, yc, c.centroid_km)
                     comps['mslp'] = np.array([xc, yc])
-                fx.mslp_min_hpa, fx.depression_hpa = float(pin.flat[j]), depression
+                fx.depression_hpa = depression
         for name, level in (('vort850', 85000.0), ('vort700', 70000.0)):
             if not fields.u_p or level not in fields.u_p:
                 continue
@@ -457,10 +460,21 @@ class TCFixer:
         fx.lat, fx.lon = lat_.to_latlon(*(c.fix_blend * np.asarray(mean, float)))
         fx.ok = True
         fx.reason = 'consensus of ' + '+'.join(used)
-        if fields.wind10 is not None:
-            near = cloud.near(fx.lat, fx.lon, c.vmax_radius_km)
-            if near.size:
-                fx.vmax10_ms = float(np.nanmax(fields.wind10[near]))
+        # Position consensus still drives motion. Report intensity separately
+        # from the unsmoothed water-cell fix; a 20 km smoother erases the eye.
+        if fields.diagnostic_arrays is not None:
+            from woof.tc.field_products import diagnose_arrays
+            try:
+                fx.field_fix = diagnose_arrays(fields.diagnostic_arrays, (fx.lat,fx.lon), unstructured=True)
+            except ValueError as error:
+                # A storm that has moved inland may have no nearby water cell.
+                # Keep its motion fix and report missing intensity explicitly.
+                if 'no finite water-cell pressure' not in str(error):
+                    raise
+                fx.field_fix_error = str(error)
+            if fx.field_fix is not None:
+                fx.mslp_min_hpa = fx.field_fix['mslp_hpa']
+                fx.vmax10_ms = fx.field_fix['vmax10_m_s']
         fx.steering_ms = steering(fields, fx.lat, fx.lon, c.steering_inner_km, c.steering_outer_km)
         return fx
 
@@ -948,7 +962,7 @@ class PlacementConfig:
     max_misses: int = 3
 
     def __post_init__(self):
-        # THE BREAKAGE THIS PREVENTS (TC-Milton storm-following case, 2026-10-26: a 146 km interior
+        # THE BREAKAGE THIS PREVENTS (TC-the storm storm-following case, 2026-10-26: a 146 km interior
         # under the default 150 km core margin): with no safe radius every dwell is unsafe, so the
         # case was accepted here and failed only after its first member preparation had used the card.
         if self.safe_km() <= 0:

@@ -28,14 +28,14 @@ class DirectNvrtcCache:
         key = (device.id, module_key, digest)
         if key not in self.modules:
             binary, _ = compiler.compile_using_nvrtc(
-                source, options=_hex_numerics.options(CUDA_OPTIONS), arch=device.compute_capability)
+                source, options=_hex_numerics.options(CUDA_OPTIONS), arch=__import__("woof.backend", fromlist=["compilation_target"]).compilation_target(xp=cp))
             module = cp.cuda.function.Module()
             module.load(binary)
             self.modules[key] = module
             self.inventory.append({"module_key": module_key,
                 "source_sha256": digest, "binary_sha256": hashlib.sha256(binary).hexdigest(),
-                "device_id": device.id, "architecture": device.compute_capability,
-                "compiler": "direct NVRTC", "options": list(_hex_numerics.options(CUDA_OPTIONS))})
+                "device_id": device.id, "architecture": __import__("woof.backend", fromlist=["compilation_target"]).compilation_target(xp=cp),
+                "compiler": "direct HIP" if cp.cuda.runtime.is_hip else "direct NVRTC", "options": list(_hex_numerics.options(CUDA_OPTIONS))})
         function_key = (*key, name)
         if function_key not in self.kernels:
             self.kernels[function_key] = self.modules[key].get_function(name)

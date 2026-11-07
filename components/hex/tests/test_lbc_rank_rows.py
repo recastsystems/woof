@@ -1,6 +1,6 @@
 """A rank process reads only its own rows of each boundary file, word for word what the whole-file cut gives.
 
-THE COST (NOAA RRFS v2 conus3km, one process per card, V8X6000, 2026-10-29): every rank process read each 13.3 GB
+THE COST (NOAA RRFS v2 conus3km, one process per card, eight-card system, 2026-10-29): every rank process read each 13.3 GB
 boundary file whole to keep its own rows; rank processes spent more CPU time in the kernel than in user code.
 """
 

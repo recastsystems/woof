@@ -51,6 +51,7 @@ run, elementwise-identical), and pins that the fix leaves every face
 other than the two seam sets bit-identical, and periodic behavior
 bit-identical everywhere.
 """
+import dataclasses
 import os
 import sys
 
@@ -684,7 +685,7 @@ def test_apply_diff6_computes_wrf_boundary_faces(flags):
     from woof.verify.npref import random_acoustic_state
 
     s, cfg0 = random_acoustic_state(seed=41, nz=NZ, ny=NY, nx=NX)
-    cfg = RunConfig(**{**cfg0.__dict__, "diff_6th_opt": 2,
+    cfg = dataclasses.replace(cfg0, **{"diff_6th_opt": 2,
                        "diff_6th_factor": FACTOR, **flags})
     rng = np.random.default_rng(43)
     # Independent boundary-installed data on the last staggered column/row
@@ -741,7 +742,7 @@ def test_prepare_fixed_tendencies_holds_wrf_boundary_faces():
 
     s, cfg0 = random_acoustic_state(seed=47, nz=NZ, ny=NY, nx=NX,
                                     hybrid_opt=2, hill_height=800.0)
-    cfg = RunConfig(**{**cfg0.__dict__, "specified": True,
+    cfg = dataclasses.replace(cfg0, **{"specified": True,
                        "diff_6th_opt": 2, "diff_6th_factor": FACTOR,
                        "diff_6th_slopeopt": 1})
     rng = np.random.default_rng(53)

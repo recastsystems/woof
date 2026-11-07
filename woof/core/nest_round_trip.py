@@ -57,6 +57,9 @@ def round_trip_targets(state, run) -> dict:
 def couple_round_trip(state, run, targets=None) -> None:
     """Apply WRF's force-time couple/uncouple round trip, in place.
 
+    Leading member axes are broadcast with shared or member-owned base fields;
+    the scalar arithmetic and launch order stay identical.
+
     ``targets`` maps state attribute names to the arrays to transform;
     by default the state's own (the force), or copies (a history frame).
     """
@@ -65,13 +68,14 @@ def couple_round_trip(state, run, targets=None) -> None:
     if not (getattr(run, "specified", False) or getattr(run, "nested", False)):
         raise ValueError("the nest force round trip is only defined on a "
                          "specified or nested domain")
-    from woof.core.dycore import WRF_MU_HALO_SLOT
+    from woof.state_serialization_contract import carried_wrf_mu_halo
 
     if targets is None:
         targets = round_trip_targets(state, run)
     f32 = cp.float32
     mub, mu = state.mub2d, state.mup
-    halo = state.existing_scratch(WRF_MU_HALO_SLOT)
+    halo = (carried_wrf_mu_halo(state)
+            if getattr(state, "_wrf_mass_carriers_ready", True) else None)
     if halo is None:
         halo = mu
     has_msf = bool(getattr(state, "has_msf", True))
@@ -79,22 +83,22 @@ def couple_round_trip(state, run, targets=None) -> None:
     msfu = state.msfu if has_msf else None
     msfv = state.msfv if has_msf else None
     half = [a for a in targets if a not in ("u", "v", "w", "php")]
-    nz = int(state.thp.shape[0])
+    nz = int(state.thp.shape[-3])
 
     for k0 in range(0, nz + 1, _LEVEL_BLOCK):
         k1 = min(nz + 1, k0 + _LEVEL_BLOCK)
-        c1f = state.c1f[k0:k1, None, None]
-        c2f = state.c2f[k0:k1, None, None]
-        mf = ((c1f * mub[None]) + c2f) + (c1f * mu[None])
+        c1f = state.c1f[..., k0:k1, None, None]
+        c2f = state.c2f[..., k0:k1, None, None]
+        mf = ((c1f * mub[..., None, :, :]) + c2f) + (c1f * mu[..., None, :, :])
         if "php" in targets:
-            ph = targets["php"][k0:k1]
+            ph = targets["php"][..., k0:k1, :, :]
             ph *= mf
             ph *= f32(1.0) / mf
         if "w" in targets:
-            w = targets["w"][k0:k1]
+            w = targets["w"][..., k0:k1, :, :]
             if has_msf:
-                w *= mf / msft[None]
-                w *= msft[None] / mf
+                w *= mf / msft[..., None, :, :]
+                w *= msft[..., None, :, :] / mf
             else:
                 w *= mf
                 w *= f32(1.0) / mf
@@ -102,28 +106,28 @@ def couple_round_trip(state, run, targets=None) -> None:
 
     for k0 in range(0, nz, _LEVEL_BLOCK):
         k1 = min(nz, k0 + _LEVEL_BLOCK)
-        c1h = state.c1h[k0:k1, None, None]
-        c2h = state.c2h[k0:k1, None, None]
-        a = (c1h * mub[None]) + c2h
-        b = c1h * mu[None]
+        c1h = state.c1h[..., k0:k1, None, None]
+        c2h = state.c2h[..., k0:k1, None, None]
+        a = (c1h * mub[..., None, :, :]) + c2h
+        b = c1h * mu[..., None, :, :]
         m = a + b
         minv = f32(1.0) / m
         for name in half:
-            x = targets[name][k0:k1]
+            x = targets[name][..., k0:k1, :, :]
             x *= m
             x *= minv
         del m, minv
         if "u" in targets:
             # Face i (1-based) reads columns i and i-1; face 1 reads the halo.
-            a_h = (c1h * mub[None, :, :1]) + c2h
-            b_h = c1h * halo[None, :, :1]
-            s = ((a[:, :, 1:] + a[:, :, :-1]) + b[:, :, 1:]) + b[:, :, :-1]
-            s0 = ((a[:, :, :1] + a_h) + b[:, :, :1]) + b_h
-            u = targets["u"][k0:k1]
-            inner, west, east = u[:, :, 1:-1], u[:, :, :1], u[:, :, -1:]
-            se = a[:, :, -1:] + b[:, :, -1:]
+            a_h = (c1h * mub[..., None, :, :1]) + c2h
+            b_h = c1h * halo[..., None, :, :1]
+            s = ((a[..., :, 1:] + a[..., :, :-1]) + b[..., :, 1:]) + b[..., :, :-1]
+            s0 = ((a[..., :, :1] + a_h) + b[..., :, :1]) + b_h
+            u = targets["u"][..., k0:k1, :, :]
+            inner, west, east = u[..., :, 1:-1], u[..., :, :1], u[..., :, -1:]
+            se = a[..., :, -1:] + b[..., :, -1:]
             if has_msf:
-                mi, m0, me = msfu[None, :, 1:-1], msfu[None, :, :1], msfu[None, :, -1:]
+                mi, m0, me = msfu[..., None, :, 1:-1], msfu[..., None, :, :1], msfu[..., None, :, -1:]
                 inner *= (f32(0.5) * s) / mi
                 inner *= (f32(2.0) * mi) / s
                 west *= (f32(0.5) * s0) / m0
@@ -139,15 +143,15 @@ def couple_round_trip(state, run, targets=None) -> None:
                 east *= f32(1.0) / se
             del s, s0, se, a_h, b_h
         if "v" in targets:
-            a_h = (c1h * mub[None, :1, :]) + c2h
-            b_h = c1h * halo[None, :1, :]
-            s = ((a[:, 1:, :] + a[:, :-1, :]) + b[:, 1:, :]) + b[:, :-1, :]
-            s0 = ((a[:, :1, :] + a_h) + b[:, :1, :]) + b_h
-            v = targets["v"][k0:k1]
-            inner, south, north = v[:, 1:-1, :], v[:, :1, :], v[:, -1:, :]
-            sn = a[:, -1:, :] + b[:, -1:, :]
+            a_h = (c1h * mub[..., None, :1, :]) + c2h
+            b_h = c1h * halo[..., None, :1, :]
+            s = ((a[..., 1:, :] + a[..., :-1, :]) + b[..., 1:, :]) + b[..., :-1, :]
+            s0 = ((a[..., :1, :] + a_h) + b[..., :1, :]) + b_h
+            v = targets["v"][..., k0:k1, :, :]
+            inner, south, north = v[..., 1:-1, :], v[..., :1, :], v[..., -1:, :]
+            sn = a[..., -1:, :] + b[..., -1:, :]
             if has_msf:
-                mi, m0, mn = msfv[None, 1:-1, :], msfv[None, :1, :], msfv[None, -1:, :]
+                mi, m0, mn = msfv[..., None, 1:-1, :], msfv[..., None, :1, :], msfv[..., None, -1:, :]
                 inner *= (f32(0.5) * s) / mi
                 inner *= (f32(2.0) * mi) / s
                 south *= (f32(0.5) * s0) / m0
@@ -198,31 +202,32 @@ def couple_halo_faces(state, kind: str, out) -> None:
     installed the boundary value (woof.core.dycore.WRF_MU_HALO_SLOT).  The
     coupling kernel duplicates the edge column there; the two are usually
     the same word, and when they are not, the nest's boundary tendency
-    parts from wrf.exe at that face (a 9 km/3 km pair's nest, one V word at
+    parts from wrf.exe at that face (the nested pair's nest, one V word at
     60 s, the first force after a two-way feedback).  ``out`` is the
     coupled field the force just wrote; only its face 0 is rewritten.
     """
     if kind not in ("u", "v"):
         return
-    from woof.core.dycore import WRF_MU_HALO_SLOT
+    from woof.state_serialization_contract import carried_wrf_mu_halo
 
-    halo = state.existing_scratch(WRF_MU_HALO_SLOT)
+    halo = (carried_wrf_mu_halo(state)
+            if getattr(state, "_wrf_mass_carriers_ready", True) else None)
     if halo is None:
         return
     f32 = __import__("cupy").float32
-    c1h = state.c1h[:, None]
-    c2h = state.c2h[:, None]
+    c1h = state.c1h[..., :, None]
+    c2h = state.c2h[..., :, None]
     has_msf = bool(getattr(state, "has_msf", True))
     if kind == "u":
-        mub, mu, mu_h = state.mub2d[None, :, 0], state.mup[None, :, 0], halo[None, :, 0]
-        field = state.u[:, :, 0]
-        target = out[:, :, 0]
-        msf = state.msfu[None, :, 0] if has_msf else None
+        mub, mu, mu_h = state.mub2d[..., None, :, 0], state.mup[..., None, :, 0], halo[..., None, :, 0]
+        field = state.u[..., :, 0]
+        target = out[..., :, 0]
+        msf = state.msfu[..., None, :, 0] if has_msf else None
     else:
-        mub, mu, mu_h = state.mub2d[None, 0, :], state.mup[None, 0, :], halo[None, 0, :]
-        field = state.v[:, 0, :]
-        target = out[:, 0, :]
-        msf = state.msfv[None, 0, :] if has_msf else None
+        mub, mu, mu_h = state.mub2d[..., None, 0, :], state.mup[..., None, 0, :], halo[..., None, 0, :]
+        field = state.v[..., 0, :]
+        target = out[..., 0, :]
+        msf = state.msfv[..., None, 0, :] if has_msf else None
     base = (c1h * mub) + c2h
     s = ((base + base) + (c1h * mu)) + (c1h * mu_h)
     ch = f32(0.5) * s
@@ -232,25 +237,26 @@ def couple_halo_faces(state, kind: str, out) -> None:
 
 
 def _keeps_th_phy_m_t0(node) -> bool:
-    """Strict mode: does this domain's history T part from its t_2?
+    """Does history T or RASM need the parent's pre-feedback theta?
 
-    WRF's history T is th_phy_m_t0, which update_phys_fields sets to t_2 at
-    the very end of every solve (after_all_rk_steps -> diagnostics_driver,
+    WRF's history T is th_phy_m_t0, the dry theta perturbation copied by
+    update_phys_fields at the very end of every solve (after_all_rk_steps -> diagnostics_driver,
     phys/module_diagnostics_driver.F:188/1265), whatever the physics.  A
     parent's t_2 then moves again before its next frame -- the force round
     trip and its nests' feedback -- so its T is a copy taken there; every
-    other domain's T is its t_2.
+    other domain's T is dry theta diagnosed from its selected t_2.
     """
     from woof.wrf_exact import ENABLED as wrf_exact
 
     state = node.state
-    if not wrf_exact or not node.children or getattr(state, "thp", None) is None:
+    if ((not wrf_exact and not node.cfg.run.mean_diag)
+            or not node.children or getattr(state, "thp", None) is None):
         return False
     return getattr(state, "_streamed_domain", None) is None
 
 
 def th_phy_m_t0_after_step(node) -> None:
-    """update_phys_fields: th_phy_m_t0 = t_2 at the end of the solve."""
+    """update_phys_fields: snapshot dry theta - 300 at the end of the solve."""
     if not _keeps_th_phy_m_t0(node):
         return
     import cupy as cp
@@ -259,4 +265,7 @@ def th_phy_m_t0_after_step(node) -> None:
     out = getattr(state, "_wrf_th_phy_m_t0", None)
     if out is None or out.shape != state.thp.shape:
         out = state._wrf_th_phy_m_t0 = cp.empty_like(state.thp)
-    out[...] = state.thp
+    if int(getattr(state, "use_theta_m", 0)) == 1:
+        out[...] = state.total_theta() - cp.float32(300.0)
+    else:
+        out[...] = state.thp

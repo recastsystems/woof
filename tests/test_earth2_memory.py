@@ -89,7 +89,7 @@ def test_fresh_fetch_refuses_before_runtime_downloads_or_output(tmp_path, monkey
 
 
 def test_fcn3_row_admits_by_its_measured_peak(monkeypatch):
-    # Defect (2.9.4 follow-up, V58 2026-10-21): the runner's DISCO band patch did not apply to
+    # Defect (2.9.4 follow-up, test host 2026-10-21): the runner's DISCO band patch did not apply to
     # the pinned torch-harmonics 0.8.1, FCN3 peaked at 60,212 MiB and the 59 GiB floor refused
     # every 32 GB card. With the 0.8.1 layout patched it measured a 16,552 MiB card peak under
     # a 30,000 MiB lease, so 32 GB (and 24 GB) cards admit and a 16 GB card still refuses.

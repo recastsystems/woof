@@ -1480,7 +1480,7 @@ def test_a_failed_staged_forecast_stops_its_preparation_at_once(
         tmp_path, monkeypatch):
     """The failure is said at once and the preparation is asked to stop
     (``stop.json``); the run never sits in ``waiting:preparation`` while the
-    producer builds every later forcing time (V59 run 2a, V60 r1b/r1d,
+    producer builds every later forcing time (test host run 2a, test host r1b/r1d,
     2026-10-21: a failed forecast hid behind 19-24 min of that)."""
 
     import threading

@@ -1,0 +1,13 @@
+{
+  "schema": "gpuwm.waves.coupled-sources/v1",
+  "forecast": {
+    "wave": {"id":"gfs-wave","cadence":"hourly","url":"https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{hour}/wave/gridded/gfswave.t{hour}z.global.0p25.f{lead}.grib2","path":"gfs-wave/{date}-{hour}-f{lead}.grib2","licence":"public-domain","attribution":"NOAA NCEP GFS-Wave operational forecast"},
+    "wind": {"id":"gfs-wind","cadence":"hourly","url":"https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{hour}/atmos/gfs.t{hour}z.pgrb2.0p25.f{lead}","path":"gfs-wind/{date}-{hour}-f{lead}.grib2","grib_select":[":UGRD:10 m above ground:",":VGRD:10 m above ground:"],"licence":"public-domain","attribution":"NOAA NCEP GFS forecast; preparation reference winds only"}
+  },
+  "cycle_hours": 6,
+  "boundary_hours": 1,
+  "bathymetry": {"cadence":"static","url":"https://www.ngdc.noaa.gov/thredds/fileServer/global/ETOPO2022/60s/60s_bed_elev_netcdf/ETOPO_2022_v1_60s_N90W180_bed.nc","path":"etopo2022-bed-60s.nc","expected_bytes":491284376,"range_chunk_bytes":8388608,"licence":"CC0-1.0","attribution":"NOAA NCEI ETOPO 2022, doi:10.25921/fd45-gt74"},
+  "stations": {"cadence":"static","url":"https://www.ndbc.noaa.gov/data/stations/station_table.txt","path":"stations.txt","licence":"public-domain","attribution":"NOAA NDBC station registry; historical positions require separate verification"},
+  "station_table": {"delimiter":"|","id_column":0,"coordinate_column":6,"latitude_token":0,"latitude_hemisphere_token":1,"longitude_token":2,"longitude_hemisphere_token":3},
+  "station_max_distance_km": 75
+}

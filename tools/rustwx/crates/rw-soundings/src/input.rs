@@ -574,6 +574,39 @@ impl Raw {
     }
 }
 
+/// Whole time slices of the named variables the frame has (2-D or 3-D, any staggering), read side by side on the
+/// caller's pool, every value promoted to f64 exactly as wrf-core's reader promotes it (classic files from the map,
+/// NetCDF-4 with every chunk inflated once, in parallel). A name the frame lacks is left out of the map.
+pub(crate) fn read_whole(
+    f: &WrfFile,
+    path: &std::path::Path,
+    ti: usize,
+    names: &[&'static str],
+) -> Res<std::collections::HashMap<&'static str, Vec<f64>>> {
+    let present: Vec<&'static str> = names.iter().copied().filter(|n| f.has_var(n)).collect();
+    if present.is_empty() {
+        return Ok(Default::default());
+    }
+    match f.hdf5() {
+        PureRustFile::Classic(_) => {
+            let raw = Raw::Classic { nc: NcFile::open(path).map_err(err)?, ti };
+            present
+                .par_iter()
+                .map(|&name| {
+                    let shape = f.var_shape_no_time(name).map_err(|e| format!("{name}: {e}"))?;
+                    let (nyv, nxv) = (shape[shape.len() - 2], shape[shape.len() - 1]);
+                    let nzv = if shape.len() == 3 { shape[0] } else { 1 };
+                    Ok((name, raw.window(name, (0, nzv), (0, nyv), (0, nxv))?))
+                })
+                .collect()
+        }
+        PureRustFile::Hdf5(_) => {
+            let nc = Nc4File::open(path).map_err(err)?;
+            present.par_iter().map(|&name| Ok((name, nc4_time_slice(&nc, name, ti)?))).collect()
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 unsafe extern "C" {
     fn madvise(addr: *mut std::ffi::c_void, len: usize, advice: i32) -> i32;

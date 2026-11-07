@@ -329,7 +329,8 @@ def horizontal_map(source, target, sg, tg, operator):
     weights = ConservativeMap(weights.overlap * scale, weights.source_area * scale,
                               weights.target_area * scale, dict(weights.receipt))
     weights = weights.with_physical_areas(source.mesh.arrays['areaCell'], target.mesh.arrays['areaCell'],
-                                          source_geometry_area=sg.area * scale)
+                                          source_geometry_area=sg.area * scale,
+                                          generator_areas=(sg.area, tg.area), generator_area_scale=scale)
     return weights
 
 

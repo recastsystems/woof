@@ -47,7 +47,7 @@ mesh.
 
 THE BREAKAGE THE SECOND CLAUSE PREVENTS, measured on a real install on
 2026-08-27 (``evidence/userwalk-20260827/``): ``pip install woof hex``
-resolved woof 2.5.7, whose bytes the seam pin refuses; the forecast door
+resolved gpuwm 2.5.7, whose bytes the seam pin refuses; the forecast door
 then stopped with two SHA-256 digests and no version number, and THIS
 REPORT said ``Every check passed`` and exited 0 -- because its woof line
 compared a version against a floor and never looked at a byte.  Fifteen of
@@ -79,6 +79,8 @@ VERIFIED = "verified"
 PRESENT = "present"
 MISSING = "missing"
 INFO = "info"
+#: Works, but slower than it should: never blocking, never "Every check passed".
+WARN = "warn"
 
 
 @dataclass
@@ -349,6 +351,14 @@ def _installed_cupy_wheels() -> list[str]:
 
 
 def check_gpu_runtime() -> list[Finding]:
+    from woof.gpu_smi import is_amd
+    if is_amd() or os.environ.get('WOOF_BACKEND')=='hip-nvidia':
+        from woof.hip_doctor import run
+        report=run()
+        return [Finding('HIP runtime', VERIFIED if report['ok'] else MISSING,
+            f"Experimental AMD; ROCm {report['rocm_version']}; gfx {report['gfx_target']}; wave {report['wave_size']}; kernel smoke {report['kernel_smoke']}",
+            'woof hex doctor --backend amd',
+            required=True,evidence=report)]
     """CuPy, and the CUDA major this distribution's own runtime floor requires.
 
     THE DEFECT THIS REPLACES, and it is worth stating because it cost a
@@ -564,6 +574,8 @@ def _card_probe() -> dict[str, object] | None:
         "out = {}\n"
         "try:\n"
         "    import cupy\n"
+        "    if cupy.cuda.runtime.is_hip:\n"
+        "        raise RuntimeError('CUDA is the default; select --backend amd for experimental ROCm checks')\n"
         "    out['device_count'] = int(cupy.cuda.runtime.getDeviceCount())\n"
         "    if out['device_count'] > 0:\n"
         "        p = cupy.cuda.runtime.getDeviceProperties(0)\n"
@@ -612,6 +624,9 @@ def check_gpu_architecture() -> list[Finding]:
     all is context, not a gap: the CuPy finding above says why.
     """
 
+    from woof.hip_backend import active
+    if active():
+        return []  # The HIP runtime finding includes gfx target and wave size.
     from .cuda_backend.arch_admission import architecture_status, nvrtc_refusal
 
     if _no_local_gpu():
@@ -1059,6 +1074,75 @@ def check_on_demand_assets() -> list[Finding]:
                         detail=str(error), remedy='reinstall woof hex')]
 
 
+def _compiler_identity_probe() -> dict[str, object] | None:
+    """The loaded NVRTC's identity (``woof.hex.cuda_backend.aot.compiler_identity``), in a short-lived process.
+
+    It loads NVRTC and reads its version and library digest; it compiles nothing and touches no device.
+    """
+
+    code = (
+        "import json, sys\n"
+        "try:\n"
+        "    from woof.hex.cuda_backend.aot import compiler_identity\n"
+        "    out = {'identity': compiler_identity()}\n"
+        "except Exception as error:\n"
+        "    out = {'error': f'{type(error).__name__}: {error}'}\n"
+        "sys.stdout.write(json.dumps(out))\n"
+    )
+    try:
+        probe = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                               errors="replace", timeout=_PROBE_TIMEOUT_S)
+        document = json.loads((probe.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None
+    return document if isinstance(document, dict) else None
+
+
+def check_kernel_pack() -> list[Finding]:
+    """Whether the loaded NVRTC has a pinned prebuilt kernel pack.
+
+    THE BREAKAGE (woof hex 0.4.12 post-publish check, 2026-11-05): a fresh ``[gpu-cu13]`` install pulled NVRTC
+    13.5.37, published after the gate; no pack was pinned for it, so the first forecast compiled every kernel
+    through NVRTC for about 100 s before its first step, and doctor printed "Every check passed".  A mismatch is
+    a WARN: forecasts still run, only the first start of each kernel is slow.
+    """
+
+    subject = "prebuilt kernel pack"
+    probe = _compiler_identity_probe()
+    identity = (probe or {}).get("identity")
+    if not isinstance(identity, dict) or not identity.get("nvrtc"):
+        reason = (probe or {}).get("error") or "the compiler probe did not answer"
+        return [Finding(subject=subject, status=INFO,
+                        detail=f"no CUDA compiler loaded here ({reason}); packs apply once a CUDA extra is installed")]
+    from . import assets
+    try:
+        pins = assets.load_pins()
+        name, row, reason = assets.compatible_pack(identity, pins)
+    except (OSError, ValueError, KeyError) as error:
+        return [Finding(subject=subject, status=MISSING, required=False, detail=f"asset pins unavailable: {error}",
+                        remedy="reinstall woof hex")]
+    loaded = ".".join(str(part) for part in identity.get("nvrtc", ()))
+    evidence = {"loaded_nvrtc": loaded, "nvrtc_package": identity.get("nvrtc_package"),
+                "nvrtc_library_sha256": identity.get("nvrtc_library_sha256")}
+    if name is not None:
+        return [Finding(subject=subject, status=VERIFIED,
+                        detail=f"loaded NVRTC {loaded} ({identity.get('nvrtc_package')}) matches {name}",
+                        evidence={**evidence, "pack": name, "sha256": row["sha256"]})]
+    major = identity["nvrtc"][0]
+    same_major = [(n, r) for n, r in pins["assets"].items()
+                  if r.get("kind") == "kernel-pack" and r.get("select", {}).get("nvrtc_major") == major]
+    pinned = assets.pinned_compilers(same_major)
+    newest = max((r for _, r in same_major), key=lambda r: tuple(r.get("compiler", {}).get("nvrtc", ())),
+                 default=None)
+    package = (newest or {}).get("compiler", {}).get("nvrtc_package")
+    remedy = (assets.nvrtc_remedy(identity) + f"\n# the NVRTC the newest pinned CUDA {major} pack was built with"
+              if package else assets.nvrtc_remedy(identity))
+    return [Finding(subject=subject, status=WARN,
+                    detail=(f"{reason}.  Pinned: {', '.join(pinned) or 'none'}.  Forecasts still run; the first "
+                            "start of each kernel compiles through NVRTC (about 100 s on a fresh install)."),
+                    remedy=remedy, evidence={**evidence, "pinned": pinned})]
+
+
 def check_physics_resources() -> list[Finding]:
     """Report MPAS cache readiness without fetching, compiling or opening a GPU."""
     from .mpasphys import resources_build as resources
@@ -1096,6 +1180,22 @@ def check_physics_resources() -> list[Finding]:
     return findings
 
 
+def check_geography() -> list[Finding]:
+    """Check the same default archive and datasets used by the static door."""
+    try:
+        from woof import rustwx_static
+    except ImportError:
+        return []  # The dependency check already reports the missing engine.
+    root = rustwx_static.default_geog_root()
+    refusal = rustwx_static.geog_refusal(root)
+    if refusal is None:
+        return [Finding("WPS_GEOG (mesh static)", VERIFIED,
+                        f"{root} has the datasets required by the static builder")]
+    return [Finding("WPS_GEOG (mesh static)", MISSING,
+                    refusal.splitlines()[0],
+                    remedy="woof fetch-geog --datasets mesh", required=True)]
+
+
 def collect() -> list[Finding]:
     """Every finding, in the order a reader should meet them."""
 
@@ -1107,7 +1207,9 @@ def collect() -> list[Finding]:
     findings.extend(check_gpu_architecture())
     findings.extend(check_engines())
     findings.extend(check_assets())
+    findings.extend(check_geography())
     findings.extend(check_on_demand_assets())
+    findings.extend(check_kernel_pack())
     findings.extend(check_physics_resources())
     return findings
 
@@ -1126,6 +1228,7 @@ _LABEL = {
     PRESENT: "PRESENT ",
     MISSING: "MISSING ",
     INFO: "INFO    ",
+    WARN: "WARN    ",
 }
 
 
@@ -1164,7 +1267,7 @@ def render(findings: list[Finding], *, explain: bool) -> str:
 def summarise(findings: list[Finding]) -> str:
     blocking = blocking_gaps(findings)
     if not blocking:
-        gaps = [f for f in findings if f.status == MISSING]
+        gaps = [f for f in findings if f.status in (MISSING, WARN)]
         if gaps:
             return (
                 f"\nEvery required check passed.  {len(gaps)} optional gap(s) "

@@ -99,3 +99,35 @@ def test_offline_pack_holds_the_thompson_aerosol_image_the_forecast_compiles(mon
             assert "static constexpr bool is_aerosol_aware = true;" in row["source"]
             assert list(row["options"]) == list(numerics.options(thompson.COMPILE_OPTIONS, numerics=selected))
         monkeypatch.undo()
+
+
+def test_fast_phase_cleanup_keeps_rounded_products(monkeypatch):
+    """The phase cleanup (module_mp_thompson.F:3552-3569) never contracts in fast numerics.
+
+    Breakage (MPAS ECT, 2026-11-02): fused ``qcten - xrc*odt`` left the frozen cloud's residual
+    xrc*(1 - fl(1/dt)*dt), negative at dt 1200 s, so the R1 clip removed it everywhere and fast hex lost
+    cloud ice (qi -4.5 %, ni -5.2 % at 1 h) and failed the consistency test. Strict is unchanged.
+    """
+    strict = thompson.cuda_source(device_math_source="// check", max_levels=55, numerics="strict")
+    fast = thompson.cuda_source(device_math_source="// check", max_levels=55, numerics="fast")
+    assert "tc_mul_rn" not in strict
+    cleanup = fast[fast.index("// MPAS module_mp_thompson.F:3552\n"):fast.index("// MPAS module_mp_thompson.F:3570\n")]
+    assert cleanup.count("tc_mul_rn(") == 19 and "tc_mul(" not in cleanup
+    support = fast[:fast.index("// MPAS physics_mmm/mp_radar.F90")] + thompson._ROUNDED_PRODUCT
+    nvrtc = pytest.importorskip("cupy_backends.cuda.libs.nvrtc")
+    aliases = "\n".join(f"#define mpas_{name} {name}" for name in (
+        "expf", "exp", "logf", "log", "log10f", "log10", "powf", "pow", "atan", "atanf"))
+    source = aliases + "\n" + support + r'''
+extern "C" __global__ void cleanup(float* qcten, const float* xrc, float odt) {
+    int i=blockIdx.x*blockDim.x+threadIdx.x;
+    qcten[i]=tc_sub(qcten[i],tc_mul_rn(xrc[i],odt));
+}
+'''
+    program = nvrtc.createProgram(source, "thompson_cleanup.cu", (), ())
+    try:
+        nvrtc.compileProgram(program, ("--gpu-architecture=compute_89",
+                                       *numerics.options(thompson.COMPILE_OPTIONS, numerics="fast")))
+        ptx = nvrtc.getPTX(program).decode()
+    finally:
+        nvrtc.destroyProgram(program)
+    assert "fma.rn" not in ptx and re.search(r"\bmul\.rn(?:\.ftz)?\.f32\b", ptx)

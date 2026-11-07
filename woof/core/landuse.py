@@ -63,6 +63,10 @@ class LanduseInitialization:
     albedo: np.ndarray
     embck: np.ndarray
     emiss: np.ndarray
+    #: THC, landuse_init's ``THERIN(IS,ISN)/100`` (the ice row on sea ice),
+    #: the thermal inertia the slab scheme turns into its heat capacity.
+    #: Optional only for hand-built instances; initialize_landuse sets it.
+    thc: np.ndarray | None = None
 
 
 def _nonempty_lines(text: str) -> list[str]:
@@ -453,9 +457,8 @@ def ruc_fractional_seaice(cfg) -> bool:
 
     ``module_physics_init.F:1463-1465`` gives ``landuse_init`` the same
     threshold the surface driver runs (0.02 under ``fractional_seaice =
-    1``).  ``RunConfig.fractional_seaice`` is admitted for RUC only, so a
-    default configuration answers False, the value these routes passed
-    before the field existed.
+    1``). Noah, Noah-MP and RUC share this threshold; the default
+    configuration answers False.
     """
     return int(getattr(cfg, "fractional_seaice", 0)) == 1
 
@@ -614,6 +617,10 @@ def initialize_landuse(
     mavail = np.asarray(row[..., 1], np.float32)
     embck = np.asarray(row[..., 2], np.float32)
     z0 = np.asarray(row[..., 3] / 100.0, np.float32)
+    # THC(I,J)=THERIN(IS,ISN)/100.  REAL: the table value is a float32
+    # list-directed read and the quotient a float32 division.
+    thc = (np.asarray(row[..., 4], np.float32) / np.float32(100.0)).astype(
+        np.float32)
     # SCFX is declared without a season dimension in WRF.  Each seasonal
     # block overwrites it, so the last block read is used in every season.
     snow_effect = np.asarray(
@@ -673,7 +680,7 @@ def initialize_landuse(
         ust=np.full(shape, np.float32(1.0e-4), dtype=np.float32),
         mavail=real(mavail), z0=real(z0), znt=real(z0),
         albbck=real(albbck), albedo=real(albedo),
-        embck=real(embck), emiss=real(emiss))
+        embck=real(embck), emiss=real(emiss), thc=real(thc))
 
 
 __all__ = ["LANDUSE_COLUMNS", "LanduseInitialization", "LanduseTable",

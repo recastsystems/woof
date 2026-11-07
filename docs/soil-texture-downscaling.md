@@ -4,7 +4,7 @@
 
 ## The symptom
 
-Over land, a woof 2 m dewpoint plot used to show a faint rectangular quilt.
+Over land, a gpuwm 2 m dewpoint plot used to show a faint rectangular quilt.
 The rectangles are 0.25 degrees on a side: 16.8 km by 27.6 km at 53 N,
 which is 5.5 by 9.1 cells on a 3 km domain and 16.5 by 27.6 on a 1 km one.
 Their edges sit on whole multiples of 0.25 degrees of latitude and

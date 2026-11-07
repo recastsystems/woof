@@ -1751,6 +1751,32 @@ def _microphysics_table_authority(profile: str) -> dict[str, object] | None:
     switches = (_native_hrrr_runtime_switches(profile)
                 if isinstance(profile, str) else asdict(profile))
     mp_physics = int(switches["mp_physics"])
+    if mp_physics == 38:
+        from woof.core.thompson_contract import (
+            HAIL_TABLE_ASSETS, HAIL_TABLE_SET_ID, WRF_REFERENCE_COMMIT,
+            WRF_REFERENCE_VERSION, validate_table_assets,
+        )
+        from woof.core.thompson_aerosol_contract import AEROSOL_TABLE_ASSETS
+        from woof.physics_compat import thompson_hail_table_root
+        from woof.table_assets import require_thompson_tables
+
+        root = Path(thompson_hail_table_root()).resolve()
+        assets = validate_table_assets(root, HAIL_TABLE_ASSETS)
+        aerosol_root = Path(require_thompson_tables(assets=AEROSOL_TABLE_ASSETS)).resolve()
+        aerosol_assets = validate_table_assets(aerosol_root, AEROSOL_TABLE_ASSETS)
+        def inventory(items):
+            return [{"filename": item.filename, "bytes": item.bytes,
+                     "sha256": item.sha256} for item in items]
+        return {
+            "schema": "gpuwm-prepared-microphysics-table-authority-v1",
+            "mp_physics": 38, "table_root": str(root),
+            "table_set": HAIL_TABLE_SET_ID,
+            "wrf_reference_version": WRF_REFERENCE_VERSION,
+            "wrf_reference_commit": WRF_REFERENCE_COMMIT,
+            "assets": inventory(assets),
+            "aerosol_authority": {"table_root": str(aerosol_root),
+                                  "assets": inventory(aerosol_assets)},
+        }
     if mp_physics in (THOMPSON_MP_PHYSICS, 28):
         from woof.core.thompson_contract import (
             CLASSIC_TABLE_ASSETS,
@@ -2309,7 +2335,7 @@ def _experiment_tables(
     defaults = recipe_physics_defaults("hrrr")
     for name, value in defaults.items():
         if name in ("usemonalb", "rdlai2d"):
-            # 3e5245839, lane/ruc-evap-gap: prescribed monthly fields have
+            # 3e5245839, development branch: prescribed monthly fields have
             # consumers in Noah (2) and RUC (3). Preserve each profile's
             # declared controls, including explicit false.
             if int(switches["sf_surface_physics"]) in (2, 3):
@@ -3198,7 +3224,7 @@ def _boundary_static_sides(static, grid, run_cfg, *, width):
     """
     return _compact_boundary_static(
         static, run_cfg, width=width,
-        latlon_mass=(grid.latlon_mass() if int(run_cfg.mp_physics) == 28
+        latlon_mass=(grid.latlon_mass() if int(run_cfg.mp_physics) in (28, 38)
                      else None))
 
 
@@ -3321,7 +3347,7 @@ _PREPARE_WORKER_CONTEXT = None
 def _exit_with_parent():
     """End this spawned worker the moment its parent process dies.
 
-    Breakage it prevents (Updraft factory, Vast V8X, 2026-10-27): when the
+    Breakage it prevents (shared host, 2026-10-27): when the
     preparation process was killed (cgroup OOM killer, a pool child barrier,
     a restart), its boundary workers blocked forever on the executor's call
     queue, because each worker holds a copy of that queue's write end, so no

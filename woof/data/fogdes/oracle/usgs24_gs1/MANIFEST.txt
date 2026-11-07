@@ -1,0 +1,16 @@
+grav_settling i4 0
+nlcat i4 0
+kte i4 0
+dtbl f4 0
+ivgtyp i4 1 10
+lai f4 1 10
+wspd f4 1 10
+rho f4 2 10 21
+dz8w f4 2 10 21
+qc_in f4 3 10 21 6
+dqc_in f4 3 10 21 6
+fgdp_in f4 2 10 6
+vdfg f4 2 10 6
+dfgdp f4 2 10 6
+fgdp f4 2 10 6
+rqcblten f4 3 10 21 6

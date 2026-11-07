@@ -33,7 +33,7 @@ cd "netcdf-c-$version"
 ./configure --prefix="$prefix" --disable-shared --enable-static --with-pic \
   --disable-netcdf-4 --disable-hdf5 --disable-dap --disable-byterange --disable-libxml2 \
   --disable-nczarr --disable-utilities --disable-testsets --disable-examples \
-  --disable-doxygen --disable-plugins >configure.log 2>&1 || { tail -40 configure.log; exit 1; }
+  --disable-doxygen --disable-plugins --with-plugin-dir=/usr/local/hdf5/lib/plugin >configure.log 2>&1 || { tail -40 configure.log; exit 1; }
 make -j"${CARGO_BUILD_JOBS:-${MAX_JOBS:-8}}" >make.log 2>&1 || { tail -40 make.log; exit 1; }
 make install >install.log 2>&1 || { tail -40 install.log; exit 1; }
 test -f "$prefix/lib/libnetcdf.a"

@@ -207,13 +207,9 @@ def test_translator_file_landuse_context_accepts_usgs_and_refuses_false_count(tm
     fixed = {row.key:row for row in report.fixed}
     assert fixed['num_land_cat'].fixed_value == 24
     assert 'USGS' in fixed['num_land_cat'].reason
-    # Noah's surface step runs WRF's whole-cell 0.5 branch (only RUC carries
-    # 0.02), so fractional_seaice = 1 here is a declared divergence, not a
-    # fixed value (golden/namelist dbead7aef; test_namelist_import pins the
-    # same row).
+    # Noah retains fractional ice rather than replacing it at the door.
     assert 'fractional_seaice' not in fixed
-    (seaice,) = [s for s in report.substitutions if s.key == 'fractional_seaice']
-    assert (seaice.wrf_value, seaice.gpuwm_value) == (1, 0)
+    assert all(s.key != 'fractional_seaice' for s in report.substitutions)
     with pytest.raises(ValueError, match='num_land_cat'):
         import_namelists(*paths, landuse_identity={'MMINLU':'MODIFIED_IGBP_MODIS_NOAH', 'NUM_LAND_CAT':21})
     with pytest.raises(ValueError, match='num_land_cat'):

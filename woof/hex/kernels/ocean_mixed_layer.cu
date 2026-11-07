@@ -12,9 +12,37 @@ extern "C" __global__ void ocean_step(
  const float* water_hfx, const float* water_lh, const float* ust,
  const float* wind_u, const float* wind_v, const float* tair,
  const float* pressure, const float* chs, const float* cqs,
- const float* rain, const float* frozen, const double* p) {
+ const float* rain, const float* frozen, const double* p
+#ifdef HEX_PWP
+ , double* columns, const double* pp, double* diagnostics
+#endif
+) {
  int i=blockIdx.x*blockDim.x+threadIdx.x;
  if(i>=n || ocean[i]<0.5f) return;
+#ifdef HEX_PWP
+ // PWP is a tropical open-water option. Initially icy columns retain the
+ // existing thermodynamic ice model throughout this run.
+ if(diagnostics[4*i+3]>0.5) {
+   const double rhoair=pressure[i]/(287.04*fmax(180.0,double(tair[i])));
+   const double speed=fmax(1.e-10,hypot(double(wind_u[i]),double(wind_v[i])));
+   const double stress=rhoair*double(ust[i])*ust[i];
+   const double t=temp[i];
+   const double qsw=(1-p[11])*sw[i];
+   const double qnon=p[14]*(lw[i]-5.67051e-8*t*t*t*t)-water_hfx[i]-water_lh[i];
+   const double freshwater=double(rain[i])/1000.0/dt-water_lh[i]/(2.5e6*1000.0);
+   pwp_advance(columns+((long long)i)*4*int(pp[0]), pp, dt, coriolis[i],
+       stress*wind_u[i]/speed, stress*wind_v[i]/speed, qsw,qnon,freshwater,
+       diagnostics+4*i);
+   temp[i]=columns[((long long)i)*4*int(pp[0])];
+   depth[i]=diagnostics[4*i];
+   hu[i]=columns[((long long)i)*4*int(pp[0])+2*int(pp[0])]*depth[i];
+   hv[i]=columns[((long long)i)*4*int(pp[0])+3*int(pp[0])]*depth[i];
+   const double absorbed=qnon+qsw*(1-exp(-pp[0]*pp[1]/pp[10]));
+   energy[i]+=absorbed*dt; residual[i]+=diagnostics[4*i+1];
+   net_flux[i]=absorbed; ice_temp[i]=temp[i];
+   return;
+ }
+#endif
  const double rho=p[0], cw=p[1], rhoi=p[2], L=p[3], ki=p[4], ks=p[5];
  const double tf=273.15-0.054*p[6], gamma=p[7], maxh=p[8];
  const double hnew=p[9], cb=p[10], aw=p[11], ai=p[12], as=p[13], eps=p[14];

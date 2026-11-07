@@ -719,3 +719,36 @@ def test_blended_surface_optics_come_with_the_new_members_ice():
     """A check of run_2bfb0e1e82195f53: carried albedo against the new member's xice gave RUC an ice albedo above 1."""
     from woof.hex.moving_physics import STATIC
     assert {'fields/xice', 'fields/albedo', 'fields/emiss', 'fields/xicem'} <= STATIC
+
+
+
+def test_rkind_prepared_areas_are_admitted_through_the_generator_geometry():
+    # G03 (2026-11-02): a storm-following region move after an RRFS-style init was refused with
+    # "prepared physical areas differ beyond FP32 metric rounding" (metric error 1.32e-7). The
+    # prepared areaCell is the RKIND product fp32(unit area) * fp32(R^2) (rw_mpas_init_v831), which
+    # can sit more than one FP32 epsilon from the float64 generator area times R^2.
+    from scipy.sparse import diags
+    rng = np.random.default_rng(20261102)
+    unit = rng.uniform(1.5e-7, 3.5e-7, 4000)          # 3 km cells on the unit sphere
+    scale = 6371229.0 ** 2                             # MPAS sphere_radius squared
+    prepared_area = (unit.astype(np.float32) * np.float32(scale)).astype(float)
+    assert float(np.max(abs(prepared_area / (unit * scale) - 1))) > np.finfo(np.float32).eps
+    scaled = ConservativeMap(diags(unit * scale, format="csr"), unit * scale, unit * scale, {})
+    with pytest.raises(ValueError, match="FP32 metric rounding"):
+        scaled.with_physical_areas(prepared_area, prepared_area)
+    prepared = scaled.with_physical_areas(prepared_area, prepared_area, generator_areas=(unit, unit),
+                                          generator_area_scale=scale)
+    values = (np.arange(len(unit)) % 97).astype(np.float32) / 3
+    mapped, receipt = prepared.conserved(values)
+    np.testing.assert_array_equal(mapped, values)
+    # Only the exact RKIND product is admitted: two ULPs more on the worst donor is refused again.
+    worst = int(np.argmax(abs(prepared_area / (unit * scale) - 1)))
+    bent = prepared_area.copy()
+    away = np.float32(np.inf) if bent[worst] > unit[worst] * scale else np.float32(-np.inf)
+    bent[worst] = float(np.nextafter(np.nextafter(np.float32(bent[worst]), away), away))
+    with pytest.raises(ValueError):
+        scaled.with_physical_areas(bent, prepared_area, generator_areas=(unit, unit), generator_area_scale=scale)
+    # A generator that is not the admitted geometry is refused by name.
+    with pytest.raises(ValueError, match="generator differs"):
+        scaled.with_physical_areas(prepared_area, prepared_area, generator_areas=(unit * 1.001, unit),
+                                   generator_area_scale=scale)

@@ -19,8 +19,13 @@ interpreter where cupy does not resolve.
 
 from __future__ import annotations
 
-from woof.config import (RunConfig, SASE_PBL_SCHEME, UW_PBL_SCHEME,
-                          radiation_enabled)
+from types import MappingProxyType
+
+from woof.core.mp_column_schemes import (TABLE_SCHEMES,
+                                         table_schemes_carrying)
+
+from woof.config import (ACM2_PBL_SCHEME, BOULAC_PBL_SCHEME, P3_MP_PHYSICS, KEPS_PBL_SCHEME, MRF_PBL_SCHEME, GBM_PBL_SCHEME, EEPS_PBL_SCHEME,
+                          RunConfig, SASE_PBL_SCHEME, UW_PBL_SCHEME, radiation_enabled)
 
 
 RADIATION_BOUNDARY_FLUXES = tuple(
@@ -46,13 +51,24 @@ def radiation_boundary_flux_names(cfg):
     """
     from woof.config import (RRTMG_VARIANT_LEGACY, RRTMG_VARIANT_RTE_RRTMGP,
                               radiation_scheme_ids)
-    if cfg.ra_rrtmg_variant not in (RRTMG_VARIANT_LEGACY,
-                                    RRTMG_VARIANT_RTE_RRTMGP):
-        return ()
     lw,sw=radiation_scheme_ids(cfg)
     sides = {side for side,selector in (("lw",lw),("sw",sw))
-             if int(selector)==4}
+             if int(selector)==3 or (int(selector)==4 and cfg.ra_rrtmg_variant in (RRTMG_VARIANT_LEGACY,RRTMG_VARIANT_RTE_RRTMGP))}
     return tuple(name for name in RADIATION_BOUNDARY_FLUXES if name[:2] in sides)
+
+def diagnostic_boundary_flux_names(cfg):
+    """Held Registry flux carriers consumed by native RASM/solar.
+
+    WRF allocates and cold-initializes these Registry fields even when
+    the selected radiation does not write them. Keep those zeros as held
+    state; do not substitute SWDOWN or infer an unselected producer.
+    """
+    names = set(radiation_boundary_flux_names(cfg))
+    if cfg.mean_diag or cfg.diurnal_diag:
+        names.update(('swdnb','lwupb','swupb','swupt','swdnt','lwupt','lwdnt'))
+    elif cfg.solar_diagnostics:
+        names.update(('swdnb','swdnt'))
+    return tuple(name for name in RADIATION_BOUNDARY_FLUXES if name in names)
 
 #: HORIZONTAL EDDY-VISCOSITY DIAGNOSTIC (cfg.hmix_k_diag): the (momentum,
 #: scalar) history names each horizontal mixing producer publishes under.
@@ -92,10 +108,10 @@ def hmix_k_diag_names(cfg: RunConfig) -> tuple[str, ...]:
 
 def physics_enabled(cfg: RunConfig) -> bool:
     """Whether any non-timesplit physics scheme is configured."""
-    return bool(radiation_enabled(cfg) or cfg.sf_sfclay_physics
+    return bool(cfg.obs_nudge_opt or cfg.tmn_update or cfg.sst_update or cfg.sst_skin or radiation_enabled(cfg) or cfg.sf_sfclay_physics
                 or cfg.sf_surface_physics or getattr(cfg, "sf_ocean_physics", 0)
                 or cfg.bl_pbl_physics
-                or cfg.cu_physics or getattr(cfg, "ifire", 0) == 2
+                or cfg.cu_physics or cfg.solar_diagnostics or getattr(cfg, "shcu_physics", 0) or getattr(cfg, "ifire", 0) == 2
                 or getattr(cfg, "wind_farm_scheme", "off") != "off")
 
 
@@ -108,7 +124,9 @@ def physics_driver_required(cfg: RunConfig) -> bool:
     handoff, so an mp-only domain must receive the same persistent attachment
     as a domain with radiation, surface, PBL, or cumulus physics.
     """
-    return bool(cfg.mp_physics or physics_enabled(cfg))
+    return bool(cfg.mp_physics or cfg.tmn_update or physics_enabled(cfg)
+                or getattr(cfg, 'afwa_diag_opt', 0) or cfg.mean_diag
+                or cfg.diurnal_diag or cfg.output_diagnostics or cfg.lightning_option)
 
 
 def terrain_drag_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
@@ -182,12 +200,12 @@ def physics_reuses_pbl_composition(cfg: RunConfig) -> bool:
 
     This is deliberately narrower than ``stepbl == 1``: every positive-bldt
     configuration retains the historical allocation path.  With active YSU
-    and literal ``bldt == 0``, ``_run_ysu`` replaces the PBL stack before
+    and literal ``bldt == 0``, every PBL call overwrites the coupled rates before
     every composition, so radiation/cumulus can be accumulated into it once
     without corrupting a value needed by the next step.
     """
     return bool(cfg.bl_pbl_physics and cfg.bldt == 0.0
-                and (radiation_enabled(cfg) or cfg.cu_physics))
+                and (radiation_enabled(cfg) or cfg.cu_physics or getattr(cfg,"shcu_physics",0)))
 
 
 #: ``mp_physics`` values whose WRF Registry ``moist`` package carries QI,
@@ -201,17 +219,18 @@ def physics_reuses_pbl_composition(cfg: RunConfig) -> bool:
 #: mp=16 reached production having moved only two of them.
 from woof.microphysics_schemes import NAMED_SCHEMES as _NAMED_MP_SCHEMES
 from woof.microphysics_schemes import SCHEMES_BY_ID as _NAMED_MP_SCHEMES_BY_ID
-PBL_RQI_MICROPHYSICS = (2, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106) + tuple(
+PBL_RQI_MICROPHYSICS = (2, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 50, 51, 52, 53, 55, 56, 96, 106) + TABLE_SCHEMES + tuple(
     _s.mp_id for _s in _NAMED_MP_SCHEMES.values() if "qi" in _s.ice_mass_species)
 
 
 #: Microphysics producers with an output-due radar reflectivity carrier.
-REFL_10CM_MICROPHYSICS = (1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 50, 106) + tuple(
-    _s.mp_id for _s in _NAMED_MP_SCHEMES.values())
+REFL_10CM_MICROPHYSICS = tuple(sorted(
+    (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 18, 24, 26, 27, 28, 29, 38, 40, 50, 51, 52, 53, 55, 56, 106) + TABLE_SCHEMES)) + tuple(
+    _s.mp_id for _s in _NAMED_MP_SCHEMES.values() if _s.native_reflectivity)
 # Kessler has no stock microphysics reflectivity writer. The default
 # diagnostic remains available; strict forecast history retains the
 # initialized stock slot (module_mp_kessler.F, no REFL_10CM argument).
-WRF_INACTIVE_REFL_MICROPHYSICS = frozenset({1})
+WRF_INACTIVE_REFL_MICROPHYSICS = frozenset({1,11,96})
 
 
 #: The raw PBL fields needed to repeat mass coupling after a grid move.
@@ -225,7 +244,7 @@ PBL_HISTORY_RATES = {"rublten": "du", "rvblten": "dv", "rthblten": "dtheta",
                      "rqvblten": "dqv", "rqcblten": "dqc"}
 
 
-def history_tendency_rows() -> bool:
+def history_tendency_rows(cfg=None) -> bool:
     """Whether this process carries WRF's 3-D PBL and cumulus tendency rows.
 
     RUBLTEN..RQCBLTEN (RQIBLTEN under MYNN) and the RxxCUTEN rates are WRF
@@ -239,21 +258,22 @@ def history_tendency_rows() -> bool:
     16 GB headline domain that fits resident in 2.9.0 no longer did.
     """
     from woof.wrf_exact import ENABLED
-    return bool(ENABLED)
+    return bool(ENABLED or getattr(cfg,'acc_phy_tend',0))
 
 
 def pbl_history_rates(cfg) -> dict[str, str]:
     """The selected PBL producer's raw history rates (strict processes only,
     see :func:`history_tendency_rows`; a default process gets ``{}``).
 
-    MYNN's wrapper assigns RQIBLTEN independently of whether a prognostic
-    ice scalar consumes it (module_pbl_driver.F:1682). Keep its actual
-    producer record on the same mass-coupling clock as the other rates.
+    MYNN and ACM2 assign RQIBLTEN independently of whether a prognostic
+    ice scalar consumes it (module_pbl_driver.F:1682 for MYNN and
+    module_bl_acm.F:555 for ACM2). Keep its actual producer record on the
+    same mass-coupling clock as the other rates.
     """
-    if not history_tendency_rows():
+    if not history_tendency_rows(cfg):
         return {}
     rates = dict(PBL_HISTORY_RATES)
-    if int(getattr(cfg, "bl_pbl_physics", 0)) == 5:
+    if int(getattr(cfg, "bl_pbl_physics", 0)) in (5, ACM2_PBL_SCHEME):
         rates["rqiblten"] = "dqi"
     return rates
 SCM_SURFACE_FORCING_FIELDS = (
@@ -261,11 +281,12 @@ SCM_SURFACE_FORCING_FIELDS = (
     "lh_force_tend", "tsk_force_tend")
 
 
-def scm_forcing_fields() -> tuple[str, ...]:
+def scm_forcing_fields(cfg=None) -> tuple[str, ...]:
     """The SCM surface forcing scalars this process carries.
 
-    HFX_FORCE and its siblings are WRF single-column-model controls with no
-    admitted producer; the exact chain carries them, held at their initial
+    HFX_FORCE and its siblings are WRF single-column-model controls. The
+    ideal SCM surface advances these actual scalar carriers; the exact
+    chain otherwise carries them, held at their initial
     or restored words, so a strict (GPUWM_WRF_EXACT=1) wrfout lists every
     record a recording wrote.  A default process carries none of them.
 
@@ -276,7 +297,9 @@ def scm_forcing_fields() -> tuple[str, ...]:
     and nest relocation raised on shape (), and wrfout gained six records
     2.9.0 never wrote.
     """
-    return SCM_SURFACE_FORCING_FIELDS if history_tendency_rows() else ()
+    return (SCM_SURFACE_FORCING_FIELDS
+            if int(getattr(cfg, "sf_sfclay_physics", 0)) == 89
+            or history_tendency_rows() else ())
 
 
 def pbl_raw_rate_names(cfg: RunConfig) -> tuple[str, ...]:
@@ -304,11 +327,15 @@ def microphysics_scratch_slots(
     (``woof/core/microphysics_aerosol.py:263-269``), so the driver aliases
     them here instead of allocating a private zero-filled copy set.
     """
+    from woof.physics_registry import consumer_row_for_selector
+    native = consumer_row_for_selector("microphysics", "native_column", mp_physics)
+    if native:
+        return tuple(native["surfaces"].items())
     if mp_physics == 1:
         return (("rainnc", "mp_rainnc"),
                 ("rainncv", "mp_rainncv"),
                 ("sr", "mp_kessler_sr"))
-    if mp_physics == 5:
+    if mp_physics in (5, 15):
         # Ferrier-Aligo.  THREE slots: the driver arm ``CASE
         # (FER_MP_HIRES)`` binds RAINNC, RAINNCV and SR and nothing else
         # (module_microphysics_driver.F:2613-2626).  FER_HIRES puts all
@@ -317,7 +344,8 @@ def microphysics_scratch_slots(
         return (("rainnc", "mp_rainnc"),
                 ("rainncv", "mp_rainncv"),
                 ("sr", "mp_sr"))
-    if mp_physics == 3:
+    if mp_physics in (3, 11):
+        # CAMMGMP and WSM3 have rain/snow/SR, with no graupel.
         # WSM3: the driver arm binds RAINNC/RAINNCV, SNOWNC/SNOWNCV and SR
         # and no graupel argument (module_microphysics_driver.F:2241-2245).
         return (("rainnc", "mp_rainnc"),
@@ -325,7 +353,7 @@ def microphysics_scratch_slots(
                 ("sr", "mp_sr"),
                 ("snownc", "mp_snownc"),
                 ("snowncv", "mp_snowncv"))
-    if mp_physics in (2, 6, 8, 10, 16, 28, 30) or mp_physics in _NAMED_MP_SCHEMES_BY_ID:
+    if mp_physics in (2, 6, 8, 10, 16, 28, 29, 30, 38, 40) + TABLE_SCHEMES or mp_physics in _NAMED_MP_SCHEMES_BY_ID:
         return (("rainnc", "mp_rainnc"),
                 ("rainncv", "mp_rainncv"),
                 ("sr", "mp_sr"),
@@ -341,7 +369,7 @@ def microphysics_scratch_slots(
         return (("rainnc", "mp_rainnc"),
                 ("rainncv", "mp_rainncv"),
                 ("sr", "mp_sr"))
-    if mp_physics in (9, 18, 24):
+    if mp_physics in (7, 9, 18, 24, 26, 27, 56):
         # WSM7 (mp=24) binds the same nine in CASE (WSM7SCHEME)
         # (module_microphysics_driver.F:2401-2408: RAIN/RAINNCV, SNOW/
         # SNOWNCV, SR, GRAUPEL/GRAUPELNCV, HAIL/HAILNCV).
@@ -362,10 +390,9 @@ def microphysics_scratch_slots(
     from woof.core.column_schemes import COLUMN_SCHEMES
     if mp_physics in COLUMN_SCHEMES:
         return tuple((name.removeprefix("mp_"), name) for name in COLUMN_SCHEMES[mp_physics].surface)
-    if mp_physics == 50:
-        # P3 one-category.  FIVE slots, not mp=6/8's seven: the driver arm
-        # ``CASE (P3_1CATEGORY)`` binds RAINNC/RAINNCV/SR/SNOWNC/SNOWNCV and
-        # NO graupel argument (module_microphysics_driver.F:1590-1595),
+    if mp_physics in (14,) + P3_MP_PHYSICS:
+        # WDM5 and P3 carry the five rain/snow slots, without graupel.
+        # P3 driver arms: module_microphysics_driver.F:1590-1595, :1638-1642.
         # because P3 has a single ice category whose rime fraction spans
         # what other schemes split into snow, graupel and hail.  Listing
         # graupel here would allocate a canonical accumulator that stayed
@@ -375,6 +402,24 @@ def microphysics_scratch_slots(
                 ("sr", "mp_sr"),
                 ("snownc", "mp_snownc"),
                 ("snowncv", "mp_snowncv"))
+    # A table-admitted column scheme (woof.core.column_microphysics)
+    # writes exactly the slots its registry row names, so the canonical
+    # mapping is read off that row rather than restated per scheme.
+    from woof.physics_registry import consumer_row_for_selector
+    row = consumer_row_for_selector("microphysics", "column_kernel",
+                                    int(mp_physics))
+    if isinstance(row, dict):
+        return tuple((slot[len("mp_"):], slot)
+                     for slot in row["surface_slots"])
+    if mp_physics == 95:
+        # Eta Ferrier.  THREE slots: the driver arm ``CASE (ETAMPNEW)``
+        # binds RAINNC, RAINNCV and SR and nothing else
+        # (module_microphysics_driver.F:2577-2594); ETAMP_NEW folds snow
+        # into one surface precipitation total, RAINNC, and reports its
+        # frozen share only through SR (module_mp_etanew.F:547-554).
+        return (("rainnc", "mp_rainnc"),
+                ("rainncv", "mp_rainncv"),
+                ("sr", "mp_sr"))
     return ()
 
 
@@ -423,6 +468,31 @@ MYNN_PBL_DIAGNOSTICS_2D = ("maxwidth", "maxmf", "ztop_plume")
 #: Integer per-column diagnostic; kept apart because it is int32.
 MYNN_PBL_DIAGNOSTICS_INT_2D = ("ktop_plume",)
 
+
+#: The Pleim-Xiu surface layer (``sf_sfclay_physics = 7``), in the argument
+#: order of ``pxsfclay.cu`` (woof/core/pxsfclay.py launches it).
+#:
+#: * inputs: the lowest-level U, V, T, THETA, QV, P and layer depth DZ8W,
+#:   and PSFC, TSK, PBLH, MAVAIL and XLAND (module_surface_driver.F:2163);
+#: * state: WRF's INOUT words (module_sf_pxsfclay.F:138-196) and the OUT
+#:   pair U10/V10.  Every name is already in :data:`SFCLAY_OUTPUTS`, so the
+#:   scheme allocates nothing the MM5 layers do not; it writes no FM, FH,
+#:   USTM, TH2, T2 or Q2 (those planes keep their cold-start zeros, which
+#:   is why the fm/fh-binding PBLs are refused with it);
+#: * sea: the open-water words PXSFCLAY_SEAICE_WRAPPER hands the post-LSM
+#:   blend (module_surface_driver.F:6926-6970), stored in the ``<name>_sea``
+#:   carriers the RUC seam already holds.
+PX_SFCLAY_INPUTS = ("u1", "v1", "t1", "th1", "qv1", "p1", "dz8w", "psfc",
+                    "tsk", "pblh", "mavail", "xland")
+PX_SFCLAY_STATE = ("regime", "hfx", "qfx", "lh", "mol", "rmol", "qsfc",
+                   "gz1oz0", "wspd", "br", "psim", "psih", "znt", "zol",
+                   "ust", "cpm", "chs2", "cqs2", "chs", "flhc", "flqc",
+                   "qgh", "u10", "v10")
+PX_SFCLAY_SEA = ("chs", "chs2", "cpm", "cqs2", "flhc", "flqc", "hfx", "lh",
+                 "qfx", "qgh", "qsfc", "tsk")
+
+#: The Eta similarity surface layer's (``sf_sfclay_physics = 2``) WRF INOUT
+
 #: The Eta similarity surface layer's (``sf_sfclay_physics = 2``) WRF INOUT
 #: state, in the argument order of the ``myjsfc_column`` kernel that
 #: woof/core/myjsfc.py launches (hoisted from there, which imports cupy).
@@ -458,6 +528,44 @@ MYJ_SFCLAY_FIELDS_2D = tuple(dict.fromkeys((
 #: list; the estimate used to omit both, 2*nz planes per domain.
 MYJ_PBL_STATE_3D = ("tke_myj", "el_myj")
 
+#: EEPS's (``bl_pbl_physics = 16``) PBL-owned copy of its TKE and
+#: dissipation rate, WRF's PEK_PBL/PEP_PBL (Registry.EM_COMMON:1051-1052,
+#: ``hr``: history and restart).  Allocated by ``initialize_physics`` for
+#: this selector only, at EEPSINIT's minpek/minpep, and priced by the VRAM
+#: estimate from this same tuple.
+EEPS_PBL_STATE_3D = ("pek_pbl", "pep_pbl")
+
+# Re-export the CPU-only transport metadata for existing physics consumers.
+from woof.core.pbl_scalar_inventory import (
+    PBL_TRANSPORTED_SCALARS, pbl_transported_scalars)
+
+#: The QNSE PBL (``bl_pbl_physics = 4``) carries the SAME two columns under
+#: the same names: module_bl_qnsepbl.F's dummies are MYJ's (TKE read as
+#: 2*TKE at :333 and rewritten at :429, EL_MYJ INTENT(OUT) at :188), bound
+#: by the driver to the same tke_pbl/el_pbl state (module_pbl_driver.F:
+#: 1549-1550).  Only the cold start differs: QNSEPBLINIT seeds TKE with
+#: EPSQ2L = 0.01 (module_bl_qnsepbl.F:1357), not MYJ's EPSQ2 = 0.2.
+QNSE_TKE_COLD_START = 0.01
+
+# QNSESFCINIT, WRF v4.6.1 module_sf_qnsesfc.F:1113-1119.
+# Cold-start overrides only. Restart restoration subsequently restores the
+# carried words. The EM build leaves Z0 unchanged; NMM land-use reduction
+# is outside this EM-core engine's selectable dynamics.
+ETA_SURFACE_INITIAL_STATE = {4: {"ust": 0.1}}
+
+#: The EDMF shallow mass flux beside QNSE (``mfshconv = 1``), allocated by
+#: ``initialize_physics`` for that pairing only and priced by the VRAM
+#: estimate from these same tuples, all (nz) mass levels:
+#:
+#: * carried: RC_MF, the updraft's diagnosed cloud water, read back as the
+#:   condensate split of QV on the next call (module_bl_mfshconvpbl.F:
+#:   188-189) and Registry ``r`` (restart);
+#: * published: the EDKF set (:271-281), every level rewritten each call.
+MFSHCONV_STATE_3D = ("rc_mf",)
+MFSHCONV_OUTPUTS_3D = ("massflux_edkf", "entr_edkf", "detr_edkf", "thl_up",
+                       "thv_up", "rt_up", "rv_up", "rc_up", "u_up", "v_up",
+                       "frac_up")
+
 #: The UW moist-turbulence PBL's (``bl_pbl_physics = 9``) persistent fields,
 #: allocated by ``initialize_physics`` for that selector only and priced by
 #: the VRAM estimate from these same tuples.  Interface fields carry nz+1
@@ -478,6 +586,63 @@ UWPBL_STATE_2D = ("tauresx2d", "tauresy2d")
 UWPBL_DIAGNOSTICS_FULL = ("tke_pbl", "turbtype3d", "smaw3d")
 UWPBL_DIAGNOSTICS_2D = ("tpert2d", "qpert2d", "wpert2d")
 UWPBL_HELD_3D = ("uw_cldfra",)
+
+#: The TEMF surface layer (``sf_sfclay_physics = 10``,
+#: phys/module_sf_temfsfclay.F), in the argument order of the
+#: ``temf_sfclay_column`` kernel woof/core/temf_sfclay.py launches.
+#: Inputs are lowest-model-level and surface fields; ``hd_temf`` is the TEMF
+#: PBL's dry thermal top (read for w*).
+TEMF_SFCLAY_INPUTS = ("u1", "v1", "th1", "qv1", "p1", "pi1", "rho1", "z1",
+                      "ht", "psfc", "znt", "mavail", "tsk", "fcor",
+                      "hd_temf")
+#: Read and rewritten: the first level of the PBL's TE_TEMF (floored at
+#: TEmin in place, :256), HFX (read for w*, :258) and WM_TEMF (averaged
+#: with its previous value, :338-340).
+TEMF_SFCLAY_CARRIED = ("te1", "hfx", "wm_temf")
+#: Written.  ``exch_temf`` is WRF's per-step EXCH_TEMF, which
+#: module_first_rk_step_part1.F:127 holds as a local and hands the TEMF PBL.
+TEMF_SFCLAY_COLUMN_OUTPUTS = ("ust", "qsfc", "chs", "chs2", "cqs2", "cpm", "qgh",
+                       "qfx", "lh", "flhc", "flqc", "u10", "v10", "th2",
+                       "t2", "q2", "exch_temf")
+#: The persistent 2-D planes ``initialize_physics`` adds for the selector
+#: beyond the shared surface-layer set: WM_TEMF (Registry state, restart
+#: field, TEMFSFCLAYINIT cold start 0) and EXCH_TEMF.  Read by the
+#: allocation and the VRAM estimate alike.
+TEMF_SFCLAY_FIELDS_2D = ("wm_temf", "exch_temf")
+#: MRF's (``bl_pbl_physics = 99``) one field of its own: WRF's HOL, the PBL
+#: height over the Monin-Obukhov length the scheme writes on every call
+#: (module_bl_mrf.F:855) and nothing reads back.  Allocated by
+#: ``initialize_physics`` for that selector only and priced from this tuple.
+MRF_PBL_DIAGNOSTICS_2D = ("hol",)
+#: BouLac's (``bl_pbl_physics = 8``) persistent fields, allocated by
+#: ``initialize_physics`` for that selector only and priced by the VRAM
+#: estimate from this same tuple: WRF's TKE_PBL (prognostic, INOUT, carried
+#: across steps and restarts; module_bl_boulac.F:108, :250, :360) and EL_PBL
+#: (BouLac's mixing length DLK, rewritten every call, :361).  EXCH_H and
+#: EXCH_M are the shared slot fields every PBL scheme writes.
+#: Native restart diagnostics, retained even when a checkpoint falls
+#: between PBL calls. The kernel's short output names map to Registry names.
+BOULAC_FLUX_FIELDS = {name: name + "_tur" for name in ("wu", "wv", "wt", "wq")}
+BOULAC_STATE_3D = ("tke_pbl", "el_pbl", *BOULAC_FLUX_FIELDS.values())
+#: WRF's cold start, BOULACINIT (module_bl_boulac.F:940-954): TKE_PBL =
+#: 0.0001 (also the scheme's floor ``temin``), EL_PBL zero.
+BOULAC_COLD_START = {name: (1.0e-4 if name == "tke_pbl" else 0.0)
+                    for name in BOULAC_STATE_3D}
+#: The BEP handoff BouLac's column reads under sf_urban_physics 2/3, in
+#: kernel argument order (``sf_bep`` carries nz + 1 faces).  ``dlg_bep`` is
+#: INOUT: WRF writes the urban-blended ground distance back (:357-359).
+BOULAC_BEP_INPUTS = ("a_u_bep", "a_v_bep", "a_t_bep", "a_q_bep", "a_e_bep",
+                     "b_u_bep", "b_v_bep", "b_t_bep", "b_q_bep", "b_e_bep",
+                     "dlg_bep", "dl_u_bep", "vl_bep", "sf_bep")
+#: The launcher's per-call mass-level outputs in kernel argument order (the
+#: five tendencies, EL_PBL as DLK, EXCH_H, EXCH_M), then the four turbulent
+#: fluxes WRF publishes as WU_TUR..WQ_TUR, held here so the launcher
+#: allocates from them and the preflight prices from them.
+BOULAC_COLUMN_OUTPUTS = ("rublten", "rvblten", "rthblten", "rqvblten",
+                         "rqcblten", "el_pbl", "exch_h", "exch_m")
+BOULAC_FLUX_OUTPUTS = ("wu", "wv", "wt", "wq")
+#: Threads per block of the BouLac column launch.
+BOULAC_BLOCK = 128
 
 #: The UW launcher's per-call output roster (woof/core/uwpbl.py
 #: ``uwpbl_step``), held HERE so the launcher allocates from it and the
@@ -542,6 +707,128 @@ def uwpbl_workspace_bytes(nk: int, ncols: int,
     r8, i4 = uwpbl_workspace_slots(nk)
     chunk = uwpbl_chunk_columns(nk, ncols, budget_bytes)
     return int(chunk * (8 * r8 + 4 * i4) + 4)
+
+
+#: The TEMF pair (bl_pbl_physics = 10 with sf_sfclay_physics = 10, WRF
+#: v4.6.1 module_bl_temf.F and module_sf_temfsfclay.F; woof/core/temf.py).
+#: Its carried state is the Registry's (Registry.EM_COMMON:1097-1115,
+#: packages temfpblscheme :3172 and temfsfcscheme :3135), allocated by
+#: ``initialize_physics`` for the pair only and priced by the VRAM estimate
+#: from these same tuples.  Every 3-D field is on TEMF's own grid (level 1
+#: the surface, level k the WRF mass level k-1) with nz levels, which is
+#: every level the scheme writes.  WRF's INTENT(OUT) arrays keep last step's
+#: words wherever a branch does not write them (the updraft fields in a
+#: stable column, MF_TEMF's top level), so all of them are carried, not
+#: rebuilt: they are restart state.
+TEMF_PBL_STATE_3D = ("te_temf", "kh_temf", "km_temf", "shf_temf",
+                     "qf_temf", "uw_temf", "vw_temf", "wupd_temf",
+                     "mf_temf", "thup_temf", "qtup_temf", "qlup_temf",
+                     "cf3d_temf")
+TEMF_PBL_STATE_2D = ("hd_temf", "lcl_temf", "hct_temf", "cfm_temf")
+#: The surface layer's own carried velocity scale (WM_TEMF), averaged with
+#: its previous value every call (module_sf_temfsfclay.F:338).
+TEMF_SFCLAY_STATE_2D = ("wm_temf",)
+#: The surface kernel's WRF INOUT set, kernel argument order; ``te1`` is
+#: the surface level of TE_TEMF, which the layer floors at TEMIN (:256).
+TEMF_SFCLAY_INOUT = ("hfx", "qfx", "lh", "ust", "te1", "wm_temf", "qsfc")
+#: The surface kernel's pure outputs, kernel argument order.  EXCH_TEMF is
+#: a local of WRF's first_rk_step_part1 (never state), published here as a
+#: per-call field the PBL does not read.
+TEMF_SFCLAY_OUTPUTS = ("flhc", "flqc", "exch_temf", "chs", "chs2", "cqs2",
+                       "u10", "v10", "th2", "t2", "q2", "qgh", "cpm")
+
+#: Threads per block of the TEMF PBL column launch (kernels/temf.cu
+#: TEMF_LANES), and the column workspace's slots per level
+#: (TEMF_WS_SLOTS): one global (nz+2)-word column per slot per lane.
+TEMF_BLOCK = 64
+TEMF_WS_SLOTS = 49
+#: Device bytes one PBL launch's workspace may hold before the domain is
+#: walked in column chunks.  At 50 levels a column costs 10.2 KB, so a
+#: chunk is about 26,000 columns.
+TEMF_WORKSPACE_BUDGET_BYTES = 256 * 1024 * 1024
+
+
+def temf_workspace_floats(nz: int, columns: int) -> int:
+    """Words for whole blocks of ``columns`` columns of ``nz`` levels."""
+    blocks = (int(columns) + TEMF_BLOCK - 1) // TEMF_BLOCK
+    return blocks * TEMF_WS_SLOTS * (int(nz) + 2) * TEMF_BLOCK
+
+
+def temf_chunk_columns(nz: int, ncols: int,
+                       budget_bytes: int = TEMF_WORKSPACE_BUDGET_BYTES) -> int:
+    """Columns per TEMF PBL launch so its workspace fits ``budget_bytes``."""
+    per_column = 4 * TEMF_WS_SLOTS * (int(nz) + 2)
+    chunk = max(TEMF_BLOCK, int(budget_bytes) // per_column)
+    chunk = chunk // TEMF_BLOCK * TEMF_BLOCK
+    return int(min(chunk, max(int(ncols), 1)))
+
+
+def temf_workspace_bytes(nz: int, ncols: int,
+                         budget_bytes: int = TEMF_WORKSPACE_BUDGET_BYTES
+                         ) -> int:
+    """Device bytes the TEMF PBL launcher's workspace holds for one call."""
+    chunk = temf_chunk_columns(nz, ncols, budget_bytes)
+    return 4 * temf_workspace_floats(nz, chunk)
+
+#: The UW shallow cumulus (``shcu_physics = 2``, woof/core/uwshcu.py)
+#: launcher's field rosters, held HERE so the launcher, the physics slot
+#: and the VRAM estimate read one list.  Inputs in kernel argument order:
+#: mass (nz), interface (nz+1) and surface fields; ``dlf_in``/``cmfmc_in``/
+#: ``rliq_in``/``cutop_in``/``cubot_in`` are the deep-convection parts the
+#: driver adds the shallow ones to (module_shcu_camuwshcu_driver.F:405,
+#: :469, :481-494).
+UWSHCU_MASS_INPUTS = ("u", "v", "t", "qv", "qc", "qi", "qnc", "qni", "p",
+                      "z", "pi", "dlf_in")
+UWSHCU_FULL_INPUTS = ("p8w", "z_at_w", "tke_pbl", "cmfmc_in")
+UWSHCU_SURFACE_INPUTS = ("pblh", "ht", "cutop_in", "cubot_in", "rliq_in")
+UWSHCU_MASS_OUTPUTS = ("rushten", "rvshten", "rthshten", "rqvshten",
+                       "rqcshten", "rqishten", "rqcnshten", "rqinshten",
+                       "dlf", "dlf2", "shfrc3d", "evapcsh", "icwmrsh",
+                       "rprdsh")
+UWSHCU_FULL_OUTPUTS = ("cmfmc", "cmfmc2", "cmfsl", "cmflq")
+UWSHCU_SURFACE_OUTPUTS = ("pratesh", "cutop", "cubot", "rliq", "rliq2")
+#: The scheme's carried state: WRF's CUSH (convective scale height), read
+#: as the next step's first-guess scale height (module_shcu_camuwshcu.F:
+#: 1495, 2343-2344) and restart-carried like any Registry state.
+UWSHCU_STATE_2D = ("cush",)
+
+#: Threads per block of the UW shallow cumulus column launch.
+UWSHCU_BLOCK = 64
+
+#: compute_uwshcu's automatic arrays per column, in binary64 slots per
+#: interface level (nk + 1).  The device transcription takes every view
+#: unconditionally at the top of the column (uwshcu.cu uwsc_take_views:
+#: 28 layer + 8 interface; uwshcu_column.cuh uwsc_column: 80 layer + 27
+#: interface), so the high-water mark is 143 * nk + 35 binary64 words; 150
+#: per interface level covers it with margin and the device still refuses
+#: an overflow by name.  No int32 workspace.
+UWSHCU_R8_SLOTS_PER_LEVEL = 150
+UWSHCU_WORKSPACE_BUDGET_BYTES = 512 * 1024 * 1024
+
+
+def uwshcu_workspace_slots(nk: int) -> tuple[int, int]:
+    """``(r8_slots, i4_slots)`` one column of ``nk`` mass levels needs."""
+    return (UWSHCU_R8_SLOTS_PER_LEVEL * (int(nk) + 1), 0)
+
+
+def uwshcu_chunk_columns(nk: int, ncols: int,
+                         budget_bytes: int = UWSHCU_WORKSPACE_BUDGET_BYTES
+                         ) -> int:
+    """Columns per UW shallow cumulus launch so the pool fits the budget."""
+    r8, _ = uwshcu_workspace_slots(nk)
+    chunk = max(1, int(budget_bytes) // (8 * r8 + 4))
+    if chunk >= UWSHCU_BLOCK:
+        chunk = chunk // UWSHCU_BLOCK * UWSHCU_BLOCK
+    return int(min(chunk, max(int(ncols), 1)))
+
+
+def uwshcu_workspace_bytes(nk: int, ncols: int,
+                           budget_bytes: int = UWSHCU_WORKSPACE_BUDGET_BYTES
+                           ) -> int:
+    """Device bytes the UW shallow cumulus pool holds for one call."""
+    r8, _ = uwshcu_workspace_slots(nk)
+    chunk = uwshcu_chunk_columns(nk, ncols, budget_bytes)
+    return int(chunk * (8 * r8 + 4) + 4)
 
 
 # Hoisted from woof.core.microphysics (module-scope cupy) for the
@@ -709,7 +996,7 @@ YSU_BLOCK = 32
 #: Blocks per SM the tile is sized for.  MEASURED, not assumed -- see
 #: docs/kernel_local_memory_bounds.md for the sweep this came from.  The
 #: device query in :func:`woof.core.ysu.ysu_tile_columns` only ever
-#: lowers it.  lane/282-bw-physics (b28c20509) doubled it to queue a second
+#: lowers it.  development branch (b28c20509) doubled it to queue a second
 #: wave; 2.8.2 restores 16 because the doubled workspace is priced on every
 #: YSU domain (313,344,000 more bytes on an RTX 5090 at nz = 50) and turned
 #: trees that fit into refusals (tests/test_streamed_admission.py,
@@ -735,6 +1022,60 @@ def ysu_workspace_floats(nz: int, columns: int) -> int:
     return blocks * YSUWS_SLOTS * (int(nz) + 1) * YSU_BLOCK
 
 
+# EEPS's native work-array inventory and bounded tile geometry.
+EEPS_WS_SLOTS = 22
+EEPS_BLOCK = 128
+EEPS_TILE_BLOCKS_PER_SM = 4
+
+
+def eeps_workspace_floats(nz: int, columns: int) -> int:
+    """Coalesced workspace, rounded up to the launch block."""
+    blocks = (int(columns) + EEPS_BLOCK - 1) // EEPS_BLOCK
+    return blocks * EEPS_BLOCK * EEPS_WS_SLOTS * (int(nz) + 2)
+#: The GFS nonlocal PBL's (``bl_pbl_physics = 3``) per-call output roster
+#: (woof/core/gfs_pbl.py ``gfs_pbl_step``), in kernel argument order: the
+#: six BL_GFS tendencies, (nz, ny, nx) float32.  The scheme carries no
+#: state of its own between calls; it publishes PBLH/KPBL and rewrites the
+#: surface layer's UST and WSPD (module_bl_gfs.F:463-475).
+GFS_PBL_COLUMN_OUTPUTS = ("rublten", "rvblten", "rthblten", "rqvblten",
+                          "rqcblten", "rqiblten")
+GFS_PBL_SURFACE_OUTPUTS = ("ust", "pblh", "kpbl")
+#: Launch block of ``gfs_pbl_columns``; a chunk is a whole number of blocks.
+GFS_PBL_BLOCK = 64
+#: binary64 workspace slots per level per column: DEL, PRSI, THETA, DKU,
+#: DKT and the tridiagonal AU/A1/A2/A3/A4 (kernels/gfs_pbl.cu
+#: GFS_WS_SLOTS), each nz+1 long.  tests/test_gfs_pbl_integration.py
+#: re-reads the define from the kernel source.
+GFS_PBL_WS_SLOTS = 10
+#: VRAM the launcher may hold for the workspace at once; larger domains are
+#: walked in column chunks.
+GFS_PBL_WORKSPACE_BUDGET_BYTES = 256 * 1024 * 1024
+
+
+def gfs_pbl_workspace_slots(nz: int) -> int:
+    """binary64 words of workspace per column at ``nz`` levels."""
+    return GFS_PBL_WS_SLOTS * (int(nz) + 1)
+
+
+def gfs_pbl_chunk_columns(nz: int, ncols: int,
+                          budget_bytes: int = GFS_PBL_WORKSPACE_BUDGET_BYTES
+                          ) -> int:
+    """Columns per launch: the budget's worth, whole blocks, at least one."""
+    per_column = 8 * gfs_pbl_workspace_slots(nz)
+    chunk = max(1, int(budget_bytes) // per_column)
+    if chunk >= GFS_PBL_BLOCK:
+        chunk = chunk // GFS_PBL_BLOCK * GFS_PBL_BLOCK
+    return max(1, min(chunk, int(ncols)))
+
+
+def gfs_pbl_workspace_bytes(nz: int, ncols: int,
+                            budget_bytes: int = GFS_PBL_WORKSPACE_BUDGET_BYTES
+                            ) -> int:
+    """Device bytes one GFS PBL call holds for its workspace."""
+    return 8 * gfs_pbl_workspace_slots(nz) * gfs_pbl_chunk_columns(
+        nz, ncols, budget_bytes)
+
+
 # These constants mirror the kernel geometry for runtime-free memory pricing.
 SHWS_SLOTS = 50
 SHINHONG_BLOCK = 32
@@ -747,22 +1088,166 @@ def shinhong_workspace_floats(nz: int, columns: int) -> int:
     return blocks * SHWS_SLOTS * (int(nz) + 2) * SHINHONG_BLOCK
 
 
+#: The GBM moist TKE PBL's (``bl_pbl_physics = 12``) carried (nz) fields
+#: and their cold start, allocated by ``initialize_physics`` for that
+#: selector only and priced by the VRAM estimate from this same table.
+#: ``tke_pbl`` is PROGNOSTIC: read at the top of every call and rewritten
+#: with the first GBM2D pass's TKE (module_bl_gbmpbl.F:247, :276), so a
+#: restart must carry it; gbmpblinit seeds it at 0.001 (:1252).  ``el_pbl``
+#: and ``exch_tke`` are INTENT(OUT), rewritten by every call, zero being the
+#: Registry default.  EXCH_M/EXCH_H are the slot's shared ``exch_m``/
+#: ``exch_h``.
+GBMPBL_STATE_3D = MappingProxyType(
+    {"tke_pbl": 0.001, "el_pbl": 0.0, "exch_tke": 0.0})
+#: Mass-level float32 outputs one GBM call allocates (woof/core/gbmpbl.py
+#: ``gbmpbl_step``), held here so the launcher allocates from it and the
+#: preflight prices from it.  The surface outputs are PBLH and UST
+#: (float32) and the int32 KPBL.
+GBMPBL_MASS_OUTPUTS = ("rublten", "rvblten", "rthblten", "rqvblten",
+                       "rqcblten", "rqiblten", "exch_m", "exch_h",
+                       "exch_tke", "el_pbl")
+GBMPBL_SURFACE_OUTPUTS = ("pblh", "ust", "kpbl")
+#: Kernel geometry (GBWS_LANES / GBWS_SLOTS in kernels/gbmpbl.cu) and the
+#: launch tile, mirrored for runtime-free memory pricing.
+GBMPBL_BLOCK = 32
+GBMPBL_WS_SLOTS = 49
+GBMPBL_TILE_BLOCKS_PER_SM = 8
+
+
+def gbmpbl_workspace_floats(nz: int, columns: int) -> int:
+    """Float32 words of GBM workspace: 1-based levels to kte+2."""
+    blocks = (int(columns) + GBMPBL_BLOCK - 1) // GBMPBL_BLOCK
+    return blocks * GBMPBL_WS_SLOTS * (int(nz) + 3) * GBMPBL_BLOCK
+# The MRF PBL (bl_pbl_physics = 99) column workspace, priced without a
+# runtime for the same reason as YSU's.  MRFWS_SLOTS and MRF_BLOCK must
+# match kernels/mrf.cu's MRFWS_SLOTS / MRFWS_LANES / MRF_BLOCK;
+# tests/test_mrf_port.py re-reads them from the source.  Eleven column
+# arrays (ZQ, ZA, DZA, THVX, XKZM, XKZH and the five tridiagonal
+# operands), 1-based in MRF's own K/KK with ZQ(KLP1), so nz + 2 per slot.
+MRFWS_SLOTS = 11
+MRF_BLOCK = 32
+#: YSU's measured blocks-per-SM tile, which the device occupancy query in
+#: woof.core.mrf.mrf_tile_columns only ever lowers.
+MRF_TILE_BLOCKS_PER_SM = 16
+
+
+def mrf_workspace_floats(nz: int, columns: int) -> int:
+    """Floats for whole blocks of columns: 1-based levels plus ZQ(nz+1)."""
+    blocks = (int(columns) + MRF_BLOCK - 1) // MRF_BLOCK
+    return blocks * MRFWS_SLOTS * (int(nz) + 2) * MRF_BLOCK
+
+#: The K-epsilon PBL (``bl_pbl_physics = 17``, WRF v4.7.1
+#: module_bl_keps.F).  Its carried fields, ArWen name -> WRF name
+#: (Registry.EM_COMMON:1231-1243 and the kepsscheme package, :3176),
+#: allocated by ``initialize_physics`` for that selector only and priced by
+#: the VRAM estimate from this same table.  All are (nz, ny, nx):
+#:
+#: * prognostic: TKE_PBL, DISS_PBL, TPE_PBL, read back every call
+#:   (module_bl_keps.F:278-280);
+#: * carried, never read after the reset: PR_PBL (overwritten from the
+#:   surface layer before any use, :1043) and the three advected copies
+#:   TKE_ADV, DISS_ADV, TPE_ADV (read only when the compile-time
+#:   ``bl_keps_adv`` is 1; v4.7.1 ships 0) -- carried so a restart is exact;
+#: * published: WU_TUR, WV_TUR, WT_TUR; WQ_TUR is INTENT(OUT) in WRF and
+#:   never assigned, so it stays the zero it is allocated as.
+KEPS_FIELDS = {"keps_tke": "tke_pbl", "keps_diss": "diss_pbl",
+               "keps_tpe": "tpe_pbl", "keps_pr": "pr_pbl",
+               "keps_tke_adv": "tke_adv", "keps_diss_adv": "diss_adv",
+               "keps_tpe_adv": "tpe_adv"}
+#: The launcher's state keys (WRF names), in kernel argument order.
+KEPS_STATE_3D = ("tke_pbl", "diss_pbl", "tpe_pbl", "pr_pbl", "tke_adv",
+                 "diss_adv", "tpe_adv")
+KEPS_STATE_2D = ("pblh",)
+
+# WRF Registry.EM_COMMON:3176. These scalar-package fields are transported
+# even though the shipped column closure does not read the transport copies.
+
+
+def pbl_advected_scalars(cfg) -> tuple[str, ...]:
+    return tuple(name for name, _ in PBL_ADVECTED_SCALARS.get(int(cfg.bl_pbl_physics), ()))
+
+KEPS_DIAGNOSTICS_3D = ("wu_tur", "wv_tur", "wt_tur", "wq_tur")
+#: Kernel geometry (kernels/keps.cu KE_SLOTS, the launch block, the resident
+#: tile the workspace is sized to), mirrored for runtime-free pricing and
+#: held equal to the kernel by tests/test_keps_integration.py.
+KEPS_SLOTS = 32
+KEPS_BLOCK = 64
+# Allow queued column blocks as well as resident blocks. A four-block cap
+# makes a small grid remainder repeat the entire sequential column in a
+# persistent thread, even when the card has room for that remainder.
+KEPS_TILE_BLOCKS_PER_SM = 8
+
+
+def keps_workspace_floats(nz: int, tile: int) -> int:
+    """Floats of the column workspace for ``tile`` threads in flight:
+    KEPS_SLOTS rows of nz+2 one-based levels per thread."""
+    return KEPS_SLOTS * (int(nz) + 2) * int(tile)
+
+# ACM2 (bl_pbl_physics=7) column workspace geometry: kernels/acm2pbl.cu is
+# compiled with these as ACM2_BLOCK / ACM2WS_SLOTS (woof/core/acm2pbl.py),
+# and the preflight prices the same numbers without the GPU runtime.
+ACM2WS_SLOTS = 27
+ACM2_BLOCK = 32
+ACM2_TILE_BLOCKS_PER_SM = 16
+
+
+def acm2_workspace_floats(nz: int, columns: int) -> int:
+    """Floats for whole blocks: 27 column arrays of levels 0..nz+1 (WRF's
+    1-based arrays plus the kte+1 element ACM/ACMM touch)."""
+    blocks = (int(columns) + ACM2_BLOCK - 1) // ACM2_BLOCK
+    return blocks * ACM2WS_SLOTS * (int(nz) + 2) * ACM2_BLOCK
+
+
 __all__ = [
     "spec_zone_ring_save_slots", "spec_zone_ring_slices",
     "MYJ_PBL_STATE_3D", "MYJ_SFCLAY_FIELDS_2D", "MYJ_SFCLAY_INOUT",
+    "MRF_PBL_DIAGNOSTICS_2D",
+    "GFS_PBL_BLOCK", "GFS_PBL_COLUMN_OUTPUTS", "GFS_PBL_SURFACE_OUTPUTS",
+    "GFS_PBL_WORKSPACE_BUDGET_BYTES", "GFS_PBL_WS_SLOTS",
+    "gfs_pbl_chunk_columns", "gfs_pbl_workspace_bytes",
+    "gfs_pbl_workspace_slots",
+    "QNSE_TKE_COLD_START", "MFSHCONV_STATE_3D", "MFSHCONV_OUTPUTS_3D",
+
+    "BOULAC_STATE_3D", "BOULAC_COLD_START", "BOULAC_FLUX_FIELDS", "BOULAC_BEP_INPUTS",
+    "BOULAC_COLUMN_OUTPUTS", "BOULAC_FLUX_OUTPUTS", "BOULAC_BLOCK",
     "UWPBL_STATE_FULL", "UWPBL_STATE_2D", "UWPBL_DIAGNOSTICS_FULL",
     "UWPBL_DIAGNOSTICS_2D", "UWPBL_HELD_3D", "UWPBL_MASS_OUTPUTS",
     "UWPBL_SURFACE_OUTPUTS", "UWPBL_BLOCK", "UWPBL_R8_SLOTS_PER_LEVEL",
     "UWPBL_I4_SLOTS_PER_LEVEL", "UWPBL_WORKSPACE_BUDGET_BYTES",
     "uwpbl_workspace_slots", "uwpbl_chunk_columns", "uwpbl_workspace_bytes",
+    "TEMF_PBL_STATE_3D", "TEMF_PBL_STATE_2D", "TEMF_SFCLAY_STATE_2D",
+    "TEMF_SFCLAY_INOUT", "TEMF_SFCLAY_OUTPUTS", "TEMF_BLOCK", "TEMF_WS_SLOTS",
+    "TEMF_WORKSPACE_BUDGET_BYTES", "temf_workspace_floats",
+    "temf_chunk_columns", "temf_workspace_bytes",
+
+    "UWSHCU_MASS_INPUTS", "UWSHCU_FULL_INPUTS", "UWSHCU_SURFACE_INPUTS",
+    "UWSHCU_MASS_OUTPUTS", "UWSHCU_FULL_OUTPUTS", "UWSHCU_SURFACE_OUTPUTS",
+    "UWSHCU_STATE_2D", "UWSHCU_BLOCK", "UWSHCU_R8_SLOTS_PER_LEVEL",
+    "UWSHCU_WORKSPACE_BUDGET_BYTES", "uwshcu_workspace_slots",
+    "uwshcu_chunk_columns", "uwshcu_workspace_bytes",
     "MYJ_SFCLAY_OUTPUTS",
+    "TEMF_SFCLAY_INPUTS", "TEMF_SFCLAY_CARRIED", "TEMF_SFCLAY_COLUMN_OUTPUTS",
+    "TEMF_SFCLAY_FIELDS_2D",
     "MYNN_PBL_DIAGNOSTICS_2D", "MYNN_PBL_DIAGNOSTICS_INT_2D",
     "MYNN_PBL_STATE_3D", "MYNN_SURFACE_OUTPUTS",
+    "EEPS_PBL_STATE_3D", "PBL_TRANSPORTED_SCALARS", "pbl_transported_scalars",
     "PBL_RQI_MICROPHYSICS", "PHYSICS_SLOT_DISPATCH", "REFL_10CM_MICROPHYSICS",
     "UnroutedPhysicsSelectorError", "resolve_physics_slot",
     "SFCLAY_OUTPUTS",
     "SHWS_SLOTS", "SHINHONG_BLOCK", "SHINHONG_TILE_BLOCKS_PER_SM",
     "shinhong_workspace_floats",
+    "GBMPBL_STATE_3D", "GBMPBL_MASS_OUTPUTS", "GBMPBL_SURFACE_OUTPUTS",
+    "GBMPBL_BLOCK", "GBMPBL_WS_SLOTS", "GBMPBL_TILE_BLOCKS_PER_SM",
+    "gbmpbl_workspace_floats",
+    "MRFWS_SLOTS", "MRF_BLOCK", "MRF_TILE_BLOCKS_PER_SM",
+    "mrf_workspace_floats",
+
+    "KEPS_BLOCK", "KEPS_DIAGNOSTICS_3D", "KEPS_FIELDS", "KEPS_SLOTS",
+    "KEPS_STATE_2D", "KEPS_STATE_3D", "KEPS_TILE_BLOCKS_PER_SM",
+    "keps_workspace_floats",
+
+    "ACM2WS_SLOTS", "ACM2_BLOCK", "ACM2_TILE_BLOCKS_PER_SM",
+    "acm2_workspace_floats",
     "YSUWS_SLOTS", "YSU_BLOCK", "YSU_TILE_BLOCKS_PER_SM",
     "hmix_k_diag_names",
     "microphysics_scratch_slots", "physics_driver_required",
@@ -779,7 +1264,12 @@ __all__ = [
 #: additionally re-dispatches on the exact value internally, so the two
 #: MM5 spellings and MYNN cannot be confused with each other either.
 PBL_OPTIONAL_TENDENCIES = {901: ("rqr",)}
-PBL_ADVECTED_SCALARS = {901: (("tke_edmf", 0.2),)}
+PBL_ADVECTED_SCALARS = {
+    901: (("tke_edmf", 0.2),),
+    EEPS_PBL_SCHEME: tuple((name, 0.0) for name in
+                           PBL_TRANSPORTED_SCALARS[EEPS_PBL_SCHEME]),
+    17: (("keps_tke_adv", 0.0), ("keps_diss_adv", 0.0), ("keps_tpe_adv", 0.0)),
+}
 PBL_SCALAR_NAMES = tuple(name for rows in PBL_ADVECTED_SCALARS.values() for name, _ in rows)
 
 PHYSICS_SLOT_DISPATCH: dict[str, dict[int, str | None]] = {
@@ -793,15 +1283,36 @@ PHYSICS_SLOT_DISPATCH: dict[str, dict[int, str | None]] = {
         # validate_myj_pairing refuses it with any PBL but MYJ for exactly
         # that reason.
         2: "_run_myj_sfclay",
+        # GFS (WRF v4.6.1 module_sf_gfs.F, woof/core/sf_gfs.py).  Its own
+        # runner for the Eta layer's reason: it publishes the shared
+        # exchange set (CHS/CHS2/CQS2/FLHC/FLQC/QGH/QSFC/HFX/QFX/LH, BR,
+        # PSIM/PSIH, GZ1OZ0, WSPD, U10/V10) and carries ZNT/UST, but no
+        # MOL, ZOL, FM/FH, REGIME or T2/Q2/TH2 -- SF_GFS has none.
+        3: "_run_gfs_sfclay",
+        4: "_run_myj_sfclay",
         5: "_run_sfclay",     # MYNN surface layer
+        10: "_run_temf_sfclay",
+        89: "_run_ideal_scm_sfclay",
+
+        # Pleim-Xiu (WRF v4.6.1 module_sf_pxsfclay.F).  Its own runner for
+        # the Eta layer's reason: it publishes a different set (no FM/FH,
+        # USTM, TH2/T2/Q2) and under RUC it is WRF's PXSFCLAY_SEAICE_WRAPPER,
+        # not the MM5 wrapper the _run_sfclay arm reproduces.
+        7: "_run_px_sfclay",
         91: "_run_sfclay",    # classic MM5
     },
     "sf_ocean_physics": {0: None, 1: "_run_surface_ocean", 2: "_run_surface_ocean"},
     "sf_surface_physics": {
         0: None,
+        # Five-layer thermal diffusion (WRF v4.6.1 module_sf_slab.F), graded
+        # word for word against the byte-unmodified module
+        # (tests/test_slab_wrf461_oracle.py).
+        1: "_run_slab",
         2: "_run_noah",       # Noah LSM
         3: "_run_ruc",        # RUC LSM
         4: "_run_noahmp",     # Noah-MP LSM
+        7: "_run_pxlsm",      # Pleim-Xiu, two-layer soil
+        8: "_run_column_land_surface",
     },
     "bl_pbl_physics": {
         0: None,
@@ -813,7 +1324,23 @@ PHYSICS_SLOT_DISPATCH: dict[str, dict[int, str | None]] = {
         # pairing is enforced in woof.config.validate_myj_pairing, which
         # is WRF's own fatal at module_physics_init.F:3770-3772.
         2: "_run_myj_pbl",
+        # GFS nonlocal PBL (WRF v4.6.1 module_bl_gfs.F, GFSSCHEME): Hong-Pan
+        # K profile with its OWN implicit diffusion in binary64, so like MYJ
+        # and UW _run_gfs_pbl receives finished tendencies.  It reads the
+        # surface layer's UST/PSIM/PSIH/GZ1OZ0/WSPD/BR and rewrites UST and
+        # WSPD (module_bl_gfs.F:463-466); woof.config.validate_gfs_pbl_config
+        # admits the surface layers that publish that set.
+        3: "_run_gfs_pbl",
+        # QNSE (WRF v4.6.1 module_bl_qnsepbl.F) with its EDMF shallow mass
+        # flux (module_bl_mfshconvpbl.F, mfshconv = 1).  MYJ's column with
+        # QNSE's mixing length, stability functions and TKE budget, and like
+        # MYJ it does its own implicit diffusion and returns finished
+        # tendencies.  Its surface pairing (WRF's own fatal,
+        # module_physics_init.F:3790-3791) is woof.config.
+        # validate_qnse_config.
+        4: "_run_qnse_pbl",
         5: "_run_mynn_pbl",   # MYNN EDMF
+        10: "_run_temf_pbl",
         # Shin-Hong scale-aware (WRF v4.6.1 module_bl_shinhong.F).  The
         # scheme has NO RunConfig knobs on purpose: WRF's
         # shinhong_tke_diag namelist is deliberately not imported.  The
@@ -825,12 +1352,46 @@ PHYSICS_SLOT_DISPATCH: dict[str, dict[int, str | None]] = {
         # unconditionally) and publishes it as state.e_sgs, the field
         # the D1 gray-zone instrument scores.
         11: "_run_shinhong",
+        # BouLac (WRF v4.6.1 module_bl_boulac.F, BOULACSCHEME).  Like MYJ it
+        # performs its own implicit diffusion and returns finished
+        # tendencies; it carries its own TKE_PBL, and under BEP/BEM its
+        # column takes the urban source terms itself.
+        BOULAC_PBL_SCHEME: "_run_boulac",
         # UW moist turbulence (WRF v4.7.1 module_bl_camuwpbl_driver.F,
         # CAMUWPBLSCHEME).  Like MYJ it performs its own implicit
         # diffusion and returns finished tendencies; unlike every other
         # row it computes in binary64 (CAM's real(r8)) and reads the
         # radiation step's held RTHRATENLW and CLDFRA.
         UW_PBL_SCHEME: "_run_uwpbl",
+        # GBM moist TKE (WRF v4.6.1 module_bl_gbmpbl.F, GBMPBLSCHEME).
+        # Like MYJ and UW it does its own implicit diffusion and returns
+        # finished tendencies; it reads the held RTHRATEN and the MM5
+        # surface layer's GZ1OZ0/PSIM (woof.config.validate_gbmpbl_config).
+        GBM_PBL_SCHEME: "_run_gbmpbl",
+        # EEPS, TKE + dissipation (WRF v4.6.1 module_bl_eepsilon.F,
+        # EEPSSCHEME).  Its own implicit diffusion, finished tendencies;
+        # its TKE/epsilon pair is a dycore-transported scalar
+        # (PBL_TRANSPORTED_SCALARS) that the column reads and rewrites.
+        EEPS_PBL_SCHEME: "_run_eeps",
+        # MRF (WRF v4.6.1 module_bl_mrf.F, MRFSCHEME), the Hong-Pan nonlocal
+        # PBL YSU descends from.  Its own runner because its coupling is
+        # its own: it reads the MM5 layers' RAW PSIM/PSIH (not YSU's fm/fh
+        # pair), the temperature rather than theta, and rewrites UST.
+        # Graded word for word against WRF's compiled module
+        # (tests/test_mrf_wrf461_parity.py).
+        MRF_PBL_SCHEME: "_run_mrf",
+
+        # K-epsilon (WRF v4.7.1 module_bl_keps.F, KEPSSCHEME).  It performs
+        # its own implicit diffusion and returns finished tendencies, like
+        # MYJ and UW; it carries TKE, dissipation and TPE across calls.
+        KEPS_PBL_SCHEME: "_run_keps",
+
+        # ACM2 (WRF v4.6.1 module_bl_acm.F, ACMPBLSCHEME): the Pleim
+        # combined local/non-local closure.  Like MYJ and UW it performs its
+        # own semi-implicit mixing (sub-stepped, with the bordered band
+        # solver MATRIX on free-convection columns and TRI elsewhere) and
+        # returns finished tendencies.
+        ACM2_PBL_SCHEME: "_run_acm2",
         # SASE: not a WRF scheme and deliberately outside WRF's selector
         # namespace, so it can never collide with one WRF adds later.
         SASE_PBL_SCHEME: "_run_sase",
@@ -864,13 +1425,14 @@ class UnroutedPhysicsSelectorError(NotImplementedError):
 
 
 #: Land-surface schemes after which WRF's surface driver calls the ordinary
-#: ``SFCDIAGS`` (module_surface_driver.F:2983-2998).  RUC instead calls
+#: ``SFCDIAGS`` (module_surface_driver.F:2574-2583 for slab and
+#: :2983-2998 for Noah). RUC instead calls
 #: ``SFCDIAGS_RUCLSM`` in :func:`ruc_lsm_step`; Noah-MP unconditionally
 #: selects its water/ice flux diagnostic or its own vegetation/bare-ground
 #: 2-m fields in :func:`noahmp_lsm_step`.  This is a per-scheme decision, not
 #: a property of "an LSM ran", and all three post-LSM paths overwrite the
 #: surface layer's earlier T2/Q2/TH2 exactly where WRF does.
-LAND_SURFACE_SFCDIAGS_SCHEMES = frozenset({2})
+LAND_SURFACE_SFCDIAGS_SCHEMES = frozenset({1, 2})
 
 
 def sase_switch_value(cfg, name: str) -> bool:
@@ -908,29 +1470,71 @@ def resolve_physics_slot(selector: str, value) -> str | None:
 
 # WRF G3 restart carriers and convtrans_prep accumulators. Shape tokens
 # resolve through cfg; the same rows drive allocation and memory review.
-CUMULUS_STATE_LAYOUTS = {5: {
+CONVTRANS_LAYOUT = {
+    **{name: (("nz", "ny", "nx"), "f4", "convtrans") for name in
+       ("gd_cloud_a", "qc_cu", "gd_cloud2_a", "qi_cu", "gd_cldfr")},
+    "raincv_a": (("ny", "nx"), "f4", "convtrans"),
+    "raincv_b": (("ny", "nx"), "f4", "convtrans"),
+    "g3_diag_clock": ((4,), "i4", "convtrans"),
+}
+from woof.core.kfcup_contract import KFCUP_STATE_ROWS
+
+CUMULUS_STATE_LAYOUTS = {1: {
+    name: (("nz", "ny", "nx"), "f4", "cu_rad_feedback") for name in
+    ("qc_cu", "qi_cu", "cldfra_dp", "cldfra_sh", "cldfra_cu")
+}, 3: CONVTRANS_LAYOUT, 10: {
+    row["name"]: ((("nz", "ny", "nx") if row["shape"] == "mass" else ("ny", "nx")),
+                  "i4" if row["dtype"] == "int32" else "f4", None)
+    for row in KFCUP_STATE_ROWS
+}, 5: {
     "g3_apr": ((8, "ny", "nx"), "f4", None),
     "g3_xf_ens": (("ensdim", "ny", "nx"), "f4", None),
     "g3_pr_ens": (("ensdim", "ny", "nx"), "f4", None),
     "g3_lev": ((9, "nz", "ny", "nx"), "f4", None),
     "g3_sfc": ((7, "ny", "nx"), "f4", None),
     "g3_isfc": ((4, "ny", "nx"), "i4", None),
-    **{name: (("nz", "ny", "nx"), "f4", "cu_diag") for name in
-       ("gd_cloud_a", "qc_cu", "gd_cloud2_a", "qi_cu", "gd_cldfr")},
-    "raincv_a": (("ny", "nx"), "f4", "cu_diag"),
-    "raincv_b": (("ny", "nx"), "f4", "cu_diag"),
-    "g3_diag_clock": ((4,), "i4", "cu_diag"),
+    **CONVTRANS_LAYOUT,
+}, 14: {
+    "hbot": (("ny", "nx"), "f4", None),
+    "htop": (("ny", "nx"), "f4", None),
+    "ksas_rucuten": (("nz", "ny", "nx"), "f4", None),
+    "ksas_rvcuten": (("nz", "ny", "nx"), "f4", None),
+}, 94: {
+    "sas_hbot": (("ny", "nx"), "f4", None),
+    "sas_htop": (("ny", "nx"), "f4", None),
 }}
+# WRF forces cu_diag on for option 93. These arrays use the existing GPU
+# convtrans_prep implementation and the ordinary fields restart/nest path.
+CUMULUS_STATE_LAYOUTS[93] = {
+    "gd_lev": ((6, "nz", "ny", "nx"), "f4", None),
+    "gd_sfc": ((13, "ny", "nx"), "f4", None),
+    "gd_isfc": ((5, "ny", "nx"), "i4", None),
+    "gd_band": (("ny", "nx"), "i4", None),
+    **{
+    name: (dims, dtype, None)
+    for name, (dims, dtype, _flag) in CONVTRANS_LAYOUT.items()
+    },
+}
 CUMULUS_HISTORY_LAYOUT = {
+    **{row["name"]: (row["name"], None) for row in KFCUP_STATE_ROWS},
+    "sas_hbot": ("sas_hbot", None), "sas_htop": ("sas_htop", None),
+    "hbot": ("hbot", None), "htop": ("htop", None),
     "gd_cloud": ("g3_lev", 7), "gd_cloud2": ("g3_lev", 8),
     **{name: (name, None) for name in
-       ("gd_cloud_a", "qc_cu", "gd_cloud2_a", "qi_cu", "gd_cldfr", "raincv_a", "raincv_b")},
+       ("gd_cloud_a", "qc_cu", "gd_cloud2_a", "qi_cu", "gd_cldfr", "raincv_a", "raincv_b",
+        "cldfra_dp", "cldfra_sh", "cldfra_cu")},
 }
 
 def cumulus_state_layout(cfg):
-    return {name: (tuple(getattr(cfg, dim) if isinstance(dim,str) else dim for dim in dims), dtype)
-            for name,(dims,dtype,flag) in CUMULUS_STATE_LAYOUTS.get(cfg.cu_physics,{}).items()
-            if flag is None or getattr(cfg,flag)}
+    def active(flag):
+        if flag == "convtrans":
+            return cfg.cu_rad_feedback or (cfg.cu_physics == 5 and cfg.cu_diag)
+        return flag is None or getattr(cfg, flag)
+    return {
+        name: (tuple(getattr(cfg, dim) if isinstance(dim,str) else dim for dim in dims), dtype)
+        for name,(dims,dtype,flag) in CUMULUS_STATE_LAYOUTS.get(cfg.cu_physics,{}).items()
+        if active(flag)
+    }
 
 
 def solar_split_history_expected(cfg):
@@ -938,3 +1542,25 @@ def solar_split_history_expected(cfg):
     from woof.config import radiation_scheme_ids
     shortwave = radiation_scheme_ids(cfg)[1]
     return bool(shortwave and (shortwave in (4, 5) or cfg.swint_opt == 1))
+def registered_ice_mass_for_radiation(state):
+    """WRF module_radiation_driver.F:1284-1304, in package order.
+
+    Native multi-category packages publish their mass slots in the registry.
+    Existing packages return their ordinary ice carrier without arithmetic.
+    """
+    names = getattr(state, "_registered_mass_slots", ())
+    if not names:
+        ice = getattr(state, "qi", None)
+        second = getattr(state, "qi2", None)
+        return ice if second is None else ice + second
+    import numpy as np
+    first = getattr(state, names[0])
+    if isinstance(first, np.ndarray):
+        xp = np
+    else:
+        import cupy as xp
+    out = state.scratch(first.shape, "native_column_radiation_ice")
+    out[...] = first
+    for name in names[1:]:
+        xp.add(out, getattr(state, name), out=out)
+    return out

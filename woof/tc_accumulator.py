@@ -224,11 +224,12 @@ class Capture:
             self.native_coordinates = tuple(cp.asarray(meta[k], dtype=cp.float32) for k in ('XLAT', 'XLONG'))
             self.native_key = common.key
         lat, lon = self.native_coordinates
-        index = cp.argmin(pressure)
+        index = cp.argmin(cp.where(cp.isfinite(pressure), pressure, cp.inf))
         fields = node.state.physics.fields
+        from woof.tc.intensity import wind_within_radius
         self.fixes.append(cp.stack((cp.asarray(float(node.state.elapsed_seconds)),
             lat.ravel()[index], lon.ravel()[index], pressure.ravel()[index],
-            cp.max(cp.sqrt(fields['u10']**2+fields['v10']**2)), cp.max(gust))))
+            wind_within_radius(node.state, lat, lon, index), cp.max(gust))))
         self.diagnostic_seconds += time.perf_counter()-started
 
     def finish(self):
@@ -255,7 +256,7 @@ class Capture:
             diagnostic_enqueue_seconds=self.diagnostic_seconds,
             sampling="every committed selected-domain step before relocation; initialized state when history starts at analysis",
             gust_method="rw-post surface-layer similarity (Panofsky/IFS), CUDA; diagnostic gust, not a resolved three-second observation",
-            pressure_method="DCOMPUTESEAPRS, three nine-point smoother passes, native-domain minimum each committed step")
+            pressure_method="raw sea-level surface-pressure minimum over water; no smoothing; wind within 150 km of the field centre")
         path = self.root/'receipt.json'
         path.write_text(json.dumps(receipt, indent=2)+'\n')
         started = time.perf_counter()
@@ -291,11 +292,8 @@ def diagnose(state):
     kernel(((nx*ny+255)//256,), (256,), (p, theta, qv, phi,
         *(cp.ascontiguousarray(fields[k], dtype=cp.float32) for k in required),
         np.int32(nx*ny), np.int32(nz), gust, pressure))
-    smooth = module.get_function('tc_smooth')
-    for _ in range(3):
-        result = cp.empty_like(pressure)
-        smooth(((nx*ny+255)//256,), (256,), (pressure, result, np.int32(nx), np.int32(ny)))
-        pressure = result
+    from woof.tc.intensity import surface_pressure_hpa
+    pressure = surface_pressure_hpa(state)
     return gust, pressure
 
 

@@ -938,7 +938,7 @@ def test_overlapping_rows_of_different_workspaces_never_share_a_target_folder(tm
 @pytest.mark.skipif(os.name != 'posix', reason='per-row clones are POSIX only (cp -al); Windows runs a '
                     "workspace's rows one at a time")
 def test_parallel_rows_of_one_workspace_each_run_on_a_private_link_clone(tmp_path, monkeypatch):
-    """Many cores (V58, 64; lane/cap-base 2026-10-21): rows of ONE workspace with different package selections
+    """Many cores (test host, 64; development branch 2026-10-21): rows of ONE workspace with different package selections
     rebuilt each other's units in the shared workspace folder under a running rustdoc (rw-wrfbatch: "can't find
     crate for rw_nexrad"). Every row compiles first, then runs on its own hard-link clone (POSIX and Windows), so
     a row that replaces a unit never changes the file another row reads."""

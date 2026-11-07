@@ -436,14 +436,14 @@ def test_the_accepted_registries_are_the_loader_menus():
     """The tuples this suite iterates are the ones the loader gates on."""
     from woof.microphysics_schemes import NAMED_MP_IDS
     # 5 is Ferrier-Aligo (its own identity row).  30 is FAST_SBM, which joined with its own restart identity in 2.8.9.
-    assert config_mod.MP_PHYSICS_ACCEPTED == (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18,
-                                              24, 28, 30, 50, 106) + NAMED_MP_IDS
-    assert config_mod.RA_LW_PHYSICS_ACCEPTED == (0, 1, 4, 5, 90)
-    assert config_mod.RA_SW_PHYSICS_ACCEPTED == (0, 1, 4, 5, 90)
+    assert config_mod.MP_PHYSICS_ACCEPTED == (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106, 900)
+    assert config_mod.RA_LW_PHYSICS_ACCEPTED == (0, 1, 3, 4, 5, 7, 31, 90, 99)
+    assert config_mod.RA_SW_PHYSICS_ACCEPTED == (0, 1, 2, 3, 4, 5, 7, 90, 99)
+    validate_run_config(_cfg(moist=True, mp_physics=55))
     with pytest.raises(ValueError, match="mp_physics must be"):
-        validate_run_config(_cfg(moist=True, mp_physics=55))
+        validate_run_config(_cfg(moist=True, mp_physics=9999))
     with pytest.raises(ValueError, match="ra_lw_physics must be"):
-        validate_run_config(_cfg(ra_lw_physics=7, ra_sw_physics=0))
+        validate_run_config(_cfg(ra_lw_physics=6, ra_sw_physics=0))
 
 
 # ---------------------------------------------------------------------------
@@ -508,3 +508,28 @@ def test_the_gate_module_reaches_neither_restart_nor_the_device():
     # And what it DOES reach is reachable there: the two configuration
     # helpers the radiation branch needs, resolved inside that function.
     assert {"woof.config", "woof.physics_compat"} <= reached
+
+
+@pytest.mark.parametrize("surface,albedo", [(0, 3), (4, 2), (4, 3)])
+@pytest.mark.parametrize("name,value", [
+    ("snicar_snowshape_opt", 1), ("snicar_snowbc_intmix", False),
+    ("snicar_snowdust_intmix", True), ("snicar_bc_ppb", 2.0),
+    ("snicar_dust_ppm", 1.0), ("snicar_ice_density", 850.0),
+    ("snicar_bubble_radius_um", 800.0),
+])
+def test_snow_controls_preserve_inactive_headers_and_bind_active_resumes(
+        surface, albedo, name, value, tmp_path):
+    cfg = _cfg(sf_surface_physics=surface, opt_alb=albedo)
+    changed = dataclasses.replace(cfg, **{name: value})
+    echo = restart.configuration_echo(cfg)
+    fingerprint = restart._configuration_fingerprint(cfg)
+    if surface == 4 and albedo == 3:
+        assert name in echo
+        assert restart._configuration_fingerprint(changed) != fingerprint
+        with pytest.raises(restart.RestartMismatchError, match=name):
+            restart._require_config_match(echo, changed, tmp_path)
+    else:
+        assert name not in echo
+        assert restart.configuration_echo(changed) == echo
+        assert restart._configuration_fingerprint(changed) == fingerprint
+        restart._require_config_match(echo, changed, tmp_path)

@@ -1,0 +1,80 @@
+{
+  "files": [
+    {
+      "path": "<scratch>/port-sf7-pxlsm/native/main/wrf.exe",
+      "bytes": 38017232,
+      "sha256": "b3dc76cacb91f57c1483b06d0d37fa08600999b5ad8657d91ef93648884d4d2e"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/native/main/real.exe",
+      "bytes": 28485376,
+      "sha256": "1d7aee098f4b2612426b8b78670be4d78b16ff872924cedae898a34d05ca6362"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/native/phys/module_sf_pxlsm.F",
+      "bytes": 107112,
+      "sha256": "0ed96ff5fb7dce0724391d22570410417a49d603eb12a91c92e1acb2eb05de00"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/native/phys/module_sf_pxlsm_data.F",
+      "bytes": 45222,
+      "sha256": "c89d7b9fa4a925539189dadb0174c593ffc69cfbedc3a128b3ea94de39f2fa0d"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/native/configure.wrf",
+      "bytes": 21581,
+      "sha256": "c93deea7de4a570bf5906ad169d21fdbcec74bbec9b328aeb2385a2b30aeaa8d"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/native-run/namelist.input",
+      "bytes": 1514,
+      "sha256": "5324a9b4bb1fde9e6e3d88a2f37220af950462590466698b9dbc27717348ec6c"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/native-run/met_em.d01.2000-01-24_12:00:00.nc",
+      "bytes": 5485304,
+      "sha256": "6acd419fa0272634b0ca6076d5f82c478b357323e67c4260aaf7281b84e02705"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/native-run/met_em.d01.2000-01-24_15:00:00.nc",
+      "bytes": 5467556,
+      "sha256": "8bfb2533eed4146d4ae1443492aaf7db0ce4ffb48c2e6caa155e1ef282a25179"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000001.bin",
+      "bytes": 2277696,
+      "sha256": "d8fd603e0dde63802c248a98972d8b0bd76900eff610c8e41e8894c7cad9c03c"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000061.bin",
+      "bytes": 2277696,
+      "sha256": "46afda940b62ce1c6e4bf42121af0654972e3293e1c239e2e84da95cbf9d4e62"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000121.bin",
+      "bytes": 2277696,
+      "sha256": "837cc07ea6e454fc1ef25cdd06b063a0f393df2db0a8e4461d0968a5598362b8"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000001.bin",
+      "bytes": 700800,
+      "sha256": "e1399dd066a42014bca0fe872b6632ca8b34e6d5029362db1abe6cb727bc8411"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000061.bin",
+      "bytes": 700800,
+      "sha256": "2e47ceaa1eb837c8753026bde89411e414b9dec22a507b45835e6f8118276cdf"
+    },
+    {
+      "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000121.bin",
+      "bytes": 700800,
+      "sha256": "92ebec9b47f875df3027bc932c03581b3a6484b6eb5406a94eda92d6f843115b"
+    }
+  ],
+  "wrf_success": true,
+  "captured_steps": [
+    1,
+    61,
+    121
+  ]
+}

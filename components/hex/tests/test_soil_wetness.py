@@ -1,6 +1,24 @@
 import numpy as np
 import pytest
 
+
+def test_noahmp_cold_contract_matches_pinned_hydraulics_and_refuses_drift():
+    from copy import deepcopy
+    from woof.hex.cycle.soil_wetness import source_contract, validate_target_hydraulics
+    contract = source_contract([], 'gfs16-noah-to-mpas842-stas')
+    validate_target_hydraulics(contract, 'noahmp')
+    validate_target_hydraulics(contract, 'noah')
+    with pytest.raises(ValueError, match='does not support'):
+        validate_target_hydraulics(contract, 'ruc')
+    for where in ('soil_knots', 'urban_knots'):
+        changed = deepcopy(contract)
+        if where == 'soil_knots':
+            changed['target'][where][5][3] = .476
+        else:
+            changed['target'][where][3] = .46
+        with pytest.raises(ValueError, match='differ from the pinned'):
+            validate_target_hydraulics(changed, 'noahmp')
+
 def test_relative_wetness_remap_uses_donor_and_target_bounds_without_clipping():
     from woof.hex.cycle.soil_wetness import remap_relative_wetness
     src=np.array([[0., .1, .3, .5]])
@@ -51,3 +69,27 @@ def test_native_source_qc_refuses_empty_donor_and_records_rejections():
     np.testing.assert_array_equal(a,[[np.float32(.2),np.float32(.3)],[np.float32(.2),np.float32(.6)]])
     with pytest.raises(ValueError,match='no physical'):
         donor_quality(a[1:],l[1:],np.array([.5],dtype='f4'))
+
+
+def test_deep_soil_levels_move_onto_ruc_hydraulics_and_the_source_levels_stay(tmp_path):
+    """A RUC init from HRDPS + the GFS deep-soil donor: levels below 10 cm carry GFS's Noah moisture and move onto
+    RUC's hydraulics by relative wetness; the 0-10 cm levels (HRDPS's own) are not touched."""
+    import numpy as np
+    from netCDF4 import Dataset
+    from woof.hex.cycle.soil_wetness import remap_deep_soil_levels
+
+    path = tmp_path / "init.nc"
+    depths = [0.0, 0.01, 0.04, 0.10, 0.30, 0.60, 1.00, 1.60, 3.00]
+    with Dataset(path, "w") as d:
+        d.createDimension("Time", None); d.createDimension("nCells", 3); d.createDimension("nSoilLevels", 9)
+        for name in ("smois", "sh2o"):
+            d.createVariable(name, "f4", ("Time", "nCells", "nSoilLevels"))[0] = np.full((3, 9), 0.25)
+        d.createVariable("zs", "f4", ("Time", "nCells", "nSoilLevels"))[0] = np.tile(depths, (3, 1))
+        d.createVariable("isltyp", "i4", ("nCells",))[:] = [6, 6, 14]
+        d.createVariable("landmask", "i4", ("nCells",))[:] = [1, 1, 0]
+    receipt = remap_deep_soil_levels(path, keep_above_m=0.1, source_model="noah", source_id="gfs", land_surface="ruc")
+    with Dataset(path) as d:
+        sm = np.asarray(d["smois"][0])
+    assert receipt["kept_levels_m"] == [0.0, 0.01, 0.04, 0.1] and receipt["cells_converted"] == 2
+    np.testing.assert_array_equal(sm[:, :4], 0.25)
+    assert np.all(sm[:2, 4:] != np.float32(0.25)) and np.all(sm[2] == np.float32(0.25))

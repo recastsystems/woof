@@ -35,7 +35,7 @@ from woof.experiment import (RelocationConfig, ScheduledRelocationMove,
                               _build_relocation)
 
 from test_nest_relocation_staging import (_cpu_tree, _footprint_statics,
-                                          _initializer, _ramp_state)
+                                          _initializer, _ramp_state, _grandchild)
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +367,32 @@ def _manual_config(moves, cadence=None):
         enabled=True, grid_id=2, max_move_parent_cells=4,
         min_overlap_fraction=0.25, cadence_seconds=cadence,
         moves=tuple(moves))
+
+
+def test_checkpoint_placement_rebuilds_a_disjoint_descendant():
+    """A saved footprint may be beyond the entire original fine domain."""
+    parent_plane, parent, child = _cpu_tree()
+    grand = _grandchild(child, ratio=3, nx=6, ny=6)
+    model = _model(parent, child)
+    _advance(model, parent, child, 0)
+    rebuilt = []
+
+    def reground(*, node, plan, delta_parent_cells):
+        assert node is grand
+        assert plan.disjoint
+        rebuilt.append(delta_parent_cells)
+        return {"statics": "rebuilt for checkpoint"}
+
+    runner = _runner(parent_plane, _manual_config(()),
+                     provider=lambda *_a, **_k: None,
+                     reground_descendant=reground)
+    want = int(child.cfg.i_parent_start) + 4
+    receipt = runner.adopt_placement(model, child, i_parent_start=want,
+                                    j_parent_start=int(child.cfg.j_parent_start))
+    assert receipt['event'] == 'placement-restored'
+    assert child.cfg.i_parent_start == want
+    assert rebuilt == [(4 * child.cfg.parent_grid_ratio, 0)]
+    assert runner.moves_executed == 0
 
 
 def test_scheduled_moves_execute_at_their_boundaries(tmp_path):

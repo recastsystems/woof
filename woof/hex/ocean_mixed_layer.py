@@ -18,8 +18,8 @@ STATE_PREFIX = "ocean_"
 
 def mode():
     value = os.environ.get(ENV, "prescribed")
-    if value not in ("prognostic", "prescribed"):
-        raise ValueError(f"{ENV} must be prognostic or prescribed, got {value!r}")
+    if value not in ("prognostic", "prescribed", "pwp"):
+        raise ValueError(f"{ENV} must be prognostic, prescribed or pwp, got {value!r}")
     return value
 
 
@@ -56,6 +56,11 @@ def _kernel(device):
     return cp.RawKernel(source, "ocean_step", options=options)
 
 
+def _kernel_for_device():
+    import cupy as cp
+    return _kernel(cp.cuda.Device().id)
+
+
 class MixedLayerOcean:
     def __init__(self, service, options=None, *, restoring=False):
         import cupy as cp
@@ -70,7 +75,7 @@ class MixedLayerOcean:
         if hasattr(driver_class, "_run_noahmp") and not getattr(driver_class, "hex_seaice_hook", False):
             # The hook is the only caller of step(): without it the ocean is
             # attached, never stepped, and still republished at every move
-            # (suite route, Milton hex storm-following, box M 2026-10-27).
+            # (suite route, the storm hex storm-following, box M 2026-10-27).
             raise ValueError("prognostic ocean requires the hex Noah-MP sea-ice hook on this physics route; "
                              "without it the ocean would never be stepped")
         p = self.options
@@ -97,6 +102,8 @@ class MixedLayerOcean:
                 "max_depth_m", "new_ice_thickness_m", "basal_exchange", "water_albedo",
                 "ice_albedo", "snow_albedo", "emissivity", "snow_density")
         self.parameters = cp.asarray([p[k] for k in keys], dtype=cp.float64)
+        self.kernel = _kernel_for_device()
+        self.kernel_tail = (self.parameters,)
         if not restoring:
             self.publish(convert=False)
 
@@ -117,8 +124,8 @@ class MixedLayerOcean:
         forcing += tuple(flat(f[_PREFIX+k]) for k in ("hfx", "lh", "ust"))
         forcing += tuple(flat(atmosphere[k][0]) for k in ("u", "v", "temperature", "pressure"))
         forcing += tuple(flat(f[k]) for k in ("chs", "cqs2")) + (flat(rain), flat(f["sr"]))
-        _kernel(cp.cuda.Device().id)(((self.n+127)//128,), (128,),
-            (np.int32(self.n), np.float32(dt), np.float32(s.threshold), *arrays, *forcing, self.parameters))
+        self.kernel(((self.n+127)//128,), (128,),
+            (np.int32(self.n), np.float32(dt), np.float32(s.threshold), *arrays, *forcing, *self.kernel_tail))
         ocean = self.array("mask").reshape(f["tsk"].shape) > 0
         f["qfx"][...] = cp.where(ocean, f["lh"]/np.float32(2830000), f["qfx"])
         for key in _SEA:

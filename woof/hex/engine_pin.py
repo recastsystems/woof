@@ -1,11 +1,12 @@
 """
-Current public pin: woof 2.9.7 at public engine commit
+Current public pin: gpuwm 2.9.7 at public engine commit
 4726b689c6db142577eca3968a1f74256e3c057f, tag v2.9.7. The measurement
 repin-297-20261025.json verifies all published platform wheels, the complete
 sixteen-path seam, composed glacier digest, contract surface and helper set.
-The dependency is woof>=2.9.11,<2.10 (release installation minimum: 2.9.11 carries the wind-farm
-forcing the hex wind-farm door drives and the rw_mpas_convert --grid-label the view titles use; 2.9.10 was the
-first engine with woof.output_formats, which every forecast door's parser imports for --output-format). The sealed 2.9.3 public packet has
+The dependency is gpuwm>=2.9.12,<2.10. The release installation minimum is 2.9.12,
+which supplies the matching source and helper fixes.
+The older 2.9.11 floor supplied wind-farm forcing and map view labels; 2.9.10 first supplied
+woof.output_formats, which every forecast door parser imports for --output-format). The sealed 2.9.3 public packet has
 its own complete measured PACKET_ENGINES row, recorded separately in
 verification/engine-verdicts/prepared-engines.json. Historical pin records
 below remain measurements of their original inputs.
@@ -13,7 +14,7 @@ Which published woof this port can run on: measured once, derived after.
 
 THE BREAKAGE THIS MODULE PREVENTS, measured on a real install on 2026-08-27
 (``evidence/userwalk-20260827/``): ``pip install woof hex`` resolved
-``woof 2.5.7``, whose bytes the sixteen-file seam manifest this port pins
+``gpuwm 2.5.7``, whose bytes the sixteen-file seam manifest this port pins
 refused.  The forecast lane stopped at launch with two SHA-256 digests and
 no version number, ``woof hex doctor`` reported the estate healthy and
 exited 0, and no document in the distribution named a version that works.
@@ -68,7 +69,7 @@ the Noah-MP files, the composed glacier unit included, so
 re-pinned to the published 2.8.0 wheel's bytes (tag ``0164ae0f``, whose
 tree agrees with all three platform wheels on every pinned path) and the
 instrument re-run over every published engine.  The derivation now returns
-``woof>=2.8.0,<2.8.1``: 2.8.0 is the one engine measured usable and 2.7.4
+``gpuwm>=2.8.0,<2.8.1``: 2.8.0 is the one engine measured usable and 2.7.4
 fails the re-pinned manifest by those eight paths.  What the moved paths
 do to the fixed-step WSM6, YSU, Noah-MP, legacy-RRTMG and Grell-Freitas
 seam was measured with the seam-level A/B
@@ -90,7 +91,7 @@ included, so ``ARWEN_GLACIER_COMPOSED_TU_SHA256`` did not move.  The
 manifest was re-pinned to the published 2.7.4 wheel's bytes (tag
 ``ed957997``, whose tree agrees with all three platform wheels on every
 pinned path) and the instrument re-run over every published engine.  The
-derivation then returned ``woof>=2.7.4,<2.7.5``: 2.7.4 was the one engine
+derivation then returned ``gpuwm>=2.7.4,<2.7.5``: 2.7.4 was the one engine
 measured usable, 2.7.3 fails the re-pinned manifest by those two paths,
 and every earlier engine fails it by the same counts it failed the 2.7.3
 manifest by, because the two paths that moved were already in every one
@@ -111,7 +112,7 @@ installed woof hex 0.2.3 after 2.7.0 was published got 2.6.5, not the
 newest engine, and no run died on a digest.  This port then re-pinned its
 manifest to the published 2.7.3 wheel's bytes and the instrument was re-run
 over every published engine plus the two tags that have no release.  The
-derivation then returned ``woof>=2.7.3,<2.7.4``: 2.7.3 was the one
+derivation then returned ``gpuwm>=2.7.3,<2.7.4``: 2.7.3 was the one
 engine measured usable.  Letting it in cost what it is meant to cost: re-run the
 instrument, move the table, let the literal follow.  The 2026-09-02 re-pins
 to 2.6.4 and 2.6.5, the same day's re-pin to 2.6.3, the 2026-09-01 re-pin
@@ -199,8 +200,8 @@ carried.  Both are still true, and both are now moot for the FLOOR, because
 applies.  They stay in the table and stay written down here, because a row
 removed is a reason the derivation can no longer show:
 
-* **woof 2.5.5 is not on PyPI.**  It is a git tag with no release, so the
-  floor the declaration once named -- ``woof>=2.5.5`` -- named a version
+* **gpuwm 2.5.5 is not on PyPI.**  It is a git tag with no release, so the
+  floor the declaration once named -- ``gpuwm>=2.5.5`` -- named a version
   pip cannot install.
 * **2.5.5's published tree cannot follow its own printed build road.**
   ``tools/rustwx/vendor/crates-io/cc/src/target/generated.rs`` is absent at
@@ -1111,7 +1112,7 @@ class AdmittedEngine:
     :data:`PUBLISHED_ENGINES`, because that table is a measurement of what
     PyPI serves.  It can still be the engine a user has installed, and the
     dependency specifier already lets it through: PEP 440 orders a local
-    version immediately after its public base, so ``woof>=2.7.4,<2.7.5``
+    version immediately after its public base, so ``gpuwm>=2.7.4,<2.7.5``
     resolves ``2.7.4+x.1``.  What decides whether this port RUNS on it is
     the same thing that decides for a published engine -- its sixteen seam
     bytes -- so an admitted engine is a row of the same kind: measured by
@@ -1259,7 +1260,7 @@ def identity_of(inspection: "SeamInspection") -> EngineIdentity:
     bytes would be running physics nobody proved" / "pinned Arwen source
     hash mismatch".  That names missing evidence, not a breakage, and it
     refused every run on any engine newer than the pin (measured on the 8-card RTX PRO 6000 host:
-    woof 2.8.9 against the 2.8.7 pin, 7 of 16 files moved, the door closed).
+    gpuwm 2.8.9 against the 2.8.7 pin, 7 of 16 files moved, the door closed).
     A byte match is now EVIDENCE: a matched tree is named by its measured
     row exactly as before, and an unmatched tree is named by the version it
     declares and the digests it was found with, with the moved and absent
@@ -1330,7 +1331,7 @@ def engine(version: str) -> PublishedEngine | None:
     return None
 
 
-GPUWM_INSTALL_MINIMUM = "2.9.11"
+GPUWM_INSTALL_MINIMUM = "2.9.12"
 
 
 def measured_gpuwm_floor() -> str:
@@ -1364,9 +1365,9 @@ def gpuwm_ceiling() -> str:
     THE BREAKAGE THIS PREVENTS (open defect B2, plan call 14, 2026-10-14): a
     range one patch wide made ``pip install woof hex`` quietly DOWNGRADE the
     engine a user already had.  0.3.3 pinned ``<2.8.1``, so installing it
-    beside woof 2.8.7 replaced the engine with 2.8.0, and an exact-patch pin
+    beside gpuwm 2.8.7 replaced the engine with 2.8.0, and an exact-patch pin
     on 2.9.0 would do the same to every user the day 2.9.1 ships.  So the
-    range is the floor's whole minor (``woof>=2.9.0,<2.10``).
+    range is the floor's whole minor (``gpuwm>=2.9.0,<2.10``).
 
     What the narrow range used to do is now done at the door, by name: an
     engine inside the minor whose radiation helper set no row of this

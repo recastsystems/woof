@@ -185,15 +185,13 @@ def accepted_keys() -> tuple[str, ...]:
     return keys
 
 
-@pytest.fixture(scope="module")
-def priced(accepted_keys) -> dict[str, object]:
-    """Build and price every accepted composition, once, for the file,
-    on :data:`PRICING_PROFILE` -- no device is read."""
+def _price_batch(keys) -> tuple[list, list, list]:
+    """``(ok, refused, rebuild_refused)`` for ``keys``, in their order."""
 
     ok: list[str] = []
     refused: list[tuple[str, dict[str, object], str]] = []
     rebuild_refused: list[tuple[str, str]] = []
-    for key in accepted_keys:
+    for key in keys:
         combination = decode(key)
         assert walk.key_of(combination) == key, (
             f"decoding {key!r} did not round-trip through key_of; the "
@@ -210,8 +208,39 @@ def priced(accepted_keys) -> dict[str, object]:
             refused.append((key, combination, str(error)))
         else:
             ok.append(key)
-    return {"ok": tuple(ok), "refused": tuple(refused),
-            "rebuild_refused": tuple(rebuild_refused)}
+    return ok, refused, rebuild_refused
+
+
+@pytest.fixture(scope="module")
+def priced(accepted_keys) -> dict[str, object]:
+    """Build and price every accepted composition, once, for the file,
+    on :data:`PRICING_PROFILE` -- no device is read.
+
+    The 71,068 compositions are priced in bounded batches across the walk's
+    own worker count (``WOOF_COMPOSITION_WORKERS``, default 8, capped at the
+    cores this process may use), and joined in receipt order, so the verdict
+    is the one a single process gives.  Breakage (seal3 stage1, 2026-11-03):
+    priced on one core this fixture took 1,671 s, the tail every other stage1
+    worker sat idle behind; a single test past the 1,500 s pytest-timeout
+    there ends its xdist worker, and the replacement re-collects all 962 files
+    before anything runs again.
+    """
+
+    import itertools
+    import os
+    keys = list(accepted_keys)
+    available = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    jobs = max(1, min(int(os.environ.get("WOOF_COMPOSITION_WORKERS", "8")), available))
+    batches = [keys[start:start + 256] for start in range(0, len(keys), 256)]
+    if jobs == 1:
+        parts = [_price_batch(batch) for batch in batches]
+    else:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=jobs) as pool:
+            parts = list(pool.map(_price_batch, batches))
+    ok, refused, rebuild_refused = (tuple(itertools.chain.from_iterable(part[index] for part in parts))
+                                    for index in range(3))
+    return {"ok": ok, "refused": refused, "rebuild_refused": rebuild_refused}
 
 
 def test_every_accepted_composition_rebuilds(priced):

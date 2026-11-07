@@ -1419,7 +1419,7 @@ def _child_boundary_clock(cfg, *, lbc_interval_seconds: float, steps: int,
 
 
 def _initialize_child_physics(child, cfg, initial, surface, start_time, *,
-                              terrain_drag_static=None):
+                              terrain_drag_static=None, radiation_center_lat=None):
     """Attach the child physics driver with an accurate warm start.
 
     mp-only children keep the established default initialization.  A
@@ -1466,6 +1466,8 @@ def _initialize_child_physics(child, cfg, initial, surface, start_time, *,
         lon = np.asarray(initial.fields["XLONG"], dtype=np.float64)
 
     radiation = None
+    gsfc_setup = ({"radiation_center_lat": radiation_center_lat}
+                  if ra_sw == 2 else {})
     if 4 in radiation_scheme_ids(cfg):
         from woof.physics_compat import RRTMG_VARIANT_LEGACY, rrtmg_variant
         if rrtmg_variant(cfg) == RRTMG_VARIANT_LEGACY:
@@ -1501,6 +1503,7 @@ def _initialize_child_physics(child, cfg, initial, surface, start_time, *,
             radiation = make_radiation(
                 cfg, start_time, lat, lon,
                 p_top=float(initial.receipt["p_top"]),
+                **({"center_lat": radiation_center_lat} if ra_sw == 2 else {}),
                 ozone_routing=(ROUTING_CHILD_GRID_CLIMATOLOGY
                                if cfg.o3input == 2 else None))
 
@@ -1508,7 +1511,8 @@ def _initialize_child_physics(child, cfg, initial, surface, start_time, *,
         return initialize_physics(
             child, cfg, radiation=radiation,
             radiation_start_time=start_time,
-            radiation_latitude=lat, radiation_longitude=lon, **drag_kwargs)
+            radiation_latitude=lat, radiation_longitude=lon,
+            **gsfc_setup, **drag_kwargs)
 
     from woof.core.landuse import (initialize_landuse, ruc_fractional_seaice,
                                     usemonalb_landuse_inputs)
@@ -1567,6 +1571,7 @@ def _initialize_child_physics(child, cfg, initial, surface, start_time, *,
         pblh=fields.get("PBLH", 0.0),
         radiation=radiation, radiation_start_time=start_time,
         radiation_latitude=lat, radiation_longitude=lon,
+        **gsfc_setup,
         **ruc_mosaic_physics_inputs(
             cfg, fields if terrain_drag_static is None else terrain_drag_static,
             landuse_attrs=identity, xice=xice,
@@ -3494,8 +3499,17 @@ def _run(args: argparse.Namespace,
         cfg, lbc_interval_seconds=contract.interval_seconds,
         steps=steps, output_steps=output_steps)
     bind_lateral_boundary_clock(child, clock)
+    gsfc_setup = {}
+    if radiation_scheme_ids(cfg)[1] == 2:
+        # The ozone profile uses the child's domain center. The parent's
+        # CEN_LAT and an area mean of XLAT describe different coordinates.
+        from woof.offline_child_geography import child_projected_grid
+        gsfc_grid = (geography.grid if geography is not None else
+                     child_projected_grid(contract.frames[0].path, placement)[0])
+        gsfc_setup["radiation_center_lat"] = float(gsfc_grid.cen_lat)
     driver = _initialize_child_physics(child, cfg, initial, surface,
                                        initial.valid_time,
+                                       **gsfc_setup,
                                        **({"terrain_drag_static": geography.fields}
                                           if geography is not None and
                                           (cfg.topo_wind or cfg.gwd_opt

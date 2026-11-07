@@ -31,6 +31,7 @@ members = [
     "crates/rw-ingest",
     "crates/rw-isobaric",
     "crates/rw-libm",
+    "crates/rw-p3",
     "crates/rw-mpas",
     "crates/rw-mlexport",
     "crates/rw-post",
@@ -47,11 +48,15 @@ members = [
     "crates/rw-goes",
     "crates/rw-globe-pack",
     "crates/rw-grib2export",
+    "crates/rw-history-grib2",
     "crates/rw-store",
     "crates/rw-soundings",
     "crates/rustwx-sounding",
     "crates/rw-superob",
     "crates/rw-tempo",
+    "crates/rw-p3",
+
+    "crates/rw-cu99-launch",
     "crates/rw-wrfbatch",
     "crates/static-fields",
 ]
@@ -102,6 +107,7 @@ ureq = { version = "3", default-features = false, features = ["rustls-no-provide
 # Direct registry dependencies use the same readers as netcrust's path
 # dependencies. The facade itself does not require a workspace patch.
 [patch.crates-io]
+cudarc = { path = "vendor/crates-io/cudarc-0.19.8" }
 hdf5-reader = { path = "vendor/netcrust/vendor/hdf5-reader" }
 netcdf-reader = { path = "vendor/netcrust/vendor/netcdf-reader" }
 

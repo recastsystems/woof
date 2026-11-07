@@ -279,7 +279,7 @@ def test_a_failed_file_fails_the_request_and_keeps_the_refusal_text():
     def bad():
         # f006 fails once f003 has started, the order this test pins: a
         # failure before f003 began would cancel it unstarted (measured
-        # on a loaded a development machine: 7 of 60 runs), which is the pool's rule for
+        # on a loaded test host 4: 7 of 60 runs), which is the pool's rule for
         # a file not yet started, not the prefix asserted here.
         landed.wait(timeout=10.0)
         raise ValueError("downloaded f006 carries 3 GRIB2 messages, "

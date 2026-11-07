@@ -12,7 +12,8 @@ from woof.core.nest_operands import NestWindowSource, boundary_windows
 
 def _host_facade(host):
     prognostics = {"mup", "u", "v", "w", "thp", "php", "qv", "qc", "qr",
-                   "qi", "qs", "qg", "nr", "ni", "ns", "ng", "p", "al", "alt"}
+                   "qi", "qs", "qg", "nr", "ni", "ns", "ng", "p", "al", "alt",
+                   "p_perturbation"}
     store, geography, metadata = {}, {}, {}
     for name, value in vars(host).items():
         if name in prognostics:
@@ -51,6 +52,83 @@ def _numpy_device(monkeypatch):
     monkeypatch.setitem(sys.modules, 'cupy', SimpleNamespace(
         ndarray=np.ndarray, float32=np.float32, asarray=np.asarray,
         ascontiguousarray=np.ascontiguousarray, empty=np.empty, asnumpy=np.asarray))
+
+
+@pytest.mark.parametrize('fallback', [None, 'exposed', 'host_current', 'missing_slab'])
+def test_read_only_rank_source_is_lazy_and_preserves_host_truth(monkeypatch, fallback):
+    _numpy_device(monkeypatch)
+    calls = []
+    truth = np.arange(42, dtype=np.float32).reshape(6, 7)
+    host = np.full_like(truth, 113.)
+    geography = np.full_like(truth, 3.)
+    run = SimpleNamespace(ranked=True, raw_store={'state/mup': host})
+    def read_window(key, window):
+        calls.append(('window', key))
+        if fallback is not None or key not in run.raw_store:
+            return None
+        return truth[(...,)+window].copy()
+    run.read_window = read_window
+    def read_store():
+        calls.append(('store',))
+        return run.raw_store
+    owner = SimpleNamespace(tiled_run=run, read_store=read_store,
+                            _geography={'setup/mub2d': geography},
+                            template_state=SimpleNamespace(c1h=np.ones(2, np.float32)))
+    source = NestWindowSource(SimpleNamespace(_streamed_domain=owner), read_only=True)
+    assert not calls
+    assert source.shape('mup') == truth.shape
+    assert not calls
+    window = (slice(1, 4), slice(2, 6))
+    assert np.array_equal(source.device('mub2d', window), geography[(...,)+window])
+    assert ('store',) not in calls
+    actual = source.device('mup', window)
+    expected = host if fallback else truth
+    assert actual.tobytes() == expected[(...,)+window].tobytes()
+    assert calls.count(('store',)) == int(fallback is not None)
+    assert np.all(host == 113.)
+    with pytest.raises(RuntimeError, match='read-only'):
+        source.write('mup', window, actual)
+
+
+@pytest.mark.parametrize('writable', [False, True])
+def test_rank_read_store_keeps_prior_writes_and_avoids_read_only_gather(monkeypatch, writable):
+    from contextlib import nullcontext
+    import sys
+    from tilestream.ranks import RankedRun
+    from tilestream import gather
+
+    monkeypatch.setitem(sys.modules, 'cupy', SimpleNamespace(
+        cuda=SimpleNamespace(Device=lambda dev: nullcontext())))
+    monkeypatch.setitem(sys.modules, 'tilestream.sfire', SimpleNamespace(
+        configure_tile=lambda *args: None))
+    run = RankedRun.__new__(RankedRun)
+    run._closed, run._ahead, run._exposed = False, True, False
+    run._home = {'state/mup': np.zeros((2, 3), np.float32)}
+    run.tiles = [{'state/mup': np.arange(6, dtype=np.float32).reshape(2, 3)}]
+    run.devices, run.specs, run.compute_streams = [0], [None], [nullcontext()]
+    run.nz, run.inventory_fn = 1, None
+    run.output_report = dict(full_drains=0, full_gathers=0, full_drain_seconds=0.)
+    for method in ('_await_download', '_guard_store', 'sync_all', 'refresh_arrays', 'sync_compute'):
+        setattr(run, method, lambda: None)
+    def scatter(tile, home, *args, **kwargs):
+        home['state/mup'][...] = tile['state/mup']
+    def upload(home, tile, *args, **kwargs):
+        tile['state/mup'][...] = home['state/mup']
+    monkeypatch.setattr(gather, 'scatter_tile', scatter)
+    monkeypatch.setattr(gather, 'gather_tile', upload)
+    if writable:
+        run.drain()
+        run._home['state/mup'][0, 0] = 123.
+    snapshot = run.read_store()
+    expected = np.arange(6, dtype=np.float32).reshape(2, 3)
+    if writable:
+        expected[0, 0] = 123.
+    assert snapshot['state/mup'].tobytes() == expected.tobytes()
+    assert run._exposed == writable
+    run._gather_exposed()
+    assert run.tiles[0]['state/mup'].tobytes() == expected.tobytes()
+    assert run.output_report['full_gathers'] == int(writable)
+    assert run.output_report['full_drains'] == 1
 
 
 def test_canonical_nest_flags_come_from_complete_geography(monkeypatch):
@@ -93,12 +171,15 @@ def test_force_dispatch_and_transfer_counts_include_parent_only_owner(monkeypatc
     coupler = nest_mod.NestCoupler(child)
     calls = []
     class Source:
-        def __init__(self, state):
+        def __init__(self, state, *, read_only=False):
+            assert read_only
             self.host_to_device_bytes = 11 if hasattr(state, '_streamed_domain') else 0
+            self.device_to_host_bytes = 0
     monkeypatch.setattr(nest_operands, 'NestWindowSource', Source)
     monkeypatch.setattr(coupler, '_bind_geometry', lambda: None)
     monkeypatch.setattr(cam_ozone, 'transfer_parent_ozone', lambda *args: 0)
     monkeypatch.setattr(nest_mod, 'attach_nest_boundaries', lambda *args, **kwargs: None)
+    monkeypatch.setattr(coupler, '_prepare_force_sources', lambda *args: None)
     monkeypatch.setattr(coupler, '_force_windowed',
                         lambda kind, *args: calls.append(('window', kind)))
     monkeypatch.setattr(coupler, '_coupled_parent_field',
@@ -213,7 +294,7 @@ def test_parent_only_feedback_keeps_resident_child_reverse_mapping(monkeypatch):
     parent.state = _host_facade(parent.state)
     child.clock.ticks = parent.clock.ticks
     coupler = nest_mod.NestCoupler(child, feedback=1, smooth_option=0)
-    coupler._prepared_feedback = {'ticks': child.clock.ticks, 'kinds': ('mu', 'qi')}
+    coupler._prepared_feedback = {'ticks': child.clock.ticks, 'kinds': ('mu', 'qi'), 'surface': ()}
     mapped = np.full(child.state.qi.shape, 23., np.float32)
     seen = []
     monkeypatch.setattr(coupler, '_bind_geometry', lambda: None)
@@ -245,7 +326,9 @@ def test_feedback_finalize_dispatches_on_parent_owner_independently(monkeypatch,
                         lambda *args, **kwargs: seen.append(('window', kwargs['chunk_shape'])))
     monkeypatch.setattr(diagnostics, 'update_diagnostics',
                         lambda *args, **kwargs: seen.append(('resident', None)))
-    coupler.feedback_finalize(child)
+    # Nest-start diagnoses in both arithmetic modes; strict per-step feedback
+    # intentionally leaves diagnosis to WRF's next RK preparation.
+    coupler.feedback_finalize(child, start=True)
     assert seen == ([('window', (7, 8))] if parent_streams else [('resident', None)])
     assert coupler._prepared_feedback is None
 
@@ -557,15 +640,17 @@ def test_gpu_feedback_entrypoint_reads_host_child_and_matches_resident(smooth_op
             ny, nx = state.mup.shape
             state.thb = np.broadcast_to(state.thb[:, None, None], (2, ny, nx)).copy()
             state.thb += rng.normal(size=state.thb.shape).astype(np.float32)
+            from woof.wrf_exact import ENABLED as wrf_exact
+            if wrf_exact:
+                state.thb.fill(300.)
         parent.state = (_host_facade(parent.state) if bounded and host_parent
                         else _DeviceState(parent.state, cp))
         if bounded:
             child.state = _host_facade(child.state)
             slots = {}
             def scratch(shape, slot, dtype=None):
-                assert slot != "nest_child_field"
-                if host_parent:
-                    assert slot != "nest_parent_field"
+                # Masked geometry feedback reuses the preflight-priced F16
+                # transaction arenas, rather than allocating carrier shadows.
                 if slot not in slots:
                     slots[slot] = cp.empty(shape, dtype=dtype or np.float32)
                 return slots[slot]
@@ -646,11 +731,13 @@ def test_gpu_feedback_finalize_uses_canonical_host_columns_exactly(
         state.c4f = np.zeros(3, np.float32)
         state.dc3f = np.full(2, .5, np.float32)
         state.p_top = 10000.
+        state.pb = np.full(2, 50000., np.float32)
+        state.p_perturbation = np.full(state.thp.shape, -77., np.float32)
         for name in ("p", "al", "alt"):
             setattr(state, name, np.full(state.thp.shape, -99., np.float32))
         rng = np.random.default_rng(413)
         if base3d:
-            for name in ("thb", "phb", "dphb_resid", "alb"):
+            for name in ("thb", "phb", "dphb_resid", "alb", "pb"):
                 profile = getattr(state, name)
                 field = np.broadcast_to(profile[:, None, None],
                                         (len(profile), *state.mup.shape)).copy()
@@ -664,11 +751,32 @@ def test_gpu_feedback_finalize_uses_canonical_host_columns_exactly(
             child.state = _DeviceState(child.state, cp)
         coupler = NestCoupler(child, feedback=1, smooth_option=smooth_option)
         coupler._prepared_feedback = {}
-        coupler.feedback_finalize(child)
+        coupler.feedback_finalize(child, start=True)
         results.append({name: cp.asnumpy(getattr(parent.state, name))
-                        for name in ("p", "al", "alt")})
+                        for name in ("p", "al", "alt", "p_perturbation")})
         assert coupler._prepared_feedback is None
     for name in results[0]:
         assert np.isfinite(results[0][name]).all()
         np.testing.assert_array_equal(results[0][name].view(np.uint32),
                                       results[1][name].view(np.uint32), err_msg=name)
+
+
+def test_force_window_cache_follows_registration_replacement():
+    from dataclasses import replace
+    from woof.core.nest import NestCoupler
+    from test_nest_coupler import _nodes
+    parent, child = _nodes()
+    parent.state = _host_facade(parent.state)
+    coupler = NestCoupler(child)
+    first = coupler._force_windows('t')
+    assert coupler._force_windows('qv') is first
+    reg = coupler.registrations['m']
+    coupler.registrations = dict(coupler.registrations)
+    coupler.registrations['m'] = replace(reg, ci=reg.ci+1,
+                                        i_parent_start=reg.i_parent_start+1)
+    moved = coupler._force_windows('t')
+    assert moved is not first
+    for old, new in zip(first, moved):
+        assert new[4][1].start == old[4][1].start+1
+        assert new[4][1].stop == old[4][1].stop+1
+        assert new[4][0] == old[4][0]

@@ -1,0 +1,118 @@
+{
+  "source_tip": "3b5c20233b85c7c52e9cf9de097cb1b087da0e13",
+  "command": "python3 run_checked.py --log logs/batch005-health-eeps-peak.log --cpus 2 --cpu-offset 6 --lock-name gpu --cwd . -- python measure_batch005_health_eeps_peak.py",
+  "source": "measure_batch005_health_eeps_peak.py:8",
+  "config": "configs/real74_4dom.toml",
+  "scope": "coupled LSM/PBL/surface-layer neighbourhood plus independent MP/CU/km axes; global sweep pending",
+  "sampled_around": "mp18-lsm4-pbl16-sfclay2-cu10-km1",
+  "measured": 134,
+  "refused": 259,
+  "max_health_fields": 1024,
+  "worst_count": 737,
+  "headroom": 287,
+  "over_ceiling": [],
+  "peak_rows": [
+    {
+      "selection": "mp18-lsm4-pbl16-sfclay2-cu10-km1",
+      "mp_physics": 18,
+      "sf_surface_physics": 4,
+      "bl_pbl_physics": 16,
+      "sf_sfclay_physics": 2,
+      "cu_physics": 10,
+      "km_opt": 1,
+      "per_domain": {
+        "1": 333,
+        "2": 737,
+        "3": 737,
+        "4": 737
+      },
+      "peak": 737,
+      "ceiling": 1024,
+      "breakdown": {
+        "1": {
+          "held": 43,
+          "lbc": 2,
+          "state": 29,
+          "surface": 241,
+          "surface.microphysics": 18
+        },
+        "2": {
+          "held": 43,
+          "lbc": 194,
+          "nest.scratch": 212,
+          "state": 29,
+          "surface": 241,
+          "surface.microphysics": 18
+        },
+        "3": {
+          "held": 43,
+          "lbc": 194,
+          "nest.scratch": 212,
+          "state": 29,
+          "surface": 241,
+          "surface.microphysics": 18
+        },
+        "4": {
+          "held": 43,
+          "lbc": 194,
+          "nest.scratch": 212,
+          "state": 29,
+          "surface": 241,
+          "surface.microphysics": 18
+        }
+      }
+    },
+    {
+      "selection": "mp18-lsm4-pbl16-sfclay2-cu10-km4",
+      "mp_physics": 18,
+      "sf_surface_physics": 4,
+      "bl_pbl_physics": 16,
+      "sf_sfclay_physics": 2,
+      "cu_physics": 10,
+      "km_opt": 4,
+      "per_domain": {
+        "1": 333,
+        "2": 737,
+        "3": 737,
+        "4": 737
+      },
+      "peak": 737,
+      "ceiling": 1024,
+      "breakdown": {
+        "1": {
+          "held": 43,
+          "lbc": 2,
+          "state": 29,
+          "surface": 241,
+          "surface.microphysics": 18
+        },
+        "2": {
+          "held": 43,
+          "lbc": 194,
+          "nest.scratch": 212,
+          "state": 29,
+          "surface": 241,
+          "surface.microphysics": 18
+        },
+        "3": {
+          "held": 43,
+          "lbc": 194,
+          "nest.scratch": 212,
+          "state": 29,
+          "surface": 241,
+          "surface.microphysics": 18
+        },
+        "4": {
+          "held": 43,
+          "lbc": 194,
+          "nest.scratch": 212,
+          "state": 29,
+          "surface": 241,
+          "surface.microphysics": 18
+        }
+      }
+    }
+  ],
+  "calibration_count": 573,
+  "result_sha256": "4d11a0a55dce626a81bf5f3461de61f6d926f2e0bcc90da5c39fe03126e6bdb0"
+}

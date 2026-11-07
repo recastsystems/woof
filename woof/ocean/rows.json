@@ -3,11 +3,11 @@
   "solvers": {
     "waves": {
       "factory": "woof.ocean.waves:create_solver",
-      "report_lane": "lane-cap-waves"
+      "report_lane": "waves-solver"
     },
     "surge": {
       "factory": "woof.ocean.surge:create_solver",
-      "report_lane": "lane-cap-surge"
+      "report_lane": "surge-solver"
     }
   },
   "sources": {
@@ -78,6 +78,8 @@
     "ustar": {"title":"Wave surface friction velocity","units":"m/s","range":[0,3],"history_name":"OCEAN_USTAR","family":"waves","mask":"wet"},
     "charnock": {"title":"Wave Charnock coefficient","units":"1","range":[0,0.1],"history_name":"OCEAN_CHARNOCK","family":"waves","mask":"wet"},
     "z0": {"title":"Wave surface roughness length","units":"m","range":[0,0.02],"history_name":"OCEAN_Z0","family":"waves","mask":"wet"},
+    "feedback_z0": {"title":"Wave roughness applied to atmosphere","units":"m","range":[0,0.005],"history_name":"OCEAN_FEEDBACK_Z0","family":"waves","mask":"wet"},
+    "feedback_charnock": {"title":"Wave Charnock parameter applied to atmosphere","units":"1","range":[0,0.1],"history_name":"OCEAN_FEEDBACK_CHARNOCK","family":"waves","mask":"wet"},
     "eta": {
       "title": "Water level above bathymetry datum",
       "units": "m",

@@ -1,0 +1,7 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# libm symbols of the -O0 reference objects:
+## module_madwrf.o
+U powf
+## module_mp_thompson.o
+## nudge_oracle_mod.o

@@ -12,6 +12,10 @@ path = "src/main.rs"
 
 [dependencies]
 rw-store = { path = "../rw-store" }
+# The surface section: the map renderer's shared surface diagnostics (precipitation, gust, MSLP smoothing,
+# visibility, hub winds) and the MPAS-bridge sea-level reduction, so a point forecast's values are the map's.
+rustwx-calc = { path = "../rustwx-calc" }
+rw-mpas = { path = "../rw-mpas" }
 rustwx-sounding = { path = "../rustwx-sounding" }
 sharppyrs = { path = "../../vendor/sharppyrs" }
 sharprs = { path = "../../vendor/sharprs" }

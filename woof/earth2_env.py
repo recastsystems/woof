@@ -313,7 +313,7 @@ def _compiler_toolkit(uv: str, recipe: dict, env: Path, log: Path):
 
     A recipe with ``compiler_packages`` (cu13) installs that private CUDA compiler into the venv
     and builds against it (``cuda_home``), as its ``before_model_extra`` says. Breakage it prevents
-    (2.9.4 follow-up, V58 2026-10-21): torch-harmonics, which FCN3 needs, built against the box's
+    (2.9.4 follow-up, test host 2026-10-21): torch-harmonics, which FCN3 needs, built against the box's
     /usr/local/cuda 12.8 and refused ("detected CUDA version 12.8 mismatches ... 13.0") under the
     cu13 torch. A recipe without them (cu12) builds against whatever CUDA torch finds. Returns the
     environment for the install, or ``None`` for this process's own.

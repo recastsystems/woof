@@ -638,7 +638,7 @@ P3_SPECIES_ROW = MicrophysicsSpeciesRow(
 
 #: Thompson aerosol-aware (woof mp_physics=28).  The ELEVEN scalars WRF's
 #: own mp=28 driver arm transports and the engine's ``thompson_aero`` row
-#: carries (woof 2.6.3): WSM6's six masses, the three number moments and
+#: carries (gpuwm 2.6.3): WSM6's six masses, the three number moments and
 #: the two aerosol number tracers.  ``nc`` is prognostic here, which is the
 #: whole difference from classic Thompson.  The seam refuses ``rho_dry`` on
 #: this row (mp_gt_driver builds its own density), refuses the rime pair,

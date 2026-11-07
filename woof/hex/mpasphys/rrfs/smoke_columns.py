@@ -12,7 +12,7 @@ def _once(source, old, new):
     return source.replace(old,new,1)
 
 
-def source(text, routines, boundaries, automatic=28):
+def source(text, routines, boundaries, automatic=28, *, hip=False):
     text=_once(text,'T *p=nullptr; int rank=0;', 'T *p=nullptr; bool compact=false; int rank=0;')
     text=_once(text,'n*=hi[d]-lo[d]+1;', 'n*=(compact && d==0)?1:hi[d]-lo[d]+1;')
     text=_once(text,'int z=hi[d]-lo[d]+1;', 'int z=(compact && d==0)?1:hi[d]-lo[d]+1;')
@@ -95,7 +95,15 @@ extern "C" __global__ void sd_initialize_columns(State *state,Plume *plume,float
     text = text.replace('#define SDDEV __device__', '#define SDDEV __device__ __forceinline__', 1)
     from .smoke_micro_levels import source as micro_levels
     from .smoke_advect_levels import source as advect_levels
-    return tiles(advect_levels(micro_levels(vectors(phases(text), routines))))
+    columns = vectors(phases(text), routines)
+    # The CUDA master and worker warp use a counted barrier between two
+    # independently scheduled warps. On CDNA they share one wave64, so a
+    # spinning partial-wave barrier can deadlock. Generate AMD's column
+    # routine from the same pre-optimization graph: one GPU thread advances
+    # each independent plume, retaining native arithmetic and loop order.
+    if hip:
+        return tiles(columns)
+    return tiles(advect_levels(micro_levels(columns)))
 
 
 COLUMN_PROLOGUE = ' if(lane>last-first)return;state+=lane;'

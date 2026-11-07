@@ -522,6 +522,7 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "fs4",
+ "libc",
  "memmap2",
  "rayon",
  "rustwx-core",

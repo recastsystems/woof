@@ -1,6 +1,6 @@
 {
   "schema": "arwen.static-full-build-numpy-bounds.v1",
-  "reference": "Independent NumPy 2.2.6 full build over the reference 30 arc-second WPS_GEOG inventory",
+  "reference": "Independent NumPy 2.2.6 full build over the named original WPS_GEOG reference inventory; reference data is not distributed",
   "measurement": {
     "system": "Linux x86-64 with glibc 2.39",
     "python": "3.12.14",
@@ -212,5 +212,16 @@
       "reference_sha256": "2297d9ab18f0653be8493b8bd8c18a3f5eae47ca5c836f1cbc2f864752909c8a",
       "portable_sha256": "5cb3c945baaf48f50377cae86a099d3e14a1d969ee28312ecaf99263d1258631"
     }
+  },
+  "geography": {
+    "terrain": "topo_gmted2010_30s",
+    "landuse": "modis_landuse_20class_30s_with_lakes",
+    "soil_top": "soiltype_top_30s",
+    "soil_bottom": "soiltype_bot_30s",
+    "greenfrac": "greenfrac_fpar_modis",
+    "lai": "lai_modis_10m",
+    "albedo": "albedo_modis",
+    "snow_albedo": "maxsnowalb_modis",
+    "soil_temperature": "soiltemp_1deg"
   }
 }

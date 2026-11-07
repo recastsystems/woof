@@ -1,0 +1,49 @@
+{
+  "columns": 64,
+  "layers": 24,
+  "routines": [
+    "qfts",
+    "qftsts",
+    "qfti",
+    "qftisf"
+  ],
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "source_sha256": "c4977cdf2ddf3f2279c9be7e1fc659ef23bbb37376e5cf11f9a98a73d33b0266",
+  "fixture_sha256": "f299306d68c17386e1fb65230f8faac7a1b5d4296c363b69a5234251481f1a3e",
+  "fields": {
+    "up": {
+      "shape": [
+        64,
+        4,
+        25
+      ],
+      "sha256": "c5720c924f87ebca2284c9619f2ba0a8210eef6bbe6722e5bad705a2c670a7eb",
+      "finite": true
+    },
+    "down": {
+      "shape": [
+        64,
+        4,
+        25
+      ],
+      "sha256": "6cb975229137a2b7cdff722a2ebc9c9fe639e198cf907972cd08007fb87516b0",
+      "finite": true
+    },
+    "direct": {
+      "shape": [
+        64,
+        25
+      ],
+      "sha256": "ca1b06533fcb6af5aa354b8d28d6ed4e5891cc90101546e35e3212a71f67ed63",
+      "finite": true
+    },
+    "diffuse": {
+      "shape": [
+        64,
+        25
+      ],
+      "sha256": "f47b1454c004298a373ddb918c2114ba83139d8cdd034fbcae74fb29efdb5896",
+      "finite": true
+    }
+  }
+}

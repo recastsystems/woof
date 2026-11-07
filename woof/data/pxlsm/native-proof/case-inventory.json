@@ -1,0 +1,179 @@
+[
+  {
+    "itimestep": 1,
+    "curr_secs": 0.0,
+    "nx": 73,
+    "ny": 60,
+    "dt": 60.0,
+    "dtbl": 60.0,
+    "land_categories": 24,
+    "soil_categories": 16,
+    "soil_nudge": 0,
+    "smois_init": 1,
+    "modis_veg": 0,
+    "analysis_interval": 0,
+    "dzs": [
+      0.009999999776482582,
+      0.9900000095367432
+    ],
+    "land_columns": 2351,
+    "water_columns": 2029,
+    "ice_columns": 0,
+    "snow_columns": 1285,
+    "fields": {
+      "tsk": {
+        "nonfinite_words": 0,
+        "minimum": 243.0664825439453,
+        "maximum": 297.8950500488281
+      },
+      "ta2": {
+        "nonfinite_words": 0,
+        "minimum": 245.7227783203125,
+        "maximum": 296.914306640625
+      },
+      "qa2": {
+        "nonfinite_words": 0,
+        "minimum": 0.0003174670855514705,
+        "maximum": 0.016665944829583168
+      },
+      "xland": {
+        "nonfinite_words": 0,
+        "minimum": 1.0,
+        "maximum": 2.0
+      },
+      "xice": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 0.3499999940395355
+      },
+      "snow": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 149.50135803222656
+      },
+      "rainbl": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 0.0
+      }
+    }
+  },
+  {
+    "itimestep": 61,
+    "curr_secs": 3600.0,
+    "nx": 73,
+    "ny": 60,
+    "dt": 60.0,
+    "dtbl": 60.0,
+    "land_categories": 24,
+    "soil_categories": 16,
+    "soil_nudge": 0,
+    "smois_init": 1,
+    "modis_veg": 0,
+    "analysis_interval": 0,
+    "dzs": [
+      0.009999999776482582,
+      0.9900000095367432
+    ],
+    "land_columns": 2361,
+    "water_columns": 2019,
+    "ice_columns": 10,
+    "snow_columns": 1285,
+    "fields": {
+      "tsk": {
+        "nonfinite_words": 0,
+        "minimum": 247.25210571289062,
+        "maximum": 297.8950500488281
+      },
+      "ta2": {
+        "nonfinite_words": 0,
+        "minimum": 247.7531280517578,
+        "maximum": 297.1046142578125
+      },
+      "qa2": {
+        "nonfinite_words": 0,
+        "minimum": 0.00033484038431197405,
+        "maximum": 0.01720823347568512
+      },
+      "xland": {
+        "nonfinite_words": 0,
+        "minimum": 1.0,
+        "maximum": 2.0
+      },
+      "xice": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 1.0
+      },
+      "snow": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 149.50135803222656
+      },
+      "rainbl": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 0.11173626035451889
+      }
+    }
+  },
+  {
+    "itimestep": 121,
+    "curr_secs": 7200.0,
+    "nx": 73,
+    "ny": 60,
+    "dt": 60.0,
+    "dtbl": 60.0,
+    "land_categories": 24,
+    "soil_categories": 16,
+    "soil_nudge": 0,
+    "smois_init": 1,
+    "modis_veg": 0,
+    "analysis_interval": 0,
+    "dzs": [
+      0.009999999776482582,
+      0.9900000095367432
+    ],
+    "land_columns": 2361,
+    "water_columns": 2019,
+    "ice_columns": 10,
+    "snow_columns": 1285,
+    "fields": {
+      "tsk": {
+        "nonfinite_words": 0,
+        "minimum": 249.8055877685547,
+        "maximum": 297.8950500488281
+      },
+      "ta2": {
+        "nonfinite_words": 0,
+        "minimum": 249.9828338623047,
+        "maximum": 297.25506591796875
+      },
+      "qa2": {
+        "nonfinite_words": 0,
+        "minimum": 0.0004327362694311887,
+        "maximum": 0.017123978585004807
+      },
+      "xland": {
+        "nonfinite_words": 0,
+        "minimum": 1.0,
+        "maximum": 2.0
+      },
+      "xice": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 1.0
+      },
+      "snow": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 149.50135803222656
+      },
+      "rainbl": {
+        "nonfinite_words": 0,
+        "minimum": 0.0,
+        "maximum": 0.13336990773677826
+      }
+    }
+  }
+]

@@ -54,7 +54,8 @@ def test_real_module_load_and_named_jit_fallbacks(tmp_path, monkeypatch):
     assert len(compiled) == 2
     assert results == [words.tobytes()] * 3
     marks = [json.loads(line)["attrs"] for line in ledger.read_text().splitlines()]
-    loads = [m for m in marks if m.get("mark") == "kernel.load"]
+    # The process-wide CuPy hook also emits loads; this checks the named cache's exact three decisions.
+    loads = [m for m in marks if m.get("mark") == "kernel.load" and m.get("module_key") == row["module_key"]]
     assert [(m["source"], m.get("reason")) for m in loads] == [
         ("aot", None), ("jit", "source_hash_mismatch"), ("jit", "architecture_mismatch")]
 
@@ -84,6 +85,15 @@ def test_real_cupy_bridge_preserves_template_name_mapping(tmp_path, monkeypatch)
     path = tmp_path / "template-pack.json"
     write(path, compiler_identity(), [entry, alias])
     original = compiler._compile_with_cache_cuda
+    # An earlier GPU test in this worker (any KernelCache over an installed pack that carries
+    # CuPy compile requests) leaves the process-wide bridge here, and install() keeps the first
+    # bridge it finds, so this test's pack would never be read (seal3 hex GPU suite, -n 8).
+    while getattr(original, "_hex_aot_bridge", False):
+        original = original.__wrapped__
+    link = original
+    while link is not None:
+        assert not getattr(link, "_hex_aot_bridge", False), "an AOT bridge sits under another wrapper"
+        link = getattr(link, "__wrapped__", None)
     monkeypatch.setattr(compiler, "_compile_with_cache_cuda", original)
     install(cp, Pack(path))
     calls = []
@@ -94,6 +104,10 @@ def test_real_cupy_bridge_preserves_template_name_mapping(tmp_path, monkeypatch)
         return compile_original(text, *a, **kw)
     monkeypatch.setattr(compiler, "_compile_using_nvrtc_no_warning", count)
     monkeypatch.setenv("CUPY_CACHE_DIR", str(tmp_path / "empty-cupy"))
+    if hasattr(compiler, "_set_kernel_cache_backend"):
+        # CuPy 14 read CUPY_CACHE_DIR at import; the variable alone does not empty its disk cache.
+        from cupy.cuda._compiler_cache import DiskKernelCacheBackend
+        monkeypatch.setattr(compiler, "_kernel_cache_backend", DiskKernelCacheBackend(str(tmp_path / "empty-cupy")))
     results = []
     words = np.array([1, 0x80000001, 0x7fc00001], dtype=np.uint32)
     first = cp.RawModule(code=source, options=options, name_expressions=names)

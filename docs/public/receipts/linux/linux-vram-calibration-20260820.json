@@ -48,7 +48,7 @@
  },
  "runs": [
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "20cr",
    "grid": "300x300x49",
    "domains": 1,
@@ -64,7 +64,7 @@
    "samples": 4270
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "aifs",
    "grid": "300x300x49",
    "domains": 1,
@@ -80,7 +80,7 @@
    "samples": 4481
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "aigefs",
    "grid": "300x300x49",
    "domains": 1,
@@ -96,7 +96,7 @@
    "samples": 5016
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "aigfs",
    "grid": "300x300x49",
    "domains": 1,
@@ -112,7 +112,7 @@
    "samples": 4494
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "ecmwf-ifs",
    "grid": "300x300x49",
    "domains": 1,
@@ -128,7 +128,7 @@
    "samples": 4561
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "gdas",
    "grid": "300x300x49",
    "domains": 1,
@@ -144,7 +144,7 @@
    "samples": 4444
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "gefs",
    "grid": "300x300x49",
    "domains": 1,
@@ -160,7 +160,7 @@
    "samples": 4421
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "gem",
    "grid": "300x300x49",
    "domains": 1,
@@ -176,7 +176,7 @@
    "samples": 4580
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "rap",
    "grid": "300x300x49",
    "domains": 1,
@@ -192,7 +192,7 @@
    "samples": 4561
   },
   {
-   "node": "a development machine RTX 5070 Ti",
+   "node": "test-machine-1 RTX 5070 Ti",
    "model": "rrfs",
    "grid": "300x300x49",
    "domains": 1,
@@ -208,7 +208,7 @@
    "samples": 5054
   },
   {
-   "node": "a development machine RTX 5090",
+   "node": "test-machine-2 RTX 5090",
    "model": "aigefs",
    "grid": "300x300x49",
    "domains": 1,
@@ -224,7 +224,7 @@
    "samples": 2855
   },
   {
-   "node": "a development machine RTX 5090",
+   "node": "test-machine-2 RTX 5090",
    "model": "gdas",
    "grid": "300x300x49",
    "domains": 1,
@@ -240,7 +240,7 @@
    "samples": 2565
   },
   {
-   "node": "a development machine RTX 5090",
+   "node": "test-machine-2 RTX 5090",
    "model": "gem",
    "grid": "300x300x49",
    "domains": 1,
@@ -256,7 +256,7 @@
    "samples": 2867
   },
   {
-   "node": "a development machine RTX 5090",
+   "node": "test-machine-2 RTX 5090",
    "model": "rap",
    "grid": "300x300x49",
    "domains": 1,
@@ -272,7 +272,7 @@
    "samples": 2875
   },
   {
-   "node": "a development machine RTX 5090",
+   "node": "test-machine-2 RTX 5090",
    "model": "rrfs",
    "grid": "300x300x49",
    "domains": 1,

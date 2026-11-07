@@ -338,6 +338,21 @@ fn write_frame_with_attrs(
         &[time, bottom_top, south_north, west_east],
         "kg kg-1",
     );
+    // Rain and snow, as every microphysics wrfout carries them: visibility
+    // requires both since 2c49173f80b (a frame without them would read clear
+    // air through precipitation), so a fixture without them had no visibility.
+    let qrain = volume_var(
+        &mut schema,
+        "QRAIN",
+        &[time, bottom_top, south_north, west_east],
+        "kg kg-1",
+    );
+    let qsnow = volume_var(
+        &mut schema,
+        "QSNOW",
+        &[time, bottom_top, south_north, west_east],
+        "kg kg-1",
+    );
     let znw = volume_var(&mut schema, "ZNW", &[time, bottom_top_stag], "");
     let ph = volume_var(
         &mut schema,
@@ -392,6 +407,8 @@ fn write_frame_with_attrs(
     let qvapor_values = vec![0.008f32; volume];
     let qcloud_values = vec![CLOUD_WATER_KG_PER_KG; volume];
     let qice_values = vec![0.0f32; volume];
+    let qrain_values = vec![0.0f32; volume];
+    let qsnow_values = vec![0.0f32; volume];
     let mut base_pressure = Vec::with_capacity(volume);
     let mut pressure_perturbation = Vec::with_capacity(volume);
     for level in 0..NZ {
@@ -492,6 +509,8 @@ fn write_frame_with_attrs(
         (qvapor, &qvapor_values),
         (qcloud, &qcloud_values),
         (qice, &qice_values),
+        (qrain, &qrain_values),
+        (qsnow, &qsnow_values),
         (ph, &geopotential_perturbation),
         (phb, &base_geopotential),
         (u, &u_values),

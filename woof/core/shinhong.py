@@ -83,7 +83,8 @@ def shinhong_tile_columns(fn, ncol: int) -> int:
     try:
         from cupy_backends.cuda.api import driver
 
-        resident = driver.occupancyMaxActiveBlocksPerMultiprocessor(
+        from woof.backend import active_blocks_per_multiprocessor
+        resident = active_blocks_per_multiprocessor(
             fn.kernel.ptr, SHINHONG_BLOCK, 0)
         per_sm = min(per_sm, int(resident))
     except Exception:  # noqa: BLE001

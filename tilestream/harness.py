@@ -180,6 +180,9 @@ def halo_radius(cfg) -> int:
     if ns % 2 != 0:
         raise ValueError(f"time_step_sound must be even, got {ns}")
     radius = 10 + 3 * ns // 2
+    # KF trigger 2 adds two nine-point averages to its forcing dependency.
+    if int(cfg.cu_physics) == 1 and int(getattr(cfg, "kfeta_trigger", 1)) == 2:
+        radius += 2
     if (int(getattr(cfg, "nwp_diagnostics", 0) or 0)
             or int(getattr(cfg, "gsd_diagnostics", 0) or 0)):
         from woof.core.uh_diag import UH_DIAGNOSTIC_HALO_CELLS
@@ -638,7 +641,15 @@ def declared_carrier_kwargs(cfg) -> dict:
     (:func:`declare_offline_gsw`), because ``initialize_physics`` has no
     ``gsw`` keyword: RUC's net shortwave is an offline forcing by design.
     """
-    return {**declared_glw_kwargs(cfg), **declared_swdown_kwargs(cfg)}
+    result = {**declared_glw_kwargs(cfg), **declared_swdown_kwargs(cfg)}
+    if int(cfg.sf_surface_physics) == 1:
+        # The seeded builder uses initialize_physics' default MODIS category
+        # 10 and its April Northern Hemisphere date (summer table). Supply
+        # the same THERIN/100 that landuse_init would give that category.
+        from woof.core.landuse import load_landuse_table
+        table = load_landuse_table("MODIFIED_IGBP_MODIS_NOAH")
+        result["thermal_inertia"] = np.float32(table.values[0, 9, 4]) / np.float32(100.0)
+    return result
 
 
 def declare_offline_gsw(driver, cfg) -> None:
@@ -791,6 +802,8 @@ def make_physics_state(cfg, seed: int = DEFAULT_SEED, *,
                 dtype=state.qc.dtype)
         update_diagnostics(state)
 
+    from woof.core.state import adopt_wrf_theta_carrier
+    adopt_wrf_theta_carrier(state)
     if not physics_driver_required(cfg):
         return state, None
     if start_time is None:

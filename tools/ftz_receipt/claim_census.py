@@ -110,8 +110,8 @@ SELF_PREFIXES = ("tools/ftz_receipt/receipt/", "tools/ftz_receipt/fixtures/")
 #: payload, whose letters spell "FTZ" by chance.  Registering a 5.8 MB line as
 #: an anchor would pin the image bytes, which the pack's own identity already
 #: does.
-COMPILED_IMAGE_FILES = ("woof/data/kernel-pack-cuda12.json",
-                        "woof/data/kernel-pack-cuda13.json")
+COMPILED_IMAGE_FILES = ("gpuwm-kernels/gpuwm_kernels/data/kernel-pack-cuda12.json",
+                        "gpuwm-kernels/gpuwm_kernels/data/kernel-pack-cuda13.json")
 
 #: Files whose FTZ mention motivates shipped behaviour rather than describing
 #: it.  They are REGISTERED here and left untouched: revisiting any of them

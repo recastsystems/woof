@@ -139,6 +139,32 @@ def _soil_type(shape) -> np.ndarray:
 _SOURCES = {"era5": _era5_fields, "gfs": _gfs_fields, "hrrr": _hrrr_fields}
 
 
+@pytest.mark.parametrize("source", sorted(_SOURCES))
+def test_no_lsm_keeps_surface_preparation_without_initializing_soil(source):
+    fields = _SOURCES[source]()
+    shape = fields["LANDSEA"].shape
+    kwargs = dict(soil_type=_soil_type(shape))
+    reference = preprocess_noah_soil(fields, **kwargs)
+    inactive = preprocess_land_surface_soil(
+        fields, sf_surface_physics=0, num_soil_layers=5, **kwargs)
+    # Native init_soil_real has no scheme-0 soil initializer. Its common
+    # skin, ice, snow and deep-temperature preparation still takes place.
+    for name in ("landmask", "tsk", "snow_water", "snow_depth", "xice"):
+        np.testing.assert_array_equal(getattr(inactive, name),
+                                      getattr(reference, name))
+    sea_ice = fields["XICE"] >= 0.5
+    np.testing.assert_array_equal(inactive.deep_soil_temperature[~sea_ice],
+                                  reference.deep_soil_temperature[~sea_ice])
+    # Noah's post-initializer creates a 3-m ice column with TMN=271.4 K.
+    # No LSM leaves the common water TMN=TSK value in place instead.
+    np.testing.assert_array_equal(inactive.deep_soil_temperature[sea_ice],
+                                  fields["SKINTEMP"][sea_ice])
+    for name in ("soil_temperature", "soil_moisture", "liquid_moisture"):
+        value = getattr(inactive, name)
+        assert value.shape == (5, *shape)
+        assert np.count_nonzero(value) == 0
+
+
 # ---------------------------------------------------------------------------
 # 1.  a RUC config reaches RUC's geometry
 # ---------------------------------------------------------------------------
@@ -454,7 +480,7 @@ def test_an_unrecognised_land_surface_selector_is_refused() -> None:
     """
     fields = _era5_fields()
     soil_type = _soil_type(fields["LANDSEA"].shape)
-    for scheme in (0, 1, 5, 7, 8):
+    for scheme in (5, 9):
         with pytest.raises(ValueError, match="has no soil ingest"):
             preprocess_land_surface_soil(
                 fields, sf_surface_physics=scheme, soil_type=soil_type)

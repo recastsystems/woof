@@ -8,6 +8,7 @@ states its reference version, measured scope and failed or inconclusive gates.
 - [Matched idealized trajectory](mp28-matched-trajectory.md)
 - [Short-window gate](mp28-shortwindow-gate.md)
 - [Distribution gate](mp28-distribution-gate.md)
+- [MAD-WRF real-input replay and measured cost](madwrf-port.md)
 
 The three declared gate designs are retained byte for byte above their
 `MEASUREMENTS` markers. Dated corrections below those markers distinguish

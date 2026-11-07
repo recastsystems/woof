@@ -241,3 +241,7 @@ pub fn get_lib_name_candidates(lib_name: &str) -> std::vec::Vec<std::string::Str
     ]
     .into()
 }
+
+// Local Apache-2.0 backend adapter; upstream driver ownership stays intact.
+#[cfg(all(feature = "std", feature = "dynamic-loading"))]
+pub mod gpuwm_hip;

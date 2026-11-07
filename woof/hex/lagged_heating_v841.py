@@ -17,7 +17,7 @@ What native MPAS-A v8.4.2 does (the authority, read at MPAS-Model f34984b2):
 
 hex had the consumer half only on ``hex/gap-da-to-nest-les`` (commit e7be214b,
 fed by the native mpasphys runtime) and no producer at all on the WOOF column
-path that every DA forecast runs: the adapter declined the engine's WRF-style
+path that every state analysis forecast runs: the adapter declined the engine's WRF-style
 ``h_diabatic`` (a DRY-theta rate, which is not the MPAS quantity; the audit's
 heating contract measured a 21 % error on a condensing fixture if it were
 copied in as is).  This module is that producer.

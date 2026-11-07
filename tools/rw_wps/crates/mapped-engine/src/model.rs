@@ -17,6 +17,12 @@ pub const MAPPING_SCHEMA: &str = "rw-wps.mapping.v1";
 
 pub const GRID_FAMILY_REGULAR: &str = "regular_latitude_longitude";
 pub const GRID_FAMILY_LAMBERT: &str = "lambert_conformal";
+/// GRIB2 GDT 3.1: a regular latitude/longitude lattice in a ROTATED
+/// spherical frame (ECCC's HRDPS and RDPS publish on one).  Projected
+/// like Lambert: its canonical axes are distances along the rotated
+/// lattice in [`PROJECTED_AXIS_UNIT_M`] units, never degrees, so no
+/// consumer can read a rotated coordinate as a geographic one.
+pub const GRID_FAMILY_ROTATED: &str = "rotated_latitude_longitude";
 
 /// Axis unit for projected regular grids: one unit = 100 km along the
 /// projection plane (`mapped_source.PROJECTED_AXIS_UNIT_M`).
@@ -296,10 +302,10 @@ impl Mapping {
         if family == GRID_FAMILY_REGULAR {
             return Ok(GridDeclaration::regular());
         }
-        if family != GRID_FAMILY_LAMBERT {
+        if family != GRID_FAMILY_LAMBERT && family != GRID_FAMILY_ROTATED {
             return Err(mapping_invalid(format!(
                 "unsupported mapping.grid.family {family:?}; supported: \
-                 {GRID_FAMILY_REGULAR}, {GRID_FAMILY_LAMBERT}"
+                 {GRID_FAMILY_REGULAR}, {GRID_FAMILY_LAMBERT}, {GRID_FAMILY_ROTATED}"
             )));
         }
         let wind_basis = grid
@@ -307,15 +313,32 @@ impl Mapping {
             .and_then(Node::as_str)
             .unwrap_or_default();
         if !matches!(wind_basis, "earth_relative" | "grid_relative_with_rotation") {
-            return Err(mapping_invalid(
-                "a lambert_conformal grid must declare wind_basis \
-                 'earth_relative' or 'grid_relative_with_rotation'",
-            ));
+            return Err(mapping_invalid(format!(
+                "a {family} grid must declare wind_basis \
+                 'earth_relative' or 'grid_relative_with_rotation'"
+            )));
         }
         let parameters = grid
             .get("parameters")
             .filter(|node| node.is_object())
             .ok_or_else(|| mapping_invalid("mapping.grid.parameters must be an object"))?;
+        if family == GRID_FAMILY_ROTATED {
+            if grid.get("published_first_points").is_some() {
+                return Err(mapping_invalid(
+                    "mapping.grid.published_first_points is a Lambert admission; \
+                     a rotated_latitude_longitude grid declares one first point",
+                ));
+            }
+            let rotated = RotatedParameters::from_node(parameters)?;
+            return Ok(GridDeclaration {
+                family: GRID_FAMILY_ROTATED,
+                wind_basis: wind_basis.to_owned(),
+                parameters: None,
+                rotated: Some(rotated),
+                same_grid_pairing: None,
+                published_first_points: Vec::new(),
+            });
+        }
         let number = |key: &str| -> Result<f64> {
             parameters
                 .get(key)
@@ -370,6 +393,7 @@ impl Mapping {
             family: GRID_FAMILY_LAMBERT,
             wind_basis: wind_basis.to_owned(),
             parameters: Some(lambert),
+            rotated: None,
             same_grid_pairing,
             published_first_points,
         })
@@ -429,6 +453,8 @@ pub struct GridDeclaration {
     pub family: &'static str,
     pub wind_basis: String,
     pub parameters: Option<LambertParameters>,
+    /// The declared rotated lattice, for [`GRID_FAMILY_ROTATED`] only.
+    pub rotated: Option<RotatedParameters>,
     pub same_grid_pairing: Option<String>,
     /// Other encodings of the declared first point (lat1, lon1) that a
     /// publisher writes for this same grid; admission only.
@@ -441,6 +467,7 @@ impl GridDeclaration {
             family: GRID_FAMILY_REGULAR,
             wind_basis: "earth_relative".to_owned(),
             parameters: None,
+            rotated: None,
             same_grid_pairing: None,
             published_first_points: Vec::new(),
         }
@@ -448,6 +475,31 @@ impl GridDeclaration {
 
     pub fn is_lambert(&self) -> bool {
         self.family == GRID_FAMILY_LAMBERT
+    }
+
+    pub fn is_rotated(&self) -> bool {
+        self.family == GRID_FAMILY_ROTATED
+    }
+
+    /// Lambert or rotated: canonical axes are plane distances, not degrees.
+    pub fn is_projected(&self) -> bool {
+        self.is_lambert() || self.is_rotated()
+    }
+
+    /// `(y_axis, x_axis)` of the declared projected grid, in 100-km units.
+    pub fn projected_axes(&self) -> Option<(Vec<f64>, Vec<f64>)> {
+        if let Some(parameters) = &self.parameters {
+            return Some(parameters.projected_axes());
+        }
+        self.rotated.as_ref().map(RotatedParameters::projected_axes)
+    }
+
+    /// `(ny, nx)` of the declared projected grid.
+    pub fn projected_shape(&self) -> Option<(usize, usize)> {
+        if let Some(parameters) = &self.parameters {
+            return Some((parameters.ny as usize, parameters.nx as usize));
+        }
+        self.rotated.as_ref().map(|r| (r.ny as usize, r.nx as usize))
     }
 
     pub fn rotates_winds(&self) -> bool {
@@ -469,6 +521,109 @@ pub struct LambertParameters {
     pub ny: i64,
     pub earth_radius_m: f64,
     pub shape_of_earth: i64,
+}
+
+/// The declared rotated latitude/longitude lattice (GRIB2 GDT 3.1), in
+/// GRIB2's own vocabulary: the rotated first point and increments in
+/// degrees, the geographic position of the rotated frame's SOUTHERN pole
+/// and the angle of rotation about the new polar axis.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RotatedParameters {
+    pub lat1: f64,
+    pub lon1: f64,
+    pub dlat_deg: f64,
+    pub dlon_deg: f64,
+    pub nx: i64,
+    pub ny: i64,
+    pub south_pole_lat: f64,
+    pub south_pole_lon: f64,
+    pub rotation_angle: f64,
+    pub earth_radius_m: f64,
+    pub shape_of_earth: i64,
+}
+
+impl RotatedParameters {
+    fn from_node(parameters: &Node) -> Result<Self> {
+        let number = |key: &str| -> Result<f64> {
+            parameters
+                .get(key)
+                .and_then(Node::as_f64)
+                .filter(|value| value.is_finite())
+                .ok_or_else(|| {
+                    mapping_invalid(format!(
+                        "mapping.grid.parameters.{key} must be a finite number"
+                    ))
+                })
+        };
+        let integer = |key: &str| -> Result<i64> {
+            parameters.get(key).and_then(Node::as_i64).ok_or_else(|| {
+                mapping_invalid(format!("mapping.grid.parameters.{key} must be an integer"))
+            })
+        };
+        let rotated = RotatedParameters {
+            lat1: number("lat1")?,
+            lon1: number("lon1")?,
+            dlat_deg: number("dlat_deg")?,
+            dlon_deg: number("dlon_deg")?,
+            nx: integer("nx")?,
+            ny: integer("ny")?,
+            south_pole_lat: number("south_pole_lat")?,
+            south_pole_lon: number("south_pole_lon")?,
+            rotation_angle: number("rotation_angle")?,
+            earth_radius_m: number("earth_radius_m")?,
+            shape_of_earth: integer("shape_of_earth")?,
+        };
+        if rotated.dlat_deg <= 0.0 || rotated.dlon_deg <= 0.0 {
+            return Err(mapping_invalid(
+                "mapping.grid.parameters dlat_deg/dlon_deg must be positive",
+            ));
+        }
+        if rotated.nx < 2 || rotated.ny < 2 {
+            return Err(mapping_invalid("mapping.grid.parameters nx/ny must be at least 2"));
+        }
+        if !(6.2e6..=6.5e6).contains(&rotated.earth_radius_m) {
+            return Err(mapping_invalid(
+                "mapping.grid.parameters.earth_radius_m must be a plausible \
+                 Earth radius in metres",
+            ));
+        }
+        if !(-90.0..=90.0).contains(&rotated.south_pole_lat)
+            || !(-90.0..=90.0).contains(&rotated.lat1)
+        {
+            return Err(mapping_invalid(
+                "mapping.grid.parameters south_pole_lat/lat1 must be within [-90, 90]",
+            ));
+        }
+        let span_units = (rotated.nx as f64 * rotated.dx_m()).max(rotated.ny as f64 * rotated.dy_m())
+            / PROJECTED_AXIS_UNIT_M;
+        if span_units >= 180.0 {
+            return Err(mapping_invalid(format!(
+                "declared projected grid spans {:.0} km; the projected-axis \
+                 representation covers grids below 18,000 km",
+                span_units * PROJECTED_AXIS_UNIT_M / 1000.0
+            )));
+        }
+        Ok(rotated)
+    }
+
+    /// Lattice spacing along the rotated equator, in metres.
+    pub fn dx_m(&self) -> f64 {
+        self.dlon_deg.to_radians() * self.earth_radius_m
+    }
+
+    /// Lattice spacing along the rotated meridians, in metres.
+    pub fn dy_m(&self) -> f64 {
+        self.dlat_deg.to_radians() * self.earth_radius_m
+    }
+
+    /// `(y_axis, x_axis)` in 100-km units: index times the rotated-equator
+    /// spacing, zero on the first point (`mapped_source._projected_axes`).
+    pub fn projected_axes(&self) -> (Vec<f64>, Vec<f64>) {
+        let (dy, dx) = (self.dy_m(), self.dx_m());
+        let y = (0..self.ny).map(|index| index as f64 * dy / PROJECTED_AXIS_UNIT_M).collect();
+        let x = (0..self.nx).map(|index| index as f64 * dx / PROJECTED_AXIS_UNIT_M).collect();
+        (y, x)
+    }
 }
 
 impl LambertParameters {

@@ -69,7 +69,8 @@ class Selection:
 
 
 def resolve(items, *, start_time: datetime, run_ticks: int,
-            restart_ticks: int | None, tick_den: int) -> Selection:
+            restart_ticks: int | None, tick_den: int,
+            restart_origin_ticks: int = 0) -> Selection:
     """Ticks for ``items`` in a run, refusing an instant never written.
 
     ``start_time`` is the simulation start the checkpoint clock counts
@@ -101,7 +102,8 @@ def resolve(items, *, start_time: datetime, run_ticks: int,
                 f"{float(Fraction(int(run_ticks), int(tick_den))):g} s after "
                 f"{start:%Y-%m-%d_%H:%M:%S}; that checkpoint would never be "
                 "written")
-        if at % int(restart_ticks) != 0:
+        if ((at-int(restart_origin_ticks)) % int(restart_ticks) != 0
+                and not (item == END and restart_origin_ticks)):
             raise ValueError(
                 f"--checkpoint-at {item}: not a restart_interval "
                 f"({float(Fraction(int(restart_ticks), int(tick_den))):g} s) "

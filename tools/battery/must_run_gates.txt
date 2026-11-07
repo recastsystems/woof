@@ -217,3 +217,23 @@ tests/test_g3_cu5_parity.py  needs a CUDA device; CPU legs skip this module, whi
 tests/test_fast_sbm_port_oracle.py  needs a C++ compiler (g++, c++ or clang++) on PATH to build the fast-SBM host replay library from tools/fast_sbm_host; the WRF fixtures ship, so every Linux leg with a compiler runs it (767819c79).
 tests/test_owner_identity_scan.py  needs the release cut tooling (tools/release/cut/drivers/owner_identity_scan.py), which RELEASE-EXCLUDE.txt drops from the public snapshot; every leg on the private tree runs it (7321ad1ea).
 tests/test_icechunk_door_gpu.py  needs a CUDA device, provider network, rw_icechunk and WOOF_ICECHUNK_CASE naming a domain-door TOML; a leased GPU leg runs the real go door and compares every native field at each snapshot.
+# Module-level skips added on the 2.9.12 / 3.0.0 line without an entry here
+# (declared by the 3.0.0 fix batch, each with the commit that added it).
+tests/test_boulac_wrf461_parity.py  needs GPUWM_WRF_EXACT=1 set before import and a CUDA device: its bitwise WRF 4.6.1 BouLac replay runs only under the opt-in strict arithmetic, which a default process never installs; the strict GPU leg runs it (1cb151eeb60).
+tests/test_cam_lifecycle_gpu.py  needs a CUDA device and CuPy: it drives the complete CAM radiation driver through device lifecycle seams; a GPU leg with the card runs it (79fe57bf8bc).
+tests/test_cumulus_rain_number.py  needs a CUDA device and CuPy for its cumulus rain-number kernel comparisons; a GPU leg with the card runs it (4ace72860af).
+tests/test_gfdleta_column_cuda.py  needs a CUDA device: it is skipped when GPUWM_NO_LOCAL_GPU is set, and a GPU leg runs its GFDL-Eta radiation column words against the committed fixtures (062add3a728).
+tests/test_gfdleta_full_init_cuda.py  needs a CUDA device: it is skipped when GPUWM_NO_LOCAL_GPU is set, and a GPU leg runs every run-level GFDLETAINIT table word on four vertical grids (24b99fc9707).
+tests/test_gfdleta_init_cuda.py  needs a CUDA device: it is skipped when GPUWM_NO_LOCAL_GPU is set, and a GPU leg runs the GFDL-Eta initialisation kernels against the committed fixtures (cc95eceae24).
+tests/test_gfdleta_lw_helpers_cuda.py  needs a CUDA device: it is skipped when GPUWM_NO_LOCAL_GPU is set, and a GPU leg runs the GFDL-Eta longwave helper words against the committed fixtures (510809112e9).
+tests/test_gfdleta_math_cuda.py  needs a CUDA device: it is skipped when GPUWM_NO_LOCAL_GPU is set, and a GPU leg runs the GFDL-Eta math helper words against the committed fixtures (4efa12f66a4).
+tests/test_gfdleta_runtime_cuda.py  needs a CUDA device: it is skipped when GPUWM_NO_LOCAL_GPU is set, and a GPU leg runs the GFDL-Eta runtime driver against the committed fixtures (382ff1c01e3).
+tests/test_gfdleta_tables_cuda.py  needs a CUDA device: it is skipped when GPUWM_NO_LOCAL_GPU is set, and a GPU leg runs the GFDL-Eta table build words against the committed fixtures (ca7aa6593d7).
+tests/test_gsfcsw_gpu.py  needs a CUDA device and CuPy for the Goddard shortwave kernel comparisons; a GPU leg with the card runs it (ef7179ad4be).
+tests/test_nudging_forecast_gpu.py  needs a CUDA device and an explicit GPU pool lease (WOOF_DOWNSCALE_GPU_TEST=1); a leased GPU leg runs the nudged forecast (2799c9d0d40).
+tests/test_nudging_gpu.py  needs a CUDA device and an explicit GPU pool lease (WOOF_DOWNSCALE_GPU_TEST=1); a leased GPU leg runs the analysis-nudging kernels (2799c9d0d40).
+tests/test_posted_model_source.py  needs real posted GRIB2 inputs (WOOF_POSTED_TEST_INPUTS) and a built native reader library (WOOF_POSTED_TEST_LIBRARY), neither of which ships in this repository; a leg that stages both runs it (f8365eb580d).
+tests/test_pxlsm_wrf461_parity.py  needs a CUDA device and CuPy for the Pleim-Xiu land-surface WRF 4.6.1 comparisons; the strict and default GPU legs run their halves (48baed9be11).
+tests/test_qnse_fast_numerics.py  needs a CUDA device, and is skipped under GPUWM_WRF_EXACT=1 because it bounds the production (fast numerics) QNSE error against the native strict fixture; the default GPU leg runs it (c24f1adba49).
+tests/test_surface_fdda_gpu.py  needs a CUDA device and an explicit GPU test opt-in (WOOF_DOWNSCALE_GPU_TEST=1); a leased GPU leg runs the surface FDDA kernels (2e0e878fea4).
+tests/test_version_byte_proof.py  needs the built Rust history writer (woof.io.nc_writer_bridge, from tools/rustwx); a leg that builds or stages the bridges runs it (e68ccd91e73).

@@ -329,8 +329,14 @@ extern "C" __global__ void tc_entry(
     // gpuwm/ensemble/batch_physics.py); the base read is the same word.
     const int bcol = col % member_columns;
     // phy_prep: th_phy, pi_phy = (p/p1000mb)**rcp, t_phy = th*pi; dz8w.
-    const float theta = thb[thb_full ? k * member_columns + bcol : k]
+    const float thermal = thb[thb_full ? k * member_columns + bcol : k]
         + thp[idx];
+#ifdef GPUWM_USE_THETA_M
+    const float theta = __fdiv_rn(thermal,
+        __fadd_rn(1.0f, __fmul_rn(RVOVRD, qv[idx])));
+#else
+    const float theta = thermal;
+#endif
     const float pi_phy = gfk_pow(p[idx] / p0, rcp);
     const float temp = theta * pi_phy;
     th_save[idx] = theta;

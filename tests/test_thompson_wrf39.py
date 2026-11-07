@@ -116,7 +116,7 @@ def test_the_fork_table_contract_matches_the_fork_cache_files():
     assert {r.shape for r in FORK_GENERATED_TABLE_FILES["qr_acr_qs.dat"]} \
         == {(28, 9, 37, 37)}
     assert (TABLE_SETS_BY_VERSION["wrf_461"][0] is GENERATED_TABLE_FILES)
-    assert set(TABLE_SETS_BY_VERSION) == {"wrf_461", "wrf_39_noaa"}
+    assert set(TABLE_SETS_BY_VERSION) == {"wrf_461", "wrf_39_noaa", "wrf_461_hail"}
 
 
 def test_the_fork_table_contract_refuses_an_unknown_version(tmp_path):
@@ -129,7 +129,7 @@ def test_a_missing_fork_table_set_is_refused_with_the_build_command(
         tmp_path, monkeypatch):
     from woof.core.microphysics_aerosol import _wrf39_table_root
     from woof import thompson_fork_assets
-    # b0556bd76, lane/286-fork-thompson: a cache miss now acquires the
+    # b0556bd76, development branch: a cache miss now acquires the
     # canonical set. This refusal control deliberately removes the source
     # build prerequisite instead of expecting every ordinary miss to fail.
     def unavailable(*args):
@@ -170,7 +170,7 @@ def _strip_fork_arms(text: str) -> str:
 #: arm stripped (#else arms kept), right-stripped, UTF-8.
 #:
 #: MOVED ON PURPOSE 2026-10-05 by the mp=28 accumulator rework
-#: (lane/cut286-mp28-g3, 2.8.6).  Until then this test compared the stripped
+#: (development branch, 2.8.6).  Until then this test compared the stripped
 #: source with the pre-fork commit 7ab2e3dcf through git, so it skipped on
 #: every test tree without history (the node and box trees), and the rework,
 #: which changes the v4.6.1 path itself (WRF's qcten/qrten/nrten/qiten/niten
@@ -184,19 +184,19 @@ def _strip_fork_arms(text: str) -> str:
 #: (test_the_fork_arms_were_pure_insertions_until_the_rework below holds
 #: the earlier claim at the last pre-rework staging commit, ed2b14e7d).
 #:
-#: MOVED AGAIN 2026-10-07 by lane/verify-thompson-aerosol-mp28: every
+#: MOVED AGAIN 2026-10-07 by development branch: every
 #: EXP/LOG/LOG10/** in both arms calls WOOF's own libm words
 #: (thompson_aerosol_libm.cuh), graded by the 0 ULP column oracle
 #: (tools/thompson_aerosol_column_oracle) and tests/test_thompson_aerosol_libm.py.
 #:
-#: MOVED AGAIN 2026-10-07 by lane/mp28fix-sedim-refl: the v4.6.1 path's own
+#: MOVED AGAIN 2026-10-07 by development branch: the v4.6.1 path's own
 #: snow and graupel fallout, surface totals, classic graupel number and
 #: calc_refl10cm (the frozen mp=8 kernels no longer reach mp=28), graded by
 #: the column oracle and tests/test_thompson_aerosol_sedim_refl.py.  The fork
 #: arms are untouched.  Previously 4f6bda7a20547e64 (state), e9b877b64b1f9624
 #: (sed).
 #:
-#: MOVED AGAIN 2026-10-07 by lane/mp28-exact: WRF's snow and graupel
+#: MOVED AGAIN 2026-10-07 by development branch: WRF's snow and graupel
 #: accumulators in the v4.6.1 snow and graupel fallout (:3871-3937,
 #: :4054-4059), the phase cleanup's latent heat into tten on WRF's
 #: ocp(k)/lvap(k) (:3943-3973), and the warm network's entry mask with
@@ -204,11 +204,14 @@ def _strip_fork_arms(text: str) -> str:
 #: tests/test_thompson_aerosol_column_oracle_gpu.py, including the separate
 #: exact-freezing fixture and legacy-mask negative control. The fork arms are
 #: untouched.  Previously c98df22af539c88e (state), 8a7f09658ba014b1 (sed).
+# Hail-only additions and the shared reflectivity ABI are now included.
+# At d8a32fd0f, a three-step MP28 run and between-step reflectivity match
+# E across all 27 recorded fields in default and strict arithmetic.
 V461_STRIPPED_SHA256 = {
     "thompson_aerosol_state.cu":
-        "1d09b519d926d28a710e144555fb7cc81ee6af527ac6ed3e2f07b3b6053a24b3",
+        "a3684f1d40d790e8d63633b2312d037aabc9f4e609930410c85a1038c0fbfe15",
     "thompson_aerosol_sed.cu":
-        "980288a1b5df4d2bd6ab1b3288ce7196805ef8e3fd4d2971c30f178e8400f7bc",
+        "f276c8443fc981d1c29c3b17eb10e657195a80d79c14337e98c7dd1ad932a306",
 }
 
 

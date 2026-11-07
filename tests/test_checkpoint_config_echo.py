@@ -29,7 +29,7 @@ from test_restart import (
     _cfg, _fill_setup, _identity_bound_physics_state, _shim_driver_state)
 
 
-#: lane/cap-seaice: bound wherever a land surface runs prognostic sea ice.
+#: development branch: bound wherever a land surface runs prognostic sea ice.
 _SEAICE_BOUND = ("seaice_prognostic", "seaice_initial_thickness",
                  "seaice_new_ice_thickness", "seaice_ocean_heat_flux")
 
@@ -66,7 +66,7 @@ MOVED = {
     "topo_wind": (dict(bl_pbl_physics=1, sf_sfclay_physics=1, topo_wind=1),
                   {"topo_wind", "ysu_version"}),
     "gwd_opt": (dict(gwd_opt=1), {"gwd_opt"}),
-    # Noah runs here, so lane/cap-seaice's default-on prognostic sea ice
+    # Noah runs here, so development branch's default-on prognostic sea ice
     # and its parameters are read and bound too (_SEAICE_BOUND).
     "sf_surface_mosaic": (dict(sf_surface_physics=2, sf_surface_mosaic=1,
                                mosaic_cat=2),
@@ -127,6 +127,19 @@ MOVED = {
 
 #: The keys an echo at every default leaves out.
 DEFAULT_OFF = frozenset({
+    "mfshconv",  # Read only by the active QNSE (PBL=4) package.
+    "use_theta_m",
+    # Added port controls are absent while their scheme or forcing is off.
+    "bmj_rad_feedback", "cam_abs_freq_s", "co2tf", "ifsnow",
+    "force_read_thompson", "write_thompson_mp38table", "write_thompson_tables",
+    "gsfcgce_2ice", "gsfcgce_hail",
+    "lagday", "sst_skin", "sst_update", "surface_analysis", "tmn_update",
+    "mindeepfreq", "minshallowfreq", "numbins", "rbinsize", "shalconv",
+    "shallowcu_forced_ra", "thbinsize",
+    # Settings intake: neutral SMS controls and disabled averaged fluxes
+    # preserve the pre-intake header bytes.
+    "tke_adv_opt", "sfs_opt", "m_opt", "tke_mix2_off", "tke_mix6_off",
+    "do_avgflx_em", "do_avgflx_cugd",
     "output_diagnostics", "diag_int", "wind_int",
     # 2.9.10: WRF's ghg_input at the engine's fixed gases (0), absent as in
     # a header written before the key (checkpoint_identity).
@@ -226,11 +239,11 @@ DEFAULT_OFF = frozenset({
     # fixture is not nested, so it is absent, as in a 2.9.6 header.
     "nest_accumulation_archive",
     # 2.9.4 capabilities campaign, each absent at its default as in a 2.9.3
-    # header: lane/cap-slab-ocean's 3-D PWP controls (dropped with the
-    # ocean off), lane/cap-eclipse's default-on shadow (explicit 0 binds),
-    # lane/cap-waves-couple's ocean door, lane/cap-hail's output-only
-    # HAILCAST selectors, lane/cap-seaice's keys (read only under a land
-    # surface) and lane/cap-lake's lake-state analysis.
+    # header: development branch's 3-D PWP controls (dropped with the
+    # ocean off), development branch's default-on shadow (explicit 0 binds),
+    # development branch's ocean door, development branch's output-only
+    # HAILCAST selectors, development branch's keys (read only under a land
+    # surface) and development branch's lake-state analysis.
     "ocean_levels", "ocean_analysis", "ocean_analysis_source",
     "ocean_mld_climatology", "omdt", "ocean_z", "ocean_t", "ocean_s",
     "ra_sw_eclipse", "ocean_config", "hailcast_opt", "haildt",
@@ -240,6 +253,69 @@ DEFAULT_OFF = frozenset({
     "seaice_prognostic", "seaice_initial_thickness",
     "seaice_new_ice_thickness", "seaice_ocean_heat_flux",
     "lake_state_source", "lake_state_path", "lake_state_accept_licence",
+    # Qualified port controls absent while their feature is inactive.
+    # The historical emitted-byte and checkpoint digest tests below
+    # retain their original authorities. Active-feature tests bind these.
+    'acc_phy_tend', 'accum_mode', 'aercu_fct', 'afwa_bad_data_check',
+    'afwa_diag_opt', 'afwa_icing_opt', 'afwa_ptype_ccn_tmp', 'afwa_ptype_opt',
+    'afwa_ptype_tot_melt', 'afwa_radar_opt', 'afwa_therm_opt', 'afwa_vil_opt',
+    'afwa_vis_opt', 'aitken_mode', 'auxhist22_begin_s', 'auxhist22_end_s',
+    'auxhist22_interval_s', 'auxhist22_outname', 'auxhist23_begin_s', 'auxhist23_end_s',
+    'auxhist23_interval_s', 'auxhist23_outname', 'auxhist3_interval', 'bucket_j',
+    'bucket_mm', 'coarse_mode', 'couple_farms', 'cu_rad_feedback',
+    'dfi_bckstop_seconds', 'dfi_constant_bc', 'dfi_cutoff_seconds', 'dfi_fwdstop_seconds',
+    'dfi_nfilter', 'dfi_opt', 'dfi_savehydmeteors', 'dfi_time_dim',
+    'dfi_write_dfi_history', 'dfi_write_filtered_input', 'diurnal_diag', 'dm_has_traj',
+    'extrap_below_grnd', 'fdda_end', 'fdda_start', 'fft_filter_lat',
+    'frames_per_auxhist22', 'frames_per_auxhist23', 'io_form_sgfdda', 'max_obs',
+    'max_ts_level', 'max_ts_locs', 'mean_diag', 'mean_freq',
+    'mean_interval', 'mfshconv', 'moist_adv_dfi_opt', 'nssl_alphah',
+    'nssl_alphahl', 'nssl_cccn', 'nssl_icdx', 'nssl_icdxhl',
+    'ntu_ccnty', 'num_traj', 'obs_coef_mois', 'obs_coef_pstr',
+    'obs_coef_temp', 'obs_coef_wind', 'obs_domain_id', 'obs_dpsmx',
+    'obs_dtramp', 'obs_idynin', 'obs_inputfile', 'obs_ionf',
+    'obs_ipf_errob', 'obs_ipf_in4dob', 'obs_ipf_init', 'obs_ipf_nudob',
+    'obs_levelidn', 'obs_max_sndng_gap', 'obs_no_pbl_nudge_q', 'obs_no_pbl_nudge_t',
+    'obs_no_pbl_nudge_uv', 'obs_npfi', 'obs_nudge_mois', 'obs_nudge_opt',
+    'obs_nudge_pstr', 'obs_nudge_temp', 'obs_nudge_wind', 'obs_nudgezfullmin',
+    'obs_nudgezfullr1_q', 'obs_nudgezfullr1_t', 'obs_nudgezfullr1_uv', 'obs_nudgezfullr2_q',
+    'obs_nudgezfullr2_t', 'obs_nudgezfullr2_uv', 'obs_nudgezfullr4_q', 'obs_nudgezfullr4_t',
+    'obs_nudgezfullr4_uv', 'obs_nudgezmax', 'obs_nudgezrampmin', 'obs_nudgezrampr1_q',
+    'obs_nudgezrampr1_t', 'obs_nudgezrampr1_uv', 'obs_nudgezrampr2_q', 'obs_nudgezrampr2_t',
+    'obs_nudgezrampr2_uv', 'obs_nudgezrampr4_q', 'obs_nudgezrampr4_t', 'obs_nudgezrampr4_uv',
+    'obs_parent_grid_ratio', 'obs_prt_freq', 'obs_prt_max', 'obs_rinsig',
+    'obs_rinxy', 'obs_scl_neg_qv_innov', 'obs_sfc_scheme_horiz', 'obs_sfc_scheme_vert',
+    'obs_sfcfacr', 'obs_sfcfact', 'obs_stand_lon', 'obs_truelat1',
+    'obs_truelat2', 'obs_twindo', 'p_lev_diags', 'p_lev_diags_dfi',
+    'p_lev_interval_s', 'p_lev_missing', 'polar', 'press_levels',
+    'pxlsm_modis_veg', 'pxlsm_smois_init', 'pxlsm_soil_nudge', 'rrtmg_aer3_source',
+    'sgfdda_inname', 'sgfdda_interval_m', 'shcu_physics', 'solar_diagnostics',
+    'td_cutinspeed', 'td_cutoutspeed', 'td_diameter', 'td_ewfx',
+    'td_ewfy', 'td_hubheight', 'td_power', 'td_pwfx',
+    'td_pwfy', 'td_stdthrcoef', 'td_turbgridid', 'td_turbpercell',
+    'time_step_dfi', 'tracer_adv_opt', 'tracer_mix2_off', 'tracer_mix6_off',
+    'tracer_opt', 'tracer_pblmix', 'traj_opt', 'trajectory_input',
+    'ts_buf_size', 'tslist', 'tslist_unstagger_winds', 'use_tot_or_hyd_p',
+    'windfarm_deg', 'windfarm_ij', 'windfarm_induction', 'windfarm_overlap_method',
+    'windfarm_wake_model', 'windturbines_spec', 'z_lev_diags', 'z_lev_diags_dfi',
+    'z_lev_interval_s', 'z_lev_missing', 'z_levels',
+    # The 3.0.0 port folds (WRF 4.7.1 options, irrigation, MAD-WRF, sea-ice
+    # snow and thickness, SNICAR, the TC surface and waves, UH layers): each
+    # control is dropped from the echo while it holds its default, so pre-3.0
+    # headers keep their identities (woof/io/restart.py configuration_echo).
+    '_legacy_h_sca', 'afwa_buoy_opt', 'afwa_severe_opt', 'diag_print',
+    'grav_settling', 'irr_daily_amount', 'irr_end_julianday', 'irr_freq',
+    'irr_num_hours', 'irr_ph', 'irr_start_hour', 'irr_start_julianday',
+    'kfeta_trigger', 'madwrf_cldinit', 'madwrf_dt_nudge', 'madwrf_dt_relax',
+    'madwrf_opt', 'momentum_adv_opt', 'ra_call_offset', 'rk_ord',
+    'seaice_albedo_opt', 'seaice_snowdepth_max', 'seaice_snowdepth_min',
+    'seaice_snowdepth_opt', 'seaice_thickness_default', 'seaice_thickness_opt',
+    'sf_surf_irr_scheme', 'snicar_bc_ppb', 'snicar_bubble_radius_um',
+    'snicar_dust_ppm', 'snicar_ice_density', 'snicar_snowbc_intmix',
+    'snicar_snowdust_intmix', 'snicar_snowshape_opt', 'tc_fetch_m',
+    'tc_flux_curve', 'tc_horizontal_length_m', 'tc_spray', 'tc_spray_partition',
+    'tc_wave_roughness', 'tc_wave_source', 'ua_phys', 'uh_layers', 'waves',
+    'waves_options', 'wtddt',
 })
 
 
@@ -321,7 +397,7 @@ def test_every_writer_echoes_the_defaults_alike(monkeypatch, tmp_path):
     assert not {"grib2", "grib2_out", "verify_visuals"} & set(expected)
     from woof.config import CHEM_RUN_FIELDS, FIRE_RUN_FIELDS
     assert set(expected) == ({f.name for f in dataclasses.fields(cfg)}
-                             - DEFAULT_OFF - set(CHEM_RUN_FIELDS)
+                             - DEFAULT_OFF - {"aercu_opt", "kf_edrates"} - set(CHEM_RUN_FIELDS)
                              - set(FIRE_RUN_FIELDS))
 
 
@@ -441,6 +517,24 @@ def test_inactive_zero_out_controls_follow_the_writer_omission_rule():
     restart._require_config_match(echo, _cfg(), "inactive-zero-out-checkpoint")
 
 
+@pytest.mark.parametrize("field,value", [("gsfcgce_hail", 1), ("gsfcgce_2ice", 1)])
+def test_active_goddard_switch_changes_refuse_both_resume_directions(field, value):
+    """The column-switch scope repair must keep active physics binding."""
+    original = _cfg(moist=True, mp_physics=97)
+    changed = _cfg(moist=True, mp_physics=97, **{field: value})
+    for stored, live in ((original, changed), (changed, original)):
+        with pytest.raises(restart.RestartMismatchError, match=field):
+            restart._require_config_match(restart.configuration_echo(stored), live,
+                                          "changed-goddard-checkpoint")
+
+
+def test_old_inactive_column_switch_echo_resumes_but_active_one_still_binds():
+    cfg = _cfg(moist=True, mp_physics=8)
+    old_echo = restart.configuration_echo(cfg)
+    old_echo.update(gsfcgce_hail=1, gsfcgce_2ice=1)
+    restart._require_config_match(old_echo, cfg, "old-unscoped-column-switches")
+
+
 @pytest.mark.parametrize("case", ["generic_dry", "non_feature_moist"])
 @pytest.mark.parametrize("inactive_nondefaults", [False, True])
 def test_chemistry_off_emitted_config_bytes_match_recovery_staging(
@@ -475,6 +569,22 @@ def test_chemistry_off_emitted_config_bytes_match_recovery_staging(
         dataclasses.asdict(cfg)), sort_keys=True,
         separators=(",", ":"), allow_nan=False).encode()
     assert digest == row["digest_json"].encode()
+
+
+@pytest.mark.parametrize("field", ["tke_mix2_off", "tke_mix6_off"])
+def test_sms_filter_default_omission_resumes_and_changes_refuse(field):
+    cfg = _cfg(km_opt=5, bl_pbl_physics=0)
+    old = restart.configuration_echo(cfg)
+    for key in ("tke_adv_opt", "sfs_opt", "m_opt",
+                "tke_mix2_off", "tke_mix6_off"):
+        assert key not in old
+    restart._require_config_match(old, cfg, "pre-sms-controls")
+    changed = dataclasses.replace(cfg, **{field: True})
+    with pytest.raises(restart.RestartMismatchError, match=field):
+        restart._require_config_match(old, changed, "changed-sms-filter")
+    with pytest.raises(restart.RestartMismatchError, match=field):
+        restart._require_config_match(restart.configuration_echo(changed), cfg,
+                                      "removed-sms-filter")
 
 
 def test_every_writer_echoes_prescribed_source_identity_alike(monkeypatch, tmp_path):

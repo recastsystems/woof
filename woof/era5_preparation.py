@@ -14,8 +14,9 @@ def configure_member(raw, *, target, original):
     from woof.domain_wizard import _PACKAGED_VTABLE
     from woof.fetch import era5_combined_name
     from woof.geog_assets import default_geog_root
-    fetch = raw['fetch']
-    fetch.setdefault('era5_provider', 'cds' if fetch.get('member') is not None else 'arco')
+    fetch = raw.get('fetch')
+    if fetch:
+        fetch.setdefault('era5_provider', 'cds' if fetch.get('member') is not None else 'arco')
     data = raw.setdefault('case_data', {})
     # An inherited case table's relative authorities belong to the original
     # configuration, never the scratch folder of another member.
@@ -25,10 +26,15 @@ def configure_member(raw, *, target, original):
             data[key] = str((original.parent / value).resolve())
     data.setdefault('vtable', str(_PACKAGED_VTABLE.resolve()))
     data.setdefault('geog_root', str(default_geog_root()))
-    data.update(forcing=[str((original.parent / fetch.get('out', 'data') /
-                             era5_combined_name(fetch['era5_provider'])).resolve())],
-                forcing_interval_s=int(fetch.get('cadence', 6)) * 3600,
-                wps_namelist=str(target.with_suffix('.namelist.wps')))
+    if fetch:
+        data.update(forcing=[str((original.parent / fetch.get('out', 'data') /
+                                 era5_combined_name(fetch['era5_provider'])).resolve())],
+                    forcing_interval_s=int(fetch.get('cadence', 6)) * 3600)
+    else:
+        # Local forcing keeps its own authority; no acquisition is needed.
+        from woof.case_data import load_case_data
+        data['forcing'] = [str(path.resolve()) for path in load_case_data(original).forcing]
+    data['wps_namelist'] = str(target.with_suffix('.namelist.wps'))
     data.setdefault('sfcp_to_sfcp', True)
     data.setdefault('output_domain', 1)
     data.setdefault('output_title', 'woof ensemble')
@@ -37,8 +43,9 @@ def configure_member(raw, *, target, original):
 def review(config_path, exp, *, raw, scratch, posting):
     from woof.fetch import validate_fetch_hints
     from woof.go_cli import pinned_transport
-    validate_fetch_hints(raw['fetch'], source=str(config_path))
-    pinned_transport(raw['fetch'], posting.get('transport'))
+    if raw.get('fetch'):
+        validate_fetch_hints(raw['fetch'], source=str(config_path))
+        pinned_transport(raw['fetch'], posting.get('transport'))
     if not raw.get('case_data'):
         raise ValueError('The source preparation owner needs its member case_data table')
 
@@ -49,16 +56,23 @@ def prepare(plan, *, config_path, exp, observer, run_dir, prepare_only):
     from woof.fetch import era5_combined_name
     from woof.toml_document import emit_experiment_toml
     raw = tomllib.loads(Path(config_path).read_text())
-    hints = runplan._pinned_fetch_hints(plan, raw['fetch'])
-    hints['retrieve'] = True
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    data_dir = Path(plan.run_options['data_dir'])
-    observer.enter_stage('fetch', phase='fetch')
-    fetched = runplan._run_fetch(runplan._fetch_arguments_from_hints(hints, out=data_dir),
-                                run_dir, events=getattr(observer, 'events', None))
-    observer.finish_stage(fetch=fetched)
-    forcing = data_dir / era5_combined_name(hints.get('era5_provider'))
+    if raw.get('fetch'):
+        hints = runplan._pinned_fetch_hints(plan, raw['fetch'])
+        hints['retrieve'] = True
+        data_dir = Path(plan.run_options['data_dir'])
+        observer.enter_stage('fetch', phase='fetch')
+        fetched = runplan._run_fetch(runplan._fetch_arguments_from_hints(hints, out=data_dir),
+                                    run_dir, events=getattr(observer, 'events', None))
+        observer.finish_stage(fetch=fetched)
+        forcing = data_dir / era5_combined_name(hints.get('era5_provider'))
+    else:
+        from woof.case_data import load_case_data
+        inputs = load_case_data(config_path).forcing
+        if len(inputs) != 1:
+            raise ValueError('ERA5 analysis preparation needs one combined forcing archive')
+        forcing = inputs[0]
     bridge = (netcdf_bridge.find_netcdf_bin() if forcing.suffix.lower() == '.nc'
               else find_bridge('grib1_bridge'))
     if bridge is None:
@@ -83,7 +97,7 @@ def prepare(plan, *, config_path, exp, observer, run_dir, prepare_only):
         files={key: dict(name=value.name, sha256=digest(value))
                for key, value in roles.items()}), indent=2) + '\n')
     output = run_dir / 'prepared'
-    arguments = ['--source', raw['fetch']['source'], '--output-root', str(output),
+    arguments = ['--source', raw.get('fetch', {}).get('source', 'era5'), '--output-root', str(output),
         '--source-sha256s', str(manifest), '--source-sha256s-sha256', digest(manifest)]
     if plan.run_options.get('experiment_config_suite'):
         arguments.append('--experiment-config-suite')

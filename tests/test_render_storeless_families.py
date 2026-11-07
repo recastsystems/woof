@@ -185,7 +185,7 @@ def test_the_door_draws_the_other_products_and_names_the_mesh_term(
     assert "--mesh-grid" in captured.err
     assert "still drawn" in captured.err
     # The line below the note says how the ENGINE was resolved, and a
-    # real render on a development machine printed a dropped product's sentence there
+    # real render on test host 1 printed a dropped product's sentence there
     # instead: the loop that names the drops had taken that name.
     assert "render: engine rust (stub)" in captured.out
     assert "cell boundaries" not in captured.out

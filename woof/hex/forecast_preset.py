@@ -80,7 +80,7 @@ __all__ = [
 #: asks for: ``MpasColumnBatchPhysics.__init__`` builds its ``RunConfig`` with
 #: ``ra_physics=4, ra_rrtmg_variant=RRTMG_VARIANT_LEGACY``,
 #: ``sf_surface_physics=4``, ``sf_sfclay_physics=1`` and ``bl_pbl_physics=1``
-#: (woof 2.8.0, ``woof/core/mpas_column_batch.py``), one of the sixteen
+#: (gpuwm 2.8.0, ``woof/core/mpas_column_batch.py``), one of the sixteen
 #: engine files :mod:`woof.hex.cuda_arwen_physics_v841` pins by SHA-256.
 ENGINE_COLUMN_SUITE: Mapping[str, str] = MappingProxyType(
     {

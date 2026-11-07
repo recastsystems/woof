@@ -3,6 +3,62 @@ from types import SimpleNamespace
 import pytest
 from woof.hex import moving_run
 
+
+@pytest.mark.parametrize('status,newer,artifacts,expected', [
+    ('failed', True, True, 'prepared'), ('failed', False, True, 'failed'),
+    ('failed', True, False, 'failed'), ('preparing', False, True, 'cancelled'),
+    ('preparing', True, True, 'prepared'), ('unstable', True, True, 'unstable'),
+])
+def test_resume_adopts_only_a_completed_newer_preparation(tmp_path, monkeypatch, status, newer, artifacts, expected):
+    import json
+    import os
+    from woof.hex import moving_retention
+    receipt = tmp_path / 'target-case.json'
+    receipt.write_text(json.dumps({'name': 'target'}))
+    os.utime(receipt, (200 if newer else 50,) * 2)
+    monkeypatch.setattr(moving_retention, 'artifacts_present', lambda row: artifacts)
+    controller = object.__new__(moving_run.Controller)
+    controller.members_dir = tmp_path
+    controller.state = {'members': {'target': dict(status=status, requested_wall=100, order=1)}}
+    controller.read_member = lambda name, status: dict(name=name, status=status)
+    events = []
+    controller.event = lambda kind, **row: events.append(kind)
+    controller.recover_preparations()
+    assert controller.state['members']['target']['status'] == expected
+    assert events == (['member-prep-recovered'] if expected == 'prepared' else [])
+
+@pytest.mark.parametrize('lost_controller', [False, True])
+def test_resume_rewinds_future_tracking_before_launch(tmp_path, lost_controller):
+    controller = object.__new__(moving_run.Controller)
+    record = dict(path=str(tmp_path))
+    if not lost_controller:
+        record['rc'] = -15
+    controller.a = SimpleNamespace(resume=True, member_fallback=False)
+    controller.duration = 21600
+    controller.state = dict(t=19800, t_seen=21600, segments=[record],
+        frames=[dict(model_seconds=t) for t in (0, 19800, 20700, 21600)],
+        pending_move=dict(target='discarded-future'))
+    controller.session = SimpleNamespace(
+        fixes=[SimpleNamespace(seconds=t) for t in (0, 19800, 20700, 21600)],
+        decisions=[SimpleNamespace(seconds=t) for t in (0, 19800, 20700, 21600)])
+    controller.newest_seal = lambda _: None
+    events = []
+    controller.event = lambda kind, **data: events.append((kind, data))
+    controller.save = lambda: None
+    class LaunchReached(Exception): pass
+    def launch(kind):
+        assert [f['model_seconds'] for f in controller.state['frames']] == [0, 19800]
+        assert [f.seconds for f in controller.session.fixes] == [0, 19800]
+        assert [d.seconds for d in controller.session.decisions] == [0, 19800]
+        assert controller.state['t_seen'] == 19800
+        assert controller.state['pending_move'] is None
+        # The replayed +5.75 h frame can now pass on_frame's duplicate gate.
+        assert 20700 not in {f['model_seconds'] for f in controller.state['frames']}
+        raise LaunchReached
+    controller.launch = launch
+    with pytest.raises(LaunchReached): controller.run()
+    assert events == [('rewind-tracking-to-carrier', dict(t=19800, frames_discarded=2))]
+
 @pytest.mark.parametrize('offsets,passed', [([9.9, 86.469241315], False),
                                         ([9.9, None], False), ([9.9, 40], True)])
 def test_completed_forecast_requires_every_fix_inside_fine_interior(offsets, passed):
@@ -86,6 +142,7 @@ def test_initial_hold_exists_before_forecast_can_publish(monkeypatch, tmp_path, 
 
     monkeypatch.setattr(moving_run, 'segment_command', lambda *args, **kwargs: ['forecast'])
     monkeypatch.setattr(moving_run, 'start_child', spawn)
+    controller.allocate_segment = lambda: moving_run.Controller.allocate_segment(controller)
     moving_run.Controller.launch(controller, kind='start')
     assert controller.forecast_children == [proc]
 
@@ -272,3 +329,37 @@ def test_moving_products_waits_for_and_redraws_segment_maps(tmp_path):
     assert result['waited'] == [str(tmp_path / 'drawing' / 'fc')]
     assert result['redrawn'] == [str(tmp_path / 'dead' / 'fc')]
     assert result['unfinished'] == []
+
+
+def test_resume_preserves_unadopted_segment_without_skipping_index(tmp_path):
+    controller = object.__new__(moving_run.Controller)
+    controller.out = tmp_path
+    controller.state = {'segments': [{'path': str(tmp_path / 'segment-000')}]}
+    orphan = tmp_path / 'segment-001'
+    orphan.mkdir()
+    (orphan / 'command.json').write_text('interrupted preparation')
+    events = []
+    controller.event = lambda kind, **row: events.append((kind, row))
+    index, segment = controller.allocate_segment()
+    assert index == 1
+    assert segment == orphan and list(segment.iterdir()) == []
+    preserved = list((tmp_path / 'orphaned-segments').glob('*/command.json'))
+    assert len(preserved) == 1
+    assert preserved[0].read_text() == 'interrupted preparation'
+    assert events[0][0] == 'preserve-unadopted-segment'
+    # A second interrupted preparation is retained separately, without overwriting evidence.
+    (segment / 'command.json').write_text('second interruption')
+    assert controller.allocate_segment()[0] == 1
+    assert len(list((tmp_path / 'orphaned-segments').iterdir())) == 2
+
+
+def test_segment_allocation_refuses_to_move_recorded_directory(tmp_path):
+    controller = object.__new__(moving_run.Controller)
+    controller.out = tmp_path
+    recorded = tmp_path / 'segment-001'
+    recorded.mkdir()
+    controller.state = {'segments': [{'path': str(recorded)}]}
+    with pytest.raises(RuntimeError, match='already recorded'):
+        controller.allocate_segment()
+    assert recorded.is_dir()
+    assert not (tmp_path / 'orphaned-segments').exists()

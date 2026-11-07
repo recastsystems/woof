@@ -34,6 +34,8 @@ def _gpu_module(device, cloud_form="wrf_461", radii_units="meters"):
     from woof import nvrtc_ptx_cache as compiler
     source = (Path(__file__).parent / "kernels" /
               "rrtmg_legacy_prep.cu").read_text(encoding="utf-8")
+    from woof.physics_params import edit_kernel_source, note_compiled
+    source = edit_kernel_source("rrtmg_legacy_prep", source)
     fork_cloud = ref.cloud_form_is_fork(cloud_form)
     options = ("-std=c++17", "--ftz=false")
     if fork_cloud:
@@ -46,6 +48,7 @@ def _gpu_module(device, cloud_form="wrf_461", radii_units="meters"):
             "rrtmg_legacy_prep.cu")
         mod = cp.cuda.function.Module()
         mod.load(ptx.encode() if isinstance(ptx, str) else ptx)
+    note_compiled("rrtmg_legacy_prep", mod)
     return mod
 
 
@@ -138,6 +141,11 @@ def _prep(sw, kw):
     # oracle whose signature the rest of ``kw`` binds against.
     kw = dict(kw)
     defer = bool(kw.pop("defer_subcolumns", False))
+    cam_lradius = kw.pop("cam_lradius", None)
+    cam_iradius = kw.pop("cam_iradius", None)
+    cam = int(kw.get("mp_physics", 0)) == 11
+    if cam and (cam_lradius is None or cam_iradius is None):
+        raise ValueError("CAMMGMP radiation requires LRADIUS and IRADIUS")
     radii_units = kw.pop("radii_units", "meters")
     if radii_units not in ("meters", "microns"):
         raise ValueError("radii_units must be meters or microns")
@@ -148,10 +156,8 @@ def _prep(sw, kw):
     hc, hi, hs = (int(k[n]) for n in ("has_reqc", "has_reqi", "has_reqs"))
     ref._require_radii(name, hc, hi, hs, k["re_cloud"], k["re_ice"], k["re_snow"])
     if sw:
-        ref._mp_guard(k["mp_physics"])
-        if int(k["sf_surface_physics"]) == 8:
-            raise NotImplementedError("sf_surface_physics=8 selects the SSiB "
-                                      "albedo split outside this port's contract")
+        ref._mp_guard(k["mp_physics"], allowed_extra=(85,))
+        ref._require_spectral_albedo(k["sf_surface_physics"], k["spectral_albedo"])
     else:
         ref._mp_guard(k["mp_physics"])
     p = k["p3d"]
@@ -217,10 +223,12 @@ def _prep(sw, kw):
     args = (ncol, nk, nl, int(sw), int(k["icloud"]), int(k["warm_rain"]),
             *(int(k[n]) for n in ("f_qc", "f_qr", "f_qi", "f_qs")),
             hc, hi, hs, inflg, iceflg, int(k["o3input"]),
-            int(ref._is_ferrier(k["mp_physics"])), np.float32(k["g"]),
+            (2 if int(k["mp_physics"]) == 95 else int(ref._is_ferrier(k["mp_physics"]))), int(cam), np.float32(k["g"]),
             *(prof[n] for n in ("p3d", "p8w", "t3d", "t8w", "dz8w", "qv3d",
                                "qc3d", "qr3d", "qi3d", "qs3d", "cldfra3d", "o33d",
                                "re_cloud", "re_ice", "re_snow")),
+            zero if not cam else _profile(cp, cam_lradius, zero.shape, "cam_lradius"),
+            zero if not cam else _profile(cp, cam_iradius, zero.shape, "cam_iradius"),
             *(surf[n] for n in ("xland", "xice", "snow")), *_tables(device),
             *(out[n] for n in ("plev", "tlev", "play", "tlay", "hgt", "h2ovmr",
                               "o3vmr", "o31d", "pdel")),
@@ -278,8 +286,10 @@ def _prep(sw, kw):
     side = "sw" if sw else "lw"
     out.update({"inflg"+side: inflg, "iceflg"+side: iceflg, "liqflg"+side: 1})
     if sw:
+        spectral_albedo = k.get("spectral_albedo")
         for n in ("asdir", "asdif", "aldir", "aldif"):
-            out[n] = surf["albedo"].copy()
+            out[n] = (surf["albedo"].copy() if spectral_albedo is None
+                      else _surface(cp, spectral_albedo[n], ncol, n).copy())
         out.update(coszen=surf["xcoszen"].copy(), coszr=surf["xcoszen"].copy(),
                    adjes=np.float32(1), dyofyr=0)
         out["scon"] = cp.empty(ncol, np.float32)

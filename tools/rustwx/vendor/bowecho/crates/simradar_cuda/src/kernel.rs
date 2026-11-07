@@ -139,7 +139,7 @@ impl CudaLutExecutor {
         let (compute_capability_major, compute_capability_minor) = context
             .compute_capability()
             .map_err(|error| driver_error("read CUDA compute capability", error))?;
-        if (compute_capability_major, compute_capability_minor) < MINIMUM_COMPUTE_CAPABILITY {
+        if !cudarc::gpuwm_hip::requested() && (compute_capability_major, compute_capability_minor) < MINIMUM_COMPUTE_CAPABILITY {
             return Err(CudaSegmentExecutionError::UnsupportedComputeCapability {
                 actual_major: compute_capability_major,
                 actual_minor: compute_capability_minor,
@@ -155,10 +155,14 @@ impl CudaLutExecutor {
             compute_capability_major,
             compute_capability_minor,
         );
-        let image = match artifact.image {
+        let image = if cudarc::gpuwm_hip::requested() {
+            Ptx::from_binary(cudarc::gpuwm_hip::compile(include_str!("../kernels/p3_lut_segments.cu"),
+                &["--std=c++17".into(),"--fmad=false".into(),"--ftz=false".into()])
+                .map_err(|e| CudaSegmentExecutionError::Driver {operation:"compile HIP LUT source",detail:e})?)
+        } else {match artifact.image {
             KernelImage::Cubin(bytes) => Ptx::from_binary(bytes.to_vec()),
             KernelImage::Ptx(source) => Ptx::from_src(source),
-        };
+        }};
         let module = context
             .load_module(image)
             .map_err(|error| driver_error("load BowEcho CUDA kernel", error))?;
@@ -176,7 +180,7 @@ impl CudaLutExecutor {
                 compute_capability_minor,
                 total_memory_bytes,
             },
-            kernel_artifact: artifact.label,
+            kernel_artifact: if cudarc::gpuwm_hip::requested() {"canonical HIP source"} else {artifact.label},
             uploaded_luts: HashMap::new(),
             host_batch: HostBatchStaging::default(),
             device_batch: None,

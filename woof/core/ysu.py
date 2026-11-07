@@ -58,7 +58,8 @@ def ysu_tile_columns(fn, ncol: int) -> int:
         # no-FTZ loader the WRF 4.8 generation compiles through hands back
         # the function itself.  Ask whichever it is, so the default
         # generation's tile is bounded by the card's occupancy too.
-        resident = driver.occupancyMaxActiveBlocksPerMultiprocessor(
+        from woof.backend import active_blocks_per_multiprocessor
+        resident = active_blocks_per_multiprocessor(
             getattr(fn, "kernel", fn).ptr, YSU_BLOCK, 0)
         # Never launch more blocks than the card can hold resident: those
         # columns would wait while their workspace slots stayed allocated.

@@ -77,6 +77,9 @@ def _stub_multi_run(monkeypatch, multi_run, seen, uuid, price):
 
 def _stub_supervisor(monkeypatch, supervisor, seen, price):
     # Both resolved-input doors use the same card and subprocess stand-ins.
+    # A CPU-only suite hides real cards. This scenario supplies a fake
+    # visible card so it exercises pricing rather than hidden-device relaunch.
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-alpha")
     monkeypatch.setattr(supervisor, "select_gpu",
                         lambda uuid: SimpleNamespace(uuid="GPU-alpha"))
     monkeypatch.setattr(supervisor, "GPUFileLock", _NullLock)
@@ -450,3 +453,40 @@ def test_sweep_queue_binds_the_gate_configuration_tokens(tmp_path):
         "${REPO}/configs/arm.toml", run_dir=tmp_path, repo=Path("/repo"),
         case_root=None)
     assert bound == "/repo/configs/arm.toml"
+
+
+def test_supervisor_prices_the_attached_card_census(monkeypatch):
+    import woof.core.preflight as pf
+    import woof.core.streaming as streaming
+    import woof.supervisor as supervisor
+
+    profile = pf.DeviceLocalMemoryProfile(
+        name="5070 Ti fixture", multiprocessor_count=70,
+        max_threads_per_multiprocessor=1536, default_stack_limit_bytes=1024)
+    payload = {"total_bytes": 16 * 2**30}
+    monkeypatch.setattr(pf, "device_memory_probe_subprocess", lambda: payload)
+    monkeypatch.setattr(pf, "profile_from_device_probe", lambda p: profile if p is payload else None)
+    machine = SimpleNamespace(device_profile=profile)
+    seen = {}
+    def machine_from_reading(**kwargs):
+        seen.update(kwargs)
+        return machine
+    monkeypatch.setattr(streaming, "planner_machine", machine_from_reading)
+    def estimate(exp, *, machine, source):
+        assert source == "gfs"
+        return SimpleNamespace(peak_envelope_bytes=machine.device_profile.reservation_bytes(65136))
+    monkeypatch.setattr(pf, "admission_estimate", estimate)
+    price = supervisor.priced_reservation_bytes(object(), source="gfs")
+    assert price == profile.reservation_bytes(65136)
+    assert price < pf.MEASURED_LOCAL_MEMORY_PROFILE.reservation_bytes(65136)
+    assert seen == dict(vram_bytes=16 * 2**30, name=profile.name, device_profile=profile)
+
+
+def test_supervisor_keeps_reference_pricing_when_card_probe_is_unread(monkeypatch):
+    import woof.core.preflight as pf
+    import woof.supervisor as supervisor
+    monkeypatch.setattr(pf, "device_memory_probe_subprocess", lambda: None)
+    def estimate(exp, *, source):
+        return SimpleNamespace(peak_envelope_bytes=123)
+    monkeypatch.setattr(pf, "admission_estimate", estimate)
+    assert supervisor.priced_reservation_bytes(object()) == 123

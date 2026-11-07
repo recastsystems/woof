@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
+from _run_config_fake import run_config_fake
 
 from conftest import requires_gpu
 from woof.config import RunConfig, load_config
@@ -30,6 +31,7 @@ def _base_config(**overrides):
 def _full_state(*, snow=0.0, snow_depth=0.0, radiation=None,
                  cumulus=None, radiation_start_time=None,
                  radiation_latitude=None, radiation_longitude=None,
+                 landuse_dataset="MODIFIED_IGBP_MODIS_NOAH",
                  **cfg_overrides):
     """Small horizontally homogeneous moist state plus mixed land/water."""
     import cupy as cp
@@ -63,7 +65,7 @@ def _full_state(*, snow=0.0, snow_depth=0.0, radiation=None,
         isltyp=np.where(landmask, 6, 14), vegfra=55.0, tmn=286.0,
         snow=snow, snow_depth=snow_depth,
         swdown=450.0, glw=310.0, pblh=700.0,
-        radiation=radiation, cumulus=cumulus,
+        radiation=radiation, cumulus=cumulus, landuse_dataset=landuse_dataset,
         radiation_start_time=radiation_start_time,
         radiation_latitude=radiation_latitude,
         radiation_longitude=radiation_longitude)
@@ -135,7 +137,7 @@ def test_wsm6_sr_accepts_only_proven_wrf_fp32_roundoff_without_mutation(
             sr=np.full(shape, np.nan, np.float32)))
 
 
-@pytest.mark.parametrize("mp_physics", [6, 16])
+@pytest.mark.parametrize("mp_physics", [6, 16, 24, 26])
 def test_wsm6_family_sr_envelope_follows_the_step_it_is_handed(
         monkeypatch, mp_physics):
     """A driver built on a one-loop step, then run on a two-loop step."""
@@ -268,7 +270,7 @@ def _cpu_surface_driver(monkeypatch, *, sf_surface_physics):
     state = SimpleNamespace(elapsed_seconds=0.0, p=atmosphere["pressure"],
                             c1h=np.ones(1, np.float32), c2h=np.zeros(1, np.float32),
                             total_mu=lambda: np.ones((1, 2), np.float32))
-    cfg = SimpleNamespace(
+    cfg = run_config_fake(
         dt=60.0, bldt=0.0, ra_physics=0, sf_sfclay_physics=91,
         sf_surface_physics=sf_surface_physics, bl_pbl_physics=1,
         cu_physics=0, ra_rrtmg_variant="rte_rrtmgp")
@@ -294,6 +296,17 @@ def _cpu_surface_driver(monkeypatch, *, sf_surface_physics):
     # No sub-radiation-step solar interpolation (PhysicsDriver.__init__ sets
     # swint = None unless swint_opt is on); this fixture skips __init__.
     driver.swint = None
+    # No wind farm (PhysicsDriver.__init__ sets farms = None unless a
+    # wind-farm scheme is selected).
+    driver.farms = None
+    # No TC surface bundle (PhysicsDriver.__init__ sets tc_surface from
+    # woof.tc.surface.create_surface, None when tc_flux_curve and tc_spray
+    # are off and tc_wave_roughness is unset -- the hurricane fold
+    # ba5f12d375).
+    driver.tc_surface = None
+    # No fog settling (__init__ sets fog_settling = None unless the
+    # grav_settling fog option is selected; c35dbafafb).
+    driver.fog_settling = None
     # THE CARRIER CONTRACT, wired rather than dodged.  A hand-built driver
     # is exactly the construction path the consumption check exists to
     # cover, so this fixture goes through it like a real driver: both of
@@ -305,6 +318,9 @@ def _cpu_surface_driver(monkeypatch, *, sf_surface_physics):
         "glw", source=physics.CARRIER_SOURCE_DECLARED_CONSTANT)
     driver.carriers.declare(
         "swdown", source=physics.CARRIER_SOURCE_DECLARED_CONSTANT)
+    if sf_surface_physics == 1:
+        driver.carriers.declare(
+            "gsw", source=physics.CARRIER_SOURCE_DECLARED_CONSTANT)
     driver.radt_seconds = 720.0
     driver.stepbl = 1
     driver.radt_minutes = 12.0
@@ -338,11 +354,13 @@ def test_surface_step_refreshes_psfc_before_sfclay_without_noah(monkeypatch):
     assert driver.call_counts["noah"] == 0
 
 
-def test_post_noah_surface_diagnostics_match_wrf_sfcdiags_before_ysu(
-        monkeypatch):
-    """Noah-mutated fluxes/skin state feed WRF SFCDIAGS before PBL."""
+@pytest.mark.parametrize("land_scheme", [1, 2])
+# Gate successor: test_post_noah_surface_diagnostics_match_wrf_sfcdiags_before_ysu; the assertions cover the admitted behavior.
+def test_post_lsm_surface_diagnostics_match_wrf_sfcdiags_before_ysu(
+        monkeypatch, land_scheme):
+    """Slab/Noah-mutated fluxes and skin feed WRF SFCDIAGS before PBL."""
     _, state, cfg, driver, atmosphere = _cpu_surface_driver(
-        monkeypatch, sf_surface_physics=2)
+        monkeypatch, sf_surface_physics=land_scheme)
     events = []
     seen = {}
 
@@ -368,6 +386,7 @@ def test_post_noah_surface_diagnostics_match_wrf_sfcdiags_before_ysu(
 
     driver._run_sfclay = sfclay
     driver._run_noah = noah
+    driver._run_slab = noah
     driver._run_ysu = ysu
 
     driver.compute(state, cfg)
@@ -721,12 +740,17 @@ def test_radiation_and_cumulus_contracts_hold_and_accumulate_rainc():
     cp.testing.assert_array_equal(
         got.rqr, chm * returned["cumulus"].rqrcuten)
     assert got.rqi is None and got.rqs is None
+    # KF's held producer rates carry their mass-coupled words through
+    # transport between compute() and the step epilogue's
+    # finish_history_mass (native calculate_phy_tend / phy_prep_part2;
+    # fold 1eb3e8076a, tests/test_kf_held_mass.py), so after compute they
+    # are the raw rate times this step's chm, word for word.
     cp.testing.assert_array_equal(
         driver.cu_rates["rqccuten"],
-        returned["cumulus"].rqccuten)
+        chm * returned["cumulus"].rqccuten)
     cp.testing.assert_array_equal(
         driver.cu_rates["rqrcuten"],
-        returned["cumulus"].rqrcuten)
+        chm * returned["cumulus"].rqrcuten)
     cp.testing.assert_array_equal(driver.cu_rates["rqicuten"], 0.0)
     cp.testing.assert_array_equal(driver.cu_rates["rqscuten"], 0.0)
     cp.testing.assert_array_equal(driver.fields["swdown"], 640.0)
@@ -1136,14 +1160,15 @@ def test_kessler_precipitation_accumulates_into_noah_rainbl(monkeypatch):
 
 @pytest.mark.gpu
 @requires_gpu
-def test_wsm6_sr_real_device_accepts_upper_and_rejects_beyond_envelope():
+@pytest.mark.parametrize("mp_physics", [6, 26])
+def test_wsm6_sr_real_device_accepts_upper_and_rejects_beyond_envelope(mp_physics):
     """Exercise the production CuPy comparisons on an actual device."""
     import cupy as cp
 
     from woof.core.microphysics import MicrophysicsDiagnostics
 
     _state, cfg, driver = _full_state(
-        mp_physics=6, bl_pbl_physics=0, dt=60.0)
+        mp_physics=mp_physics, bl_pbl_physics=0, dt=60.0)
     shape = (cfg.ny, cfg.nx)
     accepted = cp.full(shape, driver._sr_roundoff_upper, cp.float32)
     ones = cp.ones(shape, cp.float32)
@@ -1154,7 +1179,7 @@ def test_wsm6_sr_real_device_accepts_upper_and_rejects_beyond_envelope():
     upper_bits = np.asarray(
         driver._sr_roundoff_upper, np.float32).view(np.uint32).item()
     beyond = np.asarray(upper_bits + 1, np.uint32).view(np.float32)
-    with pytest.raises(ValueError, match="roundoff_ulps=7"):
+    with pytest.raises(ValueError, match=f"roundoff_ulps={driver._sr_roundoff_max_ulps}"):
         driver.accept_microphysics(MicrophysicsDiagnostics(
             rainnc=ones, rainncv=ones,
             sr=cp.full(shape, beyond, cp.float32)))
@@ -1418,17 +1443,19 @@ def test_native_microphysics_validation_batches_all_fields_and_resets(
 
 @pytest.mark.gpu
 @requires_gpu
-def test_native_kf_validation_preserves_field_order_and_inputs(monkeypatch):
+@pytest.mark.parametrize("scheme", [1, 10], ids=["kf", "kfcup"])
+def test_native_kf_validation_preserves_field_order_and_inputs(monkeypatch, scheme):
     import cupy as cp
 
-    from woof.core.kf import KainFritsch
-    from woof.core.physics import _NativeKFCumulusResult
+    from woof.core.kf import KainFritsch, KFCumulusPotential
+    from woof.core.physics import _NativeKFCumulusResult, _is_native_kf_result
 
     state, cfg, driver = _full_state(
-        mp_physics=10, cu_physics=1, bl_pbl_physics=0,
+        mp_physics=10, cu_physics=scheme, nz=40, bl_pbl_physics=0,
         sf_sfclay_physics=0, sf_surface_physics=0)
     owner = driver.cumulus_callable
-    assert type(owner) is KainFritsch
+    producer = KFCumulusPotential if scheme == 10 else KainFritsch
+    assert type(owner) is producer
     shape = tuple(state.p.shape)
     surface = shape[1:]
     names = (
@@ -1449,7 +1476,9 @@ def test_native_kf_validation_preserves_field_order_and_inputs(monkeypatch):
         rainc=cp.full(surface, cp.nan, cp.float32))
 
     monkeypatch.setattr(
-        KainFritsch, "__call__", lambda self, **_kwargs: result)
+        producer, "__call__", lambda self, **_kwargs: result)
+    assert _is_native_kf_result(result, owner, state, cfg, shape)
+    assert not _is_native_kf_result(result, producer(), state, cfg, shape)
     before = {name: value.copy() for name, value in values.items()}
     status = state.scratch(
         (1,), "physics_validation_status").view(cp.uint32)

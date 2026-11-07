@@ -9,7 +9,7 @@ A130 lists came out with different last bits on different machines.
 ``woof.core.portable_math`` routes them through the vendored libm crate in
 the CPU preprocessing library; the pins below were measured on WSL Ubuntu
 24.04 (glibc 2.39, NumPy 2.5.3) with AVX-512 dispatch on and off and on
-a development machine (glibc 2.43, no AVX-512), identical on all three.
+test host 4 (glibc 2.43, no AVX-512), identical on all three.
 """
 
 from __future__ import annotations
@@ -267,7 +267,7 @@ REAL_INIT_BASE_PINS = {
 
 #: The same on the hybrid coordinate (hybrid_opt = 2, the default).  Its
 #: cubic is WRF's closed form in plain float64 (A130); with the solve and
-#: NumPy's cube it had three answers across a development machine and WSL with AVX-512
+#: NumPy's cube it had three answers across test host 4 and WSL with AVX-512
 #: dispatch on and off.  Measured identical on those three.
 REAL_INIT_HYBRID_BASE_PINS = {
     1: {"base": "4e95d0fb0c37d9f35782eb04", "split": "13ba888a9c6e091f226d8f61"},

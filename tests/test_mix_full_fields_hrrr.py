@@ -207,7 +207,7 @@ def test_the_cli_names_the_wrf_line_and_keeps_the_v4_default():
     # With nothing choosing the line the TOML keeps the bytes it always
     # had: the moist-theta row is in its substitutions block already.
     assert "use_theta_m is omitted" not in text
-    assert "#   use_theta_m 1 (" in text
+    assert "use_theta_m = 1" in text
 
 
 def _default_rows(report, key):
@@ -266,7 +266,7 @@ def test_an_omitted_use_theta_m_books_its_default_its_line_and_who_chose(
                 "namelist_defaults"]
     # The substitution itself is unchanged: booked on V4, absent on V3.
     booked = [s for s in report.substitutions if s.key == "use_theta_m"]
-    assert bool(booked) is (line == "4")
+    assert not booked
 
 
 def test_a_stated_use_theta_m_books_no_default_row():
@@ -357,7 +357,7 @@ def test_an_omitted_use_theta_m_resolves_on_the_producing_line(
         return
     _text, report = import_parsed_namelists(wps, inp, **kwargs)
     booked = [s for s in report.substitutions if s.key == "use_theta_m"]
-    assert bool(booked) is (outcome == "booked")
+    assert not booked
 
 
 def test_the_operational_hrrr_namelist_books_neither_substitution():
@@ -366,7 +366,7 @@ def test_the_operational_hrrr_namelist_books_neither_substitution():
                                HRRR / "hrrr_wrf.nl", wrf_version="3")
     codes = [item["code"] for item in report["issues"]]
     assert "MIX_FULL_FIELDS_SUBSTITUTION" not in codes
-    assert "THETA_M_DRY_SUBSTITUTION" not in codes
+    assert "THETA_M_PROGNOSTIC" not in codes
     applied = [item for item in report["issues"]
                if item["code"] == "NAMELIST_DEFAULT_APPLIED"
                and item["location"] == "&dynamics/mix_full_fields"]
@@ -375,7 +375,7 @@ def test_the_operational_hrrr_namelist_books_neither_substitution():
     # which is the documentation error the V3 line retires.
     report4 = analyze_namelists(HRRR / "hrrr_namelist.wps",
                                 HRRR / "hrrr_wrf.nl", wrf_version="4")
-    assert "THETA_M_DRY_SUBSTITUTION" in [
+    assert "THETA_M_PROGNOSTIC" in [
         item["code"] for item in report4["issues"]]
 
 
@@ -695,8 +695,8 @@ def test_the_support_report_door_takes_the_wrf_line(capsys):
         report = json.loads(capsys.readouterr().out)
         return {item["code"] for item in report["issues"]}
 
-    assert "THETA_M_DRY_SUBSTITUTION" not in codes("--wrf-version", "3")
-    assert "THETA_M_DRY_SUBSTITUTION" in codes()
+    assert "THETA_M_PROGNOSTIC" not in codes("--wrf-version", "3")
+    assert "THETA_M_PROGNOSTIC" in codes()
     assert "MIX_FULL_FIELDS_SUBSTITUTION" not in codes()
 
     def theta_default(*extra):

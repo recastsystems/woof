@@ -1,3 +1,13 @@
+#if defined(THOMPSON_AA_HAIL)
+#define pow thompson_aa_pow
+#define exp thompson_aa_exp
+#define log thompson_aa_log
+#define log10 thompson_aa_log10
+#define powf thompson_aa_powf
+#define expf thompson_aa_expf
+#define logf thompson_aa_logf
+#define log10f thompson_aa_log10f
+#endif
 // gpuwm/core/kernels/thompson_aerosol_sed.cu
 //
 // Aerosol-aware Thompson (mp_physics=28): number-weighted cloud-water
@@ -3375,3 +3385,287 @@ extern "C" __global__ void thompson_aa_wrf39_rain_sediment_256(
         THOMPSON_AA_WRF39_RAIN_SEDIMENT_ARGUMENTS);
 }
 #endif  // THOMPSON_AA_WRF39
+
+
+#if defined(THOMPSON_AA_HAIL)
+// ---------------------------------------------------------------------------
+// THE HAIL-AWARE GRAUPEL FALLOUT (mp_physics=38).
+// ---------------------------------------------------------------------------
+//
+// One thread per column, WRF's own sequence for the graupel category:
+//
+//   :3266-3282  the TAU+1 graupel state from the source tendencies, on the
+//               :3193 density (`reference_density`): rg, the prognostic
+//               ng and the clamped volume rb, and its density bin idx_bg;
+//   :3373-3377  the slope recomputed from that state;
+//   :3744-3781  the density-dependent fall speed.  The bulk density is
+//               rg/rho/rb with rho(k) the density as the fallout finds it
+//               (rewritten at :3490/:3572 where condensation and rain
+//               evaporation ran, i.e. re-formed here from the current
+//               temperature and vapour), Heymsfield's Best-number relation
+//               afall = a*((4*rho_g*9.8)/(3*rho))**b * visco**(1-2b), and
+//               rhof(k) = SQRT(RHO_NOT/rho) from the :3193 density unless
+//               the column carries rain (:3614 re-forms it from the current
+//               one); visco(k) is the :3201 value, re-formed at :3510 on
+//               levels where rain evaporated (`visco_temperature`);
+//   :3902-3939  the substepped flux divergence of mass, number and volume
+//               into qgten/ngten/qbten, and the surface graupel.
+//
+// WRF v4.6.1 :3908 carries rb as a volume mixing ratio.
+// Its volume flux and tendency have no air-density factor.
+template <int KMAX>
+__device__ __forceinline__ void thompson_aa_hail_graupel_sediment_impl(
+    const float* __restrict__ qg1d,
+    const float* __restrict__ ng1d,
+    const float* __restrict__ qb1d,
+    float* __restrict__ qgten,
+    float* __restrict__ ngten,
+    float* __restrict__ qbten,
+    const float* __restrict__ temperature,
+    const float* __restrict__ pressure,
+    const float* __restrict__ qv,
+    const float* __restrict__ reference_density,
+    const float* __restrict__ rain_active_columns,
+    const float* __restrict__ visco_temperature,
+    const float* __restrict__ dz,
+    float* __restrict__ rainnc,
+    float* __restrict__ rainncv,
+    float* __restrict__ graupelnc,
+    float* __restrict__ graupelncv,
+    float dt, int nz, int ny, int nx)
+{
+    const int column = blockIdx.x * blockDim.x + threadIdx.x;
+    if (column >= ny * nx) return;
+    const int j = column / nx;
+    const int i = column - j * nx;
+
+    float density[KMAX];
+    float rg[KMAX];
+    float ng[KMAX];
+    float rb[KMAX];
+    float vtgk[KMAX];
+    float vtngk[KMAX];
+    float sed_g[KMAX];
+    float sed_n[KMAX];
+    float sed_b[KMAX];
+    float qg_tendency[KMAX];
+    float ng_tendency[KMAX];
+    float qb_tendency[KMAX];
+
+    const float rho_not = 101325.0f / (287.05f * 298.0f);
+    const bool rain_refreshes_rhof = rain_active_columns != nullptr
+        && rain_active_columns[column] != 0.0f;
+    // bfall = 3*b_coeff - 1 (:1605), REAL; 1.0-2.0*b_coeff (:3753).
+    const float bfall = thompson_aa_sub(
+        thompson_aa_mul(3.0f, THOMPSON_AA_HAIL_B_COEFF), 1.0f);
+    const float visco_power = thompson_aa_sub(
+        1.0f, thompson_aa_mul(2.0f, THOMPSON_AA_HAIL_B_COEFF));
+    bool any_graupel = false;
+    int sediment_top = 0;
+    int nstep = 0;
+    float velocity_above = 0.0f;
+    float number_velocity_above = 0.0f;
+
+    for (int k = nz - 1; k >= 0; --k) {
+        const size_t idx = IDX3(k, j, i);
+        const float qvk = fmaxf(1.0e-10f, qv[idx]);
+        const float rho = thompson_aa_div(
+            thompson_aa_mul(0.622f, pressure[idx]),
+            thompson_aa_mul(thompson_aa_mul(THOMPSON_AA_R_DRY,
+                                            temperature[idx]),
+                            thompson_aa_add(qvk, 0.622f)));
+        density[k] = rho;
+        qg_tendency[k] = qgten[idx];
+        ng_tendency[k] = ngten[idx];
+        qb_tendency[k] = qbten[idx];
+        const float held = reference_density[idx];
+        // :3266-3282.
+        const float qg_working = thompson_aa_add(
+            qg1d[idx], thompson_aa_mul(qgten[idx], dt));
+        int idx_bg = THOMPSON_AA_HAIL_IDX_BG1;
+        if (qg_working > THOMPSON_AA_R1) {
+            any_graupel = true;
+            rg[k] = thompson_aa_mul(qg_working, held);
+            ng[k] = fmaxf(THOMPSON_AA_R2, thompson_aa_mul(thompson_aa_add(
+                ng1d[idx], thompson_aa_mul(ngten[idx], dt)), held));
+            const float qg_back = thompson_aa_div(rg[k], held);
+            float volume = fmaxf(
+                thompson_aa_div(qg_back, THOMPSON_AA_HAIL_RHO_G[9]),
+                thompson_aa_add(qb1d[idx], thompson_aa_mul(qbten[idx], dt)));
+            volume = fminf(thompson_aa_div(qg_back,
+                                           THOMPSON_AA_HAIL_RHO_G[1]),
+                           volume);
+            rb[k] = volume;
+            idx_bg = thompson_aa_hail_density_bin(thompson_aa_mul(
+                thompson_aa_div(qg_back, volume), 0.01f));
+        } else {
+            rg[k] = THOMPSON_AA_R1;
+            ng[k] = THOMPSON_AA_R2;
+            rb[k] = thompson_aa_div(thompson_aa_div(THOMPSON_AA_R1, held),
+                                    THOMPSON_AA_HAIL_RHO_G[9]);
+        }
+        // :3373-3377 and :3744-3771.
+        if (rg[k] > THOMPSON_AA_R1) {
+            const double lamg = thompson_aa_hail_lambda(ng[k], rg[k], idx_bg);
+            const double ilamg = 1.0 / lamg;
+            const float rhof = sqrtf(thompson_aa_div(
+                rho_not, rain_refreshes_rhof ? rho : held));
+            const float tv = visco_temperature[idx];
+            const float tempc = thompson_aa_sub(tv, 273.15f);
+            const float visco = tempc >= 0.0f
+                ? thompson_aa_mul(
+                      thompson_aa_add(1.718f, thompson_aa_mul(0.0049f, tempc)),
+                      1.0e-5f)
+                : thompson_aa_mul(
+                      thompson_aa_sub(
+                          thompson_aa_add(1.718f,
+                                          thompson_aa_mul(0.0049f, tempc)),
+                          thompson_aa_mul(thompson_aa_mul(1.2e-5f, tempc),
+                                          tempc)),
+                      1.0e-5f);
+            const float xrho_g = fmaxf(THOMPSON_AA_HAIL_RHO_G[1], fminf(
+                thompson_aa_div(thompson_aa_div(rg[k], rho), rb[k]),
+                THOMPSON_AA_HAIL_RHO_G[9]));
+            float afall = thompson_aa_mul(
+                THOMPSON_AA_HAIL_A_COEFF,
+                gfk_pow(thompson_aa_div(
+                            thompson_aa_mul(thompson_aa_mul(4.0f, xrho_g),
+                                            9.8f),
+                            thompson_aa_mul(3.0f, rho)),
+                        THOMPSON_AA_HAIL_B_COEFF));
+            afall = thompson_aa_mul(afall, gfk_pow(visco, visco_power));
+            const double fall = thompson_aa_pow(ilamg, (double)bfall);
+            vtgk[k] = (float)((double)thompson_aa_mul(
+                thompson_aa_mul(thompson_aa_mul(rhof, afall),
+                                THOMPSON_AA_HAIL_CGG[6]),
+                THOMPSON_AA_HAIL_OGG3) * fall);
+            // mu_g = 0: the "less size sorting" number speed, :3763.
+            vtngk[k] = (float)((double)thompson_aa_div(
+                thompson_aa_mul(thompson_aa_mul(rhof, afall),
+                                THOMPSON_AA_HAIL_CGG[7]),
+                THOMPSON_AA_HAIL_CGG[12]) * fall);
+        } else {
+            vtgk[k] = velocity_above;
+            vtngk[k] = number_velocity_above;
+        }
+        velocity_above = vtgk[k];
+        number_velocity_above = vtngk[k];
+        if (vtgk[k] > 1.0e-3f) {
+            sediment_top = max(sediment_top, k);
+            const float delta_tp = thompson_aa_div(dz[idx], vtgk[k]);
+            nstep = max(nstep, (int)thompson_aa_add(
+                thompson_aa_div(dt, delta_tp), 1.0f));
+        }
+    }
+
+    float exported = 0.0f;
+    if (any_graupel) {
+        if (sediment_top == nz - 1) sediment_top = nz - 2;
+        const float onstep = nstep > 0
+            ? thompson_aa_div(1.0f, (float)nstep) : 1.0f;
+        const int steps = (int)rintf(thompson_aa_div(1.0f, onstep));
+        for (int step = 0; step < steps; ++step) {
+            for (int k = nz - 1; k >= 0; --k) {
+                sed_g[k] = thompson_aa_mul(vtgk[k], rg[k]);
+                sed_n[k] = thompson_aa_mul(vtngk[k], ng[k]);
+                sed_b[k] = thompson_aa_mul(vtgk[k], rb[k]);
+            }
+            int k = nz - 1;
+            size_t idx = IDX3(k, j, i);
+            float odzq = thompson_aa_div(1.0f, dz[idx]);
+            float orho = thompson_aa_div(1.0f, density[k]);
+            qg_tendency[k] = thompson_aa_sub(qg_tendency[k],
+                thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
+                    sed_g[k], odzq), onstep), orho));
+            ng_tendency[k] = thompson_aa_sub(ng_tendency[k],
+                thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
+                    sed_n[k], odzq), onstep), orho));
+            qb_tendency[k] = thompson_aa_sub(qb_tendency[k],
+                thompson_aa_mul(thompson_aa_mul(sed_b[k], odzq), onstep));
+            rg[k] = fmaxf(THOMPSON_AA_R1, thompson_aa_sub(rg[k],
+                thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
+                    sed_g[k], odzq), dt), onstep)));
+            ng[k] = fmaxf(THOMPSON_AA_R2, thompson_aa_sub(ng[k],
+                thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
+                    sed_n[k], odzq), dt), onstep)));
+            rb[k] = fmaxf(
+                thompson_aa_div(thompson_aa_div(THOMPSON_AA_R1, density[k]),
+                                THOMPSON_AA_HAIL_RHO_G[9]),
+                thompson_aa_sub(rb[k], thompson_aa_mul(thompson_aa_mul(
+                    thompson_aa_mul(sed_b[k], odzq), dt), onstep)));
+            for (k = sediment_top; k >= 0; --k) {
+                idx = IDX3(k, j, i);
+                odzq = thompson_aa_div(1.0f, dz[idx]);
+                orho = thompson_aa_div(1.0f, density[k]);
+                const float dg = thompson_aa_sub(sed_g[k + 1], sed_g[k]);
+                const float dn = thompson_aa_sub(sed_n[k + 1], sed_n[k]);
+                const float db = thompson_aa_sub(sed_b[k + 1], sed_b[k]);
+                qg_tendency[k] = thompson_aa_add(qg_tendency[k],
+                    thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
+                        dg, odzq), onstep), orho));
+                ng_tendency[k] = thompson_aa_add(ng_tendency[k],
+                    thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
+                        dn, odzq), onstep), orho));
+                qb_tendency[k] = thompson_aa_add(qb_tendency[k],
+                    thompson_aa_mul(thompson_aa_mul(db, odzq), onstep));
+                rg[k] = fmaxf(THOMPSON_AA_R1, thompson_aa_add(rg[k],
+                    thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
+                        dg, odzq), dt), onstep)));
+                ng[k] = fmaxf(THOMPSON_AA_R2, thompson_aa_add(ng[k],
+                    thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
+                        dn, odzq), dt), onstep)));
+                rb[k] = fmaxf(
+                    thompson_aa_div(thompson_aa_div(rg[k], density[k]),
+                                    THOMPSON_AA_HAIL_RHO_G[9]),
+                    thompson_aa_add(rb[k], thompson_aa_mul(thompson_aa_mul(
+                        thompson_aa_mul(db, odzq), dt), onstep)));
+            }
+            // :3936-3937.
+            if (rg[0] > thompson_aa_mul(THOMPSON_AA_R1, 1000.0f)) {
+                exported = thompson_aa_add(exported, thompson_aa_mul(
+                    thompson_aa_mul(sed_g[0], dt), onstep));
+            }
+        }
+        for (int k = 0; k < nz; ++k) {
+            const size_t idx = IDX3(k, j, i);
+            qgten[idx] = qg_tendency[k];
+            ngten[idx] = ng_tendency[k];
+            qbten[idx] = qb_tendency[k];
+        }
+    }
+    // The shared adapter sums all four precipitation exports once.
+    graupelncv[column] = exported;
+}
+
+#define THOMPSON_AA_HAIL_GRAUPEL_SEDIMENT_PARAMETERS                      \
+    const float* __restrict__ qg1d, const float* __restrict__ ng1d,      \
+    const float* __restrict__ qb1d, float* __restrict__ qgten,           \
+    float* __restrict__ ngten, float* __restrict__ qbten,                \
+    const float* __restrict__ temperature,                               \
+    const float* __restrict__ pressure, const float* __restrict__ qv,    \
+    const float* __restrict__ reference_density,                         \
+    const float* __restrict__ rain_active_columns,                       \
+    const float* __restrict__ visco_temperature,                         \
+    const float* __restrict__ dz, float* __restrict__ rainnc,            \
+    float* __restrict__ rainncv, float* __restrict__ graupelnc,          \
+    float* __restrict__ graupelncv, float dt, int nz, int ny, int nx
+
+#define THOMPSON_AA_HAIL_GRAUPEL_SEDIMENT_ARGUMENTS                       \
+    qg1d, ng1d, qb1d, qgten, ngten, qbten, temperature, pressure, qv,    \
+    reference_density, rain_active_columns, visco_temperature, dz,       \
+    rainnc, rainncv, graupelnc, graupelncv, dt, nz, ny, nx
+
+extern "C" __global__ void thompson_aa_hail_graupel_sediment_64(
+    THOMPSON_AA_HAIL_GRAUPEL_SEDIMENT_PARAMETERS)
+{
+    thompson_aa_hail_graupel_sediment_impl<THOMPSON_AA_KMAX_SHALLOW>(
+        THOMPSON_AA_HAIL_GRAUPEL_SEDIMENT_ARGUMENTS);
+}
+
+extern "C" __global__ void thompson_aa_hail_graupel_sediment_256(
+    THOMPSON_AA_HAIL_GRAUPEL_SEDIMENT_PARAMETERS)
+{
+    thompson_aa_hail_graupel_sediment_impl<THOMPSON_AA_KMAX_GENERIC>(
+        THOMPSON_AA_HAIL_GRAUPEL_SEDIMENT_ARGUMENTS);
+}
+#endif  // THOMPSON_AA_HAIL

@@ -111,15 +111,21 @@ CRATE_RELATIVE = "tools/grib1_bridge"
 # Optional contracts are probed by their caller. They must not make a
 # library with a working base contract unusable for its existing entry points.
 BRIDGE_OPTIONAL_ABI_MARKERS = {
-    "static_fields": {"extra_continuous": b"gpuwm_static_extra_continuous_v1"},
+    "static_fields": {"extra_continuous": b"gpuwm_static_extra_continuous_v1",
+                      "snow_papers": b"gpuwm_snow_optics_load_v1"},
 }
 
 BRIDGE_ABI_MARKERS = {
+    "gpuwm_tslist": b"gpuwm_tslist_validate",
+    "rw_history_grib2": (b"table=woof.grib2-parameters/v1 receipt=woof.history-grib2.receipt/v1 "
+                         b"packing=ieee32,exact-integer verify=every-message grids=3.30,3.20,3.10,3.0"),
     "rw_icechunk": (b"rw_icechunk --request REQUEST.json schema=icechunk-output.request/v1 "
                     b"modes=run,append,finalize progress=jsonl native-arrays=v1"),
     "rw_ice_verify": b"gpuwm-ice-observation-binding.v1",
     "rw_fire_indices": b"GPUWM_FIRE_INDICES_V1",
     "rw_ocean": b"gpuwm.ocean.prepared/v1",
+    "rw_waves_data": b"gpuwm.waves.prepared/v1",
+    "rw_waves_coupled_prepare": b"gpuwm.waves.coupled-preparation/v1",
     "rw_bathy": b"gpuwm-rw-bathy-v1",
     "rw_ocean_verify": b"gpuwm-ocean-sst-verify-v1\tdaily-mean\tndbc-WTMP\tgreat-circle\tpaired-change",
     "rw_tc_fields": b"gpuwm.tc-fields.v1 inspect extract tempest table-units masked-quarter-degree",
@@ -272,6 +278,12 @@ BRIDGE_ABI_MARKERS = {
     # The TEMPO tempo_init port's ctypes seam (woof.core.tempo_rust): the
     # blob-layout contract symbol, which changes when the blob does.
     "rw_tempo": b"gpuwm_tempo_init_v1",
+    "rw_p3": b"gpuwm_p3_init_3mom",
+    # Fast CAM reads its REAL32 state through this symbol; a library built
+    # before it answers the version probe and then refuses every fast CAM
+    # forecast at its first radiation call ("Fast CAM requires the REAL32
+    # state reader", the 3.0 timing box, 2026-11-02).
+    "rw_cam_tables": b"cam_tables_copy_state_fast",
     # The MPAS point renderer: its --abi line (output schema and stdout
     # tokens).  Spelled to match woof.mpas_mesh.POINTS_ABI_MARKER.
     "rw_hex_points": (

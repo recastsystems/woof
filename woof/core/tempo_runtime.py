@@ -354,7 +354,8 @@ class TempoRuntime:
         """Current-state native radar kernel, with bounded column work storage."""
         nz, ny, nx = state.p.shape
         thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
-        theta = cp.ascontiguousarray(thb + state.thp)
+        theta = cp.ascontiguousarray(state.total_theta() if getattr(state, "use_theta_m", 0)
+                              else thb + state.thp)
         exner = cp.empty_like(state.p)
         self.exner(state.p, exner)
         # Only temperature, pressure, qv and precipitating moments are read.

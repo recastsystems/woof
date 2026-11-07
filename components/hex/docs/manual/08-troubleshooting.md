@@ -199,7 +199,7 @@ record). Leave the flag unset, or clone the tag.
 
 **A woof other than the one this port was measured against** runs (since
 2026-10-10). The door used to refuse with `the woof at ... is woof X, and
-this port's physics seam is pinned to woof 2.8.7`; a different engine
+this port's physics seam is pinned to gpuwm 2.8.7`; a different engine
 version names no breakage, so the refusal is retired. The one engine refusal
 left is an engine whose radiation helper set no row of this release admits:
 it names the installed version, the version this release was measured on and

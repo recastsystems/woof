@@ -153,7 +153,7 @@ def test_history_names_every_process_array_once_and_nc_safe(sets, monkeypatch):
         transported=table.transported, prescribed=table.prescribed,
         table=table, processes=processes)
     # A process that refreshes its outputs before each frame (live aerosol
-    # optics, lane/cap-aer-optics f82d16b1c20) evaluates a CUDA kernel on the
+    # optics, development branch f82d16b1c20) evaluates a CUDA kernel on the
     # real state; this host fake carries names only, so the refresh is
     # recorded here and must run once per such process per frame.
     refreshed = []

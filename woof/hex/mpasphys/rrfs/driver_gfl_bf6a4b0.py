@@ -148,12 +148,126 @@ def to_mpas(a,pools,call):
     for index,name in enumerate(CARRIERS):tend[name][:nz,:n]=values[index,:n,:].T
 
 
+def activity_order(diag, n):
+    """Columns sorted by last call's activity: deep, then shallow, then none (woof.hex.mpasphys.gf_mpas_v842).
+
+    A warp runs at the pace of its busiest column, so grouping like columns keeps quiet warps quiet. Read from the
+    pools the scheme itself wrote (raincv, k22_shallow); positions come from three device prefix sums (stable, the same
+    order for the same pools), so nothing waits on the host. None below one launch's worth of columns.
+    """
+    import cupy as cp
+    if n < 1024:
+        return None
+    deep = diag['raincv'][:n] > 0
+    shallow = (diag['k22_shallow'][:n] != 0) & ~deep
+    quiet = ~(deep | shallow)
+    first, second, third = (cp.cumsum(x, dtype=cp.int32) for x in (deep, shallow, quiet))
+    position = cp.where(deep, first - 1, cp.where(shallow, first[-1] + second - 1,
+                                                   first[-1] + second[-1] + third - 1)).astype(cp.int32)
+    order = cp.empty(n, dtype=cp.int32)
+    order[position] = cp.arange(n, dtype=cp.int32)
+    return order
+
+
+_HELD = {}
+
+
+def _held(device, n, nz):
+    """dxcell and the radiation forcing, the two inputs the driver computes: one array each for the run."""
+    import cupy as cp
+    key = (device, n, nz)
+    if key not in _HELD:
+        _HELD[key] = {'dxcell': cp.empty(n, dtype=cp.float32), 'rthraten': cp.empty((n, nz + 1), dtype=cp.float32)}
+    return _HELD[key]
+
+
+def pool_fields(pools, call):
+    """RRFS fork mpas_atmphys_driver_convection.F:871-914,978-1080: the scheme's arguments, each where it lives.
+
+    THE BREAKAGE THIS ENDS (hrrrv5 + storm scheme, 84,513 columns, RTX 5090, 2026-10-31): from_mpas copied 31 level
+    fields into a second column-major array and to_mpas copied them back on every call, about 650 MB held and 1.3 GB
+    moved a call, for fields the scheme reads once and writes once. The words the scheme sees are the same: inout
+    fields start from the pool's own words, and a word it leaves alone stays as it was. The scheme reads and writes
+    no level past kte, so the held top words of the second arrays were never touched.
+    """
+    import cupy as cp
+    import numpy as np
+    n,nz=int(pools['nCellsSolve']),int(pools['nVertLevels'])
+    prepared,mesh,diag,tend=pools['prepared'],pools['mesh'],pools['diag_physics'],pools['tend_physics']
+    a={name:prepared[source] if name=='maxmf' else gfl.Levels(prepared[source]) for name,source in PREPARED.items()}
+    for name,source in SURFACE.items():a[name]=diag[source]
+    for name,source in LEVEL.items():a[name]=gfl.Levels(tend[source])
+    for name,source in DIAG_LEVEL.items():a[name]=gfl.Levels(diag[source])
+    # Native allocation resets active sub3d fields on every convection call.
+    # mpas_atmphys_driver_convection.F:248-263.
+    for name in CARRIERS:
+        tend['sub3d_'+name][:nz,:n].fill(0)
+        a['sub3d_'+name]=gfl.Levels(tend['sub3d_'+name])
+    a['gdc']=a['qc_cu'];a['gdc2']=a['qi_cu']
+    a['areacell']=mesh['areaCell'];a['ht']=mesh['zgrid'][0];a['xland']=pools['sfc_input']['xland'];a['bilbc']=mesh['bdyMaskCell']
+    device=cp.cuda.runtime.getDevice()
+    held=_held(device,n,nz);k=gfl._module(device)
+    a['dxcell']=held['dxcell'];a['rthraten']=held['rthraten']
+    if n:
+        k.get_function('gfl_driver_dx')(((n+127)//128,),(128,),
+            (np.int32(n),np.float32(pools['config_len_disp']),mesh['meshDensity'],a['dxcell']))
+        k.get_function('gfl_driver_radiation')(((n*nz+127)//128,),(128,),
+            (np.int32(n),np.int32(nz),np.int32(tend['rthratenlw'].shape[1]),tend['rthratenlw'],tend['rthratensw'],a['rthraten']))
+    scalar=pools['scalar_state'];const=pools['constants']
+    a.update(itimestep=call.itimestep,dt=scalar['dt_dyn'],xlv=const['xlv'],cp=const['cp'],g=const['gravity'],r_v=const['R_v'],
+             ichoice_deep=call.options['config_gfconv_closure_deep'],ichoice_shallow=call.options['config_gfconv_closure_shallow'],
+             ishallow_g3=1,sub3d=max(0,int(call.options['config_gfl_sub3d'])),num_chem=int(scalar['num_chem']))
+    if a['num_chem']:
+        # The caller's chemistry slice is the native chemistry_start:end view.
+        dims=pools['dimensions']
+        chemistry=pools['state']['scalars'][int(dims['chemistry_start'])-1:int(dims['chemistry_end'])]
+        a['chem3d_in']=cp.empty((n,a['num_chem'],nz+1),dtype=cp.float32)
+        a['chem3d_in'][...,:nz]=chemistry[:a['num_chem'],:nz,:n].transpose(2,0,1)
+        a['chem3d_in'][...,nz]=pools['prepared']['chem_p'][:a['num_chem'],nz,:n].T
+    else:a['chem3d_in']=cp.empty((n,0,nz+1),dtype=cp.float32)
+    return a
+
+
+def pool_writeback(a,pools,call):
+    """RRFS fork mpas_atmphys_driver_convection.F:1219-1255,1288-1433 with config_gfl_sub3d <= 0: every output is
+    already in its pool; only chemistry and the subsidence added to its tendency remain."""
+    import numpy as np
+    n,nz=int(pools['nCellsSolve']),int(pools['nVertLevels'])
+    tend=pools['tend_physics']
+    if a['num_chem']:
+        dims=pools['dimensions']
+        chemistry=pools['state']['scalars'][int(dims['chemistry_start'])-1:int(dims['chemistry_end'])]
+        chemistry[:,:nz,:n]=a['chem3d_in'][...,:nz].transpose(1,2,0)
+    if not n:
+        return
+    add=gfl._module(gfl_device()).get_function('gfl_add_subsidence')
+    for name in CARRIERS:
+        target,sub=tend[name],tend['sub3d_'+name]
+        add(((n*nz+127)//128,),(128,),(np.int32(n),np.int32(nz),np.int64(target.strides[0]//4),np.int64(target.strides[1]//4),
+            np.int64(sub.strides[0]//4),np.int64(sub.strides[1]//4),sub,target))
+
+
+def gfl_device():
+    import cupy as cp
+    return cp.cuda.runtime.getDevice()
+
+
 def run_slot(call):
     """RRFS fork MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_convection.F:611-629,668-710,871-1433."""
-    pools=call.pools;args=from_mpas(pools,call)
+    pools=call.pools;n=int(pools['nCellsSolve']);nz=int(pools['nVertLevels'])
+    if int(call.options['config_gfl_sub3d'])>0:
+        # Neighbour spreading reads whole-entity words after a halo exchange: the marshalled path.
+        args=from_mpas(pools,call)
+        pools['prepared']['cu_act_flag'][:n].fill(False)
+        result=gfl.launch_columns(args,ncol=n,nz=nz,pbl_scheme=str(call.options['config_pbl_scheme']),row_dx_first=args['dxcell'][:1])
+        to_mpas(args,pools,call)
+        return result
+    # Before this call's own writes: the activity the scheme left last call.
+    order=activity_order(pools['diag_physics'],n)
+    args=pool_fields(pools,call)
     # Native driver clears activity before invoking every convection scheme.
-    pools['prepared']['cu_act_flag'][:int(pools['nCellsSolve'])].fill(False)
-    result=gfl.launch_columns(args,ncol=int(pools['nCellsSolve']),nz=int(pools['nVertLevels']),
-        pbl_scheme=str(call.options['config_pbl_scheme']),row_dx_first=args['dxcell'][:1])
-    to_mpas(args,pools,call)
+    pools['prepared']['cu_act_flag'][:n].fill(False)
+    result=gfl.launch_columns(args,ncol=n,nz=nz,pbl_scheme=str(call.options['config_pbl_scheme']),
+        row_dx_first=args['dxcell'][:1],order=order)
+    pool_writeback(args,pools,call)
     return result

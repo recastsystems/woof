@@ -237,6 +237,48 @@ def test_a_first_capture_writes_its_receipt_words_and_index(tool, tmp_path):
         assert _sha(fixture / "gpu-words-sm90" / row["words_file"]) == row["words_sha256"]
 
 
+def test_a_compiler_capture_is_recorded_beside_the_card_receipt(tool, tmp_path):
+    """STRICT-04: words that follow the NVRTC build get that build's own
+    receipt; the card receipt and its other compilers are untouched."""
+    fixture = _fixture(tmp_path, "wrf_legacy_advect", {"Card A": "gpu-receipt.json"},
+                       {"12.0": "gpu-receipt.json"},
+                       {"gpu-receipt.json": ("Card A", (12, 0), "gpu-words")})
+    card = _sha(fixture / "gpu-receipt.json")
+    receipt, words = _capture(tmp_path, "Card A", (12, 0), production={"case_a": 1.0, "case_b": 2.5})
+    status, record = tool.settle(fixture, receipt, words, install=False, nvrtc="13.2")
+    assert (status, record["mode"]) == (1, "card")
+    status, record = tool.settle(fixture, receipt, words, install=True, nvrtc="13.2", as_compiler=True)
+    assert (status, record["mode"], record["installed"]) == (0, "compiler-first", True)
+    assert record["receipt"] == "gpu-receipt-sm120-nvrtc13.2.json"
+    assert _sha(fixture / "gpu-receipt.json") == card
+    index = json.loads((fixture / "gpu-receipts.json").read_text(encoding="ascii"))
+    assert index["compilers"] == {"13.2": {"12.0": "gpu-receipt-sm120-nvrtc13.2.json"}}
+    assert tool.select_receipt(index, fixture, "Card A", (12, 0), "13.2") == (
+        "compiler", "gpu-receipt-sm120-nvrtc13.2.json")
+    assert tool.select_receipt(index, fixture, "Card A", (12, 0), "13.4") == ("card", "gpu-receipt.json")
+    written = json.loads((fixture / "gpu-receipt-sm120-nvrtc13.2.json").read_text(encoding="ascii"))
+    assert written["nvrtc"] == [13, 2]
+    for case in CASES:
+        row = written["cases"][case]
+        assert _sha(fixture / "gpu-words-sm120-nvrtc13.2" / row["words_file"]) == row["words_sha256"]
+    # A folder that stores production only gets no control words beside it.
+    for control in ("mutation", "wrf_flux"):
+        (fixture / "gpu-words" / f"case_a-{control}.npz").unlink()
+    index["compilers"] = {}
+    (fixture / "gpu-receipt-sm120-nvrtc13.2.json").unlink()
+    for path in (fixture / "gpu-words-sm120-nvrtc13.2").iterdir():
+        path.unlink()
+    (fixture / "gpu-words-sm120-nvrtc13.2").rmdir()
+    _write(fixture / "gpu-receipts.json", index)
+    status, record = tool.settle(fixture, receipt, words, install=True, nvrtc="13.2", as_compiler=True)
+    assert status == 0
+    assert sorted(p.name for p in (fixture / "gpu-words-sm120-nvrtc13.2").iterdir()) == [
+        "case_a-production.npz", "case_b-mutation.npz", "case_b-production.npz", "case_b-wrf_flux.npz"]
+    # The same compiler again must reproduce its own receipt.
+    status, record = tool.settle(fixture, receipt, words, install=False, nvrtc="13.2")
+    assert (status, record["mode"], record["production_reproduced"]) == (0, "compiler", True)
+
+
 def test_a_capture_whose_mutation_was_not_rejected_is_refused(tool, tmp_path):
     fixture = _fixture(tmp_path, "wrf471_advect", {"Card A": "gpu-receipt.json"}, {},
                        {"gpu-receipt.json": ("Card A", (8, 9), "gpu-words")})
@@ -260,3 +302,9 @@ def test_the_committed_receipt_indexes_name_what_the_receipts_say(name):
     for key, receipt_name in index["architectures"].items():
         receipt = json.loads((fixture / receipt_name).read_text(encoding="ascii"))
         assert receipt["compute_capability"] == [int(part) for part in key.split(".")]
+    for nvrtc, rows in index.get("compilers", {}).items():
+        for key, receipt_name in rows.items():
+            receipt = json.loads((fixture / receipt_name).read_text(encoding="ascii"))
+            assert receipt["compute_capability"] == [int(part) for part in key.split(".")]
+            assert receipt["nvrtc"] == [int(part) for part in nvrtc.split(".")]
+            assert (fixture / receipt["words_directory"]).is_dir()

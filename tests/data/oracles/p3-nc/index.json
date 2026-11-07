@@ -1,0 +1,402 @@
+{
+ "predict_nc": true,
+ "in3d": [
+  "th",
+  "qv",
+  "qc",
+  "qr",
+  "nr",
+  "qi",
+  "ni",
+  "qir",
+  "qib",
+  "th_old",
+  "qv_old",
+  "pii",
+  "p",
+  "dz",
+  "w",
+  "nc"
+ ],
+ "in2d": [
+  "rainnc",
+  "rainncv",
+  "sr",
+  "snownc",
+  "snowncv"
+ ],
+ "out3d": [
+  "th",
+  "qv",
+  "qc",
+  "qr",
+  "nr",
+  "qi",
+  "ni",
+  "qir",
+  "qib",
+  "th_old",
+  "qv_old",
+  "zdbz",
+  "effc",
+  "effi",
+  "vmi",
+  "di",
+  "rhopo",
+  "nc"
+ ],
+ "out2d": [
+  "rainnc",
+  "rainncv",
+  "sr",
+  "snownc",
+  "snowncv"
+ ],
+ "cases": [
+  {
+   "name": "NE5-edges-5step",
+   "ncol": 28,
+   "nk": 50,
+   "dt": 20.0,
+   "nsteps": 5,
+   "bytes": 90160,
+   "sha256": "2c5a018799e01a9e61bfef0acb9d6b9960b73497e0b972ada537ace4c9a3cb28",
+   "in_claim": true,
+   "columns": [
+    {
+     "label": "edge-all-zero",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "edge-qsmall-straddle",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "edge-rain-zero-number",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "edge-ice-zero-number",
+     "regime": "edge",
+     "psfc": 99739.3,
+     "tsfc": 261.87,
+     "tmin": 184.24
+    },
+    {
+     "label": "edge-ni-huge",
+     "regime": "edge",
+     "psfc": 99732.1,
+     "tsfc": 254.87,
+     "tmin": 177.24
+    },
+    {
+     "label": "edge-rime-inconsistent",
+     "regime": "edge",
+     "psfc": 99742.2,
+     "tsfc": 264.87,
+     "tmin": 187.24
+    },
+    {
+     "label": "edge-small-negatives",
+     "regime": "edge",
+     "psfc": 99756.0,
+     "tsfc": 279.87,
+     "tmin": 202.24
+    },
+    {
+     "label": "edge-threshold-temperatures",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "edge-supersat-150pct",
+     "regime": "edge",
+     "psfc": 99768.4,
+     "tsfc": 294.87,
+     "tmin": 217.24
+    },
+    {
+     "label": "edge-thin-layers",
+     "regime": "edge",
+     "psfc": 99970.3,
+     "tsfc": 287.98,
+     "tmin": 223.59
+    },
+    {
+     "label": "edge-huge-drops",
+     "regime": "edge",
+     "psfc": 99766.8,
+     "tsfc": 292.87,
+     "tmin": 215.24
+    },
+    {
+     "label": "edge-tiny-cloud-cold",
+     "regime": "edge",
+     "psfc": 99739.3,
+     "tsfc": 261.87,
+     "tmin": 184.24
+    },
+    {
+     "label": "edge-cold-top",
+     "regime": "edge",
+     "psfc": 99746.9,
+     "tsfc": 269.82,
+     "tmin": 189.0
+    },
+    {
+     "label": "edge-graupel-melt",
+     "regime": "edge",
+     "psfc": 99772.3,
+     "tsfc": 299.87,
+     "tmin": 222.24
+    },
+    {
+     "label": "nc-zero-with-cloud",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "nc-one-per-kg",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "nc-polluted-5e9",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "nc-without-cloud",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "nc-above-aerosol-total",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "nc-sup-threshold-straddle",
+     "regime": "edge",
+     "psfc": 99764.4,
+     "tsfc": 289.87,
+     "tmin": 212.24
+    },
+    {
+     "label": "nc-drizzle",
+     "regime": "edge",
+     "psfc": 99762.8,
+     "tsfc": 287.87,
+     "tmin": 210.24
+    },
+    {
+     "label": "nc-polluted-mixed",
+     "regime": "edge",
+     "psfc": 99769.2,
+     "tsfc": 295.87,
+     "tmin": 218.24
+    },
+    {
+     "label": "nc-homogeneous-freeze",
+     "regime": "edge",
+     "psfc": 99772.2,
+     "tsfc": 299.85,
+     "tmin": 182.48
+    },
+    {
+     "label": "nc-shedding",
+     "regime": "edge",
+     "psfc": 99773.0,
+     "tsfc": 300.87,
+     "tmin": 223.24
+    },
+    {
+     "label": "nc-thin-layers",
+     "regime": "edge",
+     "psfc": 99976.1,
+     "tsfc": 285.99,
+     "tmin": 230.5
+    },
+    {
+     "label": "nc-small-negatives",
+     "regime": "edge",
+     "psfc": 99757.7,
+     "tsfc": 281.87,
+     "tmin": 204.24
+    },
+    {
+     "label": "nc-tiny-cloud",
+     "regime": "edge",
+     "psfc": 99751.6,
+     "tsfc": 274.87,
+     "tmin": 197.24
+    },
+    {
+     "label": "nc-polluted-fog",
+     "regime": "edge",
+     "psfc": 99745.6,
+     "tsfc": 268.4,
+     "tmin": 198.24
+    }
+   ]
+  },
+  {
+   "name": "NS30-subset-30step",
+   "ncol": 10,
+   "nk": 50,
+   "dt": 20.0,
+   "nsteps": 30,
+   "bytes": 32200,
+   "sha256": "812ab78e95da90bcc82c1cb0fcad221c64647e773127b2e8b1d68b76c6280f1e",
+   "in_claim": true,
+   "columns": [
+    {
+     "label": "conv-00",
+     "regime": "convective",
+     "psfc": 99274.2,
+     "tsfc": 304.61,
+     "tmin": 203.57
+    },
+    {
+     "label": "conv-04",
+     "regime": "convective",
+     "psfc": 100362.9,
+     "tsfc": 303.88,
+     "tmin": 212.45
+    },
+    {
+     "label": "conv-09",
+     "regime": "convective",
+     "psfc": 99268.5,
+     "tsfc": 301.38,
+     "tmin": 208.55
+    },
+    {
+     "label": "strat-02",
+     "regime": "stratiform-melting",
+     "psfc": 100218.5,
+     "tsfc": 288.95,
+     "tmin": 212.36
+    },
+    {
+     "label": "night-03",
+     "regime": "stable-night",
+     "psfc": 101031.1,
+     "tsfc": 260.65,
+     "tmin": 202.34
+    },
+    {
+     "label": "snow-01",
+     "regime": "snow-ice",
+     "psfc": 100296.4,
+     "tsfc": 268.73,
+     "tmin": 226.16
+    },
+    {
+     "label": "ocean-00",
+     "regime": "ocean",
+     "psfc": 101646.6,
+     "tsfc": 288.3,
+     "tmin": 202.0
+    },
+    {
+     "label": "terrain-00",
+     "regime": "high-terrain",
+     "psfc": 69667.4,
+     "tsfc": 289.78,
+     "tmin": 210.51
+    },
+    {
+     "label": "anvil-02",
+     "regime": "anvil-homogeneous",
+     "psfc": 98940.5,
+     "tsfc": 298.86,
+     "tmin": 188.88
+    },
+    {
+     "label": "hail-01",
+     "regime": "hail-extreme",
+     "psfc": 92601.9,
+     "tsfc": 305.08,
+     "tmin": 190.79
+    }
+   ]
+  },
+  {
+   "name": "NA03-activation",
+   "ncol": 6,
+   "nk": 50,
+   "dt": 20.0,
+   "nsteps": 3,
+   "bytes": 19320,
+   "sha256": "dcf7bb6f5b99732157e34b26c44578bfe2a6181dbb7db622bf1fa7a3063a2aa3",
+   "in_claim": true,
+   "columns": [
+    {
+     "label": "act-warm-clean",
+     "regime": "edge",
+     "psfc": 100265.7,
+     "tsfc": 292.9,
+     "tmin": 233.19
+    },
+    {
+     "label": "act-warm-polluted",
+     "regime": "edge",
+     "psfc": 100265.7,
+     "tsfc": 292.9,
+     "tmin": 233.19
+    },
+    {
+     "label": "act-cool-clean",
+     "regime": "edge",
+     "psfc": 100255.7,
+     "tsfc": 280.9,
+     "tmin": 221.19
+    },
+    {
+     "label": "act-cold-mixed",
+     "regime": "edge",
+     "psfc": 100243.8,
+     "tsfc": 267.9,
+     "tmin": 208.19
+    },
+    {
+     "label": "act-warm-cloudy",
+     "regime": "edge",
+     "psfc": 100270.4,
+     "tsfc": 298.9,
+     "tmin": 239.19
+    },
+    {
+     "label": "act-high-terrain",
+     "regime": "edge",
+     "psfc": 69831.6,
+     "tsfc": 283.9,
+     "tmin": 224.19
+    }
+   ]
+  }
+ ],
+ "oracle": "WRF 4.6.1 module_mp_p3.F 716950a3, mp_physics=51 call shape (tools/p3_wrf461_oracle/p3_nc_ref_driver.f90), arm CR: gfortran 13.3.0 -O0 -ffp-contract=off, glibc 2.39 with crlibm_shim.c"
+}

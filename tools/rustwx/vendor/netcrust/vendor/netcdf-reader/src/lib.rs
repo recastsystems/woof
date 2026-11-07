@@ -240,6 +240,16 @@ impl NcFile {
         self.format
     }
 
+    /// A classic variable's stored position ([`classic::ClassicFile::extent`]); `None` for
+    /// NetCDF-4, whose values are not one contiguous big-endian run.
+    pub fn classic_extent(&self, name: &str) -> Option<classic::ClassicExtent> {
+        match &self.inner {
+            NcFileInner::Classic(c) => c.extent(name).ok(),
+            #[cfg(feature = "netcdf4")]
+            NcFileInner::Nc4(_) => None,
+        }
+    }
+
     /// The root group of the file.
     ///
     /// Classic files have a single implicit root group containing all

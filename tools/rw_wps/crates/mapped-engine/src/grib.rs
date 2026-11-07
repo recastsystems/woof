@@ -772,11 +772,73 @@ pub fn declared_lambert_axes(
     declaration: &GridDeclaration,
     source: &str,
 ) -> Option<(Vec<f64>, Vec<f64>)> {
-    if !declaration.is_lambert() || message.grid.template != 30 || message.grid.scan_mode != 0x40 {
+    let template = declared_template(declaration)?;
+    if message.grid.template != template || message.grid.scan_mode != 0x40 {
         return None;
     }
     require_declared_grid(message, index, declaration, source).ok()?;
-    declaration.parameters.as_ref().map(|parameters| parameters.projected_axes())
+    declaration.projected_axes()
+}
+
+/// The GRIB2 grid definition template a declared projected family is
+/// published under: 3.30 for Lambert, 3.1 for a rotated lattice.
+fn declared_template(declaration: &GridDeclaration) -> Option<u16> {
+    if declaration.is_lambert() {
+        Some(30)
+    } else if declaration.is_rotated() {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+/// `require_declared_grid` for a declared rotated lattice (GDT 3.1): every
+/// Section 3 number the declaration states, at the Lambert check's 1e-6.
+fn require_declared_rotated_grid(
+    message: &Grib2Message,
+    index: usize,
+    declaration: &GridDeclaration,
+    source: &str,
+) -> Result<()> {
+    let parameters = declaration
+        .rotated
+        .as_ref()
+        .expect("rotated declarations carry parameters");
+    let grid = &message.grid;
+    let mut mismatched: Vec<String> = Vec::new();
+    let mut compare_float = |key: &str, observed: f64, declared: f64| {
+        if (observed - declared).abs() > 1e-6 {
+            mismatched.push(format!("{key}: declared {declared}, observed {observed}"));
+        }
+    };
+    compare_float("lat1", grid.lat1, parameters.lat1);
+    compare_float("lon1", grid.lon1, parameters.lon1);
+    compare_float("dlat_deg", grid.dy, parameters.dlat_deg);
+    compare_float("dlon_deg", grid.dx, parameters.dlon_deg);
+    compare_float("south_pole_lat", grid.south_pole_lat, parameters.south_pole_lat);
+    compare_float("south_pole_lon", grid.south_pole_lon, parameters.south_pole_lon);
+    compare_float("rotation_angle", grid.rotation_angle, parameters.rotation_angle);
+    if grid.nx as i64 != parameters.nx {
+        mismatched.push(format!("nx: declared {}, observed {}", parameters.nx, grid.nx));
+    }
+    if grid.ny as i64 != parameters.ny {
+        mismatched.push(format!("ny: declared {}, observed {}", parameters.ny, grid.ny));
+    }
+    if grid.shape_of_earth as i64 != parameters.shape_of_earth {
+        mismatched.push(format!(
+            "shape_of_earth: declared {}, observed {}",
+            parameters.shape_of_earth, grid.shape_of_earth
+        ));
+    }
+    if !mismatched.is_empty() {
+        mismatched.sort();
+        return Err(grid_mismatch(format!(
+            "GRIB2 field {index} in {source} is not on the declared \
+             rotated_latitude_longitude grid; {}",
+            mismatched.join("; ")
+        )));
+    }
+    Ok(())
 }
 
 /// `mapped_source._require_declared_grib2_grid`.
@@ -786,6 +848,10 @@ fn require_declared_grid(
     declaration: &GridDeclaration,
     source: &str,
 ) -> Result<()> {
+    if declaration.is_rotated() {
+        require_declared_rotated_grid(message, index, declaration, source)?;
+        return require_declared_wind_basis(message, index, declaration, source);
+    }
     let parameters = declaration
         .parameters
         .as_ref()
@@ -834,6 +900,18 @@ fn require_declared_grid(
             mismatched.join("; ")
         )));
     }
+    require_declared_wind_basis(message, index, declaration, source)
+}
+
+/// The record's vector-component basis (resolution flags bit 0x08) is the
+/// one the mapping declares.
+fn require_declared_wind_basis(
+    message: &Grib2Message,
+    index: usize,
+    declaration: &GridDeclaration,
+    source: &str,
+) -> Result<()> {
+    let grid = &message.grid;
     let grid_relative = grid.resolution_flags & GRIB2_GRID_RELATIVE_WIND_BIT != 0;
     if grid_relative != declaration.rotates_winds() {
         return Err(grid_mismatch(format!(
@@ -1053,8 +1131,8 @@ fn grib2_record(
     // A projected (Lambert) record has no row/column-addressable packing,
     // so it is unpacked whole below and cropped to the window at once: one
     // plane is transient on its worker, and only the window is retained.
-    let projected_window = window.filter(|_| declaration.is_lambert());
-    if let Some(window) = window.filter(|_| !declaration.is_lambert()) {
+    let projected_window = window.filter(|_| declaration.is_projected());
+    if let Some(window) = window.filter(|_| !declaration.is_projected()) {
         if window.ladder.contains(&index) {
             return Err(decode_failed(format!(
                 "GRIB2 field {index} in {source_label}: a regular-grid window decode \n                 never unpacks the whole plane its pressure ladder is taken from"
@@ -1090,21 +1168,20 @@ fn grib2_record(
             raw.len()
         )));
     }
-    let (latitude, longitude, values) = if declaration.is_lambert() {
-        if message.grid.template != 30 || message.grid.scan_mode != 0x40 {
+    let (latitude, longitude, values) = if declaration.is_projected() {
+        let template = declared_template(declaration).expect("projected family");
+        if message.grid.template != template || message.grid.scan_mode != 0x40 {
             return Err(grid_mismatch(format!(
-                "the mapping declares a lambert_conformal source grid, \
-                 which requires GRIB2 GDT 30 with scan mode 0x40; field \
+                "the mapping declares a {} source grid, \
+                 which requires GRIB2 GDT {template} with scan mode 0x40; field \
                  {index} in {source_label} carries GDT {} scan 0x{:02x}",
-                message.grid.template, message.grid.scan_mode
+                declaration.family, message.grid.template, message.grid.scan_mode
             )));
         }
         require_declared_grid(message, index, declaration, source_label)?;
-        let parameters = declaration
-            .parameters
-            .as_ref()
-            .expect("lambert declarations carry parameters");
-        let (y, x) = parameters.projected_axes();
+        let (y, x) = declaration
+            .projected_axes()
+            .expect("projected declarations carry parameters");
         (y, x, raw)
     } else {
         regular_latlon_frame(message, &raw)?

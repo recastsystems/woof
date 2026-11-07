@@ -32,6 +32,16 @@ COMPILE_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=tru
 MAX_LEVELS = 256
 
 _SUPPORT = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_40400000_DEFINED
+#define HEX_DIVISOR_40400000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40400000 = 3.0f;
+#else
+static const float hex_divisor_40400000 = 3.0f;
+#endif
+#endif
+
 
 // MPAS module_mp_thompson.F:1400-3642; strict native SSE scalar arithmetic.
 // MPAS module_mp_thompson.F:1400-3642; strict native SSE scalar arithmetic.
@@ -274,7 +284,7 @@ __device__ double refl_rayleigh_soak_wetgraupel(
         volg = (fm <= fmgrenz) ? (1.0 - mra * fm) * vg
                                : (x_g - x_w) / 900.0 + x_w / 1000.0;
     }
-    double d_large = tc_pow(6.0 / 3.1415926535897932384626434 * volg, (double)(1.0f / 3.0f));         // MPAS mp_radar.F90:269
+    double d_large = tc_pow(6.0 / 3.1415926535897932384626434 * volg, (double)(1.0f / hex_divisor_40400000));         // MPAS mp_radar.F90:269
     double volice = (x_g - x_w) / (volg * 900.0);              // MPAS mp_radar.F90:270
     double volwater = x_w / (1000.0 * volg);                   // MPAS mp_radar.F90:271
     double volair = 1.0 - volice - volwater;                   // MPAS mp_radar.F90:272
@@ -5035,6 +5045,26 @@ def workspace_bytes(layout: Mapping, kernel: str, nz: int, stride: int) -> int:
     return size
 
 
+def _compact_workspace_source(text: str) -> str:
+    """Remove planes whose last reference was eliminated by phase splitting.
+
+    The mapping is injective over every remaining view in the translation
+    unit, including radar and driver views. No live arrays share a new plane.
+    Strict mode never calls this transformation.
+    """
+    import re
+    pattern = re.compile(r'((?:m\.)?ws\.(dd|ff|bb))\((\d+)\)')
+    used = {method: sorted({int(m.group(3)) for m in pattern.finditer(text)
+                            if m.group(2) == method}) for _, method, _ in _WS_TYPES}
+    maps = {method: {old: new for new, old in enumerate(indices)}
+            for method, indices in used.items()}
+    text = pattern.sub(lambda m: f'{m.group(1)}({maps[m.group(2)][int(m.group(3))]})', text)
+    for kind, method, _ in _WS_TYPES:
+        define = re.compile(r'(#define TC_WS_\w+_N' + kind[0].upper() + r' )(\d+)')
+        text = define.sub(lambda m: m.group(1) + str(sum(i < int(m.group(2)) for i in used[method])), text)
+    return text
+
+
 def workspace_enabled() -> bool:
     import os
     value = os.environ.get("WOOF_HEX_THOMPSON_WORKSPACE", "1").strip().lower()
@@ -5061,7 +5091,8 @@ def workspace_budget_bytes() -> int:
     """Upper bound on one call's Thompson workspace tile, from the environment or the default."""
     import os
     value = os.environ.get("WOOF_HEX_THOMPSON_WORKSPACE_MIB", "").strip().lower()
-    default_mib = 512 if shared_card_memory() else WORKSPACE_BUDGET_MIB
+    bounded = shared_card_memory()
+    default_mib = 512 if bounded else WORKSPACE_BUDGET_MIB
     mib = default_mib if value in ("", "auto") else int(value)
     if mib < 64:
         raise ValueError("WOOF_HEX_THOMPSON_WORKSPACE_MIB must be at least 64")
@@ -5083,8 +5114,11 @@ def resident_columns(kernel, block_threads: int = 32) -> int:
     device = runtime.getDevice()
     key = (device, kernel.ptr, block_threads)
     if key not in _RESIDENT_COLUMNS:
-        sms = runtime.deviceGetAttribute(runtime.cudaDevAttrMultiProcessorCount, device)
-        blocks = driver.occupancyMaxActiveBlocksPerMultiprocessor(kernel.ptr, block_threads, 0)
+        from woof.hip_runtime import device_attribute
+        import cupy as cp
+        sms = device_attribute(cp, "MultiProcessorCount", device)
+        from woof.backend import active_blocks_per_multiprocessor
+        blocks = active_blocks_per_multiprocessor(kernel.ptr, block_threads, 0)
         _RESIDENT_COLUMNS[key] = max(1, sms * blocks) * block_threads
     return _RESIDENT_COLUMNS[key]
 
@@ -5167,7 +5201,51 @@ def _fast_support() -> str:
                             "__device__ __forceinline__ float tc_pow(float a,float b) {return powf(a,b);}", source)
     if count != 1:
         raise ValueError("Thompson fast maths: expected one binary32 tc_pow")
-    return source
+    return source + _ROUNDED_PRODUCT
+
+
+#: A product that is rounded on its own and never contracted into a following add (fast numerics only).
+#: See _PHASE_CLEANUP_ROUNDED.
+_ROUNDED_PRODUCT = (
+    "__device__ __forceinline__ float tc_mul_rn(float a,float b) {return __fmul_rn(a,b);}\n"
+    "__device__ __forceinline__ double tc_mul_rn(double a,double b) {return __dmul_rn(a,b);}\n"
+    "__device__ __forceinline__ int tc_mul_rn(int a,int b) {return a*b;}\n"
+    "template<class A,class B> __device__ __forceinline__ auto tc_mul_rn(A a,B b)->decltype(a+b) "
+    "{using T=decltype(a+b);return tc_mul_rn(T(a),T(b));}\n")
+
+#: Native lines of the phase cleanup (module_mp_thompson.F:3552-3569: instant melt of ice above 0 C, instant
+#: freeze of cloud below HGFR) and the products in them.
+_PHASE_CLEANUP_LINES = (3552, 3569)
+_PHASE_CLEANUP_PRODUCTS = 19
+
+
+@lru_cache(maxsize=1)
+def _fast_column() -> str:
+    """The column statements for fast numerics: the phase cleanup keeps native's separately rounded products.
+
+    THE BREAKAGE THIS PREVENTS (ECT, 2026-11-02): with contraction, ``qcten - xrc*odt`` (3567) became one
+    fused operation, so the cloud left after the freeze, qc + qcten*dt at 3580, is exactly
+    xrc*(1 - fl(1/dt)*dt): its sign is fixed by dt (negative at dt 1200 s), and the R1 clip at 3584 removed
+    it in every column, where native's two roundings leave a residual of either sign that refreezes next
+    step with its droplet number. Fast hex lost cloud ice: qi -4.5 %, ni -5.2 % at 1 h on x1.2562
+    (convection_permitting, seed 1001, 5070 Ti), and failed the MPAS ensemble consistency test while native
+    -O3 passed. Rounding the 19 cleanup products on their own restores native's arithmetic in these
+    statements only; every other statement still contracts. Strict composes _COLUMN unchanged.
+    """
+    import re
+    lines = _COLUMN.split("\n")
+    line, count = None, 0
+    for i, text in enumerate(lines):
+        if text.startswith("// MPAS "):
+            match = re.fullmatch(r"// MPAS module_mp_thompson\.F:(\d+)", text)
+            line = int(match.group(1)) if match else None
+            continue
+        if line is not None and _PHASE_CLEANUP_LINES[0] <= line <= _PHASE_CLEANUP_LINES[1]:
+            count += text.count("tc_mul(")
+            lines[i] = text.replace("tc_mul(", "tc_mul_rn(")
+    if count != _PHASE_CLEANUP_PRODUCTS:
+        raise ValueError(f"Thompson phase cleanup: expected {_PHASE_CLEANUP_PRODUCTS} products, found {count}")
+    return "\n".join(lines)
 
 
 def cuda_source(*, device_math_source: str, max_levels: int = MAX_LEVELS, corrections=(),
@@ -5192,23 +5270,37 @@ def cuda_source(*, device_math_source: str, max_levels: int = MAX_LEVELS, correc
         "TABLE_DECLARATIONS", declarations).replace("TABLE_ASSIGNMENTS", assignments)
     mode = _hex_numerics.mode() if numerics is None else _hex_numerics.normalise(numerics)
     support = _SUPPORT if mode == "strict" else _fast_support()
-    text = f"#define THOMPSON_COLUMN_KMAX {max_levels}\n" + device_math_source + "\n" + support + _COLUMN + driver + _RADAR_DRIVER + _conversion_source() + _PRECIP
+    column = _COLUMN if mode == "strict" else _fast_column()
+    text = f"#define THOMPSON_COLUMN_KMAX {max_levels}\n" + device_math_source + "\n" + support + column + driver + _RADAR_DRIVER + _conversion_source() + _PRECIP
     if workspace:
         text = _workspace_source(text)[0]
         if mode == "fast":
             from .thompson_phases_v842 import split_source
             text = split_source(text, _body_end)
+            text = _compact_workspace_source(text)
     if not corrections:
         return text
     from .driver_v842 import correct_source
     return correct_source(text, CORRECT_MODE_SOURCE, corrections, "thompson_v842")
 
 
-@lru_cache(maxsize=1)
 def workspace_layout():
-    """Workspace slots per kernel (independent of levels, maths and corrections)."""
-    return _workspace_source(f"#define THOMPSON_COLUMN_KMAX {MAX_LEVELS}\n" + _SUPPORT + _COLUMN
-                             + _DRIVER + _RADAR_DRIVER)[1]
+    """Workspace slots for the current numerical mode, matching its module."""
+    return _workspace_layout(_hex_numerics.mode())
+
+
+@lru_cache(maxsize=2)
+def _workspace_layout(mode):
+    text = cuda_source(device_math_source='// layout only', workspace=True, numerics=mode)
+    return _layout_from_source(text)
+
+
+def _layout_from_source(text):
+    import re
+    return {kernel: {kind: int(re.search(r'#define TC_WS_' + kernel.upper()
+                    + '_N' + kind[0].upper() + r' (\d+)', text).group(1))
+                    for kind, _, _ in _WS_TYPES}
+            for kernel in ('mpas_thompson_step', 'mpas_thompson_radar')}
 
 
 # One entry per (card, maths, levels, corrections, workspace), unbounded on purpose. The correct-mode door asks

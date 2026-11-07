@@ -17,11 +17,18 @@ ARM_TABLE = re.compile(
     r"exp2f_tab|logf_tab|logf_invc|powf_log2_tab|powf_invc|gt_sincos_table", re.I)
 
 FDLIBM_FILES: tuple[str, ...] = (
+    # P3 strict MP52/53 replay: the FDLIBM expm1f its header already credits
+    # (licenses/LICENSE-FDLIBM-SunPro.txt).
+    "p3_gnu239.cuh",
+    # km_opt=5 reuses the ruc.cu expm1f and tanhf reductions.
+    "km5_math.cuh",
+    # Native mp=55 strict log10f, expm1f and tanhf reductions.
+    "flt32_log10_tanh.cuh",
     "mynn_pbl.cu", "noahmp_bareflux.cu",
     "noahmp_energy.cu", "noahmp_fluxprep.cu", "noahmp_glacier.cu",
     "noahmp_leaves.cu", "noahmp_vegeflux.cu", "ruc.cu",
     # gfk_log10, the Milbrandt-Yau units' log10 (the same reduction as
-    # mynn_pbl.cu's), lane/verify-milbrandt2mom-mp9.
+    # mynn_pbl.cu's), development branch.
     "log10_flt32.cuh",
     # Shipped in 2.8.8/2.8.9 outside the notice while the gate below was
     # deleted (7f00a76db); joined the list for 2.9.0.
@@ -57,6 +64,10 @@ FDLIBM_FILES: tuple[str, ...] = (
     "atan_scalar_flt32.cuh", "gf_wrf_normalization.cuh",
     "mynn_surface_libm.cuh", "nssl2_diagnostics.cu", "shinhong.cu",
     "terrain_drag.cu", "thompson_classic.cu", "thompson_fork.cu",
+    # PX selector 7 reuses the same s_atanf.c reduction and coefficient words.
+    "scalar_atan.cuh",
+    # Shape-aware NSSL retains e_log10f.c reduction/coefficient words.
+    "nssl2_shape_diagnostics.cu",
 )
 
 

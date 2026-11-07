@@ -34,8 +34,8 @@ Contract:
   with a bounded backoff, resuming the staged bytes; a network failure
   that outlasts it is :class:`HighresFetchRefusal`.  Transport failures
   are infrastructure faults, not coverage facts, and must never be
-  converted into a silent fallback, so ``on_refuse = "fallback-30s"``
-  does not apply to them.
+  converted into a silent fallback. The former ``fallback-30s`` option
+  is retired; an all-water footprint succeeds without a fallback.
 """
 from __future__ import annotations
 
@@ -698,9 +698,8 @@ class RangeExhausted(RuntimeError):
 
 
 #: What to do about :class:`HighresFetchRefusal` when nothing more
-#: specific is known.  ``on_refuse = "fallback-30s"`` is not offered: it
-#: answers a domain past a source's coverage, and a network outage is not
-#: that (see the module contract).
+#: specific is known. Network outages remain infrastructure failures;
+#: the former coverage fallback is retired (see the module contract).
 HIGHRES_FETCH_REMEDY = (
     "remedy: check this computer's connection to the host named above and "
     "prepare again; the high-resolution files already downloaded stay in "
@@ -716,8 +715,8 @@ class HighresFetchRefusal(PreparationRefusal):
     terrain tile host ended whole preparations as a raw ``URLError``
     traceback at exit 1.  A preparation door owns this class (two
     lines, the message and the remedy), and it is deliberately not a
-    :class:`HighresRefusal`, so ``on_refuse = "fallback-30s"`` never
-    turns a network outage into baseline terrain.
+    :class:`HighresRefusal`: a transport failure must not be represented
+    as a source-coverage fact or silently replaced by baseline terrain.
     """
 
     remedy = HIGHRES_FETCH_REMEDY

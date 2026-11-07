@@ -60,6 +60,277 @@
     }
   },
   "routes": {
+    "gfs-pressure": {
+      "label": "GFS full pressure product for canonical transforms",
+      "measured": "GFS/GDAS catalogue parity recorded in the packaged profile; exact archive objects probed at acquisition",
+      "hosts": [
+        {
+          "name": "aws",
+          "base": "https://noaa-gfs-bdp-pds.s3.amazonaws.com",
+          "retention_hours": null,
+          "why": "NOAA public archive",
+          "transfer_rank": 0
+        }
+      ],
+      "cycle_hours": [
+        0,
+        6,
+        12,
+        18
+      ],
+      "publication_lag": [
+        {
+          "cycle_hours": null,
+          "hours": 6,
+          "late_hours": 2,
+          "measured": "Conservative planning allowance, not a measured latency"
+        }
+      ],
+      "posting": {
+        "shape": "whole_cycle",
+        "ready_check": "objects_and_index",
+        "late_after_minutes": 120,
+        "poll_seconds": 60,
+        "why": "Every requested GFS product must exist"
+      },
+      "ladders": [
+        {
+          "cycle_hours": null,
+          "steps": [
+            [
+              120,
+              3
+            ]
+          ]
+        }
+      ],
+      "default_cadence": 3,
+      "layout": "flat",
+      "files": [
+        {
+          "role": "state",
+          "primary": true,
+          "leads": "all",
+          "path": "gfs.{YYYYMMDD}/{HH}/atmos/gfs.t{HH}z.pgrb2.0p25.f{FFF}",
+          "idx_sidecar": ".idx"
+        }
+      ],
+      "record_subset": {
+        "supported": false,
+        "why": "Whole pressure GRIB2 retains all five hydrometeor species"
+      },
+      "prep": {
+        "source": "gfs-pressure",
+        "supplement": {
+          "from": "every_input",
+          "role": "native_surface"
+        }
+      }
+    },
+    "hafs-a": {
+      "label": "HAFS-A parent or moving storm pressure GRIB2",
+      "measured": "2026-10-24 archive object and Rust inventory inspection; publication latency unmeasured",
+      "hosts": [
+        {
+          "name": "nomads",
+          "base": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/hafs/prod",
+          "retention_hours": 48,
+          "why": "NOAA rolling operational publisher; dated variant directories",
+          "key_rewrite": [
+            "hfsa/(?P<date>\\d{8})/(?P<hour>\\d{2})/(?P<file>[^/]+)",
+            "hfsa.{date}/{hour}/{file}"
+          ]
+        },
+        {
+          "name": "aws",
+          "base": "https://noaa-nws-hafs-pds.s3.amazonaws.com",
+          "retention_hours": null,
+          "why": "NOAA anonymous NODD historical archive from 2023",
+          "transfer_rank": 0
+        }
+      ],
+      "cycle_hours": [
+        0,
+        6,
+        12,
+        18
+      ],
+      "publication_lag": [
+        {
+          "cycle_hours": null,
+          "hours": 8,
+          "late_hours": 2,
+          "measured": "Conservative planning allowance, not a measured latency"
+        }
+      ],
+      "posting": {
+        "shape": "donor_gated",
+        "ready_check": "objects_and_index",
+        "late_after_minutes": 120,
+        "poll_seconds": 60,
+        "why": "Atmosphere plus same-cycle GDAS soil donor must both exist"
+      },
+      "ladders": [
+        {
+          "cycle_hours": null,
+          "steps": [
+            [
+              126,
+              3
+            ]
+          ]
+        }
+      ],
+      "default_cadence": 3,
+      "layout": "flat",
+      "parameters": {
+        "STORM": {
+          "pattern": "[0-9]{2}[a-z]",
+          "why": "ATCF basin-coded storm ID in the published object name"
+        },
+        "DOMAIN": {
+          "default": "parent",
+          "choices": [
+            "parent",
+            "storm"
+          ],
+          "why": "Published parent grid or storm-following grid"
+        }
+      },
+      "files": [
+        {
+          "role": "state",
+          "primary": true,
+          "leads": "all",
+          "path": "hfsa/{YYYYMMDD}/{HH}/{STORM}.{YYYYMMDDHH}.hfsa.{DOMAIN}.atm.f{FFF}.grb2",
+          "idx_sidecar": ".idx"
+        }
+      ],
+      "donors": [
+        {
+          "source": "gdas",
+          "role": "physical_analysis_surface_data",
+          "leads": [
+            0
+          ],
+          "cycle": "same",
+          "why": "HAFS pressure GRIB2 publishes no soil; use explicit same-cycle physical analysis soil"
+        }
+      ],
+      "record_subset": {
+        "supported": false,
+        "why": "Whole pressure GRIB2 retains all five hydrometeor species"
+      },
+      "prep": {
+        "source": "hafs-a",
+        "supplement": {
+          "from": "every_input",
+          "role": "native_surface"
+        }
+      }
+    },
+    "hafs-b": {
+      "label": "HAFS-B parent or moving storm pressure GRIB2",
+      "measured": "2026-10-24 archive object and Rust inventory inspection; publication latency unmeasured",
+      "hosts": [
+        {
+          "name": "nomads",
+          "base": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/hafs/prod",
+          "retention_hours": 48,
+          "why": "NOAA rolling operational publisher; dated variant directories",
+          "key_rewrite": [
+            "hfsb/(?P<date>\\d{8})/(?P<hour>\\d{2})/(?P<file>[^/]+)",
+            "hfsb.{date}/{hour}/{file}"
+          ]
+        },
+        {
+          "name": "aws",
+          "base": "https://noaa-nws-hafs-pds.s3.amazonaws.com",
+          "retention_hours": null,
+          "why": "NOAA anonymous NODD historical archive from 2023",
+          "transfer_rank": 0
+        }
+      ],
+      "cycle_hours": [
+        0,
+        6,
+        12,
+        18
+      ],
+      "publication_lag": [
+        {
+          "cycle_hours": null,
+          "hours": 8,
+          "late_hours": 2,
+          "measured": "Conservative planning allowance, not a measured latency"
+        }
+      ],
+      "posting": {
+        "shape": "donor_gated",
+        "ready_check": "objects_and_index",
+        "late_after_minutes": 120,
+        "poll_seconds": 60,
+        "why": "Atmosphere plus same-cycle GDAS soil donor must both exist"
+      },
+      "ladders": [
+        {
+          "cycle_hours": null,
+          "steps": [
+            [
+              126,
+              3
+            ]
+          ]
+        }
+      ],
+      "default_cadence": 3,
+      "layout": "flat",
+      "parameters": {
+        "STORM": {
+          "pattern": "[0-9]{2}[a-z]",
+          "why": "ATCF basin-coded storm ID in the published object name"
+        },
+        "DOMAIN": {
+          "default": "parent",
+          "choices": [
+            "parent",
+            "storm"
+          ],
+          "why": "Published parent grid or storm-following grid"
+        }
+      },
+      "files": [
+        {
+          "role": "state",
+          "primary": true,
+          "leads": "all",
+          "path": "hfsb/{YYYYMMDD}/{HH}/{STORM}.{YYYYMMDDHH}.hfsb.{DOMAIN}.atm.f{FFF}.grb2",
+          "idx_sidecar": ".idx"
+        }
+      ],
+      "donors": [
+        {
+          "source": "gdas",
+          "role": "physical_analysis_surface_data",
+          "leads": [
+            0
+          ],
+          "cycle": "same",
+          "why": "HAFS pressure GRIB2 publishes no soil; use explicit same-cycle physical analysis soil"
+        }
+      ],
+      "record_subset": {
+        "supported": false,
+        "why": "Whole pressure GRIB2 retains all five hydrometeor species"
+      },
+      "prep": {
+        "source": "hafs-b",
+        "supplement": {
+          "from": "every_input",
+          "role": "native_surface"
+        }
+      }
+    },
     "icon-global": {
       "label": "DWD ICON global 13 km native GDT-101, bz2 objects",
       "measured": "2026-09-15 (catalogue inspection; live decode gate pending)",
@@ -751,18 +1022,79 @@
       "label": "RRFS prslev + 2dfld, 3 km CONUS",
       "measured": "2026-08-17",
       "hosts": [
-        {"name": "nomads", "base": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rrfs/v1.0", "default": true, "retention_hours": 48, "transfer_rank": 1, "why": "the operational server publishes each forecast hour first; 2 day directories present, measured 2026-08-24"},
-        {"name": "aws", "base": "https://noaa-rrfs-ops-pds.s3.amazonaws.com", "retention_hours": null, "transfer_rank": 0, "why": "the AWS Open Data operational bucket is the unbounded archive; it lags publication, and serves what it has caught up with several times quicker at peak hours"}
+        {
+          "name": "nomads",
+          "base": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rrfs/v1.0",
+          "default": true,
+          "retention_hours": 48,
+          "transfer_rank": 1,
+          "why": "the operational server publishes each forecast hour first; 2 day directories present, measured 2026-08-24"
+        },
+        {
+          "name": "aws",
+          "base": "https://noaa-rrfs-ops-pds.s3.amazonaws.com",
+          "retention_hours": null,
+          "transfer_rank": 0,
+          "why": "the AWS Open Data operational bucket is the unbounded archive; it lags publication, and serves what it has caught up with several times quicker at peak hours"
+        }
       ],
-      "host_note": "noaa-rrfs-pds is the RETIRED prototype feed: it stopped mid-day on 2026-08-12 by design and nothing newer will ever appear there. The operational bucket is noaa-rrfs-ops-pds, and NOMADS serves the same product set under rrfs/v1.0 (rrfs/prod is 403 until the 2026-10-06 implementation).",
-      "cycle_note": "RRFS runs hourly, but only the 00/06/12/18Z cycles publish the hourly prslev/2dfld pair this profile initialises from. MEASURED 2026-08-16: a synoptic cycle holds 1,846 objects with prslev f000..f084; an off-synoptic cycle holds 144, all of them sub-hourly 2dfld, with no prslev at any lead. Offering the off-synoptic cycles here would resolve keys that are 404s.",
-      "cycle_hours": [0, 6, 12, 18],
+      "host_note": "The public ops archive starts on 2026-08-12. The old noaa-rrfs-pds rrfs_a/ prefix is gone; it retains only retro output and samples. NOMADS also serves the pair under rrfs/v1.0.",
+      "cycle_note": "The public ops pair is available at eight cycles per day: 00/06/12/18 UTC to f084 and 03/09/15/21 UTC to f018, from 2026-08-12.",
+      "cycle_hours": [
+        0,
+        3,
+        6,
+        9,
+        12,
+        15,
+        18,
+        21
+      ],
       "publication_lag": [
-        {"cycle_hours": null, "hours": 1.2, "per_lead_hours": 0.0198, "late_hours": 0.8, "measured": "2026-09-30 posting watch (each object's own time on the ladder head: directory listings and HEAD, leads HEADed as they posted): 5 cycles 29 Sep 06Z to 30 Sep 06Z: f000 at + 1 h 13 min to 1 h 49 min, f084 at + 2 h 53 min to 3 h 29 min"}
+        {
+          "cycle_hours": null,
+          "hours": 1.2,
+          "per_lead_hours": 0.0198,
+          "late_hours": 0.8,
+          "measured": "2026-09-30 posting watch (each object's own time on the ladder head: directory listings and HEAD, leads HEADed as they posted): 5 cycles 29 Sep 06Z to 30 Sep 06Z: f000 at + 1 h 13 min to 1 h 49 min, f084 at + 2 h 53 min to 3 h 29 min"
+        }
       ],
-      "posting": {"shape": "rolling", "ready_check": "objects_and_index", "late_after_minutes": 90, "poll_seconds": 30, "why": "one prslev and one 2dfld object with their .idx per lead, posted in lead order over about 1 h 40 min; its f000 alone spreads 36 min (+ 1 h 13 min to 1 h 49 min), so the budget is 90 min"},
+      "posting": {
+        "shape": "rolling",
+        "ready_check": "objects_and_index",
+        "late_after_minutes": 90,
+        "poll_seconds": 30,
+        "why": "one prslev and one 2dfld object with their .idx per lead, posted in lead order over about 1 h 40 min; its f000 alone spreads 36 min (+ 1 h 13 min to 1 h 49 min), so the budget is 90 min"
+      },
       "ladders": [
-        {"cycle_hours": null, "steps": [[84, 1]]}
+        {
+          "cycle_hours": [
+            0,
+            6,
+            12,
+            18
+          ],
+          "steps": [
+            [
+              84,
+              1
+            ]
+          ]
+        },
+        {
+          "cycle_hours": [
+            3,
+            9,
+            15,
+            21
+          ],
+          "steps": [
+            [
+              18,
+              1
+            ]
+          ]
+        }
       ],
       "default_cadence": 1,
       "layout": "flat",
@@ -773,7 +1105,16 @@
           "leads": "all",
           "path": "rrfs.{YYYYMMDD}/{HH}/rrfs.t{HH}z.prslev.3km.f{FFF}.conus.grib2",
           "idx_sidecar": ".idx",
-          "record_index": {"format": "ncep-idx", "select": [["HGT|TMP|SPFH|UGRD|VGRD", "[0-9.]+ mb"]], "why": "the records the packaged mapping binds from prslev: geopotential height, temperature, specific humidity and wind on every isobaric level (5 fields x 45 levels), selected by the .idx beside the object. Measured on the 2026-10-29 06Z and 12Z indexes: 225 of 675 records, about 288 of 560-570 MB per lead. The decode reads only these records, so the start is the same"}
+          "record_index": {
+            "format": "ncep-idx",
+            "select": [
+              [
+                "HGT|TMP|SPFH|UGRD|VGRD",
+                "[0-9.]+ mb"
+              ]
+            ],
+            "why": "the records the packaged mapping binds from prslev: geopotential height, temperature, specific humidity and wind on every isobaric level (5 fields x 45 levels), selected by the .idx beside the object. Measured on the 2026-10-29 06Z and 12Z indexes: 225 of 675 records, about 288 of 560-570 MB per lead. The decode reads only these records, so the start is the same"
+          }
         },
         {
           "role": "2dfld",
@@ -781,7 +1122,28 @@
           "leads": "all",
           "path": "rrfs.{YYYYMMDD}/{HH}/rrfs.t{HH}z.2dfld.3km.f{FFF}.conus.grib2",
           "idx_sidecar": ".idx",
-          "record_index": {"format": "ncep-idx", "select": [["PRES|HGT|TMP|LAND|ICEC|WEASD|SNOD", "surface"], ["TMP|SPFH", "2 m above ground"], ["UGRD|VGRD", "10 m above ground"], ["TSOIL|SOILW", "[0-9.]+-[0-9.]+ m below ground"]], "why": "the records the packaged mapping binds from 2dfld: surface pressure, terrain, skin temperature, land, sea ice, snow water and depth, 2 m temperature and humidity, 10 m wind, and every TSOIL and SOILW line below ground. Records are chosen by .idx LINE, never by level key, so all nine zero-thickness RUC soil nodes come along (five of them share one ecCodes level key, which is why a level-keyed selection would drop them). Measured on the 2026-10-29 06Z and 12Z indexes: 29 of 262-314 records, about 40 of 311-350 MB per lead. The decode reads only these records, so the start is the same"}
+          "record_index": {
+            "format": "ncep-idx",
+            "select": [
+              [
+                "PRES|HGT|TMP|LAND|ICEC|WEASD|SNOD",
+                "surface"
+              ],
+              [
+                "TMP|SPFH",
+                "2 m above ground"
+              ],
+              [
+                "UGRD|VGRD",
+                "10 m above ground"
+              ],
+              [
+                "TSOIL|SOILW",
+                "[0-9.]+-[0-9.]+ m below ground"
+              ]
+            ],
+            "why": "the records the packaged mapping binds from 2dfld: surface pressure, terrain, skin temperature, land, sea ice, snow water and depth, 2 m temperature and humidity, 10 m wind, and every TSOIL and SOILW line below ground. Records are chosen by .idx LINE, never by level key, so all nine zero-thickness RUC soil nodes come along (five of them share one ecCodes level key, which is why a level-keyed selection would drop them). Measured on the 2026-10-29 06Z and 12Z indexes: 29 of 262-314 records, about 40 of 311-350 MB per lead. The decode reads only these records, so the start is the same"
+          }
         }
       ],
       "record_subset": {
@@ -790,10 +1152,12 @@
       },
       "prep": {
         "source": "rrfs",
-        "supplement": {"from": "role:2dfld", "role": "rrfs_prslev_2dfld_in_band_surface"}
+        "supplement": {
+          "from": "role:2dfld",
+          "role": "rrfs_prslev_2dfld_in_band_surface"
+        }
       }
     },
-
     "rrfs-ens": {
       "label": "RRFS public five-member pressure and surface subset",
       "measured": "2026-10-02",
@@ -2372,6 +2736,375 @@
       "prep": {
         "source": "gem-gdps",
         "supplement": {"from": "role:terrain", "role": "gdps_analysis_invariant_surface"}
+      }
+    },
+    "gem-hrdps": {
+      "label": "ECCC HRDPS (GEM continental) 2.5 km rotated lat-lon",
+      "measured": "2026-10-29",
+      "hosts": [
+        {
+          "name": "msc",
+          "base": "https://dd.weather.gc.ca",
+          "default": true,
+          "retention_hours": 696,
+          "why": "MSC Datamart, the publisher's own and only door: 30 day directories (20260929 to 20261029 listed on 2026-10-29), the oldest partly pruned, so 29 days (696 h) are counted as for GDPS; no archive stands behind it"
+        }
+      ],
+      "host_note": "MSC Datamart publishes one single-message JPEG2000 file per variable-level on HRDPS's 2540 x 1290 rotated lat-lon grid (GDT 3.1, 0.0225 degree, grid-relative winds). Every lead 000 to 048 is hourly and carries the full model state; terrain is published at every lead, the land mask and the ice analysis only at PT000H.",
+      "cycle_hours": [
+        0,
+        6,
+        12,
+        18
+      ],
+      "publication_lag": [
+        {
+          "cycle_hours": null,
+          "hours": 2.9,
+          "per_lead_hours": 0.009,
+          "late_hours": 0.5,
+          "measured": "2026-10-28 directory listings, all four cycles: PT000H objects at + 2 h 51 min to + 3 h 07 min, the PT048H directory at + 3 h 15 min to + 3 h 23 min"
+        }
+      ],
+      "posting": {
+        "shape": "rolling",
+        "ready_check": "objects",
+        "late_after_minutes": 60,
+        "poll_seconds": 30,
+        "why": "about 160 selected single-message files per lead on dd.weather.gc.ca, no index, posted in lead order: f000 at + 2 h 51 min, f048 at + 3 h 17 min (2026-10-28 12Z)"
+      },
+      "ladders": [
+        {
+          "cycle_hours": null,
+          "steps": [
+            [
+              48,
+              1
+            ]
+          ]
+        }
+      ],
+      "default_cadence": 1,
+      "layout": "flat",
+      "axes": {
+        "field": [
+          {
+            "names": [
+              "TMP",
+              "HGT",
+              "SPFH",
+              "UGRD",
+              "VGRD"
+            ],
+            "level_prefix": "ISBL_",
+            "level_format": "%04d",
+            "levels": [
+              50,
+              100,
+              150,
+              175,
+              200,
+              225,
+              250,
+              275,
+              300,
+              350,
+              400,
+              450,
+              500,
+              550,
+              600,
+              650,
+              700,
+              750,
+              800,
+              850,
+              875,
+              900,
+              925,
+              950,
+              970,
+              985,
+              1000,
+              1015
+            ]
+          },
+          {
+            "names": [
+              "TMP",
+              "SPFH"
+            ],
+            "level_literal": "AGL-2m"
+          },
+          {
+            "names": [
+              "UGRD",
+              "VGRD"
+            ],
+            "level_literal": "AGL-10m"
+          },
+          {
+            "names": [
+              "PRES",
+              "SKINT",
+              "SNOD",
+              "SDWE",
+              "HGT"
+            ],
+            "level_literal": "Sfc"
+          },
+          {
+            "names": [
+              "TSOIL",
+              "SOILW"
+            ],
+            "level_literal": "DBS-0-10cm"
+          }
+        ],
+        "analysis_invariant": [
+          {
+            "names": [
+              "LAND",
+              "ICEC"
+            ],
+            "level_literal": "Sfc"
+          }
+        ]
+      },
+      "files": [
+        {
+          "role": "state",
+          "primary": false,
+          "leads": "all",
+          "axis": "field",
+          "path": "{YYYYMMDD}/WXO-DD/model_hrdps/continental/2.5km/{HH}/{FFF}/{YYYYMMDD}T{HH}Z_MSC_HRDPS_{FIELD}_{LEVEL}_RLatLon0.0225_PT{FFF}H.grib2",
+          "idx_sidecar": null
+        },
+        {
+          "role": "analysis-invariant",
+          "primary": false,
+          "leads": "step0",
+          "axis": "analysis_invariant",
+          "path": "{YYYYMMDD}/WXO-DD/model_hrdps/continental/2.5km/{HH}/{FFF}/{YYYYMMDD}T{HH}Z_MSC_HRDPS_{FIELD}_{LEVEL}_RLatLon0.0225_PT{FFF}H.grib2",
+          "idx_sidecar": null
+        }
+      ],
+      "compose": [
+        {
+          "kind": "concat_per_lead",
+          "roles": [
+            "state",
+            "analysis-invariant"
+          ],
+          "primary": true,
+          "name": "composed/hrdps_{YYYYMMDDHH}_PT{FFF}H.grib2",
+          "why": "HRDPS ships one message per file; a valid time is that lead's files concatenated, the standard GRIB2 multi-record form. Terrain rides every lead in band; the land mask and the ice analysis exist ONLY at the analysis lead (LAND_Sfc and ICEC_Sfc are absent from PT001H onward, listed 2026-10-28), and the profile declares them once-per-cycle invariants the engine broadcasts, so the cycle's step-0 objects join the window's first composed state, whatever lead it starts at, and nothing else."
+        }
+      ],
+      "record_subset": {
+        "supported": false,
+        "why": "each Datamart object is ONE GRIB2 message -- the file IS the record"
+      },
+      "prep": {
+        "source": "gem-hrdps",
+        "supplement": {
+          "from": "every_input",
+          "role": "hrdps_in_band_surface"
+        }
+      }
+    },
+    "gem-rdps": {
+      "label": "ECCC RDPS (GEM regional) 10 km rotated lat-lon",
+      "measured": "2026-10-29",
+      "hosts": [
+        {
+          "name": "msc",
+          "base": "https://dd.weather.gc.ca",
+          "default": true,
+          "retention_hours": 696,
+          "why": "MSC Datamart, the publisher's own and only door: 30 day directories, the oldest partly pruned, so 29 days (696 h) are counted as for GDPS; no archive stands behind it"
+        }
+      ],
+      "host_note": "MSC Datamart publishes one single-message JPEG2000 file per variable-level on RDPS's 1140 x 1045 rotated lat-lon grid (GDT 3.1, 0.090298 degree, grid-relative winds). Leads 000 to 084 are hourly and each carries the full 33-level state; orography, land mask and ice analysis exist only at PT000H.",
+      "cycle_hours": [
+        0,
+        6,
+        12,
+        18
+      ],
+      "publication_lag": [
+        {
+          "cycle_hours": null,
+          "hours": 2.7,
+          "per_lead_hours": 0.005,
+          "late_hours": 0.5,
+          "measured": "2026-10-28 directory listings, all four cycles: PT000H at + 2 h 41 min to + 2 h 43 min, the PT084H directory at + 3 h 05 min to + 3 h 07 min"
+        }
+      ],
+      "posting": {
+        "shape": "rolling",
+        "ready_check": "objects",
+        "late_after_minutes": 70,
+        "poll_seconds": 30,
+        "why": "about 175 selected single-message files per lead on dd.weather.gc.ca, no index, posted in lead order: f000 at + 2 h 42 min, f084 at + 3 h 05 min (2026-10-28 12Z)"
+      },
+      "ladders": [
+        {
+          "cycle_hours": null,
+          "steps": [
+            [
+              84,
+              1
+            ]
+          ]
+        }
+      ],
+      "default_cadence": 1,
+      "layout": "flat",
+      "axes": {
+        "field": [
+          {
+            "names": [
+              "AirTemp",
+              "GeopotentialHeight",
+              "SpecificHumidity",
+              "WindU",
+              "WindV"
+            ],
+            "level_prefix": "IsbL-",
+            "level_format": "%04d",
+            "levels": [
+              1,
+              5,
+              10,
+              20,
+              30,
+              50,
+              100,
+              150,
+              175,
+              200,
+              225,
+              250,
+              275,
+              300,
+              350,
+              400,
+              450,
+              500,
+              550,
+              600,
+              650,
+              700,
+              750,
+              800,
+              850,
+              875,
+              900,
+              925,
+              950,
+              970,
+              985,
+              1000,
+              1015
+            ]
+          },
+          {
+            "names": [
+              "AirTemp",
+              "SpecificHumidity"
+            ],
+            "level_literal": "AGL-2m"
+          },
+          {
+            "names": [
+              "WindU",
+              "WindV"
+            ],
+            "level_literal": "AGL-10m"
+          },
+          {
+            "names": [
+              "Pressure",
+              "RadiativeTemp",
+              "SnowDepth"
+            ],
+            "level_literal": "Sfc"
+          },
+          {
+            "names": [
+              "SoilTemp",
+              "SoilVolumetricWaterContent"
+            ],
+            "level_literal": "DBS-0to10cm"
+          }
+        ],
+        "analysis_invariant": [
+          {
+            "names": [
+              "LandWaterProportion",
+              "SeaIceFraction"
+            ],
+            "level_literal": "Sfc"
+          }
+        ],
+        "terrain": [
+          {
+            "names": [
+              "GeopotentialHeight"
+            ],
+            "level_literal": "Sfc"
+          }
+        ]
+      },
+      "files": [
+        {
+          "role": "state",
+          "primary": false,
+          "leads": "all",
+          "axis": "field",
+          "path": "{YYYYMMDD}/WXO-DD/model_rdps/10km/{HH}/{FFF}/{YYYYMMDD}T{HH}Z_MSC_RDPS_{FIELD}_{LEVEL}_RLatLon0.09_PT{FFF}H.grib2",
+          "idx_sidecar": null
+        },
+        {
+          "role": "analysis-invariant",
+          "primary": false,
+          "leads": "step0",
+          "axis": "analysis_invariant",
+          "path": "{YYYYMMDD}/WXO-DD/model_rdps/10km/{HH}/{FFF}/{YYYYMMDD}T{HH}Z_MSC_RDPS_{FIELD}_{LEVEL}_RLatLon0.09_PT{FFF}H.grib2",
+          "idx_sidecar": null
+        },
+        {
+          "role": "terrain",
+          "primary": false,
+          "leads": "step0",
+          "axis": "terrain",
+          "path": "{YYYYMMDD}/WXO-DD/model_rdps/10km/{HH}/{FFF}/{YYYYMMDD}T{HH}Z_MSC_RDPS_{FIELD}_{LEVEL}_RLatLon0.09_PT{FFF}H.grib2",
+          "idx_sidecar": null
+        }
+      ],
+      "compose": [
+        {
+          "kind": "concat_per_lead",
+          "roles": [
+            "state",
+            "analysis-invariant"
+          ],
+          "primary": true,
+          "name": "composed/rdps_{YYYYMMDDHH}_PT{FFF}H.grib2",
+          "why": "RDPS ships one message per file, as GDPS does; a valid time is that lead's files concatenated. Orography, land mask and ice analysis exist only at the analysis lead (absent from PT001H and PT003H, listed 2026-10-28), declared once-per-cycle invariants the engine broadcasts."
+        }
+      ],
+      "record_subset": {
+        "supported": false,
+        "why": "each Datamart object is ONE GRIB2 message -- the file IS the record"
+      },
+      "prep": {
+        "source": "gem-rdps",
+        "supplement": {
+          "from": "role:terrain",
+          "role": "rdps_analysis_invariant_surface"
+        }
       }
     },
     "gefs-reforecast": {

@@ -1,0 +1,46 @@
+{
+  "schema": "gpuwm-pxsfclay-native-capture-v1",
+  "origin": "real WRF forecast, instrumented PXSFCLAY driver",
+  "wrf_version": "4.6.1",
+  "wrf_source_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "px_source_sha256": "cd1b2095f8e093d4bc423ebbc4a3bfbce58a7d17b34f1f41d770c6061b68d0a4",
+  "source_license": "WRF public domain, LICENSE.txt",
+  "referee_glibc": "2.43",
+  "compiler": "GNU Fortran 15.2.0",
+  "compiler_flags": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+  "native_wrf_exe_sha256": "0b9a576d41c8590352e24d5cfaccb567a98dde34afeecddfa5b2a8e6cb2e9b2a",
+  "input_sha256": {
+    "wrfinput_d01": "8121a77ddddc8ba5637ca1e729a90d1ca3cb0dd52826a6fafdeda3496400c569",
+    "wrfbdy_d01": "bb77061a5bca7f385a8d55fcf2b48505308652d173426ce4acffbaa577cebafb"
+  },
+  "case": {
+    "start": "2026-10-16T09:00:00Z",
+    "mass_grid": [
+      300,
+      300,
+      49
+    ],
+    "dx_m": 3000,
+    "dt_s": 15,
+    "sf_sfclay_physics": 7,
+    "bl_pbl_physics": 9,
+    "sf_surface_physics": 2,
+    "mp_physics": 6
+  },
+  "capture": "first row of each of four MPI tiles, native steps 1, 2, 3; 13 constants, 12 input arrays, 24 before and 24 after state arrays",
+  "sha256": {
+    "namelist.input": "06d4ed46a0af5a95c7f0faa523dd2ce3938bf4204ae2ad1d3f3cbecab4a2eb12",
+    "pxcap-00001-00001-00001.bin.gz": "7421b7e3f66c3395d4522c86cf15868f3c0a0e2b455676961aefb2ba880a4e8e",
+    "pxcap-00001-00001-00002.bin.gz": "f884b7ca8aa372ab0460bfbdb8130acd913bf0655e651086b39e65348a854343",
+    "pxcap-00001-00001-00003.bin.gz": "01ad2ef5d1a4c8555bf10600ab636ca1eab2d75aa39f30a2247fa841b5de5bc4",
+    "pxcap-00001-00151-00001.bin.gz": "ee94063470dff41770cb3ee412470ab659684c8791d9a2cd6d8ce28824665134",
+    "pxcap-00001-00151-00002.bin.gz": "d64f27b3b7368bcab364c11666625c805ced302bf809c0c1b3429c6d1156820f",
+    "pxcap-00001-00151-00003.bin.gz": "3627dfb15e1db35b504bdd750a4ccfa4223a1943a4175233d622f98243fbc466",
+    "pxcap-00151-00001-00001.bin.gz": "565f79c32ae0bc255a1a2a21294d8f122237d5af0d9e5a03699663d1962a99a4",
+    "pxcap-00151-00001-00002.bin.gz": "7143ddbb9589e10052175dd39190ce2795e76028274879fc5dee3896c420c45e",
+    "pxcap-00151-00001-00003.bin.gz": "521ce81b61dc34129a8c73049f1dc4d5851d5fc7a5b4d572c4671701ea01c64f",
+    "pxcap-00151-00151-00001.bin.gz": "d76576750635c39feb0db9d39b8b6262a6022e54e8b7cd29cf153eeeb6232884",
+    "pxcap-00151-00151-00002.bin.gz": "17e69e55097a80c4c584d58163d49ef7794a0b12446f154b9f960d6e5ef263f3",
+    "pxcap-00151-00151-00003.bin.gz": "5394e789cc490747703943a7ceca1a7c11c46fb28ad772724946df82fc271e5e"
+  }
+}

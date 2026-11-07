@@ -96,6 +96,20 @@ def _layer(sequence, k, nsnow: int = NSNOW):
 def _refuse_unadmitted(ice, ist):
     """``ICE != 0`` and ``IST != 1`` are refused, with the column named."""
     import cupy as cp
+    from woof.core import health_ledger
+
+    ledger = health_ledger.active()
+    if ledger is not None:
+        def refuse(flags):
+            branch = "glacier (ICE != 0)" if flags & 1 else "lake (IST != 1)"
+            raise NotImplementedError(
+                f"Noah-MP land ENERGY received a {branch} column; "
+                "its dedicated solver must own that column"
+                + health_ledger.deferred_note())
+        flags = ((cp.asarray(ice) != 0).any().astype(cp.uint32)
+                 | ((cp.asarray(ist) != 1).any().astype(cp.uint32) << 1))
+        ledger.record("noahmp.energy.land_identity", flags.reshape(1), refuse)
+        return
 
     bad_ice = cp.asnumpy(cp.asarray(ice) != 0)
     if bad_ice.any():
@@ -116,7 +130,7 @@ def _refuse_unadmitted(ice, ist):
 # seg1: entry (:2033) to the THERMOPROP call (:2119)
 # ---------------------------------------------------------------------------
 
-def energy_seg1(s):
+def energy_seg1(s, *, tanh_profile="glibc_2_39"):
     """UR, VAI, FSNO, the roughness geometry, the urban override, ZLVL, CWP.
 
     ``s`` maps the scalar generator's argument names to CuPy arrays over the
@@ -146,7 +160,7 @@ def energy_seg1(s):
     bdsno = sneqv / safe_snowh
     fmelt = slab_powf(bdsno / _f32(100.0), s["mfsno"])
     fsno = cp.where(has_snow,
-                    slab_tanhf(safe_snowh / (s["scffac"] * fmelt)),
+                    slab_tanhf(safe_snowh / (s["scffac"] * fmelt), profile=tanh_profile),
                     _ZERO)
 
     # -- :2077-2085  ground roughness length (IST == 1 leg) ------------------
@@ -183,12 +197,19 @@ def energy_seg1(s):
 # seg2: RADIATION's return (:2139) to the VEGE_FLUX call (:2238)
 # ---------------------------------------------------------------------------
 
-def energy_seg2(s, g):
+def energy_seg2(s, g, *, opt_rsf=1, opt_btr=1):
     """The emissivities, BTRAN, RSURF/RHSUR and the psychrometric constants.
 
     ``g`` is seg1's output; ``s`` is the entry state plus RADIATION's.
+    RSF=4 requires actual transferred ``s['rsurf_snow']``; it blends the
+    SZ09 resistance with snow before the native dry and urban caps.
     """
     import cupy as cp
+
+    if type(opt_rsf) is not int or opt_rsf not in (1, 2, 3, 4):
+        raise ValueError("ENERGY opt_rsf must be scalar int in (1, 2, 3, 4)")
+    if type(opt_btr) is not int or opt_btr not in (1, 2, 3):
+        raise ValueError("ENERGY opt_btr must be scalar int in (1, 2, 3)")
 
     fsno = g["fsno"]
 
@@ -196,7 +217,7 @@ def energy_seg2(s, g):
     emv = _ONE - slab_expf(-(s["elai"] + s["esai"]) / _ONE)
     emg = (s["eg"] * (_ONE - fsno)) + (s["snow_emis"] * fsno)
 
-    # -- :2151-2173  BTRAN (OPT_BTR == 1, Noah) ------------------------------
+    # -- :2151-2173  BTRAN (Noah, CLM or SSiB) ------------------------------
     # The layer loop stays a loop: FP32 addition is not associative and NROOT
     # varies per column, so the accumulation runs in layer order with the
     # out-of-root layers contributing an exact +0.0.
@@ -204,19 +225,26 @@ def energy_seg2(s, g):
     sh2o = s["sh2o"]
     smcwlt, smcref = s["smcwlt"], s["smcref"]
     from woof.core.noahmp_slab_libm import root_fraction_slabs
-    btran, btrani = root_fraction_slabs(s, NSNOW, NSOIL, MPE)
+    btran, btrani = root_fraction_slabs(s, NSNOW, NSOIL, MPE, opt_btr=opt_btr)
 
-    # -- :2177-2206  ground surface resistance (IST == 1, OPT_RSF == 1) ------
+    # -- :2177-2206  ground surface resistance (IST == 1, RSF == 1..4) ------
     smcmax0 = s["smcmax"][:, 0]
     sh2o0 = sh2o[:, 0]
-    sat = fmn(_ONE, sh2o0 / smcmax0)
-    l_rsurf = ((-s["zsoil"][:, 0])
-               * (slab_expf(slab_powf(_ONE - sat, s["rsurf_exp"])) - _ONE)) \
-        / (_f32(2.71828) - _ONE)
-    d_rsurf = ((_f32(2.2e-5) * smcmax0) * smcmax0) \
-        * slab_powf(_ONE - (s["smcwlt"][:, 0] / smcmax0),
-                    _f32(2.0) + (_f32(3.0) / s["bexp"][:, 0]))
-    rsurf = l_rsurf / d_rsurf
+    if opt_rsf in (2, 3):
+        from woof.core.noahmp_slab_libm import sellers_surface_resistance
+        rsurf = sellers_surface_resistance(sh2o0, smcmax0, fsno, opt_rsf=opt_rsf)
+    else:
+        sat = fmn(_ONE, sh2o0 / smcmax0)
+        l_rsurf = ((-s["zsoil"][:, 0])
+                   * (slab_expf(slab_powf(_ONE - sat, s["rsurf_exp"])) - _ONE)) \
+            / (_f32(2.71828) - _ONE)
+        d_rsurf = ((_f32(2.2e-5) * smcmax0) * smcmax0) \
+            * slab_powf(_ONE - (s["smcwlt"][:, 0] / smcmax0),
+                        _f32(2.0) + (_f32(3.0) / s["bexp"][:, 0]))
+        rsurf = l_rsurf / d_rsurf
+    if opt_rsf == 4:
+        from woof.core.noahmp_slab_libm import snow_surface_resistance
+        rsurf = snow_surface_resistance(rsurf, fsno, s["rsurf_snow"])
     # :2199
     rsurf = cp.where((sh2o0 < _f32(0.01)) & (s["snowh"] == _ZERO),
                      _f32(1.0e6), rsurf)
@@ -270,12 +298,24 @@ def energy_seg3(s, g, e, v, b):
 
     result = energy_average_slabs(s, g, e, v, b, SB)
     fire = result.pop("_fire")
-    bad = cp.asnumpy(fire <= _ZERO)
-    if bad.any():
-        raise ValueError(
-            f"land column {int(np.argmax(bad))}: emitted longwave <= 0: "
-            "SHDFAC is inconsistent with LAI "
-            "(module_sf_noahmplsm.F:2323-2329 calls wrf_error_fatal here)")
+    from woof.core.noahmp_surface_device import active_probe
+    from woof.core import health_ledger
+    ledger = health_ledger.active()
+    if ledger is not None:
+        def refuse(_flags):
+            raise ValueError(
+                "Noah-MP emitted longwave <= 0: SHDFAC is inconsistent "
+                "with LAI (module_sf_noahmplsm.F:2323-2329)"
+                + health_ledger.deferred_note())
+        ledger.record("noahmp.energy.longwave",
+                      active_probe(fire <= _ZERO).any().astype(cp.uint32).reshape(1), refuse)
+    else:
+        bad = cp.asnumpy(active_probe(fire <= _ZERO))
+        if bad.any():
+            raise ValueError(
+                f"land column {int(np.argmax(bad))}: emitted longwave <= 0: "
+                "SHDFAC is inconsistent with LAI "
+                "(module_sf_noahmplsm.F:2323-2329 calls wrf_error_fatal here)")
     result["trad"] = slab_powf(result.pop("_trad_base"), _f32(0.25))
     return result
 

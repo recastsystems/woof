@@ -54,10 +54,10 @@ def _domains(text):
 # ---------------------------------------------------------------------------
 
 def test_every_refusal_of_a_pair_is_named_in_one_error(tmp_path):
-    inp = _with(physics=" sf_lake_physics = 2, 2,\n shcu_physics = 1, 1,\n",
+    inp = _with(physics=" sf_lake_physics = 2, 2,\n shcu_physics = 9, 9,\n",
                 domains=" interp_method_type = 1,\n",
                 time_control=" history_frobnicate = 1,\n",
-                dynamics=" rk_ord = 2,\n")
+                dynamics=" rk_ord = 4,\n")
     with pytest.raises(ValueError) as caught:
         _import(tmp_path, inp)
     text = str(caught.value)
@@ -102,7 +102,7 @@ def test_an_unmapped_key_names_where_wrf_declares_it(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_gwd_opt_in_dynamics_imports_and_gwd_diags_is_output_only(tmp_path):
-    # lane/282-terrain-drag: gwd_opt 1 and 3 are ported, so the &dynamics
+    # development branch: gwd_opt 1 and 3 are ported, so the &dynamics
     # key (WRF v4's placement) imports instead of being pinned to 0.
     text, report = _import(tmp_path, _with(dynamics=" gwd_opt = 0, 0,\n"
                                                     " gwd_diags = 1,\n"))

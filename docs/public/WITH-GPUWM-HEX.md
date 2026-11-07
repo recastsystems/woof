@@ -7,7 +7,7 @@ woof, and its initial conditions, product maps, soundings and scores are
 drawn by woof's Rust tools. So a woof hex release is always paired with a
 woof release.
 
-The woof hex release on PyPI is 0.3.3. Its wheel declares `woof>=2.8.0,<2.8.1`, so
+The woof hex release on PyPI is 0.3.3. Its wheel declares `gpuwm>=2.8.0,<2.8.1`, so
 `pip install woof hex` in this environment replaces this woof with 2.8.0 and it ships no
 runner for `woof preset`. Keep woof hex 0.3.3 in its own environment.
 

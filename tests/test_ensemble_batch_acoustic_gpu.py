@@ -14,7 +14,7 @@ MEMBERS = (1, 4, 10, 20, 40)
 
 def _pack_physical(members, *, moist=False, mapped=False, boundary="periodic",
                    terrain=False, nz=5, ny=7, nx=11, top_lid=False,
-                   spec_zone=1, relax_w=False, mp_physics=0):
+                   spec_zone=1, relax_w=False, mp_physics=0, mu_halo=False):
     import cupy as cp
     from woof.core.device_inventory import state_array_shapes
     from woof.core.diagnostics import update_diagnostics
@@ -24,6 +24,8 @@ def _pack_physical(members, *, moist=False, mapped=False, boundary="periodic",
     from woof.verify.npref import random_acoustic_state
     from woof.core.acoustic import WRF_EXACT
     from woof.ensemble.batch_diagnostics import diagnostics_specs
+    # The force-time mass halo exists only in the strict scratch inventory.
+    mu_halo = bool(mu_halo and WRF_EXACT)
 
     references, prepared = [], []
     map_rng = np.random.default_rng(826)
@@ -59,6 +61,10 @@ def _pack_physical(members, *, moist=False, mapped=False, boundary="periodic",
                 -0.02, 0.03, (nz + 1, ny, nx)).astype(np.float32)
             host_ww[0] = host_ww[-1] = 0
             ww[...] = cp.asarray(host_ww)
+        if mu_halo:
+            from woof.core.dycore import WRF_MU_HALO_SLOT
+            halo = state.scratch((ny, nx), WRF_MU_HALO_SLOT)
+            halo[...] = state.mup + np.float32(13.25 * (member + 1))
         shapes = state_array_shapes(cfg)
         extras = diagnostics_specs(cfg)
         arrays = {name: cp.asnumpy(getattr(state, name)) for name in shapes}
@@ -76,7 +82,11 @@ def _pack_physical(members, *, moist=False, mapped=False, boundary="periodic",
     registry = scratch_slot_registry(cfg)
     slots = [name for name in registry if name.startswith("acoustic_")
              or name in ("openbc_upp_faces", "openbc_vpp_faces")
+             or (mp_physics == 13 and name == "moist_absent_mass")
              or (WRF_EXACT and name == "rk_ww")]
+    if mu_halo:
+        from woof.core.dycore import WRF_MU_HALO_SLOT
+        slots.append(WRF_MU_HALO_SLOT)
     shared = tuple(sorted(SHARED_STATE_CANDIDATES & state_array_shapes(cfg).keys()))
     packed = BatchedDomainState.from_prepared(
         prepared, array_module=cp, available_bytes=2**30,

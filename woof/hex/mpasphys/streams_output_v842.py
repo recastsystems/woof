@@ -15,7 +15,8 @@ from time import perf_counter
 import numpy as np
 
 from ..output import HistoryField
-from ..restart_v842 import NativePoolStreams, _date, inspect_stream
+from ..device_memory_release import shared_card_memory
+from ..restart_v842 import NativePoolStreams, _date, initial_time_or_blank, inspect_stream, time_units
 from ..streams_v842 import Stream, StreamFieldCache
 from .stream_metadata_v842 import global_attributes, input_field_attributes, NativeFileIds
 
@@ -100,6 +101,35 @@ class _FailedStartReflectivity:
         return {'applied': False, 'reason': f'start reflectivity not formed: {self.error!r}'}
 
 
+class _HistoryClock:
+    """Phase history from the original epoch while retaining the other alarms."""
+
+    def __init__(self, base, streams, contract, start, initial, final, control,
+                 packages, first_minutes):
+        if not np.isfinite(first_minutes) or first_minutes < 0:
+            raise ValueError('history start must be a finite nonnegative lead minute')
+        self.base = base
+        self.first = initial + timedelta(minutes=first_minutes)
+        selected = {name: replace(stream, options={**stream.options,
+                    'reference_time': self.first.strftime('%Y-%m-%d_%H:%M:%S.%f')})
+                    for name, stream in streams.items()
+                    if name in ('output', 'diagnostics')}
+        self.selected = selected
+        self.history = contract.alarms(selected, start, initial, final, control, packages)
+
+    def due(self, name, when, direction='output'):
+        if name in self.selected and direction == 'output':
+            return when >= self.first and self.history.due(name, when, direction)
+        return self.base.due(name, when, direction)
+
+    def reset(self, name, when, direction='output'):
+        if name in self.selected and direction == 'output':
+            if when >= self.first:
+                self.history.reset(name, when, direction)
+        else:
+            self.base.reset(name, when, direction)
+
+
 class PhysicsStreams(NativePoolStreams):
     """Snapshot selected pool words, then encode away from the forecast thread.
 
@@ -110,7 +140,8 @@ class PhysicsStreams(NativePoolStreams):
     file publication. No live device/host pool view reaches the worker.
     """
 
-    def __init__(self, session, streams, output, *, final_time, alarms=None, diagnostics=None, contract=None):
+    def __init__(self, session, streams, output, *, final_time, alarms=None, diagnostics=None,
+                 contract=None, history_from_minutes=0.0):
         """``contract``: the stream contract to write with; None takes the session's route row's
         (route_table.stream_contract of ``session.config``; MPAS-A v8.4.2's when it names none)."""
         from .route_table import stream_contract
@@ -159,12 +190,23 @@ class PhysicsStreams(NativePoolStreams):
             self.field_attrs = input_field_attributes(session.layout, header,
                 field_definition=contract.registry.field_definition)
         # mpas_atm_core.F:264-277: restarts retain the original CF epoch.
+        # The written initial_time and the CF Time units; None when the init's initial_time is blank, which
+        # native writes back blank (restart_v842.initial_time_or_blank). The stream alarms and filenames then
+        # keep the clock start, native's own stream reference time (mpas_stream_manager.F:388-392).
+        self.initial_time = self.initial
         if 'initial_time' in self.rows:
             row, _ = self.rows['initial_time']
-            self.initial = _date(self.native.get_text_field(row['pool'], row['pool_name'], level=1))
+            self.initial_time = initial_time_or_blank(
+                self.native.get_text_field(row['pool'], row['pool_name'], level=1))
+            if self.initial_time is not None:
+                self.initial = self.initial_time
             if alarms is None:
                 self.alarms = contract.alarms(self.streams, self.start, self.initial, self.final,
                                               self.control, self.layout.packages)
+        if history_from_minutes:
+            self.alarms = _HistoryClock(self.alarms, self.streams, contract, self.start,
+                self.initial, self.final, self.control, self.layout.packages,
+                history_from_minutes)
         # Frames encode side by side, each in its own rw_mpas_stream process (see ENCODE_WORKERS).
         self._executor = ThreadPoolExecutor(max_workers=self.ENCODE_WORKERS, thread_name_prefix='mpas-output')
         # The previous frame's completion (its files written and published); see _submit_encode.
@@ -278,13 +320,16 @@ class PhysicsStreams(NativePoolStreams):
             if key not in storage:
                 diagnostic = (None if self.diagnostics is None or name == 'Time' else
                               self.diagnostics.field(pool, field))
-                if (resident and name != 'Time') or diagnostic is not None:
+                device = diagnostic
+                lazy = resident and shared_card_memory() and hasattr(views, 'resident_field')
+                if device is None and lazy and name != 'Time':
+                    device = views.resident_field(pool, field, level=1)
+                if diagnostic is not None or device is not None or (resident and name != 'Time' and not lazy):
                     # The resident provider caches owned buffers. Request its
                     # normal view, not a conflicting full/dummy allocation.
                     previous = views.level
                     try:
                         views.level = 1
-                        device = diagnostic
                         if device is None:
                             device = views.field(pool, field)
                         slices = tuple(slice(0, size) for size in expected)
@@ -325,7 +370,7 @@ class PhysicsStreams(NativePoolStreams):
                 value, dims = value[component], dims[1:]
             attrs = dict(self.field_attrs.get(name, {}))
             if name == 'Time':
-                attrs['units'] = f'seconds since {self.initial:%Y-%m-%d %H:%M:%S}'
+                attrs['units'] = time_units(getattr(self, 'initial_time', self.initial))
             result[name] = HistoryField(value, dims, attrs)
         if not queued:
             return result, _ready_now
@@ -341,7 +386,7 @@ class PhysicsStreams(NativePoolStreams):
     #: (MPAS-ROUTE-SPEED-2026-10-24, frame-async 2-card arm).
     FRAMES_IN_FLIGHT = 2
 
-    #: Frames encoded at once.  THE COST THIS REMOVES (30 km globe over 4 cards, V5090 box, 2026-10-27): one
+    #: Frames encoded at once.  THE COST THIS REMOVES (30 km globe over 4 cards, reference system box, 2026-10-27): one
     #: rw_mpas_stream process encodes a frame on one core (netCDF-C), 24-36 s for a 30 km history frame against
     #: ~23 s of stepping per forecast hour, so frames queued behind one encoder and the run waited 40-63 s after
     #: its last step.  Each frame is its own process now, up to FRAMES_IN_FLIGHT at once; a frame that appends to
@@ -364,7 +409,11 @@ class PhysicsStreams(NativePoolStreams):
         free, card = cp.cuda.runtime.memGetInfo()
         pool = cp.get_default_memory_pool()
         reserve = max(self.STAGING_RESERVE_BYTES, int(self.STAGING_RESERVE_FRACTION * card))
-        if free + pool.free_bytes() - total >= reserve:
+        # A staged frame duplicates every exported field on the card until
+        # its transfer finishes. Compact runs use the existing ordered D2H
+        # path into pinned host storage, with no extra device frame. The
+        # stream event still fences publication before those words are read.
+        if not shared_card_memory() and free + pool.free_bytes() - total >= reserve:
             try:
                 block = cp.empty(total, dtype=cp.uint8)
             except cp.cuda.memory.OutOfMemoryError:
@@ -421,11 +470,15 @@ class PhysicsStreams(NativePoolStreams):
             expected = tuple(self.layout.dimensions[d] for d in row['dimensions'])
             slices = tuple(slice(0, size) for size in expected)
             diagnostic = None if self.diagnostics is None else self.diagnostics.field(pool, field)
-            if resident or diagnostic is not None:
+            device = diagnostic
+            lazy = resident and shared_card_memory() and hasattr(views, 'resident_field')
+            if device is None and lazy:
+                device = views.resident_field(pool, field, level=1)
+            if device is not None or (resident and not lazy):
                 previous = views.level
                 try:
                     views.level = 1
-                    device = diagnostic if diagnostic is not None else views.field(pool, field)
+                    device = device if device is not None else views.field(pool, field)
                     host = device[slices].get(order='C') if hasattr(device, 'get') else np.asarray(device[slices])
                 finally:
                     views.level = previous
@@ -485,7 +538,7 @@ class PhysicsStreams(NativePoolStreams):
 
         THE BREAKAGE THIS ENDS: the start frame is written before any microphysics, so its refl10cm,
         refl10cm_max and refl10cm_1km were the zero placeholder on every start, an IAU analysis start full of
-        rain included (hrrrv5 DA, Vermont 2023-07-10: the 10:15 analysis map was empty and unscorable).
+        rain included (hrrrv5 state analysis, Vermont 2023-07-10: the 10:15 analysis map was empty and unscorable).
         Correct mode only (the frame is held only there); a failure is named in the receipt, never the run's.
         """
         try:
@@ -725,7 +778,8 @@ class PhysicsStreams(NativePoolStreams):
         self._bind_file_attributes(jobs)
         for stream, target, record in jobs:
             started = perf_counter()
-            options = dict(initial_time=self.initial, active_packages=self.layout.packages,
+            initial = getattr(self, 'initial_time', self.initial)
+            options = dict(initial_time='' if initial is None else initial, active_packages=self.layout.packages,
                            streams=self.streams, global_attrs=self._file_attributes[target],
                            field_attrs=self.field_attrs, scratch=self.output/'stream-scratch',
                            record_index=record,

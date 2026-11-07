@@ -10,6 +10,9 @@
 
 use crate::error::{MpasError, MpasResult};
 use crate::static_memory::checked_vec;
+use rayon::prelude::*;
+use std::marker::PhantomData;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub const FIFTEEN: usize = 15;
 
@@ -179,7 +182,7 @@ fn inv6(mut a: [[f32; 6]; 6]) -> MpasResult<[[f32; 6]; 6]> {
 }
 
 /// MPAS: core_init_atmosphere/mpas_atm_advection.F:191-212,567-614.
-fn polynomial_pseudoinverse(x: &[f32], y: &[f32]) -> MpasResult<Vec<[f32; FIFTEEN]>> {
+fn polynomial_pseudoinverse(x: &[f32], y: &[f32]) -> MpasResult<[[f32; FIFTEEN]; 6]> {
     // Return six rows of B=(A^T A)^-1 A^T, padded to FIFTEEN columns.
     let m = x.len() + 1;
     if m > FIFTEEN {
@@ -205,7 +208,7 @@ fn polynomial_pseudoinverse(x: &[f32], y: &[f32]) -> MpasResult<Vec<[f32; FIFTEE
         }
     }
     let inv = inv6(ata)?;
-    let mut b = vec![[0.0f32; FIFTEEN]; 6];
+    let mut b = [[0.0f32; FIFTEEN]; 6];
     for i in 0..6 {
         for r in 0..m {
             let mut sum = 0.0;
@@ -244,6 +247,34 @@ fn tangent_gradient(xp: &[f32], yp: &[f32]) -> ([f32; FIFTEEN], [f32; FIFTEEN], 
     (gx, gy, angle, area)
 }
 
+// Each validated cell owns exactly one side of every edge it claims. The
+// cell loop partitions the four cell-row outputs with Rayon; this borrowed
+// scatter view handles the edge-side output without another whole-mesh copy.
+// No output is read until all workers have joined.
+struct EdgeSideOutput<'a> {
+    pointer: *mut f32,
+    len: usize,
+    _borrow: PhantomData<&'a mut [f32]>,
+}
+
+// SAFETY: build_operator_fields validates cellsOnEdge before constructing
+// this view. Different cells can never write the same (edge, side): side 0
+// belongs to cellsOnEdge[edge][0], and side 1 to the other cell. Duplicate
+// claims within one cell remain sequential in that cell's single worker.
+unsafe impl Sync for EdgeSideOutput<'_> {}
+
+impl<'a> EdgeSideOutput<'a> {
+    fn new(output: &'a mut [f32]) -> Self {
+        Self { pointer: output.as_mut_ptr(), len: output.len(), _borrow: PhantomData }
+    }
+
+    // SAFETY: caller must own this edge side for the duration of the write.
+    unsafe fn write(&self, index: usize, value: f32) {
+        assert!(index < self.len);
+        unsafe { self.pointer.add(index).write(value); }
+    }
+}
+
 /// MPAS: core_init_atmosphere/mpas_atm_advection.F:21-394,745-925.
 pub fn build_operator_fields(mesh: &OperatorMesh<'_>) -> MpasResult<OperatorFields> {
     validate(mesh)?;
@@ -261,13 +292,21 @@ pub fn build_operator_fields(mesh: &OperatorMesh<'_>) -> MpasResult<OperatorFiel
     let radius=mesh.sphere_radius as f32;
     let unit_north = [0.0, 0.0, 1.0];
     let pi = 2.0 * 1.0f32.asin();
-    let mut deriv_two_zero_stencil_cells = 0usize;
-
-    for cell in 0..mesh.n_cells {
+    let zero_stencil_cells = AtomicUsize::new(0);
+    let edge_sides = EdgeSideOutput::new(&mut d2);
+    // Keep every cell's arithmetic in native order. Only independent cells
+    // run concurrently; find_first retains the serial first-error order.
+    let row_width = mesh.max_edges.max(1);
+    let first_error = gx.par_chunks_mut(row_width)
+        .zip(gy.par_chunks_mut(row_width))
+        .zip(defa.par_chunks_mut(row_width))
+        .zip(defb.par_chunks_mut(row_width))
+        .enumerate()
+        .map(|(cell, (((gx_row, gy_row), defa_row), defb_row))| -> MpasResult<()> {
         let ne = mesh.n_edges_on_cell[cell];
         if (0..ne).any(|i| mesh.cells_on_cell[cell * mesh.max_edges + i] >= mesh.n_cells) {
-            deriv_two_zero_stencil_cells += 1;
-            continue;
+            zero_stencil_cells.fetch_add(1, Ordering::Relaxed);
+            return Ok(());
         }
         let center_phys = cell_point(mesh, cell);
         let center = [
@@ -330,16 +369,16 @@ pub fn build_operator_fields(mesh: &OperatorMesh<'_>) -> MpasResult<OperatorFiel
         for i in 0..ne {
             let j = (i + 1) % ne;
             let dl = ((xp[j] - xp[i]).powi(2) + (yp[j] - yp[i]).powi(2)).sqrt();
-            gx[cell * mesh.max_edges + i] = gradient_x[i];
-            gy[cell * mesh.max_edges + i] = gradient_y[i];
+            gx_row[i] = gradient_x[i];
+            gy_row[i] = gradient_y[i];
 
             // MPAS deformation tensor coefficients.
             let s = normal_angle[i].sin();
             let c = normal_angle[i].cos();
             let edge = mesh.edges_on_cell[cell * mesh.max_edges + i];
             let sign = if mesh.cells_on_edge[edge][0] == cell { 1.0 } else { -1.0 };
-            defa[cell * mesh.max_edges + i] = (sign * dl * (c * c - s * s) / area) as f32;
-            defb[cell * mesh.max_edges + i] = (sign * dl * (2.0 * s * c) / area) as f32;
+            defa_row[i] = (sign * dl * (c * c - s * s) / area) as f32;
+            defb_row[i] = (sign * dl * (2.0 * s * c) / area) as f32;
         }
 
         // --- deriv_two polynomial fit over cell center + neighboring cells ---
@@ -425,10 +464,15 @@ pub fn build_operator_fields(mesh: &OperatorMesh<'_>) -> MpasResult<OperatorFiel
                 let value = 2.0 * c2 * b[3][j]
                     + 2.0 * cs * b[4][j]
                     + 2.0 * s2 * b[5][j];
-                d2[base + j] = value as f32;
+                // SAFETY: validate proves this cell is cellsOnEdge's
+                // selected side. No other cell worker owns this side.
+                unsafe { edge_sides.write(base + j, value as f32); }
             }
         }
-    }
+        Ok(())
+    }).find_first(|result| result.is_err());
+    if let Some(error) = first_error { error?; }
+    let deriv_two_zero_stencil_cells = zero_stencil_cells.load(Ordering::Relaxed);
 
     Ok(OperatorFields {
         cell_gradient_coef_x: gx,

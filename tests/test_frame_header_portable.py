@@ -9,7 +9,7 @@ box and not about the decode:
 1. the input paths differ (a checkout, a staging tree, a drive letter);
 2. a field produced through a TRANSCENDENTAL takes its last bits from
    the box's libm.  Measured 2026-08-20, same bytes on the Windows
-   desktop (UCRT) and a development machine (glibc): on the netCDF sample
+   desktop (UCRT) and test host 1 (glibc): on the netCDF sample
    committed beside the crate goldens, 35 of 38 arrays are identical to
    the bit and the three the two ``exp``-based humidity derivations
    produce are at most 3 ULP apart -- 4.1e-16 relative; on the Lambert

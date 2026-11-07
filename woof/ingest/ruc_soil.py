@@ -1061,6 +1061,117 @@ def fractional_sea_ice_post(*, xice, tsk, sst, deep_soil_temperature,
     return tsk, soil_temperature, soil_moisture, liquid_moisture
 
 
+#: WRF's SLABSCHEME selector value.
+SLABSCHEME = 1
+
+#: process_soil_real's fix_bottom_level_for_temp, SLABSCHEME arm
+#: (share/module_soil_pre.F:639-686): the slab's TMN is the source soil
+#: temperature whose level lies closest to this depth, in cm -- the first of
+#: equals, since the scan keeps a level only when it is strictly closer.
+SLAB_TMN_SOURCE_DEPTH_CM = 30.0
+
+
+def preprocess_slab_soil(
+    fields,
+    *,
+    soil_type,
+    deep_soil_temperature=None,
+    lake_mask=None,
+    lake_skin_temperature=None,
+    soil_layer_contract=None,
+    landmask=None,
+    terrain=None,
+    source_orography=None,
+    water_temperature=None,
+    water_temperature_policy=None,
+    soil_mesh=None,
+    route=None,
+    seaice_threshold: float = 100.0,
+):
+    """The slab scheme's initial soil state, as real.exe builds it.
+
+    The surface bookkeeping (land/water/sea-ice partition, lakes, the water
+    temperature, snow, the elevation lapse) is :func:`preprocess_noah_soil`'s,
+    exactly as for RUC.  What is the slab's own, from WRF v4.6.1:
+
+    * **SEAICE_THRESHOLD** (``adjust_for_seaice_pre`` SLABSCHEME arm,
+      share/module_soil_pre.F:103-140): an open-water column whose met skin
+      temperature is below the threshold becomes sea ice (XICE = 1, then
+      the ordinary ice conversion: XLAND = 1, the ice land-use row,
+      TMN = 271.4 K).  WRF's default, 100 K, converts nothing.
+    * **TMN** is the source soil temperature at the level closest to 30 cm
+      (``fix_bottom_level_for_temp``), lapse-adjusted with the other soil
+      levels (``adjust_soil_temp_new``), not the 3 m annual mean Noah reads:
+      the slab's deepest layer is centred at 0.23 m.  A land value outside
+      170..400 K takes TSK (module_initialize_real.F:3305-3321); water takes
+      the water temperature; sea ice 271.4 K.
+    * **TSLB** is ``init_soil_1_real``: linear in depth from TSK at zs(1) to
+      TMN at zs(5) on land, the water temperature in every layer on water.
+    * SMOIS/SH2O stay zero: init_soil_1_real writes none, and nothing in the
+      slab reads soil water.
+
+    DECLARED DIVERGENCE (default on): sea-ice columns take the LAND profile,
+    TSK down to 271.4 K.  real.exe calls ``process_soil_real`` -- and so
+    init_soil_1_real -- at module_initialize_real.F:3000, BEFORE
+    ``adjust_for_seaice_pre`` at :3219 turns those columns into land, so it
+    builds them the water profile (SST, or the ice skin where the source has
+    no SST, in every layer) despite the comment above the call that says the
+    adjustment comes first.  The slab never integrates its deepest layer, so
+    WRF's order pins an ice column's lower boundary at the initial skin
+    temperature for the whole run, and the TMN = 271.4 K it sets a few lines
+    later is never read.  ``GPUWM_WRF_EXACT=1`` restores WRF's order.
+    """
+    import dataclasses
+
+    from woof.core.slab import NUM_SOIL_LAYERS, initial_soil_temperature
+    from woof.ingest.soil import (_host, _soil_temperature_elevation_delta,
+                                   preprocess_noah_soil)
+    from woof.wrf_exact import ENABLED as WRF_EXACT
+
+    decision = landmask if landmask is not None else fields.get("LANDSEA")
+    if decision is None:
+        raise KeyError("the slab soil ingest needs LANDMASK or LANDSEA")
+    from woof.slab_init_bridge import threshold_ice, initialize
+    skin = _host(fields["SKINTEMP"])
+    zeros_surface = np.zeros_like(skin)
+    raw_ice = fields.get("XICE", fields.get("SEAICE"))
+    terrestrial, xice = threshold_ice(
+        _host(decision), zeros_surface if lake_mask is None else _host(lake_mask),
+        skin, zeros_surface if raw_ice is None else _host(raw_ice), seaice_threshold)
+    fields = dict(fields)
+    fields["XICE"] = xice
+
+    temperature, _moisture, levels, _geometry, scale = \
+        _source_soil_profiles(fields, soil_layer_contract, land=terrestrial)
+    surface = preprocess_noah_soil(
+        fields,
+        soil_type=soil_type,
+        deep_soil_temperature=deep_soil_temperature,
+        lake_mask=lake_mask, lake_skin_temperature=lake_skin_temperature,
+        soil_layer_contract=soil_layer_contract,
+        landmask=landmask, terrain=terrain,
+        source_orography=source_orography,
+        water_temperature=water_temperature,
+        water_temperature_policy=water_temperature_policy,
+        soil_mesh=soil_mesh, route=route)
+
+    tsk = np.asarray(surface.tsk, np.float64)
+    delta = delta_zero = np.zeros_like(tsk)
+    if terrain is not None:
+        delta = _soil_temperature_elevation_delta(terrain, source_orography, terrestrial)
+        delta_zero = _soil_temperature_elevation_delta(terrain, np.zeros_like(_host(terrain)), terrestrial)
+    tmn, tslb = initialize(
+        temperature, levels, scale, terrestrial, surface.landmask, tsk,
+        _host(fields["SST"]) if "SST" in fields else tsk,
+        delta, delta_zero, terrain is not None, WRF_EXACT)
+    zeros = np.zeros((NUM_SOIL_LAYERS,) + tsk.shape, np.float64)
+    return dataclasses.replace(
+        surface,
+        soil_temperature=tslb.astype(np.float64),
+        soil_moisture=zeros, liquid_moisture=zeros.copy(),
+        deep_soil_temperature=tmn.astype(np.float32).astype(np.float64))
+
+
 def preprocess_land_surface_soil(
     fields,
     *,
@@ -1114,7 +1225,7 @@ def preprocess_land_surface_soil(
     soil for a RUC run over CONUS) then replaces it on the land it covers.
     Named breakage: an ERA5 start put HTESSEL soil moisture into RUC as is,
     0.36 against HRRR's 0.21, and T2 ran 1-2 C cold with no storms
-    (found 2026-10-26).
+    (2026-10-26 cold-start study).
     """
 
     if not isinstance(fractional_seaice, bool):
@@ -1126,6 +1237,12 @@ def preprocess_land_surface_soil(
             fields, no_source_land=soil_no_source_land, soil_type=soil_type,
             landmask=landmask, lake_mask=lake_mask)
     scheme = int(sf_surface_physics)
+    deep_receipt = None
+    from woof.ingest.deep_soil_donor import has_deep_donor
+    if has_deep_donor(soil_layer_contract):
+        fields, soil_layer_contract, deep_receipt = _apply_deep_soil_donor(
+            fields, soil_layer_contract, scheme=scheme, context=land_state,
+            landmask=landmask)
     from woof.ingest.land_state import (apply_land_state_donor,
                                          convert_source_soil_moisture)
 
@@ -1148,8 +1265,48 @@ def preprocess_land_surface_soil(
     state, land_receipt = apply_land_state_donor(
         state, sf_surface_physics=scheme, context=land_state,
         receipt=land_receipt, landmask=landmask, lake_mask=lake_mask)
+    if deep_receipt is not None:
+        land_receipt = {**land_receipt, "deep_soil": deep_receipt}
     import dataclasses
     return dataclasses.replace(state, land_state=land_receipt)
+
+
+def _apply_deep_soil_donor(fields, contract, *, scheme, context, landmask):
+    """The declared deep-soil donor's layers under the source's own.
+
+    ``(fields, contract, receipt)``.  A source that declares one
+    (woof/ingest/deep_soil_donor.py; ECCC's GEM rows, which publish one
+    0-10 cm slab) gets the donor's layers stacked below its own, and the
+    stacked contract goes on to the Noah or RUC arm.  When the donor cannot
+    be read: RUC refuses, naming why (it cannot start from the one slab:
+    init_soil_3_real's 0 m moisture anchor needs two layers); Noah and
+    Noah-MP fall back to the source's own layer for this run, loudly, since
+    their remap has always carried one layer down to the deep-soil
+    temperature.
+    """
+
+    from woof.ingest.deep_soil_donor import (extend_mapped_soil_fields,
+                                              primary_soil_layer_contract)
+    from woof.ingest.soil_contract import (MAPPED_SOIL_MOISTURE,
+                                            MAPPED_SOIL_TEMPERATURE)
+
+    if MAPPED_SOIL_TEMPERATURE not in fields or MAPPED_SOIL_MOISTURE not in fields:
+        return fields, primary_soil_layer_contract(contract), None
+    try:
+        return extend_mapped_soil_fields(fields, contract, context=context,
+                                         landmask=landmask)
+    except Exception as error:
+        if scheme == RUCLSMSCHEME:
+            raise RuntimeError(
+                "the RUC land surface needs the soil column below this "
+                "source's one published layer, from its declared deep-soil "
+                f"donor, and the donor could not be read: {error}") from error
+        print("warning: deep soil: the declared donor could not be read "
+              f"({type(error).__name__}: {error}); this run carries the "
+              "source's own top layer down instead", file=sys.stderr,
+              flush=True)
+        return (fields, primary_soil_layer_contract(contract),
+                {"fallback": f"{type(error).__name__}: {error}"})
 
 
 def _route_land_surface_soil(
@@ -1159,6 +1316,22 @@ def _route_land_surface_soil(
     soil_mesh, route, fractional_seaice, seaice_threshold,
 ):
     """The dispatch on the land-surface selector (see the caller)."""
+    if scheme == 0:
+        from woof.ingest.soil import preprocess_noah_soil
+        # NOLSMSCHEME has no init_soil_* arm in module_soil_pre.F:785-899.
+        # Keep the shared skin/snow/land/ice preparation, but never remap,
+        # partition or downscale an inactive soil column.
+        return preprocess_noah_soil(
+            fields, soil_type=soil_type,
+            deep_soil_temperature=deep_soil_temperature,
+            lake_mask=lake_mask, lake_skin_temperature=lake_skin_temperature,
+            soil_layer_contract=soil_layer_contract, landmask=landmask,
+            terrain=terrain, source_orography=source_orography,
+            water_temperature=water_temperature,
+            water_temperature_policy=water_temperature_policy,
+            route=route, fractional_seaice=fractional_seaice,
+            seaice_threshold=seaice_threshold,
+            inactive_soil_layers=4 if num_soil_layers is None else int(num_soil_layers))
     if scheme == RUCLSMSCHEME:
         # The landmask/terrain/source-orography seam is forwarded whole:
         # preprocess_ruc_soil implements it with preprocess_noah_soil's
@@ -1184,6 +1357,25 @@ def _route_land_surface_soil(
             route=route,
             **({} if num_soil_layers is None
                else {"num_soil_layers": int(num_soil_layers)}))
+    if scheme == SLABSCHEME:
+        if fractional_seaice:
+            # module_check_a_mundo.F:1008-1017, WRF's own fatal.
+            raise ValueError(
+                "fractional_seaice=1 cannot run with the slab scheme "
+                "(sf_surface_physics=1): WRF refuses the pair, because the "
+                "slab has no open-water fraction to blend")
+        return preprocess_slab_soil(
+            fields,
+            soil_type=soil_type,
+            deep_soil_temperature=deep_soil_temperature,
+            lake_mask=lake_mask, lake_skin_temperature=lake_skin_temperature,
+            soil_layer_contract=soil_layer_contract,
+            landmask=landmask, terrain=terrain,
+            source_orography=source_orography,
+            water_temperature=water_temperature,
+            water_temperature_policy=water_temperature_policy,
+            soil_mesh=soil_mesh, route=route,
+            seaice_threshold=seaice_threshold)
     if scheme in _NOAH_GEOMETRY_SCHEMES:
         from woof.ingest.soil import preprocess_noah_soil
 
@@ -1204,8 +1396,28 @@ def _route_land_surface_soil(
             water_temperature_policy=water_temperature_policy,
             soil_mesh=soil_mesh,
             route=route)
+    from woof.physics_registry import column_surface_contract
+    contract = column_surface_contract(scheme)
+    ingest = (contract or {}).get("soil_ingest")
+    if ingest is not None:
+        if ingest["method"] != "wrf_init_soil_2_real":
+            raise ValueError("the registered soil ingest method is not implemented")
+        if num_soil_layers is not None and int(num_soil_layers) != len(ingest["depths_m"]):
+            raise ValueError("num_soil_layers differs from the registered soil ingest geometry")
+        from woof.ingest.soil import preprocess_noah_soil
+        return preprocess_noah_soil(
+            fields, soil_type=soil_type, deep_soil_temperature=deep_soil_temperature,
+            **_threshold_keyword(seaice_threshold),
+            lake_mask=lake_mask, lake_skin_temperature=lake_skin_temperature,
+            soil_layer_contract=soil_layer_contract, landmask=landmask,
+            terrain=terrain, source_orography=source_orography,
+            water_temperature=water_temperature, water_temperature_policy=water_temperature_policy,
+            soil_mesh=soil_mesh, route=route, fractional_seaice=fractional_seaice,
+            target_geometry=ingest)
     raise ValueError(
         f"sf_surface_physics={scheme} has no soil ingest.  woof implements "
+        f"the slab geometry for {SLABSCHEME} "
+        "(module_soil_pre.F:init_soil_1_real), "
         f"the Noah geometry for {_NOAH_GEOMETRY_SCHEMES} "
         "(module_soil_pre.F:init_soil_2_real) and the RUC level geometry for "
         f"{RUCLSMSCHEME} (init_soil_3_real); routing anything else through "
@@ -1216,6 +1428,9 @@ def _route_land_surface_soil(
 
 __all__ = [
     "RUCLSMSCHEME",
+    "SLABSCHEME",
+    "SLAB_TMN_SOURCE_DEPTH_CM",
+    "preprocess_slab_soil",
     "RUC_LEVEL_DEPTHS_M",
     "RucSoilColumns",
     "RucSoilState",

@@ -89,12 +89,12 @@ def _table_copy():
 
 @pytest.mark.parametrize("damage,match", [
     (lambda t: t["suites"].append(dict(t["suites"][0], name="arwen_mpas_column")), "declared twice"),
-    (lambda t: t["suites"][1].__setitem__("default", True), "exactly one suite"),
+    (lambda t: next(r for r in t["suites"] if r["name"] == "arwen_thompson_column").__setitem__("default", True), "exactly one suite"),
     (lambda t: t["suites"][0]["selectors"].pop("config_pbl_scheme"), "every selector"),
     (lambda t: t["suites"][0]["selectors"].__setitem__("config_pbl_scheme", "bl_nope"), "no row"),
     (lambda t: t["options"]["config_radt_lw_scheme"]["cam_lw"].pop("follow_up"), "names no follow-up"),
     (lambda t: t["options"]["config_lsm_scheme"]["sf_noah"].pop("engine"), "an alias onto the engine's selectors"),
-    (lambda t: t["suites"][2].__setitem__("differences_from_shaped_after", []), "lists no"),
+    (lambda t: next(r for r in t["suites"] if r["name"] == "rrfs_v2_dev").__setitem__("differences_from_shaped_after", []), "lists no"),
     (lambda t: t["suites"].append(dict(t["suites"][0], name="hrrrv5", default=False)), "collide"),
     (lambda t: t["mpas_suites"]["suites"]["hrrrv5"].__setitem__("config_microp_scheme", "mp_new"), "has no row"),
 ])
@@ -566,10 +566,22 @@ def test_the_driver_re_resolves_what_the_door_passed(tmp_path, door_seams):
     assert resolve_driver_physics(legacy) is None
 
 
-def test_the_door_finds_the_drag_statistics_beside_the_grid(tmp_path, door_seams):
+def test_the_door_finds_the_drag_statistics_beside_the_grid(tmp_path, door_seams, monkeypatch):
     _needs_suite_engine()
     arguments = _namespace(tmp_path, "conus12km", "--physics-suite", "rrfs_v2_dev",
                            "--convection", "off")
+    # The suite door now checks the grid's cells, so its fixture must be a real netCDF grid.
+    from netCDF4 import Dataset
+    with Dataset(arguments.grid, "w") as ds:
+        ds.createDimension("nCells", 2)
+        for name, values in (("latCell", [0.5, 0.6]), ("lonCell", [0.1, 0.2]), ("areaCell", [1e8, 1e8])):
+            ds.createVariable(name, "f8", ("nCells",))[:] = values
+        ds.setncattr("sphere_radius", 6371220.0)
+    # Missing geography is explicit, independent of the host's installed geography.
+    from woof.hex import mesh_point
+    def no_geography(explicit):
+        raise mesh_point.PointPlanRefusal("no geography staged in this fixture")
+    monkeypatch.setattr(mesh_point, "resolve_geog", no_geography)
     # Missing, the door builds it from the 30" terrain (woof.hex.ugwp_oro); with
     # no geography staged that build is refused by name.
     with pytest.raises(door.ForecastDoorRefusal, match="orographic statistics for conus12km could not be built"):

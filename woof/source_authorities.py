@@ -356,10 +356,39 @@ _PACKAGED_PROFILES = MappingProxyType({
         "rw-wps-gem-gdps-grib2",
         source_format="grib2",
         mapping="093f2286700f539baa33b425e0d2a2f30a8622bbff3918f588c189b2c1c3f9fa",
-        composition="13d7e4ca06f8012cfd252c03d70d9fae69d2e18b9b51975445d70a506e1d90ed",
+        composition="2f1c6e6b9690a76fab1cd26b2d79d92eb16d5b83613f41a0816bdf92963c2dbf",
         provenance="823e07b38677e3c0c83da984637a4fda83d1eb09be2401cb4e0a9e433820de22",
         data_role="gdps_analysis_invariant_surface",
         provenance_role="gdps_analysis_invariant_surface_provenance",
+    ),
+    # ECCC's HRDPS (GEM continental 2.5 km) on MSC Datamart: the GDPS
+    # field set on a ROTATED lat-lon lattice (GDT 3.1, declared in the
+    # mapping's grid block, grid-relative winds rotated at decode), 28
+    # pressure levels (1015..50 hPa), in-band terrain at every lead, the
+    # land mask and ice analysis as analysis-lead invariants, the
+    # published snow water equivalent and the single 0-10 cm soil layer.
+    # Selectors were read from real 2026-10-28 12Z bytes.
+    "gem-hrdps-grib2-v1": _profile(
+        "rw-wps-gem-hrdps-grib2",
+        source_format="grib2",
+        mapping="885828516f5d8ded6ae2bc1afd6595ac504d1813213fe71e946f42d25539474a",
+        composition="8da5a4f42ce632e20ec0550b5ddffe4d049786f6378a2f6d1bf278168604bfea",
+        provenance="d16a0f90fbc165a7aca15294599c95326d9e62d0087356a0da024e56143bf954",
+        data_role="hrdps_in_band_surface",
+        provenance_role="hrdps_in_band_surface_provenance",
+    ),
+    # ECCC's RDPS (GEM regional 10 km): GDPS's 33-level field set and
+    # analysis-lead invariants (orography, land mask, ice analysis) on a
+    # rotated lat-lon lattice (GDT 3.1).  Selectors read from real
+    # 2026-10-28 12Z bytes.
+    "gem-rdps-grib2-v1": _profile(
+        "rw-wps-gem-rdps-grib2",
+        source_format="grib2",
+        mapping="325055fb5e2bd9bd5ccdf232aa1e7ca57751a85d8417518ba154665231b4798e",
+        composition="6dd41fe302bf29e499a7faadd012808055d001537d1d053e2c259ee1fa0dfdc1",
+        provenance="00493610974d7d6f26d256aa2c7ea199f4cc043a7b6d70fbacf3d7e7b01c5420",
+        data_role="rdps_analysis_invariant_surface",
+        provenance_role="rdps_analysis_invariant_surface_provenance",
     ),
     # ECMWF's AIFS single deterministic forecast (open data, 0.25-degree
     # GDT-0 GRIB2): the reduced AI-model field set as TABLE DATA.  The
@@ -453,6 +482,25 @@ _PACKAGED_PROFILES = MappingProxyType({
     # and the one analysis-stamped product has no land surface at all.
     # Selectors were authored from real 2026-08-17 06Z bytes through the
     # converged grib-core inventory.
+    "gfs-pressure-grib2-v1": _profile(
+        "rw-wps-gfs-pressure-grib2", source_format="grib2",
+        mapping="1693f961d657924e1bb557b71aa17c5b16105894259fd347398cb0db9573485d",
+        composition="821c95afc8ec03e455a89620949c3690155600d7d99824d1755c93ac420eb246",
+        provenance="1f2cc7f3504befed0f1d511f209cf4c322757a109107966c6c35f7da7722459f",
+        data_role="native_surface", provenance_role="native_surface_provenance",
+    ),
+    "hafs-pressure-grib2-v1": _profile(
+        "rw-wps-hafs-pressure-grib2", source_format="grib2",
+        mapping="256c57a3ccb25c585259bce9d7f6a66aacfcc7b4ea804af2e49306c51e599438",
+        composition="6f0d7210cc83e105b97ea2a8d423f3af6b02d3f0d2838bd7cf66e483eaf1d705",
+        provenance="04a3a2c333943fcbcd7096078d0f1949a87b7e1be0886d1a8fabfbc86b5913e6",
+        data_role="native_surface", provenance_role="native_surface_provenance",
+        contributing_mappings={"physical_analysis_surface_mapping": {
+            "file": "rw-wps-earth2-gdas-donor.mapping.json",
+            "sha256": "e24542b3a9747c37614451d29eb4047b5f17f6068e3e63c299a2cc5367d8d8a1"}},
+        contributing_provenances={"physical_analysis_surface_provenance": {
+            "file": "rw-wps-hafs-surface-donor.provenance.json", "sha256": "51f4431a24c2e2f78baf04ff22462b793ca6bf433b61065565aee1c26761c58c"}},
+    ),
     "gdas-pgrb2-0p25-grib2-v1": _profile(
         "rw-wps-gdas-pgrb2-0p25-grib2",
         source_format="grib2",
@@ -802,6 +850,15 @@ _PACKAGED_PROFILES = MappingProxyType({
     # against the live operational cycle (2026-08-17 00Z) through the
     # converged grib-core inventory: 19 of 19 fields, exactly one record
     # each per valid time, pair disjoint.
+    "rrfs-prslev-2dfld-state-grib2-v1": _profile(
+        "rw-wps-rrfs-prslev-2dfld-state-grib2",
+        source_format="grib2",
+        mapping="339ec07260c3c4202f72b3de2f9c3112cce59189252835af69fbb52e9511b698",
+        composition="b57bc35aa7d210fc51011164f0e4f826e1e9f8e0f348c930ccf0037bd923a41b",
+        provenance="e364f22ec917bfd991ec3bb756aa49b697d03c7cd425d40a35501dd769f279de",
+        data_role="rrfs_prslev_2dfld_in_band_surface",
+        provenance_role="rrfs_prslev_2dfld_in_band_surface_provenance",
+    ),
     "rrfs-prslev-2dfld-grib2-v1": _profile(
         "rw-wps-rrfs-prslev-2dfld-grib2",
         source_format="grib2",

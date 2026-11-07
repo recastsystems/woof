@@ -64,7 +64,7 @@
         0
       ],
       "measurement": "Minimum, mean and maximum of PRES on hybrid level 50 (the top mass level the mapping reads) in the real f000 record of each cycle, read with ecCodes grib_get from the record the .idx byte range names; the three were equal in every cycle.",
-      "measurement_source": "a development machine, 2026-10-10, single-record range reads",
+      "measurement_source": "test-machine-4, 2026-10-10, single-record range reads",
       "record_url_template": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.{YYYYMMDD}/conus/hrrr.t{HH}z.wrfnatf00.grib2",
       "measured_maximum_pa": 1731.48,
       "declared_model_top_pressure_pa": 1500.0,
@@ -83,7 +83,7 @@
         0
       ],
       "measurement": "Minimum, mean and maximum of PRES on hybrid level 50 (the top mass level the mapping reads) in the real f000 record of each cycle, read with ecCodes grib_get from the record the .idx byte range names; the three were equal in every cycle.",
-      "measurement_source": "a development machine, 2026-10-10, single-record range reads",
+      "measurement_source": "test-machine-4, 2026-10-10, single-record range reads",
       "record_url_template": "https://noaa-rap-pds.s3.amazonaws.com/rap.{YYYYMMDD}/rap.t{HH}z.awp130bgrbf00.grib2",
       "measured_maximum_pa": 1232.65,
       "declared_model_top_pressure_pa": 1000.0,

@@ -18,6 +18,8 @@ moments.  Importing this contract does not make the scheme executable.
 
 from __future__ import annotations
 
+import math
+import numpy as np
 from dataclasses import asdict, dataclass
 from types import MappingProxyType
 from typing import Mapping
@@ -112,6 +114,32 @@ class NSSL2Mode:
         return RADIATION_EFFECTIVE_RADIUS_FIELDS if self.two_moment else ()
 
 
+def nssl2_cccn_concentration(nssl_cccn: float = 0.5e9) -> np.float32:
+    """Stock WRF's nssl_params(1) route: ABS of a finite REAL value.
+
+    WRF 4.7.1 module_mp_nssl_2mom.F:1370 and module_physics_init.F:4642
+    pass the parameter array. The optional scalar argument's >1 guard at
+    :1407 does not apply to that route. There is no WRF coefficient range.
+    Reject nonfinite/unrepresentable values before they poison activation;
+    zero and negative namelist values retain WRF's ABS semantics.
+    """
+    if isinstance(nssl_cccn, bool):
+        raise TypeError("nssl_cccn must be a finite float32 concentration")
+    try:
+        value = float(nssl_cccn)
+    except (TypeError, ValueError) as exc:
+        raise TypeError("nssl_cccn must be a finite float32 concentration") from exc
+    if not math.isfinite(value) or abs(value) > float(np.finfo(np.float32).max):
+        raise ValueError("nssl_cccn must be a finite float32 concentration; "
+                         "undefined values would contaminate the CCN reservoir")
+    return np.abs(np.float32(value))
+
+
+def nssl2_background_ccn_per_kg(nssl_cccn: float = 0.5e9) -> np.float32:
+    """WRF nssl_2mom_init:1997, one REAL division for the seed and inflow."""
+    return nssl2_cccn_concentration(nssl_cccn) / np.float32(1.225)
+
+
 def _selector(name: str, value: int, allowed: tuple[int, ...]) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError(f"{name} must be an integer selector, got {value!r}")
@@ -128,8 +156,10 @@ def resolve_nssl2_mode(
         ) -> NSSL2Mode:
     """Apply WRF v4.6.1's native option-18 default resolution.
 
-    The public ``nssl_3moment`` switch is 0/1.  WRF rewrites 1 to its internal
-    package value 2 when hail is enabled, allocating qzh as well as qzr/qzg.
+    WRF rewrites nssl_3moment=1 to package value 2 with hail enabled.
+    An explicit 2 is also a Registry package value and allocates qzh, including
+    when hail is disabled. Only the public value 1 forces number prediction;
+    module_check_a_mundo.F:3457-3463 applies that rewrite after defaults.
     Deprecated scheme IDs are intentionally not accepted here; an importer
     must canonicalize them explicitly rather than disguising a legacy setup.
     """
@@ -141,7 +171,7 @@ def resolve_nssl2_mode(
     hail = _selector("nssl_hail_on", nssl_hail_on, (-1, 0, 1, 2))
     ccn = _selector("nssl_ccn_on", nssl_ccn_on, (-1, 0, 1))
     density = _selector("nssl_density_on", nssl_density_on, (-1, 0, 1, 2))
-    three = _selector("nssl_3moment", nssl_3moment, (0, 1))
+    three = _selector("nssl_3moment", nssl_3moment, (0, 1, 2))
 
     two = 1 if two < 0 else two
     # module_check_a_mundo.F:3442-3448: an unset hail flag resolves to the
@@ -152,6 +182,10 @@ def resolve_nssl2_mode(
     # module_check_a_mundo.F:3450-3455 keys the density default on
     # nssl_hail_on == 1 exactly, not on truthiness.
     density = (2 if hail == 1 else 1) if density < 0 else density
+    # WRF applies this after hail and density defaults, so a pre-resolved
+    # one-moment hail package (hail=2) is not silently changed to hail=1.
+    if three == 1:
+        two = 1
     if hail == 2 and two:
         # WRF's Registry allocates only the hail MASS field for
         # nssl_hail_on=2 (package nssl_hail1m, Registry.EM_COMMON:3053).
@@ -199,14 +233,15 @@ def resolve_nssl2_mode(
             "nssl_density_on=2 (or -1) with hail on")
     if three and not two:
         raise ValueError(
-            "nssl_3moment=1 requires nssl_2moment_on=1")
+            "nssl_3moment=2 with nssl_2moment_on=0 leaves allocated sixth "
+            "moments unchanged by the one-moment driver")
 
     return NSSL2Mode(
         two_moment=bool(two),
         hail=bool(hail),
         predicted_ccn=bool(ccn),
         density_moments=density,
-        sixth_moments=(2 if hail else 1) if three else 0,
+        sixth_moments=(2 if hail else 1) if three == 1 else three,
     )
 
 
@@ -248,10 +283,10 @@ DEFAULT_RESTART_FIELDS = DEFAULT_MODE.transported_fields
 # Deprecated WRF scheme IDs (module_check_a_mundo.F:3377-3421).  Since v4.5
 # the old NSSL mp_physics values are compatibility spellings that WRF rewrites
 # to option 18 plus explicit variant flags before any physics runs.  The
-# mapping below is a literal transcription of that block.  WRF forces
-# nssl_2moment_on=1 when nssl_3moment=1 (:3457-3459); woof's resolver keeps
-# its shipped fail-closed refusal for that contradiction instead (documented
-# divergence -- the combination never reaches a ported mode either way).
+# mapping below is the pinned v4.6.1 oracle transcription. Stock
+# v4.7.1 import uses its separately versioned mapping below. The
+# resolver applies the subsequent nssl_3moment=1 number-prediction
+# rewrite in native order; numerical admission is a separate check.
 DEPRECATED_MP_PHYSICS_FLAGS: Mapping[int, Mapping[str, int]] = (
     MappingProxyType({
         17: MappingProxyType({
@@ -266,6 +301,22 @@ DEPRECATED_MP_PHYSICS_FLAGS: Mapping[int, Mapping[str, int]] = (
         22: MappingProxyType({
             "nssl_2moment_on": 1, "nssl_hail_on": 0,
             "nssl_ccn_on": 0, "nssl_density_on": 1}),
+    }))
+
+
+# WRF v4.7.1 f52c197ed39d12e087d02c50f412d90d418f6186,
+# share/module_check_a_mundo.F:3397-3416 (WRF public domain).
+# These legacy spellings now force predicted CCN even when the namelist
+# explicitly requests diagnostic CCN. Keep the v4.6.1 oracle contract above
+# intact: changing its fixture meaning would invalidate the native proof.
+DEPRECATED_MP_PHYSICS_FLAGS_WRF471: Mapping[int, Mapping[str, int]] = (
+    MappingProxyType({
+        selector: MappingProxyType({
+            **flags,
+            **({"nssl_ccn_on": 1} if selector in (17, 22) else
+               {"nssl_ccn_on": 0} if selector == 21 else {}),
+        })
+        for selector, flags in DEPRECATED_MP_PHYSICS_FLAGS.items()
     }))
 
 
@@ -291,10 +342,14 @@ def canonicalize_deprecated_mp_physics(
 # variant switches; nothing is substituted.  Keys are
 # (two_moment, hail, predicted_ccn, density_moments, sixth_moments).
 PORTED_VARIANT_MODES: tuple[tuple[bool, bool, bool, int, int], ...] = (
+    (False, True, True, 1, 0),   # legacy19, Registry CCN on; physics lccn=0
+    (False, True, False, 1, 0),
+    (False, False, True, 0, 0),  # legacy21
+    (False, False, False, 0, 0),
     (True, True, True, 2, 0),    # native default (shipped mp18 lane)
-    (True, True, False, 2, 0),   # deprecated mp_physics=17 semantics
+    (True, True, False, 2, 0),   # diagnostic CCN; v4.6.1 legacy mp17
     (True, False, True, 1, 0),   # mp18 with hail off
-    (True, False, False, 1, 0),  # deprecated mp_physics=22 semantics
+    (True, False, False, 1, 0),  # diagnostic CCN; v4.6.1 legacy mp22
 )
 
 
@@ -306,14 +361,9 @@ def require_ported_nssl2_mode(mode: NSSL2Mode) -> NSSL2Mode:
            mode.density_moments, mode.sixth_moments)
     if key in PORTED_VARIANT_MODES:
         return mode
-    if not mode.two_moment:
-        raise ValueError(
-            "the one-moment NSSL family (nssl_2moment_on=0; deprecated "
-            "mp_physics=19/21) is not ported; woof implements the "
-            "two-moment option-18 family only")
     if mode.sixth_moments:
         raise ValueError(
-            "the three-moment NSSL extension (nssl_3moment=1) is not "
+            "the three-moment NSSL extension (nssl_3moment=1/2) is not "
             "ported")
     if mode.density_moments == 0:
         raise ValueError(
@@ -336,7 +386,7 @@ def pinned_zero_fields(mode: NSSL2Mode) -> tuple[str, ...]:
     return tuple(pinned)
 
 
-def nssl2_contract_receipt(mode: NSSL2Mode) -> dict[str, object]:
+def nssl2_contract_receipt(mode: NSSL2Mode, *, nssl_cccn: float = 0.5e9) -> dict[str, object]:
     """The receipt block describing ONE resolved NSSL configuration.
 
     Every emitter of an NSSL contract receipt calls this, so a run's
@@ -352,20 +402,25 @@ def nssl2_contract_receipt(mode: NSSL2Mode) -> dict[str, object]:
         "wrf_reference_version": WRF_REFERENCE_VERSION,
         "wrf_reference_commit": WRF_REFERENCE_COMMIT,
         "resolved_mode": asdict(mode),
-        "is_default_lane": mode == DEFAULT_MODE,
+        "is_default_lane": mode == DEFAULT_MODE and nssl_cccn == 0.5e9,
         "transported_fields": list(mode.transported_fields),
         "absent_fields": list(pinned_zero_fields(mode)),
         "wrf_namelist_defaults": dict(WRF_NAMELIST_DEFAULTS),
+        **({"coefficient_overrides": {"nssl_cccn": float(nssl_cccn)}}
+           if nssl_cccn != 0.5e9 else {}),
     }
 
 
 __all__ = [
+    "nssl2_background_ccn_per_kg",
+    "nssl2_cccn_concentration",
     "BASE_MASS_FIELDS",
     "nssl2_contract_receipt",
     "CONTRACT_ID",
     "DEFAULT_MODE",
     "DEFAULT_RESTART_FIELDS",
     "DEPRECATED_MP_PHYSICS_FLAGS",
+    "DEPRECATED_MP_PHYSICS_FLAGS_WRF471",
     "PORTED_VARIANT_MODES",
     "canonicalize_deprecated_mp_physics",
     "pinned_zero_fields",

@@ -27,6 +27,7 @@ import io
 import json
 import mmap
 import os
+from pathlib import Path
 import pickle
 import platform
 import signal
@@ -42,6 +43,8 @@ from typing import Any
 OUT_OF_BAND_BYTES = 1 << 20
 _ALIGN = 64
 _HEADER = struct.Struct("!QI")
+
+
 #: After a rank process fails, rank 0 (the forecast process) has this long to reach an abort point of its own before
 #: the supervisor ends the process with the failure named.  THE BREAKAGE THIS PREVENTS (an RTX 5090 host, x1.2562 hrrrv5, 4 rank
 #: processes, 2026-10-29, MULTICARD/ckpt-shards/tip-s4-oom-hang.log): rank 2 died of an OOM and rank 0 sat 4+ min in
@@ -146,7 +149,7 @@ def _dumps(value: Any, buffers: list, shared=None) -> bytes:
 class SharedObjects:
     """Objects every child rank receives, pickled once into one memfd that each child maps copy-on-write.
 
-    THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 8 rank processes, V8X6000, 2026-10-29): every child's request
+    THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 8 rank processes, eight-card system, 2026-10-29): every child's request
     carried the whole global mesh its partition was cut from (the local mesh's ``partition_source_mesh``, 29.0 of
     30.5 GB per request), so rank 0 copied it into 7 memfds (213 GB; ``rank_request_seconds`` 15.5 s while all 8
     cards waited) and each child kept its own copy (103 GB max RSS per child; box peak 520-550 GB).  Now it is
@@ -239,7 +242,11 @@ def _aligned(size: int) -> int:
 
 
 class Link:
-    """One end of a stream socketpair: framed pickles, out-of-band buffers in one memfd per message."""
+    """One end of a stream socket: framed pickles, out-of-band buffers in one memfd per message.
+
+    Between hosts (any socket that is not AF_UNIX; ``woof.hex.multihost``) there is no shared memory to pass, so the
+    same out-of-band buffers follow the pickle in band, in the same order; the receiver rebuilds the same objects.
+    """
 
     def __init__(self, sock: socket.socket, *, timeout: float, name: str = "link"):
         self.sock = sock
@@ -249,6 +256,8 @@ class Link:
         self.closed = False
         self.sent_bytes = 0
         self.received_bytes = 0
+        unix = getattr(socket, "AF_UNIX", None)
+        self.inband = unix is None or getattr(sock, "family", unix) != unix
 
     def fileno(self) -> int:
         return self.sock.fileno()
@@ -259,6 +268,13 @@ class Link:
         sizes = [int(buffer.nbytes) for buffer in buffers]
         header = _HEADER.pack(len(data), len(sizes)) + struct.pack(f"!{len(sizes)}Q", *sizes)
         try:
+            if sizes and self.inband:
+                self.sock.sendall(header)
+                self.sock.sendall(data)
+                for buffer in buffers:
+                    self.sock.sendall(buffer.cast("B") if buffer.format != "B" else buffer)
+                self.sent_bytes += len(header) + len(data) + sum(sizes)
+                return
             if sizes:
                 total = sum(_aligned(size) for size in sizes)
                 fd = memfd(f"hex-{self.name}", total)
@@ -306,12 +322,14 @@ class Link:
         return out
 
     def recv(self, resolve=None) -> Any:
-        fds: list = []
+        fds: list | None = None if self.inband else []
         length, count = _HEADER.unpack(self._exact(_HEADER.size, fds))
         sizes = struct.unpack(f"!{count}Q", self._exact(8 * count, fds)) if count else ()
-        data = self._exact(length, fds if count and not fds else None)
+        data = self._exact(length, fds if count and fds is not None and not fds else None)
         buffers = []
-        if count:
+        if count and self.inband:
+            buffers = [self._exact(size) for size in sizes]
+        elif count:
             if len(fds) != 1:
                 for fd in fds:
                     os.close(fd)
@@ -327,7 +345,7 @@ class Link:
                 buffers.append(view[offset:offset + size])
                 offset += _aligned(size)
         else:
-            for fd in fds:
+            for fd in fds or ():
                 os.close(fd)
         self.received_bytes += _HEADER.size + 8 * count + length + sum(sizes)
         if resolve is not None:
@@ -378,6 +396,17 @@ class ProcessComm:
     def _gather0(self, value):
         self._check()
         if self._rank == 0:
+            remote = [peer for peer in range(1, self._size) if self._links[peer].inband]
+            if len(remote) > 1:
+                # Ranks on other hosts send over TCP (woof.hex.multihost): their frames arrive side by side, each on
+                # its own receiving thread (the socket reads release the GIL), instead of one after another through
+                # rank 0's one reader.  Values are still returned in rank order.
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=min(32, len(remote)), thread_name_prefix="hex-gather") as pool:
+                    pending = {peer: pool.submit(self._links[peer].recv) for peer in remote}
+                    local = {peer: self._links[peer].recv() for peer in range(1, self._size) if peer not in pending}
+                    return [value] + [pending[peer].result() if peer in pending else local[peer]
+                                      for peer in range(1, self._size)]
             return [value] + [self._links[peer].recv() for peer in range(1, self._size)]
         self._links[0].send(value)
         return None
@@ -448,7 +477,6 @@ def set_parent_death_signal() -> None:
         os._exit(1)
 
 
-#: The forecast process's warm kernel store (:mod:`woof.hex.kernel_warm`), handed to every rank process it starts.
 KERNEL_STORE_ENVIRONMENT = "WOOF_HEX_RANK_KERNEL_STORE"
 
 
@@ -460,7 +488,6 @@ def parent_kernel_store() -> str | None:
     except Exception:
         return None
     return None if config is None else json.dumps(config, sort_keys=True)
-
 
 def install_parent_kernel_store() -> None:
     """Serve this rank process's NVRTC requests from the forecast process's warm kernel store.
@@ -494,7 +521,6 @@ def install_parent_kernel_store() -> None:
               f"installed ({type(error).__name__}: {error}); its kernels compile as first reached",
               file=sys.stderr, flush=True)
 
-
 def _kernel_store_counts() -> dict | None:
     """This process's warm kernel store counters (hits, compiles, ...), or None if it has no store."""
     try:
@@ -508,10 +534,10 @@ def _kernel_store_counts() -> dict | None:
     except Exception:
         return None
 
-
 def child_visible_devices(device: int) -> str:
     """CUDA_VISIBLE_DEVICES that shows a rank process only its own card (the parent's numbering kept)."""
-    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    from woof.gpu_smi import is_amd
+    visible = os.environ.get("HIP_VISIBLE_DEVICES") if is_amd() else os.environ.get("CUDA_VISIBLE_DEVICES")
     if visible is None or not visible.strip():
         return str(int(device))
     entries = [entry.strip() for entry in visible.split(",") if entry.strip()]
@@ -527,13 +553,21 @@ class RankProcesses:
     one halo socket plus one 4 KiB flag file per neighbouring rank pair.  Children are killed only by their own PIDs.
     """
 
-    def __init__(self, devices, neighbours, *, module: str, timeout: float, job):
+    def __init__(self, devices, neighbours, *, module: str, timeout: float, job, owner_paths=(), ranks=None, connect=None):
         self.devices = tuple(int(device) for device in devices)
         self.size = len(self.devices)
+        #: The global ranks started here as children: 1..N-1 on one host; on a host of a multi-host run, the ranks
+        #: of this host other than its leader (woof.hex.multihost).
+        self.ranks = tuple(range(1, self.size)) if ranks is None else tuple(int(rank) for rank in ranks)
+        #: Rank 0's rendezvous (woof.hex.multihost.JoinedHost.connect_spec) when this host is not rank 0's: each
+        #: child then links to rank 0 over TCP itself and takes its request from this process's request link.
+        self.connect = connect
+        self.request_links: dict[int, Link] = {}
         self.neighbours = {int(rank): sorted(int(peer) for peer in peers) for rank, peers in neighbours.items()}
         self.module = module
         self.timeout = float(timeout)
         self.job = str(job)
+        self.owner_paths = tuple(Path(path) for path in owner_paths)
         self.processes: dict[int, subprocess.Popen] = {}
         self.exit_codes: dict[int, int | None] = {}
         self.failure = None
@@ -559,12 +593,53 @@ class RankProcesses:
         """Rank 0's own thread reached an abort point or left its rank work: a child's failure need not end it."""
         self._rank0_responded.set()
 
+    def _stop_others(self, rank: int) -> None:
+        others = [process for other, process in self.processes.items() if other != rank]
+        for process in others:
+            if process.poll() is None:
+                try:
+                    process.kill()   # this child's own PID only
+                except OSError:
+                    pass
+        deadline = time.monotonic() + _REAP_SECONDS
+        for process in others:
+            try:
+                process.wait(max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                pass
+
+    def _exit_now(self) -> None:
+        message = (f"woof hex rank processes: {self.failure}; rank 0 (pid {os.getpid()}) did not stop within "
+                   f"{self.rank0_grace:g} s of it, so the forecast process exits now with code 1")
+        try:
+            sys.stdout.flush()
+            sys.stderr.write(message + "\n")
+            sys.stderr.flush()
+        except Exception:
+            pass
+        os._exit(1)
+    def abort(self, reason) -> None:
+        """Stop and reap this group's children before rank 0 releases its GPU halo waits."""
+        self.rank0_responded()
+        with self._lock:
+            if self.failure is None:
+                self.failure = str(reason)
+        # A live child may already be waiting for rank 0's next halo round and cannot reply to its RPC.
+        # Reaping also prevents it from overwriting the flags rank 0 releases after this method returns.
+        self._stop_others(0)
+        for link in (*self.step_links.values(), *self.output_links.values()):
+            link.shutdown()
+
     def start(self) -> None:
-        child_fds: dict[int, list[int]] = {rank: [] for rank in range(1, self.size)}
-        specs: dict[int, dict] = {rank: dict(halo={}) for rank in range(1, self.size)}
+        child_fds: dict[int, list[int]] = {rank: [] for rank in self.ranks}
+        specs: dict[int, dict] = {rank: dict(halo={}) for rank in self.ranks}
         closers: list = []
-        for rank in range(1, self.size):
-            for kind, store in (("step", self.step_links), ("output", self.output_links)):
+        for rank in self.ranks:
+            kinds = (("step", self.step_links), ("output", self.output_links))
+            if self.connect is not None:
+                kinds = (("request", self.request_links),)
+                specs[rank]["connect"] = dict(self.connect)
+            for kind, store in kinds:
                 parent_end, child_end = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
                 store[rank] = Link(parent_end, timeout=self.timeout, name=f"{kind}-0-{rank}")
                 specs[rank][kind] = child_end.fileno()
@@ -584,21 +659,31 @@ class RankProcesses:
                     closers.append(end)
             closers.append(flags)
         if self.shared_fd is not None:
-            for rank in range(1, self.size):
+            for rank in self.ranks:
                 specs[rank]["shared"] = int(self.shared_fd)
                 child_fds[rank].append(int(self.shared_fd))
         self.started_utc = time.time()
         store = parent_kernel_store()
         try:
-            for rank in range(1, self.size):
+            for rank in self.ranks:
                 environment = dict(os.environ)
-                environment["CUDA_VISIBLE_DEVICES"] = child_visible_devices(self.devices[rank])
+                from woof.gpu_smi import is_amd
+                visibility = "HIP_VISIBLE_DEVICES" if is_amd() else "CUDA_VISIBLE_DEVICES"
+                environment[visibility] = child_visible_devices(self.devices[rank])
                 environment["WOOF_HEX_RANK_PROCESS"] = str(rank)
                 if store is not None:
                     environment[KERNEL_STORE_ENVIRONMENT] = store
                 command = [sys.executable, "-m", self.module, self.job, str(rank), json.dumps(specs[rank])]
                 self.processes[rank] = subprocess.Popen(command, pass_fds=tuple(child_fds[rank]), env=environment,
                                                         close_fds=True)
+                # A child waits for its request before touching run files.
+                # Register it first, so a dead parent's transient tree cannot
+                # be reclaimed while a surviving child still uses it.
+                from .run_owner import MARKER, register_child
+                job = Path(self.job)
+                for tree in set((job, job.parent, *self.owner_paths)):
+                    if (tree / MARKER).is_file():
+                        register_child(tree, self.processes[rank].pid)
         except BaseException:
             self.kill()
             raise
@@ -641,32 +726,6 @@ class RankProcesses:
         if self.rank0_grace is not None and not self._rank0_responded.wait(self.rank0_grace):
             self._exit_now()
 
-    def _stop_others(self, rank: int) -> None:
-        others = [process for other, process in self.processes.items() if other != rank]
-        for process in others:
-            if process.poll() is None:
-                try:
-                    process.kill()   # this child's own PID only
-                except OSError:
-                    pass
-        deadline = time.monotonic() + _REAP_SECONDS
-        for process in others:
-            try:
-                process.wait(max(0.0, deadline - time.monotonic()))
-            except subprocess.TimeoutExpired:
-                pass
-
-    def _exit_now(self) -> None:
-        message = (f"woof hex rank processes: {self.failure}; rank 0 (pid {os.getpid()}) did not stop within "
-                   f"{self.rank0_grace:g} s of it, so the forecast process exits now with code 1")
-        try:
-            sys.stdout.flush()
-            sys.stderr.write(message + "\n")
-            sys.stderr.flush()
-        except Exception:
-            pass
-        os._exit(1)
-
     def join(self, timeout: float) -> dict[int, int | None]:
         deadline = time.monotonic() + float(timeout)
         for rank, process in self.processes.items():
@@ -688,7 +747,7 @@ class RankProcesses:
                     pass
 
     def close(self) -> None:
-        for link in (*self.step_links.values(), *self.output_links.values()):
+        for link in (*self.step_links.values(), *self.output_links.values(), *self.request_links.values()):
             link.close()
         for sock in self.halo_sockets.values():
             try:
@@ -801,7 +860,7 @@ def _process_age_seconds() -> float | None:
 def cpu_mark(label: str) -> None:
     """Read this process's CPU use at a named point of its run (the first time ``label`` is reached).
 
-    THE QUESTION THIS ANSWERS (NOAA RRFS v2 conus3km, V8X6000, 2026-10-29): rank processes spent more CPU time in the
+    THE QUESTION THIS ANSWERS (NOAA RRFS v2 conus3km, eight-card system, 2026-10-29): rank processes spent more CPU time in the
     kernel than in user code (4 cards: rank 0 775.7 s system against 428 s user in a 543 s run, ranks 1-3 ~262 s
     system each; 8 cards: children 149-199 s system), and system time grew with host RSS (x1.163842: 8-9 s at 10 GB).
     The exit totals could not say whether that time is start-up (page population, file reads, pinning) or stepping

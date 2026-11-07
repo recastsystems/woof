@@ -211,7 +211,10 @@ def _unpack_slab(fout, iout, cp) -> dict:
             **split_slab_slots(fout, specs)}
 
 
-def evaluate_water_slab(fields: dict, n: int) -> dict:
+_SELECTED_MODULES = {}
+
+
+def evaluate_water_slab(fields: dict, n: int, *, opt_inf=1, opt_run=3, opt_infdv=0, soil_update_steps=1, calculate_soil=True, opt_tdrn=0, opt_irr=0) -> dict:
     """Evaluate ``n`` land columns of WATER in one launch, slab in slab out.
 
     Returns every name in :data:`OUTPUT_NAMES`: the column state WRF mutates
@@ -223,11 +226,80 @@ def evaluate_water_slab(fields: dict, n: int) -> dict:
 
     from woof.core.kernels import get_kernel
 
+    if type(opt_inf) is not int or opt_inf not in (1, 2):
+        raise ValueError("WATER opt_inf must be 1 or 2")
+    if type(opt_run) is not int or opt_run not in (1, 2, 3, 4, 5, 6, 7, 8):
+        raise ValueError("WATER opt_run must be 1, 2, 3, 4, 5, 6, 7 or 8")
+
+    if type(opt_infdv) is not int or opt_infdv not in (0,1,2,3):
+        raise ValueError("WATER opt_infdv must be 0,1,2,3")
+    if opt_run==8 and opt_infdv==0:
+        raise ValueError("RUN8 requires opt_infdv=1,2,3: native FSUR is unassigned at zero")
+    if type(opt_tdrn) is not int or opt_tdrn not in (0,1,2):
+        raise ValueError("WATER opt_tdrn must be 0,1,2")
     par, fin, iin = pack_water_slab(fields, n)
-    fout = cp.zeros((n, OUT_STRIDE), dtype=cp.float32)
+    if opt_run == 8:
+        selected_par=cp.empty((n,P_STRIDE+3),dtype=cp.float32)
+        copy_slab_slots(selected_par,[(0,par),*[(P_STRIDE+k,_take(fields,name,1,n,cp))
+                        for k,name in enumerate(("bbvic","bdvic","gdvic"))]])
+        par=selected_par
+    if opt_run in (6, 7):
+        selected_par = cp.zeros((n, P_STRIDE + 8), dtype=cp.float32)
+        slots = [(0, par)]
+        if opt_run == 6:
+            slots.append((P_STRIDE + 4, _take(fields, "bvic", 1, n, cp)))
+        else:
+            slots.append((P_STRIDE, _take(fields, "smcref", NSOIL, n, cp)))
+            for offset, name in enumerate(("axaj", "bxaj", "xxaj"), P_STRIDE + 5):
+                slots.append((offset, _take(fields, name, 1, n, cp)))
+        copy_slab_slots(selected_par, slots)
+        par = selected_par
+    groundwater_fields=("zwt","wa","wt") if opt_run in (1,2) else ()
+    if groundwater_fields:
+        selected_par=cp.zeros((n,P_STRIDE+6),dtype=cp.float32)
+        copy_slab_slots(selected_par,[(0,par),(P_STRIDE,_take(fields,"fsatmx",1,n,cp)),
+            (P_STRIDE+1,_take(fields,"timean",1,n,cp)),(P_STRIDE+2,_take(fields,"psisat",NSOIL,n,cp))])
+        par=selected_par
+        selected_fin=cp.zeros((n,IN_STRIDE+3),dtype=cp.float32)
+        copy_slab_slots(selected_fin,[(0,fin),*[(IN_STRIDE+k,_take(fields,name,1,n,cp)) for k,name in enumerate(groundwater_fields)]])
+        fin=selected_fin
+    if opt_run==5:
+        groundwater_fields=("zwt","wa","smcwtd","deeprech","rech")
+        selected_par=cp.empty((n,P_STRIDE+5),dtype=cp.float32)
+        copy_slab_slots(selected_par,[(0,par),(P_STRIDE,_take(fields,"fsatmx",1,n,cp)),(P_STRIDE+1,_take(fields,"psisat",NSOIL,n,cp))]);par=selected_par
+        selected_fin=cp.empty((n,IN_STRIDE+9),dtype=cp.float32)
+        copy_slab_slots(selected_fin,[(0,fin),*[(IN_STRIDE+k,_take(fields,name,1,n,cp))for k,name in enumerate(groundwater_fields)],(IN_STRIDE+5,_take(fields,"smceq",NSOIL,n,cp))]);fin=selected_fin
+    if opt_tdrn:
+        from woof.core.noahmp_tile_drain import PARAMETERS
+        base=par.shape[1]
+        extended=cp.empty((n,base+15),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,par),(base,_take(fields,"smcref",NSOIL,n,cp)),*[(base+4+k,_take(fields,name,1,n,cp)) for k,name in enumerate(PARAMETERS)]])
+        par=extended
+        base=fin.shape[1]
+        extended=cp.empty((n,base+3),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,fin),*[(base+k,_take(fields,name,1,n,cp)) for k,name in enumerate(("tdfracmp","dx","zwt"))]])
+        fin=extended
+    if opt_irr:
+        from woof.core.noahmp_irrigation_slab import parameter_slab
+        base=par.shape[1];extended=cp.empty((n,base+35),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,par),(base,parameter_slab(fields,n))]);par=extended
+        base=fin.shape[1];extended=cp.empty((n,base+5),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,fin),*[(base+k,_take(fields,name,1,n,cp))for k,name in enumerate(('croplu','mifac','fifac','iramtmi','iramtfi'))]]);fin=extended
+    fout = cp.zeros((n, OUT_STRIDE+len(groundwater_fields)+(1 if opt_tdrn else 0)+(4 if opt_irr else 0)), dtype=cp.float32)
     iout = cp.zeros(n, dtype=cp.int32)
     if n:
-        kernel = get_kernel("noahmp_water", "k_water")
+        extra = ()
+        if opt_inf == 1 and opt_run == 3 and soil_update_steps==1 and calculate_soil and opt_tdrn==0 and opt_irr==0:
+            kernel = get_kernel("noahmp_water", "k_water")
+        else:
+            from woof.core.noahmp_kernel_sources import compile_runtime_unit
+            card = cp.cuda.runtime.getDevice()
+            if card not in _SELECTED_MODULES:
+                _SELECTED_MODULES[card] = compile_runtime_unit(
+                    "noahmp_water", module_key="noahmp_water_selected",
+                    selected_options=True)
+            kernel = _SELECTED_MODULES[card].get_function("k_water_selected")
+            extra = (np.int32(opt_inf), np.int32(opt_run), np.int32(opt_infdv),np.int32(soil_update_steps),np.int32(calculate_soil),np.int32(opt_tdrn),np.int32(bool(opt_irr)))
         blocks = (n + THREADS - 1) // THREADS
         # Every *input* pointer is made contiguous first.  All three are
         # allocations here, so nothing is copied; the call is a guard that
@@ -240,9 +312,17 @@ def evaluate_water_slab(fields: dict, n: int) -> dict:
         kernel(
             (blocks,), (THREADS,),
             (cp.ascontiguousarray(par), cp.ascontiguousarray(fin),
-             cp.ascontiguousarray(iin), fout, iout, np.int32(n)),
+             cp.ascontiguousarray(iin), fout, iout, np.int32(n), *extra),
         )
-    return _unpack_slab(fout, iout, cp)
+    result=_unpack_slab(fout,iout,cp)
+    if groundwater_fields:
+        result.update(split_slab_slots(fout,{name:(OUT_STRIDE+k,1) for k,name in enumerate(groundwater_fields)}))
+    if opt_tdrn:
+        result["zwt"]=split_slab_slots(fout,{"zwt":(OUT_STRIDE+len(groundwater_fields),1)})["zwt"]
+    if opt_irr:
+        base=OUT_STRIDE+len(groundwater_fields)+(1 if opt_tdrn else 0)
+        result.update(split_slab_slots(fout,{name:(base+k,1)for k,name in enumerate(('iramtmi','iramtfi','irmirate','irfirate'))}))
+    return result
 
 
 __all__ = [

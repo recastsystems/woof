@@ -8357,7 +8357,7 @@
     ],
     "cupy_version": "14.2.0",
     "module_source_sha256": {
-      "smag2d": "2cdfe1e9b38cfd901a837460526bed5887285bb367593992fd95b95df15e3d24",
+      "smag2d": "e0ddc6075c1da84434eea66c55f39340e40a273c1080ae32578540a706b8e270",
       "diff_opt1": "9737655267fca7f30d0a4053008997de55a8e12f4fe552622a09f70ea994e271",
       "acoustic": "22704608360351a64d84bbf90ed1574e8e62edb5b06f5deea85376d93fca5cf8"
     },

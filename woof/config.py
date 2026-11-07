@@ -1,4 +1,7 @@
 from __future__ import annotations
+from dataclasses import field
+
+from typing import NamedTuple
 import math
 import tomllib
 from dataclasses import KW_ONLY, dataclass, fields, field as _config_field
@@ -24,6 +27,8 @@ from importlib import import_module as _import_module
 # standalone CPU preprocessing distribution omits it.
 from woof.core import sase_limits as _sase_limits
 from woof import correct_mode as _correct_mode
+from woof.core.wdm6_constants import (WDM_HAIL_SCHEMES, WDM_SCHEMES,
+                                       WDM_SCHEME_NAMES)
 
 DEFAULT_COLUMN_CHUNK = 3125
 
@@ -72,17 +77,30 @@ def validate_surface_radiation_policy(policy: str) -> str:
 @dataclass(frozen=True)
 class RunConfig:
     def __post_init__(self):
+        if self._legacy_h_sca is None:
+            object.__setattr__(self, "_legacy_h_sca", self.h_sca_adv_order is None)
+        if self.h_sca_adv_order is None:
+            object.__setattr__(self, "h_sca_adv_order", 2)
+        if self.windturbines_spec != "none":
+            if self.wind_farms or self.wind_farm_scheme not in ("off", "fitch_legacy"):
+                raise ValueError("windturbines_spec is the WRF V3.5 scheme and cannot be combined with windfarm_opt or wind_farms")
+            object.__setattr__(self, "wind_farm_scheme", "fitch_legacy")
+        # TOML may spell waves_options as an inline table. Keep the frozen
+        # config hashable and give JSON and TOML the same restart identity.
+        if isinstance(self.waves_options, dict):
+            import json
+            object.__setattr__(self, "waves_options", json.dumps(self.waves_options, sort_keys=True))
         if self.wind_farms:
             if self.wind_farms == "off":
                 object.__setattr__(self, "wind_farm_scheme", "off")
                 object.__setattr__(self, "wind_farm_table", "")
             else:
-                object.__setattr__(self, "wind_farm_scheme", "fitch")
+                object.__setattr__(self, "wind_farm_scheme", "mav" if self.wind_farm_scheme == "mav" else "fitch")
                 object.__setattr__(self, "wind_farm_table", self.wind_farms)
-        # The PWP reference profiles (lane/cap-slab-ocean) arrive as lists
+        # The PWP reference profiles (development branch) arrive as lists
         # from TOML, the namelist importer and callers; store tuples so the
         # frozen configuration stays hashable.
-        for name in ("ocean_z", "ocean_t", "ocean_s"):
+        for name in ("ocean_z", "ocean_t", "ocean_s", "press_levels", "z_levels"):
             value = getattr(self, name)
             if isinstance(value, list):
                 object.__setattr__(self, name, tuple(value))
@@ -91,6 +109,17 @@ class RunConfig:
         if not isinstance(self.mp_physics, int) or isinstance(self.mp_physics, bool):
             from woof.microphysics_schemes import resolve_mp_physics
             object.__setattr__(self, "mp_physics", resolve_mp_physics(self.mp_physics))
+        # Resolve the generation after named microphysics so partial
+        # number mixing has the same meaning through either run door.
+        if self.bl_pbl_physics == 5 and self.bl_mynn_version == "wrf_461":
+            changed = any(getattr(self, k) != v for k, v in MYNN_PBL_OPTION_IDENTITY.items())
+            partial = self.bl_mynn_mixscalars == 1 and self.mp_physics in MYNN_QN_FLAG_SPECIES and self.mp_physics not in MYNN_QN_FAMILY_SCHEMES and bool(MYNN_QN_FLAG_SPECIES[self.mp_physics])
+            if changed or self.bl_mynn_mixlength == 0 or self.tke_budget or partial:
+                object.__setattr__(self, "bl_mynn_version", "wrf_471")
+        # WRF resets its default shallow mass-flux switch outside QNSE.
+        if self.bl_pbl_physics != 4 and self.mfshconv == 1:
+            object.__setattr__(self, "mfshconv", 0)
+            object.__setattr__(self, "_mfshconv_reset", True)
         # Resolve this public shortcut before arena, cache and restart
         # identities inspect chem_sets. It is inert for existing configs.
         if not isinstance(self.chem_sets, str) or not isinstance(self.fire_smoke, bool):
@@ -134,11 +163,23 @@ class RunConfig:
     etac: float = 0.2
     moist: bool = False
     # 0 off, 1 Kessler, 2 Purdue Lin, 6 WSM6, 8 Thompson, 10 Morrison, 18 NSSL,
-    # 28 Thompson aerosol-aware (Registry/Registry.EM_COMMON:3036).
+    # 28 Thompson aerosol-aware (Registry/Registry.EM_COMMON:3036),
+    # 38 Thompson hail-aware (Registry/Registry.EM_COMMON:3037).
     # Named WOOF schemes are given by name and resolve to their
     # WOOF-side id (woof.microphysics_schemes) in __post_init__.
     mp_physics: int = 0
     moist_adv_opt: int = 1       # PD limiter on when moist
+    # Non-Chem EM Registry.EM's eight dimensionless passive tracers.
+    tracer_opt: int = _config_field(default=0, kw_only=True)
+    tracer_adv_opt: int = _config_field(default=1, kw_only=True)
+    tracer_mix2_off: bool = _config_field(default=False, kw_only=True)
+    tracer_mix6_off: bool = _config_field(default=False, kw_only=True)
+    tracer_pblmix: int = _config_field(default=1, kw_only=True)
+    # Native EM trajectories, with the point namelist sealed into the run.
+    traj_opt: int = _config_field(default=0, kw_only=True)
+    dm_has_traj: bool = _config_field(default=False, kw_only=True)
+    num_traj: int = _config_field(default=1000, kw_only=True)
+    trajectory_input: str = _config_field(default="", kw_only=True)
     # WRF no_mp_heating (Registry.EM_COMMON:2630, default 0): 1 disables
     # microphysics latent heating entirely -- moist_physics_finish_em then
     # leaves theta untouched and zeroes h_diabatic
@@ -178,14 +219,11 @@ class RunConfig:
     # cases set the WRF value (em_quarter_ss: 0.01) -- the filter damps the
     # column-integrated (external) mode that open boundaries excite.
     emdiv: float = 0.0
-    # WRF h_sca_adv_order for the geopotential equation's horizontal
-    # advection (rhs_ph, module_big_step_utilities_em.F:1435; Registry
-    # default 5).  woof defaults to 2 so every frozen flat regression
-    # stays bitwise on the original 2nd-order path; the reference case production
-    # configs set the reference value 5 (the <=6-branch 1/60-weighted
-    # centered stencil with WRF's spec-zone boundary narrowing).  Order 5
-    # is wired for periodic and specified lateral boundaries only.
-    h_sca_adv_order: int = 2
+    # WRF horizontal scalar/W transport and rhs_ph selector (native default 5).
+    # Omission retains the historical idealized phi=2/transport=5 path.
+    # An explicit order selects that native order for phi and transport.
+    h_sca_adv_order: int | None = None
+    _legacy_h_sca: bool | None = _config_field(default=None, kw_only=True, repr=False)
     terrain_opt: int = 0         # 0 = flat; 1 = bell hill
     hill_height: float = 100.0
     hill_halfwidth: float = 10000.0
@@ -217,6 +255,11 @@ class RunConfig:
     # own, so per-domain admission carries no dx gate).
     ra_physics: int = 0
     cu_physics: int = 0
+    shcu_physics: int = _config_field(default=0, kw_only=True)
+    # WRF Registry.EM_COMMON:2447-2449, prescribed CAM aerosol modes (#/kg).
+    accum_mode: float = _config_field(default=1000.0e6, kw_only=True)
+    aitken_mode: float = _config_field(default=300.0e6, kw_only=True)
+    coarse_mode: float = _config_field(default=0.2e6, kw_only=True)
     radt_minutes: float = 12.0
     cudt_minutes: float = 5.0
     # Phase-3 compatibility spelling.  A positive radt continues to
@@ -275,6 +318,11 @@ class RunConfig:
     # coefficients in module_mp_wsm6.  Kept scheme-specific so a WSM6
     # trajectory cannot be restarted under a different rimed-ice mode.
     wsm6_hail_opt: int = 0
+    # WRF v4.6.1 ``ccnty`` (Registry.EM_COMMON:2429, scalar default 2):
+    # the NTU (mp_physics=56) aerosol background AERO_CONST builds its
+    # CCN spectrum and cut-off tables from -- 1 marine, 2 clean
+    # continental, 3 average continental, 4 urban (Whitby 1978).
+    ntu_ccnty: int = _config_field(default=2, kw_only=True)
     # WRF-native split radiation selection.  ``-1/-1`` preserves the
     # historical woof ``ra_physics`` aggregate exactly; new configurations
     # set BOTH values explicitly and leave ra_physics=0, or restate the
@@ -398,6 +446,13 @@ class RunConfig:
     opt_inf: int = 1
     opt_rad: int = 3
     opt_alb: int = 2
+    snicar_snowshape_opt: int = _config_field(default=3, kw_only=True)
+    snicar_snowbc_intmix: bool = _config_field(default=True, kw_only=True)
+    snicar_snowdust_intmix: bool = _config_field(default=False, kw_only=True)
+    snicar_bc_ppb: float = _config_field(default=0.0, kw_only=True)
+    snicar_dust_ppm: float = _config_field(default=0.0, kw_only=True)
+    snicar_ice_density: float = _config_field(default=900.0, kw_only=True)
+    snicar_bubble_radius_um: float = _config_field(default=1000.0, kw_only=True)
     opt_snf: int = 1
     opt_tbot: int = 2
     opt_stc: int = 1
@@ -410,6 +465,7 @@ class RunConfig:
     opt_irrm: int = 0
     opt_infdv: int = 0
     opt_tdrn: int = 0
+    wtddt: float = _config_field(default=30.0, kw_only=True)  # WRF physics minutes
     soiltstep: float = 0.0
     noahmp_output: int = 1
     noahmp_acc_dt: float = 0.0
@@ -422,15 +478,8 @@ class RunConfig:
     mosaic_soil: int = 0
     flag_sm_adj: int = 0
     spp_lsm: int = 0
-    # WRF nwp_diagnostics (&time_control, Registry.EM_COMMON:2210, default
-    # 0).  At 1, WRF computes severe-weather running maxima every step
-    # (solve_em.F:369 forces diag_flag; module_first_rk_step_part2.F:533
-    # calls cal_helicity) and resets them each history interval
-    # (module_diag_nwp.F:246-269).  woof implements the UP_HELI_MAX
-    # member of that family (woof/core/uh_diag.py, dycore epilogue); the
-    # others (WSPD10MAX, W_UP_MAX, W_DN_MAX, W_MEAN, GRPL_MAX, HAIL_MAX*)
-    # are not carried and their absence from wrfouts is the accurate signal.
-    # The diagnostic is trajectory-inert by construction and by test.
+    # WRF 4.7.1 NWP history windows. The GPU driver samples first-RK UH,
+    # holds phy_prep pressure/density and updates every native NWP field.
     nwp_diagnostics: int = 0
     # Lane-K option exposure.  These fields are appended so positional
     # RunConfig construction keeps its historical order, and every default is
@@ -730,7 +779,7 @@ class RunConfig:
     surface_radiation_policy: str = "required"
 
     # mp=28 WIF aerosol-climatology dataset (change record: appended with
-    # the lane/wif-climatology commit onto this line).  Filesystem path to
+    # the development branch commit onto this line).  Filesystem path to
     # WRF's global monthly QNWFA/QNIFA dataset in WPS intermediate format
     # (QNWFA_QNIFA_SIGMA_MONTHLY.dat as distributed).  Consumed ONLY when
     # aer_init_opt=1 AND wif_input_opt=1 select the ported climatology
@@ -741,27 +790,27 @@ class RunConfig:
     # user-provided 225 MB artifact, not something this repository ships.
     wif_climatology_path: str = ""
     # Which mp=28 aerosol initial state this run wants (change record:
-    # appended with the lane/wif-default commit onto this line).  "auto",
+    # appended with the development branch commit onto this line).  "auto",
     # the default, resolves WRF's monthly WIF climatology and uses it; when
     # the machine has no copy it downloads the pinned one, and when that
     # fails it refuses by name (acquire_wif_climatology).  It no longer
     # falls back to thompson_init's synthetic profile with a warning (a real-data
     # mp=28 run, 2026-10-23).  "climatology" is the same
     # commitment, stated.  "synthetic" selects that profile deliberately, which is
-    # what an idealized case or a reproduction of a pre-lane/wif-default run
+    # what an idealized case or a reproduction of a run before that change
     # wants.  Inert under every other mp_physics.
     mp28_aerosol_source: str = "auto"
-    #: mp_physics=50 (P3): which P3 implementation integrates the column.
+    #: mp_physics=50/51 (P3): which P3 implementation integrates the column.
     #: ``"cuda"`` is the DEFAULT and is the shipping path -- the device
     #: kernels in woof/core/kernels/p3.cu, launched one step at a time
-    #: (``"cuda"`` is the unfused reference arm; ``"fused"`` is the
+    #: (``"cuda"`` selects the level-parallel arm; ``"fused"`` is the
     #: three-launch composition proven byte-identical to it on all twelve
     #: p3-fortref fixtures).  ``"reference"`` selects the CPU float32
     #: transcription in woof/core/p3.py, which exists so every device
     #: result stays checkable and so the scheme runs where there is no
     #: CuPy; it is orders slower and is not a production selection.
     #:
-    #: SCHEME-SCOPED (woof.core.model.SCHEME_SCOPED_RUN_FIELDS[50]) with an
+    #: SCHEME-SCOPED (woof.core.model.SCHEME_SCOPED_RUN_FIELDS[50/51]) with an
     #: off-scheme refusal below, in this same commit, for the reason the
     #: mp=28 pair records: an unscoped RunConfig field moves EVERY
     #: experiment fingerprint and makes every existing checkpoint refuse to
@@ -825,7 +874,7 @@ class RunConfig:
     min_time_step: int = -1
     min_time_step_den: int = 0
     # APPENDED LAST, deliberately: this field was declared between
-    # ``etac`` and ``moist`` on lane/per-domain-vertical, which shifted
+    # ``etac`` and ``moist`` on development branch, which shifted
     # 150 fields' positional index and is what
     # tests/test_config_freeze.py::test_new_fields_are_reviewed_defaults_
     # appended_last exists to prevent (same correction the New Tiedtke
@@ -1018,6 +1067,7 @@ class RunConfig:
     #: WRF's non-fractional surface treatment, and the RUC receipt names the
     #: threshold that ran.  Read by the RUC LSM only (sf_surface_physics=3).
     fractional_seaice: int = 0
+    # Prescribed analysis stream. WRF's sst_update remains 0 unless selected.
     #: Which generation of the MYNN surface layer (sf_sfclay_physics = 5)
     #: runs (woof.core.mynn_surface.MYNN_SFCLAY_VARIANTS).  ``wrf_461``:
     #: WRF v4.6.1 module_sf_mynn.F.  ``gsl_wrf39``: the GSL WRF 3.9 fork's
@@ -1310,8 +1360,8 @@ class RunConfig:
     # --- 2.9.0 (golden/wrf-fixes): appended after thompson_table_dir, ahead
     # of the chem block (which stays the last positional block) and the
     # keyword-only fire block, so no earlier positional index moves.
-    #: WRF's scalar-array advection selector; 1 is the only implemented
-    #: operator and what every earlier run used (a header drops it).
+    #: WRF scalar-array advection: 0 ordinary, 1 positive definite.
+    #: Earlier forecasts retain 1 when this selector is omitted.
     scalar_adv_opt: int = 1
     #: Source numerical generation of the single-layer canopy.
     urban_ucm_generation: str = "wrf_471"
@@ -1397,12 +1447,12 @@ class RunConfig:
     # mass dp/g = m_dry*(1+qv); scale them by (1+qv) onto dry mass and hand
     # the scheme a specific-humidity vapour forcing (woof/core/ntiedtke.py).
     ntiedtke_dry_mass_coupling: bool = _correct_mode.CORRECT_KEYS_DEFAULT
-    # WB5 in WDM6 (2.9.0, lane/290-A4): mp_wdm6.F carries the same
+    # WB5 in WDM6 (2.9.0, development branch): mp_wdm6.F carries the same
     # sedimentation routine and books the below-ground part of the straddling
     # cell at the flat cell mean; the correction books it with the remap's
     # own piecewise-linear profile (kernels/wdm6.cu, WDM6_PLM_SURFACE).
     wdm6_conservative_surface: bool = _correct_mode.CORRECT_KEYS_DEFAULT
-    # WB1 in classic Thompson (2.9.0, lane/290-A4) and aerosol-aware
+    # WB1 in classic Thompson (2.9.0, development branch) and aerosol-aware
     # Thompson (mp 28, 2.9.1): the cloud water the fallout takes out of the
     # lowest level is booked in its own total, CLOUDNC
     # (woof/core/thompson_cloud_booking.py), instead of vanishing.
@@ -1481,13 +1531,20 @@ class RunConfig:
     # trigger/closure velocities; 1 = the 250/dx scaling of
     # module_cu_nsas.F:567-576) and sas_pgcon (:2651, default 0.55, the
     # convectively forced pressure-gradient factor cu_nsas passes as pgcon).
-    # Read only where cu_physics = 96 (SAS_PGCON_SCHEMES,
-    # NSAS_DX_FACTOR_SCHEMES); validate_run_config refuses a non-default
-    # value under any other scheme, and both drop out of every identity
-    # while cu_physics != 96, so no earlier fingerprint or checkpoint moves.
+    # nsas_dx_factor is read at 96; sas_pgcon is shared by 94 and 96.
+    # Per-control reader sets drive validation and identity pruning.
+    # shalconv is read only at 94. Defaults disappear from other schemes
+    # so their existing configuration and restart identities stay fixed.
     nsas_dx_factor: int = _config_field(default=0, kw_only=True)
     sas_pgcon: float = _config_field(default=0.55, kw_only=True)
+    #: CU_SAS optional ARW shallow switch; WRF defaults to 1.
+    shalconv: int = _config_field(default=1, kw_only=True)
 
+    # WRF's scalar Thompson cache controls. They change startup IO only;
+    # the column kernels always consume the verified native table words.
+    force_read_thompson: bool = _config_field(default=False, kw_only=True)
+    write_thompson_tables: bool = _config_field(default=True, kw_only=True)
+    write_thompson_mp38table: bool = _config_field(default=False, kw_only=True)
     chem_sets: str = ""
     #: External chem sources enabled for this run, by name (files under
     #: woof/data/chem/sources/), comma-separated in priority order.
@@ -1575,6 +1632,14 @@ class RunConfig:
     # Names, types and defaults are woof.sfire_config.FireRunFields'
     # (tests/test_sfire_config_fields.py holds the two equal).
     _: KW_ONLY
+    # Independent opt-in TC bundle. Defaults are omitted from stock identities.
+    tc_flux_curve: str = "off"
+    tc_spray: str = "off"
+    tc_spray_partition: float = 1.
+    tc_wave_roughness: bool = False
+    tc_wave_source: str = "fetch"
+    tc_fetch_m: float = 100000.0
+    tc_horizontal_length_m: float = 0.0
     nfmc: int = 5
     fmoist_run: bool = False
     fmoist_interp: bool = False
@@ -1648,6 +1713,11 @@ class RunConfig:
     fire_lat_init: float = 0.0
     fire_lon_init: float = 0.0
     fire_ign_time: float = 0.0
+
+    #: WRF 4.7.1 fog settling: 0 off, 1 Duynkerke, 2 FogDES.
+    grav_settling: int = 0
+    #: WRF 4.7.1 KF trigger: 1 vertical velocity, 2 moisture advection, 3 RH.
+    kfeta_trigger: int = 1
     fire_shape: int = 0
     fire_sprd_mdl: int = 1
     fire_crwn_hgt: float = 15.0
@@ -1697,6 +1767,7 @@ class RunConfig:
     sfc_full_init: bool = False
     sfc_lu_index: int = 28
     sfc_tsk: float = 285.0
+    # WRF Registry.EM_COMMON:2562,2575; check_a_mundo.F:2306-2312.
     sfc_tmn: float = 285.0
     fire_read_lu: bool = False
     fire_read_tsk: bool = False
@@ -1746,6 +1817,8 @@ class RunConfig:
     fire_smoke: bool = False
     # Ocean door TOML; empty preserves uncoupled configurations.
     ocean_config: str = ""
+    waves: str = "off"
+    waves_options: str = ""
 
     # Auto enables hail diagnostics on convection-allowing moist grids.
     hailcast_opt: int = -1
@@ -1778,7 +1851,7 @@ class RunConfig:
     #: unchanged; HRRR v4 runs 271.4.
     seaice_threshold: float = 100.0
 
-    # HRRR v4 output (lane/hrrr-v4-output: e55b68accb, bd4a1c2090,
+    # HRRR v4 output (development branch: e55b68accb, bd4a1c2090,
     # f80ac46aeb), APPENDED LAST and keyword-only.  The lane first inserted
     # these six after nwp_diagnostics, in the positional block: that shifted
     # every positional RunConfig field after it and moved the pre-mosaic
@@ -1795,9 +1868,10 @@ class RunConfig:
 
     #: Per-run capacity decision, retained through preparation and receipts.
     smoke_off_reason: str = _config_field(default="", kw_only=True)
-    # HRRR v4 climate statistics (lane/hrrr-v4-clwrf 3aec2abd31), appended
+    # HRRR v4 climate statistics (development branch 3aec2abd31), appended
     # last and keyword-only so the positional constructor is unchanged.
     # Registry.EM_COMMON:2084,2087-2088; windows in minutes.
+    diag_print: int = _config_field(default=0, kw_only=True)
     output_diagnostics: int = _config_field(default=0, kw_only=True)
     diag_int: int = _config_field(default=15, kw_only=True)
     wind_int: int = _config_field(default=5, kw_only=True)
@@ -1827,7 +1901,32 @@ class RunConfig:
     wind_farms: str = _config_field(default="", kw_only=True)
     wind_farm_table: str = _config_field(default="", kw_only=True)
     windfarm_tke_factor: float = _config_field(default=0.25, kw_only=True)
+    windfarm_ij: int = _config_field(default=0, kw_only=True)
+    windfarm_wake_model: int = _config_field(default=2, kw_only=True)
+    windfarm_overlap_method: int = _config_field(default=4, kw_only=True)
+    windfarm_induction: int = _config_field(default=0, kw_only=True)
+    windfarm_deg: float = _config_field(default=0.0, kw_only=True)
     wind_farm_max_dx_m: float = _config_field(default=3000.0, kw_only=True)
+    # Native WRF station diagnostics. Empty path preserves prior outputs.
+    tslist: str = _config_field(default="", kw_only=True)
+    ts_buf_size: int = _config_field(default=200, kw_only=True)
+    max_ts_locs: int = _config_field(default=5, kw_only=True)
+    max_ts_level: int = _config_field(default=15, kw_only=True)
+    tslist_unstagger_winds: bool = _config_field(default=False, kw_only=True)
+    # WRF V3.5's native analytic scheme; distinct from modern Fitch tables.
+    windturbines_spec: str = _config_field(default="none", kw_only=True)
+    td_turbgridid: int = _config_field(default=-1, kw_only=True)
+    td_hubheight: float = _config_field(default=100.0, kw_only=True)
+    td_diameter: float = _config_field(default=60.0, kw_only=True)
+    td_stdthrcoef: float = _config_field(default=0.158, kw_only=True)
+    td_cutinspeed: float = _config_field(default=4.0, kw_only=True)
+    td_cutoutspeed: float = _config_field(default=27.0, kw_only=True)
+    td_power: float = _config_field(default=2.0, kw_only=True)
+    td_turbpercell: float = _config_field(default=1.0, kw_only=True)
+    td_ewfx: int = _config_field(default=0, kw_only=True)
+    td_ewfy: int = _config_field(default=0, kw_only=True)
+    td_pwfx: int = _config_field(default=1, kw_only=True)
+    td_pwfy: int = _config_field(default=1, kw_only=True)
     # HAILCAST generation (woof.core.hail.HAILCAST_KERNELS).  "wrf_39_noaa":
     # the operational HRRR v4.1.21 branch's HAILCAST (WRFV3.9), what NOAA's
     # HRRR posts as surface HAIL; "wrf_461": WRF v4.6.1's, whose 2019-2022
@@ -1836,6 +1935,265 @@ class RunConfig:
     # keyword-only, appended last, absent from documents and checkpoints at
     # its default (woof.checkpoint_identity.HAILCAST_DEFAULT_RUN_KEYS).
     hailcast_version: str = _config_field(default="wrf_39_noaa", kw_only=True)
+    # WRF carries theta_m = theta * (1 + Rv/Rd*qv) when selected.
+    # Engine default stays dry; WRF-file defaults are resolved at import.
+    use_theta_m: int = _config_field(default=0, kw_only=True)
+    # Native turbulence companions. Other operators require separate ports.
+    # Keyword-only additions preserve all existing positional constructors.
+    tke_adv_opt: int = _config_field(default=1, kw_only=True)
+    sfs_opt: int = _config_field(default=0, kw_only=True)
+    m_opt: int = _config_field(default=0, kw_only=True)
+    tke_mix2_off: bool = _config_field(default=False, kw_only=True)
+    tke_mix6_off: bool = _config_field(default=False, kw_only=True)
+    # WRF Registry/registry.avgflx, per-domain history-window flux means.
+    do_avgflx_em: int = _config_field(default=0, kw_only=True)
+    do_avgflx_cugd: int = _config_field(default=0, kw_only=True)
+    # WRF KF-CuP controls, consumed only by cu_physics=10. Appended and
+    # keyword-only to preserve existing positional RunConfig constructors.
+    numbins: int = _config_field(default=1, kw_only=True)
+    thbinsize: float = _config_field(default=1.0, kw_only=True)
+    rbinsize: float = _config_field(default=1.0, kw_only=True)
+    mindeepfreq: float = _config_field(default=1.0, kw_only=True)
+    minshallowfreq: float = _config_field(default=1.0, kw_only=True)
+    shallowcu_forced_ra: bool = _config_field(default=False, kw_only=True)
+
+    # WRF GCE switches; keyword-only preserves existing positional callers.
+    gsfcgce_hail: int = _config_field(default=0, kw_only=True)
+    gsfcgce_2ice: int = _config_field(default=0, kw_only=True)
+
+    # Append after every E field so earlier positional constructors remain valid.
+    # The preceding KW_ONLY marker also keeps this new selector keyword-only.
+    sst_skin: int = 0
+    sst_update: int = 0
+    surface_analysis: str = ""
+    tmn_update: int = 0
+    lagday: int = 150
+    ua_phys: bool = False
+
+    # WRF 4.7.1 irrigation packages: channel=1, drip=2, sprinkler=3.
+    sf_surf_irr_scheme: int = 0
+    irr_daily_amount: float = 0.0
+    irr_start_hour: int = 0
+    irr_num_hours: int = 0
+    irr_start_julianday: int = 0
+    irr_end_julianday: int = 0
+    irr_freq: int = 1
+    irr_ph: int = 0
+
+    # WRF 4.7.1 prescribed sea-ice controls (Registry.EM_COMMON:2636-2642).
+    seaice_albedo_opt: int = 0
+    seaice_snowdepth_opt: int = 0
+    seaice_thickness_opt: int = 0
+    seaice_thickness_default: float = 3.0
+    seaice_snowdepth_min: float = 0.001
+    seaice_snowdepth_max: float = 1.0e10
+
+
+    # WRF GFDL CO2 initialization, consumed only by radiation 99.
+    co2tf: int = _config_field(default=1, kw_only=True)
+    # WRF &physics ifsnow (Registry default 1): snow-cover effects in the
+    # slab scheme (sf_surface_physics=1), which caps the skin and the top
+    # soil layer at 273.16 K under snow.  Read by woof/core/physics.py
+    # _run_slab; nonzero enables snow caps (WRF-exact retains WRF behavior).
+    ifsnow: int = _config_field(default=1, kw_only=True)
+    # WRF aerosol coupling; keyword-only preserves positional constructors.
+    aercu_opt: int = _config_field(default=0, kw_only=True)
+    # BMJ cloud feedback is opt-in and does not shift positional arguments.
+    bmj_rad_feedback: bool = _config_field(default=False, kw_only=True)
+    # CAM cache timing must not shift the historical positional fields.
+    cam_abs_freq_s: float = _config_field(default=21600.0, kw_only=True)
+
+    #: WRF ``&physics mfshconv`` (Registry.EM_COMMON:2485, default 1): the
+    #: EDMF shallow mass flux of module_bl_mfshconvpbl.F, run before the
+    #: QNSE PBL by module_pbl_driver.F:1519-1536.  Read under
+    #: bl_pbl_physics = 4 only: WRF resets it to 0 under every other PBL
+    #: (share/module_check_a_mundo.F:1715-1730), and so it is inert there
+    #: (:func:`qnse_mfshconv_active`).  The Registry default is the default
+    #: here, so a QNSE run that names nothing runs WRF's mass flux.
+    #: Appended last.
+    mfshconv: int = _config_field(default=1, kw_only=True)
+    aercu_fct: float = _config_field(default=1.0, kw_only=True)
+    kf_edrates: int = _config_field(default=0, kw_only=True)
+
+    afwa_bad_data_check: int = _config_field(default=0, kw_only=True)
+    afwa_diag_opt: int = _config_field(default=0, kw_only=True)
+    afwa_therm_opt: int = _config_field(default=0, kw_only=True)
+    afwa_ptype_opt: int = _config_field(default=0, kw_only=True)
+    afwa_vil_opt: int = _config_field(default=0, kw_only=True)
+    afwa_radar_opt: int = _config_field(default=0, kw_only=True)
+    afwa_vis_opt: int = _config_field(default=0, kw_only=True)
+    afwa_icing_opt: int = _config_field(default=0, kw_only=True)
+    afwa_buoy_opt: int = _config_field(default=0, kw_only=True)
+    afwa_severe_opt: int = _config_field(default=0, kw_only=True)
+    afwa_ptype_ccn_tmp: float = _config_field(default=264.15, kw_only=True)
+    afwa_ptype_tot_melt: float = _config_field(default=50.0, kw_only=True)
+
+    bucket_mm: float = _config_field(default=-1., kw_only=True)
+    bucket_j: float = _config_field(default=-1., kw_only=True)
+    acc_phy_tend: int = _config_field(default=0, kw_only=True)
+
+    # Native level output is opt-in and appended keyword-only.
+    p_lev_diags: int = _config_field(default=0, kw_only=True)
+    z_lev_diags: int = _config_field(default=0, kw_only=True)
+    p_lev_diags_dfi: int = _config_field(default=0, kw_only=True)
+    z_lev_diags_dfi: int = _config_field(default=0, kw_only=True)
+    press_levels: tuple[float, ...] = _config_field(default=(), kw_only=True)
+    z_levels: tuple[float, ...] = _config_field(default=(), kw_only=True)
+    use_tot_or_hyd_p: int = _config_field(default=2, kw_only=True)
+    extrap_below_grnd: int = _config_field(default=1, kw_only=True)
+    p_lev_missing: float = _config_field(default=-999., kw_only=True)
+    z_lev_missing: float = _config_field(default=-999., kw_only=True)
+    auxhist22_interval_s: float = _config_field(default=0., kw_only=True)
+    auxhist22_begin_s: float = _config_field(default=0., kw_only=True)
+    auxhist22_end_s: float = _config_field(default=0., kw_only=True)
+    auxhist22_outname: str = _config_field(default="auxhist22_d<domain>_<date>", kw_only=True)
+    frames_per_auxhist22: int = _config_field(default=1, kw_only=True)
+    auxhist23_interval_s: float = _config_field(default=0., kw_only=True)
+    auxhist23_begin_s: float = _config_field(default=0., kw_only=True)
+    auxhist23_end_s: float = _config_field(default=0., kw_only=True)
+    auxhist23_outname: str = _config_field(default="auxhist23_d<domain>_<date>", kw_only=True)
+    frames_per_auxhist23: int = _config_field(default=1, kw_only=True)
+    p_lev_interval_s: float = _config_field(default=0., kw_only=True)
+    z_lev_interval_s: float = _config_field(default=0., kw_only=True)
+
+    # Startup-only WRF DFI controls. Stop offsets retain the analysis's UTC
+    # reference; they do not shift the requested forecast end time.
+    dfi_opt: int = _config_field(default=0, kw_only=True)
+    dfi_savehydmeteors: int = _config_field(default=0, kw_only=True)
+    dfi_nfilter: int = _config_field(default=7, kw_only=True)
+    dfi_cutoff_seconds: int = _config_field(default=3600, kw_only=True)
+    dfi_bckstop_seconds: int = _config_field(default=0, kw_only=True)
+    dfi_fwdstop_seconds: int = _config_field(default=0, kw_only=True)
+    dfi_write_filtered_input: bool = _config_field(default=True, kw_only=True)
+    dfi_write_dfi_history: bool = _config_field(default=False, kw_only=True)
+    time_step_dfi: int = _config_field(default=-1, kw_only=True)
+    moist_adv_dfi_opt: int = _config_field(default=0, kw_only=True)
+    dfi_constant_bc: bool = _config_field(default=False, kw_only=True)
+    dfi_time_dim: int = _config_field(default=1000, kw_only=True)
+
+    #: WRF FARMS can replace the surface SWDOWN carrier, independently of heating.
+    couple_farms: bool = _config_field(default=False, kw_only=True)
+    cu_rad_feedback: bool = _config_field(default=False, kw_only=True)
+    rrtmg_aer3_source: str = _config_field(default="operational_fork", kw_only=True)
+    #: WRF solve_em: midpoint RK2 or the established three-stage RK3.
+    #: Keyword-only so positional construction keeps its historical order.
+    rk_ord: int = _config_field(default=3, kw_only=True)
+    #: WRF standard momentum transport (1), or final-stage WENO (3).
+    momentum_adv_opt: int = _config_field(default=1, kw_only=True)
+
+    # Stock WRF module_diag_cl uses auxhist3's interval in minutes. Zero
+    # retains the operational fork's explicitly configured diag/wind path.
+    auxhist3_interval: int = _config_field(default=0, kw_only=True)
+    solar_diagnostics: int = _config_field(default=0, kw_only=True)
+    mean_diag: int = _config_field(default=0, kw_only=True)
+    diurnal_diag: int = _config_field(default=0, kw_only=True)
+    mean_freq: int = _config_field(default=0, kw_only=True)
+    mean_interval: int = _config_field(default=0, kw_only=True)
+
+
+    # WRF observation FDDA; native Registry defaults, inert when off.
+    obs_nudge_opt: int = 0
+    max_obs: int = 0
+    fdda_start: float = 0.0
+    fdda_end: float = 0.0
+    obs_nudge_wind: int = 0
+    obs_coef_wind: float = 0.0
+    obs_nudge_temp: int = 0
+    obs_coef_temp: float = 0.0
+    obs_nudge_mois: int = 0
+    obs_coef_mois: float = 0.0
+    obs_nudge_pstr: int = 0
+    obs_coef_pstr: float = 0.0
+    obs_no_pbl_nudge_uv: int = 0
+    obs_no_pbl_nudge_t: int = 0
+    obs_no_pbl_nudge_q: int = 0
+    obs_sfc_scheme_horiz: int = 0
+    obs_sfc_scheme_vert: int = 0
+    obs_max_sndng_gap: float = 20.0
+    obs_nudgezfullr1_uv: float = 50.0
+    obs_nudgezrampr1_uv: float = 50.0
+    obs_nudgezfullr2_uv: float = 50.0
+    obs_nudgezrampr2_uv: float = 50.0
+    obs_nudgezfullr4_uv: float = -5000.0
+    obs_nudgezrampr4_uv: float = 50.0
+    obs_nudgezfullr1_t: float = 50.0
+    obs_nudgezrampr1_t: float = 50.0
+    obs_nudgezfullr2_t: float = 50.0
+    obs_nudgezrampr2_t: float = 50.0
+    obs_nudgezfullr4_t: float = -5000.0
+    obs_nudgezrampr4_t: float = 50.0
+    obs_nudgezfullr1_q: float = 50.0
+    obs_nudgezrampr1_q: float = 50.0
+    obs_nudgezfullr2_q: float = 50.0
+    obs_nudgezrampr2_q: float = 50.0
+    obs_nudgezfullr4_q: float = -5000.0
+    obs_nudgezrampr4_q: float = 50.0
+    obs_nudgezfullmin: float = 50.0
+    obs_nudgezrampmin: float = 50.0
+    obs_nudgezmax: float = 3000.0
+    obs_sfcfact: float = 1.0
+    obs_sfcfacr: float = 1.0
+    obs_dpsmx: float = 7.5
+    obs_rinxy: float = 0.0
+    obs_rinsig: float = 0.0
+    obs_twindo: float = 0.0
+    obs_npfi: int = 0
+    obs_ionf: int = 1
+    obs_idynin: int = 0
+    obs_dtramp: float = 0.0
+    obs_prt_max: int = 1000
+    obs_prt_freq: int = 1000
+    obs_ipf_in4dob: bool = False
+    obs_ipf_errob: bool = False
+    obs_ipf_nudob: bool = False
+    obs_ipf_init: bool = True
+    obs_scl_neg_qv_innov: int = 0
+    obs_inputfile: str = ""
+    obs_domain_id: int = 1
+    obs_parent_grid_ratio: int = 1
+    obs_levelidn: int = 0
+    obs_truelat1: float = 0.0
+    obs_truelat2: float = 0.0
+    obs_stand_lon: float = 0.0
+
+    # Native PX controls, Registry.EM_COMMON:2615-2616,2747.
+    # Keyword-only additions preserve earlier positional constructors.
+    pxlsm_smois_init: int = _config_field(default=1, kw_only=True)
+    pxlsm_modis_veg: int = _config_field(default=0, kw_only=True)
+    pxlsm_soil_nudge: int = _config_field(default=0, kw_only=True)
+    sgfdda_interval_m: int = _config_field(default=180, kw_only=True)
+    sgfdda_inname: str = _config_field(default="sgfdda_d<domain>", kw_only=True)
+    io_form_sgfdda: int = _config_field(default=2, kw_only=True)
+    # NSSL coefficients append keyword-only; legacy positional construction is unchanged.
+    nssl_cccn: float = _config_field(default=0.5e9, kw_only=True)
+    nssl_alphah: float = _config_field(default=0.0, kw_only=True)
+    nssl_alphahl: float = _config_field(default=1.0, kw_only=True)
+    nssl_icdx: int = _config_field(default=6, kw_only=True)
+    nssl_icdxhl: int = _config_field(default=6, kw_only=True)
+    # Native latitude/longitude hydrostatic topology. Keyword-only additions
+    # preserve every legacy positional constructor and checkpoint identity.
+    polar: bool = _config_field(default=False, kw_only=True)
+    fft_filter_lat: float = _config_field(default=45.0, kw_only=True)
+    # WRF 4.7.1 radiation-driver fixed-step phase (Registry.EM_COMMON:2573).
+    ra_call_offset: int = _config_field(default=0, kw_only=True)
+    madwrf_opt: int = _config_field(default=0, kw_only=True)
+    madwrf_cldinit: int = _config_field(default=0, kw_only=True)
+    madwrf_dt_relax: float = _config_field(default=60.0, kw_only=True)
+    madwrf_dt_nudge: float = _config_field(default=60.0, kw_only=True)
+    # 0-1, 0-2 and 0-3 km AGL updraft-helicity maxima over each history
+    # interval (UP_HELI_MAX01/02/03, woof/core/uh_layers.py), folded beside
+    # UP_HELI_MAX by the nwp_diagnostics = 1 step.  Appended last,
+    # keyword-only and off by default, so every earlier run is unchanged.
+    uh_layers: int = _config_field(default=0, kw_only=True)
+
+@dataclass(frozen=True)
+class _DfiBackwardRunConfig(RunConfig):
+    """Internal WRF DFI_BCK phase, built from an admitted forecast config.
+
+    This type is never constructed by a document or namelist loader. WRF
+    deliberately sets diff_opt=0, km_opt=1 and negative dt in this phase.
+    Ordinary configurations keep their existing diffusion admission.
+    """
 
 #: The ways a domain's clock meets the measured terrain rules
 #: (:attr:`RunConfig.terrain_clock`).
@@ -1911,12 +2269,14 @@ def drop_inert_g3_fields(values: dict) -> None:
     """Scheme-only fields cannot change unrelated configuration identities."""
     if values.get("cu_physics", 0) != 5:
         for name in G3_RUN_DEFAULTS:
+            if name == "convtrans_avglen_m" and values.get("cu_physics") == 3 and values.get("cu_rad_feedback"):
+                continue
             values.pop(name, None)
 
 
 #: WRF vertical advection orders the kernels carry (module_advect_em.F
-#: ``vert_order`` branches 3 and 5; 2, 4 and 6 are not transcribed).
-VERTICAL_ADV_ORDERS = (3, 5)
+#: ``vert_order`` branches 2 through 6).
+VERTICAL_ADV_ORDERS = (2, 3, 4, 5, 6)
 
 
 def advection_order_refusal(*, v_sca_adv_order, v_mom_adv_order,
@@ -1932,22 +2292,19 @@ def advection_order_refusal(*, v_sca_adv_order, v_mom_adv_order,
     for name, value in (("v_sca_adv_order", v_sca_adv_order),
                         ("v_mom_adv_order", v_mom_adv_order)):
         if isinstance(value, bool) or value not in VERTICAL_ADV_ORDERS:
-            return (f"{name} = {value!r}: the vertical flux ladder carries "
-                    "WRF's vert_order 3 (2nd order one face in from the eta "
-                    "boundaries, flux3 between) and 5 (2nd, flux3, flux5 "
-                    "interior) only; 2, 4 and 6 are not transcribed, so "
-                    "the run would not advect the way the namelist says.")
-    if isinstance(h_mom_adv_order, bool) or h_mom_adv_order != 5:
+            return (f"{name} = {value!r}: WRF's vertical flux ladders "
+                    "accept integer orders 2 through 6; another value "
+                    "does not select a native advection operator.")
+    if isinstance(h_mom_adv_order, bool) or h_mom_adv_order not in (0, 2, 3, 4, 5, 6):
         return (f"h_mom_adv_order = {h_mom_adv_order!r}: the u, v and w "
-                "horizontal stencils are WRF's 5th-order flux5 only "
+                "horizontal stencils carry WRF orders 0, 2, 3, 4, 5 and 6 only "
                 "(woof/core/kernels/advection.cu), so another order would "
                 "run flux5 under a namelist that asked for something else.")
     return None
 
 
-#: The Noah-MP option identity woof admits, field -> the only accepted
-#: value, with what pins it.  ``validate_run_config`` refuses anything else
-#: *before* a run starts.
+#: Canonical Noah-MP defaults, with the evidence for each identity.
+#: Additional accepted values live in NOAHMP_OPTION_VALUES below.
 #:
 #: Read the second column as the evidence, not as a slogan.  "fixture" means
 #: the four whole-column ``noahmp-sflx.csv`` cases were generated with that
@@ -1955,73 +2312,61 @@ def advection_order_refusal(*, v_sca_adv_order, v_mom_adv_order,
 #: kills a code region and the kill is proved in
 #: :mod:`woof.core.noahmp_sflx`'s module docstring out of the source rather
 #: than assumed; "unmeasured" means no other value has been tried at all.
-#: Nothing here claims that a *different* value would work.
+#: Evidence for an alternative is stated explicitly in its row.
 NOAHMP_OPTION_IDENTITY_EVIDENCE: dict[str, tuple[object, str]] = {
-    "dveg": (4, "fixture; FVEG=SHDMAX at :863-864 and dveg_active=.false. "
-                "at :1016 kill CARBON -- dead-proved"),
-    "opt_crs": (1, "fixture; opt_crs=2 selects CANRES+CALHUM, which is not "
-                   "transcribed -- unmeasured"),
-    "opt_btr": (1, "fixture; the Noah btran form only"),
+    "dveg": (4, "fixture; prescribed table vegetation by default. "
+                "Values 1/3/7/8/9 also have real whole-module replay and forecast "
+                "proof; dynamic 2/5/6 run native CARBON/CO2FLUX and persistent pools"),
+    "opt_crs": (1, "fixture; Ball-Berry default. Jarvis CANRES/CALHUM has a real "
+                   "WRF whole-module replay and forecast proof"),
+    "opt_btr": (1, "fixture; Noah by default. CLM (2) and SSiB (3) have real WRF "
+                   "whole-module replays"),
     "opt_run": (3, "fixture; Schaake96.  Kills GROUNDWATER, "
                    "SHALLOWWATERTABLE, ZWTEQ, VIC, XAJ and DVIC -- "
                    "dead-proved"),
-    "opt_sfc": (1, "fixture; SFCDIF2 is not transcribed -- unmeasured"),
+    "opt_sfc": (1, "fixture; SFCDIF1 default. Native SFCDIF2 reaches both flux "
+                   "tiles and has a real whole-module replay"),
     "opt_frz": (1, "fixture; NY06 supercooled liquid"),
     "opt_inf": (1, "fixture; NY06 frozen-soil permeability"),
     "opt_rad": (3, "fixture; gap = 1 - FVEG"),
-    "opt_alb": (2, "fixture; CLASS.  SNOWALB_BATS is not transcribed -- "
-                   "unmeasured"),
-    "opt_snf": (1, "fixture; Jordan91. FPICE comes from SFCTMP while the "
-                   "driver separately supplies WRF's six precipitation "
-                   "rates"),
+    "opt_alb": (2, "fixture; CLASS default. BATS (1) has a real WRF "
+                   "whole-module replay. SNICAR (3) is written from papers, not bitwise to WRF; "
+                   "layered adding-doubling, generated optics and aging, four grain shapes and glacier ice"),
+    "snicar_snowshape_opt": (3, "paper reconstruction; four He grain habits"),
+    "snicar_snowbc_intmix": (True, "paper reconstruction; He internal BC fit"),
+    "snicar_snowdust_intmix": (False, "paper reconstruction; He internal dust fit"),
+    "opt_snf": (1, "fixture; Jordan91 default. Values 2-5 have real "
+                   "whole-module replay and forecast proof, plus complete "
+                   "native ATM threshold/species checks"),
     "opt_tbot": (2, "fixture; Noah lower boundary at ZBOT"),
     "opt_stc": (1, "fixture; semi-implicit snow/soil temperature"),
-    "opt_gla": (1, "ported; NOAHMP_GLACIER (woof/core/noahmp_glacier.py) "
-                   "transcribes the opt_gla=1 phase-change arm and every "
-                   "opt_gla=2 arm is dead code it refuses, so a plan that "
-                   "asks for opt_gla=2 is refused rather than silently "
-                   "ignored"),
-    "opt_rsf": (1, "fixture; Sakaguchi/Zeng ground resistance"),
-    "opt_soil": (1, "fixture; one soil category per column.  The 3-D and "
-                    "pedotransfer branches at :737-746 are not "
-                    "transcribed -- unmeasured"),
-    "opt_pedo": (1, "declared only; opt_soil=1 makes PEDOTRANSFER_SR2006 "
-                    "unreachable, so this value has no consumer and is "
-                    "pinned to keep it that way"),
-    "opt_crop": (0, "dead-proved; kills CARBON_CROP, the crop FVEG "
-                    "override and the gecros state vector"),
-    "opt_irr": (0, "dead-proved; the whole irrigation region 878-936 and "
-                   "1042-1045 leaves every amount at zero"),
-    "opt_irrm": (0, "dead-proved with opt_irr=0"),
-    "opt_infdv": (0, "dead-proved; the dynamic-VIC infiltration variants "
-                     "are reachable only at opt_run=6"),
-    "opt_tdrn": (0, "dead-proved; QTLDRN is identically zero out of WATER"),
-    "soiltstep": (0.0, "fixture; forces soil_update_steps=1 and "
-                       "calculate_soil=.true., which is what makes the ten "
-                       "ACC_* carriers per-step rather than trajectory "
-                       "state"),
-    "noahmp_output": (1, "declared only; woof has no counterpart to WRF's "
-                         "module_diag_misc output-accumulator block, so no "
-                         "value of this knob changes what woof writes"),
-    "noahmp_acc_dt": (0.0, "declared only, for the same reason"),
+    "opt_gla": (1, "default glacier path; GLA2 has a strict real native glacier "
+                   "module replay, complete Greenland forecast and resident lifecycle proof"),
+    "opt_rsf": (1, "fixture; Sakaguchi/Zeng by default. Values 2/3/4 have "
+                   "real WRF whole-module replay and forecast proof"),
+    "opt_soil": (1, "fixture; uniform category by default. Depth categories and "
+                    "native SR2006 pedotransfer reach the resident parameter gather"),
+    "opt_pedo": (1, "native PEDOTRANSFER_SR2006 when opt_soil=3; inactive with "
+                    "table-category soils"),
+    "opt_crop": (0, "inactive default; CROP1 executes native crop calendar, "
+                    "phenology and carbon growth with strict real replay and forecast proof; "
+                    "GECROS2 is opt-in: native WRF 4.7.1 fails here; this fixes it, not bitwise to WRF; "
+                    "measured active-crop step cost is 1.4283x CROP1 on a shared GPU"),
+    "opt_irr": (0, "inactive default; native triggers 1/2/3 carry resident "
+                   "amounts, counters and complete irrigation water/energy coupling"),
+    "opt_irrm": (0, "inactive with IRR0; mapped fractions at 0 and complete "
+                    "sprinkler, micro/drip and flood procedures at 1/2/3"),
+    "opt_infdv": (0, "inactive outside RUN8; methods 1/2/3 implement the complete "
+                     "native Philip, Green-Ampt and Smith-Parlange infiltration"),
+    "opt_tdrn": (0, "complete native simple and Hooghoudt tile drainage at 1/2; inactive when run is not 3 or mapped fraction is below the native threshold"),
+    "soiltstep": (0.0, "native decimated soil clock and nine persisted ACC arrays; "
+                       "zero retains the original per-step default"),
+    "noahmp_output": (1, "native output level 3 carries the complete water and energy accumulator block"),
+    "noahmp_acc_dt": (0.0, "native accumulator reset interval in minutes; zero leaves accumulation inactive"),
 }
 
-#: The rows of the table above whose evidence reads "declared only": the
-#: knob reaches NO woof code, at any value, and the table says why for
-#: each.  They are not refused, because a refusal has to name a breakage
-#: and there is none available here: nothing downstream reads the field,
-#: so no value of it can make a run wrong, and "pinned to keep it that
-#: way" is a statement about tidiness rather than about the run.  A value
-#: outside the pin is admitted with one warning saying the knob reaches
-#: nothing, which is the fact the user actually needs.  The TYPE is still
-#: refused: a string where a float belongs is a self-contradictory
-#: configuration, not an unmeasured one.
-#:
-#: Derived from the evidence prose rather than listed by hand so the two
-#: cannot drift; tests/test_noahmp_no_consumer_knobs.py pins the
-#: derivation and the membership together.  Four doors read it: the run
-#: door below, the namelist importer, the registry builder (the option's
-#: required_settings) and the Noah-MP runner's own second line.
+#: Derived for compatibility with all four admission doors. Every current
+#: option now has a consumer or a concrete retained-branch refusal.
 NOAHMP_OPTIONS_WITHOUT_CONSUMER: frozenset[str] = frozenset(
     name for name, (_value, why) in NOAHMP_OPTION_IDENTITY_EVIDENCE.items()
     if why.startswith("declared only")
@@ -2033,11 +2378,46 @@ NOAHMP_OPTION_IDENTITY: dict[str, object] = {
     NOAHMP_OPTION_IDENTITY_EVIDENCE.items()
 }
 
+# Alternatives with a native real-column replay. Keep the canonical identity
+# above unchanged: it is also the default and the default restart seal.
+NOAHMP_OPTION_VALUES: dict[str, tuple[int, ...]] = {
+    "opt_crop": (0,1,2),
+    "opt_gla": (1,2),
+    "noahmp_output": (0,1,2,3),
+    "opt_tdrn": (0,1,2),
+    "opt_irr": (0,1,2,3),
+    "opt_irrm": (0,1,2,3),
+    "opt_soil": (1, 2, 3, 4),
+    "opt_sfc": (1, 2),
+    "opt_crs": (1, 2),
+    "snicar_snowshape_opt": (1, 2, 3, 4),
+    "snicar_snowbc_intmix": (True, False),
+    "snicar_snowdust_intmix": (True, False),
+    "opt_inf": (1, 2),
+    "opt_run": (1, 2, 3, 4, 5, 6, 7, 8),
+    "opt_infdv": (0, 1, 2, 3),
+    "opt_rad": (1, 2, 3),
+    "opt_frz": (1, 2),
+    "opt_stc": (1, 2, 3),
+    "opt_tbot": (1, 2),
+    "dveg": (1, 2, 3, 4, 5, 6, 7, 8, 9),
+    "opt_btr": (1, 2, 3),
+    "opt_rsf": (1, 2, 3, 4),
+    "opt_alb": (1, 2, 3),
+    "opt_snf": (1, 2, 3, 4, 5),
+}
+
 
 #: The MYNN PBL option identity woof admits, field -> the only accepted
 #: value.  ``validate_run_config`` refuses anything else *before* a run
 #: starts, so the driver's own refusal is a second line rather than the
 #: first. Options with multiple implemented values are validated below.
+MYNN471_OPTION_VALUES = {
+    "bl_mynn_closure": (2.5, 2.6, 3.0), "bl_mynn_cloudpdf": (0, 1, 2),
+    "bl_mynn_edmf": (0, 1), "bl_mynn_edmf_mom": (0, 1),
+    "bl_mynn_edmf_tke": (0, 1), "bl_mynn_cloudmix": (0, 1),
+    "bl_mynn_mixqt": (0, 1), "bl_mynn_output": (0, 1), "icloud_bl": (0, 1),
+}
 MYNN_PBL_OPTION_IDENTITY: dict[str, object] = {
     "bl_mynn_closure": 2.6,
     "bl_mynn_cloudpdf": 2,
@@ -2064,7 +2444,7 @@ MYNN_PBL_OPTION_IDENTITY: dict[str, object] = {
 #: engine carries).  The solve admits the key with all five of WRF's flags
 #: true or not at all (mynn_pbl_gpu.py qn_flags; the anchored oracle
 #: fixture family was generated at exactly that combo).
-MYNN_QN_FAMILY_SCHEMES: tuple[int, ...] = (28, 900)
+MYNN_QN_FAMILY_SCHEMES: tuple[int, ...] = (28, 29, 38, 900)
 
 #: Which number species each MYNN mixing key couples, by state name.  The
 #: family solve runs every qn species whenever any key is on; a species no
@@ -2094,6 +2474,8 @@ _MYNN_QN_STATE_TO_FLAG: dict[str, str] = {
 #: qnc,qnr,qni,...; morr_two_moment (10) qni,...; wdm6scheme (16)
 #: qnn,qnc,qnr; nssl_2mom (18) qni,... through nssl2mconc; thompsonaero
 #: (28) qni,qnr,qnc,qnwfa,qnifa,qnbca; p3_1category (50) qni,...;
+#: p3_1category_nc (51) qnc,qni.
+#: p3_1cat_3mom (53) qnc,qni,qnr,qir,qib,qzi (:3041).  The
 #: fast_khain_lynn_shpund (30, Registry/registry.sbm:318)
 #: qnn,qnc,qnr,qni,qns,qng, so F_QNC and F_QNI are true for it.  The
 #: schemes with no number moment (kessler 1, lin 2, fer_mp_hires 5, wsm3 3, wsm5 4,
@@ -2104,14 +2486,21 @@ _MYNN_QN_STATE_TO_FLAG: dict[str, str] = {
 MYNN_QN_FLAG_SPECIES: dict[int, tuple[str, ...]] = {
     2: (),  # Six Lin masses, no prognostic number species.
     4: (),  # Single-moment package carries no number concentrations.
-    0: (), 1: (), 3: (), 5: (), 6: (), 24: (), 106: (),
-    8: ("qni",), 9: ("qnc", "qni"), 10: ("qni",), 16: ("qnc",),
+    0: (), 1: (), 3: (), 5: (), 6: (), 13: (), 15: (), 24: (), 106: (),
+    8: ("qni",), 9: ("qnc", "qni"), 10: ("qni",), 14: ("qnc",), 26: ("qnc",), 27: ("qnc",), 16: ("qnc",),
     18: ("qni",), 28: ("qnc", "qni", "qnwfa", "qnifa", "qnbca"),
+    # WRF 4.7.1 Registry.EM_COMMON:3053 gives RCON the same number family.
+    29: ("qnc", "qni", "qnwfa", "qnifa", "qnbca"),
     30: ("qnc", "qni"), 50: ("qni",),
+    51: ("qnc", "qni"), 52: ("qnc", "qni"), 53: ("qnc", "qni"),
     # TEMPO aerosol-aware: f_nc/f_ni/f_nwfa/f_nifa true, no nbca (NOAA
     # MPAS 1d6e370e mpas_atmphys_driver_pbl.F:1119 stages nc/nifa/nwfa
     # together; the engine's TEMPO row carries no nbca scalar).
     900: ("qnc", "qni", "qnwfa", "qnifa"),
+    38: ("qnc", "qni", "qnwfa", "qnifa", "qnbca"),
+    # WRF 4.7.1 Registry.EM_COMMON:3027,3031,3047-3051.
+    7: (), 11: ("qnc", "qni"), 40: ("qnc", "qni"),
+    55: ("qni",), 56: ("qnc", "qni"), 95: (), 96: (), 97: (),
 }
 
 
@@ -2141,6 +2530,10 @@ def mynn_mixed_number_species(cfg) -> tuple[str, ...]:
     """
     if int(cfg.bl_pbl_physics) != 5:
         return ()
+    if getattr(cfg, "bl_mynn_version", "wrf_461") == "wrf_471":
+        available = MYNN_QN_FLAG_SPECIES.get(int(cfg.mp_physics), ())
+        return tuple(name for name in _mynn_qn_requested_species(cfg)
+                     if _MYNN_QN_STATE_TO_FLAG[name] in available)
     if int(cfg.mp_physics) not in MYNN_QN_FAMILY_SCHEMES:
         return ()
     return _mynn_qn_requested_species(cfg)
@@ -2182,7 +2575,7 @@ def mynn_mixscalars_unported_species(cfg) -> tuple[str, ...]:
     """
     if int(cfg.bl_pbl_physics) != 5:
         return ()
-    if int(cfg.mp_physics) in MYNN_QN_FAMILY_SCHEMES:
+    if getattr(cfg, "bl_mynn_version", "wrf_461") == "wrf_471" or int(cfg.mp_physics) in MYNN_QN_FAMILY_SCHEMES:
         return ()
     requested = {_MYNN_QN_STATE_TO_FLAG[name]
                  for name in _mynn_qn_requested_species(cfg)}
@@ -2252,6 +2645,7 @@ SCALAR_PBLMIX_SPECIES: dict[int, tuple[str, ...]] = {
     8: ("ni",), 9: ("nc", "ni"), 10: ("ni",), 16: ("nn", "nc"),
     18: ("qndrop", "qni", "qnn", "qvolh"),
     28: ("nc", "ni", "nwfa", "nifa"),
+    38: ("nc", "ni", "nwfa", "nifa"),
     50: ("ni", "qir", "qib"),
     900: ("nc", "ni", "nwfa", "nifa"),
 }
@@ -2360,9 +2754,9 @@ def validate_spp_config(cfg) -> None:
 # --------------------------------------------------------------------------
 
 #: WRF sf_sfclay_physics values in woof's schema.
-SURFACE_LAYER_SCHEMES = (0, 1, 2, 5, 91)
+SURFACE_LAYER_SCHEMES = (0, 1, 2, 3, 4, 5, 7, 10, 89, 91)
 #: WRF sf_surface_physics values in woof's schema.
-LAND_SURFACE_SCHEMES = (0, 2, 3, 4)
+LAND_SURFACE_SCHEMES = (0, 1, 2, 3, 4, 7, 8)
 
 #: WRF ``sf_urban_physics`` values in woof's schema: 0 none, 1 single-layer
 #: UCM, 2 BEP, 3 BEP+BEM.
@@ -2379,10 +2773,18 @@ URBAN_MODEL_MODULES = {1: "woof.core.urban_ucm", 2: "woof.core.urban_bep",
 #: from the surface driver (module_surface_driver.F:3184).  RUC and the
 #: no-LSM path never call one.
 URBAN_LAND_SURFACE_SCHEMES = (2, 4)
-#: The PBL schemes WRF runs with BEP/BEP_BEM that woof has: YSU (1) and MYJ
-#: (2, through ``myjurb``).  WRF also admits BouLac (8) and KEPS, which woof
-#: does not port (module_physics_init.F:3705-3790).
-URBAN_BEP_PBL_SCHEMES = (1, 2)
+#: The PBL schemes WRF runs with BEP/BEP_BEM that woof has: YSU (1), MYJ
+#: (2, through ``myjurb``), BouLac (8, with distributed BEP sources)
+#: and K-epsilon (17, with the native blended surface-flux boundary).
+#: is admitted on WRF's own terms, which differ from YSU's and MYJ's: its
+#: driver receives the BEP source terms and reads none of them (it sets the
+#: urban surface and volume fractions to one, module_bl_keps.F:287-291), so
+#: the city reaches it as the grid-blended HFX, QFX and UST the BEP coupling
+#: writes (HFX_URB + (1-f)*HFX_RURAL, module_sf_noahdrv.F:1739-1752) --
+#: the column totals of the urban heat, moisture and momentum exchange,
+#: deposited at the first level instead of distributed over the building
+#: heights.  tools/keps_wrf461_oracle proves the unread terms word for word.
+URBAN_BEP_PBL_SCHEMES = (1, 2, 8, 17)
 #: WRF's only admitted ``num_urban_hi`` in this build.
 URBAN_HEIGHT_BINS = 15
 
@@ -2476,13 +2878,12 @@ def validate_urban_config(cfg) -> None:
         if pbl not in URBAN_BEP_PBL_SCHEMES:
             raise ConfigurationRefused(
                 f"sf_urban_physics={option} (BEP{'+BEM' if option == 3 else ''})"
-                f" needs bl_pbl_physics=1 (YSU) or 2 (MYJ), got "
-                f"bl_pbl_physics={pbl}: BEP injects its drag, heat and TKE "
-                "sources through the PBL's implicit solve, and every other "
-                "PBL would drop them -- WRF fatals the same pairing "
-                "(module_physics_init.F:3705-3790).  WRF's BouLac (8) also "
-                "takes them but is not ported in woof.  Select "
-                "bl_pbl_physics=1 or 2, or set sf_urban_physics=1 (the "
+                f" needs bl_pbl_physics=1 (YSU), 2 (MYJ), 8 (BouLac) or 17 (K-epsilon), "
+                f"got bl_pbl_physics={pbl}: BEP injects its drag, heat and "
+                "TKE sources through the PBL implicit solve or, for "
+                "K-epsilon, through the grid-blended surface fluxes. "
+                "Other PBL schemes would drop them. Select "
+                "bl_pbl_physics=1, 2, 8 or 17, or set sf_urban_physics=1 (the "
                 "single-layer UCM feeds any PBL through its surface fluxes).")
     if not urban_model_in_build(option):
         raise ConfigurationRefused(
@@ -2525,7 +2926,37 @@ def validate_urban_config(cfg) -> None:
 #
 # 5 JOINS IT ON THE SAME TERMS AS 16.  Grell 3D is the other scheme in
 # WRF's fold list; woof/core/g3.py Grell3D does the fold in its adapter.
-CUMULUS_ADVECTIVE_FORCING_SCHEMES = frozenset({3, 5, 6, 16})
+CUMULUS_ADVECTIVE_FORCING_SCHEMES = frozenset({3, 5, 6, 16, 93})
+
+
+def consumes_advective_forcing(cfg) -> bool:
+    """Shared allocation/export predicate, including KF's conditional reader."""
+    return (cfg.cu_physics in CUMULUS_ADVECTIVE_FORCING_SCHEMES
+            or (cfg.cu_physics == 1 and getattr(cfg, "kfeta_trigger", 1) == 2))
+
+
+def validate_fog_kfeta_config(cfg) -> None:
+    """Native fog and KF reader laws, shared by plan review and execution."""
+    if type(cfg.grav_settling) is not int or cfg.grav_settling not in (0, 1, 2):
+        raise ConfigurationRefused("grav_settling must be integer 0, 1 or 2")
+    if cfg.grav_settling and cfg.mp_physics in (28, 29):
+        raise ConfigurationRefused(
+            "grav_settling>0 with mp_physics=28/29 is disabled by native WRF "
+            "4.7.1: its microphysics already settles cloud water "
+            "(share/module_check_a_mundo.F:2474-2487); set grav_settling=0")
+    if type(cfg.kfeta_trigger) is not int or cfg.kfeta_trigger not in (1, 2, 3):
+        raise ConfigurationRefused("kfeta_trigger must be integer 1, 2 or 3")
+    if cfg.kfeta_trigger != 1 and cfg.cu_physics != 1:
+        raise ConfigurationRefused(
+            "kfeta_trigger=2/3 requires cu_physics=1: native WRF 4.7.1 "
+            "only consumes these triggers in KF_eta_PARA "
+            "(phys/module_cu_kfeta.F:991-1017; run/README.namelist:868)")
+
+#: Cumulus schemes whose tendencies are theta, qv, qc and (where the moist
+#: package carries QI) qi only -- no rain or snow category.  New Tiedtke
+#: (cu_ntiedtke_post_run) and Grell-Devenyi (GRELLDRV routes cold
+#: condensate to RQICUTEN at 258 K, module_cu_gd.F:350-366).
+CUMULUS_QC_QI_SCHEMES = frozenset({5, 6, 16, 93})
 #: ``bl_pbl_physics`` value selecting the SASE closure.
 #:
 #: SASE is an ArWen-only scheme -- a Scale-Adaptive Stress-Energetics
@@ -2577,6 +3008,29 @@ MYNN_SFCLAY_SCHEME = 5
 MYJ_SFCLAY_SCHEME = 2
 MYJ_PBL_SCHEME = 2
 
+#: WRF's GFS surface layer (``sf_sfclay_physics = 3``, GFSSFCSCHEME,
+#: phys/module_sf_gfs.F), ported in binary64 and graded word for word
+#: against tools/sfgfs_wrf461_oracle (woof/core/sf_gfs.py).  Like the Eta
+#: layer it sets ``isfc = 2`` (module_physics_init.F:3186-3199), so WRF
+#: admits it under the MYJ PBL; woof does not, for the structural reason
+#: :func:`validate_myj_pairing` states.
+GFS_SFCLAY_SCHEME = 3
+
+#: WRF's PXSFCSCHEME (``Registry.EM_COMMON:3134``, ``pxsfcscheme
+#: sf_sfclay_physics==7``): the Pleim-Xiu surface layer, ported from WRF
+#: v4.6.1 ``phys/module_sf_pxsfclay.F`` with the fractional sea-ice wrapper
+#: (woof/core/pxsfclay.py, graded word for word against
+#: tools/pxsfclay_wrf461_oracle).  WRF initialises ``isfc = 7`` for it
+#: (phys/module_physics_init.F:3153-3155), which YSU, Shin-Hong, MRF and GBM
+#: (isfc must be 1), MYNN (5, 1 or 2) and MYJ/GFS (2) fatal; the ACM2 and
+#: CAMUW PBLs and PBL-off accept it.  No new validator carries that law:
+#: the YSU/MYNN/Shin-Hong cells are rows of
+#: woof.wrf461_compatibility.PBL_SURFACE_LAYER_AUTHORITY (refused through
+#: require_ready_wrf_physics), MYJ is refused by
+#: :func:`validate_myj_pairing`, and UW and SASE read only UST/HFX/QFX
+#: (/WSPD), which this layer publishes.
+PX_SFCLAY_SCHEME = 7
+
 #: WRF's CAMUWPBLSCHEME: the University of Washington moist-turbulence
 #: PBL of CAM5 (Bretherton and Park 2009), ported from WRF v4.7.1
 #: ``phys/module_bl_camuwpbl_driver.F`` and the CAM modules it calls
@@ -2586,6 +3040,72 @@ MYJ_PBL_SCHEME = 2
 #: every ported surface layer publishes.  :func:`validate_uwpbl_config`.
 UW_PBL_SCHEME = 9
 
+#: WRF's GBMPBLSCHEME: the Grenier-Bretherton-McCaa moist TKE PBL, ported
+#: from WRF v4.6.1 ``phys/module_bl_gbmpbl.F`` (woof/core/gbmpbl.py,
+#: graded word for word against tools/gbmpbl_wrf461_oracle).  WRF's one
+#: law for it is the surface-layer fatal at module_physics_init.F:3892-3893
+#: (``isfc .ne. 1``): only the MM5 surface layers (1 and 91) set isfc = 1.
+#: :func:`validate_gbmpbl_config`.
+GBM_PBL_SCHEME = 12
+#: The surface layers WRF admits under GBM (module_physics_init.F:3892).
+GBM_PBL_SURFACE_LAYERS = (1, 91)
+#: WRF's GFSSCHEME: the GFS nonlocal PBL (Hong and Pan 1996), ported from
+#: WRF v4.6.1 ``phys/module_bl_gfs.F`` (woof/core/gfs_pbl.py, graded
+#: against tools/gfs_pbl_wrf461_oracle).  It reads the surface layer's UST,
+#: PSIM, PSIH, GZ1OZ0, WSPD and BR (module_pbl_driver.F:1416-1418) and forms
+#: FM = GZ1OZ0 - PSIM, FH = GZ1OZ0 - PSIH from them.
+#: :func:`validate_gfs_pbl_config` admits the surface layers that publish
+#: that set; :data:`GFS_PBL_SURFACE_LAYERS` names them.
+GFS_PBL_SCHEME = 3
+
+#: Surface layers whose published set carries every word BL_GFS reads, with
+#: the SF_GFS definitions (GZ1OZ0 = ln(z1/z0), PSIM/PSIH the integrated
+#: stability corrections, so GZ1OZ0 - PSIM is the momentum denominator):
+#: WRF v4.6.1 requires isfc == 2 (module_physics_init.F:3742). SF_GFS
+#: meets that law and publishes the full boundary. MYJSFC omits these
+#: stability fields, and GFDL is not implemented.
+GFS_PBL_SURFACE_LAYERS = (GFS_SFCLAY_SCHEME,)
+
+#: WRF's QNSEPBLSCHEME and QNSESFCSCHEME (Quasi-Normal Scale Elimination;
+#: ``bl_pbl_physics = 4``, ``sf_sfclay_physics = 4``).  Like MYJ's pair
+#: they share one number in WRF's two namespaces and they are a PAIR:
+#: ``phys/module_physics_init.F:3790-3791`` fatals a QNSE PBL whose surface
+#: layer did not set ``isfc = 4``, and only QNSESFCSCHEME sets it (:3171).
+#: The PBL is woof/core/kernels/qnsepbl.cu (graded against
+#: tools/qnse_wrf461_oracle); :func:`validate_qnse_config` is the law.
+QNSE_PBL_SCHEME = 4
+QNSE_SFCLAY_SCHEME = 4
+
+#: WRF's BOULACSCHEME: the Bougeault-Lacarrere TKE closure, ported from WRF
+#: v4.6.1 ``phys/module_bl_boulac.F`` (woof/core/boulac.py, graded word for
+#: word against tools/boulac_wrf461_oracle).  WRF's law for it is its init
+#: case (module_physics_init.F:3814-3816): the surface layer must set isfc 1
+#: (revised or classic MM5) or 2 (Eta), which is the PBL/surface-layer
+#: matrix (woof.wrf461_compatibility) for the MM5 cells and
+#: :func:`validate_myj_pairing` for the Eta cell.  It is one of WRF's three
+#: BEP/BEM PBL schemes (:data:`URBAN_BEP_PBL_SCHEMES`).
+BOULAC_PBL_SCHEME = 8
+
+#: The PBL schemes the Eta surface layer runs under, each mapped to the
+#: carried field that holds WRF's TKE_PBL for it.  WRF's surface driver hands
+#: MYJSFC ``tke_pbl`` (module_surface_driver.F:2211) and MYJSFC's PBLH scan
+#: reads it (module_sf_myjsfc.F:263-277), so the Eta layer needs a PBL scheme
+#: that carries one: MYJ's TKE_MYJ, or BouLac's own TKE (WRF admits BouLac
+#: with isfc = 2, module_physics_init.F:3815).  The driver reads the scan's
+#: column through this table and :func:`validate_myj_pairing` admits the
+#: Eta layer under exactly its keys.
+ETA_LAYER_TKE_FIELDS = {MYJ_PBL_SCHEME: "tke_myj",
+                        BOULAC_PBL_SCHEME: "tke_pbl"}
+
+#: WRF's KEPSSCHEME: the K-epsilon PBL of Zonato et al. (2022), prognostic
+#: TKE, dissipation rate and turbulent potential energy, ported from WRF
+#: v4.7.1 ``phys/module_bl_keps.F`` (woof/core/keps.py). Historical
+#: synthetic v4.6.1 evidence is separate from the native real-input replay.
+#: WRF's bl_init has no case for it, so WRF places no pairing law
+#: on it; ArWen's own is :func:`validate_keps_config`, each refusal naming
+#: what would break.
+KEPS_PBL_SCHEME = 17
+
 #: Microphysics selectors whose state carries WRF's ``P_QNI`` (cloud-ice
 #: number), mapped to ArWen's name for that species.  The UW scheme mixes
 #: the ice number and returns RQNIBLTEN, which WRF adds to exactly that
@@ -2593,18 +3113,84 @@ UW_PBL_SCHEME = 9
 #: arm); for every other scheme WRF hands the PBL its zero dummy slot and
 #: the tendency goes nowhere.  Registry.EM_COMMON package lines: thompson
 #: (8) and thompsonaero (28) scalar:qni; milbrandt2mom (9) qni; morr_two_
-#: moment (10) qni; nssl_2mom (18) qni; p3_1category (50) qni.
-UW_PBL_ICE_NUMBER_SPECIES = {8: "ni", 9: "ni", 10: "ni", 18: "qni",
-                             28: "ni", 50: "ni"}
+#: moment (10) qni; nssl_2mom (18) qni; p3_1category (50) and
+#: p3_1category_nc (51) qni.
+UW_PBL_ICE_NUMBER_SPECIES = {8: "ni", 9: "ni", 10: "ni", 11: "ni", 18: "qni",
+                             28: "ni", 38: "ni", 50: "ni", 51: "ni", 52: "ni", 53: "ni"}
 
-#: ``bl_pbl_physics`` values in woof's schema.  0/1/2/5/9/11 are WRF's --
-#: 2 is MYJ (module_bl_myjpbl.F), 9 the UW moist-turbulence PBL
-#: (:data:`UW_PBL_SCHEME`) and 11 is Shin-Hong
+#: WRF's MRFSCHEME (Registry.EM_COMMON:3177, ``mrfscheme bl_pbl_physics==99``):
+#: the Hong-Pan (1996) nonlocal PBL, YSU's predecessor, ported from WRF
+#: v4.6.1 ``phys/module_bl_mrf.F`` (woof/core/mrf.py, kernels/mrf.cu) and
+#: graded word for word against WRF's own compiled module
+#: (tools/mrf_wrf461_oracle).  Its surface-layer law is WRF's own
+#: (module_physics_init.F:3715-3717, isfc=1: the two MM5 layers), carried
+#: as cells of :mod:`woof.wrf461_compatibility`; the BEP/BEM urban fatal
+#: beside it (:3718-3719) is :data:`URBAN_BEP_PBL_SCHEMES`.
+MRF_PBL_SCHEME = 99
+
+#: WRF's EEPSSCHEME: the TKE + TKE-dissipation (e-epsilon) PBL of Zhang,
+#: Wang and Xue (2020, MWR 148:1121-1145), ported from WRF v4.6.1
+#: ``phys/module_bl_eepsilon.F`` (woof/core/eeps_pbl.py, with synthetic
+#: regression fixtures in tools/eeps_wrf461_oracle). It carries WRF's advected scalar
+#: pair PEK_ADV/PEP_ADV (Registry.EM_COMMON:1053-1054), transported by the
+#: dycore with the moist scalars.  WRF's init law is a surface-layer list
+#: and the BEP/BEM fatal (module_physics_init.F:3871-3876):
+#: :func:`validate_eeps_config`.
+EEPS_PBL_SCHEME = 16
+
+#: The surface layers WRF v4.6.1 lets EEPS run over: ``isfc`` 1 (revised
+#: MM5), 2 (Eta), 5 (MYNN) or 91 (classic MM5),
+#: module_physics_init.F:3872-3873. Eta independently owns a zero TKE_PBL
+#: column under EEPS (Registry myjsfcscheme), separate from PEK_ADV.
+EEPS_SURFACE_LAYERS = (1, 2, 5, 91)
+
+# Eta owns its native zero TKE column under EEPS.
+ETA_LAYER_TKE_FIELDS[EEPS_PBL_SCHEME] = "tke_myj"
+
+#: WRF's ACMPBLSCHEME: the Asymmetric Convective Model version 2 (Pleim
+#: 2007), ported from the byte-pinned WRF v4.6.1 ``phys/module_bl_acm.F``
+#: (woof/core/acm2pbl.py, graded word for word against
+#: tools/acm2_wrf461_oracle).  WRF's pairing law is isfc 1 or 7
+#: (module_physics_init.F:3728-3730: the MM5 surface layers or Pleim-Xiu),
+#: transcribed as the WRF matrix's (7, sfclay) cells in
+#: woof.wrf461_compatibility; its BEP/BEM fatal (:3731-3732) is
+#: URBAN_BEP_PBL_SCHEMES.
+ACM2_PBL_SCHEME = 7
+
+#: ``bl_pbl_physics`` values in woof's schema.  0/1/2/5/7/9/11 are WRF's --
+#: 2 is MYJ (module_bl_myjpbl.F), 7 ACM2 (:data:`ACM2_PBL_SCHEME`), 9 the
+#: UW moist-turbulence PBL (:data:`UW_PBL_SCHEME`) and 11 is Shin-Hong
 #: (module_bl_shinhong.F, ported at max ULP 0 against the byte-frozen WRF
 #: v4.6.1 module; runtime wired by _run_shinhong in
 #: woof/core/physics.py) -- and 900 is :data:`SASE_PBL_SCHEME`,
 #: ArWen-only (see there).
-PBL_SCHEMES = (0, 1, MYJ_PBL_SCHEME, 5, UW_PBL_SCHEME, 11, SASE_PBL_SCHEME, CCPP_TKE_EDMF_PBL_SCHEME)
+PBL_SCHEMES = (0, 1, MYJ_PBL_SCHEME, GFS_PBL_SCHEME, QNSE_PBL_SCHEME, 5, ACM2_PBL_SCHEME, BOULAC_PBL_SCHEME, UW_PBL_SCHEME, 10, 11, GBM_PBL_SCHEME, EEPS_PBL_SCHEME, KEPS_PBL_SCHEME, MRF_PBL_SCHEME, SASE_PBL_SCHEME, CCPP_TKE_EDMF_PBL_SCHEME)
+
+# Bidirectional coupling rows: the run door and registry read one reason.
+PHYSICS_SELECTOR_COUPLINGS = (
+    ("bl_pbl_physics", 10, "sf_sfclay_physics", 10,
+     "TEMF shares TE_TEMF and HD_TEMF between its PBL and surface layer; "
+     "another pairing leaves that carried total energy and thermal height "
+     "without their required writer (WRF v4.6.1 "
+     "share/module_check_a_mundo.F:2294-2299)"),
+)
+
+
+def selector_coupling_refusal(settings):
+    for left, lv, right, rv, reason in PHYSICS_SELECTOR_COUPLINGS:
+        a = int(settings.get(left, 0)) == lv
+        b = int(settings.get(right, 0)) == rv
+        if a != b:
+            source, target, value = (left, right, rv) if a else (right, left, lv)
+            return f"{source}={settings[source]} requires {target}={value}: {reason}"
+    return None
+
+
+def validate_selector_couplings(cfg):
+    refusal = selector_coupling_refusal(vars(cfg))
+    if refusal:
+        raise ValueError(refusal)
+
 # 0 = none, 1 = Kain-Fritsch, 3 = Grell-Freitas, 5 = Grell 3D, 6 = original
 # Tiedtke, 16 = New Tiedtke.
 #
@@ -2616,6 +3202,10 @@ PBL_SCHEMES = (0, 1, MYJ_PBL_SCHEME, 5, UW_PBL_SCHEME, 11, SASE_PBL_SCHEME, CCPP
 # physics.py's optional tendency components. Each was a refusal that cost
 # nothing while 16 was unreachable and would have been a silent wrong
 # answer the moment it was not.
+# These selectors share the KainFritsch adapter constructor. MSKF is in
+# the physics family but owns an independent registry-backed adapter.
+KF_ETA_CU_SCHEMES = frozenset({1, 99})
+KF_FAMILY_CU_SCHEMES = KF_ETA_CU_SCHEMES | {11}
 #
 # 5 IS WRF'S OWN NUMBER for G3SCHEME, the Grell 3D ensemble scheme
 # (phys/module_cu_g3.F), transcribed in woof/core/kernels/g3.cu and held
@@ -2626,12 +3216,71 @@ PBL_SCHEMES = (0, 1, MYJ_PBL_SCHEME, 5, UW_PBL_SCHEME, 11, SASE_PBL_SCHEME, CCPP
 # woof.core.column_cumulus.COLUMN_CUMULUS_SCHEMES -- one table row, no
 # adapter module -- graded word for word against WRF v4.6.1's own object
 # by tests/test_nsas_column_oracle.py.
-CU_SCHEMES = (0, 1, 3, 5, 6, 16, 96)
+CU_SCHEMES = (0, 1, 2, 3, 5, 6, 7, 10, 11, 14, 16, 93, 94, 95, 96, 99)
+
+SAS_CU_PHYSICS = 94
+def cumulus_adaptive_cudt_zero_site(cu_physics: int) -> str | None:
+    """The WRF adaptive-step authority for the KSAS admission rule."""
+    if int(cu_physics) == 14:
+        return "share/module_check_a_mundo.F:2141-2160"
+    return None
+
+COLUMN_KERNEL_CU_SCHEMES = (2,)
+
+#: cu_physics -> the scheme's name, for the refusals and receipts below.
+CU_SCHEME_LABELS = {0: "off", 1: "Kain-Fritsch", 3: "Grell-Freitas",
+                    16: "New Tiedtke", 93: "Grell-Devenyi"}
+
+#: The Grell-family cumulus schemes: the ones WRF's cumulus driver hands
+#: the ensemble dimensions (maxiens, maxens, maxens2, maxens3, ensdim) and
+#: for which check_a_mundo forces cu_diag = 1 (share/module_check_a_mundo.F
+#: :2276-2286).  GRELL_FAMILY_DEFAULTS' clos_choice/ishallow below belong
+#: to Grell-Freitas alone: GRELLDRV takes neither (it hard-codes ichoice =
+#: 0, module_cu_gd.F:176, and has no shallow arm).
+GRELL_FAMILY_CU_SCHEMES = frozenset({3, 93})
+
+#: WRF v4.6.1's Registry defaults for the Grell ensemble dimensions
+#: (Registry.EM_COMMON:2538-2542), the only values GRELLDRV can run.
+GRELL_ENSEMBLE_DEFAULTS = {"maxiens": 1, "maxens": 3, "maxens2": 3,
+                           "maxens3": 16, "ensdim": 144}
+
+#: Why each ensemble dimension cannot move from its default in
+#: Grell-Devenyi, by the breakage it would cause in module_cu_gd.F.
+GRELL_ENSEMBLE_BREAKAGE = {
+    "maxiens": ("GRELLDRV runs one outer ensemble member (iens = 1, "
+                "module_cu_gd.F:177) and massflx_stats averages over "
+                "ensdim/maxens3 members, so another value averages "
+                "members that were never computed"),
+    "maxens": ("CUP_enss zeroes and fills xaa0_ens(i,1..3) by hand "
+               "(module_cu_gd.F:1132-1134) and cup_forcing_ens copies "
+               "closures from the ne = 2 slab, so another value reads "
+               "unset members"),
+    "maxens2": ("cup_output_ens divides the summed iedt members by "
+                "maxens2 while massflx_stats is handed the dimensions in "
+                "swapped order (module_cu_gd.F:3584), so only the square "
+                "3 x 3 shape is consistent"),
+    "maxens3": ("cup_forcing_ens writes closures xff_ens3(1..16) into an "
+                "array dimensioned maxens3 (module_cu_gd.F:2662-2760), so "
+                "a smaller value writes past its end"),
+    "ensdim": ("xf_ens/pr_ens are dimensioned ensdim and indexed up to "
+               "maxiens*maxens*maxens2*maxens3 = 144, and massflx_stats "
+               "averages ensdim/maxens3 members"),
+}
+
+
+def grell_ensemble_refusal(key: str, value: object) -> str | None:
+    """The breakage a non-default Grell ensemble dimension causes, or None."""
+    default = GRELL_ENSEMBLE_DEFAULTS[key]
+    if not isinstance(value, bool) and isinstance(value, int) and value == default:
+        return None
+    return (f"{key}={value!r} is refused for Grell-Devenyi (cu_physics=93): "
+            f"{GRELL_ENSEMBLE_BREAKAGE[key]}. Leave it at the WRF Registry "
+            f"default {default}.")
 
 #: The cumulus schemes that read ``sas_pgcon`` (WRF's convectively forced
 #: pressure-gradient factor, Registry.EM_COMMON:2651) and ``nsas_dx_factor``
 #: (:2493).  The SAS family's other members join their rows when ported.
-SAS_PGCON_SCHEMES = frozenset({96})
+SAS_PGCON_SCHEMES = frozenset({94, 96})
 NSAS_DX_FACTOR_SCHEMES = frozenset({96})
 
 #: Grell-Freitas, the cumulus scheme with the PBL requirement below.
@@ -2682,18 +3331,28 @@ CU_MODEL_STEP_SCHEMES = frozenset({GRELL_FREITAS_CU_PHYSICS,
 #: Grell 3D lowers its capping depth to 25 hPa wherever GSW < 1 W m-2
 #: (module_cu_g3.F:933).  The physics driver keeps the GSW plane, and
 #: preflight prices it, for these as for RUC and the chem readers.
-CU_GSW_READING_SCHEMES = frozenset({GRELL_3D_CU_PHYSICS})
+CU_GSW_READING_SCHEMES = frozenset({GRELL_3D_CU_PHYSICS, 93})
 
 #: The stock cumulus callable for each admitted ``cu_physics``, by dotted
 #: path.  ``initialize_physics`` resolves the selector through this table
 #: rather than a branch per scheme, so admitting a scheme is a row here and
 #: in :data:`CU_SCHEMES`.
 CU_STOCK_CALLABLES = {
+    14: "woof.core.sas.SasCumulus",
+
+    7: "woof.core.cam5_runtime.CAMDeepConvection",
     1: "woof.core.kf.KainFritsch",
+    10: "woof.core.kf.KFCumulusPotential",
+
+    11: "woof.core.column_cumulus.MskfColumnCumulus",
+
+    99: "woof.core.kf.KainFritsch",
     GRELL_FREITAS_CU_PHYSICS: "woof.core.gf.GrellFreitas",
     GRELL_3D_CU_PHYSICS: "woof.core.g3.Grell3D",
     6: "woof.core.tiedtke.Tiedtke",
     16: "woof.core.ntiedtke.NewTiedtke",
+    94: "woof.core.sas.GfsSas",
+    93: "woof.core.gf.GrellDevenyi",
 }
 
 #: The Grell-family keys, each with the WRF Registry default it is judged
@@ -2715,6 +3374,7 @@ GRELL_FAMILY_DEFAULTS = {
 #: cumulus choice a [shared] value reaches the SAS domains and leaves the
 #: others on these defaults.
 SAS_FAMILY_DEFAULTS = {
+    "shalconv": 1,
     "nsas_dx_factor": 0,
     "sas_pgcon": 0.55,
 }
@@ -2802,8 +3462,8 @@ def gf_clos_choice_advice(value: int) -> str | None:
 #: refusal string cannot be iterated.  The refusal sentences below still
 #: recite the names; these tuples are the membership they test.
 RA_PHYSICS_ACCEPTED = (0, 4, 90)
-RA_LW_PHYSICS_ACCEPTED = (0, 1, 4, 5, 90)
-RA_SW_PHYSICS_ACCEPTED = (0, 1, 4, 5, 90)
+RA_LW_PHYSICS_ACCEPTED = (0, 1, 3, 4, 5, 7, 31, 90, 99)
+RA_SW_PHYSICS_ACCEPTED = (0, 1, 2, 3, 4, 5, 7, 90, 99)
 
 #: Every other WRF v4.6.1/v4.7.1 radiation selector value, with the reason it
 #: is refused.  A value is never run as another scheme: the forecast and its
@@ -2816,34 +3476,20 @@ RA_SW_PHYSICS_ACCEPTED = (0, 1, 4, 5, 90)
 #: batch branches) stays out of it.
 RA_UNPORTED_REASONS: dict[str, dict[int, str]] = {
     "ra_lw_physics": {
-        3: ("WRF CAM longwave (camlwscheme) is not ported in this release"),
-        7: ("WRF Fu-Liou-Gu longwave (flglwscheme) has a column port but no "
-            "forecast driver; there is no FLG radiation step to run"),
         14: ("WRF RRTMG-K longwave is not ported; RRTMG (4, with "
              "ra_rrtmg_variant = rrtmg_legacy for WRF's transcription) is the "
              "nearest scheme and is a different k-distribution"),
         24: ("WRF fast RRTMG longwave (module_ra_rrtmg_lwf) is a separately "
              "coded solver that is not ported; ra_lw_physics = 4 with "
              "ra_rrtmg_variant = rrtmg_legacy runs WRF's RRTMG transcription"),
-        31: ("WRF Held-Suarez forcing is a global idealized relaxation; it needs "
-             "global initialization and pole operators this regional engine "
-             "does not have"),
-        99: ("WRF GFDL longwave (gfdllwscheme) is not ported in this release"),
     },
     "ra_sw_physics": {
-        2: ("WRF old Goddard shortwave (gsfcswscheme) is not ported in this "
-            "release; New Goddard (5) is a different code and is not run in "
-            "its place"),
-        3: ("WRF CAM shortwave (camswscheme) is not ported in this release"),
-        7: ("WRF Fu-Liou-Gu shortwave (flgswscheme) has a column port but no "
-            "forecast driver; there is no FLG radiation step to run"),
         14: ("WRF RRTMG-K shortwave is not ported; RRTMG (4, with "
              "ra_rrtmg_variant = rrtmg_legacy for WRF's transcription) is the "
              "nearest scheme and is a different k-distribution"),
         24: ("WRF fast RRTMG shortwave (module_ra_rrtmg_swf) is a separately "
              "coded solver that is not ported; ra_sw_physics = 4 with "
              "ra_rrtmg_variant = rrtmg_legacy runs WRF's RRTMG transcription"),
-        99: ("WRF GFDL shortwave (gfdlswscheme) is not ported in this release"),
     },
 }
 
@@ -2852,7 +3498,7 @@ RA_UNPORTED_REASONS: dict[str, dict[int, str]] = {
 #: :data:`RA_UNPORTED_REASONS`, for the same reason.
 #:
 #: Named breakage: until 2.9.1 these values were refused with only the menu
-#: of implemented numbers ("cu_physics = 2: no woof mapping (implemented:
+#: of implemented numbers ("cu_physics = 4: no woof mapping (implemented:
 #: [0, 1, 3, 5, 6, 16, 96])"), so a user whose WRF configuration uses BMJ,
 #: ACM2, Pleim-Xiu or the slab LSM could not tell an unported scheme from a
 #: typing error.  A row is retired when its scheme is admitted (its menu
@@ -2860,85 +3506,26 @@ RA_UNPORTED_REASONS: dict[str, dict[int, str]] = {
 #: menu entry nor a row fails tests/test_wrf_unported_scheme_reasons.py.
 WRF_UNPORTED_SCHEME_REASONS: dict[str, dict[int, str]] = {
     "cu_physics": {
-        2: "Betts-Miller-Janjic (WRF bmjscheme) is not ported in this release",
         4: ("scale-aware SAS (WRF scalesasscheme) is not ported in this "
             "release; New SAS (96) is a different SAS generation"),
-        7: ("Zhang-McFarlane CAM5 deep convection (WRF camzmscheme) is not "
-            "ported in this release"),
-        10: ("Kain-Fritsch with cumulus potential, KF-CuP (WRF kfcupscheme), "
-             "is not ported in this release; Kain-Fritsch (1) has a different "
-             "trigger and cloud model"),
-        11: ("multi-scale Kain-Fritsch, MSKF (WRF mskfscheme), is not ported "
-             "in this release; Kain-Fritsch (1) lacks its scale-aware "
-             "adjustments"),
-        14: ("Korean SAS, KSAS (WRF ksasscheme), is not ported in this "
-             "release; New SAS (96) is a different SAS generation"),
-        93: ("Grell-Devenyi ensemble (WRF gdscheme) is not ported in this "
-             "release; Grell 3D (5) adds subsidence spreading and is a "
-             "different scheme"),
-        94: ("2015 GFS simplified Arakawa-Schubert (WRF sasscheme) is not "
-             "ported in this release; New SAS (96) is a different SAS "
-             "generation"),
-        95: ("the older GFS simplified Arakawa-Schubert (WRF osasscheme) is "
-             "not ported in this release; New SAS (96) is a different SAS "
-             "generation"),
         98: ("the WRF v4.7 cumulus package ducuscheme is not ported in this "
              "release"),
-        99: ("the previous Kain-Fritsch (WRF kfscheme) is not ported in this "
-             "release; Kain-Fritsch (1) is the later Eta version"),
     },
     "bl_pbl_physics": {
-        3: ("the GFS non-local PBL (WRF gfsscheme) is not ported in this "
-            "release, nor its surface layer (sf_sfclay_physics = 3)"),
-        4: ("the QNSE PBL (WRF qnsepblscheme) is not ported in this release, "
-            "nor its surface layer (sf_sfclay_physics = 4)"),
         6: ("WRF v4.6.1 to v4.8.0 define no bl_pbl_physics = 6 (the old MYNN "
             "level-3 selector), and wrf.exe stops on it ('The pbl option "
             "does not exist'); WRF selects the level-3 closure as "
-            "bl_pbl_physics = 5 with bl_mynn_closure = 3.0, and woof's MYNN "
-            "port implements bl_mynn_closure = 2.6, WRF's default, only"),
-        7: ("ACM2 (WRF acmpblscheme) is not ported in this release, nor the "
-            "Pleim-Xiu surface layer (7) and land surface (7) it usually "
-            "runs with"),
-        8: ("the Bougeault-Lacarrere TKE PBL (WRF boulacscheme) is not "
-            "ported in this release"),
-        10: ("the TEMF PBL (WRF temfpblscheme) is not ported in this release, "
-             "nor its surface layer (sf_sfclay_physics = 10)"),
-        12: ("the Grenier-Bretherton-McCaa TKE PBL (WRF gbmpblscheme) is not "
-             "ported in this release"),
-        16: ("the EEPS energy-dissipation PBL (WRF eepsscheme) is not ported "
-             "in this release"),
-        17: ("the k-epsilon PBL (WRF kepsscheme) is not ported in this "
-             "release"),
+            "bl_pbl_physics = 5 with bl_mynn_closure = 3.0, selecting the "
+            "source-pinned WRF 4.7.1 MYNN generation"),
         98: ("the WRF v4.7 surface-drag boundary-layer package "
              "(surfdragscheme) is not ported in this release"),
-        99: ("the MRF PBL (WRF mrfscheme), YSU's predecessor, is not ported "
-             "in this release; YSU (1) is a different scheme"),
     },
     "sf_sfclay_physics": {
-        3: ("the GFS surface layer (WRF gfssfcscheme) is not ported in this "
-            "release"),
-        4: ("the QNSE surface layer (WRF qnsesfcscheme) is not ported in this "
-            "release"),
-        7: ("the Pleim-Xiu surface layer (WRF pxsfcscheme) is not ported in "
-            "this release"),
-        10: ("the TEMF surface layer (WRF temfsfcscheme) is not ported in "
-             "this release"),
-        89: ("the idealized single-column surface (WRF idealscmsfcscheme) "
-             "needs WRF's single-column test case, which this engine does "
-             "not run"),
     },
     "sf_surface_physics": {
-        1: ("the 5-layer thermal diffusion slab (WRF slabscheme) is not "
-            "ported in this release; Noah (2) carries soil moisture and "
-            "vegetation the slab does not, and is not run in its place"),
         5: ("CLM4 (WRF clmscheme) is not ported in this release"),
         6: ("CTSM (WRF ctsmscheme) needs NCAR's external CTSM library, which "
             "this engine does not carry"),
-        7: ("the Pleim-Xiu land surface (WRF pxlsmscheme), with its "
-            "two-layer soil and 2 m temperature and humidity nudging, is not "
-            "ported in this release"),
-        8: ("SSiB (WRF ssibscheme) is not ported in this release"),
     },
     **RA_UNPORTED_REASONS,
 }
@@ -2965,6 +3552,13 @@ def drop_inactive_radiation_port_keys(values: dict) -> None:
     document -- so a run that selects neither keeps the bytes it had before
     the fields existed, and a 2.8.9 checkpoint still resumes.
     """
+    if values.get("ra_call_offset", 0) == 0:
+        values.pop("ra_call_offset", None)
+    from woof.core.madwrf_contract import drop_inactive_madwrf
+    drop_inactive_madwrf(values)
+    from woof.gfdleta_contract import inert_gfdleta_fields
+    for name in inert_gfdleta_fields(values):
+        values.pop(name, None)
     from woof.lightning_contract import drop_default_lightning_selectors
     drop_default_lightning_selectors(values)
     if values.get("aer_opt", 0) != 2:
@@ -3095,10 +3689,14 @@ class _LandSurfaceSoilLayers(_Mapping):
     #: validated -- the same attribute when the scheme defines one geometry).
     _PROVIDERS = {
         0: ("woof.core.noah", "NUM_SOIL_LAYERS", "NUM_SOIL_LAYERS"),
+        # init_soil_depth_1: five layers, fatal at any other count.
+        1: ("woof.core.slab", "NUM_SOIL_LAYERS", "NUM_SOIL_LAYERS"),
         2: ("woof.core.noah", "NUM_SOIL_LAYERS", "NUM_SOIL_LAYERS"),
         3: ("woof.core.ruc_contract", "WRF_SUPPORTED_NUM_SOIL_LAYERS",
             "NUM_SOIL_LAYERS"),
         4: ("woof.core.noah", "NUM_SOIL_LAYERS", "NUM_SOIL_LAYERS"),
+        7: ("woof.core.pxlsm", "NUM_SOIL_LAYERS", "NUM_SOIL_LAYERS"),
+        8: ("woof.core.ssib", "NUM_SOIL_LAYERS", "NUM_SOIL_LAYERS"),
     }
 
     def __init__(self):
@@ -3166,7 +3764,8 @@ NO_LAND_SURFACE_SOIL_LAYERS = LAND_SURFACE_SOIL_LAYERS[0][0]
 WRF_NO_LAND_SURFACE_SOIL_LAYERS = 5
 #: Human-readable names used only in validation messages.
 _LAND_SURFACE_NAMES = {
-    0: "none", 2: "Noah LSM", 3: "RUC LSM", 4: "Noah-MP LSM"}
+    0: "none", 1: "the five-layer thermal diffusion (slab) scheme",
+    2: "Noah LSM", 3: "RUC LSM", 4: "Noah-MP LSM"}
 
 
 def soil_layer_count(cfg: RunConfig) -> int:
@@ -3217,7 +3816,11 @@ def soil_layer_count(cfg: RunConfig) -> int:
               "default that belongs to another scheme.")
     raise ValueError(
         f"num_soil_layers must be {expected} for {name} "
-        f"(sf_surface_physics={scheme}), got {requested}.{detail}")
+        f"(sf_surface_physics={scheme}), got {requested}: the scheme's soil "
+        "level depths exist only for the counts it defines, so any other "
+        "count has no soil column to size, write or checkpoint. Set "
+        f"num_soil_layers={defined[0]}, or select the land-surface scheme "
+        f"that defines {requested} layers.{detail}")
 
 
 def radiation_scheme_ids(cfg: RunConfig) -> tuple[int, int]:
@@ -3262,6 +3865,16 @@ def radiation_scheme_ids(cfg: RunConfig) -> tuple[int, int]:
             f"ra_physics=0, or drop ra_lw_physics/ra_sw_physics to -1 and "
             "keep ra_physics.")
     return lw, sw
+
+
+def bmj_feedback_radiation_supported(pair: tuple[int, int]) -> bool:
+    """Whether both radiation streams consume BMJ clouds, or are disabled.
+
+    Each physical adapter merges the carried clouds before its optical
+    inputs are packed, including when it is used in a mixed composition.
+    The analytic clear-sky adapter (90) has no cloud optical inputs.
+    """
+    return all(selector in (0, 1, 4, 5) for selector in pair)
 
 
 def radiation_scheme_ids_from_settings(settings) -> tuple[int, int]:
@@ -3321,47 +3934,96 @@ def effective_radt_minutes(cfg) -> float:
 
 
 # --------------------------------------------------------------------------
-# P3 (mp_physics = 50) and its three unported siblings.
+# P3: the ported mp_physics values (50, 51, 53) and the unported siblings.
 # --------------------------------------------------------------------------
 
-#: WRF v4.6.1 maps P3 across four ``mp_physics`` values
-#: (Registry.EM_COMMON:3038-3041).  woof ports exactly ONE of them -- 50,
-#: ``p3_1category``, the configuration WRF's own driver calls with
-#: ``N_ICECAT=1``, no ``nc_3d`` and no ``qzi1_3d``
-#: (module_microphysics_driver.F:1557-1602).  The other three are not
-#: "unsupported numbers": they are different physics inside the same
-#: Fortran module, each gated by a switch the port does not carry, so each
-#: gets its own refusal naming what is missing.  Silently running the
-#: 1-category solver for a namelist that asked for two categories or a
-#: third moment would be exactly the substitution PHYSICS.md forbids.
-_P3_UNPORTED_VARIANTS = {
-    51: (
-        "mp_physics=51 (P3 with prognostic droplet number, "
-        "Registry.EM_COMMON:3039) is not ported. woof ports mp_physics=50, "
-        "which runs P3 with SPECIFIED droplet number (nccnst/rho, "
-        "module_mp_p3.F:2350) -- mp=51 passes nc_3d, which switches on the "
-        "CCN-activation path (:3313-3339) that this port does not carry. "
-        "Use mp_physics=50 for P3 one-category."
-    ),
-    52: (
-        "mp_physics=52 (P3 two ice categories, "
-        "Registry.EM_COMMON:3040) is not ported. woof ports the "
-        "nCat=1 configuration only: the inter-category collection "
-        "(module_mp_p3.F:2754-2829), the category-merge pass (:4615-4697) "
-        "and the second lookup table p3_lookupTable_2 are structurally "
-        "absent from this port, and its state carries one ice category. "
-        "Use mp_physics=50 for P3 one-category."
-    ),
-    53: (
-        "mp_physics=53 (P3 one category, three-moment ice, "
-        "Registry.EM_COMMON:3041) is not ported. woof ports the "
-        "TWO-moment-ice configuration: the prognostic reflectivity moment "
-        "zitot, its compute_mu_3moment/G_of_mu closure and the 3momI "
-        "lookup table (module_mp_p3.F, log_3momentIce branches) are absent, "
-        "and only p3_lookupTable_1.dat-v5.4_2momI is packaged. "
-        "Use mp_physics=50 for P3 one-category."
-    ),
+
+@dataclass(frozen=True)
+class P3Variant:
+    """One WRF v4.6.1 P3 package, as data.
+
+    WRF selects P3's configurations inside ONE Fortran module by what its
+    driver passes to ``mp_p3_wrapper_wrf``: ``nc_3d`` present switches on
+    ``log_predictNc`` (module_mp_p3.F:819-820) and ``qzi1_3d`` present
+    switches on ``log_3momentIce`` (:822-823); ``N_ICECAT`` is the number
+    of ice categories.  Every consumer that used to spell ``mp_physics ==
+    50`` asks this table instead, so a further P3 package is a new row
+    here, not a new code path.
+    """
+
+    mp_physics: int
+    #: the Registry package name and its Registry.EM_COMMON line
+    package: str
+    registry_line: int
+    label: str
+    #: the driver passes ``nc_3d`` (prognostic droplet number, CCN
+    #: activation, module_mp_p3.F:3313-3339)
+    predict_nc: bool
+    #: the driver passes ``qzi1_3d`` (three-moment ice, the 3momI table)
+    three_moment_ice: bool
+    #: restart algorithm identity (woof.checkpoint_identity)
+    algorithm_identity: str
+    n_cat: int = 1
+
+    @property
+    def extra_species(self) -> tuple[str, ...]:
+        """Transported fields beyond mp=50's qi/ni/nr/qir/qib, in WRF's
+        scalar-package order (``qnc`` first, ``qzi`` last,
+        Registry.EM_COMMON:3039-3041), in woof's spelling."""
+        return ((("nc",) if self.predict_nc else ())
+                + (("qzi",) if self.three_moment_ice else ())
+                + (("qi2", "ni2", "qir2", "qib2") if self.n_cat > 1 else ()))
+
+
+#: The P3 packages woof runs.  50 is ``p3_1category`` (specified droplet
+#: number, two-moment ice; module_microphysics_driver.F:1557-1602).  53 is
+#: ``p3_1cat_3mom`` (Registry.EM_COMMON:3041): the driver passes BOTH
+#: ``nc_3d=qnc_curr`` and ``QZI1_3d=qzi_curr`` with ``N_ICECAT=1``
+#: (module_microphysics_driver.F:1710-1746), and ``p3_init`` reads the
+#: 3momI table (module_physics_init.F:4574-4575).
+P3_VARIANTS: dict[int, P3Variant] = {
+    50: P3Variant(
+        mp_physics=50, package="p3_1category", registry_line=3038,
+        label="P3 one-category", predict_nc=False, three_moment_ice=False,
+        algorithm_identity=(
+            "p3-one-category-wrf-v4.6.1-v2-2mom-ice-specified-nc-"
+            "diagnosed-ssat-rime-mass-volume-transported-real-clamp-product")),
+    51: P3Variant(mp_physics=51, package='p3_1category_nc', registry_line=3039,
+        label='P3 one-category, predicted droplet number', predict_nc=True, three_moment_ice=False,
+        algorithm_identity='p3-one-category-wrf-v4.6.1-v2-2mom-ice-predicted-nc-ccn-activation-2mode-derf-diagnosed-ssat-rime-mass-volume-nc-transported-real-clamp-product', n_cat=1),
+    52: P3Variant(mp_physics=52, package='p3_2category', registry_line=3040,
+        label='P3 two-category', predict_nc=True, three_moment_ice=False,
+        algorithm_identity='p3-two-category-wrf-v4.6.1-v1-prognostic-nc-iceice-merge-table2-v5.3', n_cat=2),
+    53: P3Variant(
+        mp_physics=53, package="p3_1cat_3mom", registry_line=3041,
+        label="P3 one-category three-moment ice", predict_nc=True,
+        three_moment_ice=True,
+        algorithm_identity=(
+            "p3-one-category-wrf-v4.6.1-v2-3mom-ice-predicted-nc-"
+            "diagnosed-ssat-rime-mass-volume-qnc-qzi-transported-real-clamp-product")),
 }
+
+#: Every ``mp_physics`` value the P3 adapter (woof/core/p3.py) runs.
+P3_MP_PHYSICS: tuple[int, ...] = tuple(P3_VARIANTS)
+
+
+def p3_variant(mp_physics) -> P3Variant | None:
+    """The P3 row for ``mp_physics``, or None for any other scheme."""
+    try:
+        return P3_VARIANTS.get(int(mp_physics))
+    except (TypeError, ValueError):
+        return None
+
+
+def is_p3(mp_physics) -> bool:
+    return p3_variant(mp_physics) is not None
+
+def p3_predicts_nc(mp_physics) -> bool:
+    row = p3_variant(mp_physics)
+    return bool(row is not None and row.predict_nc)
+
+
+_P3_UNPORTED_VARIANTS = {}
 
 #: The mp_physics schema menu, as one sentence, so every out-of-schema
 #: value is refused in the same shape.  Held apart from the raise sites
@@ -3374,11 +4036,11 @@ _P3_UNPORTED_VARIANTS = {
 #: is added here once and both branches stay in the same form.
 _MP_PHYSICS_SCHEMA_MENU = (
     "mp_physics must be 0 (off), 1 (Kessler), 2 (Purdue Lin), 3 (WSM3), "
-    "4 (WSM5), 5 (Ferrier-Aligo), 6 (WSM6), 8 (Thompson), 9 "
-    "(Milbrandt-Yau two-moment), 10 (Morrison two-moment), 16 (WDM6 "
+    "4 (WSM5), 5 (Ferrier-Aligo), 6 (WSM6), 7 (Goddard four-ice), 8 (Thompson), 9 "
+    "(Milbrandt-Yau two-moment), 10 (Morrison two-moment), 13 (SBU-YLin five-class with riming intensity), 14 (WDM5), 26 (WDM7), 27 (UDM), 16 (WDM6 "
     "double-moment warm rain), 18 (NSSL two-moment), 24 (WSM7 "
-    "single-moment with hail), 28 (Thompson aerosol-aware), 30 "
-    "(FAST_SBM spectral bin), 50 (P3 one-category), 106 (WSM6R, the "
+    "single-moment with hail), 28 (Thompson aerosol-aware), 29 (RCON), 30 "
+    "(FAST_SBM spectral bin), 38 (Thompson hail-aware), 40 (Morrison aerosol), 50 (P3 one-category), 51 (P3 predicted Nc), 52 (P3 two-category), 53 (P3 three-moment ice), 55 (ISHMAEL), 56 (NTU multi-moment), 95 (Eta Ferrier), 96 (MAD-WRF passive cloud), 97 (Goddard GCE three-ice), 106 (WSM6R, the "
     "revised WSM6), or \"tempo\" (TEMPO, WOOF id 900)"
 )
 
@@ -3389,130 +4051,65 @@ _MP_PHYSICS_SCHEMA_MENU = (
 #: membership against this tuple and recites the menu when it refuses, so
 #: a new scheme is added in both places in the same edit or the loader
 #: and its refusal text disagree in front of a user.
-MP_PHYSICS_ACCEPTED = (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106, 900)
+MP_PHYSICS_ACCEPTED = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106, 900)
 
 
-#: WDM6's two unported siblings, held as a table for the reason
-#: :data:`_P3_UNPORTED_VARIANTS` is one: a by-name refusal is a row, so
-#: adding or retiring one is table work rather than an edit inside a raise
-#: site.  These are values no table anywhere admits -- there is no wdm5 or
-#: wdm7 module in the tree and WDM6's hail_opt switch is a retuning of five
-#: graupel constants, not a hail category -- so each states its own missing
-#: hydrometeor set and then recites the schema menu, exactly as the P3
-#: siblings do.
-_WDM_UNPORTED_SIBLINGS = {
-    14: (
-        "mp_physics=14 (WDM5, Registry.EM_COMMON) is not ported. Of WRF's "
-        "WDM family only WDM6 (mp_physics=16) exists in woof; WDM5 "
-        "carries a different hydrometeor set (no graupel category) and "
-        "cannot be run by substituting WDM6 for it."
-    ),
-    26: (
-        "mp_physics=26 (WDM7, Registry.EM_COMMON) is not ported. Of WRF's "
-        "WDM family only WDM6 (mp_physics=16) exists in woof; WDM7 adds a "
-        "prognostic hail category (qh/nh) that this port allocates "
-        "nowhere, and WDM6's wdm6_hail_opt switch retunes graupel "
-        "constants rather than adding that category, so WDM7 cannot be run "
-        "by substituting WDM6 for it."
-    ),
+
+class ThompsonAerosolMember(NamedTuple):
+    """One member of WRF's aerosol-aware Thompson family.
+
+    WRF v4.6.1 runs ONE module, module_mp_thompson.F, for both members, and
+    the driver arms differ only in the arguments they hand mp_gt_driver
+    (module_microphysics_driver.F CASE(THOMPSONAERO) and CASE(THOMPSONGH)).
+    The hail-aware member adds the prognostic graupel number and volume
+    (Registry package thompsongh: scalar qng, qvolg on top of thompsonaero's
+    set), nine graupel density bins and their nine-slab rain-graupel tables
+    (thompson_init :459-466).  Everything the aerosol-aware port owns --
+    the prognostic droplet number, both aerosol tracers, their sources and
+    the WIF climatology -- applies to both, so every reader that used to ask
+    ``mp_physics in THOMPSON_AEROSOL_FAMILY`` asks membership here, and a reader that needs the
+    graupel volume asks ``hail_aware``.
+    """
+
+    package: str
+    hail_aware: bool
+    #: State species beyond the aerosol-aware set, in woof's spelling.
+    graupel_species: tuple[str, ...]
+
+
+#: The aerosol-aware Thompson family, keyed by ``mp_physics``.
+THOMPSON_AEROSOL_FAMILY: dict[int, ThompsonAerosolMember] = {
+    28: ThompsonAerosolMember("thompsonaero", False, ()),
+    29: ThompsonAerosolMember("rcon_mp_scheme", False, ()),
+    38: ThompsonAerosolMember("thompsongh", True, ("ng", "qvolg")),
 }
+
+
+def thompson_aerosol_aware(mp_physics) -> bool:
+    """Whether ``mp_physics`` is a member of the aerosol-aware family."""
+    try:
+        return int(mp_physics) in THOMPSON_AEROSOL_FAMILY
+    except (TypeError, ValueError):
+        return False
+
+
+def thompson_hail_aware(mp_physics) -> bool:
+    """Whether ``mp_physics`` carries the hail-aware graupel (mp=38)."""
+    member = THOMPSON_AEROSOL_FAMILY.get(int(mp_physics or 0))
+    return bool(member and member.hail_aware)
+
+
+_WDM_UNPORTED_SIBLINGS = {}
 
 
 #: Other WRF microphysics packages with no port, one row each, for the same
 #: reason the P3 and WDM tables are rows: the refusal names what is missing,
 #: and retiring a row when its port lands is table work.
-#:
-#: 55 (Jensen-ISHMAEL) was imported as Morrison (10) until 2026-10-12: a
-#: model-form substitution with no error bound, printed in the import report
-#: as a "ratified substitution" but run as if the namelist had asked for
-#: Morrison.  Breakage it prevents: a run that a WRF namelist says is
-#: ISHMAEL integrates spherical, fixed-category ice instead.
 _MP_UNPORTED_SCHEMES = {
-    55: (
-        "mp_physics=55 (Jensen-ISHMAEL, Registry.EM_COMMON:3043 package "
-        "jensen_ishmael) is not ported. ISHMAEL carries three ice species "
-        "(qi, qi2, qi3) that each predict number, volume and aspect ratio "
-        "(qni/qvoli/qaoli and the _2/_3 sets), so ice habit and density "
-        "evolve with growth and riming; no woof scheme carries those "
-        "moments. Morrison (mp_physics=10) has fixed spherical cloud ice, "
-        "snow and graupel/hail, and running it under an ISHMAEL request "
-        "would deposit, rime and sediment ice by a different model. Ask "
-        "for mp_physics=10 to run Morrison under its own name."
-    ),
     # The rest of WRF v4.6.1's microphysics packages with no port.  Named
     # breakage: until 2.9.1 each was refused as "no ratified woof mapping"
     # plus a list of numbers, which does not say whether the number is a
     # typing error or an unported scheme.
-    7: (
-        "mp_physics=7 (NU-WRF Goddard 4-ice, Registry.EM_COMMON package "
-        "nuwrf4icescheme) is not ported. It carries graupel and hail as "
-        "separate classes (qg and qh) with the Goddard 4-ice processes; no "
-        "woof scheme runs them, and none is run in its place."
-    ),
-    11: (
-        "mp_physics=11 (CAM 5.1 Morrison-Gettelman, package cammgmpscheme) "
-        "is not ported. It runs inside CAM5's cloud macrophysics (its own "
-        "cloud fraction and detrainment state), which woof does not carry; "
-        "Morrison (mp_physics=10) is a different scheme and is not run in "
-        "its place."
-    ),
-    13: (
-        "mp_physics=13 (Stony Brook University Y. Lin, package "
-        "sbu_ylinscheme) is not ported. It carries a riming intensity "
-        "(rimi) that varies precipitating-ice properties continuously; "
-        "Purdue Lin (mp_physics=2) has no such variable and is not run in "
-        "its place."
-    ),
-    15: (
-        "mp_physics=15 (Ferrier-Aligo with an advected rime factor, package "
-        "fer_mp_hires_advect) is not ported. woof ports mp_physics=5, which "
-        "keeps the rime factor as non-advected state; mp_physics=15 "
-        "transports it as the scalar qrimef. Use mp_physics=5 for "
-        "Ferrier-Aligo."
-    ),
-    38: (
-        "mp_physics=38 (Thompson graupel-hail, package thompsongh) is not "
-        "ported. It predicts graupel number and volume (qng, qvolg), so "
-        "graupel density varies toward hail; Thompson (mp_physics=8 or 28) "
-        "carries fixed-density graupel and is not run in its place."
-    ),
-    40: (
-        "mp_physics=40 (Morrison with CESM aerosol, package morr_tm_aero) is "
-        "not ported. It activates droplets from prescribed aerosol modes "
-        "(CCN1-CCN7) that woof does not prepare; Morrison (mp_physics=10) "
-        "uses a fixed droplet number and is not run in its place."
-    ),
-    56: (
-        "mp_physics=56 (NTU multi-moment, package ntu) is not ported. It "
-        "predicts two moments for liquid and three for ice, with ice shape "
-        "and density, which no woof scheme carries."
-    ),
-    95: (
-        "mp_physics=95 (the old Eta Ferrier scheme, package etampnew) is not "
-        "ported. It advects total condensate with ice and rain fractions; "
-        "Ferrier-Aligo (mp_physics=5) is its successor and is not run in its "
-        "place."
-    ),
-    96: (
-        "mp_physics=96 (MADWRF, package madwrf_mp) is not ported. It is the "
-        "cloud scheme of WRF's MAD-WRF solar-irradiance configuration, "
-        "which works with MAD-WRF's satellite cloud initialization; woof "
-        "carries neither."
-    ),
-    97: (
-        "mp_physics=97 (Goddard GCE three-ice, package gsfcgcescheme) is not "
-        "ported; no woof scheme runs the Goddard ice processes, and none is "
-        "run in its place."
-    ),
-    27: (
-        "mp_physics=27 (the WRF v4.7 UDM 7-class scheme, double moments in "
-        "qnc and qnr plus qnn) is not ported; no woof scheme carries its "
-        "prognostic number set, and none is run in its place."
-    ),
-    29: (
-        "mp_physics=29 (the WRF v4.7 package rcon_mp_scheme) is not ported; "
-        "no woof scheme runs it, and none is run in its place."
-    ),
     12: (
         "mp_physics=12 (Milbrandt-Yau three-moment, package milbrandt3mom) "
         "is not ported. It predicts a third moment (reflectivity) for each "
@@ -3556,10 +4153,10 @@ def unported_mp_scheme_refusal(value: int) -> str | None:
 def unported_p3_variant_refusal(value: int) -> str:
     """A P3 sibling's refusal: its own missing physics, then the menu.
 
-    ``mp_physics`` 51/52/53 are real WRF v4.6.1 packages this port does not
-    cover, and each is owed the specific reason.  They are still values the
-    schema does not admit, so the message ends the way every other
-    out-of-schema mp value's does.
+    Remaining entries in ``_P3_UNPORTED_VARIANTS`` name real WRF packages
+    whose physics is unavailable. Each entry owes its specific reason;
+    the message ends with the admitted schema menu. MP52 has its own
+    CUDA category implementation and is no longer an unported sibling.
     """
 
     return (f"{_P3_UNPORTED_VARIANTS[value]} "
@@ -3570,7 +4167,7 @@ def unported_p3_variant_refusal(value: int) -> str:
 # mp_physics = 28 aerosol source.  This WAS "the one deliberate deviation,
 # published"; it is now a resolved input with a named fallback.
 #
-# RETIREMENT RECORD (lane/wif-default, 2026-08-27).  The constant
+# RETIREMENT RECORD (development branch, 2026-08-27).  The constant
 # ``MP28_AEROSOL_SOURCE_DEVIATION`` used to live here.  It said ArWen took
 # its mp=28 aerosol initial state from thompson_init's synthetic CCN/IN
 # profile because "ArWen has no QNWFA/QNIFA ingest lane", and warned that a
@@ -3762,7 +4359,7 @@ MP28_AEROSOL_SOURCE_OPTIONS: dict[str, tuple[int, str, str]] = {
 def validate_radiation_driver_options(cfg: RunConfig) -> None:
     """Radiation-driver options: the implemented values, by name.
 
-    * ``swint_opt`` is 0 or 1.  1 needs a shortwave scheme: the between-call
+    * ``swint_opt`` is 0, 1 or 2.  1 needs a shortwave scheme: the between-call
       fit rewrites SWDOWN, SWDDIR, SWDDIF, SWDDNI and GSW on every step,
       and with ``ra_sw_physics = 0`` it would overwrite a declared or
       externally supplied SWDOWN with the fit of a flux nothing computed.
@@ -3774,6 +4371,10 @@ def validate_radiation_driver_options(cfg: RunConfig) -> None:
       aware radiation, which is the silent substitution this refuses.  1 is the unimplemented ECMWF six-type aerosol climatology.
       2 reads user aerosol values through the WRF spectral producer.
     """
+    if type(cfg.ra_call_offset) is not int or cfg.ra_call_offset not in (-1, 0):
+        raise ConfigurationRefused(
+            f"ra_call_offset={cfg.ra_call_offset!r}: must be integer -1 "
+            "(old radiation call phase) or 0 (new radiation call phase)")
     alb_sol = cfg.alb_sol
     if type(alb_sol) is not int or alb_sol not in (0, 1):
         raise ConfigurationRefused(
@@ -3786,12 +4387,34 @@ def validate_radiation_driver_options(cfg: RunConfig) -> None:
             "or 'noaa_wrf39': the source forms carry different cloud "
             "radius defaults and snow ice fractions, so an unknown name "
             "cannot select either")
+    if type(cfg.cu_rad_feedback) is not bool:
+        raise ConfigurationRefused("cu_rad_feedback must be a logical")
+    if int(cfg.icloud) == 3:
+        from woof.core.rrtmg_legacy import legacy_cloud_fraction_flags
+        if (not cfg.moist or int(cfg.mp_physics) == 0
+                or not legacy_cloud_fraction_flags(int(cfg.mp_physics))[0]):
+            raise ConfigurationRefused(
+                "Can not use icloud = 3 option, missing QC or QI field.")
     swint = cfg.swint_opt
-    if isinstance(swint, bool) or swint not in (0, 1):
+    if isinstance(swint, bool) or swint not in (0, 1, 2):
         raise ConfigurationRefused(
             f"swint_opt={swint!r}: WRF defines 0 (hold the radiation call's "
-            "surface shortwave for the interval) and 1 (fit and interpolate "
-            "it on every step); nothing else is a WRF value")
+            "surface shortwave for the interval), 1 (fit and interpolate), "
+            "and 2 (FARMS); nothing else is a WRF value")
+    if type(cfg.couple_farms) is not bool:
+        raise ConfigurationRefused("couple_farms must be a logical")
+    if cfg.couple_farms and swint != 2:
+        raise ConfigurationRefused("couple_farms requires swint_opt=2")
+    if cfg.rrtmg_aer3_source not in ("operational_fork", "wrf_461"):
+        raise ConfigurationRefused("rrtmg_aer3_source must be operational_fork or wrf_461")
+    if cfg.rrtmg_aer3_source == "wrf_461" and (
+            cfg.rrtmg_smoke_manifest or cfg.simple_dir_fdb or
+            cfg.rrtmg_aer3_type_source != "rural"):
+        raise ConfigurationRefused("stock WRF aerosol type 1 has no prescribed smoke or landmask type branch")
+    if swint == 2 and cfg.aer_opt == 3 and cfg.rrtmg_aer3_source != "wrf_461":
+        raise ConfigurationRefused(
+            "FARMS aer_opt=3 needs stock WRF gt_aod and surface aerosol diagnostics; "
+            "the existing HRRR aerosol form has a different layer floor")
     aer = cfg.aer_opt
     if isinstance(aer, bool) or aer not in (0, 1, 2, 3):
         raise ConfigurationRefused(
@@ -3823,7 +4446,7 @@ def validate_radiation_driver_options(cfg: RunConfig) -> None:
     if type(smoke) is not str:
         raise ConfigurationRefused("rrtmg_smoke_manifest must be a file path string; empty disables the forcing")
     if smoke and (int(sw) != 4 or cfg.ra_rrtmg_variant != RRTMG_VARIANT_LEGACY
-                  or aer != 3 or int(cfg.mp_physics) != 28):
+                  or aer != 3 or int(cfg.mp_physics) not in THOMPSON_AEROSOL_FAMILY):
         raise ConfigurationRefused(
             "rrtmg_smoke_manifest requires legacy RRTMG shortwave "
             "(ra_sw_physics=4, ra_rrtmg_variant='rrtmg_legacy'), aer_opt=3 "
@@ -3879,7 +4502,7 @@ def validate_radiation_driver_options(cfg: RunConfig) -> None:
     if aer == 3:
         from woof.microphysics_schemes import SCHEMES_BY_ID
         named = SCHEMES_BY_ID.get(int(cfg.mp_physics))
-        carries_numbers = (int(cfg.mp_physics) == 28 or
+        carries_numbers = (int(cfg.mp_physics) in THOMPSON_AEROSOL_FAMILY or
                            (named is not None and {"nwfa", "nifa"} <= set(named.aerosol_species)))
         if not carries_numbers:
             raise ValueError(
@@ -3902,7 +4525,7 @@ def validate_radiation_driver_options(cfg: RunConfig) -> None:
 def validate_aerosol_source_options(cfg: RunConfig) -> None:
     """Fail closed on any mp=28 aerosol-source selector WOOF cannot honour.
 
-    THE DEFAULT MOVED (lane/wif-default).  ``(aer_init_opt, wif_input_opt)``
+    THE DEFAULT MOVED (development branch).  ``(aer_init_opt, wif_input_opt)``
     at WRF's Registry defaults ``(0, 0)`` no longer MEANS "synthetic
     profile"; it means "WOOF chooses", and what WOOF chooses is the
     climatology whenever the dataset resolves.  The two namelist fields keep
@@ -3929,8 +4552,8 @@ def validate_aerosol_source_options(cfg: RunConfig) -> None:
     something under mp=28 ride silently into an mp=28 restart or nest.
     """
     source = str(getattr(cfg, "mp28_aerosol_source", "auto") or "auto")
-    if bool(cfg.use_rap_aero_icbc) and int(cfg.mp_physics) != 28:
-        raise ConfigurationRefused("use_rap_aero_icbc requires mp_physics=28; other schemes carry no QNWFA/QNIFA to initialize or force")
+    if bool(cfg.use_rap_aero_icbc) and int(cfg.mp_physics) not in THOMPSON_AEROSOL_FAMILY:
+        raise ConfigurationRefused("use_rap_aero_icbc requires mp_physics=28 or mp_physics=38; other schemes carry no QNWFA/QNIFA to initialize or force")
     if source not in MP28_AEROSOL_SOURCES:
         raise ConfigurationRefused(
             f"mp28_aerosol_source={source!r} is not one of "
@@ -3948,6 +4571,10 @@ def validate_aerosol_source_options(cfg: RunConfig) -> None:
             raise ConfigurationRefused("analyzed aerosol IC/BC cannot also select climatology or synthetic aerosol")
         if selected[0] not in (0, 1, 2) or selected[1] not in (0, 1):
             raise ConfigurationRefused("analyzed aerosol IC/BC requires aer_init_opt in 0,1,2 and wif_input_opt in 0,1; black carbon input is not implemented")
+        return
+    if selected == (0, 1) and source == "synthetic" and not path:
+        # Native zero initialization followed by thompson_init's analytic
+        # profiles, explicitly selected by the stock-namelist importer.
         return
     if selected == (1, 1):
         # The namelist spelling of mp28_aerosol_source='climatology' --
@@ -4002,7 +4629,7 @@ def mp28_aerosol_lateral_forcing_precondition(cfg) -> str | None:
     offers.  ``'climatology'`` is strict at ingest as well; here it is the
     same answer, earlier.
     """
-    if int(getattr(cfg, "mp_physics", 0)) != 28:
+    if int(getattr(cfg, "mp_physics", 0)) not in THOMPSON_AEROSOL_FAMILY:
         return None
     surface_from_monthly = bool(getattr(cfg, "use_rap_aero_icbc", False))
     if not bool(getattr(cfg, "specified", False)) and not surface_from_monthly:
@@ -4080,8 +4707,43 @@ def mp28_aerosol_lateral_forcing_precondition(cfg) -> str | None:
 #: the door per code), and ``tests/test_authority_agreement.py::
 #: test_every_install_state_code_is_raised_by_a_run_door`` walks them, so
 #: "the registry alone asks this" cannot become "nothing else asks this".
+def microphysics_lookup_table_precondition(cfg) -> str | None:
+    """Report missing external tables before preparation or a first step.
+
+    Hail-aware Thompson may generate missing caches under its native
+    write controls. That work belongs to preparation asset acquisition.
+    ISHMAEL has no generated fallback.
+    """
+    mp = int(getattr(cfg, "mp_physics", 0))
+    if mp == 55:
+        from woof.core.ishmael import require_tables
+        try:
+            require_tables()
+        except FileNotFoundError as error:
+            return str(error)
+    elif mp == 38:
+        from pathlib import Path
+        from woof.physics_compat import thompson_hail_table_root
+        from woof.core.thompson_contract import HAIL_TABLE_ASSETS, HAIL_MP38_TABLE_FILE
+        from woof.table_assets import classify_assets
+        root = Path(thompson_hail_table_root())
+        _valid, invalid, absent = classify_assets(root, HAIL_TABLE_ASSETS)
+        if invalid:
+            return "mp_physics=38 has invalid Thompson tables: " + "; ".join(invalid)
+        missing = {asset.filename for asset in absent}
+        if missing and getattr(cfg, "force_read_thompson", False):
+            return (f"mp_physics=38 force_read_thompson=true needs verified tables in {root}: "
+                    + ", ".join(sorted(missing)))
+        if HAIL_MP38_TABLE_FILE in missing and not getattr(cfg, "write_thompson_mp38table", False):
+            return (f"mp_physics=38 needs {HAIL_MP38_TABLE_FILE} in {root}; "
+                    "stage the verified native table with WOOF_THOMPSON_HAIL_TABLE_ROOT "
+                    "or set write_thompson_mp38table=true to generate it during preparation")
+    return None
+
+
 RUN_PREPARATION_PRECONDITIONS = (
     mp28_aerosol_lateral_forcing_precondition,
+    microphysics_lookup_table_precondition,
 )
 
 
@@ -4127,6 +4789,20 @@ def acquire_run_preparation_assets(cfg) -> None:
     --wif` by hand (2026-10-23).
     """
 
+    if int(getattr(cfg, "mp_physics", 0)) == 38:
+        from woof.physics_compat import thompson_hail_table_root
+        from woof.thompson_density_tables import (
+            prepare_thompson_hail_tables, stage_hail_table_for_run)
+        # A bare install has no native hail table; stage the verified one
+        # (the fetch-tables route) before WRF's cache policy (2.9.12 R11).
+        hail_root = str(stage_hail_table_for_run(
+            str(thompson_hail_table_root()),
+            force_read=getattr(cfg, "force_read_thompson", False)))
+        prepare_thompson_hail_tables(
+            hail_root,
+            force_read=getattr(cfg, "force_read_thompson", False),
+            write_tables=getattr(cfg, "write_thompson_tables", True),
+            write_mp38table=getattr(cfg, "write_thompson_mp38table", False))
     if mp28_aerosol_lateral_forcing_precondition(cfg) is None:
         return
     from woof.ingest.wif_climatology import (
@@ -4408,7 +5084,8 @@ def load_streaming_options(path: str | Path):
 CONFIG_RELATIVE_FILE_KEYS: tuple[str, ...] = (
     "wif_climatology_path", "rrtmg_smoke_manifest",
     "fire_static", "fire_fuel_namelist",
-    "ocean_config", "wind_farm_table", "wind_farms",
+    "ocean_config", "wind_farm_table", "wind_farms", "windturbines_spec",
+    "tslist",
 )
 
 
@@ -4426,6 +5103,8 @@ def _anchor_config_file_paths(merged: dict, config_path: str | Path,
     for key in keys:
         value = merged.get(key, "")
         if not value or not isinstance(value, str):
+            continue
+        if key == "windturbines_spec" and value in ("none", "ideal"):
             continue
         rel = Path(value)
         if rel.is_absolute() or rel.is_file():
@@ -4742,6 +5421,25 @@ _SASE_REQUIREMENTS: tuple[tuple[str, object, str], ...] = (
 )
 
 
+def validate_temf_pairing(cfg: RunConfig, *, dfi_opt: int = 0) -> None:
+    """WRF v4.6.1 module_check_a_mundo.F:2287-2330 TEMF fatals."""
+    pbl, sfc = int(cfg.bl_pbl_physics), int(cfg.sf_sfclay_physics)
+    if pbl == 10 and sfc != 10:
+        raise ValueError(
+            "Using bl_pbl_physics=10 requires sf_sfclay_physics=10. "
+            "WRF v4.6.1 share/module_check_a_mundo.F:2292: "
+            "the TEMF PBL reads EXCH_TEMF and WM_TEMF from its surface layer.")
+    if sfc == 10 and pbl != 10:
+        raise ValueError(
+            "Using sf_sfclay_physics=10 requires bl_pbl_physics=10. "
+            "WRF v4.6.1 share/module_check_a_mundo.F:2297: "
+            "the TEMF surface layer reads TE_TEMF and HD_TEMF from its PBL.")
+    if pbl == 10 and int(dfi_opt) != 0:
+        raise ValueError(
+            "DFI not available for bl_pbl_physics=10. "
+            "WRF v4.6.1 share/module_check_a_mundo.F:2324: "
+            "digital filtering is forbidden with the TEMF pair.")
+
 def validate_myj_pairing(cfg: RunConfig) -> None:
     """Refuse a MYJ half without its other half, in either direction.
 
@@ -4755,9 +5453,9 @@ def validate_myj_pairing(cfg: RunConfig) -> None:
     THE REVERSE DIRECTION IS ARWEN'S, and it is stated as such.  WRF
     admits the Eta surface layer under several PBLs it also ports (the
     ``isfc .ne. 2`` guards at :3742 and :3756 belong to other schemes);
-    woof ports NONE of those, so the only PBL that could consume the Eta
-    surface layer's output here is MYJ.  What makes the mismatch a
-    refusal rather than a warning is one missing PAIR, named exactly:
+    EEPS consumes its published fluxes and preserves the independently
+    allocated Eta TKE column. Other ported PBLs need a missing PAIR,
+    named exactly:
     ``FM``/``FH``.  Those are the full similarity denominators
     ln(z/z0)-psi that WRF's PBL driver binds as ``PSIM``/``PSIH``
     (module_pbl_driver.F:1228); only the MM5 surface layers fill them
@@ -4774,7 +5472,7 @@ def validate_myj_pairing(cfg: RunConfig) -> None:
     The PBL-OFF cell is refused separately and for its own reason: with
     the slot off nothing reads fm/fh at all, but the Eta layer's own PBLH
     scan reads the carried ``TKE_MYJ`` column, which is allocated for the
-    MYJ PBL selector alone.
+    MYJ and EEPS PBL selectors here.
 
     Urban: WRF sends the MYJ PBL through ``myjurb`` when
     ``sf_urban_physics`` is 2 or 3 (BEP/BEM, module_physics_init.F:
@@ -4785,6 +5483,21 @@ def validate_myj_pairing(cfg: RunConfig) -> None:
     """
     pbl = int(cfg.bl_pbl_physics)
     sfclay = int(cfg.sf_sfclay_physics)
+    if pbl == MYJ_PBL_SCHEME and sfclay == GFS_SFCLAY_SCHEME:
+        # Not WRF's fatal: the GFS layer sets isfc=2 too
+        # (module_physics_init.F:3186-3199), so WRF v4.6.1 runs this pair.
+        # It is refused for what it would compute, not for what WRF says.
+        raise ValueError(
+            f"bl_pbl_physics={MYJ_PBL_SCHEME} (MYJ) cannot run on "
+            f"sf_sfclay_physics={GFS_SFCLAY_SCHEME} (GFS). WRF v4.6.1 admits "
+            "the pair (the GFS layer sets isfc=2, "
+            "phys/module_physics_init.F:3186-3199), but the MYJ PBL's every "
+            "implicit solve takes AKHS/AKMS/THZ0/QZ0/UZ0/VZ0 as its lower "
+            "boundary and SF_GFS writes none of them "
+            "(phys/module_sf_gfs.F:9-18), so the PBL would integrate on the "
+            "allocated zeros -- finite, plausible and wrong. Select "
+            "sf_sfclay_physics=2 (Eta similarity) with MYJ, or the UW PBL "
+            "(bl_pbl_physics=9) or no PBL with the GFS layer.")
     if pbl == MYJ_PBL_SCHEME and sfclay != MYJ_SFCLAY_SCHEME:
         raise ConfigurationRefused(
             f"bl_pbl_physics={MYJ_PBL_SCHEME} (MYJ) requires "
@@ -4823,7 +5536,8 @@ def validate_myj_pairing(cfg: RunConfig) -> None:
     if sfclay == MYJ_SFCLAY_SCHEME and pbl == 0:
         raise ConfigurationRefused(
             f"sf_sfclay_physics={MYJ_SFCLAY_SCHEME} (Eta similarity) is "
-            f"admitted with bl_pbl_physics={MYJ_PBL_SCHEME} (MYJ) only, got "
+            f"admitted with bl_pbl_physics={MYJ_PBL_SCHEME} (MYJ) or "
+            f"{EEPS_PBL_SCHEME} (EEPS) or {BOULAC_PBL_SCHEME} (BouLac), got "
             "bl_pbl_physics=0 (PBL off). This cell has its own reason: the "
             "Eta layer's PBLH scan is MYJSFC's own TKE scan "
             "(module_sf_myjsfc.F:263-277), so the surface call itself reads "
@@ -4832,7 +5546,8 @@ def validate_myj_pairing(cfg: RunConfig) -> None:
             "(woof/core/physics.py allocates tke_myj/el_myj there, at the "
             "EPSQ2 cold start MIXLEN's LPBL scan needs), so with the PBL "
             "slot off the first surface step has no TKE column to scan. "
-            f"Select bl_pbl_physics={MYJ_PBL_SCHEME} to run the Eta layer, "
+            f"Select bl_pbl_physics={MYJ_PBL_SCHEME} or {BOULAC_PBL_SCHEME} "
+            "to run the Eta layer, "
             "or sf_sfclay_physics=1 (revised MM5) or 91 (classic MM5), "
             "which carry no TKE column and run with the PBL slot off.")
     if sfclay == MYJ_SFCLAY_SCHEME and pbl == UW_PBL_SCHEME:
@@ -4841,19 +5556,26 @@ def validate_myj_pairing(cfg: RunConfig) -> None:
         # breakage: the Eta layer's surface call itself scans TKE_MYJ.
         raise ConfigurationRefused(
             f"sf_sfclay_physics={MYJ_SFCLAY_SCHEME} (Eta similarity) is "
-            f"admitted with bl_pbl_physics={MYJ_PBL_SCHEME} (MYJ) only, got "
+            f"admitted with bl_pbl_physics={MYJ_PBL_SCHEME} (MYJ) or "
+            f"{BOULAC_PBL_SCHEME} (BouLac), got "
             f"bl_pbl_physics={UW_PBL_SCHEME} (UW). The UW scheme reads "
             "only UST, HFX and QFX from its surface layer, but the Eta "
             "layer's PBLH scan is MYJSFC's own TKE scan "
             "(module_sf_myjsfc.F:263-277) over the carried TKE_MYJ column, "
-            "which only the MYJ PBL allocates and advances: under UW the "
+            "which MYJ advances and EEPS preserves as a separate zero "
+            "column: under UW the "
             "surface call would scan a column no scheme writes. Select "
             "sf_sfclay_physics=1 (revised MM5), 91 (classic MM5) or 5 "
-            "(MYNN) with the UW PBL.")
-    if sfclay == MYJ_SFCLAY_SCHEME and pbl != MYJ_PBL_SCHEME:
+            "(MYNN) or 3 (GFS) with the UW PBL.")
+    # BouLac under the Eta layer is WRF-legal (isfc = 2,
+    # module_physics_init.F:3815) and runs: BouLac reads only UST/HFX/QFX of
+    # the surface set, which the Eta layer writes, and it carries the
+    # TKE_PBL column the Eta layer's PBLH scan reads (ETA_LAYER_TKE_FIELDS).
+    if sfclay == MYJ_SFCLAY_SCHEME and pbl not in ETA_LAYER_TKE_FIELDS:
         raise ConfigurationRefused(
             f"sf_sfclay_physics={MYJ_SFCLAY_SCHEME} (Eta similarity) is "
-            f"admitted with bl_pbl_physics={MYJ_PBL_SCHEME} (MYJ) only, got "
+            f"admitted with bl_pbl_physics={MYJ_PBL_SCHEME} (MYJ) or "
+            f"{BOULAC_PBL_SCHEME} (BouLac) or {EEPS_PBL_SCHEME} (EEPS), got "
             f"bl_pbl_physics={pbl}. The Eta surface layer publishes no FM/FH "
             "-- the full similarity denominators ln(z/z0)-psi that WRF's PBL "
             "driver binds as PSIM/PSIH (module_pbl_driver.F:1228) and that "
@@ -4865,8 +5587,61 @@ def validate_myj_pairing(cfg: RunConfig) -> None:
             "wrong. Producing fm/fh out of the Eta layer's tabulated psi "
             "would be new physics, not a table row. Select "
             "sf_sfclay_physics=1 (revised MM5) or 91 (classic MM5) for "
-            f"those schemes, or bl_pbl_physics={MYJ_PBL_SCHEME} for this "
-            "one.")
+            f"those schemes, or bl_pbl_physics={MYJ_PBL_SCHEME} or "
+            f"{EEPS_PBL_SCHEME} or {BOULAC_PBL_SCHEME} for this surface layer.")
+
+
+def validate_gfs_surface_pairing(cfg: RunConfig) -> None:
+    """SF_GFS has no RMOL output for MYNN or EEPS."""
+    if int(cfg.sf_sfclay_physics) == GFS_SFCLAY_SCHEME and int(cfg.bl_pbl_physics) in (5, 16):
+        raise ValueError(
+            "sf_sfclay_physics=3 (GFS) publishes no RMOL; the selected PBL "
+            "reads RMOL and would use the allocated zero. Select the paired "
+            "bl_pbl_physics=3 (GFS), or a surface layer that writes RMOL.")
+
+
+def validate_gfs_pbl_config(cfg: RunConfig) -> None:
+    """Admission for the GFS nonlocal PBL (bl_pbl_physics=3).
+
+    The scheme's lower boundary is six words of its surface layer: UST,
+    PSIM, PSIH, GZ1OZ0, WSPD and BR (module_pbl_driver.F:1416-1418), from
+    which it forms FM = GZ1OZ0 - PSIM and the surface stress
+    (karman*wspd/FM)**2 (module_bl_gfs.F:282-321).  A surface layer that
+    does not write GZ1OZ0/PSIM leaves FM meaningless and the stress,
+    UST and the momentum solve's surface row unbounded.  So the
+    admitted layers are :data:`GFS_PBL_SURFACE_LAYERS`, which publish the
+    set with SF_GFS's definitions.
+
+    WRF requires isfc == 2 (module_physics_init.F:3742-3743).
+    SF_GFS is the implemented layer that also writes every lower-boundary
+    word this solver reads. The archived MM5 exception is retired.
+    """
+    if int(cfg.bl_pbl_physics) != GFS_PBL_SCHEME:
+        return
+    sfclay = int(cfg.sf_sfclay_physics)
+    if sfclay not in GFS_PBL_SURFACE_LAYERS:
+        raise ValueError(
+            f"bl_pbl_physics={GFS_PBL_SCHEME} (GFS) requires a surface "
+            "layer that publishes UST, PSIM, PSIH, GZ1OZ0, WSPD and BR, got "
+            f"sf_sfclay_physics={sfclay}. The scheme forms FM = GZ1OZ0 - "
+            "PSIM and the surface stress (karman*wspd/FM)**2 from them "
+            "(module_bl_gfs.F:282-321), so a layer that does not write them "
+            "leaves FM meaningless: WRF's own isfc == 2 pairing with the Eta "
+            "layer, which writes none of GZ1OZ0/PSIM/PSIH, reached +Inf UST "
+            "and NaN fluxes within two model minutes and then a "
+            "segmentation fault (tools/gfs_pbl_wrf461_oracle/README.md). "
+            "Select sf_sfclay_physics=3 (GFS).")
+    urban = int(getattr(cfg, "sf_urban_physics", 0) or 0)
+    if urban in (2, 3):
+        raise ValueError(
+            f"bl_pbl_physics={GFS_PBL_SCHEME} (GFS) cannot run with "
+            f"sf_urban_physics={urban} (BEP/BEM). WRF v4.6.1 fatals this "
+            "pairing (module_physics_init.F:3744-3745: 'use ysu (option1), "
+            "myj (option 2), or boulac (option 8) with BEP/BEM urban "
+            "scheme'): BL_GFS has no arm for the multi-layer canopy's drag "
+            "and heat source terms, so the urban momentum and heat "
+            "exchange would be dropped. Select bl_pbl_physics=1 (YSU) or "
+            "2 (MYJ) with BEP/BEM, or sf_urban_physics=1 with the GFS PBL.")
 
 
 def validate_uwpbl_config(cfg: RunConfig) -> None:
@@ -4896,7 +5671,7 @@ def validate_uwpbl_config(cfg: RunConfig) -> None:
             "with the slot off nothing writes them, so the surface stress "
             "and both fluxes would stay the allocated zeros for the whole "
             "run. Select sf_sfclay_physics=1 (revised MM5), 91 (classic "
-            "MM5) or 5 (MYNN).")
+            "MM5), 5 (MYNN) 3 (GFS) or 7 (Pleim-Xiu).")
     urban = int(getattr(cfg, "sf_urban_physics", 0) or 0)
     if urban in (2, 3):
         raise ConfigurationRefused(
@@ -4921,6 +5696,190 @@ def validate_uwpbl_config(cfg: RunConfig) -> None:
             "MYNN mixscalars precedent); a positive cadence would make a "
             "mid-interval restart silently drop it. bldt=0 is WRF's "
             "default and its recommendation.")
+
+
+def validate_gbmpbl_config(cfg: RunConfig) -> None:
+    """Require WRF's MM5 layer and its cloud-water and cloud-ice species.
+
+    Missing surface inputs corrupt surface stress. Missing condensate
+    species discard the corresponding GBM tendency and water budget.
+    """
+    if int(cfg.bl_pbl_physics) != GBM_PBL_SCHEME:
+        return
+    sfclay = int(cfg.sf_sfclay_physics)
+    if sfclay not in GBM_PBL_SURFACE_LAYERS:
+        raise ValueError(
+            f"bl_pbl_physics={GBM_PBL_SCHEME} (GBM) requires "
+            "sf_sfclay_physics=1 (revised MM5) or 91 (classic MM5), got "
+            f"sf_sfclay_physics={sfclay}. WRF v4.6.1 fatals every other "
+            "pairing at phys/module_physics_init.F:3892-3893: the scheme "
+            "builds its friction velocity and surface stress from the MM5 "
+            "layers' GZ1OZ0 and PSIM (module_bl_gbmpbl.F:539); the Eta "
+            "layer publishes neither and with the slot off nothing does, so "
+            "u* would be formed from allocated zeros.")
+    from woof.core.physics_inventory import PBL_RQI_MICROPHYSICS
+    if not cfg.moist or int(cfg.mp_physics) not in PBL_RQI_MICROPHYSICS:
+        raise ValueError(
+            "bl_pbl_physics=12 (GBM) requires F_QC and F_QI, with cloud-water "
+            "and cloud-ice state (module_pbl_driver.F:1992-2018). "
+            "The scheme mixes total water with saturation adjustment and "
+            "diffuses ice separately; absent species would discard RQCBLTEN "
+            "or RQIBLTEN and their condensate budget. Select a microphysics "
+            "scheme that carries cloud water and cloud ice (moist=true), or "
+            "another PBL.")
+
+
+def validate_eeps_config(cfg: RunConfig) -> None:
+    """Admission for the EEPS PBL (bl_pbl_physics=16).
+
+    WRF's own law for the scheme (module_physics_init.F:3871-3876) is a
+    surface-layer list (:data:`EEPS_SURFACE_LAYERS`) and the BEP/BEM urban
+    fatal; the surface list is in the shared compatibility table, and the
+    urban fatal is reproduced here. The Eta-layer cell preserves its own
+    Registry-allocated zero TKE column.
+    The one ArWen-side refusal is a dry state: EEPS's TKE and dissipation
+    are advected scalars (PEK_ADV/PEP_ADV), and the dycore transports
+    scalars only on a moist state.  Any microphysics is admitted: a scheme
+    without cloud ice hands the column the driver's zero QI plane, which the
+    column reads as an exact 0 (no melting, no ice diffusion) and whose
+    RQIBLTEN the coupling does not apply.
+    """
+    if int(cfg.bl_pbl_physics) != EEPS_PBL_SCHEME:
+        return
+    # WRF's surface-layer law lives in PBL_SURFACE_LAYER_AUTHORITY and
+    # require_ready_wrf_physics emits its complete shared refusal receipt.
+    # Keep only the EEPS state/canopy constraints here.
+    urban = int(getattr(cfg, "sf_urban_physics", 0) or 0)
+    if urban in (2, 3):
+        raise ValueError(
+            f"bl_pbl_physics={EEPS_PBL_SCHEME} (EEPS) cannot run with "
+            f"sf_urban_physics={urban} (BEP/BEM). WRF v4.6.1 fatals this "
+            "pairing (module_physics_init.F:3874-3875: 'use myj (option 2) "
+            "or boulac (option 8) with BEP/BEM urban scheme'): EEPS has no "
+            "arm for the multi-layer canopy's drag and heat source terms, "
+            "so the urban momentum and heat exchange would be dropped. "
+            "Select sf_urban_physics=1 (the single-layer UCM, which acts "
+            "through the surface fluxes) with EEPS.")
+    if not cfg.moist:
+        raise ValueError(
+            f"bl_pbl_physics={EEPS_PBL_SCHEME} (EEPS) requires a moist "
+            "state (moist=true): the scheme's TKE and dissipation rate are "
+            "WRF scalar-array species (PEK_ADV/PEP_ADV, "
+            "Registry.EM_COMMON:1053-1054) that the dycore advects between "
+            "PBL calls, and a dry state runs no scalar transport, so the "
+            "pair would never move.")
+def qnse_mfshconv_active(cfg: RunConfig) -> bool:
+    """Whether the EDMF shallow mass flux runs: ``mfshconv = 1`` under the
+    QNSE PBL only.  WRF resets the switch to 0 for every other PBL
+    (share/module_check_a_mundo.F:1715-1730, a NOTE, not a fatal), so a
+    value carried under another scheme is inert here exactly as there."""
+    return (int(cfg.bl_pbl_physics) == QNSE_PBL_SCHEME
+            and int(getattr(cfg, "mfshconv", 1)) == 1)
+
+
+def validate_qnse_config(cfg: RunConfig) -> None:
+    """Admission for the QNSE PBL (bl_pbl_physics=4) and its mass flux.
+
+    WRF's law, transcribed: ``CASE (QNSEPBLSCHEME)`` in
+    phys/module_physics_init.F:3789-3793 fatals any surface layer that did
+    not set ``isfc = 4`` ('use qnsesfc scheme for this pbl option') and
+    the BEP/BEM urban schemes.  ``mfshconv`` is WRF's Registry integer
+    (Registry.EM_COMMON:2485, default 1); the PBL driver tests it with
+    ``.EQ.1`` (module_pbl_driver.F:1519).
+    """
+    mfshconv = int(getattr(cfg, "mfshconv", 1))
+    if mfshconv not in (0, 1):
+        raise ValueError(
+            f"mfshconv must be 0 or 1, got {mfshconv}. WRF's PBL driver "
+            "runs the EDMF mass flux only when the switch .EQ. 1 "
+            "(module_pbl_driver.F:1519), so any other value silently means "
+            "off there; refusing it keeps a typed 2 from running a "
+            "different PBL than the one asked for.")
+    if int(cfg.sf_sfclay_physics) == QNSE_SFCLAY_SCHEME and int(cfg.bl_pbl_physics) != QNSE_PBL_SCHEME:
+        raise ValueError("sf_sfclay_physics=4 requires bl_pbl_physics=4: the QNSE surface layer scans carried TKE_PBL and publishes AKHS/AKMS, while other PBL paths do not consume its boundary state or write its TKE column.")
+    if int(cfg.bl_pbl_physics) != QNSE_PBL_SCHEME:
+        return
+    sfclay = int(cfg.sf_sfclay_physics)
+    if sfclay != QNSE_SFCLAY_SCHEME:
+        raise ValueError(
+            f"bl_pbl_physics={QNSE_PBL_SCHEME} (QNSE) requires "
+            f"sf_sfclay_physics={QNSE_SFCLAY_SCHEME} (QNSE surface layer), "
+            f"got sf_sfclay_physics={sfclay}. WRF v4.6.1 fatals this exact "
+            "pairing at phys/module_physics_init.F:3790-3791 ('use qnsesfc "
+            "scheme for this pbl option'): the QNSE PBL's implicit solves "
+            "take AKHS/AKMS/THZ0/QZ0/UZ0/VZ0 as their lower boundary and "
+            "only the QNSE surface layer produces them for it. No "
+            "substitution is applied.")
+    urban = int(getattr(cfg, "sf_urban_physics", 0) or 0)
+    if urban in (2, 3):
+        raise ValueError(
+            f"bl_pbl_physics={QNSE_PBL_SCHEME} (QNSE) cannot run with "
+            f"sf_urban_physics={urban} (BEP/BEM). WRF v4.6.1 fatals this "
+            "pairing (module_physics_init.F:3792-3793: 'use ysu (option1), "
+            "myj (option 2), or boulac (option 8) with BEP/BEM urban "
+            "scheme'): QNSEPBL has no arm for the multi-layer canopy's drag "
+            "and heat source terms, so the urban exchange would be dropped. "
+            "Select sf_urban_physics=1 (the single-layer UCM) or 0.")
+
+#: The surface layers whose published fields cover what the K-epsilon PBL
+#: reads from its surface layer: UST, HFX, QFX, BR, ZNT and the stability
+#: functions PSIM/PSIH (module_pbl_driver.F:1880-1902 binds the surface
+#: driver's own psim/psih, not YSU's fm/fh).
+KEPS_SURFACE_LAYERS = (1, 5, 91)
+
+
+def validate_keps_config(cfg: RunConfig) -> None:
+    """Admission for the K-epsilon PBL (bl_pbl_physics=17).
+
+    WRF v4.7.1 has no law for the scheme to transcribe: bl_init's SELECT
+    CASE has no KEPSSCHEME arm, so every surface layer and every urban
+    option reaches it.  The refusals below are WOOF's and each names the
+    breakage it prevents:
+
+    * no surface layer, or the Eta layer: the scheme forms z/L from
+      br*psim*psim/psih and its first-level gradient from sflux/ust
+      (module_bl_keps.F:660, :1074); with the slot off UST is the allocated
+      zero and the gradient divides by it, and the Eta layer publishes no
+      PSIM/PSIH/BR (and is refused for every PBL but MYJ already, in
+      :func:`validate_myj_pairing`);
+    * gwd_opt: the drag suite reads the PBL top level KPBL, which this
+      scheme never writes (WRF leaves it at whatever the last writer
+      left), so the drag would be distributed against a stale level.
+
+    The scheme receives the model DT at every bldt cadence, matching
+    module_pbl_driver.F:1882.
+    """
+    if int(cfg.bl_pbl_physics) != KEPS_PBL_SCHEME:
+        return
+    sfclay = int(cfg.sf_sfclay_physics)
+    if sfclay not in KEPS_SURFACE_LAYERS and sfclay != MYJ_SFCLAY_SCHEME:
+        raise ValueError(
+            f"bl_pbl_physics={KEPS_PBL_SCHEME} (K-epsilon) requires a "
+            "surface layer that publishes UST, HFX, QFX, BR, ZNT, PSIM and "
+            f"PSIH, got sf_sfclay_physics={sfclay}: the scheme's "
+            "first-level temperature gradient divides the surface buoyancy "
+            "flux by UST and its z/L divides by PSIH (module_bl_keps.F:660, "
+            ":1074), and with no surface layer both are the allocated zeros, "
+            "so the first K-epsilon call would put a NaN in every tendency "
+            "of every column. Select sf_sfclay_physics=1 (revised MM5), 91 "
+            "(classic MM5) or 5 (MYNN).")
+    if int(getattr(cfg, "gwd_opt", 0) or 0):
+        raise ValueError(
+            f"gwd_opt={cfg.gwd_opt} cannot run with bl_pbl_physics="
+            f"{KEPS_PBL_SCHEME} (K-epsilon): the drag suite distributes its "
+            "stress up to the PBL top level KPBL, and the K-epsilon scheme "
+            "never writes KPBL (module_bl_keps.F has no KPBL argument), so "
+            "the drag would be placed against a level no scheme computed. "
+            "Set gwd_opt=0, or use a PBL scheme that writes KPBL.")
+    if int(cfg.cu_physics) == GRELL_FREITAS_CU_PHYSICS:
+        raise ValueError(
+            f"cu_physics={GRELL_FREITAS_CU_PHYSICS} (Grell-Freitas) cannot "
+            f"run with bl_pbl_physics={KEPS_PBL_SCHEME} (K-epsilon): the "
+            "trigger's temperature and moisture excesses and the shallow "
+            "arm read the PBL top level KPBL, which the K-epsilon scheme "
+            "never writes, so GF would see the allocated zero for the whole "
+            "run. Select cu_physics=1 (Kain-Fritsch) or 16 (New Tiedtke), "
+            "or a PBL scheme that writes KPBL.")
 
 
 def validate_sase_config(cfg: RunConfig) -> None:
@@ -5287,7 +6246,7 @@ def constant_k_mixing_active(cfg) -> bool:
     tendency word, and it keeps the default configuration (km_opt = 1,
     khdif = kvdif = 0) free of a full-grid package that computes zeros.
     """
-    if int(getattr(cfg, "km_opt", 0)) != 1:
+    if getattr(cfg, "diff_opt", 2) == 0 or int(getattr(cfg, "km_opt", 0)) != 1:
         return False
     if cfg.khdif != 0.0 or cfg.kvdif != 0.0:
         return True
@@ -5306,9 +6265,9 @@ def constant_k_mixing_active(cfg) -> bool:
 def wrf_mixing_package_active(cfg) -> bool:
     """Whether the dycore builds WRF's once-per-step mixing tendencies.
 
-    km_opt 2/3/4 always; km_opt 1 under :func:`constant_k_mixing_active`.
+    km_opt 2/3/4/5 always; km_opt 1 under :func:`constant_k_mixing_active`.
     """
-    return (int(getattr(cfg, "km_opt", 0)) in (2, 3, 4)
+    return (int(getattr(cfg, "km_opt", 0)) in (2, 3, 4, 5)
             or constant_k_mixing_active(cfg))
 
 
@@ -5342,6 +6301,15 @@ def validate_km_opt(cfg: RunConfig) -> None:
       exists for and the thing the default refusal exists to prevent
       happening by accident.  See :data:`KM_OPT_ZERO_ACK`.
     """
+    if isinstance(cfg, _DfiBackwardRunConfig):
+        if (cfg.dt < 0 and cfg.diff_opt == 0 and cfg.km_opt == 1 and
+                not any((cfg.mp_physics, cfg.ra_physics, cfg.ra_lw_physics,
+                         cfg.ra_sw_physics, cfg.sf_surface_physics,
+                         cfg.sf_sfclay_physics, cfg.bl_pbl_physics,
+                         cfg.cu_physics, cfg.sf_urban_physics, cfg.damp_opt,
+                         cfg.gwd_opt, cfg.diff_6th_opt))):
+            return
+        raise ConfigurationRefused('invalid internal backward DFI phase configuration')
     if isinstance(cfg.diff_opt, bool) or not isinstance(cfg.diff_opt, int) or cfg.diff_opt not in (1, 2):
         raise ConfigurationRefused(
             f"diff_opt must be 1 (model-coordinate horizontal diffusion) "
@@ -5366,7 +6334,7 @@ def validate_km_opt(cfg: RunConfig) -> None:
             f"km_opt_zero_acknowledgement = {KM_OPT_ZERO_ACK!r}. It is a "
             "literal id and not a boolean so that it cannot be reached "
             "by a stray `= true`.")
-    if cfg.km_opt not in (0, 1, 2, 3, 4):
+    if cfg.km_opt not in (0, 1, 2, 3, 4, 5):
         # Checked BEFORE the acknowledgement's placement, so an
         # unimplemented selector reports itself rather than reporting
         # that the acknowledgement is in the wrong place: the id opens
@@ -5374,7 +6342,7 @@ def validate_km_opt(cfg: RunConfig) -> None:
         raise ConfigurationRefused(
             f"km_opt must be 1 (constant K via khdif/kvdif), 2 (1.5-order "
             f"prognostic TKE), 3 (3-D Smagorinsky), or 4 "
-            f"(2-D Smagorinsky), got {cfg.km_opt}. 0 is admitted with "
+            f"(2-D Smagorinsky), or 5 (SMS-3DTKE), got {cfg.km_opt}. 0 is admitted with "
             f"bl_pbl_physics={SASE_PBL_SCHEME} (SASE), whose closure "
             "supplies the mixing the km_opt operator would otherwise "
             f"apply, or with km_opt_zero_acknowledgement = "
@@ -5393,6 +6361,29 @@ def validate_km_opt(cfg: RunConfig) -> None:
             "horizontal mixing; km_opt = 0 is admitted here without any "
             "acknowledgement, and the id would record an absence this "
             "run does not have.")
+    if cfg.tke_adv_opt != 1:
+        raise ConfigurationRefused("tke_adv_opt must be 1: only WRF positive-definite TKE transport is implemented")
+    for name in ("tke_mix2_off", "tke_mix6_off"):
+        if not isinstance(getattr(cfg, name), bool):
+            raise ConfigurationRefused(f"{name} must be a boolean")
+    if isinstance(cfg.rk_ord, bool) or cfg.rk_ord not in (2, 3):
+        raise ConfigurationRefused("rk_ord must be 2 or 3: WRF solve_em's supported Runge-Kutta solvers")
+    if isinstance(cfg.momentum_adv_opt, bool) or cfg.momentum_adv_opt not in (1, 3):
+        raise ConfigurationRefused("momentum_adv_opt must be 1 (standard) or 3 (WENO)")
+    if cfg.sfs_opt != 0:
+        raise ConfigurationRefused("sfs_opt must be 0: nonlinear backscatter stresses are not implemented")
+    if isinstance(cfg.m_opt, bool) or cfg.m_opt not in (0, 1):
+        raise ConfigurationRefused("m_opt must be 0 (off) or 1 (WRF stress history fields)")
+    if cfg.km_opt == 5:
+        # WRF 4.6.1 module_check_a_mundo.F:341-402,1351-1364.
+        if cfg.diff_opt != 2:
+            raise ConfigurationRefused("km_opt=5 requires diff_opt=2: SMS-3DTKE uses metric stresses and implicit vertical diffusion")
+        if cfg.bl_pbl_physics != 0:
+            raise ConfigurationRefused("km_opt=5 requires bl_pbl_physics=0: SMS-3DTKE supplies the boundary-layer turbulence closure, so a PBL scheme would mix the same boundary layer a second time. Set bl_pbl_physics=0, or select another km_opt.")
+        if cfg.sf_sfclay_physics not in (0, 1, 5, 91):
+            raise ConfigurationRefused("km_opt=5 requires sf_sfclay_physics in {0,1,5,91}, the surface flux interfaces supported by WRF SMS-3DTKE")
+        if cfg.cu_physics == 11:
+            raise ConfigurationRefused("km_opt=5 cannot use cu_physics=11: WRF's scale-aware Kain-Fritsch scheme requires a separate PBL scheme")
     if cfg.km_opt == 3 and cfg.bl_pbl_physics != 0:
         # The registry says the same thing from the other side
         # (physics_registry_v2.json#/components/turbulence/options/
@@ -5493,7 +6484,7 @@ def validate_km_opt(cfg: RunConfig) -> None:
     # door stays exact if either refusal retires.  The
     # engine's own idealized cases (``woof verify``) run fixed
     # configurations with mix_full_fields = true and take no override.
-    if cfg.km_opt in (1, 2, 3, 4):
+    if cfg.km_opt in (1, 2, 3, 4, 5):
         return
     if producer is None and ack != KM_OPT_ZERO_ACK:
         # The sixth-order filter is gated on diff_6th_opt ALONE
@@ -6267,7 +7258,7 @@ def validate_chem_config(cfg) -> None:
             raise ConfigurationRefused(f"{name}={value!r}: must be one of {allowed}.")
     from woof.core.chem_mp_coupling import effective_mode
     coupling_mode = effective_mode(cfg)
-    if coupling_mode != "none" and int(cfg.mp_physics) != 28:
+    if coupling_mode != "none" and int(cfg.mp_physics) not in THOMPSON_AEROSOL_FAMILY:
         raise ConfigurationRefused(
             f"aerosol_mp_coupling={cfg.aerosol_mp_coupling!r} needs "
             f"mp_physics=28 (aerosol-aware Thompson), got {cfg.mp_physics}: "
@@ -6418,7 +7409,7 @@ def validate_chem_config(cfg) -> None:
     # off nothing consumes an optical mixing rule, so only 2-4 (Maxwell-
     # Garnett, exact Mie) or a feedback run with no rule can be handed the
     # wrong one.  The bulk smoke row gained optics.gocart metadata
-    # (lane/cap-aer-optics, 177a585dd32), and HRRR's own namelist (smoke,
+    # (development branch, 177a585dd32), and HRRR's own namelist (smoke,
     # aer_op_opt = 0, feedback off) must still import.
     if table.rows_for("optics.gocart") and (
             cfg.aer_op_opt not in (0, 1)
@@ -6473,7 +7464,10 @@ def _catalog_sources():
     return catalog().sources
 
 
-CUMULUS_PARAMETER_IDENTITY_RULES = {'nsas_dx_factor': (0, (96,)), 'sas_pgcon': (0.55, (96,))}
+CUMULUS_PARAMETER_IDENTITY_RULES = {'kf_edrates': (0, (11, 99)), 'shcu_physics': (0, ()), 'accum_mode': (1.e9, ()), 'aitken_mode': (3.e8, ()), 'coarse_mode': (2.e5, ()), 'nsas_dx_factor': (0, (96,)), 'sas_pgcon': (0.55, (94, 96)),
+    'numbins': (1, (10,)), 'thbinsize': (1.0, (10,)), 'rbinsize': (1.0, (10,)),
+    'mindeepfreq': (1.0, (10,)), 'minshallowfreq': (1.0, (10,)),
+    'shallowcu_forced_ra': (False, (10,)), 'shalconv': (1, (94,)), 'bmj_rad_feedback': (False, ())}
 
 
 def validate_seaice_parameters(cfg):
@@ -6486,6 +7480,37 @@ def validate_seaice_parameters(cfg):
             raise ValueError(f"{key} must be finite and positive")
     if not math.isfinite(cfg.seaice_ocean_heat_flux):
         raise ValueError("seaice_ocean_heat_flux must be finite, positive into ice")
+def validate_irrigation_config(cfg) -> None:
+    """WRF check_a_mundo:530-562 and executable denominator checks."""
+    names = ('sf_surf_irr_scheme', 'irr_start_hour', 'irr_num_hours',
+             'irr_start_julianday', 'irr_end_julianday', 'irr_freq', 'irr_ph')
+    for name in names:
+        value = getattr(cfg, name)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f'{name} must be an integer')
+    option = cfg.sf_surf_irr_scheme
+    if option not in (0, 1, 2, 3):
+        raise ValueError('sf_surf_irr_scheme must be 0, 1=channel, 2=drip, 3=sprinkler')
+    if not option:
+        return
+    if option == 1 and cfg.sf_surface_physics != 2:
+        raise ValueError('channel irrigation (sf_surf_irr_scheme=1) requires Noah (sf_surface_physics=2); other LSMs do not consume IRRIGATION_CHANNEL')
+    if cfg.irr_num_hours <= 0:
+        raise ValueError('irr_num_hours must be greater than zero; irrigation divides the daily water amount by this value')
+    if cfg.irr_freq <= 0:
+        raise ValueError('irr_freq must be greater than zero; irrigation timing uses it as a modulo divisor')
+    if cfg.irr_ph not in (0, 1, 2):
+        raise ValueError('irr_ph must be 0, 1 or 2; other values leave WRF phase undefined')
+    if not 0 <= cfg.irr_start_hour <= 23 or cfg.irr_num_hours > 24:
+        raise ValueError('irrigation requires irr_start_hour in 0..23 and irr_num_hours in 1..24; larger windows exceed WRF single-day wrap arithmetic')
+    if not math.isfinite(cfg.irr_daily_amount) or cfg.irr_daily_amount < 0:
+        raise ValueError('irr_daily_amount must be finite and nonnegative')
+    if option == 1 and (cfg.sf_surface_mosaic or cfg.sf_urban_physics):
+        raise ValueError('channel irrigation currently requires dominant-category Noah without urban coupling; the tile and urban soil-water kernels do not carry IRRIGATION_CHANNEL')
+    if option == 2 and cfg.sf_surface_physics == 0:
+        raise ValueError('drip irrigation requires an LSM to consume its RAINBL water')
+    if option == 3 and (not cfg.moist or not cfg.mp_physics):
+        raise ValueError('sprinkler irrigation requires moist state and active microphysics to consume its QR water')
 
 
 def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> RunConfig:
@@ -6499,8 +7524,23 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     experiment TOML fails exactly as it always has on the legacy path.
     Returns ``cfg`` unchanged on success.
     """
+    from woof.dfi_control import validate_dfi
+    validate_dfi(cfg)
+
+    from woof.fddaobs.config import validate as validate_observation_nudging
+    validate_observation_nudging(cfg)
+    from woof.core.tslist import validate_config as validate_tslist_config
+    validate_tslist_config(cfg)
     from woof.moving_frame import validate_moving_frame
     validate_moving_frame(cfg)
+    from woof.tc.config import validate_tc
+    validate_tc(cfg)
+    from woof.core.passive_tracer_contract import validate_passive_tracers
+    validate_passive_tracers(cfg)
+    from woof.core.madwrf_contract import validate_madwrf
+    validate_madwrf(cfg)
+    from woof.core.trajectory_contract import validate as validate_trajectory
+    validate_trajectory(cfg)
     from woof.lightning_contract import validate_lightning
     validate_lightning(cfg)
     if type(cfg.hailcast_opt) is not int or cfg.hailcast_opt not in (-1, 0, 1):
@@ -6514,16 +7554,34 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     validate_fire_config(cfg)
     if not isinstance(cfg.ocean_config, str):
         raise ValueError("ocean_config must name a TOML ocean contract")
+    from woof.ocean.settings import resolve as resolve_waves
+    waves_enabled, _ = resolve_waves(cfg)
+    if waves_enabled and not cfg.sf_sfclay_physics:
+        raise ValueError("waves require an active surface layer to supply 10m winds")
     if cfg.ocean_config and not cfg.sf_sfclay_physics:
         raise ValueError("ocean_config requires an active surface layer to supply 10m winds and friction velocity")
+    if type(cfg.tmn_update) is not int or cfg.tmn_update not in (0, 1):
+        raise ValueError("tmn_update must be integer 0 or 1: no other TMN evolution is implemented")
+    if type(cfg.lagday) is not int or cfg.lagday < 1:
+        raise ValueError("lagday must be a positive integer: TLAG needs a nonempty daily history")
+    if cfg.tmn_update == 1 and cfg.lagday != 150:
+        raise ValueError("tmn_update=1 requires lagday=150 (WRF share/module_check_a_mundo.F:2306-2312): other history lengths change the deep-soil mean")
+    if type(cfg.sst_update) is not int or cfg.sst_update not in (0, 1):
+        raise ValueError("sst_update must be integer 0 or 1")
+    if not isinstance(cfg.surface_analysis, str):
+        raise ValueError("surface_analysis must be a manifest path string")
+    if cfg.surface_analysis and not cfg.sst_update:
+        raise ValueError("surface_analysis requires sst_update=1; otherwise the supplied SST and ice would never be read")
     if type(cfg.surface_energy_diag) is not bool:
         raise ConfigurationRefused("surface_energy_diag must be boolean")
+    validate_irrigation_config(cfg)
     why = terrain_drag_refusal(
         topo_wind=cfg.topo_wind, gwd_opt=cfg.gwd_opt,
         bl_pbl_physics=cfg.bl_pbl_physics,
         sf_urban_physics=cfg.sf_urban_physics)
     if why is not None:
         raise ConfigurationRefused(why)
+    validate_fog_kfeta_config(cfg)
     validate_radiation_driver_options(cfg)
     for name in ("slope_rad", "topo_shading"):
         value = getattr(cfg, name)
@@ -6591,23 +7649,46 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             f"2 (polar stereographic), or 3 (Mercator), got {cfg.map_proj}."
         )
     # ---- WRF selector schema, then port readiness ------------------
-    # Order matters.  A value outside woof's schema (sf_surface_physics=7,
+    # Order matters. A value outside woof's schema (sf_surface_physics=8,
     # a RUC request carrying Noah's four layers) is nonsense in WRF terms
     # and is reported as such.  Only a schema-COHERENT request reaches
     # require_ready_wrf_physics, which then emits one complete receipt for
     # every unfinished component instead of failing on the first number.
+    validate_temf_pairing(cfg)
+    if cfg.sf_sfclay_physics == 89 and cfg.bl_pbl_physics != 0:
+        raise ConfigurationRefused(
+            "sf_sfclay_physics=89 requires bl_pbl_physics=0: WRF 4.7.1 "
+            "module_physics_init.F:3140-3223 assigns no isfc value to "
+            "IDEALSCMSFCSCHEME before the PBL compatibility checks")
+    if cfg.sf_sfclay_physics == 89 and cfg.sf_surface_physics != 0:
+        raise ConfigurationRefused(
+            "sf_sfclay_physics=89 requires sf_surface_physics=0: the native "
+            "prescribed-flux surface leaves UST/CHS/CHS2/CQS2 unchanged, "
+            "so an active LSM has no surface producer for those inputs")
     if cfg.sf_sfclay_physics not in SURFACE_LAYER_SCHEMES:
         raise ConfigurationRefused(
             "sf_sfclay_physics must be 0 (off), 1 (revised MM5), 2 (Eta "
-            "similarity, the MYJ pair), 5 (MYNN), or 91 (classic MM5), got "
+            "similarity, the MYJ pair), 3 (GFS), 5 (MYNN), 7 (Pleim-Xiu), "
+            "10 (TEMF), 89 (ideal SCM prescribed flux), or 91 (classic MM5), got "
             f"{cfg.sf_sfclay_physics}."
             + wrf_unported_refusal_tail("sf_sfclay_physics",
                                         cfg.sf_sfclay_physics)
         )
+    if cfg.sf_surface_physics == 7:
+        for name in ("pxlsm_soil_nudge", "pxlsm_modis_veg"):
+            if getattr(cfg, name) not in (0, 1):
+                raise ValueError(f"{name} must be 0 or 1")
+        if cfg.pxlsm_smois_init < 0:
+            raise ValueError("pxlsm_smois_init must be nonnegative")
+        if cfg.pxlsm_soil_nudge and cfg.sgfdda_interval_m <= 0:
+            raise ValueError("PX soil nudging needs a positive sgfdda_interval_m")
+        if cfg.pxlsm_soil_nudge and (cfg.io_form_sgfdda != 2 or not cfg.sgfdda_inname):
+            raise ConfigurationRefused("PX soil nudging requires native NetCDF auxinput9 (io_form_sgfdda=2) and sgfdda_inname")
     if cfg.sf_surface_physics not in LAND_SURFACE_SCHEMES:
         raise ConfigurationRefused(
-            "sf_surface_physics must be 0 (none), 2 (Noah LSM), 3 (RUC "
-            "LSM), or 4 (Noah-MP LSM), WRF numbering, got "
+            "sf_surface_physics must be 0 (none), 1 (five-layer thermal "
+            "diffusion), 2 (Noah LSM), 3 (RUC LSM), 4 (Noah-MP LSM), or 7 (Pleim-Xiu LSM), "
+            "WRF numbering, got "
             f"{cfg.sf_surface_physics}."
             + wrf_unported_refusal_tail("sf_surface_physics",
                                         cfg.sf_surface_physics)
@@ -6620,8 +7701,8 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     if cfg.bl_pbl_physics not in PBL_SCHEMES:
         raise ConfigurationRefused(
             f"bl_pbl_physics must be 0 (none), 1 (YSU), "
-            f"{MYJ_PBL_SCHEME} (MYJ), 5 (MYNN), {UW_PBL_SCHEME} (UW), "
-            f"11 (Shin-Hong), {SASE_PBL_SCHEME} (SASE, experimental), or "
+            f"{MYJ_PBL_SCHEME} (MYJ), {GFS_PBL_SCHEME} (GFS), {QNSE_PBL_SCHEME} (QNSE), 5 (MYNN), {ACM2_PBL_SCHEME} (ACM2), {BOULAC_PBL_SCHEME} (BouLac), {UW_PBL_SCHEME} (UW), "
+            f"10 (TEMF), 11 (Shin-Hong), {GBM_PBL_SCHEME} (GBM), {EEPS_PBL_SCHEME} (EEPS), {KEPS_PBL_SCHEME} (K-epsilon), {MRF_PBL_SCHEME} (MRF), {SASE_PBL_SCHEME} (SASE, experimental), or "
             f"{CCPP_TKE_EDMF_PBL_SCHEME} (CCPP sa-TKE-EDMF, the GFS/HAFS PBL), "
             f"got {cfg.bl_pbl_physics}."
             + wrf_unported_refusal_tail("bl_pbl_physics", cfg.bl_pbl_physics)
@@ -6635,8 +7716,16 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             raise ValueError("CCPP TKE-EDMF requires sf_sfclay_physics=1 or 91; its stability closure divides by the fm/fh similarity denominators those layers publish")
         if cfg.bldt != 0:
             raise ValueError("CCPP TKE-EDMF requires bldt=0; positive cadence would retain a TKE tendency that the current extra-scalar restart stream does not serialize")
+    validate_selector_couplings(cfg)
+    validate_gbmpbl_config(cfg)
     validate_sase_config(cfg)
+    validate_gfs_pbl_config(cfg)
+    validate_gfs_surface_pairing(cfg)
     validate_uwpbl_config(cfg)
+    validate_eeps_config(cfg)
+    validate_qnse_config(cfg)
+
+    validate_keps_config(cfg)
     validate_urban_config(cfg)
     validate_chem_config(cfg)
     require_ready_wrf_physics(
@@ -6668,6 +7757,8 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "(McCumber-Pielke, clamped for soiltyp 4), got "
             f"{cfg.opt_thcnd}."
         )
+    if type(cfg.sst_skin) is not int or cfg.sst_skin not in (0, 1):
+        raise ValueError("sst_skin must be integer 0 or 1")
     if cfg.isfflx not in (0, 1, 2):
         raise ConfigurationRefused(
             "isfflx must be 0 (prescribed tke_drag_coefficient/"
@@ -6680,7 +7771,7 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     # arms as km_opt 2-4 (constant_k_mixing_active), so it consumes the
     # prescribed forcing too.
     _prescribed_flux_consumer = cfg.bl_pbl_physics == 0 and (
-        cfg.km_opt in (2, 3, 4) or constant_k_mixing_active(cfg))
+        cfg.km_opt in (2, 3, 4, 5) or constant_k_mixing_active(cfg))
     if cfg.isfflx == 0 and cfg.sf_sfclay_physics == 0 \
             and not _prescribed_flux_consumer:
         raise ConfigurationRefused(
@@ -6735,10 +7826,10 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             f"{cfg.seaice_albedo_default}."
         )
     if (cfg.seaice_albedo_default != 0.65
-            and cfg.sf_surface_physics not in (2, 3)):
+            and cfg.sf_surface_physics not in (2, 3, 4)):
         raise ConfigurationRefused(
             "a nondefault seaice_albedo_default is implemented only by "
-            "Noah (sf_surface_physics=2, seaice_noah) and RUC LSM "
+            "Noah and Noah-MP (sf_surface_physics=2/4, seaice_noah) and RUC LSM "
             "(sf_surface_physics=3), got "
             f"sf_surface_physics={cfg.sf_surface_physics}."
         )
@@ -6746,6 +7837,17 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
         raise ConfigurationRefused(
             f"rdmaxalb must be boolean, got {cfg.rdmaxalb!r}."
         )
+    if isinstance(cfg.ifsnow, bool) or not isinstance(cfg.ifsnow, int):
+        raise ValueError(f"ifsnow must be an integer, got {cfg.ifsnow!r}.")
+    if cfg.sf_surface_physics == 1:
+        from woof.core.slab import require_admitted_ifsnow
+        require_admitted_ifsnow(cfg.ifsnow)
+    elif cfg.ifsnow != 1:
+        raise ValueError(
+            "ifsnow is read only by the slab scheme (sf_surface_physics=1); "
+            f"with sf_surface_physics={cfg.sf_surface_physics} a nondefault "
+            "value would be accepted and change nothing. Noah, RUC and "
+            "Noah-MP always run their own snow physics.")
     if not cfg.rdmaxalb and cfg.sf_surface_physics != 2:
         raise ConfigurationRefused(
             "rdmaxalb=false is implemented by Noah LSMINIT and requires "
@@ -6753,6 +7855,8 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             f"sf_surface_physics={cfg.sf_surface_physics}."
         )
     validate_noah_mosaic_config(cfg)
+    if cfg.ua_phys and int(cfg.sf_surface_physics) != 2:
+        raise ValueError("ua_phys=true requires sf_surface_physics=2: other land schemes do not apply Noah canopy burial and canopy heat flux")
     if cfg.sf_surface_physics not in (2, 3) and (
             cfg.usemonalb or cfg.rdlai2d):
         raise ConfigurationRefused(
@@ -6787,24 +7891,37 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "seaice_threshold, a REAL; the default 100 converts no water "
             "cell to ice).")
     if (float(cfg.seaice_threshold) > 170.0
-            and cfg.sf_surface_physics not in (2, 3, 4)):
+            and cfg.sf_surface_physics not in (1, 2, 3, 4, 8)):
         raise ConfigurationRefused(
             f"seaice_threshold={cfg.seaice_threshold!r} converts open water "
-            "colder than it to sea ice in the soil ingest of Noah, RUC and "
-            "Noah-MP (woof/ingest/soil.py preprocess_noah_soil, real.exe's "
+            "colder than it to sea ice in the soil ingest of Noah, RUC, "
+            "Noah-MP and SSiB (woof/ingest/soil.py preprocess_noah_soil, real.exe's "
             "adjust_for_seaice_post); sf_surface_physics="
             f"{cfg.sf_surface_physics} has no such ingest, so the cells would "
             "stay open water and the requested rule would silently not run.")
-    if cfg.fractional_seaice == 1 and cfg.sf_surface_physics != 3:
+    if cfg.fractional_seaice == 1 and cfg.sf_surface_physics not in (2, 3, 4, 7, 8):
+        raise ConfigurationRefused("fractional_seaice=1 needs a land model with WRF's ice/water surface coupling (sf_surface_physics=2/3/4/7/8)")
+    for key, allowed in (("seaice_albedo_opt", (0,1,2)),
+                         ("seaice_snowdepth_opt", (0,1)),
+                         ("seaice_thickness_opt", (0,1))):
+        value = getattr(cfg, key)
+        if type(value) is not int or value not in allowed:
+            raise ConfigurationRefused(f"{key} must be one of {allowed}")
+        if value and cfg.sf_surface_physics not in (2,4):
+            raise ConfigurationRefused(f"{key}={value} requires Noah or Noah-MP, which call WRF seaice_noah")
+    for key in ("seaice_thickness_default", "seaice_snowdepth_min", "seaice_snowdepth_max"):
+        value = getattr(cfg, key)
+        if isinstance(value, bool) or not isinstance(value, (int,float)) or not math.isfinite(value) or value <= 0:
+            raise ConfigurationRefused(f"{key} must be finite and positive")
+    if (cfg.sf_surface_physics not in (2, 4) and
+            (cfg.seaice_thickness_default != 3.0 or
+             cfg.seaice_snowdepth_min != .001 or
+             cfg.seaice_snowdepth_max != 1.e10)):
         raise ConfigurationRefused(
-            "fractional_seaice=1 is implemented by the RUC seam only "
-            "(sf_surface_physics=3): it alone carries the open-water second "
-            "surface-layer call and the post-LSM flux blend that the 0.02 "
-            "threshold admits cells into (woof/core/physics.py _run_sfclay, "
-            "woof/core/ruc_runtime.py).  Noah, Noah-MP and the slab would "
-            "accept the flag and run their XICE >= 0.5 branch unchanged. "
-            f"Got sf_surface_physics={cfg.sf_surface_physics}."
-        )
+            "prescribed sea-ice thickness and snow-depth bounds require "
+            "Noah or Noah-MP, which call WRF seaice_noah")
+    if cfg.seaice_snowdepth_max < cfg.seaice_snowdepth_min:
+        raise ConfigurationRefused("seaice_snowdepth_max must be >= seaice_snowdepth_min")
     # Surface coupling.  The registry has always refused these two through
     # land_surface/pbl requires_components while this battery accepted them,
     # and woof/core/physics.py initialize_physics then raised at driver
@@ -6824,9 +7941,10 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "by chs2/cqs2 behind a substitute-1.0 guard, so the run "
             "degenerates silently instead of failing. Select "
             "sf_sfclay_physics=1 (revised MM5) or 91 (classic MM5), which "
-            "run under any PBL; sf_sfclay_physics=2 (Eta) and 5 (MYNN) "
-            "write the same seam but each is admitted only with its own PBL "
-            "(2 with bl_pbl_physics=2, 5 with bl_pbl_physics=5, 900 or 0)."
+            "run under any PBL; sf_sfclay_physics=2 (Eta), 5 (MYNN) and 7 "
+            "(Pleim-Xiu) write the same seam but each is admitted only with "
+            "the PBLs that read what it publishes (2 with bl_pbl_physics=2, "
+            "5 with 5, 9, 900 or 0, 7 with 7, 9, 900 or 0)."
         )
     # NO GENERIC "a PBL scheme requires moist=true" RULE HERE, and its
     # absence is a decision.  Audit R-025 read one off the state
@@ -6859,7 +7977,31 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "registry says the same thing through the option's "
             "required_settings."
         )
-    if cfg.cu_physics == 5:
+    if cfg.cu_physics == 10:
+        if type(cfg.numbins) is not int or not 1 <= cfg.numbins <= 46340:
+            raise ConfigurationRefused("KF-CuP numbins must be an integer in [1,46340]")
+        for key in ('thbinsize', 'rbinsize'):
+            value = getattr(cfg, key)
+            if not math.isfinite(value) or value <= 0:
+                raise ConfigurationRefused(f"KF-CuP {key} must be positive and finite")
+        for key in ('mindeepfreq', 'minshallowfreq'):
+            value = getattr(cfg, key)
+            if not math.isfinite(value) or not 0 <= value <= 1:
+                raise ConfigurationRefused(f"KF-CuP {key} must be finite in [0,1]")
+        if type(cfg.shallowcu_forced_ra) is not bool:
+            raise ConfigurationRefused("KF-CuP shallowcu_forced_ra must be boolean")
+    if cfg.cu_physics == 93:
+        for name in GRELL_ENSEMBLE_DEFAULTS:
+            reason = grell_ensemble_refusal(name, getattr(cfg, name))
+            if reason:
+                raise ConfigurationRefused(reason)
+        if type(cfg.cu_diag) is not int or cfg.cu_diag not in (0, 1):
+            raise ConfigurationRefused("cu_diag must be 0 or 1")
+        if (not math.isfinite(cfg.convtrans_avglen_m)
+                or cfg.convtrans_avglen_m * 60. < cfg.dt):
+            raise ConfigurationRefused("convtrans_avglen_m must span at least one model step: "
+                                      "convtrans_prep would evaluate MOD(ktau,0)")
+    elif cfg.cu_physics == 5:
         validate_g3_dimensions(cfg.maxiens, cfg.maxens, cfg.maxens2,
                                cfg.maxens3, cfg.ensdim, cfg.cugd_avedx)
         if type(cfg.cu_diag) is not int or cfg.cu_diag not in (0, 1):
@@ -6869,9 +8011,13 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             raise ConfigurationRefused("convtrans_avglen_m must span at least one model step: "
                              "convtrans_prep would evaluate MOD(ktau,0)")
     elif any(getattr(cfg, name) != default for name, default in
-             G3_RUN_DEFAULTS.items() if name != "cugd_avedx"):
+             G3_RUN_DEFAULTS.items() if name != "cugd_avedx" and not
+             (name == "convtrans_avglen_m" and cfg.cu_physics == 3 and cfg.cu_rad_feedback)):
         raise ConfigurationRefused("G3 ensemble dimensions and cu_diag are read only by cu_physics=5; "
                          "other schemes would discard the requested ensemble or diagnostic window")
+    if cfg.cu_physics == 3 and cfg.cu_rad_feedback and (
+            not math.isfinite(cfg.convtrans_avglen_m) or cfg.convtrans_avglen_m * 60. < cfg.dt):
+        raise ConfigurationRefused("convtrans_avglen_m must span one model step: native MOD(ktau,0) is undefined")
     if cfg.cu_physics in GRELL_FAMILY_CU_PHYSICS:
         if cfg.cu_physics == GRELL_FREITAS_CU_PHYSICS and not cfg.bl_pbl_physics:
             raise ConfigurationRefused(
@@ -6946,6 +8092,12 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     # with a non-default Grell key through validate_run_config.  The
     # BASELINE RE-RUN caught it, which is the whole reason the group is
     # re-run rather than argued inert.
+    if (cumulus_adaptive_cudt_zero_site(cfg.cu_physics) is not None
+            and cfg.use_adaptive_time_step and cfg.cudt_minutes != 0.0):
+        raise ConfigurationRefused(
+            "cu_physics=14 with use_adaptive_time_step requires cudt_minutes=0: "
+            "WRF resets cudt for KSAS: its closure is formed over dt*stepcu and cannot be held "
+            "across variable steps (share/module_check_a_mundo.F:2141-2160).")
     if cfg.cu_physics == 6 and cfg.cudt_minutes != 0.0:
         raise ValueError(
             "cu_physics=6 requires cudt_minutes=0: the original scheme "
@@ -7001,7 +8153,17 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "nsas_dx_factor is read only by cu_physics=96 (New SAS); with "
             f"cu_physics={cfg.cu_physics} it would reach nothing and the run "
             "would not be the configuration it names. Leave it at 0.")
-    if cfg.cu_physics in SAS_PGCON_SCHEMES:
+    if cfg.cu_physics == SAS_CU_PHYSICS:
+        if cfg.use_adaptive_time_step:
+            raise ValueError(
+                "cu_physics=94 (SAS) cannot use an adaptive time step: "
+                "CU_SAS closes over DT*STEPCU and holds rates for that fixed "
+                "window; WRF refuses this pair (module_cumulus_driver.F:1131-1135).")
+        if type(cfg.shalconv) is not int or cfg.shalconv not in (0, 1):
+            raise ValueError("shalconv must be 0 or 1: CU_SAS executes the shallow branch only at 1")
+    elif cfg.shalconv != 1:
+        raise ValueError("shalconv is consumed only by cu_physics=94; leave it at 1 otherwise")
+    if cfg.cu_physics in SAS_PGCON_SCHEMES or cfg.shcu_physics == 4:
         if not math.isfinite(float(cfg.sas_pgcon)):
             raise ValueError(
                 "sas_pgcon must be finite: it multiplies every cloud "
@@ -7013,7 +8175,7 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             f"(cu_physics in {sorted(SAS_PGCON_SCHEMES)}); with "
             f"cu_physics={cfg.cu_physics} it would reach nothing and the run "
             "would not be the configuration it names. Leave it at 0.55.")
-    if (cfg.cu_physics == 96 and cfg.use_adaptive_time_step
+    if (cfg.cu_physics in (95, 96) and cfg.use_adaptive_time_step
             and cfg.cudt_minutes != 0.0):
         # WRF's own rule (module_check_a_mundo.F:2142-2160): with an
         # adaptive step every SAS scheme runs every step.  The breakage it
@@ -7025,12 +8187,19 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
         # namelist door does the same, and a hand-built configuration is
         # told here.
         raise ValueError(
-            "cu_physics=96 (New SAS) with use_adaptive_time_step requires "
+            f"cu_physics={cfg.cu_physics} (SAS) with use_adaptive_time_step requires "
             "cudt_minutes=0, as WRF requires of every SAS scheme "
             "(module_check_a_mundo.F:2142-2160): the scheme's rates are "
             "formed over dt*stepcu at the call and held while the adaptive "
             "clock moves, so a nonzero cudt would apply them over an "
             "interval the run did not take.")
+    if type(cfg.bmj_rad_feedback) is not bool:
+        raise ValueError("bmj_rad_feedback must be bool")
+    if cfg.bmj_rad_feedback:
+        if cfg.cu_physics not in COLUMN_KERNEL_CU_SCHEMES:
+            raise ValueError("bmj_rad_feedback requires cu_physics=2: other schemes do not publish BMJ cloud fields")
+        if not bmj_feedback_radiation_supported(radiation_scheme_ids(cfg)):
+            raise ValueError("bmj_rad_feedback requires physical cloud radiation or disabled streams: the selected radiation adapter does not merge the carried convective cloud")
     if cfg.sf_sfclay_physics not in (1, 91) and (
             cfg.isftcflx or cfg.iz0tlnd):
         raise ConfigurationRefused(
@@ -7049,22 +8218,34 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     validate_wind_config(cfg)
     if type(cfg.bl_mynn_tkeadvect) is not bool:
         raise TypeError("bl_mynn_tkeadvect must be a bool")
-    if type(cfg.scalar_adv_opt) is not int or cfg.scalar_adv_opt != 1:
-        raise ValueError("scalar_adv_opt must be 1: other scalar-array advection operators are not implemented")
+    if type(cfg.scalar_adv_opt) is not int or cfg.scalar_adv_opt not in (0, 1):
+        raise ValueError("scalar_adv_opt must be 0 (ordinary) or 1 (positive definite)")
     if cfg.bl_mynn_tkeadvect and cfg.bl_pbl_physics != 5:
         raise ValueError("bl_mynn_tkeadvect requires the MYNN bl_pbl_physics=5 owner")
     for name, admitted in MYNN_PBL_OPTION_IDENTITY.items():
         value = getattr(cfg, name)
-        if type(value) is not type(admitted) or value != admitted:
+        if name == 'icloud_bl' and cfg.shcu_physics == 5 and value == 0 and type(value) is int:
+            continue
+        if type(value) is not type(admitted) or (value not in MYNN471_OPTION_VALUES[name] if cfg.bl_mynn_version == "wrf_471" else value != admitted):
+            implemented = (
+                f"{name} in {MYNN471_OPTION_VALUES[name]!r}"
+                if cfg.bl_mynn_version == "wrf_471" else f"{name}={admitted!r}")
             raise ConfigurationRefused(
                 f"{name}={value!r} is outside the admitted MYNN option "
-                f"identity; woof implements {name}={admitted!r} only, and "
+                f"identity; woof implements {implemented} only, and "
                 "no nearby branch is substituted for an unported one."
             )
-    if type(cfg.bl_mynn_mixlength) is not int or cfg.bl_mynn_mixlength not in (1, 2):
+    if type(cfg.bl_mynn_mixlength) is not int or cfg.bl_mynn_mixlength not in ((0, 1, 2) if cfg.bl_mynn_version == "wrf_471" else (1, 2)):
         raise ConfigurationRefused(
-            "bl_mynn_mixlength must be 1 or 2; other WRF mixing-length "
+            "bl_mynn_mixlength must be 1 or 2 (or 0, WRF 4.7.1's, which "
+            "runs bl_mynn_version = 'wrf_471'); other WRF mixing-length "
             "branches have no implementation in the column solver.")
+    if cfg.bl_pbl_physics == 5 and cfg.bl_mynn_edmf > 0 and cfg.ishallow > 0:
+        raise ConfigurationRefused(
+            "bl_mynn_edmf > 0 requires ishallow=0 with MYNN: WRF v4.6.1 "
+            "share/module_check_a_mundo.F:1769-1783 refuses concurrent "
+            "MYNN mass flux and Grell shallow convection. Select ishallow=0 "
+            "or a PBL configuration without MYNN mass flux.")
     if type(cfg.scalar_pblmix) is not int or cfg.scalar_pblmix not in (0, 1):
         raise ConfigurationRefused(
             f"scalar_pblmix={cfg.scalar_pblmix!r} must be the integer 0 "
@@ -7164,6 +8345,14 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
                 "precedent); a longer cadence would make a mid-interval "
                 "restart silently drop them."
             )
+    from woof.core.noahmp_groundwater_slab import validate as groundwater_validate
+    groundwater_validate(cfg.wtddt)
+    if cfg.sf_surface_physics==4 and cfg.opt_run==8 and cfg.opt_infdv==0:
+        raise ConfigurationRefused("Noah-MP opt_run=8 requires opt_infdv=1,2,3: native FSUR is unassigned at zero")
+    if cfg.sf_surface_physics==4 and cfg.opt_soil==4:
+        from woof.core.noahmp_soil_options import SOIL4_LABEL
+        from woof.explain import warn
+        warn("opt_soil=4: "+SOIL4_LABEL)
     for name, (admitted, evidence) in \
             NOAHMP_OPTION_IDENTITY_EVIDENCE.items():
         value = getattr(cfg, name)
@@ -7173,7 +8362,16 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
                 f"Noah-MP takes a {type(admitted).__name__}; write "
                 f"{name}={admitted!r} or another value of that type."
             )
-        if value == admitted:
+        if name in ("soiltstep","noahmp_acc_dt"):
+            from woof.core.noahmp_soil_cadence import validate
+            if name=="noahmp_acc_dt":
+                from woof.core.noahmp_output import validate
+            validate(value)
+            continue
+        if value == admitted or value in NOAHMP_OPTION_VALUES.get(name, ()):
+            if name == "opt_crop" and value == 2:
+                from woof.explain import warn
+                warn("opt_crop=2: native WRF 4.7.1 fails here; this fixes it, not bitwise to WRF. Measured active-crop step cost is 1.4283x CROP1 on a shared GPU. Cold start is sowing; emergence uses native thermal time.")
             continue
         if name in NOAHMP_OPTIONS_WITHOUT_CONSUMER:
             # No breakage to name: the knob reaches no woof code at
@@ -7230,7 +8428,7 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "storage are selected only for exactly 1, so any other value "
             "would leave the lake columns without the lake physics its "
             "configuration names.")
-    if cfg.sf_lake_physics and cfg.sf_surface_physics not in (2, 3, 4):
+    if cfg.sf_lake_physics and cfg.sf_surface_physics not in (1, 2, 3, 4, 8):
         raise ConfigurationRefused(
             "sf_lake_physics=1 requires an active land-surface driver "
             "(sf_surface_physics=2, 3 or 4): the lake call consumes its "
@@ -7261,12 +8459,22 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "the water and ice columns at or above it, and a threshold "
             "that is not a finite number selects none of them, or every "
             "one with the ocean among them.")
+    if cfg.mp_physics == 38 and cfg.thompson_version != "wrf_461":
+        raise ValueError("mp_physics=38 requires thompson_version='wrf_461': "
+            "the fork has no prognostic ng/qvolg or density-binned hail tables")
     if cfg.thompson_version not in ("wrf_461", "wrf_39_noaa", "wrf_44"):
         raise ValueError(
             f"thompson_version={cfg.thompson_version!r} must be 'wrf_461' "
             "(WRF v4.6.1's Thompson), 'wrf_44' (classic WRF v4.4), or 'wrf_39_noaa' (the operational WRF "
             "3.9 fork's): the two size graupel, snow and ice differently, "
             "so an unknown name cannot select either.")
+    for key in ("force_read_thompson", "write_thompson_tables", "write_thompson_mp38table"):
+        if type(getattr(cfg, key)) is not bool:
+            raise ConfigurationRefused(f"{key} must be a boolean")
+    if cfg.mp_physics != 38 and (cfg.force_read_thompson or not cfg.write_thompson_tables
+                                or cfg.write_thompson_mp38table):
+        raise ConfigurationRefused("Thompson cache IO controls require the MP38 table loader; "
+                                   "another scheme has no runtime binding for these overrides")
     if cfg.thompson_fork_snow_fall not in ("blend", "wrf_39_noaa"):
         raise ConfigurationRefused(
             f"thompson_fork_snow_fall={cfg.thompson_fork_snow_fall!r} must "
@@ -7290,7 +8498,7 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             f"{cfg.mp_physics} would run its WRF v4.6.1 kernels under the "
             "fork's name.  Use mp_physics = 28, or leave thompson_version "
             "at 'wrf_461'.")
-    if cfg.bl_mynn_version not in ("wrf_461", "gsd_41"):
+    if cfg.bl_mynn_version not in ("wrf_461", "wrf_471", "gsd_41"):
         raise ConfigurationRefused(
             f"bl_mynn_version={cfg.bl_mynn_version!r} must be 'wrf_461' "
             "(WRF v4.6.1 MYNN) or 'gsd_41' (the GSD MYNN v4.1 of the "
@@ -7396,17 +8604,36 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     if ra_lw_physics not in RA_LW_PHYSICS_ACCEPTED:
         why = radiation_unported_reason("ra_lw_physics", ra_lw_physics)
         raise ConfigurationRefused(
-            "ra_lw_physics must be 0 (off), 1 (WRF RRTM), 4 "
-            "(RTE+RRTMGP), 5 (WRF New Goddard) or 90 (analytic proxy), "
+            "ra_lw_physics must be 0 (off), 1 (WRF RRTM), 3 (WRF CAM), 4 "
+            "(RTE+RRTMGP), 5 (WRF New Goddard), 7 (WRF Fu-Liou-Gu), 31 (idealized relaxation), 90 (analytic proxy) or 99 (GFDL Eta), "
             f"got {ra_lw_physics}." + (f" {why}." if why else ""))
     if ra_sw_physics not in RA_SW_PHYSICS_ACCEPTED:
         why = radiation_unported_reason("ra_sw_physics", ra_sw_physics)
         raise ConfigurationRefused(
-            "ra_sw_physics must be 0 (off), 1 (WRF Dudhia), 4 "
-            "(RTE+RRTMGP), 5 (WRF New Goddard) or 90 (analytic proxy), "
+            "ra_sw_physics must be 0 (off), 1 (WRF Dudhia), 2 (WRF GSFC), 3 (WRF CAM), 4 "
+            "(RTE+RRTMGP), 5 (WRF New Goddard), 7 (WRF Fu-Liou-Gu), 90 (analytic proxy) or 99 (GFDL Eta), "
             f"got {ra_sw_physics}." + (f" {why}." if why else ""))
-    if cfg.icloud not in (0, 1, 2):
-        raise ConfigurationRefused(f"icloud={cfg.icloud} needs unported cal_cldfra3 condensate adjustment; choose 0, 1 or 2.")
+    if 7 in (ra_lw_physics, ra_sw_physics):
+        if ra_lw_physics == 7 and ra_sw_physics == 0:
+            raise ConfigurationRefused(
+                "WRF radiation_driver rejects ra_lw_physics=7 with "
+                "ra_sw_physics=0: select an active ra_sw_physics "
+                "(native CASE 0).")
+        if ra_lw_physics == 0:
+            raise ConfigurationRefused("WRF radiation_driver has no ra_lw_physics=0 CASE for ra_sw_physics=7; select an implemented ra_lw_physics.")
+        if ra_lw_physics == 7 and not 4 <= cfg.nz <= 100:
+            raise ConfigurationRefused(
+                "WRF FLG needs 4 to 100 model layers: its three cloud groups "
+                "need a layer each and its native scratch bound is nvx=100.")
+    if 99 in (ra_lw_physics, ra_sw_physics) and (type(cfg.co2tf) is not int or cfg.co2tf not in (0, 1)):
+        raise ConfigurationRefused("co2tf must be 0 (CONRAD) or 1 (CO2O3)")
+    if 3 in (ra_lw_physics, ra_sw_physics):
+        if not math.isfinite(cfg.cam_abs_freq_s) or cfg.cam_abs_freq_s < 0:
+            raise ConfigurationRefused("cam_abs_freq_s must be finite and non-negative")
+    if ra_sw_physics == 2 and not 2 <= cfg.nz <= 128:
+        raise ConfigurationRefused('GSFC shortwave requires 2 to 128 layers; larger columns exceed its allocated CUDA workspace')
+    if cfg.icloud not in (0, 1, 2, 3):
+        raise ConfigurationRefused(f"icloud={cfg.icloud}: choose 0, 1, 2 or 3.")
     if not math.isfinite(cfg.swrad_scat) or cfg.swrad_scat < 0.0:
         raise ConfigurationRefused(
             "swrad_scat must be finite and non-negative, got "
@@ -7438,6 +8665,12 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
         raise ConfigurationRefused(
             f"ra_rrtmg_variant must be '{RRTMG_VARIANT_RTE_RRTMGP}' or "
             f"'{RRTMG_VARIANT_LEGACY}', got {cfg.ra_rrtmg_variant!r}.")
+    if (4 in (ra_lw_physics, ra_sw_physics)
+            and cfg.ra_rrtmg_variant == RRTMG_VARIANT_RTE_RRTMGP):
+        from woof.cloud_optics_contract import _NO_CLOUD_OPTICS_COUPLING, _CLOUD_OPTICS_REMEDY
+        reason = _NO_CLOUD_OPTICS_COUPLING.get(int(cfg.mp_physics))
+        if reason is not None:
+            raise ValueError(f"mp_physics={cfg.mp_physics}: {reason} {_CLOUD_OPTICS_REMEDY}")
     if (4 in (ra_lw_physics, ra_sw_physics)
             and cfg.ra_rrtmg_variant != RRTMG_VARIANT_LEGACY):
         # ONE MESSAGE PER KNOB.  The composite that stood here printed both
@@ -7541,7 +8774,7 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             f"ra_rrtmg_variant='{RRTMG_VARIANT_LEGACY}' to run the legacy "
             "port, or wrf_rrtmg_compatibility='none' to run RTE+RRTMGP "
             "without a WRF mapping receipt.")
-    if 4 in (ra_lw_physics, ra_sw_physics) and cfg.icloud not in (1, 2):
+    if 4 in (ra_lw_physics, ra_sw_physics) and cfg.icloud not in (1, 2, 3):
         # NOT A PHYSICAL INCOMPATIBILITY: icloud is WRF's clear-sky coupling
         # switch, woof honours it on the 1/1 pair, and the legacy 4/4
         # preparation carries its arms.  What is missing on the 4/4 pair is
@@ -7564,13 +8797,49 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "(ra_lw_physics=1 WRF RRTM with ra_sw_physics=1 Dudhia), which "
             "honours icloud=0 end to end, or use icloud=1 or 2 on the 4/4 "
             "pair.")
+    if type(cfg.shcu_physics) is not int or cfg.shcu_physics not in (0, 1, 2, 3, 4, 5):
+        raise ConfigurationRefused("shcu_physics must be 0 (off), 1 (G3 native no-op), 2 (UW), 3 (GRIMS), 4 (NSCV), or 5 (Deng)")
+    from woof.shallow_cumulus import shallow_refusal
+    why = shallow_refusal(cfg.shcu_physics, cfg.bl_pbl_physics,
+                          cfg.bl_mynn_edmf, cfg.cu_physics,
+                          icloud=cfg.icloud, icloud_bl=cfg.icloud_bl)
+    if why:
+        raise ConfigurationRefused(why)
+    if cfg.shcu_physics in (3, 4, 5) and not cfg.moist:
+        raise ConfigurationRefused("shallow convection requires a water-vapour carrier")
+    if cfg.shcu_physics == 5 and not cfg.moist_cq:
+        raise ConfigurationRefused("Deng requires QC and QR condensate carriers")
+    if cfg.shcu_physics == 2 and not (cfg.moist and cfg.moist_cq):
+        raise ConfigurationRefused("UW shallow convection requires moist condensate carriers")
+    if cfg.shcu_physics == 2 and cfg.mp_physics not in (2,4,5,6,8,9,10,11,16,18,24,28,30,50,106,900):
+        raise ConfigurationRefused("WRF UW shallow convection requires the QI carrier (module_shallowcu_driver.F:519-522)")
+    if cfg.cu_physics == 7:
+        from woof.core.camzm_contract import pbl_arm_refusal
+        why = pbl_arm_refusal(cfg.bl_pbl_physics, cfg.sf_sfclay_physics)
+        if why: raise ConfigurationRefused(why)
+    for name, default in (("accum_mode",1.e9),("aitken_mode",3.e8),("coarse_mode",2.e5)):
+        value=getattr(cfg,name)
+        if not math.isfinite(value) or value < 0:
+            raise ConfigurationRefused(f"{name} must be finite and nonnegative")
+        if cfg.mp_physics != 11 and value != default:
+            raise ConfigurationRefused(f"{name} is consumed only by CAMMGMP (mp_physics=11)")
+    if cfg.cu_physics == 11 and cfg.km_opt == 5:
+        raise ConfigurationRefused("cu_physics=11 cannot use km_opt=5: WRF module_check_a_mundo.F:1353-1363 forbids MSKF with 3D TKE because that closure is incompatible with its subgrid convection")
+    if type(cfg.kf_edrates) is not int or cfg.kf_edrates not in (0, 1):
+        raise ConfigurationRefused("kf_edrates must be 0 or 1")
+    if cfg.kf_edrates and cfg.cu_physics not in (11, 99):
+        raise ConfigurationRefused("kf_edrates=1 requires rate-profile carriers (cu_physics=11 or cu_physics=99)")
+    if not math.isfinite(cfg.aercu_fct) or cfg.aercu_fct < 0:
+        raise ConfigurationRefused("aercu_fct must be finite and nonnegative: a negative multiplier would supply negative aerosol mass to activation")
     if cfg.cu_physics not in CU_SCHEMES:
         raise ConfigurationRefused(
             f"cu_physics must be one of {CU_SCHEMES} -- 0 (off), "
-            f"1 (Kain-Fritsch), 3 (Grell-Freitas), 5 (Grell 3D), 6 (original cu6), "
-            f"16 (New Tiedtke) or 96 (New SAS), got {cfg.cu_physics}."
+            f"1 (Kain-Fritsch), 2 (Betts-Miller-Janjic), 3 (Grell-Freitas), 5 (Grell 3D), 6 (original cu6), 10 (KF-CuP), 14 (KIAPS SAS), "
+            f"16 (New Tiedtke), 93 (Grell-Devenyi), 94 (GFS SAS), 95 (Old GFS SAS), 96 (New SAS) or 99 (previous KF), got {cfg.cu_physics}."
             + wrf_unported_refusal_tail("cu_physics", cfg.cu_physics)
         )
+    if cfg.use_theta_m not in (0, 1):
+        raise ConfigurationRefused("use_theta_m must be 0 (dry theta) or 1 (moist theta)")
     if cfg.hypsometric_opt not in (1, 2):
         raise ConfigurationRefused(
             "hypsometric_opt must be 1 (d(phi)/d(eta) hydrostatic "
@@ -7581,24 +8850,55 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     if cfg.mp_physics in _P3_UNPORTED_VARIANTS:
         # Refuse the sibling P3 options BY NAME rather than letting them
         # fall into the generic "unknown mp_physics" message: each is a real
-        # WRF v4.6.1 package (Registry.EM_COMMON:3039-3041) that woof's
-        # mp=50 port deliberately does not cover, and a user who typed one
+        # WRF v4.6.1 package (Registry.EM_COMMON:3040-3041) that woof's
+        # P3 port (50, 51) does not cover, and a user who typed one
         # is owed the reason, not a claim that the number is meaningless.
         # The menu follows the reason: these are out-of-schema VALUES, and
         # a value refusal recites the menu here the same way as below.
         raise ConfigurationRefused(unported_p3_variant_refusal(cfg.mp_physics))
+    if type(cfg.aercu_opt) is not int or cfg.aercu_opt not in (0, 1, 2):
+        raise ConfigurationRefused("aercu_opt must be 0, 1 or 2")
+    if cfg.aercu_opt > 0:
+        from woof.core.morrison_aero import refuse_aercu_opt
+        refuse_aercu_opt(cfg.aercu_opt, cu_physics=cfg.cu_physics, mp_physics=cfg.mp_physics)
+    # RCON-SPEED-01: retire when a qualified handoff clears this measured gap.
+    if cfg.mp_physics == 29:
+        raise ConfigurationRefused(
+            "mp_physics=29 (RCON) is ported but its release speed proof is open: "
+            "the whole-forecast microphysics stage costs 1.885431x MP28; "
+            "the retained native 1.053748x profile does not explain the GPU excess. "
+            "A qualified speed handoff is required before forecast admission; "
+            "until then select another microphysics scheme, such as mp_physics=28 "
+            "(the Thompson aerosol-aware scheme it is timed against)."
+        )
     if cfg.mp_physics not in MP_PHYSICS_ACCEPTED:
-        # WDM5 (14) and WDM7 (26) are named rather than left to the generic
-        # tail: they are WDM6's siblings in the same WRF family and the
-        # obvious next thing a WDM6 user types, so the refusal says which
-        # one of the three is ported instead of listing nine integers.  It
-        # then recites the menu, the same way the P3 siblings above do,
-        # because these too are out-of-schema VALUES.
+        # Known unported options carry a source-backed reason before the
+        # general selector menu. The WDM family is admitted above.
         named = unported_mp_scheme_refusal(cfg.mp_physics)
         if named is not None:
             raise ConfigurationRefused(named)
         raise ConfigurationRefused(f"{_MP_PHYSICS_SCHEMA_MENU}, got {cfg.mp_physics}.")
     validate_milbrandt2_options(cfg)
+    if cfg.mp_physics not in THOMPSON_AEROSOL_FAMILY:
+        # The mp=28 aerosol-source pair is scheme-scoped
+        # (woof.core.model.SCHEME_SCOPED_RUN_FIELDS), and this refusal is
+        # what makes that scoping provably lossless: under any other scheme
+        # the two can hold ONLY their defaults, so dropping them from the
+        # restart identity discards no information.  The concrete breakage:
+        # they landed unscoped at the 2.5.8 integration and moved every
+        # experiment fingerprint, which would have made every existing
+        # checkpoint refuse to resume for fields only mp=28 reads.
+        for _mp28_key, _mp28_default in (("mp28_aerosol_source", "auto"),
+                                         ("wif_climatology_path", "")):
+            if getattr(cfg, _mp28_key) != _mp28_default:
+                raise ConfigurationRefused(
+                    f"{_mp28_key} selects the Thompson aerosol initial state "
+                    "and requires " + " or ".join(f"mp_physics={_m}" for _m in sorted(THOMPSON_AEROSOL_FAMILY))
+                    + f" (got mp_physics="
+                    f"{cfg.mp_physics}); no other scheme reads it, and "
+                    "woof refuses a stray value instead of silently "
+                    "dropping it."
+                )
     validate_aerosol_source_options(cfg)
     if cfg.mp_physics != 0 and not cfg.moist:
         raise ConfigurationRefused(
@@ -7625,6 +8925,12 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "morr_rimed_ice must be 0 (graupel) or 1 (hail, the WRF "
             f"default), got {cfg.morr_rimed_ice}."
         )
+    if cfg.ntu_ccnty not in (1, 2, 3, 4):
+        raise ValueError(
+            "ntu_ccnty must be 1 (marine), 2 (clean continental, the WRF "
+            "default), 3 (average continental) or 4 (urban): NTU's "
+            "AERO_CONST has no aerosol spectrum for "
+            f"{cfg.ntu_ccnty}.")
     if cfg.wsm6_hail_opt not in (0, 1):
         raise ConfigurationRefused(
             "wsm6_hail_opt must be 0 (graupel, the WRF WSM6 default) or "
@@ -7653,14 +8959,16 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
                 "= 'exact'.  Set it false, or run without GPUWM_WRF_EXACT.")
     _NSSL_SELECTOR_DEFAULTS = {
         "nssl_2moment_on": -1, "nssl_hail_on": -1, "nssl_ccn_on": -1,
-        "nssl_density_on": -1, "nssl_3moment": 0,
+        "nssl_density_on": -1, "nssl_3moment": 0, "nssl_cccn": 0.5e9,
+        "nssl_alphah": 0.0, "nssl_alphahl": 1.0,
+        "nssl_icdx": 6, "nssl_icdxhl": 6,
     }
     if cfg.mp_physics == 18:
         # Resolve and gate the variant mode exactly once at validation, so
         # a rejected combination can never reach state allocation or the
         # scheme.  resolve applies WRF's module_check_a_mundo.F:3423-3465
         # consistency pass; require_ported refuses combinations without a
-        # ported numerical path (1-moment, 3-moment, fixed-density, and
+        # ported numerical path (3-moment, two-moment fixed-density, and
         # WRF's undefined inactive-pointer pairings).
         from woof.core.nssl2_contract import (
             require_ported_nssl2_mode,
@@ -7668,6 +8976,10 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
         )
         try:
             require_ported_nssl2_mode(resolve_nssl2_mode_for_config(cfg))
+            from woof.core.nssl2_contract import nssl2_cccn_concentration
+            nssl2_cccn_concentration(cfg.nssl_cccn)
+            from woof.core.nssl2_shape import resolved_shapes
+            resolved_shapes(cfg.nssl_alphah, cfg.nssl_alphahl, cfg.nssl_icdx, cfg.nssl_icdxhl)
         except (TypeError, ValueError) as exc:
             raise ConfigurationRefused(f"NSSL variant selectors: {exc}") from exc
     else:
@@ -7691,21 +9003,42 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "concentration in # m-3 (WRF Registry default 1.0e8), got "
             f"{cfg.wdm6_ccn_conc}."
         )
-    if cfg.mp_physics == 16 and not (1.0e8 <= cfg.wdm6_ccn_conc <= 2.0e10):
+    if cfg.mp_physics in WDM_SCHEMES and not (1.0e8 <= cfg.wdm6_ccn_conc <= 2.0e10):
         # module_mp_wdm6.F:585 clamps the CCN array to [1e8, 2e10] on every
         # entry to wdm62D, so a value outside the window is not the initial
         # condition the operator asked for -- the very first minor loop
         # discards it.  Refusing beats silently running a different run.
         raise ConfigurationRefused(
-            f"wdm6_ccn_conc={cfg.wdm6_ccn_conc} lies outside WDM6's own "
+            f"wdm6_ccn_conc={cfg.wdm6_ccn_conc} lies outside the WDM family's own "
             "[1e8, 2e10] # m-3 clamp (module_mp_wdm6.F:585), so the scheme "
             "would overwrite it on the first minor time step; choose a "
             "value inside the window."
         )
-    if cfg.mp_physics != 16:
+    if cfg.mp_physics == 14 and cfg.wdm6_hail_opt != 0:
+        raise ValueError("wdm6_hail_opt retunes a graupel category; WDM5 carries no graupel, so this setting would be ignored. Use its default zero.")
+    if cfg.mp_physics in WDM_HAIL_SCHEMES and cfg.wdm6_hail_opt != 0:
+        # Breakage prevented: a WDM7 run that silently ignores a hail_opt
+        # the operator set.  WRF reads hail_opt for WSM6/WDM6 only
+        # (module_physics_init.F:4583-4584); wdm7init takes no such argument
+        # (:4586) because WDM7 carries hail as its own category and its
+        # graupel is WDM6's hail_opt = 0 graupel.
+        raise ValueError(
+            "wdm6_hail_opt retunes WDM6's graupel into hail and has no "
+            "meaning under mp_physics=26: WDM7 carries hail as a separate "
+            "category and its graupel is fixed (module_physics_init.F:4586 "
+            "calls wdm7init without hail_opt).  Remove wdm6_hail_opt or set "
+            "it to 0."
+        )
+    if cfg.mp_physics == 27 and cfg.wdm6_hail_opt != 0:
+        raise ConfigurationRefused("UDM carries separate hail and reads no hail_opt; keep wdm6_hail_opt=0 (module_mp_udm.F:262-277).")
+    if (cfg.mp_physics == 27 and cfg.ra_rrtmg_variant != RRTMG_VARIANT_LEGACY
+            and (cfg.ra_lw_physics == 4 or cfg.ra_sw_physics == 4)):
+        from woof.core.udm import RADIUS_REASON
+        raise ConfigurationRefused(RADIUS_REASON + " Select legacy RRTMG for its diagnosed radii.")
+    if cfg.mp_physics not in WDM_SCHEMES and cfg.mp_physics != 27:
         # Off-scheme WDM6 knobs are REFUSED, not dropped, on the NSSL
         # precedent (the nssl_* selectors under mp != 18): nothing outside
-        # the mp=16 path reads either field, so a set value is a request
+        # the WDM family path reads either field, so a set value is a request
         # woof would silently ignore.  The refusal is also what makes
         # woof.core.model.SCHEME_SCOPED_RUN_FIELDS provably lossless --
         # under any other scheme these two can hold ONLY their defaults, so
@@ -7715,30 +9048,44 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             if getattr(cfg, _wdm6_key) != _wdm6_default:
                 raise ConfigurationRefused(
                     f"{_wdm6_key} is a WDM6 selector and requires "
-                    f"mp_physics=16 (got mp_physics={cfg.mp_physics}); "
+                    + " or ".join(f"mp_physics={_m}" for _m in sorted({*WDM_SCHEMES, 27})) + " "
+                    f"(got mp_physics={cfg.mp_physics}); per-variant restrictions still apply. "
                     "WRF reads hail_opt/ccn_conc only inside the schemes "
                     "that declare them, and woof refuses a stray value "
                     "instead of silently dropping it."
                 )
-    if cfg.mp_physics != 28:
-        # The mp=28 aerosol-source pair is scheme-scoped
-        # (woof.core.model.SCHEME_SCOPED_RUN_FIELDS), and this refusal is
-        # what makes that scoping provably lossless: under any other scheme
-        # the two can hold ONLY their defaults, so dropping them from the
-        # restart identity discards no information.  The concrete breakage:
-        # they landed unscoped at the 2.5.8 integration and moved every
-        # experiment fingerprint, which would have made every existing
-        # checkpoint refuse to resume for fields only mp=28 reads.
-        for _mp28_key, _mp28_default in (("mp28_aerosol_source", "auto"),
-                                         ("wif_climatology_path", "")):
-            if getattr(cfg, _mp28_key) != _mp28_default:
-                raise ConfigurationRefused(
-                    f"{_mp28_key} selects the mp=28 aerosol initial state "
-                    f"and requires mp_physics=28 (got mp_physics="
-                    f"{cfg.mp_physics}); no other scheme reads it, and "
-                    "woof refuses a stray value instead of silently "
-                    "dropping it."
-                )
+    # Goddard GCE switches.  WRF stops the run on any other value
+    # (module_mp_gsfcgce.F:249-262, "ihail has to be either 1 or 0",
+    # "gsfcgce_2ice in namelist.input has to be 0, 1, 2, or 3"); woof
+    # refuses it before allocation instead of after the first call.
+    if cfg.gsfcgce_hail not in (0, 1):
+        raise ValueError(
+            "gsfcgce_hail must be 0 (graupel, the WRF default) or 1 (hail), "
+            f"got {cfg.gsfcgce_hail}; WRF's module_mp_gsfcgce.F stops on "
+            "any other value.")
+    if cfg.gsfcgce_2ice not in (0, 1, 2, 3):
+        raise ValueError(
+            "gsfcgce_2ice must be 0 (ice, snow and graupel/hail, the WRF "
+            "default), 1 (ice and snow), 2 (ice and graupel) or 3 (warm "
+            f"rain only), got {cfg.gsfcgce_2ice}; WRF's module_mp_gsfcgce.F "
+            "stops on any other value.")
+    from woof.core.mp_column_schemes import MP_COLUMN_SCHEMES as _TABLE_ROWS
+    for _table_mp, _table_row in _TABLE_ROWS.items():
+        if cfg.mp_physics == _table_mp:
+            continue
+        for _switch in _table_row.switches:
+            if getattr(cfg, _switch) != 0:
+                # Off-scheme switches are REFUSED, not dropped (the WDM6
+                # and NSSL precedent): nothing outside the row's scheme
+                # reads them, so a set value is a request woof would
+                # silently ignore, and the refusal is what makes the
+                # restart identity's scheme scoping lossless.
+                raise ValueError(
+                    f"{_switch} is a {_table_row.name} selector and requires "
+                    f"mp_physics={_table_mp} (got mp_physics="
+                    f"{cfg.mp_physics}); WRF reads it only inside that "
+                    "scheme, and woof refuses a stray value instead of "
+                    "silently dropping it.")
     if cfg.p3_backend not in P3_BACKENDS:
         raise ConfigurationRefused(
             f"p3_backend={cfg.p3_backend!r} is not one of "
@@ -7748,7 +9095,24 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "byte-identical to it, and 'reference' is the CPU float32 "
             "transcription kept for verification.  A fourth arm has to be "
             "byte-compared against 'cuda' before it can be named here.")
-    if cfg.mp_physics != 50 and cfg.p3_backend != "cuda":
+    if cfg.mp_physics == 52 and cfg.p3_backend == "reference":
+        raise ValueError("P3 mp_physics=52 needs cuda or fused: the CPU reference "
+                         "omits category-2 collection, merge and sedimentation")
+    _p3_row = p3_variant(cfg.mp_physics)
+    if (_p3_row is not None and _p3_row.three_moment_ice
+            and cfg.p3_backend == "reference"):
+        # The CPU float32 transcription (woof/core/p3.py p3_main) carries
+        # the two-moment-ice configuration only; the three-moment branches
+        # (Z, the mu_i closure, the 3momI table) are in the device kernels.
+        # Running it for mp=53 would integrate two-moment ice under a
+        # three-moment receipt and never touch qzi.
+        raise ValueError(
+            f"p3_backend='reference' cannot run mp_physics={cfg.mp_physics} "
+            "(P3 three-moment ice): the CPU reference transcription carries "
+            "two-moment ice only, so it would integrate a different scheme "
+            "and leave qzi untouched. Use p3_backend='cuda' (the default) or "
+            "'fused'.")
+    if _p3_row is None and cfg.p3_backend != "cuda":
         # The P3 backend selector is scheme-scoped
         # (woof.core.model.SCHEME_SCOPED_RUN_FIELDS), and this refusal is
         # what makes that scoping provably lossless: under any other scheme
@@ -7760,7 +9124,7 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
         # resume for a knob only P3 reads.
         raise ConfigurationRefused(
             f"p3_backend={cfg.p3_backend!r} selects the P3 implementation "
-            f"and requires mp_physics=50 (got mp_physics={cfg.mp_physics}); "
+            f"and requires mp_physics=50 or mp_physics=51 or mp_physics=52 or mp_physics=53 (got mp_physics={cfg.mp_physics}); "
             "no other scheme reads it, and woof refuses a stray value "
             "instead of silently dropping it.")
     for name in ("history_interval2_s", "history_interval_change_s"):
@@ -7777,8 +9141,29 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "no_mp_heating must be 0 (microphysics latent heating on, the "
             f"WRF default) or 1 (heating off), got {cfg.no_mp_heating}."
         )
+    for key in ("do_avgflx_em", "do_avgflx_cugd"):
+        if type(getattr(cfg, key)) is not int or getattr(cfg, key) not in (0, 1):
+            raise ConfigurationRefused(f"{key} must be the integer 0 or 1")
+    if cfg.do_avgflx_cugd:
+        from woof.avgflx_contract import CUGD_REFUSAL
+        raise ConfigurationRefused(CUGD_REFUSAL)
+    for name in ("mean_diag", "diurnal_diag", "solar_diagnostics"):
+        if type(getattr(cfg,name)) is not int or getattr(cfg,name) not in (0,1):
+            raise ConfigurationRefused(name+" must be 0 or 1")
+    if cfg.mean_diag:
+        if cfg.mean_freq not in (1,2,3,4,5) or type(cfg.mean_interval) is not int or cfg.mean_interval<=0:
+            raise ConfigurationRefused("RASM mean_diag needs a positive native mean interval and frequency 1..5")
+        seconds=cfg.mean_interval*{1:1,2:60,3:3600,4:86400,5:86400}[cfg.mean_freq]
+        if seconds/cfg.dt < .5:
+            raise ConfigurationRefused("RASM mean interval rounds to zero native steps")
+    if type(cfg.diag_print) is not int or cfg.diag_print not in (0,1,2):
+        raise ValueError("diag_print must be 0, 1 or 2")
     if type(cfg.output_diagnostics) is not int or cfg.output_diagnostics not in (0, 1):
         raise ValueError("output_diagnostics must be 0 or 1")
+    if type(cfg.auxhist3_interval) is not int or cfg.auxhist3_interval < 0:
+        raise ValueError("auxhist3_interval must be nonnegative whole minutes")
+    if cfg.output_diagnostics and cfg.auxhist3_interval and cfg.auxhist3_interval * 60. / cfg.dt < .5:
+        raise ValueError("auxhist3_interval rounds to zero steps; native CLWRF would take MOD by zero")
     for key in ("diag_int", "wind_int"):
         if type(getattr(cfg, key)) is not int or getattr(cfg, key) <= 0:
             raise ValueError(f"{key} must be positive whole minutes")
@@ -7792,12 +9177,39 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
         value = getattr(cfg, key)
         if not math.isfinite(value) or value < 0:
             raise ValueError(f"{key} must be finite and nonnegative minutes")
+    for key in ('bucket_mm','bucket_j'):
+        if not math.isfinite(getattr(cfg,key)):
+            raise ValueError(key+' must be finite')
+    if cfg.bucket_mm>0 and cfg.bucket_j>0:
+        if any(x not in (0,4) for x in radiation_scheme_ids(cfg)):
+            raise ValueError('native energy bucketing needs accumulated all-sky and clear-sky top/bottom flux carriers; these are supplied by radiation selectors 4 only')
+    from woof.afwa_config import validate as validate_afwa
+    validate_afwa(cfg)
+    from woof.core.physics_tendency_output import validate as validate_tendencies
+    validate_tendencies(cfg)
+    from woof.level_output_config import validate as validate_level_output
+    validate_level_output(cfg)
+    if type(cfg.uh_layers) is not int or cfg.uh_layers not in (0, 1):
+        raise ValueError("uh_layers must be 0 or 1")
+    if cfg.uh_layers == 1 and cfg.nwp_diagnostics != 1:
+        # Breakage this prevents: the maxima are folded by the step's
+        # nwp_diagnostics = 1 helicity pass; without it they would be written
+        # as zeros every hour, a quiet map that says no rotation anywhere.
+        raise ValueError("uh_layers = 1 needs nwp_diagnostics = 1 (the step "
+                         "that folds UP_HELI_MAX also folds the 0-1/0-2/0-3 km maxima)")
     if cfg.nwp_diagnostics not in (0, 1):
         raise ConfigurationRefused(
             "nwp_diagnostics must be 0 (off, the WRF default) or 1 "
-            "(per-step UP_HELI_MAX running-max diagnostic), got "
+            "(native per-step NWP diagnostics), got "
             f"{cfg.nwp_diagnostics}."
         )
+    if cfg.nwp_diagnostics and not cfg.gsd_diagnostics:
+        if cfg.output_interval_s < 60 or cfg.output_interval_s % 60 or cfg.dt > cfg.output_interval_s:
+            raise ConfigurationRefused(
+                "native NWP idump requires a positive whole-minute history interval at least dt; "
+                "a zero idump would divide the native window mean by zero")
+    # GSD owns the fork's interval windows when both switches are selected;
+    # nwp_diagnostics.active() disables the stock NWP writer in that case.
     if not math.isfinite(cfg.mp_tend_lim) or cfg.mp_tend_lim <= 0.0:
         raise ConfigurationRefused(
             "mp_tend_lim must be a finite positive heating-rate clamp in "
@@ -7831,7 +9243,7 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     # (woof/core/diffusion.py), so 2/3/4 beside a nonzero constant would
     # silently drop a term WRF runs.  Under diff_opt = 2 WRF ignores both
     # outside km_opt = 1, so WRF's own fire namelists (km_opt = 2 with
-    # khdif/kvdif set) import as written (lane/ec-sfire).
+    # khdif/kvdif set) import as written (development branch).
     if (cfg.diff_opt == 1 and cfg.km_opt in (2, 3, 4)
             and (cfg.khdif > 0.0 or cfg.kvdif > 0.0)):
         raise ConfigurationRefused(
@@ -7855,11 +9267,12 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             f"tke_budget must be 0 (off) or 1 (per-step term-by-term TKE "
             f"budget accumulation), got {cfg.tke_budget}."
         )
-    if cfg.tke_budget == 1 and cfg.km_opt != 2:
+    if cfg.tke_budget == 1 and cfg.km_opt != 2 and cfg.bl_pbl_physics != 5:
         raise ConfigurationRefused(
-            "tke_budget=1 requires km_opt=2: the budget decomposes the "
-            f"prognostic TKE equation, and km_opt={cfg.km_opt} carries no "
-            "TKE."
+            "tke_budget=1 requires km_opt=2 or bl_pbl_physics=5: the implemented budget "
+            "accumulates that closure's explicit source terms. It does "
+            f"not account for km_opt={cfg.km_opt}, including SMS-3DTKE's "
+            "implicit transport and dissipation."
         )
     if cfg.mix_isotropic not in (0, 1):
         raise ConfigurationRefused(
@@ -7892,12 +9305,16 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             f"diff_6th_thresh must be a positive slope (m/m), got "
             f"{cfg.diff_6th_thresh}."
         )
-    if cfg.h_sca_adv_order not in (2, 5):
+    if isinstance(cfg.h_sca_adv_order, bool) or cfg.h_sca_adv_order not in (0, 2, 3, 4, 5, 6):
         raise ConfigurationRefused(
-            f"h_sca_adv_order must be 2 (frozen Phase 1/2 stencil) or 5 "
-            f"(WRF Registry-default rhs_ph advection), got "
+            f"h_sca_adv_order must be 0, 2, 3, 4, 5 or 6, got "
             f"{cfg.h_sca_adv_order}."
         )
+    if cfg.h_sca_adv_order == 0 and (cfg.moist_adv_opt != 0 or cfg.scalar_adv_opt != 0):
+        raise ConfigurationRefused(
+            "h_sca_adv_order=0 requires ordinary moisture and scalar advection "
+            "(moist_adv_opt=0, scalar_adv_opt=0): "
+            "WRF 4.7.1 module_advect_em.F:7256 refuses order 0 in advect_scalar_pd.")
     # Open-boundary rhs_ph (h_sca_adv_order 5 with radiative edges) is the
     # compiled slow_geopotential_open kernel since the SFIRE port; the former
     # refusal named exactly that missing boundary-row upwinding.
@@ -8031,6 +9448,8 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     # and no device library.
     from woof.physics_registry import require_consumer_rows
     require_consumer_rows(cfg)
+    from woof.physics_registry import validate_column_surface_settings
+    validate_column_surface_settings(cfg)
     return cfg
 
 

@@ -25,7 +25,7 @@ cards wait on, so a rank that ran more rounds than a neighbour stops with that n
 
 Breakage the per-round header caused: conus3km on 8 x RTX PRO 6000, one process per card, rank 0's host waited
 48.9 s per forecast hour (about 272 ms of each 861 ms step) for neighbours' headers it only needed for the round
-check (V8X6000 lease mcs2-tmr-8c, 2026-10-29, MULTICARD/SCALING-2.md section 4).
+check (eight-card system lease mcs2-tmr-8c, 2026-10-29, MULTICARD/SCALING-2.md section 4).
 
 The probe on 8x RTX 5090 with no peer access (2026-10-28): 1,000 rounds of 6 MiB each way between cards 0 and 1,
 0 wrong words, 0.71 ms per round.
@@ -60,7 +60,9 @@ _WAIT_GEQ = 0x0
 _ROUND_RECORD = struct.Struct("=Q16sQQ")
 _ROUND_RECORD_OFFSET = (1024, 2048)   # written by the lower rank of the pair, by the higher rank
 _FLAG_PAGE = 4096
-_RELEASED = 0xFFFFFFFF
+# CUDA GEQ waits compare the signed 32-bit difference. All ones is behind every positive round and
+# cannot release it. Reserve the largest signed value and keep rounds below it, including at wraparound.
+_RELEASED = 0x7FFFFFFF
 
 
 class RoundCheck:
@@ -104,6 +106,8 @@ class RoundCheck:
 
     def advance(self, round_: int, digest: bytes, tag: Any = None) -> None:
         """Fold this rank's round into the chain, publish it, and compare every neighbour that is not ahead."""
+        if int(round_) >= _RELEASED:
+            raise SameHostTransportError("halo round counter exhausted its CUDA wait range")
         if int(round_) != self.round + 1:
             raise SameHostTransportError(f"rank {self.rank}: round {round_} follows round {self.round}")
         self.round = int(round_)
@@ -162,24 +166,33 @@ class _Driver:
     """The two CUDA driver stream memory operations this transport needs (libcuda, through ctypes)."""
 
     def __init__(self):
-        cuda = ctypes.CDLL("libcuda.so.1")
+        from woof.gpu_smi import is_amd
+        self.hip = is_amd()
+        if self.hip:
+            from woof.hip_runtime import library
+            cuda = library()
+        else:
+            cuda = ctypes.CDLL("libcuda.so.1")
 
         def symbol(*names):
             for name in names:
                 function = getattr(cuda, name, None)
                 if function is not None:
                     return function
-            raise OSError(f"libcuda has none of {names}")
+            raise OSError(f"GPU driver has none of {names}")
 
-        self.wait = symbol("cuStreamWaitValue32_v2", "cuStreamWaitValue32")
+        self.wait = symbol("hipStreamWaitValue32") if self.hip else symbol("cuStreamWaitValue32_v2", "cuStreamWaitValue32")
         self.wait.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint]
-        self.write = symbol("cuStreamWriteValue32_v2", "cuStreamWriteValue32")
+        if self.hip:
+            # HIP has a fifth mask argument; CUDA's four-argument ABI does not.
+            self.wait.argtypes.append(ctypes.c_uint32)
+        self.write = symbol("hipStreamWriteValue32") if self.hip else symbol("cuStreamWriteValue32_v2", "cuStreamWriteValue32")
         self.write.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint]
-        self.device_pointer = symbol("cuMemHostGetDevicePointer_v2", "cuMemHostGetDevicePointer")
+        self.device_pointer = symbol("hipHostGetDevicePointer") if self.hip else symbol("cuMemHostGetDevicePointer_v2", "cuMemHostGetDevicePointer")
         self.device_pointer.argtypes = [ctypes.POINTER(ctypes.c_uint64), ctypes.c_void_p, ctypes.c_uint]
 
     def wait_geq(self, stream, address: int, value: int) -> None:
-        code = self.wait(ctypes.c_void_p(int(stream.ptr)), ctypes.c_uint64(address), ctypes.c_uint32(value), _WAIT_GEQ)
+        code = self.wait(ctypes.c_void_p(int(stream.ptr)), ctypes.c_uint64(address), ctypes.c_uint32(value), _WAIT_GEQ, *([0xFFFFFFFF] if self.hip else []))
         if code:
             raise SameHostTransportError(f"cuStreamWaitValue32 failed with CUDA driver error {code}")
 
@@ -205,7 +218,11 @@ class _Shared:
         self.map = mmap.mmap(fd, self.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
         self.address = ctypes.addressof(ctypes.c_char.from_buffer(self.map))
         # Portable (1), plus mapped (2) for the flag words the GPU reads and writes.
-        xp.cuda.runtime.hostRegister(self.address, self.size, 1 | (2 if mapped else 0))
+        if xp.cuda.runtime.is_hip:
+            from woof.hip_runtime import host_register
+            host_register(self.address, self.size, 1 | (2 if mapped else 0))
+        else:
+            xp.cuda.runtime.hostRegister(self.address, self.size, 1 | (2 if mapped else 0))
         self.registered = True
         self.generation = 0
 
@@ -217,7 +234,11 @@ class _Shared:
     def release(self) -> None:
         if self.registered:
             try:
-                self.xp.cuda.runtime.hostUnregister(self.address)
+                if self.xp.cuda.runtime.is_hip:
+                    from woof.hip_runtime import host_unregister
+                    host_unregister(self.address)
+                else:
+                    self.xp.cuda.runtime.hostUnregister(self.address)
             except Exception:
                 pass
             self.registered = False
@@ -262,6 +283,16 @@ class ProcessHaloTransport(SameHostTransport):
         self._peers = []
         self._validate_tables()
         self._validate_field_indices()
+        # The launcher links only ranks that share halo words (active_peers, process_ranks_v842); on four or more
+        # ranks a table can list a peer with no cell or edge packet (rank 1 of a 2x2 cut touches rank 2 only at a
+        # vertex). Such a peer carries nothing, so it gets no link, buffer or round record here either. Breakage it
+        # prevents: every MPAS-physics run on 4 cards refused "rank 1 has links to [0, 3], but its halo peers are
+        # [0, 2, 3]" (physical 4-card leg, 2026-11-03).
+        # The ArWen-physics rank group still links every table peer; that keeps its packet-less peers as before.
+        from .partition_samehost_tables_v841 import active_peers
+        if sorted(int(peer) for peer in links) != sorted(self._peers[self.rank]):
+            self._peers = [{peer: table for peer, table in peers.items() if peer in set(active_peers(self.tables[rank]))}
+                           for rank, peers in enumerate(self._peers)]
         neighbours = sorted(self._peers[self.rank])
         if sorted(int(peer) for peer in links) != neighbours:
             raise SameHostTransportError(f"rank {self.rank} has links to {sorted(links)}, but its halo peers are {neighbours}")
@@ -311,7 +342,8 @@ class ProcessHaloTransport(SameHostTransport):
             "rounds": 0, "bytes": 0, "local_bytes": 0, "peer_bytes": 0, "staged_bytes": 0, "seconds": 0.0,
             "completed_rounds": 0, "pack_launches": 0, "unpack_launches": 0, "descriptor_uploads": 0,
             "dimension_uploads": 0, "descriptor_cache_hits": 0, "descriptor_cache_misses": 0,
-            "descriptor_cache_evictions": 0, "serial_unpack_batches": 0, "serial_unpack_launches": 0,
+            "descriptor_cache_evictions": 0, "descriptor_cache_retired": 0,
+            "serial_unpack_batches": 0, "serial_unpack_launches": 0,
             "header_wait_seconds": 0.0, "headers_sent": 0, "headers_received": 0, "round_checks": 0,
             "shared_buffers": 0, "shared_buffer_bytes": 0,
         }
@@ -541,7 +573,7 @@ class ProcessHaloTransport(SameHostTransport):
             share = flags["share"]
             for name in ("ready_in", "consumed_out"):
                 try:
-                    struct.pack_into("=I", share.map, _FLAG_SPACING * flags["slots"][name], 0xFFFFFFFF)
+                    struct.pack_into("=I", share.map, _FLAG_SPACING * flags["slots"][name], _RELEASED)
                 except (ValueError, TypeError, OSError):
                     pass
         for sock in self._sockets.values():

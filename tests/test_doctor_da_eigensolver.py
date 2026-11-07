@@ -1,4 +1,4 @@
-"""``woof doctor``'s verdict on the eigensolver the radar-DA analysis needs.
+"""``woof doctor``'s verdict on the eigensolver the matrix analysis needs.
 
 This line exists because of a specific field failure, twice: the analysis died
 inside cuSOLVER while every other piece of evidence said the GPU was healthy.
@@ -28,7 +28,7 @@ def _check(monkeypatch, payload, *, box_major=12):
     """
     monkeypatch.setattr(doctor, "_eigensolver_probe", lambda: payload)
     monkeypatch.setattr(doctor, "_driver_cuda_major", lambda: box_major)
-    return doctor._da_eigensolver_check()
+    return doctor._matrix_eigensolver_check()
 
 
 def test_the_probe_runs_the_operation_rather_than_testing_for_a_name():
@@ -107,11 +107,11 @@ def test_the_check_is_in_the_default_estate(monkeypatch):
     monkeypatch.setattr(doctor, "_eigensolver_probe",
                         lambda: {"jacobi": "ok", "library": "ok"})
     names = [c.name for c in doctor.collect_checks(sources=())]
-    assert "radar-DA eigensolver" in names
+    assert "matrix eigensolver" in names
     # In the GPU cluster, reading down the order the three fail in:
     # the wheel, then compiling with it, then factoring with it.
     assert names.index("cupy (GPU runtime)") < names.index(
-        "CUDA kernel headers") < names.index("radar-DA eigensolver")
+        "CUDA kernel headers") < names.index("matrix eigensolver")
 
 
 @pytest.mark.parametrize("payload", [

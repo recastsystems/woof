@@ -994,11 +994,13 @@ def _modules(device: int, device_math_source: str, max_levels: int, inline: str 
         sizes = cp.empty(3, dtype=cp.uint64)
         ms.get_function("tempo_warp_sizes")((1,), (1,), (sizes,))
         sizes = tuple(map(int, sizes.get()))
-        sms = runtime.deviceGetAttribute(runtime.cudaDevAttrMultiProcessorCount, device)
+        from woof.hip_runtime import device_attribute
+        sms = device_attribute(cp, "MultiProcessorCount", device)
         resident = {}
         for name in ("tempo_phase_tail", "tempo_warp_steps"):
             kern = ms.get_function(name)
-            blocks = driver.occupancyMaxActiveBlocksPerMultiprocessor(kern.ptr, t.WARP_BLOCK, 0)
+            from woof.backend import active_blocks_per_multiprocessor
+            blocks = active_blocks_per_multiprocessor(kern.ptr, t.WARP_BLOCK, 0)
             resident[name] = max(1, sms * blocks) * (t.WARP_BLOCK // 32)
         col = fast_column()
         work, tend = layout(col)

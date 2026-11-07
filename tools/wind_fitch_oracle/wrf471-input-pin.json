@@ -1,0 +1,38 @@
+{
+  "wrf_version": "4.7.1",
+  "licence": "WRF public-domain statement; NOTICE.txt reproduced alongside this pin",
+  "licence_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+  "sources": [
+    {
+      "path": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "bytes": 1027,
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    {
+      "path": "phys/module_wind_fitch.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_wind_fitch.F",
+      "bytes": 19659,
+      "sha256": "83247add74780608e798bb62424533b18abf31f3da5aba6374de6fe2550060c3"
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "bytes": 437707,
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a"
+    },
+    {
+      "path": "run/wind-turbine-1.tbl",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/run/wind-turbine-1.tbl",
+      "bytes": 485,
+      "sha256": "d2f863483ab050673ebe15bd1e8510277e7a641845048b08afd7cdc97be7e069"
+    },
+    {
+      "path": "doc/README.windturbine",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/doc/README.windturbine",
+      "bytes": 6122,
+      "sha256": "b19327428363c5bee322ffc793937cd3e6fc84541f3f4f8acfbba0f8078ecbf7"
+    }
+  ],
+  "scope": "Fitch turbine input layout only. No new column-physics or forecast verification is claimed."
+}

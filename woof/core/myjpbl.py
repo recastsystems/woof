@@ -175,3 +175,182 @@ def validate_myj_pbl_outputs(outputs) -> str | None:
         if not bool(cp.all(cp.isfinite(array))):
             return name
     return None
+
+
+# ===========================================================================
+# QNSE (bl_pbl_physics = 4) and its EDMF shallow mass flux (mfshconv = 1).
+#
+# QNSE is a member of this family, not a separate launcher: WRF's
+# module_bl_qnsepbl.F is MYJ's column with three subroutines rewritten
+# (MIXLEN's stable length, DIFCOF's QNSE stability functions, PRODQ2's
+# explicit production/dissipation) and the rest -- the flip, VDIFQ, VDIFH,
+# VDIFV, the THZ0/QZ0/QSFC surface rewrite -- MYJ's, with the differences
+# recorded in kernels/qnsepbl.cu.  The device code is that kernel; this is
+# its marshalling, the same as launch_myj_pbl above.
+# ===========================================================================
+
+#: Full bottom-up QNSEPBL column inputs, in kernel argument order.
+QNSE_COLUMN_INPUTS = ("dz", "u", "v", "t", "th", "exner", "qv", "qc", "p")
+#: QNSEPBL surface inputs, in kernel argument order.  ``ht`` seeds the
+#: interface heights as WRF seeds them (module_bl_qnsepbl.F:273); ``hfx``
+#: builds THSK (:442-451); ``corf`` is the stable length's Coriolis
+#: parameter (:869).
+QNSE_SURFACE_INPUTS = ("ht", "psfc", "ust", "chklowq", "xland", "sice",
+                       "snow", "akhs", "akms", "elflx", "hfx", "uz0", "vz0",
+                       "corf")
+#: WRF INOUT surface state QNSEPBL rewrites (:489, :503-513, :750).
+QNSE_PBL_INOUT = ("thz0", "qz0", "qsfc", "ct")
+#: Bottom-up outputs.  The five tendencies are ACCUMULATED onto the slot
+#: (:543-545, :649-650); EXCH_H/EXCH_M keep their lowest level (:393-400).
+QNSE_PBL_COLUMN_OUTPUTS = ("rublten", "rvblten", "rthblten", "rqvblten",
+                           "rqcblten", "el_myj", "exch_h", "exch_m")
+QNSE_PBL_SURFACE_OUTPUTS = ("pblh", "kpbl")
+
+#: MFSHCONVPBL column inputs, in kernel argument order (QC and PINT are
+#: arguments of the Fortran but never read, module_bl_mfshconvpbl.F:170-227).
+MFSHCONV_COLUMN_INPUTS = ("dz", "rho", "p", "th", "exner", "qv", "u", "v")
+MFSHCONV_SURFACE_INPUTS = ("hfx", "qfx")
+#: The mass flux's carried RC_MF and published EDKF set: one source of
+#: truth, the runtime-free inventory the VRAM estimate prices from.
+from woof.core.physics_inventory import (  # noqa: E402
+    MFSHCONV_OUTPUTS_3D, MFSHCONV_STATE_3D)
+#: What WRF hands QNSEPBL through u_phytmp/v_phytmp and QNSEPBL never
+#: reads (:337-343 load them; nothing else touches them).
+MFSHCONV_DIAGNOSTICS_3D = ("wthv_mf", "lm_bl89")
+
+_QNSE_TENDENCIES = ("rublten", "rvblten", "rthblten", "rqvblten", "rqcblten")
+
+
+def _require_planes(arrays, nz, shape, who):
+    for array in arrays:
+        if (array.shape != (nz, *shape) or array.dtype != DTYPE
+                or not array.flags.c_contiguous):
+            raise ValueError(
+                f"{who} requires contiguous float32 ({nz}, {shape[0]}, "
+                f"{shape[1]}) columns")
+
+
+def launch_qnse_pbl(columns, surface, state, tke, outputs, *,
+                    dtturbl: float, mfshconv: bool = False,
+                    mf_state=None, mf_outputs=None,
+                    diagnostics=None, native_tile: bool = True) -> None:
+    """Run one QNSE PBL step in place, the mass flux first when asked.
+
+    WRF's order (module_pbl_driver.F:1515-1557): the five BL tendencies
+    are the driver's zeroed rows (:1028-1043); MFSHCONVPBL, when
+    ``mfshconv``, ASSIGNS its rates to them; QNSEPBL then ADDS its own.
+    ``tke`` is TKE_PBL, read by both and rewritten by QNSEPBL (:333, :429).
+    ``mf_state`` carries ``rc_mf``; ``mf_outputs`` receives the EDKF set;
+    ``diagnostics`` (optional) receives ``wthv_mf``/``lm_bl89``.
+    """
+    shape = surface["psfc"].shape
+    nz = int(columns["dz"].shape[0])
+    bounds = (MYJ_MIN_COLUMN_LEVELS, MYJ_MAX_COLUMN_LEVELS)
+    if outside_vertical_bounds(nz, bounds):
+        raise refuse_vertical_levels(
+            "QNSE PBL", bounds, nz,
+            breakage=(
+                "the kernel holds at most "
+                f"{MYJ_MAX_COLUMN_LEVELS} levels per column (QNSE_KMAX in "
+                "kernels/qnsepbl.cu) -- raise the define and re-measure "
+                "rather than truncating -- and below the floor its TKE "
+                "tridiagonal solve has no interior rows."))
+    _require_planes([columns[name] for name in QNSE_COLUMN_INPUTS]
+                    + [tke] + [outputs[name] for name in QNSE_PBL_COLUMN_OUTPUTS],
+                    nz, shape, "launch_qnse_pbl")
+    for array in ([surface[name] for name in QNSE_SURFACE_INPUTS]
+                  + [state[name] for name in QNSE_PBL_INOUT]
+                  + [outputs[name] for name in QNSE_PBL_SURFACE_OUTPUTS]):
+        expected = cp.int32 if array is outputs["kpbl"] else DTYPE
+        if (array.shape != shape or array.dtype != expected
+                or not array.flags.c_contiguous):
+            raise ValueError("launch_qnse_pbl requires same-shape contiguous "
+                             "surface arrays (float32, kpbl int32)")
+    n = int(np.prod(shape))
+    blocks = (n + _TPB - 1) // _TPB
+    if mfshconv:
+        if mf_state is None or mf_outputs is None:
+            raise ValueError("mfshconv = 1 needs the rc_mf state and the "
+                             "EDKF output set")
+        _require_planes([columns[name] for name in MFSHCONV_COLUMN_INPUTS]
+                        + [mf_state[name] for name in MFSHCONV_STATE_3D]
+                        + [mf_outputs[name] for name in MFSHCONV_OUTPUTS_3D],
+                        nz, shape, "the EDMF mass flux")
+        diag = diagnostics is not None
+        if diag:
+            _require_planes([diagnostics[name]
+                             for name in MFSHCONV_DIAGNOSTICS_3D],
+                            nz, shape, "the EDMF diagnostics")
+            planes = tuple(diagnostics[name]
+                           for name in MFSHCONV_DIAGNOSTICS_3D)
+        else:
+            # Never written when diag == 0; CuPy cannot marshal a null.
+            planes = (outputs["el_myj"], outputs["el_myj"])
+        kernel = get_kernel("qnsepbl", "mfshconv_column")
+        args = (tuple(columns[name] for name in MFSHCONV_COLUMN_INPUTS) + (tke,)
+            + tuple(surface[name] for name in MFSHCONV_SURFACE_INPUTS)
+            + (mf_state["rc_mf"],)
+            + tuple(outputs[name] for name in _QNSE_TENDENCIES)
+            + tuple(mf_outputs[name] for name in MFSHCONV_OUTPUTS_3D)
+            + planes
+            + (DTYPE(dtturbl), np.int32(diag), np.int32(nz), np.int32(n)))
+        tile_top = mf_state.get("_tile_top")
+        if tile_top is None:
+            tile_top = mf_state["_tile_top"] = cp.empty(1, dtype=cp.int32)
+        if native_tile:
+            tile_top.fill(0)
+            kernel((blocks,), (_TPB,), args + (tile_top, np.int32(1)))
+            kernel((blocks,), (_TPB,), args + (tile_top, np.int32(2)))
+        else:
+            # The historical fixture invokes native WRF once per column.
+            kernel((blocks,), (_TPB,), args + (tile_top, np.int32(0)))
+    else:
+        for name in _QNSE_TENDENCIES:
+            outputs[name].fill(0)
+    get_kernel("qnsepbl", "qnsepbl_column")(
+        (blocks,), (_TPB,),
+        tuple(columns[name] for name in QNSE_COLUMN_INPUTS) + (tke,)
+        + tuple(surface[name] for name in QNSE_SURFACE_INPUTS)
+        + tuple(state[name] for name in QNSE_PBL_INOUT)
+        + tuple(outputs[name] for name in QNSE_PBL_COLUMN_OUTPUTS)
+        + tuple(outputs[name] for name in QNSE_PBL_SURFACE_OUTPUTS)
+        + (DTYPE(dtturbl), np.int32(nz), np.int32(n)))
+
+
+def qnse_pbl_step(columns, surface, state, tke, *, dtturbl: float,
+                  exch_h, exch_m, mfshconv: bool = False, mf_state=None,
+                  mf_outputs=None, diagnostics=None, native_tile: bool = True) -> dict:
+    """Allocate QNSE's outputs, run one step, return them with the aliases
+    :func:`couple_ysu_tendencies` consumes (the same arrays, not copies).
+
+    ``exch_h``/``exch_m`` are the carried planes: QNSEPBL rewrites levels
+    1..nz-1 and leaves level 0 as it found it (module_bl_qnsepbl.F:393-400).
+    """
+    shape = surface["psfc"].shape
+    nz = int(columns["dz"].shape[0])
+    outputs = {name: cp.empty((nz, *shape), dtype=DTYPE)
+               for name in _QNSE_TENDENCIES + ("el_myj",)}
+    outputs["exch_h"] = exch_h
+    outputs["exch_m"] = exch_m
+    outputs["pblh"] = cp.empty(shape, dtype=DTYPE)
+    outputs["kpbl"] = cp.empty(shape, dtype=cp.int32)
+    launch_qnse_pbl(columns, surface, state, tke, outputs, dtturbl=dtturbl,
+                    mfshconv=mfshconv, mf_state=mf_state,
+                    mf_outputs=mf_outputs, diagnostics=diagnostics,
+                    native_tile=native_tile)
+    outputs.update(du=outputs["rublten"], dv=outputs["rvblten"],
+                   dtheta=outputs["rthblten"], dqv=outputs["rqvblten"],
+                   dqc=outputs["rqcblten"])
+    return outputs
+
+
+def validate_qnse_pbl_outputs(outputs) -> str | None:
+    """Check QNSE outputs through the driver's deferred device ledger."""
+    from woof.core import health_ledger
+    for name in ("rublten", "rvblten", "rthblten", "rqvblten", "rqcblten",
+                 "exch_h", "exch_m", "el_myj", "pblh"):
+        if not health_ledger.check_finite(
+                outputs[name], site=f"qnse:{name}",
+                message=f"QNSE returned non-finite {name}"):
+            return name
+    return None

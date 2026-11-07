@@ -566,7 +566,7 @@ def test_advection_periodic_path_bitwise_regression():
     #
     # PER CARD since 2026-09-17 (tests/_card_pins.py).  The original
     # capture (2026-07-19, card unrecorded) against the same launchers on
-    # a development machine's RTX 4090 (compute capability 8.9, driver 610.57.04):
+    # test host 1's RTX 4090 (compute capability 8.9, driver 610.57.04):
     # tend_scalar differs in 446 of 1536 words, max 1.953e-03 on a field of
     # scale 1.5e+04 (max relative 4.4e-06, about one ULP), which is the
     # reading the 2026-09-03 recapture note (962c068da) took on an RTX 3080

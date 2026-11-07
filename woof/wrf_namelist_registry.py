@@ -59,3 +59,18 @@ def placement_note(section: str, key: str) -> str | None:
     where = " and ".join(f"&{group}" for group in groups)
     return (f"WRF {version} declares {key} in {where}, not in &{section}, "
             "and wrf.exe fails its own namelist read on it there")
+
+
+# WRF 4.6.1 Registry.EM_COMMON:1940-1946 and module_physics_init.F:1197.
+# Domain scalars use one-element device arrays in the restart field inventory.
+TMN_UPDATE_STATE = {
+    name: {"dimensions": dims, "dtype": dtype, "restart": True,
+           "source": "WRF-4.6.1/Registry/Registry.EM_COMMON:1940-1946"}
+    for name, dims, dtype in (
+        ("tmn", ("y", "x"), "float32"),
+        ("tlag", ("lagday", "y", "x"), "float32"),
+        ("tyr", ("y", "x"), "float32"),
+        ("tyra", ("y", "x"), "float32"),
+        ("tdly", ("y", "x"), "float32"),
+        ("nday", (), "float32"), ("nyear", (), "int32"))
+}

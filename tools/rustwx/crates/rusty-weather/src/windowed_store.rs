@@ -492,10 +492,14 @@ pub fn compute_windowed_products(
         }
     }
 
+    for accum in &mut accums {
+        restore_wind_carry(&run_dir, &manifest, &grid.hash, exact_axis, accum);
+    }
+
     // Which source planes each frame must serve, across live products.
     let mut slots_needed: BTreeMap<u16, BTreeSet<SourceKind>> = BTreeMap::new();
     for accum in &accums {
-        for &slot in &accum.slots {
+        for &slot in accum.slots.iter().filter(|s| !accum.carried_slots.contains(s)) {
             slots_needed
                 .entry(slot)
                 .or_default()
@@ -510,6 +514,7 @@ pub fn compute_windowed_products(
     for (&slot, kinds) in &slots_needed {
         let needs = |accum: &Accum, kind: SourceKind| {
             accum.failed.is_none() && accum.spec.source == kind && accum.slots.contains(&slot)
+                && !accum.carried_slots.contains(&slot)
         };
         if !accums
             .iter()
@@ -520,7 +525,7 @@ pub fn compute_windowed_products(
         let name = name_of(slot);
         let fail_all = |accums: &mut Vec<Accum>, reason: String| {
             for accum in accums.iter_mut() {
-                if accum.failed.is_none() && accum.slots.contains(&slot) {
+                if accum.failed.is_none() && accum.slots.contains(&slot) && !accum.carried_slots.contains(&slot) {
                     accum.failed = Some(reason.clone());
                 }
             }
@@ -634,6 +639,7 @@ pub fn compute_windowed_products(
 
     let mut grids = Vec::with_capacity(accums.len());
     for accum in accums {
+        save_wind_carry(&run_dir, &manifest, &grid.hash, exact_axis, &accum);
         let slug = accum.spec.product.slug().to_string();
         match accum.finish(exact_axis) {
             Ok(grid) => grids.push(grid),
@@ -1814,6 +1820,7 @@ struct Accum {
     exact_planes: usize,
     gaps: WindowGaps,
     footprint_swath: bool,
+    carried_slots: BTreeSet<u16>,
 }
 
 enum AccumState {
@@ -1835,6 +1842,92 @@ enum AccumState {
     DifferenceReady(Vec<f64>),
 }
 
+// The unconverted f64 accumulator is carried, including the provenance
+// used in the picture's strategy text. A source replacement invalidates
+// the prefix before any value can be reused. This cache is disposable.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct WindCarry {
+    schema: u32,
+    grid: String,
+    exact_axis: bool,
+    sources: Vec<(u16, String, u64, u128)>,
+    fallback_frames: Vec<String>,
+    interval_max_frames: Vec<String>,
+    interval_max_field: Option<String>,
+    exact_planes: usize,
+}
+fn carry_sources(dir: &Path, manifest: &RwsRunManifest, slots: &[u16])
+    -> Option<Vec<(u16, String, u64, u128)>> {
+    slots.iter().map(|slot| {
+        let entry = manifest.hours.get(slot)?;
+        let path = canonical_contained_path(dir, &dir.join(&entry.file), "carry source").ok()?;
+        let stat = std::fs::metadata(path).ok()?;
+        Some((*slot, entry.file.clone(), stat.len(), stat.modified().ok()?
+            .duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos()))
+    }).collect()
+}
+fn wind_carry_enabled(accum: &Accum) -> bool {
+    std::env::var("RUSTWX_INCREMENTAL_IMPORT").as_deref() == Ok("1")
+        && accum.spec.product == HrrrWindowedProduct::Wind10mRunMax
+        && !accum.footprint_swath && accum.failed.is_none()
+}
+fn read_wind_carry(dir: &Path) -> Option<(WindCarry, Vec<f64>)> {
+    let path = dir.join("wind-carry.bin");
+    let size = std::fs::metadata(&path).ok()?.len();
+    if size < 8 || size > 128 * 1024 * 1024 { return None; }
+    let bytes = std::fs::read(path).ok()?;
+    let header = u64::from_le_bytes(bytes[..8].try_into().ok()?) as usize;
+    if header > 1024 * 1024 || header > bytes.len() - 8 { return None; }
+    let meta = serde_json::from_slice(&bytes[8..8 + header]).ok()?;
+    let data = &bytes[8 + header..];
+    if data.len() % 8 != 0 { return None; }
+    Some((meta, data.chunks_exact(8).map(|v| f64::from_le_bytes(v.try_into().unwrap())).collect()))
+}
+fn restore_wind_carry(dir: &Path, manifest: &RwsRunManifest, grid: &str, exact_axis: bool, accum: &mut Accum) {
+    if !wind_carry_enabled(accum) { return; }
+    let Some((cache, values)) = read_wind_carry(dir) else { return };
+    let Some(sources) = carry_sources(dir, manifest, &accum.slots) else { return };
+    if cache.schema != 1 || cache.grid != grid || cache.exact_axis != exact_axis
+        || cache.sources.is_empty() || !sources.starts_with(&cache.sources)
+        || values.len() != manifest.nx * manifest.ny { return; }
+    let interval_max_field = match cache.interval_max_field.as_deref() {
+        None => None,
+        Some("WSPD10MAX") => Some("WSPD10MAX"),
+        _ => return,
+    };
+    accum.state = Some(AccumState::Max(values));
+    accum.fallback_frames = cache.fallback_frames;
+    accum.interval_max_frames = cache.interval_max_frames;
+    accum.interval_max_field = interval_max_field;
+    accum.exact_planes = cache.exact_planes;
+    accum.carried_slots = cache.sources.iter().map(|s| s.0).collect();
+    eprintln!("WINDOW_CARRY reused={} anchor={}", accum.carried_slots.len(), accum.slots.last().unwrap_or(&0));
+}
+fn save_wind_carry(dir: &Path, manifest: &RwsRunManifest, grid: &str, exact_axis: bool, accum: &Accum) {
+    if !wind_carry_enabled(accum) { return; }
+    let Some(AccumState::Max(values)) = &accum.state else { return };
+    let Some(sources) = carry_sources(dir, manifest, &accum.slots) else { return };
+    if let Some((old, _)) = read_wind_carry(dir) {
+        if old.schema == 1 && old.grid == grid && old.exact_axis == exact_axis
+            && old.sources.starts_with(&sources) { return; }
+    }
+    let cache = WindCarry { schema: 1, grid: grid.into(), exact_axis, sources,
+        fallback_frames: accum.fallback_frames.clone(), interval_max_frames: accum.interval_max_frames.clone(),
+        interval_max_field: accum.interval_max_field.map(String::from), exact_planes: accum.exact_planes };
+    let Ok(header) = serde_json::to_vec(&cache) else { return };
+    let mut bytes = Vec::with_capacity(8 + header.len() + values.len() * 8);
+    bytes.extend_from_slice(&(header.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&header);
+    for value in values { bytes.extend_from_slice(&value.to_le_bytes()); }
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temporary = dir.join(format!(".wind-carry-{}-{id}.tmp", std::process::id()));
+    if std::fs::write(&temporary, bytes).is_ok() {
+        let _ = std::fs::rename(&temporary, dir.join("wind-carry.bin"));
+    }
+    let _ = std::fs::remove_file(temporary);
+}
+
 impl Accum {
     fn new(spec: ProductSpec, slots: Vec<u16>) -> Self {
         Self {
@@ -1848,6 +1941,7 @@ impl Accum {
             exact_planes: 0,
             gaps: WindowGaps::default(),
             footprint_swath: false,
+            carried_slots: BTreeSet::new(),
         }
     }
 

@@ -1,0 +1,5 @@
+                 U __powisf2
+                 U expf
+                 U free
+                 U malloc
+                 U powf

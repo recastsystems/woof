@@ -55,13 +55,16 @@ def gpu_cuda_stack_identity(*, require_gpu: bool = True) -> dict[str, Any]:
         properties = cp.cuda.runtime.getDeviceProperties(0)
         runtime_version = int(cp.cuda.runtime.runtimeGetVersion())
     low, high = CUDA_RUNTIME_RANGE
-    if not low <= runtime_version < high:
+    is_hip = bool(getattr(cp.cuda.runtime, 'is_hip', False))
+    if not is_hip and not low <= runtime_version < high:
         raise RuntimeError(
             "native-WRF runtime requires a CUDA 12.x runtime, got "
             f"{runtime_version}")
     raw_name = properties.get("name", b"")
     if isinstance(raw_name, bytes):
         raw_name = raw_name.decode("utf-8", errors="replace")
+    if is_hip:
+        return _hip_stack_identity(cp, properties, raw_name, count, runtime_version, checksum)
     return {
         "required": True,
         "status": GPU_STATUS_PASS,
@@ -70,4 +73,15 @@ def gpu_cuda_stack_identity(*, require_gpu: bool = True) -> dict[str, Any]:
         "driver_version": int(cp.cuda.runtime.driverGetVersion()),
         "runtime_version": runtime_version,
         "test_checksum": checksum,
+    }
+
+
+def _hip_stack_identity(cp, properties, name, count, runtime_version, checksum):
+    arch = properties['gcnArchName']
+    return {
+        'required': True, 'status': GPU_STATUS_PASS, 'backend': 'hip',
+        'architecture': arch.decode() if isinstance(arch, bytes) else str(arch),
+        'device_count': count, 'device_0_name': str(name),
+        'driver_version': int(cp.cuda.runtime.driverGetVersion()),
+        'runtime_version': runtime_version, 'test_checksum': checksum,
     }

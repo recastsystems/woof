@@ -2334,7 +2334,13 @@ def _kernel(cache: KernelCache, name: str) -> Any:
     result = _KERNELS.get(key)
     if result is None:
         result = cache.raw_kernel(
-            name, _CUDA_SOURCE, module_key="hexcore.cuda_physics_prep_v841"
+            name, _CUDA_SOURCE, module_key="hexcore.cuda_physics_prep_v841",
+            # These kernels compare their derived fields word for word.
+            # Clang's -ffp-contract=fast can fuse across a source pragma and
+            # differently across producer/validator inlining contexts.
+            # Use the shared compiler boundary's preparation identity marker.
+            options=(("-DGPUWM_PREPARATION_IDENTITY=1", "--fmad=false")
+                     if __import__("woof.hip_backend", fromlist=["active"]).active() else ()) ,
         )
         _KERNELS[key] = result
     return result

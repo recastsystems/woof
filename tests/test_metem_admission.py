@@ -248,9 +248,11 @@ def test_explicit_package_is_not_replaced_by_announced_substitution(tmp_path):
     # mp_physics = 55 used to import as an announced Morrison substitution
     # that this gate then refused; the importer now refuses it by name
     # itself (woof.config._MP_UNPORTED_SCHEMES), before any door.
-    ishmael=INPUT_TEXT.replace('mp_physics = 10, 10','mp_physics = 55, 55')
-    with pytest.raises(ValueError,match='Jensen-ISHMAEL.*is not ported'):
-        import_namelists(*_pair(tmp_path,inp=ishmael),rrtmg_variant=None)
+    # ISHMAEL (55) is ported now; the old Eta Ferrier scheme (95) is the
+    # WRF package the importer still refuses by name.
+    unported=INPUT_TEXT.replace('mp_physics = 10, 10','mp_physics = 95, 95')
+    with pytest.raises(ValueError,match='mp_physics=95.*is not ported'):
+        import_namelists(*_pair(tmp_path,inp=unported),rrtmg_variant=None)
     # The gate still refuses a package replacement however it arises.
     from dataclasses import replace
     from woof.namelist_import import Substitution
@@ -269,21 +271,37 @@ def test_explicit_package_is_not_replaced_by_announced_substitution(tmp_path):
      "gpuwm_value": 8},
     {"key": "mp_physics"},
     {"gpuwm_key": "mp_physics"},
-    {"wrf_value": 2},
-    {"gpuwm_value": 2},
+    {"wrf_value": 3},
+    {"gpuwm_value": 3},
     {"reason": None},
     {"reason": ""},
 ])
-def test_a_reason_only_admits_the_declared_theta_m_change(changes):
+def test_a_reason_only_admits_a_declared_divergence(changes):
+    # use_theta_m 1 -> 0 left ADMITTED_DECLARED_DIVERGENCES when moist
+    # theta was implemented (bfc7f4d09db); the gate is exercised on a row
+    # that is still admitted, fine_input_stream 2 -> 0.
     from dataclasses import replace
     from woof.namelist_import import Substitution
     from woof.wrfinput_door import require_preserved_wrf_selectors
 
     declared = Substitution(
-        key="use_theta_m", wrf_value=1, wrf_name="moist theta",
-        gpuwm_key="use_theta_m", gpuwm_value=0, gpuwm_name="dry theta",
-        reason="The engine integrates dry theta.")
+        key="fine_input_stream", wrf_value=2, wrf_name="delayed nest start",
+        gpuwm_key="fine_input_stream", gpuwm_value=0,
+        gpuwm_name="own input", reason="The child starts from its own input.")
     require_preserved_wrf_selectors(SimpleNamespace(substitutions=(declared,)))
     with pytest.raises(ValueError, match="no native implementation"):
         require_preserved_wrf_selectors(SimpleNamespace(
             substitutions=(replace(declared, **changes),)))
+
+
+def test_moist_theta_is_no_longer_a_declared_divergence():
+    """use_theta_m=1 runs natively now, so replacing it is refused."""
+    from woof.namelist_import import Substitution
+    from woof.wrfinput_door import require_preserved_wrf_selectors
+
+    with pytest.raises(ValueError, match="no native implementation"):
+        require_preserved_wrf_selectors(SimpleNamespace(substitutions=(
+            Substitution(key="use_theta_m", wrf_value=1,
+                         wrf_name="moist theta", gpuwm_key="use_theta_m",
+                         gpuwm_value=0, gpuwm_name="dry theta",
+                         reason="The engine integrates dry theta."),)))

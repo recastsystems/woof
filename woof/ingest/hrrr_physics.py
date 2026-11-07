@@ -275,6 +275,7 @@ def initialize_prepared_physics(
         # improve-1: the prepared GFS/ERA5 route passed none, so a default-on
         # hydro forecast stopped with "needs the actual forecast ProjectedGrid").
         hydro_parent_geometry=grid,
+        irrigation=static.get("IRRIGATION"), irr_ph_field=static.get("IRR_PH_FIELD"),
         soil_temperature=fields["TSLB"],
         soil_moisture=fields["SMOIS"],
         liquid_moisture=fields["SH2O"],
@@ -319,6 +320,8 @@ def initialize_prepared_physics(
         near_surface["U10"][:, :-1] + near_surface["U10"][:, 1:])
     driver.fields["v10"][...] = 0.5 * (
         near_surface["V10"][:-1] + near_surface["V10"][1:])
+    from woof.core.myjsfc import seed_eta_family_10m_winds
+    seed_eta_family_10m_winds(driver.fields, cfg.sf_sfclay_physics)
     if getattr(cfg, "sf_surface_mosaic", 0) == 1:
         from woof.core.noah_mosaic_door import attach_noah_mosaic_to_driver
         attach_noah_mosaic_to_driver(
@@ -395,7 +398,8 @@ def _seed_initial_cldfra(driver, state, cfg, met=None) -> None:
         values = cal_cldfra1(
             species("qv"), species("qc"), species("qi"), species("qs"),
             grid(atmosphere["temperature"]), grid(atmosphere["pressure"]),
-            f_qc=True, f_qi=f_qi, f_qs=f_qs, mp_physics=mp_physics)
+            f_qc=True, f_qi=f_qi, f_qs=f_qs, mp_physics=mp_physics,
+            f_ice_phy=species("f_ice_phy") if mp_physics == 95 else None)
     values = cp.asarray(values, dtype=cp.float32)
     fields = getattr(met, "fields", None) or {}
     covers = [fields.get(name) for name in ("LCDC", "MCDC", "HCDC")]

@@ -14,6 +14,7 @@ inline uint4 make_uint4(unsigned int x, unsigned int y, unsigned int z, unsigned
     return {x, y, z, w};
 }
 struct { unsigned int x; } blockDim, blockIdx, threadIdx;
+inline unsigned int atomicAdd(unsigned int *a, unsigned int v) { unsigned int o=*a; *a+=v; return o; }
 #include "../../../woof/hex/stochastic.cu"
 
 constexpr int cells=4, edges=6, levels=3;
@@ -46,7 +47,8 @@ int main() {
         }
         launch(cells*levels,[&] {
             force_cells(t,qv.data(),rho.data(),taper,pattern,unused,unused,
-                        -10,2,6,1,4,1,cells,levels,1,0,has_qv,logit,.8f,0);
+                        -10,2,6,1,4,1,cells,levels,1,0,has_qv,logit,.8f,0,
+                        0,nullptr,nullptr,nullptr,0,0,0,0,0.f,nullptr);
         });
         launch(edges*levels,[&] {
             force_edges(momentum.data(),rho.data(),taper,unused,pattern,unused,
@@ -56,10 +58,10 @@ int main() {
         for (int k=0; k<levels; ++k) {
             double factors[cells];
             for (int c=0; c<cells; ++c) {
-                // Independent logistic expression rather than tanhf.
-                double perturbation=logit ? 2/(1+exp(double(pattern[c])*taper[k*4+c]))-1
-                    : std::clamp(double(pattern[c]),-.8,.8)*taper[k*4+c];
-                if (logit) perturbation=std::clamp(perturbation,-.8,.8);
+                // Independent soft-bound expression c*tanh(r/c) from exponentials.
+                const double r=pattern[c], e=exp(2*r/.8);
+                double perturbation=(logit ? .8*(e-1)/(e+1)
+                    : std::clamp(r,-.8,.8))*taper[k*4+c];
                 factors[c]=1+perturbation;
                 max_sppt_error=std::max(max_sppt_error,fabs(t[-10*k+2*c]/2-factors[c]));
                 if (!(t[-10*k+2*c]>=.4f-1e-6f && t[-10*k+2*c]<=3.6f+1e-6f)) return 2;
@@ -168,7 +170,8 @@ int main() {
     for (int i=0; i<12; ++i) { uniform_taper[i]=.6f; density[i]=.8f+.1f*i; }
     launch(cells*levels,[&] {
         force_cells(theta,qv,density,uniform_taper,pattern,thermal,diss,
-                    cells,1,cells,1,cells,1,cells,levels,0,1,0,0,1,.007f);
+                    cells,1,cells,1,cells,1,cells,levels,0,1,0,0,1,.007f,
+                    0,nullptr,nullptr,nullptr,0,0,0,0,0.f,nullptr);
     });
     for (int k=0; k<levels; ++k) {
         double mean=0, variance=0, expected=0;

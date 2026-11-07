@@ -7,7 +7,7 @@ everything the freeze can already carry, name exactly what it is still waiting
 for, and record the rulings of 2026-08-04 so the freeze is a transcription
 rather than a decision.
 
-Written 2026-08-04 against `171d294c` (`lane/obs-b5-shakedown`).
+Written 2026-08-04 against `171d294c` (`development branch`).
 
 ---
 

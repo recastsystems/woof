@@ -1,0 +1,34 @@
+{
+  "artifacts": [
+    {
+      "path": "<scratch>/port-cu11-mskf/native/main/wrf.exe",
+      "bytes": 37513160,
+      "sha256": "3b696121fc755f1091784088b8349d998a5551affe03be3f0e07a3a35cabbf92"
+    },
+    {
+      "path": "<scratch>/port-cu11-mskf/native/phys/module_cu_mskf.F",
+      "bytes": 307560,
+      "sha256": "9d7be9912f23c2344c6ba051af417da5a9d10c4f43f57cb366f19fafcb7ffe33"
+    },
+    {
+      "path": "<scratch>/port-cu11-mskf/native/configure.wrf",
+      "bytes": 21205,
+      "sha256": "f69ab9fa246bd8bf579ddcf13da0b2064ac5568879a2ad79334a652a4ed132ac"
+    }
+  ],
+  "flags": [
+    "SFC             =       gfortran",
+    "DM_FC           =       <scratch>/port-cu11-mskf/mpi-fc",
+    "FCOPTIM = -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize"
+  ],
+  "compiler": "GNU Fortran (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+  "build_command": "OMP_NUM_THREADS=1 ./compile -j 2 em_real",
+  "build_log": "<scratch>/port-cu11-mskf/evidence/native-capture-safe-build.log",
+  "native_run_command": [
+    "mpirun",
+    "--oversubscribe",
+    "-np",
+    "3",
+    "<scratch>/port-cu11-mskf/native/main/wrf.exe"
+  ]
+}

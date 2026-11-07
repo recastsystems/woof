@@ -180,7 +180,7 @@ def _write_single_frame(path: Path, state, cfg, valid_time: datetime) -> None:
 
 
 def _parent_config(*, duration_seconds: float,
-                   boundary_interval_seconds: float):
+                   boundary_interval_seconds: float, mp_physics: int = 10):
     from woof.verify.cases import wk82
 
     return validate_run_config(replace(
@@ -189,7 +189,7 @@ def _parent_config(*, duration_seconds: float,
         ztop=12000.0, dt=3.0, clock_dt=3.0,
         run_seconds=duration_seconds,
         output_interval_s=boundary_interval_seconds,
-        moist=True, mp_physics=10,
+        moist=True, mp_physics=mp_physics,
         morr_rimed_ice=1, hybrid_opt=2, etac=0.2,
         hypsometric_opt=2, km_opt=1, khdif=0.0, kvdif=0.0,
         diff_6th_opt=0, diff_6th_slopeopt=0,
@@ -197,7 +197,7 @@ def _parent_config(*, duration_seconds: float,
         emdiv=0.0, specified=False, nested=False, terrain_opt=0,
         map_proj=0, sf_sfclay_physics=0, sf_surface_physics=0,
         bl_pbl_physics=0, ra_physics=0, cu_physics=0,
-        time_step_sound=4, case="offline_child_parent_mp10", grid_id=3))
+        time_step_sound=4, case=f"offline_child_parent_mp{mp_physics}", grid_id=3))
 
 
 def _child_config(parent_cfg, *, duration_seconds: float,
@@ -209,14 +209,15 @@ def _child_config(parent_cfg, *, duration_seconds: float,
         output_interval_s=output_interval_seconds,
         specified=True, nested=False,
         terrain_opt=1, map_proj=1, grid_id=4,
-        case="offline_child_standalone_mp10"))
+        case=f"offline_child_standalone_mp{parent_cfg.mp_physics}"))
 
 
 def run(outdir: str | Path, *, duration_seconds: float = 9.0,
         boundary_interval_seconds: float = 3.0,
         output_interval_seconds: float | None = None,
         health_interval_seconds: float = 60.0,
-        streaming_lbc: bool = False) -> dict[str, object]:
+        streaming_lbc: bool = False, mp_physics: int = 10,
+        cloud_bump_kgkg: float = 0.0) -> dict[str, object]:
     import cupy as cp
     from woof.core.dycore import stability_report, step
     from woof.core.grid import make_base_state, make_vertical_coord
@@ -245,7 +246,9 @@ def run(outdir: str | Path, *, duration_seconds: float = 9.0,
         raise ValueError("output and health intervals must be positive")
     parent_cfg = _parent_config(
         duration_seconds=duration_seconds,
-        boundary_interval_seconds=boundary_interval_seconds)
+        boundary_interval_seconds=boundary_interval_seconds, mp_physics=mp_physics)
+    if mp_physics == 40:
+        parent_cfg = replace(parent_cfg, hailcast_opt=0)
     child_cfg = _child_config(
         parent_cfg, duration_seconds=duration_seconds,
         output_interval_seconds=output_interval_seconds)
@@ -282,6 +285,13 @@ def run(outdir: str | Path, *, duration_seconds: float = 9.0,
         coord, lambda z: wk82.wk82_sounding(z)[0],
         p_surf=parent_cfg.p_surf, ztop=parent_cfg.ztop)
     parent = wk82.build(parent_cfg, coord, base)
+    if cloud_bump_kgkg:
+        if not 0.0 < cloud_bump_kgkg <= 1.0e-3:
+            raise ValueError("cloud_bump_kgkg must be in (0, 0.001]")
+        # Transfer vapour to cloud water in the lower cloud layer. This
+        # makes number-carrier inheritance observable in the archive.
+        parent.qc[3:parent_cfg.nz // 2] += cp.float32(cloud_bump_kgkg)
+        parent.qv[3:parent_cfg.nz // 2] -= cp.float32(cloud_bump_kgkg)
     initialize_physics(parent, parent_cfg)
     parent_memory_initial = _memory_snapshot(cp)
     parent_pool_reserved_peak = parent_memory_initial["pool_reserved_bytes"]
@@ -425,7 +435,9 @@ def run(outdir: str | Path, *, duration_seconds: float = 9.0,
     free_final, _ = cp.cuda.runtime.memGetInfo()
     report = {
         "result": "PASS" if not child_health["nan"] else "FAIL",
-        "pipeline": "gpuwm-mp10-parent-history-to-standalone-mp10-child",
+        "pipeline": f"gpuwm-mp{mp_physics}-parent-history-to-standalone-mp{mp_physics}-child",
+        "mp_physics": mp_physics,
+        "cloud_bump_kgkg": cloud_bump_kgkg,
         "online_parent_present_during_child": False,
         "parent_frames": [str(path) for path in parent_paths],
         "parent_frame_bytes": [path.stat().st_size for path in parent_paths],
@@ -462,10 +474,10 @@ def run(outdir: str | Path, *, duration_seconds: float = 9.0,
         "total_vram_bytes": int(total_memory),
         "wall_seconds": time.perf_counter() - started,
     }
-    # Nothing, today, and that is the correct output rather than an
-    # oversight: this smoke pins mp_physics=10 for both the parent and the
-    # child, and Morrison has no water-friendly/ice-friendly aerosol number
-    # fields, so there is no aerosol source to report and no key is added.
+    # No aerosol dataset is read by either admitted fixed-droplet arm.
+    # MP10 has no aerosol number carriers. MP40 leaves its activation
+    # carriers inactive at aercu_opt=0, so neither arm has an aerosol
+    # source to report.
     # It is called anyway -- rather than the decision being frozen into a
     # comment -- so that the day this smoke moves to an aerosol-aware
     # scheme its report gains the same block every other route's does,
@@ -490,6 +502,8 @@ def run(outdir: str | Path, *, duration_seconds: float = 9.0,
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m woof.offline_child_smoke")
     parser.add_argument("--outdir", type=Path, required=True)
+    parser.add_argument("--mp-physics", type=int, choices=(10, 40), default=10)
+    parser.add_argument("--cloud-bump-kgkg", type=float, default=0.0)
     parser.add_argument("--duration-seconds", type=float, default=9.0)
     parser.add_argument("--boundary-interval-seconds", type=float,
                         default=3.0)
@@ -502,7 +516,8 @@ def main(argv=None) -> int:
         boundary_interval_seconds=args.boundary_interval_seconds,
         output_interval_seconds=args.output_interval_seconds,
         health_interval_seconds=args.health_interval_seconds,
-        streaming_lbc=args.streaming_lbc)
+        streaming_lbc=args.streaming_lbc, mp_physics=args.mp_physics,
+        cloud_bump_kgkg=args.cloud_bump_kgkg)
     return 0 if report["result"] == "PASS" else 1
 
 

@@ -2,6 +2,7 @@
 import copy
 import json
 import math
+from fractions import Fraction
 from types import SimpleNamespace
 
 import pytest
@@ -68,6 +69,59 @@ def test_clock_carries_time_and_water_and_publishes_tail(dt, accumulated):
     fresh.validate_checkpoint(saved, {})
     fresh.restore_metadata(saved)
     assert fresh.checkpoint_metadata() == saved
+
+
+class CountedStage:
+    arrays, restart_identity = {}, {}
+    def __init__(self, callback):
+        self.advance = callback
+
+
+def counted_clock(steps, duration):
+    """A routing clock with counting stages over parent steps of exact 1/300 s ticks, summed as the driver sums them."""
+    frames, routing = [], []
+    components = {name: CountedStage(callback) for name, callback in
+                  [('exchange', lambda span, **kw: None), ('runoff', lambda span, **kw: None),
+                   ('routing', lambda span, **kw: routing.append(span)),
+                   ('history', lambda span, **kw: frames.append(kw))]}
+    driver = clock_driver(13.5, True, duration, components)
+    driver.allow_variable_interval()
+    elapsed = 0.
+    for ticks in steps:
+        dt = float(Fraction(ticks, 300))
+        elapsed += dt
+        driver.before_lsm()
+        driver.advance(dt)
+    return driver, frames, routing, elapsed
+
+
+# The two ways 48 h of adaptive steps miss 172,800 s in floating point, from real forecasts' repeating 180 s cycles.
+@pytest.mark.parametrize('cycle,past_the_end', [([4044] * 13 + [1428], True), ([3708] * 14 + [2088], False)])
+def test_clock_roundoff_opens_no_routing_step_past_the_forecast_end(cycle, past_the_end):
+    # Breakage: every 48 h run that summed past the end took a 577th routing step for 1.8e-8 s, and its final capture
+    # fell outside the 48-frame history: "history buffer exhausted", no hydro output at all.
+    duration = 172800.
+    driver, frames, routing, elapsed = counted_clock(cycle * 960, duration)
+    assert (elapsed > duration) is past_the_end and abs(elapsed - duration) > 16 * math.ulp(duration)
+    assert len(routing) == len(frames) == 576 == driver._clock_routed
+    assert [f['final'] for f in frames] == [False] * 575 + [True]
+    assert frames[-1]['time_seconds'] == duration  # the writer refuses a final time past its frame (series.rs)
+    assert driver._clock_finalized
+    # provider.composition's hourly history: 576 routing steps hold 48 frames, and every capture lands inside them.
+    cadence, capacity = 12, (576 + 12 - 1) // 12
+    assert capacity == 48 and all((tick + cadence - 1) // cadence - 1 < capacity for tick in range(1, len(frames) + 1))
+    driver.finish_clock()  # publication after a finished forecast adds nothing
+    assert len(frames) == 576
+
+
+def test_a_stop_on_a_routing_boundary_recaptures_it_whatever_the_roundoff():
+    # A forecast stopped on an hour boundary whose sum landed just past it: no extra routing step, no time past the frame.
+    driver, frames, routing, elapsed = counted_clock(([4044] * 13 + [1428]) * 20, 172800.)
+    assert elapsed != 3600. and abs(elapsed - 3600.) < 1e-6
+    assert len(routing) == 12
+    driver.finish_clock()
+    assert len(routing) == 12 and driver._clock_routed == 12
+    assert frames[-1]['final'] and frames[-1]['recapture'] and frames[-1]['time_seconds'] == 3600.
 
 
 @pytest.mark.parametrize('key,value', [('interval_seconds', 0), ('duration_seconds', -1),

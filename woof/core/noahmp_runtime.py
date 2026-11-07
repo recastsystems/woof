@@ -78,6 +78,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -203,21 +204,23 @@ SLAB_GRID_TRANSIENT_BYTES_PER_COLUMN = 512
 SLAB_LAYOUT_CACHE_BYTES_PER_COLUMN = 50
 
 
-def slab_cache_bytes_per_column() -> int:
+def slab_cache_bytes_per_column(*, opt_alb=2, opt_rsf=1) -> int:
     """Device bytes the slab caches hold between calls, per nx*ny column.
 
     The layout cache above plus the parameter slabs
     ``NoahmpRuntimeParameters.slab_parameter_chunks`` keeps for every
     ordinary land column (4 bytes for each field of
-    ``noahmp_column_slab.PARAMETER_WIDTHS`` and ``PARAMETER_INTS``: 472 B),
+    ``noahmp_column_slab.PARAMETER_WIDTHS`` and ``PARAMETER_INTS``: 472 B
+    for CLASS/RSF1, plus 28 B for BATS and 4 B for snow resistance),
     every column priced as land.  Unlike the per-call transients above they
     stay allocated for the domain's life, so ``woof/core/preflight.py``
     prices them as resident physics.
     """
-    from woof.core.noahmp_column_slab import PARAMETER_INTS, PARAMETER_WIDTHS
+    from woof.core.noahmp_column_slab import PARAMETER_INTS, slab_parameter_widths
 
+    widths = slab_parameter_widths(opt_alb=opt_alb, opt_rsf=opt_rsf)
     return (SLAB_LAYOUT_CACHE_BYTES_PER_COLUMN
-            + 4 * (sum(PARAMETER_WIDTHS.values()) + len(PARAMETER_INTS)))
+            + 4 * (sum(widths.values()) + len(PARAMETER_INTS)))
 
 
 def _resolve_leaf_evaluator():
@@ -632,10 +635,30 @@ NOAHMP_STATE_2D = (
     "qsnowxy", "qrainxy", "wslakexy", "waxy", "xsaixy", "taussxy",
 )
 
+NOAHMP_GROUNDWATER_2D=("zwtxy","wtxy")
+
+def state_fields_2d(opt_run=3,dveg=4,opt_tdrn=0,opt_irr=0,opt_crop=0):
+    """Exact active native state inventory; the option-off tuple is unchanged."""
+    from woof.core.noahmp_carbon_slab import CARBON_STATE_2D,dynamic
+    from woof.core.noahmp_tile_drain import FIELDS
+    from woof.core.noahmp_irrigation_slab import STATE,STATIC
+    from woof.core.noahmp_crop_slab import STATE as CROP_STATE,STATIC as CROP_STATIC
+    from woof.core.noahmp_gecros_slab import STATE as GECROS_STATE
+    from woof.core.noahmp_groundwater_slab import CARRIERS as GROUNDWATER_STATE
+    return tuple(dict.fromkeys(NOAHMP_STATE_2D+(NOAHMP_GROUNDWATER_2D if int(opt_run) in (1,2) else GROUNDWATER_STATE if int(opt_run)==5 else ())+ (CARBON_STATE_2D if dynamic(dveg) or opt_crop else ())+(FIELDS if int(opt_tdrn)>0 else ())+((*STATE,*STATIC) if int(opt_irr)>0 else ())+((*CROP_STATE,*CROP_STATIC) if opt_crop else ())+(GECROS_STATE if opt_crop==2 else ())))
+
+def diagnostic_fields_2d(dveg=4,opt_crop=0):
+    from woof.core.noahmp_carbon_slab import CARBON_DIAGNOSTICS_2D,dynamic
+    return NOAHMP_DIAGNOSTICS_2D+(CARBON_DIAGNOSTICS_2D if dynamic(dveg) or opt_crop else ())
+
 #: Carried integer per-column state.  ``pgsxy`` is Registry INOUT and is
 #: pass-through under ``opt_crop=0``; it is carried because the column solver
 #: takes it and refuses a nonzero crop stage.
 NOAHMP_STATE_INT_2D = ("isnowxy", "pgsxy")
+
+def state_int_fields_2d(opt_irr=0,opt_crop=0):
+    from woof.core.noahmp_irrigation_slab import COUNTERS
+    return NOAHMP_STATE_INT_2D+(COUNTERS if int(opt_irr)>0 else ())+( ("cropcat",) if opt_crop else ())
 
 #: Carried snow-stack state, ``(NSNOW, ny, nx)``, WRF's ``-NSNOW+1:0``.
 NOAHMP_STATE_SNOW_3D = ("tsnoxy", "snicexy", "snliqxy")
@@ -738,15 +761,6 @@ NOAHMP_RUNTIME_RESTRICTIONS: tuple[tuple[str, str, str], ...] = (
         "fills the same Registry field with a mixing ratio.  That "
         "inconsistency is WRF's, it is fully defined, and woof reproduces "
         "it rather than inserting a conversion WRF does not have.",
-    ),
-    (
-        "accumulator_reset",
-        "the ten ACC_* carriers are zero on entry to every call",
-        "soiltstep=0 makes soil_update_steps=1, and :649-660 zeroes all ten "
-        "before the column loop, so no cross-step accumulator exists to "
-        "carry.  woof therefore does not allocate them.  Admitting "
-        "soiltstep>0 means allocating them AND carrying them through "
-        "restart.",
     ),
 )
 
@@ -862,9 +876,55 @@ class NoahmpRuntimeParameters:
     def __init__(self, bundle=None, *,
                  dataset_identifier: str = DEFAULT_VEGETATION_DATASET,
                  xice_threshold: float = XICE_THRESHOLD,
-                 glacier_path: bool = True):
+                 glacier_path: bool = True,
+                 opt_gla: int = 1, opt_alb: int = 2, opt_stc: int = 1, opt_rsf: int = 1,
+                 opt_btr: int = 1, opt_snf: int = 1, dveg: int = 4,
+                 opt_inf: int = 1, opt_run: int = 3, opt_rad: int = 3, opt_frz: int = 1, opt_tbot: int = 2, opt_crs: int = 1, opt_sfc: int = 1, opt_soil: int = 1, opt_infdv: int = 0, opt_tdrn: int = 0, opt_irr: int = 0, opt_irrm: int = 0, opt_crop: int = 0, wtddt: float = 30.0, soiltstep: float = 0.0, noahmp_output: int = 1, noahmp_acc_dt: float = 0.0,
+                 tanh_profile: str = "glibc_2_39", atan_profile: str = "glibc_2_39",
+                 log10_profile: str = "glibc_2_39", snicar_options=None):
         # Keyword-only with no **kwargs: a misspelled keyword refuses with
         # its name (house convention), never lands as an ignored attribute.
+        from woof.core.noahmp_column_slab import _selected_options
+
+        _selected_options(opt_alb, opt_stc, opt_rsf, opt_btr, opt_snf, dveg, opt_inf, opt_run, opt_rad, opt_frz, opt_tbot, opt_crs, opt_sfc, opt_soil, opt_infdv,opt_tdrn,opt_irr,opt_irrm)
+        if opt_run==8 and opt_infdv==0:
+            raise ValueError("RUN8 requires opt_infdv=1,2,3: native FSUR is unassigned at zero")
+        if log10_profile not in ("glibc_2_39","glibc_2_43"):
+            raise ValueError("unknown Noah-MP native LOG10 profile")
+        from woof.core.noahmp_kernel_sources import validate_vege_atan_profile
+        validate_vege_atan_profile(atan_profile)
+        if tanh_profile not in ("glibc_2_39", "glibc_2_43"):
+            raise ValueError("unknown Noah-MP tanh profile")
+        from woof.core.noahmp_soil_cadence import validate
+        validate(soiltstep)
+        from woof.core.noahmp_output import validate as output_validate
+        output_validate(noahmp_acc_dt)
+        from woof.core.noahmp_groundwater_slab import validate as groundwater_validate
+        groundwater_validate(wtddt)
+        self._land_options = MappingProxyType(dict(
+            **(dict(wtddt=wtddt) if opt_run==5 else {}),
+            **(dict(noahmp_output=noahmp_output,noahmp_acc_dt=noahmp_acc_dt) if noahmp_output!=1 or noahmp_acc_dt!=0.0 else {}),
+            **({"soiltstep":soiltstep} if soiltstep>0 else {}),
+            **(dict(opt_crop=opt_crop) if opt_crop else {}),
+            **(dict(opt_gla=opt_gla) if opt_gla != 1 else {}),
+            opt_alb=opt_alb, opt_stc=opt_stc, opt_rsf=opt_rsf, opt_btr=opt_btr,
+            **({"opt_snf": opt_snf} if opt_snf != 1 else {}),
+            **({"dveg": dveg} if dveg != 4 else {}),
+            **({"opt_inf": opt_inf} if opt_inf != 1 else {}),
+            **({"opt_run": opt_run} if opt_run != 3 else {}),
+            **({"opt_tdrn":opt_tdrn} if opt_tdrn else {}),
+            **(dict(opt_irr=opt_irr,opt_irrm=opt_irrm) if opt_irr or opt_irrm else {}),
+            **({"opt_infdv":opt_infdv} if opt_infdv else {}),
+            **({"opt_rad": opt_rad} if opt_rad != 3 else {}),
+            **({"opt_frz": opt_frz} if opt_frz != 1 else {}),
+            **({"snicar_options": dict(snicar_options)} if opt_alb == 3 and snicar_options else {}),
+            **({"opt_tbot": opt_tbot} if opt_tbot != 2 else {}),
+            **({"opt_crs": opt_crs} if opt_crs != 1 else {}),
+            **({"opt_sfc": opt_sfc} if opt_sfc != 1 else {}),
+            **({"opt_soil": opt_soil} if opt_soil != 1 else {}),
+            **({"log10_profile": log10_profile} if log10_profile != "glibc_2_39" else {}),
+            **({"tanh_profile": tanh_profile} if tanh_profile != "glibc_2_39" else {}),
+            **({"atan_profile": atan_profile} if atan_profile != "glibc_2_39" else {})))
         threshold = float(xice_threshold)
         if not np.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
             raise ValueError(
@@ -895,6 +955,16 @@ class NoahmpRuntimeParameters:
         )
         self._transfer_cache: dict[tuple, object] = {}
         self._handle_cache: dict[tuple, SflxParameters] = {}
+
+    @property
+    def land_options(self):
+        """Immutable land-slab selectors, not full forecast admission.
+
+        Selected runtime branches still require native replay. The staged
+        column and glacier driver paths retain their original identity and
+        refuse these selectors rather than silently substituting defaults.
+        """
+        return self._land_options
 
     # -- TRANSFER_MP_PARAMETERS, memoised on its own argument tuple ---------
     def transferred(self, *, vegtyp: int, soiltyp: tuple[int, ...],
@@ -950,6 +1020,33 @@ class NoahmpRuntimeParameters:
             row = parameter_row(self.handle(
                 vegtyp=key[0], soiltyp=key[1], slopetype=key[2],
                 soilcolor=key[3], nsoil=key[4]))
+            if self.land_options.get("opt_run", 3) in (1, 2, 5, 6, 7, 8):
+                transferred = self.transferred(vegtyp=key[0], soiltyp=key[1],
+                    slopetype=key[2], soilcolor=key[3])
+                names = (("FSATMX","TIMEAN") if self.land_options["opt_run"] in (1,2) else ("FSATMX",) if self.land_options["opt_run"]==5 else ("BVIC",) if self.land_options["opt_run"] == 6 else ("BBVIC","BDVIC","GDVIC") if self.land_options["opt_run"] == 8 else ("AXAJ", "BXAJ", "XXAJ"))
+                row.update({name.lower(): np.float32(transferred.scalar(name)) for name in names})
+            if self.land_options.get("opt_tdrn",0):
+                from woof.core.noahmp_tile_drain import PARAMETERS
+                transferred=self.transferred(vegtyp=key[0],soiltyp=key[1],slopetype=key[2],soilcolor=key[3])
+                row.update({name:np.float32(transferred.scalar(name.upper())) for name in PARAMETERS})
+            if self.land_options.get("opt_rad", 3) == 1:
+                transferred = self.transferred(vegtyp=key[0], soiltyp=key[1],
+                    slopetype=key[2], soilcolor=key[3])
+                row["rc"] = np.float32(transferred.scalar("RC"))
+            if self.land_options.get("opt_crs",1)==2:
+                transferred=self.transferred(vegtyp=key[0],soiltyp=key[1],slopetype=key[2],soilcolor=key[3])
+                row.update({name:np.float32(transferred.scalar(name)) for name in ("RGL","RSMIN","RSMAX","TOPT","HS")})
+            if self.land_options.get("opt_sfc",1)==2:
+                transferred=self.transferred(vegtyp=key[0],soiltyp=key[1],slopetype=key[2],soilcolor=key[3])
+                row["CZIL"]=np.float32(transferred.scalar("CZIL"))
+            if self.land_options.get("dveg",4) in (2,5,6) or self.land_options.get("opt_crop",0):
+                from woof.core.noahmp_carbon_slab import CARBON_PARAMETERS
+                transferred=self.transferred(vegtyp=key[0],soiltyp=key[1],slopetype=key[2],soilcolor=key[3])
+                row.update({name:np.float32(transferred.scalar(name.upper())) for name in CARBON_PARAMETERS})
+            if self.land_options.get("opt_irr",0):
+                from woof.core.noahmp_irrigation_slab import PARAMETERS
+                irrigation=self.bundle.mptable["noahmp_irrigation_parameters"]
+                row.update({name:np.float32(irrigation.scalar(name.upper())) for name in PARAMETERS})
             cache[key] = row
         return row
 
@@ -978,6 +1075,18 @@ class NoahmpRuntimeParameters:
             previous = cached[1]
             sizes = tuple(array.size for array in current)
             changed = _surface_identity_changed(cp, current, previous, sizes)
+            if getattr(self, "static_surface_identity", False):
+                from woof.core.health_ledger import read_status
+                status = changed.astype(cp.uint32).reshape(1)
+
+                def fail(flags):
+                    raise RuntimeError(
+                        "Noah-MP static surface identity changed after binding; "
+                        "rebuild the domain physics for the changed footprint")
+                if read_status(status, site="noahmp_static_surface_identity",
+                               describe=fail):
+                    fail(1)
+                return cached[2]
             if not bool(cp.asnumpy(changed)):
                 return cached[2]
         # Old coordinates and masks are discarded before constructing replacements.
@@ -1011,7 +1120,85 @@ class NoahmpRuntimeParameters:
         self._surface_layout_cache = (key, copies, layout)
         return layout
 
-    def slab_parameter_chunks(self, keys, inverse, *, nsoil, chunk_width):
+    def uses_device_surface_layout(self) -> bool:
+        """The selection _lsm_step_slab makes: the device-resident layout
+        (noahmp_surface_device) for output level 3, the soil cadence or any
+        non-default land option; otherwise the host-classified layout."""
+        options = dict(self.land_options)
+        output_level = options.pop("noahmp_output", 1)
+        options.pop("noahmp_acc_dt", 0.0)
+        options.pop("wtddt", 30.0)
+        soil_interval = options.pop("soiltstep", 0.0)
+        return (output_level == 3 or soil_interval > 0 or dict(options)
+                != dict(opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1))
+
+    def prepare_surface_footprint(self, token, fields, *, nsoil,
+                                  sf_urban_physics=0):
+        """Classify a tile once during setup, retaining pinned 2-D metadata.
+
+        Full soil/column state and expanded parameter slabs remain bounded by
+        the number of GPU buffers. A buffer binding uploads immutable sparse
+        indices and table selections; it never reads classification to host.
+        The device-resident layout needs no footprint and is left alone.
+        """
+        if self.uses_device_surface_layout():
+            return False
+        import cupy as cp
+        from woof.core.noahmp_column_slab import parameter_fields
+
+        self.__dict__.pop("_surface_layout_cache", None)
+        layout = self.surface_layout(fields, nsoil=nsoil,
+                                     chunk_width=SLAB_COLUMN_CHUNK,
+                                     sf_urban_physics=sf_urban_physics)
+        key, copies, _ = self._surface_layout_cache
+
+        def pinned(array):
+            host = np.ndarray(array.shape, dtype=array.dtype,
+                              buffer=cp.cuda.alloc_pinned_memory(array.nbytes))
+            array.get(out=host)
+            return host
+
+        saved = {name: pinned(value) if isinstance(value, cp.ndarray) else value
+                 for name, value in layout.items()}
+        saved_copies = tuple(pinned(value) for value in copies)
+        keys = layout["keys"]
+        table_key = (int(nsoil), tuple(int(k) for k in keys))
+        tables = self.__dict__.setdefault("_footprint_parameter_tables", {})
+        if table_key not in tables:
+            rows = [self.slab_row(vegtyp=int(k // 1000),
+                                  soiltyp=(int(k % 1000),) * nsoil,
+                                  slopetype=1, soilcolor=4, nsoil=nsoil)
+                    for k in keys]
+            tables[table_key] = (parameter_fields(rows, np.arange(len(rows)))
+                                 if rows else {})
+        # Inverse is immutable input for a GPU table gather in each slab.
+        inverse = cp.asarray(layout["inverse"], dtype=cp.int64)
+        saved["device_inverse_host"] = pinned(inverse)
+        footprints = self.__dict__.setdefault("_surface_footprints", {})
+        footprints[token] = (key, saved_copies, saved, tables[table_key])
+        self.__dict__.pop("_surface_layout_cache", None)
+        self.__dict__.pop("_slab_parameter_cache", None)
+        self.__dict__.pop("_bound_surface_footprint", None)
+        return True
+
+    def bind_surface_footprint(self, token):
+        """Upload prepared metadata on the tile gather stream, without D2H."""
+        import cupy as cp
+
+        if self.__dict__.get("_bound_surface_footprint") == token:
+            return
+        key, copies, saved, table = self._surface_footprints[token]
+        layout = {name: cp.asarray(value) if isinstance(value, np.ndarray)
+                  and name not in ("keys", "inverse") else value
+                  for name, value in saved.items()}
+        layout["parameter_table"] = table
+        layout["device_inverse"] = layout.pop("device_inverse_host")
+        self._surface_layout_cache = (key, tuple(cp.asarray(v) for v in copies),
+                                      layout)
+        self._bound_surface_footprint = token
+
+    def slab_parameter_chunks(self, keys, inverse, *, nsoil, chunk_width,
+                              opt_alb=2, opt_rsf=1):
         """Reuse read-only parameter slabs for the current ordered identities.
 
         Surface identity inputs are byte-checked every step. Their complete
@@ -1020,9 +1207,24 @@ class NoahmpRuntimeParameters:
         the same lifetime and read-only contract as the memoised handles.
         """
         import cupy as cp
-        from woof.core.noahmp_column_slab import parameter_fields
+        from woof.core.noahmp_column_slab import (parameter_fields,
+                                                   slab_parameter_widths)
+
+        # Validate before cache lookup, and include selectors even when the
+        # land identities themselves have not changed. ALB1/RSF4 add genuine
+        # parameter carriers that a CLASS/RSF1 cache cannot supply.
+        opt_rad = self.land_options.get("opt_rad", 3)
+        opt_run = self.land_options.get("opt_run", 3)
+        opt_crs = self.land_options.get("opt_crs", 1)
+        opt_sfc = self.land_options.get("opt_sfc", 1)
+        dveg = self.land_options.get("dveg", 4)
+        opt_tdrn=self.land_options.get("opt_tdrn",0)
+        opt_irr=self.land_options.get("opt_irr",0)
+        opt_crop=self.land_options.get("opt_crop",0)
+        slab_parameter_widths(opt_alb=opt_alb, opt_rsf=opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr,opt_crop=opt_crop)
 
         signature = (cp.cuda.runtime.getDevice(), int(nsoil), int(chunk_width),
+                     opt_alb, opt_rsf, opt_run, opt_rad, opt_crs, opt_sfc, dveg,opt_tdrn,opt_irr,opt_crop,
                      keys.dtype.str, keys.tobytes(), inverse.dtype.str,
                      inverse.tobytes())
         cached = self.__dict__.get("_slab_parameter_cache")
@@ -1035,7 +1237,8 @@ class NoahmpRuntimeParameters:
                               soiltyp=(int(key % 1000),) * nsoil,
                               slopetype=1, soilcolor=4, nsoil=nsoil)
                 for key in keys]
-        chunks = [parameter_fields(rows, inverse[start:start + chunk_width])
+        chunks = [parameter_fields(rows, inverse[start:start + chunk_width],
+                                   opt_alb=opt_alb, opt_rsf=opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr,opt_crop=opt_crop)
                   for start in range(0, len(inverse), chunk_width)]
         self._slab_parameter_cache = (signature, chunks)
         return chunks
@@ -1109,7 +1312,7 @@ class NoahmpRuntimeParameters:
                     }
         if not payload:
             raise ValueError("Noah-MP restart identity requires parameter table seals")
-        return {
+        identity = {
             "algorithm": "noahmp-lsm-wrf-v4.6.1-v1",
             "wrf_source": "phys/module_sf_noahmpdrv.F:noahmplsm + "
                           "phys/module_sf_noahmplsm.F:NOAHMP_SFLX",
@@ -1129,6 +1332,14 @@ class NoahmpRuntimeParameters:
             },
             "tables": payload,
         }
+        # Preserve the established default restart identity byte for byte.
+        # Selected trajectories must never resume under a different branch.
+        if dict(self.land_options) != dict(opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1):
+            identity["land_options"] = dict(self.land_options)
+        if self.land_options.get("opt_alb") == 3:
+            from woof.core.snow_papers import identity as snow_identity
+            identity["snow_papers"] = snow_identity()
+        return identity
 
 
 class NoahmpSolarGeometry:
@@ -1299,7 +1510,7 @@ def _column_sla(params, identity, vegtyp: int) -> float:
 
 
 def noahmp_cold_start(fields, *, params: NoahmpRuntimeParameters,
-                      dzs, sf_urban_physics: int = 0) -> None:
+                      dzs, sf_urban_physics: int = 0, latitude=None) -> None:
     """``NOAHMP_INIT`` + ``SNOW_INIT`` over the whole slab.
 
     Runs once, at driver construction, exactly where WRF runs it
@@ -1324,7 +1535,7 @@ def noahmp_cold_start(fields, *, params: NoahmpRuntimeParameters,
     import cupy as cp
 
     slab = {name: np.ascontiguousarray(cp.asnumpy(fields[name]))
-            for name in _COLD_START_SLAB}
+            for name in dict.fromkeys((*_COLD_START_SLAB,*state_fields_2d(params.land_options.get("opt_run",3),params.land_options.get("dveg",4),params.land_options.get("opt_tdrn",0),params.land_options.get("opt_irr",0),params.land_options.get("opt_crop",0))))}
     nsoil = slab["tslb"].shape[0]
     if nsoil != NSOIL:
         raise ValueError(
@@ -1341,6 +1552,18 @@ def noahmp_cold_start(fields, *, params: NoahmpRuntimeParameters,
     for name, array in slab.items():
         fields[name][...] = cp.asarray(array)
 
+    if params.land_options.get("opt_crop",0)==2:
+        if latitude is None:raise ValueError("GECROS cold start requires actual latitude")
+        from woof.core.noahmp_gecros_slab import initialize
+        initialize(fields,params,latitude)
+    elif params.land_options.get("opt_crop",0)==1:
+        from woof.core.noahmp_crop_slab import initialize
+        initialize(fields,params)
+
+    if params.land_options.get("opt_run",3)==5:
+        from woof.core.noahmp_groundwater_slab import initialize
+        initialize(fields,params,dzs,params.land_options["wtddt"])
+
     # NOAHMP_INIT also seeds the two 2-m temperature diagnostics
     # (module_sf_noahmpdrv.F:2129-2132) with exactly the expression it uses
     # for TVXY and TGXY: TSK, or 273.15 over snow when TSK is warmer.  On a
@@ -1356,7 +1579,7 @@ def noahmp_cold_start(fields, *, params: NoahmpRuntimeParameters,
 
 
 def cold_start_on_device(slab, *, params: NoahmpRuntimeParameters,
-                         dzs, sf_urban_physics: int = 0) -> None:
+                         dzs, sf_urban_physics: int = 0, latitude=None) -> None:
     """``NOAHMP_INIT`` + ``SNOW_INIT`` for the whole slab, on the GPU.
 
     One thread per column through ``noahmp_driver_noahmp_init``, whose
@@ -1503,6 +1726,13 @@ def cold_start_on_device(slab, *, params: NoahmpRuntimeParameters,
                           ("waxy", "wa"), ("xsaixy", "xsai"),
                           ("t2mvxy", "t2mv"), ("t2mbxy", "t2mb")):
             slab[name].reshape(ncol)[span] = y[:, NI_OUT[out]]
+        if params.land_options.get("opt_run",3) in (1,2) or params.land_options.get("opt_tdrn",0):
+            for name,out in (("zwtxy","zwt"),("wtxy","wt")):
+                if name in slab:slab[name].reshape(ncol)[span]=y[:,NI_OUT[out]]
+        if params.land_options.get("dveg",4) in (2,5,6) or params.land_options.get("opt_crop",0):
+            from woof.core.noahmp_carbon_slab import CARBON_POOLS
+            for name in CARBON_POOLS:
+                slab[name+"xy"].reshape(ncol)[span]=y[:,NI_OUT[name]]
         # ISNOWXY is the integer carrier; the kernel returns it as a float
         # over -3..0, which every integer dtype in the tree holds exactly.
         slab["isnowxy"].reshape(ncol)[span] = y[:, NI_OUT["isnow"]]
@@ -1519,7 +1749,7 @@ def cold_start_on_device(slab, *, params: NoahmpRuntimeParameters,
 
 
 def cold_start_on_host(slab, *, params: NoahmpRuntimeParameters,
-                       dzs, sf_urban_physics: int = 0) -> None:
+                       dzs, sf_urban_physics: int = 0, latitude=None) -> None:
     """The same cold start, column by column, on the unmodified CPython port.
 
     This is the paired scalar authority: the routine
@@ -1592,6 +1822,12 @@ def cold_start_on_host(slab, *, params: NoahmpRuntimeParameters,
             slab["qrainxy"][j, i] = cold.qrain
             slab["wslakexy"][j, i] = cold.wslake
             slab["waxy"][j, i] = cold.wa
+            if params.land_options.get("opt_run",3) in (1,2) or params.land_options.get("opt_tdrn",0):
+                slab["zwtxy"][j,i]=cold.zwt
+                if "wtxy" in slab:slab["wtxy"][j,i]=cold.wt
+            if params.land_options.get("dveg",4) in (2,5,6) or params.land_options.get("opt_crop",0):
+                from woof.core.noahmp_carbon_slab import CARBON_POOLS
+                for name in CARBON_POOLS:slab[name+"xy"][j,i]=getattr(cold,name)
             slab["xsaixy"][j, i] = cold.xsai
             # TAUSSXY and PGSXY are not NOAHMP_INIT arguments; their WRF
             # Registry cold state is 0, which initialize_physics already set.
@@ -1643,24 +1879,25 @@ def noahmp_lsm_step(
     snow_age_generation(noahmp_snow_age)
     if int(itimestep) < 1:
         raise ValueError("noahmplsm itimestep is one-based and starts at 1")
-    if int(dveg) != SFLX_DVEG:
-        # The column solver transcribes only the DVEG == 4 arm of
-        # module_sf_noahmplsm.F:857-870, so a different dveg would silently
-        # take the FVEG = SHDMAX branch under another option's name.
+    if int(dveg) not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
+        raise ValueError(f"dveg={dveg}: vegetation requires 1,2,3,4,5,6,7,8,9")
+    if int(dveg) != int(params.land_options.get("dveg",4)):
+        raise ValueError("Noah-MP DVEG differs from its sealed runtime parameters")
+    if int(opt_soil) not in (1,2,3,4):
+        raise ValueError(f"opt_soil={opt_soil}: no active native soil-property contract")
+    if int(opt_soil) != int(params.land_options.get("opt_soil",1)):
+        raise ValueError("Noah-MP OPT_SOIL differs from sealed runtime parameters")
+    if int(opt_crop) not in (0,1,2):
+        raise ValueError("opt_crop must be 0, 1 or 2")
+    if int(opt_irr)!=int(params.land_options.get("opt_irr",0)):
+        raise ValueError("Noah-MP OPT_IRR differs from sealed runtime parameters")
+    if int(opt_tdrn)!=int(params.land_options.get("opt_tdrn",0)):
+        raise ValueError("Noah-MP OPT_TDRN differs from sealed runtime parameters")
+    if int(opt_run) not in (1, 2, 3, 4, 5, 6, 7, 8):
         raise ValueError(
-            f"dveg={dveg}: woof transcribes the dveg={SFLX_DVEG} arm only")
-    if int(opt_soil) != 1:
-        raise ValueError(
-            f"opt_soil={opt_soil}: only the uniform-column soil-type branch "
-            "(module_sf_noahmpdrv.F:737-746, iopt_soil=1) is ported")
-    if int(opt_crop) != 0 or int(opt_irr) != 0 or int(opt_tdrn) != 0:
-        raise ValueError(
-            "opt_crop/opt_irr/opt_tdrn must be 0; their branches are proved "
-            "dead under the admitted identity, not transcribed")
-    if int(opt_run) == 5:
-        raise ValueError(
-            "opt_run=5 needs GROUNDWATER/SHALLOWWATERTABLE, which is not "
-            "ported")
+            f"opt_run={opt_run} needs its unported soil/groundwater consumer")
+    if int(opt_run) != int(params.land_options.get("opt_run", 3)):
+        raise ValueError("Noah-MP OPT_RUN differs from sealed runtime parameters")
 
     # ---- the whole-slab orchestration, unless a caller opted out ----------
     # This is the forecast path.  The per-column staging below remains the
@@ -1669,7 +1906,13 @@ def noahmp_lsm_step(
     # WOOF_NOAHMP_STAGED_COLUMNS=1 asks for it by name, and the six-step
     # digest gate in tests/test_noahmp_runtime.py is what says the two paths
     # are the same function.
-    if _slab_path_selected():
+    slab_path = _slab_path_selected()
+    if (not slab_path and dict(params.land_options)
+            != dict(opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1)):
+        raise ValueError(
+            "selected Noah-MP land options require the resident slab; "
+            "the staged column path only implements ALB2/STC1/RSF1/BTR1")
+    if slab_path:
         census = _lsm_step_slab(
             fields, atmosphere, params=params, geometry=geometry,
             precipitation=precipitation, coszen=coszen,
@@ -1995,13 +2238,17 @@ def _noahmp_post_lsm_diagnostics(fields, *,
         | ((vegtyp == int(identity.isice))
            & (xice >= f32(params.xice_threshold)))
     )
-    urban_categories = cp.asarray(
-        np.asarray((identity.isurban, *identity.lcz), dtype=np.int32))
+    if dict(params.land_options) != dict(opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1):
+        urban = vegtyp == identity.isurban
+        for category in identity.lcz:
+            urban |= vegtyp == category
+    else:
+        urban_categories = cp.asarray(
+            np.asarray((identity.isurban, *identity.lcz), dtype=np.int32))
+        urban = cp.isin(vegtyp, urban_categories)
     urban_or_partial_ice = (
-        cp.isin(vegtyp, urban_categories)
-        | ((vegtyp == int(identity.isice))
-           & (xice < f32(params.xice_threshold)))
-    )
+        urban | ((vegtyp == int(identity.isice))
+                 & (xice < f32(params.xice_threshold))))
 
     rho = fields["psfc"] / (f32(287.0) * fields["tsk"])
     q_guard = fields["cqs2"] < f32(1.0e-5)
@@ -2090,6 +2337,30 @@ def _lsm_step_slab(
     if nsoil != NSOIL:
         raise ValueError(f"Noah-MP is four-layer only, got nsoil={nsoil}")
 
+    # Classify before the first field write. In particular, a selected land
+    # branch must not partly advance a mixed domain and then run its glacier
+    # cells through the old host-marshalled/default-option driver.
+    options = dict(params.land_options)
+    output_level=options.pop("noahmp_output",1)
+    options.pop("noahmp_acc_dt",0.0)
+    options.pop("wtddt",30.0)
+    soil_interval=options.pop("soiltstep",0.0)
+    cadence_on=soil_interval>0
+    if cadence_on:
+        from woof.core.noahmp_soil_cadence import ACCUMULATORS,cadence
+        steps,calculate,reset=cadence(soil_interval,dt,itimestep)
+        if reset:
+            for name in ACCUMULATORS.values():fields[name].fill(0)
+        options.update(soil_update_steps=steps,calculate_soil=calculate,carry_soil_accumulators=True)
+    device_surface = output_level==3 or dict(options) != dict(opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1)
+    if device_surface:
+        from woof.core.noahmp_surface_device import layout as device_layout
+        layout = device_layout(params, fields, nsoil=nsoil,
+                               sf_urban_physics=int(sf_urban_physics))
+    else:
+        layout = params.surface_layout(fields, nsoil=nsoil,
+                                       chunk_width=SLAB_COLUMN_CHUNK,
+                                       sf_urban_physics=int(sf_urban_physics))
     one = np.float32(1.0)
     half = np.float32(0.5)
     zero32f = np.float32(0.0)
@@ -2141,9 +2412,6 @@ def _lsm_step_slab(
         fields["smois"][...] = cp.where(seaice1[None], one, fields["smois"])
 
     # ---- :715-725, the two CYCLE ILOOP skips -------------------------------
-    layout = params.surface_layout(fields, nsoil=nsoil,
-                                   chunk_width=SLAB_COLUMN_CHUNK,
-                                   sf_urban_physics=int(sf_urban_physics))
     sea_ice = layout["sea_ice"]
     fields["sh2o"][...] = cp.where(sea_ice[None], one, fields["sh2o"])
     fields["lai"][...] = cp.where(sea_ice, np.float32(0.01), fields["lai"])
@@ -2167,9 +2435,12 @@ def _lsm_step_slab(
         # sf_urban_physics) with FVGMAX = 0.96.  At sf_urban_physics = 0 the
         # layout maps urban and LCZ categories to ISURBAN_TABLE and FVGMAX is
         # the field's, exactly as before the urban models.
-        urban_categories = cp.asarray(
-            np.asarray((identity.isurban, *identity.lcz), dtype=np.int64))
-        urban = cp.isin(fields["ivgtyp"].astype(cp.int64), urban_categories)
+        if device_surface:
+            urban = layout["urban"]
+        else:
+            urban_categories = cp.asarray(
+                np.asarray((identity.isurban, *identity.lcz), dtype=np.int64))
+            urban = cp.isin(fields["ivgtyp"].astype(cp.int64), urban_categories)
         fvgmax = cp.where(urban, np.float32(0.96),
                           fvgmax).astype(cp.float32)
 
@@ -2186,7 +2457,16 @@ def _lsm_step_slab(
     # column sets are disjoint, so the order between them cannot matter.
     glacier = layout["glacier"]
     n_glacier = census["glacier"]
-    if n_glacier:
+    if device_surface:
+        from woof.core.noahmp_glacier_slab import run_glacier_slab
+        run_glacier_slab(fields, atmosphere, glacier, coszen=cosz,
+                         zsoil=zsoil_row, dt=float(dt32f),
+                         opt_alb=options["opt_alb"], opt_gla=options.get("opt_gla",1),
+                         opt_stc=options["opt_stc"], opt_tbot=options.get("opt_tbot", 2),
+                         snicar_options=options.get("snicar_options"),
+                         noahmp_snow_age=noahmp_snow_age)
+        census["glacier_path"] = "noahmp-glacier/resident-cuda"
+    elif n_glacier:
         if not params.glacier_path:
             gj, gi = (int(w[0]) for w in np.nonzero(cp.asnumpy(glacier)))
             raise NoahmpGlacierColumnError(
@@ -2207,9 +2487,12 @@ def _lsm_step_slab(
     n_land = int(land_j.size)
     if n_land == 0:
         return census
-    parameter_chunks = params.slab_parameter_chunks(
-        layout["keys"], layout["inverse"], nsoil=nsoil,
-        chunk_width=SLAB_COLUMN_CHUNK)
+    parameter_table = None if device_surface else layout.get("parameter_table")
+    if not device_surface and parameter_table is None:
+        parameter_chunks = params.slab_parameter_chunks(
+            layout["keys"], layout["inverse"], nsoil=nsoil,
+            chunk_width=SLAB_COLUMN_CHUNK,
+            opt_alb=options["opt_alb"], opt_rsf=options["opt_rsf"])
 
     gather_2d = {
         "canliq": "canliqxy", "canice": "canicexy", "sneqv": "snow",
@@ -2219,6 +2502,17 @@ def _lsm_step_slab(
         "ch": "chxy", "tauss": "taussxy", "qsfc": "qsfc", "tbot": "tmn",
         "soldn": "swdown", "wslake": "wslakexy",
     }
+    if options.get("opt_run",3) in (1,2):
+        gather_2d.update(zwt="zwtxy",wt="wtxy")
+    if options.get("opt_run",3)==5:
+        gather_2d.update(zwt="zwtxy",smcwtd="smcwtdxy",deeprech="deeprechxy",rech="rechxy")
+    if options.get("opt_tdrn",0):gather_2d.update(zwt="zwtxy",tdfracmp="td_fraction")
+    if options.get("opt_irr",0):
+        from woof.core.noahmp_irrigation_slab import GATHER
+        gather_2d.update(GATHER)
+        if options["opt_irr"]==2:gather_2d.update(pltday="planting",hsday="harvest")
+    if cadence_on:
+        gather_2d.update({formal:name for formal,name in ACCUMULATORS.items() if formal!="acc_etrani"})
     gather_local = {
         "lat": latitude, "shdmax": fvgmax, "uu": u, "vv": v,
         "zlvl": z_ml, "co2air": co2air, "o2air": o2air, "dz8w": dz1,
@@ -2231,11 +2525,37 @@ def _lsm_step_slab(
         "prcphail": precip_rates["prcphail"],
         "cosz": cosz,
     }
-    gather_3d = {
+    if options.get("dveg",4) in (1, 6, 7):
+        if "vegfra" not in fields: raise ValueError("dveg=1/7 requires VEGFRA")
+        gather_local["shdfac"] = fields["vegfra"] / np.float32(100.)
+    if options.get("dveg",4) in (2, 5, 6, 7, 8, 9):
+        gather_2d["lai"] = "lai"
+    if options.get("dveg",4) in (2,5,6) or options.get("opt_crop",0):
+        from woof.core.noahmp_carbon_slab import CARBON_POOLS
+        gather_2d.update({name:name+"xy" for name in CARBON_POOLS})
+        gather_2d["sai"]="xsaixy"
+    if options.get("opt_crop",0):
+        gather_2d.update(lai="lai",sai="xsaixy",croptype="cropcat",pgs="pgsxy",grain="grainxy",gdd="gddxy",planting="planting",harvest="harvest",season_gdd="season_gdd",t2m="t2")
+    if options.get("opt_crop",0)==2:
+        from woof.core.noahmp_gecros_slab import STATE
+        gather_2d.update({name:name for name in STATE})
+    gather_3d = {}
+    if options.get("opt_run",3)==5:gather_3d["smceq"]=fields["smoiseq"]
+    if cadence_on:gather_3d["acc_etrani"]=fields["acc_etrani"]
+    if options.get("opt_soil",1)==3:
+        gather_3d["soilcomp"]=fields["soilcomp"]
+    if options.get("opt_soil",1)==4:
+        from woof.core.noahmp_soil_options import DIRECT_SOIL_INPUTS
+        gather_3d.update({name.lower():fields[name.lower()] for name in DIRECT_SOIL_INPUTS})
+    gather_3d.update({
         "smc": fields["smois"], "sh2o": fields["sh2o"],
         "zsnso": fields["zsnsoxy"], "snice": fields["snicexy"],
         "snliq": fields["snliqxy"], "ficeold": ficeold,
-    }
+    })
+
+    if options["opt_alb"] == 3:
+        from woof.core.snow_papers import STATE_FIELD
+        gather_3d["snicar_state"] = fields[STATE_FIELD]
 
     for start in range(0, n_land, SLAB_COLUMN_CHUNK):
         stop = min(start + SLAB_COLUMN_CHUNK, n_land)
@@ -2250,15 +2570,24 @@ def _lsm_step_slab(
         sources.update({"_snow_temperature": fields["tsnoxy"],
                         "_soil_temperature": fields["tslb"],
                         "isnow": fields["isnowxy"], "vegtyp": vegtyp})
-        chunk = gather_slab_fields(jc, ic, sources, (ny, nx))
+        gj = layout["gather_j"][start:stop] if device_surface else jc
+        gi = layout["gather_i"][start:stop] if device_surface else ic
+        chunk = gather_slab_fields(gj, gi, sources, (ny, nx))
         chunk["stc"] = cp.concatenate((chunk.pop("_snow_temperature"),
                                        chunk.pop("_soil_temperature")), axis=1)
         chunk["zsoil"] = cp.broadcast_to(zsoil_row[None, :], (m, nsoil))
         chunk["isnow"] = chunk["isnow"].astype(cp.int32)
 
         zeros = cp.zeros(m, dtype=cp.float32)
+        if options.get("opt_irr",0):
+            from woof.core.noahmp_irrigation_slab import cropland
+            chunk["croplu"]=cropland(chunk["vegtyp"],params.dataset_identifier).astype(cp.int32)
+            for name in ("pltday","hsday"):
+                # Native dates are integer parameters, supplied by WPS only
+                # in the crop-season trigger. Other triggers never read them.
+                chunk[name]=chunk[name].astype(cp.int32).astype(cp.float32) if name in chunk else zeros
+        if not cadence_on:chunk["acc_ssoil"]=zeros
         chunk.update({
-            "acc_ssoil": zeros,
             "julian": cp.full(m, julian32, dtype=cp.float32),
             "dt": cp.full(m, dt32f, dtype=cp.float32),
             "dx": cp.full(m, dx32f, dtype=cp.float32),
@@ -2267,17 +2596,40 @@ def _lsm_step_slab(
             "yearlen": cp.full(m, yearlen, dtype=cp.int32),
             "ist": cp.ones(m, dtype=cp.int32),
             "ice": cp.zeros(m, dtype=cp.int32),
-            "croptype": cp.zeros(m, dtype=cp.int32),
+            "croptype": chunk["croptype"].astype(cp.int32) if options.get("opt_crop",0) else cp.zeros(m, dtype=cp.int32),
         })
-        chunk.update(parameter_chunks[start // SLAB_COLUMN_CHUNK])
-
-        out = evaluate_sflx_slab(chunk, m, noahmp_snow_age=noahmp_snow_age)
-        _write_back_slab(fields, jc, ic, out, nsoil=nsoil, dt=dt32f)
+        if device_surface:
+            from woof.core.noahmp_slab_libm import take_slab_rows
+            from woof.core.noahmp_surface_device import active_columns
+            pool = layout["pool"]
+            chunk.update(take_slab_rows(layout["row"][start:stop], pool,
+                                       next(iter(pool.values())).shape[0]))
+            from woof.core.noahmp_soil_options import select_soil_parameters
+            select_soil_parameters(params,fields,layout,chunk,start,stop)
+            if options.get("opt_crop",0):
+                from woof.core.noahmp_crop_slab import apply_parameters
+                apply_parameters(params,chunk)
+            mask = layout["active"][start:stop]
+            with active_columns(mask):
+                out = evaluate_sflx_slab(
+                    chunk, m, noahmp_snow_age=noahmp_snow_age, **options)
+            _write_back_slab(fields, jc, ic, out, nsoil=nsoil, dt=dt32f,
+                             active=mask)
+        else:
+            if parameter_table is None:
+                chunk.update(parameter_chunks[start // SLAB_COLUMN_CHUNK])
+            else:
+                from woof.core.noahmp_slab_libm import take_slab_rows
+                chunk.update(take_slab_rows(layout["device_inverse"][start:stop],
+                                            parameter_table, len(layout["keys"])))
+            out = evaluate_sflx_slab(
+                chunk, m, noahmp_snow_age=noahmp_snow_age, **options)
+            _write_back_slab(fields, jc, ic, out, nsoil=nsoil, dt=dt32f)
 
     return census
 
 
-def _write_back_slab(fields, j, i, r, *, nsoil, dt) -> None:
+def _write_back_slab(fields, j, i, r, *, nsoil, dt, active=None) -> None:
     """``module_sf_noahmpdrv.F:1223-1400`` on the device, for one slab chunk.
 
     The identical statements as :func:`_write_back_batch` -- same operator
@@ -2298,9 +2650,34 @@ def _write_back_slab(fields, j, i, r, *, nsoil, dt) -> None:
     one = np.float32(1.0)
 
     scatter_slab_fields(j, i, [(fields[carrier], r[name])
-                               for carrier, name in _WRITE_BACK_DIRECT])
+                               for carrier, name in _WRITE_BACK_DIRECT], active=active)
+    if "acsagv" in fields:
+        scatter_slab_fields(j,i,[(fields[key],r[name]) for key,name in (('sagxy', 'sag'), ('irgxy', 'irg'), ('shgxy', 'shg'), ('evgxy', 'evg'), ('ghvxy', 'ghv'), ('pahgxy', 'pahg'), ('irbxy', 'irb'), ('shbxy', 'shb'), ('evbxy', 'evb'), ('ghbxy', 'ghb'), ('pahbxy', 'pahb'), ('savxy', 'sav'), ('ircxy', 'irc'), ('shcxy', 'shc'), ('evcxy', 'evc'), ('trxy', 'tr'), ('pahvxy', 'pahv'), ('qintsxy', 'qints'), ('qintrxy', 'qintr'), ('qdripsxy', 'qdrips'), ('qdriprxy', 'qdripr'), ('qthrosxy', 'qthros'), ('qthrorxy', 'qthror'), ('qsnsubxy', 'qsnsub'), ('qsnfroxy', 'qsnfro'), ('qsubcxy', 'qsubc'), ('qfrocxy', 'qfroc'), ('qevacxy', 'qevac'), ('qdewcxy', 'qdewc'), ('qfrzcxy', 'qfrzc'), ('qmeltcxy', 'qmeltc'), ('rainlsm', 'rainin'), ('snowlsm', 'snowin'))],active=active)
+    if "zwt" in r:
+        scatter_slab_fields(j, i, [(fields[carrier], r[name]) for carrier, name in
+            (("zwtxy", "zwt"), ("waxy", "wa"), ("wtxy", "wt"),("smcwtdxy","smcwtd"),("deeprechxy","deeprech"),("rechxy","rech")) if carrier in fields and name in r], active=active)
+    if "acc_ssoil" in r:
+        from woof.core.noahmp_soil_cadence import ACCUMULATORS
+        scatter_slab_fields(j,i,[(fields[name],r[formal]) for formal,name in ACCUMULATORS.items()],active=active)
+    if "lfmass" in r:
+        from woof.core.noahmp_carbon_slab import CARBON_POOLS
+        scatter_slab_fields(j,i,[(fields[name+"xy"],r[name]) for name in (*CARBON_POOLS,"nee","gpp","npp")],active=active)
+    if "qtdrain" in fields and "qtldrn" in r:
+        scatter_slab_fields(j,i,[(fields["qtdrain"],fields["qtdrain"][j,i]+r["qtldrn"])],active=active)
+    if "eirr" in r:
+        from woof.core.noahmp_irrigation_slab import GATHER
+        scatter_slab_fields(j,i,[(fields[carrier],r[name]) for name,carrier in GATHER.items() if name.startswith(("ircnt","iramt"))],active=active)
+        scatter_slab_fields(j,i,[(fields[carrier],fields[carrier][j,i]+r[name]*np.float32(1000.)) for carrier,name in (("irsivol","irsirate"),("irmivol","irmirate"),("irfivol","irfirate"))]+[(fields[carrier],fields[carrier][j,i]+r[name]*dt) for carrier,name in (("ireloss","eirr"),("irrsplh","firr"))],active=active)
+    if "gecros01xy" in r:
+        from woof.core.noahmp_gecros_slab import STATE
+        scatter_slab_fields(j,i,[(fields[name],r[name])for name in STATE],active=active)
+    if "grain" in r:
+        scatter_slab_fields(j,i,[(fields[carrier],r[name])for carrier,name in (("grainxy","grain"),("gddxy","gdd"),("pgsxy","pgs"))],active=active)
+    if "snicar_state" in r:
+        from woof.core.snow_papers import STATE_FIELD
+        scatter_slab_fields(j, i, [(fields[STATE_FIELD], r["snicar_state"])], active=active)
     if "soldrain" in fields:
-        scatter_slab_fields(j, i, [(fields["soldrain"], r["soldrain"])])
+        scatter_slab_fields(j, i, [(fields["soldrain"], r["soldrain"])], active=active)
 
     # ---- the column itself -------------------------------------------------
     scatter_slab_fields(j, i, [
@@ -2310,13 +2687,20 @@ def _write_back_slab(fields, j, i, r, *, nsoil, dt) -> None:
         (fields["zsnsoxy"], r["zsnso"]), (fields["snicexy"], r["snice"]),
         (fields["snliqxy"], r["snliq"]), (fields["snow"], r["sneqv"]),
         (fields["snowh"], r["snowh"]), (fields["isnowxy"], r["isnow"]),
-    ])
+    ], active=active)
 
-    if write_slab_arithmetic(fields, j, i, r, nsoil=nsoil, dt=dt):
+    if write_slab_arithmetic(fields, j, i, r, nsoil=nsoil, dt=dt, active=active):
+        if "eirr" in r:
+            scatter_slab_fields(j,i,[(fields["qfx"],fields["qfx"][j,i]+r["eirr"]),(fields["lh"],fields["lh"][j,i]+r["firr"])],active=active)
         return
 
+    if active is not None:
+        raise TypeError("resident selected Noah-MP requires contiguous float32 carriers")
     fields["qfx"][at] = (r["ecan"] + r["edir"]) + r["etran"]           # :1206
     fields["lh"][at] = (r["fcev"] + r["fgev"]) + r["fctr"]             # :1207
+    if "eirr" in r:
+        fields["qfx"][at]+=r["eirr"]
+        fields["lh"][at]+=r["firr"]
     fields["smstav"][at] = zero                                        # :1227
     fields["smstot"][at] = zero
     fields["sfcrunoff"][at] = fields["sfcrunoff"][at] + r["runsrf"]

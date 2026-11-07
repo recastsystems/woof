@@ -5,6 +5,8 @@ Python assembles CUDA, allocates workspaces, and launches the original MPAS call
 Numerical parity and forecast acceptance are recorded separately in lane receipts.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 CUDA_OPTIONS = ("--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true", "--std=c++17")
@@ -336,7 +338,7 @@ def compile_cuda(*, shared_math_source: str, compiled=None):
     import cupy as cp
     from cupy.cuda import compiler
     source = cuda_source(shared_math_source=shared_math_source)
-    arch = cp.cuda.Device().compute_capability
+    arch = _compilation_target(xp=cp)
     if compiled is None:
         from woof.hex.cuda_backend.aot import raw_image
         binary = raw_image(source, _hex_numerics.options(CUDA_OPTIONS), arch, filename="nssl.cu")

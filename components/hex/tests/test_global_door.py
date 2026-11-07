@@ -59,12 +59,12 @@ def test_a_foreign_status_document_is_refused(tmp_path):
 # ---------------------------------------------------------------------------
 # the table
 # ---------------------------------------------------------------------------
-def test_the_shipped_table_has_the_four_resolutions_and_the_morrison_arm():
+def test_the_shipped_table_has_the_five_resolutions_and_the_morrison_arm():
     table = global_door.load_table()
     rows = {row["id"]: row for row in table["rows"]}
-    for km, mesh in ((120, "x1.40962"), (60, "x1.163842"), (30, "x1.655362"), (15, "x1.2621442")):
+    for km, mesh in ((120, "x1.40962"), (60, "x1.163842"), (30, "x1.655362"), (15, "x1.2621442"), (10, "x1.5898242")):
         assert rows[f"global-{km}km"]["mesh"] == mesh
-        # MPAS physics is the hex default (owner ruling 2026-10-25): the four default rows take the mpas arm.
+        # MPAS physics is the hex default (owner ruling 2026-10-25): the default rows take the mpas arm.
         assert rows[f"global-{km}km"]["physics"] == "mpas"
         assert rows[f"global-{km}km-morrison"]["physics"] == "morrison"
     assert table["physics"]["mpas"] == {**table["physics"]["mpas"], "route": "mpas", "overrides": {}}
@@ -229,6 +229,23 @@ def _mesh_plan(tmp_path, table):
     return global_door.plan(args)
 
 
+def test_parallel_mesh_unpack_checks_gzip_crc_before_publishing(tmp_path):
+    table = _local_table(tmp_path, b"grid words" * 100)
+    archive = tmp_path / "x1.42.tar.gz"
+    damaged = bytearray(archive.read_bytes())
+    damaged[-8] ^= 1  # bad gzip CRC, but valid compressed tar bytes
+    archive.write_bytes(damaged)
+    doc = json.loads(table.read_text())
+    doc["meshes"]["x1.42"]["archive_sha256"] = hashlib.sha256(damaged).hexdigest()
+    table.write_text(json.dumps(doc))
+    value = _mesh_plan(tmp_path, table)
+    status = run_status.StatusWriter(tmp_path / "run", "global", stages=("mesh",))
+    with pytest.raises(global_door.GlobalDoorError):
+        global_door.stage_mesh(value, status)
+    assert not Path(value["paths"]["grid"]).exists()
+    assert not list(Path(value["paths"]["grid"]).parent.glob("*.unpack.*"))
+
+
 def test_the_mesh_stage_fetches_verifies_and_then_skips_out_loud(tmp_path):
     table = _local_table(tmp_path, b"not really a grid")
     value = _mesh_plan(tmp_path, table)
@@ -267,11 +284,15 @@ def test_a_cut_off_download_is_resumed_not_refused_as_a_wrong_archive(tmp_path, 
     table = _local_table(tmp_path, grid_bytes)
     body = (tmp_path / "x1.42.tar.gz").read_bytes()
     ranges = []
+    probes = []
 
     class Cut(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             first = int((self.headers.get("Range") or "bytes=0-")[6:].split("-")[0])
-            ranges.append(first)
+            if self.headers.get("Range") == "bytes=0-0":
+                probes.append(first)
+            else:
+                ranges.append(first)
             self.send_response(206 if first else 200)
             if first:
                 self.send_header("Content-Range", f"bytes {first}-{len(body) - 1}/{len(body)}")
@@ -295,7 +316,8 @@ def test_a_cut_off_download_is_resumed_not_refused_as_a_wrong_archive(tmp_path, 
     finally:
         server.shutdown()
     assert Path(result["grid"]).read_bytes() == grid_bytes
-    assert len(ranges) > 1 and ranges == sorted(ranges) and ranges[1] == 4000
+    assert probes == [0]
+    assert ranges == list(range(0, len(body), 4000))
 
 
 def test_a_grid_that_is_not_the_pinned_one_is_removed_and_refused(tmp_path):
@@ -446,7 +468,7 @@ def _dt_args(forecast):
     return [forecast[i + 1] for i, token in enumerate(forecast) if token == "--dt"]
 
 
-#: woof 2.9.0's YSU and New Tiedtke, which lack the donor bounds, and the engine identities that carry them.
+#: gpuwm 2.9.0's YSU and New Tiedtke, which lack the donor bounds, and the engine identities that carry them.
 UNBOUNDED_YSU = "ysu-wrf-v4.8.0-topdown-cap-noftz-v1"
 BOUNDED_YSU = "ysu-wrf-v4.8.0-entrainment-courant-v2"
 UNBOUNDED_NT = "new-tiedtke-wrf461-cumastrn-v1"
@@ -508,7 +530,7 @@ def test_one_bound_alone_keeps_the_cap(tmp_path, monkeypatch):
 
 
 def test_the_real_engine_identities_are_read():
-    # Published woof 2.9.0 carries woof.ysu_generations; an older engine tree (the landing pool's
+    # Published gpuwm 2.9.0 carries woof.ysu_generations; an older engine tree (the landing pool's
     # pinned engine checkout) does not, and the door then keeps the cap, which
     # test_an_engine_that_names_nothing_keeps_the_cap covers.
     pytest.importorskip("woof.ysu_generations", reason="engine predates the YSU identity table")
@@ -611,25 +633,16 @@ def test_an_explicit_cadence_that_does_not_divide_the_run_is_refused_before_any_
 
 
 @pytest.mark.parametrize('accepted', [True, False])
-def test_global_score_completion_preserves_partial_coverage_and_real_failures(tmp_path, monkeypatch, accepted):
+def test_global_score_queues_or_reuses_a_measured_card(tmp_path, monkeypatch, accepted):
     from woof.hex import observation_scorecard
     monkeypatch.setattr(global_door, '_visible_cards', lambda: [])
-    monkeypatch.setattr(observation_scorecard, 'join_automatic_scorer', lambda *a: None)
-    called = []
-    def run(argv, env):
-        called.append(argv)
-        return 3
-    monkeypatch.setattr(global_door, '_run_door', run)
-    def completed(*args):
-        if not called or not accepted:
-            return None
-        return {'returncode': 0, 'status': 'PARTIALLY_MEASURED', 'measured_metrics': 299,
-                'note': 'partial observation coverage'}
-    monkeypatch.setattr(observation_scorecard, 'completed_scorecard', completed)
+    def blocking(*args, **kwargs):
+        raise AssertionError('a composing door must not run synchronous scoring')
+    monkeypatch.setattr(global_door, '_run_door', blocking)
+    state = 'PARTIALLY_MEASURED' if accepted else 'QUEUED'
+    monkeypatch.setattr(observation_scorecard, 'door_scorecard',
+                        lambda *args: {'status': state, 'note': 'CPU scoring'})
     args = _args(tmp_path, '--stage', 'score')
-    assert global_door.run_global(args) == (0 if accepted else 3)
+    assert global_door.run_global(args) == 0
     receipt = json.loads((Path(args.work_dir) / 'global-receipt.json').read_text())
-    result = receipt['stages']['score']
-    assert result['returncode'] == (0 if accepted else 3)
-    if accepted:
-        assert result['status'] == 'PARTIALLY_MEASURED' and result['scorer_returncode'] == 3
+    assert receipt['stages']['score']['status'] == state

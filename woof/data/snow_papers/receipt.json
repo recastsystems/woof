@@ -1,0 +1,25 @@
+{
+  "algorithm": "snow-papers-layered-ad-shapes-ice-v2",
+  "status": "written from papers, not bitwise to WRF",
+  "table_sha256": "0e0a377955e78f6762d6d1a3318d9715fc8fffbd213b9645be88523e1fa2bce8",
+  "state": "three layers: mass, Re, liquid mass, BC external/internal, dust external/internal",
+  "spectrum": "NLR ASTM G173 direct/diffuse; 480 equal 0.01um bins, 0.2-5um",
+  "habits": [
+    "sphere",
+    "spheroid",
+    "hexagonal plate",
+    "Koch snowflake"
+  ],
+  "impurity": "Bond/Bergstrom BC and Zhang 2024 coarse-mode mineral RI; He coalbedo fits",
+  "aging": "regenerated Flanner/Zender microphysics plus Brun wet growth",
+  "table_words": 283703,
+  "state_words": 21,
+  "table_format": "SNMIE002; little-endian f32",
+  "generator": "tools/rustwx/crates/static-fields/examples/snow-optics.rs",
+  "license_terms": {
+    "new_code": "Apache-2.0",
+    "ice_indices": "CC0-1.0",
+    "derived_dust": "CC-BY-4.0; NOTICE and licenses/LICENSE-mineral-ri-CC-BY-4.0.html",
+    "solar_weights": "DOE/NLR/ALLIANCE data notice; licenses/LICENSE-NLR-solar.txt"
+  }
+}

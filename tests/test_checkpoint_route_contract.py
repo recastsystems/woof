@@ -262,7 +262,7 @@ def test_the_three_timing_keys_are_refused_the_same_way(tmp_path):
 
     On a FIXED clock, where a step count is the only way any of the
     three can be met.  The wizard writes an adaptive clock, and there
-    lane/282-namelist-tolerance (e292dbcf5) made the driver shorten a
+    development branch (e292dbcf5) made the driver shorten a
     step to land on every history alarm, so an off-grid history cadence
     is met exactly rather than refused; the next test holds that half.
     """
@@ -284,7 +284,7 @@ def test_the_three_timing_keys_are_refused_the_same_way(tmp_path):
 def test_an_adaptive_clock_admits_off_grid_history_and_refuses_the_rest(
         tmp_path):
     """The adaptive driver shortens a step to land on every history
-    alarm, so lane/282-namelist-tolerance (e292dbcf5) resolves an
+    alarm, so development branch (e292dbcf5) resolves an
     adaptive history cadence to exact ticks instead of step multiples
     and admits one off the nominal step grid
     (tests/test_adaptive_history_timing.py runs it).  That lane relaxed

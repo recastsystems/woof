@@ -43,8 +43,9 @@ Pinned option identity
 The WRF Registry defaults, as asserted by the oracle driver:
 
 * ``dveg = 4``   -- table LAI/SAI with maximum vegetation fraction.  The
-  ``DVEG == 7 .or. 8 .or. 9`` block ("use input LAI") is dead and is not
-  transcribed; :func:`phenology` refuses ``dveg`` outside {1, 3, 4}.
+  selected DVEG7/8/9 branch uses the actual carried LAI and derives SAI
+  with the native threshold and burial rules. Dynamic carbon vegetation
+  remains outside this prescribed-phenology reference.
 * ``opt_crop = 0`` -- ``module_sf_noahmpdrv.F`` line 767 sets ``CROPTYPE = 0``
   unconditionally and only revises it under ``IOPT_CROP > 0``, so ``croptype``
   is identically zero.  Every ``CROPTYPE > 0`` disjunct is therefore dead, and
@@ -139,11 +140,8 @@ def phenology(
             "croptype must be 0: opt_crop=0 pins it there and the crop branches "
             "are not transcribed"
         )
-    if dveg not in (1, 3, 4):
-        raise ValueError(
-            f"dveg={dveg} is outside the transcribed set {{1,3,4}}; the "
-            "DVEG 7/8/9 'use input LAI' block is dead under the pinned identity"
-        )
+    if dveg not in (1, 3, 4, 7, 8, 9):
+        raise ValueError(f"dveg={dveg}: dynamic carbon vegetation is not transcribed")
     if len(laim) != 12 or len(saim) != 12:
         raise ValueError("laim and saim must each have 12 entries")
 
@@ -159,27 +157,31 @@ def phenology(
 
     # --- IF (CROPTYPE == 0) THEN  (always, under opt_crop = 0) -------------
     # IF ( DVEG == 1 .or. DVEG == 3 .or. DVEG == 4 )
-    if lat >= 0.0:
-        day = julian
+    if dveg in (1, 3, 4):
+        if lat >= 0.0:
+            day = julian
+        else:
+            # DAY = MOD ( JULIAN + ( 0.5 * YEARLEN ) , REAL(YEARLEN) )
+            half = f32(f32(0.5) * f32(yearlen))
+            day = f32(math.fmod(f32(julian + half), f32(yearlen)))
+
+        t = f32(f32(f32(12.0) * day) / f32(yearlen))
+        it1 = int(f32(t + f32(0.5)))          # REAL -> INTEGER truncates toward 0
+        it2 = it1 + 1
+        wt1 = f32(f32(float(it1) + f32(0.5)) - t)   # uses the *unclamped* IT1
+        wt2 = f32(f32(1.0) - wt1)
+        if it1 < 1:
+            it1 = 12
+        if it2 > 12:
+            it2 = 1
+
+        lai = f32(f32(wt1 * f32(laim[it1 - 1])) + f32(wt2 * f32(laim[it2 - 1])))
+        sai = f32(f32(wt1 * f32(saim[it1 - 1])) + f32(wt2 * f32(saim[it2 - 1])))
+
     else:
-        # DAY = MOD ( JULIAN + ( 0.5 * YEARLEN ) , REAL(YEARLEN) )
-        half = f32(f32(0.5) * f32(yearlen))
-        day = f32(math.fmod(f32(julian + half), f32(yearlen)))
-
-    t = f32(f32(f32(12.0) * day) / f32(yearlen))
-    it1 = int(f32(t + f32(0.5)))          # REAL -> INTEGER truncates toward 0
-    it2 = it1 + 1
-    wt1 = f32(f32(float(it1) + f32(0.5)) - t)   # uses the *unclamped* IT1
-    wt2 = f32(f32(1.0) - wt1)
-    if it1 < 1:
-        it1 = 12
-    if it2 > 12:
-        it2 = 1
-
-    lai = f32(f32(wt1 * f32(laim[it1 - 1])) + f32(wt2 * f32(laim[it2 - 1])))
-    sai = f32(f32(wt1 * f32(saim[it1 - 1])) + f32(wt2 * f32(saim[it2 - 1])))
-
-    # The DVEG 7/8/9 block is dead here; see the module docstring.
+        sai = _fmax(f32(0.05), f32(f32(0.1) * lai))
+        if lai < f32(0.05):
+            sai = f32(0.0)
 
     if sai < f32(0.05):
         sai = 0.0

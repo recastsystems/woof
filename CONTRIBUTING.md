@@ -53,7 +53,7 @@ Practicalities:
   `tools/region_global_dealias`, `tools/nextgen_hydrofabric`,
   `tools/nextgen_forcing`, `tools/nextgen_verify`, `tools/hydro_world`,
   `tools/hydro_world_params`, `tools/nextgen_reservoir_prepare`,
-  `tools/hydro_world_init`, `tools/ocean_prepare`, `tools/rw-bathy`, `tools/wind-table`, `tools/nextgen_output` and `tools/rw_icechunk`. `bash install.sh` (PowerShell:
+  `tools/hydro_world_init`, `tools/ocean_prepare`, `tools/rw-bathy`, `tools/wind-table`, `tools/nextgen_output`, `tools/rw_icechunk`, `tools/cam_tables`, `tools/waves_data`, `tools/dfi-runtime`, `tools/tslist_bridge`, `tools/aerosol_grid`, `tools/storm_merge`, `tools/tc_vitals`, `tools/tc_frames_io` and `tools/tc-verify`. `bash install.sh` (PowerShell:
   `.\install.ps1`) does all of this except the `dev` extra.
 - This repository builds **two** distributions. `pyproject.toml` at the
   root builds `woof`; `recast-woof-data/pyproject.toml` builds `recast-woof-data`,

@@ -22,6 +22,22 @@ from woof.experiment import build_experiment
 from test_namelist_gaps import _import, _with
 
 
+class _NumpyCuPy:
+    """NumPy standing in for CuPy, with the one runtime attribute the driver reads.
+
+    The AMD fold (c896f599e11) made _couple_pbl_slot ask
+    ``cp.cuda.runtime.is_hip``; bare NumPy has no ``cuda``.
+    """
+
+    cuda = SimpleNamespace(runtime=SimpleNamespace(is_hip=False))
+
+    def __getattr__(self, name):
+        return getattr(np, name)
+
+
+_NP_CUPY = _NumpyCuPy()
+
+
 def _cfg(**over) -> RunConfig:
     base = dict(nx=10, ny=10, nz=10, dx=3000.0, dy=3000.0, ztop=20000.0,
                 dt=12.0, run_seconds=3600.0)
@@ -40,7 +56,7 @@ def _ysu(text):
 
 def test_the_fields_are_appended_last_at_wrfs_defaults():
     names = [f.name for f in dataclasses.fields(RunConfig)]
-    # The drag pair was the tail until lane/sol-hrrr-zadvect (37a99fcd4,
+    # The drag pair was the tail until development branch (37a99fcd4,
     # merged at dd5ded73f) appended zadvect_implicit_variant after it,
     # default "wrf_471"; the pair keeps its positional place and WRF's 0.
     # 2.8.5 appends further fields after zadvect_implicit_variant
@@ -73,7 +89,7 @@ def test_each_refusal_names_what_would_break(kwargs, needle):
     dict(topo_wind=0, gwd_opt=1, bl_pbl_physics=5),
     dict(topo_wind=0, gwd_opt=3, bl_pbl_physics=11),
     # WRF v4.6.1's Shin-Hong reads CTOPO/CTOPO2 (module_bl_shinhong.F:1387,
-    # :1472-1473); refused here until lane/verify-topo-wind.
+    # :1472-1473); refused here until development branch.
     dict(topo_wind=1, gwd_opt=0, bl_pbl_physics=11),
     dict(topo_wind=2, gwd_opt=1, bl_pbl_physics=11),
 ])
@@ -134,7 +150,7 @@ def test_drag_uses_the_pbl_boundary_inputs_without_changing_scalars(
         du[...] += 5.0
         dv[...] -= 6.0
 
-    monkeypatch.setattr(physics, "cp", np)
+    monkeypatch.setattr(physics, "cp", _NP_CUPY)
     monkeypatch.setattr(physics, "launch_bulk_richardson_zi", diagnose)
     monkeypatch.setattr(terrain_drag, "pbl_top_from_height", top)
     driver = physics.PhysicsDriver.__new__(physics.PhysicsDriver)
@@ -461,7 +477,7 @@ def test_gsl_drag_receives_the_spp_pbl_pattern_wrf_hands_it(
     """module_pbl_driver.F passes spp_pbl and pattern_spp_pbl to gwdo_gsl,
     which perturbs VAR, VARSS and both variance caps by the pattern's lowest
     level (rstoch1D = pattern_spp_pbl(i,kts,j)).  The port launched the GSL
-    drag with rstoch = 0 under spp_pbl = 1 until lane/verify-gsl-drag, which
+    drag with rstoch = 0 under spp_pbl = 1 until development branch, which
     the WRF v4.6.1 oracle's spp cases measured (A/dx3000_spp,
     A/dx5000_spp, A/dx13000_spp, B/dx9000_spp; tests/
     test_gsl_drag_wrf461_column_oracle.py).  gwd_opt = 1 takes no pattern.

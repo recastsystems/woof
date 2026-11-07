@@ -181,9 +181,14 @@ pub(crate) fn write_values<T: Real>(output: &mut impl Write, values: &[T]) -> Re
     Ok(())
 }
 pub(crate) fn write_indices(output: &mut impl Write, values: &[i64]) -> Result<(), String> {
-    for &value in values {
+    // Encode a complete block before writing to the bridge's buffered pipe.
+    let mut block = vec![0u8; 65536];
+    for values in values.chunks(block.len() / 8) {
+        for (bytes, value) in block.chunks_exact_mut(8).zip(values) {
+            bytes.copy_from_slice(&value.to_le_bytes());
+        }
         output
-            .write_all(&value.to_le_bytes())
+            .write_all(&block[..values.len() * 8])
             .map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -638,6 +643,14 @@ pub fn run(mut input: impl Read, mut output: impl Write) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn buffered_indices_keep_all_protocol_words() {
+        let values: Vec<i64> = (0..20001).map(|i| if i % 2 == 0 { i64::MIN + i } else { i64::MAX - i }).collect();
+        let expected: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let mut actual = Vec::new();
+        write_indices(&mut actual, &values).unwrap();
+        assert_eq!(actual, expected);
+    }
     #[test]
     fn dimension_products_are_checked() {
         assert!(product(&[usize::MAX, 2]).is_err());

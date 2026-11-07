@@ -1,0 +1,64 @@
+{
+  "schema": "fog-kfeta-real-forecast-interleaved-stage-v1",
+  "seconds": 3600,
+  "steps": 300,
+  "excluded_steps": [
+    1
+  ],
+  "excluded_reason": "first call excluded from every arm",
+  "nearest": {
+    "grav_settling": 0,
+    "kfeta_trigger": 1,
+    "bl_pbl_physics": 1,
+    "cu_physics": 1
+  },
+  "source_commit": "1f009380ce0ea151f4b17663b836ca0d6c3d055c",
+  "gpu_uuid": "GPU-7e7487ff-bb4f-193b-29d2-1b60c982f5a1",
+  "method": "real GO, persistent evolving state in each arm; whole steps serialized with forward/reverse arm order; synchronized turn boundary; CUDA events inside complete production stages",
+  "rows": [
+    {
+      "arm": "fog1",
+      "samples": 299,
+      "option_ms": 481.31315283477306,
+      "nearest_ms": 378.4910718202591,
+      "ratio": 1.2716631610886266,
+      "median_step_ratio": 1.2228743114258254,
+      "scope": "complete YSU stage (includes shared BL fog pass) plus added fog surface pass; no double count of BL pass"
+    },
+    {
+      "arm": "fog2",
+      "samples": 299,
+      "option_ms": 508.34163238853216,
+      "nearest_ms": 378.4910718202591,
+      "ratio": 1.3430743027670082,
+      "median_step_ratio": 1.2733502954136404,
+      "scope": "complete YSU stage (includes shared BL fog pass) plus added fog surface pass; no double count of BL pass"
+    },
+    {
+      "arm": "trigger2",
+      "samples": 299,
+      "option_ms": 469.7517125606537,
+      "nearest_ms": 573.3488014936447,
+      "ratio": 0.8193122778610372,
+      "median_step_ratio": 0.6377168240810765,
+      "scope": "complete CU1 production stage"
+    },
+    {
+      "arm": "trigger3",
+      "samples": 299,
+      "option_ms": 597.2579531669617,
+      "nearest_ms": 573.3488014936447,
+      "ratio": 1.0417008836698196,
+      "median_step_ratio": 1.044979670586964,
+      "scope": "complete CU1 production stage"
+    }
+  ],
+  "input_receipts": {
+    "base": "2f009b2d79c2576e217a40e4db59e4306593d6ef5a92be1f8b5310888f50faf1",
+    "fog1": "197f5f9198720f3f42c967de1607dfbadd851996aca2a0b439c639944c80ecad",
+    "fog2": "81484c2ff2931323bc90babd75f0b58f7d7b8946610d56ee4bd5b1e7307e67b1",
+    "trigger2": "e91e54d86d68bf968204e790a15b0ab599e94b10781d225fc12e1ec96662af34",
+    "trigger3": "3d43c46a6e84241503c7fc273aa396fd6e73e01ae2aa3135f54ed27def841857"
+  },
+  "schedule_sha256": "a1b37ab1ca82ad6c9e9cb3d1a6b96d097b904d728299c697d84dd15f9f3f4e8b"
+}

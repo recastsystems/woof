@@ -12,7 +12,7 @@ import numpy as np
 
 PROFILE_FIELDS = ('om_tmp', 'om_s', 'om_u', 'om_v', 'om_depth',
                   'om_density', 'om_tini', 'om_sini')
-STATE_FIELDS = (*PROFILE_FIELDS, 'om_ml')
+STATE_FIELDS = (*PROFILE_FIELDS, 'om_ml', 'om_active')
 PROGNOSTIC = ('om_tmp', 'om_s', 'om_u', 'om_v')
 _MODULES = {}
 
@@ -41,9 +41,10 @@ def _launch(module, name, n, args, block=128):
 def ocean_land(fields):
     """Keep inland lakes with their lake surface model, outside ocean transport."""
     import cupy as cp
-    lake = fields.get('lakemask')
-    return cp.ascontiguousarray(fields['xland'] if lake is None else
-                                cp.where(lake >= 0.5, cp.float32(1), fields['xland']))
+    lake = fields.get('lakemask', 0)
+    active = fields.get('om_active', 1)
+    return cp.ascontiguousarray(cp.where((lake >= 0.5) | (active < 1 - 1.e-6),
+                                         cp.float32(1), fields['xland']))
 
 
 def initialize(fields, cfg, initial=None, *, start=True):
@@ -60,6 +61,10 @@ def initialize(fields, cfg, initial=None, *, start=True):
             if a.shape != shape:
                 raise ValueError(f'{name.upper()} must have shape {shape}, got {a.shape}')
             fields[name] = cp.ascontiguousarray(a).copy()
+    active = cp.asarray(initial.get('om_active', cp.ones(shape[1:], dtype=cp.float32)), dtype=cp.float32)
+    if active.shape != shape[1:] or bool(cp.any(~cp.isfinite(active) | (active < 0) | (active > 1))):
+        raise ValueError('OM_ACTIVE must be a finite 2D ocean coverage fraction in [0,1]')
+    fields['om_active'] = cp.ascontiguousarray(active).copy()
     fields['om_ml'] = cp.zeros(shape[1:], dtype=cp.float32)
     fields['_pwp_base'] = cp.zeros((4*levels, *shape[1:]), dtype=cp.float32)
     fields['_pwp_tend'] = cp.zeros_like(fields['_pwp_base'])
@@ -141,7 +146,7 @@ def step(fields, *, dt, dx, dy, stbolt=5.67051e-8):
                 (np.float32(1/dx),np.float32(1/dy),np.int32(nx),np.int32(ny),np.int32(first)))
         _launch(module,'pwp_column',n,
                 tuple(fields[name] for name in (*PROGNOSTIC,'om_density','om_ml','tsk','_pwp_base','om_depth','om_tini','om_sini',
-                                               'hfx','lh','gsw','glw','qfx','ust','uair','vair','f','_pwp_land'))+
+                                               'hfx','lh','gsw','glw','qfx','ust','uair','vair','rhoair','f','_pwp_land'))+
                 (ice_mask,fields['_pwp_tend'],fields['_pwp_status'])+
                 (np.float32(dt),np.float32(stage_dt),np.float32(stbolt),np.int32(coupled_ice),np.int32(n)),block=32)
 
@@ -157,4 +162,4 @@ def memory_planes(levels):
     # Eight profiles, four base, four tendencies, two circulation scratch,
     # plus mixed-layer depth, map factors, coast mask, SST diagnostics
     # and a conservatively rounded scalar error flag.
-    return 18*levels+7
+    return 18*levels+8

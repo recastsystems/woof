@@ -78,7 +78,7 @@ class CyclingExecution:
 
 
 class MpiCycling(CyclingExecution):
-    """Owner-only assembly before a single global JEDI background write."""
+    """Owner-only assembly before a single global background write."""
 
     single_card = False
 

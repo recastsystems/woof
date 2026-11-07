@@ -17,6 +17,12 @@ Ensembles: :class:`MemberColumns` writes each member's store the same way, from 
 ordinary writer's callback holds it (an ensemble keeps no member history files by default), under
 ``<run>/columns/members/<member>/<domain>/``.
 
+Point forecasts: every file carries the surface section (precipitation, sea-level pressure, cloud, gust, CAPE and
+the rest, exact f32, ``rw_soundings`` ABI ``columns-surface-v1``), and at :meth:`LiveColumns.stop` /
+:meth:`MemberColumns.stop` each fixed grid's hourly files are folded into ``<store>/<domain>/series.wser``
+(:func:`woof.soundings.write_series`), the time series an Open-Meteo-style point forecast or a meteogram reads in
+three small reads. A series that cannot be written is said, never a failed run.
+
 Settings: ``WOOF_COLUMNS=off`` (or ``run_options.columns = false``) writes no store; ``WOOF_COLUMNS_EVERY_MINUTES``
 is the cadence (default 60, 0 writes every frame); ``WOOF_COLUMNS_THREADS`` the tile workers per frame (default a
 quarter of the cores, at least 2: the forecast keeps the rest); ``WOOF_COLUMNS_TIMEOUT_SECONDS`` the longest one
@@ -81,6 +87,25 @@ def _default_writer(timeout: float):
     return partial(write_columns, timeout=timeout)
 
 
+def _default_series(timeout: float):
+    from functools import partial
+
+    from woof.soundings import write_series
+    return partial(write_series, timeout=timeout)
+
+
+def _series(writer, out: Path, warn) -> list:
+    """Each fixed grid's point-forecast series under ``out`` on every core (the forecast has ended); never raises."""
+    if writer is None or not Path(out).is_dir():
+        return []
+    try:
+        return list(writer(out, threads=os.cpu_count() or 4))
+    except Exception as error:  # a series not written never stops the run: readers use the hourly files
+        warn("series_not_written", f"no point-forecast series for {out}: {type(error).__name__}: {error}"[:400],
+             out=str(out))
+        return [{"domain": "*", "error": f"{type(error).__name__}: {error}"[:400]}]
+
+
 def _drain(q: queue.Queue) -> None:
     while True:
         try:
@@ -102,7 +127,7 @@ class LiveColumns:
     def __init__(self, out: Path, *, report: Callable[[dict], None] | None = None,
                  warn: Callable[..., None] | None = None, writer: Callable[..., list] | None = None,
                  minutes: int | None = None, threads: int | None = None, timeout: float | None = None,
-                 frames: Callable[..., bool] | None = None):
+                 frames: Callable[..., bool] | None = None, series: Callable[..., list] | None = None):
         self.out = Path(out)
         #: Which committed frames carry the 3-D state ``rw_soundings --columns`` reads (:class:`StateFrames`), or
         #: ``None`` to take every frame on the cadence. A frame that does not is never attempted.
@@ -113,6 +138,10 @@ class LiveColumns:
         self._warn = warn or (lambda *a, **k: None)
         self._timeout = frame_timeout_seconds() if timeout is None else float(timeout)
         self._writer = _default_writer(self._timeout) if writer is None else writer
+        #: Folds the store into each fixed grid's series at :meth:`stop` (``None`` in a test writer's run: the
+        #: default series writer runs only beside the default store writer).
+        self._series_writer = (_default_series(self._timeout) if writer is None else None) if series is None else series
+        self._series: list = []
         self._abandoned = False
         self._minutes = every_minutes() if minutes is None else int(minutes)
         self._threads = tile_threads() if threads is None else int(threads)
@@ -184,7 +213,7 @@ class LiveColumns:
             self._seconds += seconds
             for r in rows:
                 self._written.append({"frame": key, "path": r.get("path"), "bytes": int(r.get("bytes", 0)),
-                                      "ms": r.get("ms")})
+                                      "ms": r.get("ms"), "surface_ms": r.get("surface_ms")})
         for r in rows:
             self._report({"event": "columns_written", "frame": key, "path": r.get("path"),
                           "bytes": int(r.get("bytes", 0)), "seconds": round(seconds, 3)})
@@ -221,6 +250,12 @@ class LiveColumns:
             self._abandoned = True
             self._warn("columns_not_written", f"the column store writer did not finish in {timeout:.0f} s; "
                        "the run ends without the frames still queued", out=str(self.out))
+        elif self._written:
+            self._series = _series(self._series_writer, self.out, self._warn)
+            for row in self._series:
+                if row.get("path"):
+                    self._report({"event": "series_written", "domain": row["domain"], "path": row["path"],
+                                  "bytes": int(row.get("bytes", 0)), "times": row.get("times")})
         return self.summary()
 
     def halt(self, timeout: float = 5.0) -> dict:
@@ -239,14 +274,26 @@ class LiveColumns:
                     "stopped": not self._thread.is_alive(),
                     "files": len(self._written), "bytes": sum(r["bytes"] for r in self._written),
                     "seconds": round(self._seconds, 3), "failed": list(self._failed),
-                    "skipped_without_state": self._skipped, "written": list(self._written)}
+                    "skipped_without_state": self._skipped, "written": list(self._written),
+                    "surface_ms": round(sum(float(r.get("surface_ms") or 0.0) for r in self._written), 1),
+                    "series": list(self._series)}
 
 
 #: What ``rw_soundings --columns`` reads from a WRF-shaped frame (rw-soundings input.rs ``wrf_grid``): the 3-D state,
 #: the surface fields, and the grid (latitude, longitude, map rotation). A member's frame is cut to these.
 SOUNDING_FIELDS = ("P", "PB", "PH", "PHB", "T", "QVAPOR", "U", "V", "W", "PSFC", "HGT", "T2", "Q2", "U10", "V10",
                    "XLAT", "XLONG", "COSALPHA", "SINALPHA")
+#: What the store's surface section reads when the frame has it (rw-soundings surface.rs): accumulations, snow,
+#: radiation, the PBL height, reflectivity, the window maxima and the hydrometeors behind cloud and visibility. A
+#: member's frame keeps each one it has (an ensemble keeps no member history, so these are the only copy a member's
+#: point forecast has); one it lacks leaves that plane out of the store, named, never filled.
+SURFACE_FIELDS = ("RAINC", "RAINNC", "RAINSH", "SNOWNC", "GRAUPELNC", "HAILNC", "SNOWH", "SWDOWN", "PBLH", "REFC",
+                  "WSPD10MAX", "GUST_EST_MAX", "REFL_10CM", "QCLOUD", "QICE", "QRAIN", "QSNOW", "QGRAUP",
+                  "UP_HELI_MAX", "UP_HELI_MAX01", "UP_HELI_MAX02", "UP_HELI_MAX03")
 _SURFACE_GRID = ("XLAT", "XLONG", "COSALPHA", "SINALPHA", "HGT")
+#: The 2-D ones among them (squeezed to [ny, nx] when handed over with a length-1 leading axis).
+_SURFACE_2D = ("RAINC", "RAINNC", "RAINSH", "SNOWNC", "GRAUPELNC", "HAILNC", "SNOWH", "SWDOWN", "PBLH", "REFC",
+               "WSPD10MAX", "GUST_EST_MAX", "UP_HELI_MAX", "UP_HELI_MAX01", "UP_HELI_MAX02", "UP_HELI_MAX03")
 #: The ones a frame cannot be stored without (the map rotation is optional).
 STATE_FIELDS = tuple(n for n in SOUNDING_FIELDS if n not in ("COSALPHA", "SINALPHA"))
 
@@ -354,10 +401,10 @@ def sounding_frame(*, state=None, streamed_fields=None, metadata=None) -> dict:
     for name, value in (metadata or {}).items():
         source.setdefault(str(name).upper(), value)
     frame = {}
-    for name in SOUNDING_FIELDS:
+    for name in SOUNDING_FIELDS + SURFACE_FIELDS:
         if source.get(name) is not None:
             array = _host(source[name])
-            if name in _SURFACE_GRID and array.ndim == 3 and array.shape[0] == 1:
+            if (name in _SURFACE_GRID or name in _SURFACE_2D) and array.ndim == 3 and array.shape[0] == 1:
                 array = array[0]
             frame[name] = array
     missing = [n for n in SOUNDING_FIELDS if n not in frame and n not in ("COSALPHA", "SINALPHA")]
@@ -383,7 +430,7 @@ class MemberColumns:
 
     def __init__(self, root, *, end_time=None, minutes: int | None = None, threads: int | None = None,
                  writer: Callable[..., list] | None = None, depth: int = 4, say: Callable[[str], None] | None = None,
-                 timeout: float | None = None):
+                 timeout: float | None = None, series: Callable[..., list] | None = None):
         self.root = Path(root)
         self.out = self.root / "columns"
         self.scratch = self.out / ".frames"
@@ -392,6 +439,8 @@ class MemberColumns:
         self._threads = tile_threads() if threads is None else int(threads)
         self._timeout = frame_timeout_seconds() if timeout is None else float(timeout)
         self._writer = _default_writer(self._timeout) if writer is None else writer
+        self._series_writer = (_default_series(self._timeout) if writer is None else None) if series is None else series
+        self._series: list = []
         self._say = say or (lambda line: print(line, flush=True))
         self._queue: queue.Queue = queue.Queue(maxsize=max(1, int(depth)))
         self._lock = threading.Lock()
@@ -493,6 +542,9 @@ class MemberColumns:
             else:
                 import shutil
                 shutil.rmtree(self.scratch, ignore_errors=True)
+                if self._written:
+                    self._series = _series(self._series_writer, self.out,
+                                           lambda event, message, **_: self._say(f"member columns: {message}"))
             s = self.summary()
             self._say(f"member columns: {s['files']} files, {s['bytes'] / 1e6:.1f} MB, {s['members']} members, "
                       f"{s['seconds']:.1f} s writing, {s['capture_seconds']:.2f} s on the members' threads"
@@ -505,4 +557,5 @@ class MemberColumns:
                     "every_minutes": self._minutes, "files": len(self._written),
                     "members": len({r["member"] for r in self._written}),
                     "bytes": sum(r["bytes"] for r in self._written), "seconds": round(self._seconds, 3),
-                    "capture_seconds": round(self._capture_seconds, 3), "failed": list(self._failed)}
+                    "capture_seconds": round(self._capture_seconds, 3), "failed": list(self._failed),
+                    "series": list(self._series)}

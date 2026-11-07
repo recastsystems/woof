@@ -1,0 +1,271 @@
+{
+  "schema": "gpuwm-cu11-speed-proof-v1",
+  "candidate_science_commit": "546eab9c2a135d3a6d2f7325c7867cb738877a1d",
+  "selection_policy": "explicit component override; never a default",
+  "speed_bar": 1.2,
+  "speed_bar_met": false,
+  "native_physics_exception": "extra native real(r8) CMT and ten harmonic pressure solves, absent from CU1; source-profiled activity; remaining implementation costs are declared",
+  "numerics": "fast, aercu_opt=0; strict code and operations pinned",
+  "stage": {
+    "profile_arm": null,
+    "capture": "<scratch>/spd-cu11-mskf/strict-captures/mskf-000241-0001-0001.bin",
+    "capture_sha256": "3439b907f93bd1eea24245042d4d4d8a5a22e5500afdbd653f2a141201ba1fc7",
+    "nz": 49,
+    "columns": 8192,
+    "numerics": "fast",
+    "nca_forced_active": true,
+    "w0avg_updated": false,
+    "timings": {
+      "before": {
+        "samples_ms": [
+          7.901120185852051,
+          7.310143947601318,
+          7.293951988220215,
+          7.312384128570557,
+          7.321599960327148
+        ],
+        "median_ms": 7.312384128570557
+      },
+      "current": {
+        "samples_ms": [
+          6.98956823348999,
+          6.797311782836914,
+          6.772543907165527,
+          6.757311820983887,
+          6.7982401847839355
+        ],
+        "median_ms": 6.797311782836914
+      },
+      "kf": {
+        "samples_ms": [
+          1.0844160318374634,
+          1.0106879472732544,
+          1.018880009651184,
+          0.9820160269737244,
+          1.0393600463867188
+        ],
+        "median_ms": 1.018880009651184
+      }
+    },
+    "resources": {
+      "current": {
+        "registers": 255,
+        "local_bytes": 416
+      },
+      "before": {
+        "registers": 255,
+        "local_bytes": 640
+      }
+    },
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "order": [
+      "before",
+      "current",
+      "kf",
+      "kf",
+      "current",
+      "before",
+      "before",
+      "current",
+      "kf",
+      "kf",
+      "current",
+      "before",
+      "before",
+      "current",
+      "kf"
+    ],
+    "ratio": 6.671356507587179
+  },
+  "profile": {
+    "gpu": "RTX 4090",
+    "samples": {
+      "before": {
+        "native_cmt": {
+          "samples": 307505,
+          "instructions": 71250180,
+          "global_sectors": 67655245,
+          "source_lines": 218
+        },
+        "other": {
+          "samples": 264151,
+          "instructions": 139884120,
+          "global_sectors": 46390272,
+          "source_lines": 1157
+        },
+        "native_cmt_sample_fraction": 0.5379196579761255
+      },
+      "current": {
+        "native_cmt": {
+          "samples": 295394,
+          "instructions": 68411372,
+          "global_sectors": 67655213,
+          "source_lines": 218
+        },
+        "other": {
+          "samples": 232770,
+          "instructions": 136780256,
+          "global_sectors": 45880832,
+          "source_lines": 1054
+        },
+        "native_cmt_sample_fraction": 0.5592846161419559
+      }
+    },
+    "registers": 255,
+    "occupancy_percent": 8.29,
+    "local_spill_requests_before": 113920,
+    "local_spill_requests_after": 5120,
+    "source_sample_caveat": "Activity samples are not an additive wall-time decomposition or a lower bound on required runtime. Native cloud loops remain serial per column; the 8192-column launch underfills this card.",
+    "proof": "evidence/spd-cu11-mskf/node1-profile/current-ncu.ncu-rep"
+  },
+  "strict_replay": {
+    "differing_words": 0,
+    "total_words": 170368,
+    "native_words": 107520,
+    "zero_extension_words": 62848,
+    "packets": 8,
+    "original_packets_sha256_identical": true,
+    "scope": "128 real native columns, 49 levels, no precipitating columns; 192 nonzero thermal-tendency words",
+    "receipt": "evidence/spd-cu11-mskf/replay-strict.json",
+    "archive": "~/weather/data/datasets/paper/wrf-ports/spd-cu11-mskf/cu11-aercu0-step241/MANIFEST.md"
+  },
+  "forecast": {
+    "status": "PASS",
+    "hours": 3,
+    "steps": 720,
+    "shape": [
+      300,
+      300,
+      49
+    ],
+    "dt_seconds": 15,
+    "start": "2026-10-16_09:00:00",
+    "end": "2026-10-16_12:00:00",
+    "reported_forecast_wall_seconds": 459.9,
+    "first_step_seconds": 305.67076,
+    "stability_retries": 0,
+    "frame_count": 4,
+    "selected_fields_finite_all_frames": true,
+    "log": "evidence/spd-cu11-mskf/go.log",
+    "receipt": "evidence/spd-cu11-mskf/forecast-summary.json",
+    "visual_review": "evidence/spd-cu11-mskf/visual-review.json",
+    "visual_status": "four Rust maps opened; same broad fields by eye; overlays differ"
+  },
+  "option_off": {
+    "status": "PASS",
+    "cu_physics": 1,
+    "numerics": "fast",
+    "seconds": 60,
+    "steps": 4,
+    "history_frames": 2,
+    "history_field_counts": [
+      212,
+      215
+    ],
+    "history_values": 213817176,
+    "history_files_byte_identical": true,
+    "checkpoint_array_members": 216,
+    "differing_arrays": 0,
+    "checkpoint_header_difference_paths": [
+      "/checkpoint_set_id",
+      "/created",
+      "/experiment_fingerprint",
+      "/experiment_fingerprint_components/runtime_source_identity/git_commit",
+      "/experiment_fingerprint_components/runtime_source_identity/git_tree"
+    ],
+    "compiled_modules": 47,
+    "same_source_options_and_images": true,
+    "before_source": "dc8d845820064416572be245345c2ae7e90893da",
+    "after_source": "00e3703ca28c6e07f2b110b45a49ccfcfefed022",
+    "receipt": "evidence/spd-cu11-mskf/off-control-identity.json",
+    "runtime_audit": "evidence/spd-cu11-mskf/off-runtime-audit.json",
+    "initial_failed_comparison": "29 surface/checkpoint arrays differed by tiny amounts; six unchanged-source modules had different compiled images. Baseline rerun once in the current runtime passes. Root cause of initial mismatch is not claimed; original failure retained in off-identity.json."
+  },
+  "limitations": [
+    "single real nonprecipitating replay packet repeated for timing",
+    "shared card, paired interleaved samples, no profiler in timed run",
+    "255-register kernel and uncoalesced traffic remain",
+    "not general forecast skill or aerosol-coupled qualification"
+  ],
+  "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/spd-cu11-mskf",
+  "startup_commit": "00e3703ca28c6e07f2b110b45a49ccfcfefed022",
+  "native_cpu_profile": {
+    "status": "partial; wrapper exited137 during a global OOM event; attribution to OOM is an inference",
+    "last_model_time": "2026-10-16_09:50:30",
+    "command": "native-perf-command.json",
+    "profile": "native-perf.data",
+    "flat_report": "native-perf-flat.txt",
+    "total_recorded_samples": 350620,
+    "lost_samples": 105747,
+    "lost_fraction": 0.2317,
+    "mskf_leaf_samples": 8847,
+    "cmt_leaf_samples": 2391,
+    "cmt_fraction_of_mskf_leaf_samples": 0.2702611054594778,
+    "symbols": [
+      {
+        "symbol": "__module_cu_mskf_MOD_mskf_cps",
+        "samples": 3802,
+        "all_sample_percent_rounded": 1.08
+      },
+      {
+        "symbol": "__module_cu_mskf_MOD_mskf_cmt",
+        "samples": 2391,
+        "all_sample_percent_rounded": 0.68
+      },
+      {
+        "symbol": "__module_cu_mskf_MOD_mskf_eta_para",
+        "samples": 2265,
+        "all_sample_percent_rounded": 0.65
+      },
+      {
+        "symbol": "__module_cu_mskf_MOD_tpmix2",
+        "samples": 172,
+        "all_sample_percent_rounded": 0.05
+      },
+      {
+        "symbol": "__module_cu_mskf_MOD_condload",
+        "samples": 124,
+        "all_sample_percent_rounded": 0.04
+      },
+      {
+        "symbol": "__module_cu_mskf_MOD_envirtht",
+        "samples": 78,
+        "all_sample_percent_rounded": 0.02
+      },
+      {
+        "symbol": "__module_cu_mskf_MOD_prof5",
+        "samples": 13,
+        "all_sample_percent_rounded": 0.0
+      },
+      {
+        "symbol": "__module_cu_mskf_MOD_dtfrznew",
+        "samples": 1,
+        "all_sample_percent_rounded": 0.0
+      },
+      {
+        "symbol": "__module_cu_mskf_MOD_mskf_lutab",
+        "samples": 1,
+        "all_sample_percent_rounded": 0.0
+      }
+    ],
+    "scope": "Native REAL32 strict executable with explicit real(r8) CMT; whole-case run attempted, not completed. Supplemental sampling evidence only, not a timing or completed forecast claim.",
+    "termination_evidence": "wrapper exit137; node1-oom-context.log records global OOM; attribution to OOM is an inference"
+  },
+  "startup_fix": {
+    "file": "gpuwm/kernel_prewarm.py:261",
+    "cause": "Static prewarm compiled the full aerosol path and left the aerosol-off runtime specialization cold. It now calls the runtime no-FTZ loader with only each selected aerosol tier.",
+    "initial_attempt": "stopped before step1 after over24minutes; go-cold-unspecialized.log",
+    "tests": "27 passed,1 inherited GBM inventory failure, including all3 MSKF tier selection cases",
+    "unrelated_failure": "gbmpbl_composed lacks composed/device prewarm loader; test_kernel_prewarm.py:313; reported to integration",
+    "cold_first_step_seconds": 305.67076,
+    "remaining_defect": "Cold startup exceeds30seconds; prewarm fix removes the statically proven unused MSKF tier but does not claim to cure all shared-runtime startup costs."
+  },
+  "integration_merge": "9b2d5d64b0366d9dc95f006cfd62f853986098ce",
+  "readiness": "FOLD-READY-OPTIN; ordinary 1.2x admission failed",
+  "source_hashes": {
+    "gpuwm/core/kernels/mskf.cu": "e0b12434dc2f917ef69452e3a43e95cecf643ae681fe7597ec3d40f60096bb2d",
+    "gpuwm/core/kernels/no_ftz.py": "14d085a4e089e77624adab39d007246a99d228c1cc7c7dac95990a89845392d1",
+    "gpuwm/kernel_prewarm.py": "506eb54e882e66749524cbcb95b99f6804caa70fd0f8d79a41c4b887db504c70",
+    "gpuwm/checkpoint_identity.py": "7a6b4c8632b700ad23718ead7cbb6045333928b7dc30f08049dfd026f0b07712"
+  }
+}

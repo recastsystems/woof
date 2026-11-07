@@ -6,7 +6,7 @@
 //! ignores the CENTER start indices, but they are preserved by this decoder.
 
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use crate::error::{MpasError, MpasResult};
@@ -180,8 +180,17 @@ impl MetReader {
     pub fn open(path: &Path, _allow_gaussian: bool) -> MpasResult<Self> {
         Ok(Self { reader: BufReader::with_capacity(8 << 20, File::open(path)?), path: path.to_path_buf() })
     }
+    /// Inventory readers seek over values. A large read buffer would fetch
+    /// megabytes of those values for each small header before discarding them.
+    pub fn open_headers(path: &Path) -> MpasResult<Self> {
+        Ok(Self { reader: BufReader::with_capacity(512, File::open(path)?), path: path.to_path_buf() })
+    }
     /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_read_met.F:9-450 at 1d6e370e.
-    pub fn next_field(&mut self) -> MpasResult<Option<(MetSlab,i32)>> {
+    pub fn next_field(&mut self) -> MpasResult<Option<(MetSlab,i32)>> {self.next(true)}
+    /// Decode metadata and validate framing without reading the slab, for
+    /// checking whether boundary pools can run independently.
+    pub fn next_header(&mut self) -> MpasResult<Option<(MetSlab,i32)>> {self.next(false)}
+    fn next(&mut self, load_values:bool) -> MpasResult<Option<(MetSlab,i32)>> {
         let Some(version_record) = read_record(&mut self.reader)? else {
             return Ok(None);
         };
@@ -265,19 +274,23 @@ impl MetReader {
             Cursor::new(&wind).i32("is_wind_grid_rel")? != 0
         } else {true};
 
-        let slab = read_record(&mut self.reader)?
-            .ok_or_else(|| MpasError::Refusal(format!("field {field} has no data record")))?;
         let want = nx * ny * 4;
-        if slab.len() != want {
-            return Err(MpasError::Refusal(format!(
-                "field {field} declares {nx} x {ny} but its data record is {} byte(s), not {want}",
-                slab.len()
-            )));
-        }
-        let mut values = Vec::with_capacity(nx * ny);
-        for chunk in slab.chunks_exact(4) {
-            values.push(f32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
-        }
+        let values = if load_values {
+            let slab = read_record(&mut self.reader)?
+                .ok_or_else(|| MpasError::Refusal(format!("field {field} has no data record")))?;
+            if slab.len()!=want {return Err(MpasError::Refusal(format!(
+                "field {field} declares {nx} x {ny} but its data record is {} byte(s), not {want}",slab.len())));}
+            use rayon::prelude::*;
+            slab.par_chunks_exact(4).map(|chunk|f32::from_be_bytes(chunk.try_into().unwrap())).collect()
+        } else {
+            let mut word=[0u8;4];self.reader.read_exact(&mut word)?;
+            let len=u32::from_be_bytes(word) as usize;
+            if len!=want {return Err(MpasError::Refusal(format!("field {field} data size differs from its grid")));}
+            self.reader.seek(SeekFrom::Current(len as i64))?;
+            self.reader.read_exact(&mut word)?;
+            if u32::from_be_bytes(word) as usize!=len {return Err(MpasError::Refusal("intermediate data record framing differs".into()));}
+            Vec::new()
+        };
 
         Ok(Some((MetSlab {
             center_lat,center_lon,pole_lat,pole_lon,

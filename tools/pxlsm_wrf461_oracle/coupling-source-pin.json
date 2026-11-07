@@ -1,0 +1,56 @@
+{
+  "revision": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "licence": "WRF public domain; retained licenses/LICENSE-WRF-public-domain.txt",
+  "files": [
+    {
+      "path": "phys/module_surface_driver.F",
+      "sha256": "a653965f9ffd1db5e4c42aa79e41b4d111755b6fca0f1a3b91f3a93455813ffd",
+      "source": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_surface_driver.F",
+      "licence": "WRF public-domain statement (LICENSE.txt already pinned)",
+      "local": "evidence/native-source/phys/module_surface_driver.F",
+      "native_build_sha256": "fde0533233b2b11524ef78da1e48178c867bde0de08a4de03d97d410b103b4fb",
+      "bytes": 396530,
+      "verified_official": true
+    },
+    {
+      "path": "phys/module_physics_init.F",
+      "sha256": "f48cf9793f782a72c3969e986eef24746252f030cd33cfba71cc82b81d128d90",
+      "source": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_physics_init.F",
+      "licence": "WRF public-domain statement (LICENSE.txt already pinned)",
+      "local": "evidence/native-source/phys/module_physics_init.F",
+      "native_build_sha256": "b4e4332c1e39c5ab77bc669ae977c8d183b0015aefaab5709a2f4ebe32e0963e",
+      "bytes": 289619,
+      "verified_official": true
+    },
+    {
+      "path": "share/module_soil_pre.F",
+      "sha256": "f981a2cce2cd1a8ca5b8ced100bf2d34eb2725d1d0bc7c42daf05fd05aa2c074",
+      "source": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_soil_pre.F",
+      "licence": "WRF public-domain statement (LICENSE.txt already pinned)",
+      "local": "evidence/native-source/share/module_soil_pre.F",
+      "native_build_sha256": "f981a2cce2cd1a8ca5b8ced100bf2d34eb2725d1d0bc7c42daf05fd05aa2c074",
+      "bytes": 139826,
+      "verified_official": true
+    },
+    {
+      "path": "share/module_check_a_mundo.F",
+      "sha256": "c66b3ef802da58e2a453b62fc00a04542c66ea93d752aa49bbd981fe00d40784",
+      "source": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_check_a_mundo.F",
+      "licence": "WRF public-domain statement (LICENSE.txt already pinned)",
+      "local": "evidence/native-source/share/module_check_a_mundo.F",
+      "native_build_sha256": "2d6d4eb1f9183b4a4157f32de2ba34753bc4c0c10c380ad2ba4cfb524885b038",
+      "bytes": 179370,
+      "verified_official": true
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+      "source": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "licence": "WRF public-domain statement (LICENSE.txt already pinned)",
+      "local": "evidence/native-source/Registry/Registry.EM_COMMON",
+      "native_build_sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+      "bytes": 437707,
+      "verified_official": true
+    }
+  ]
+}

@@ -555,7 +555,7 @@ def test_load_mapping_accepts_and_normalizes_the_grid_block(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# The identity pairing (lane/286-fixed-step-grid): a target that IS the
+# The identity pairing (development branch): a target that IS the
 # declared source grid copies index for index.
 # ---------------------------------------------------------------------------
 

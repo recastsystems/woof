@@ -37,52 +37,25 @@ def test_metgrid_context_does_not_spoof_wrf_boundary_representation(tmp_path):
     text=INPUT_TEXT.replace(' use_theta_m = 0,',' use_theta_m = 1,')
     paths=_pair(tmp_path,inp=text)
     _, report=import_namelists(*paths,metgrid_initialization=True)
-    entry=next(item for item in report.substitutions if item.key=='use_theta_m')
-    assert 'physical temperature' in entry.reason
+    assert not any(item.key == 'use_theta_m' for item in report.substitutions)
     with pytest.raises(ValueError,match='distinct input contracts'):
         import_namelists(*paths,metgrid_initialization=True,wrf_boundary_use_theta_m=1)
 
 
 @pytest.mark.parametrize('spelling', [' use_theta_m = 1,', ''])
-def test_moist_theta_on_the_metem_door_is_a_declared_substitution_the_user_is_told_about(
-        tmp_path, spelling, capsys):
-    """use_theta_m = 1 (explicit, or WRF's omitted default) is not "Fixed by WOOF".
-
-    It selects WRF's moist-theta prognostic for the whole integration and
-    WOOF has no such branch: a first-order dycore difference in a moist
-    forecast.  Booked as a fix it reached the user through nothing but the
-    receipt file, and the doors' no-substitution gate never saw it
-    (ENG-016).  It is a SUBSTITUTION with a reason: the gate admits the
-    declared divergence, the terminal prints the reason, and the receipt
-    lists it under the substitutions heading.
-    """
+def test_moist_theta_on_the_metem_door_is_selected_and_announced(tmp_path, spelling, capsys):
     from types import SimpleNamespace
     from test_namelist_import import INPUT_TEXT, _pair
-    from woof.namelist_import import Substitution, import_namelists
-    from woof.wrfinput_door import require_preserved_wrf_selectors
+    from woof.namelist_import import import_namelists
     from woof.wrfinput_forecast import announce_wrf_substitutions
-    text=INPUT_TEXT.replace(' use_theta_m = 0,', spelling)
-    toml_text, report=import_namelists(*_pair(tmp_path,inp=text),metgrid_initialization=True)
-    assert not any(item.key=='use_theta_m' for item in report.fixed)
-    entry=next(item for item in report.substitutions if item.key=='use_theta_m')
-    assert (entry.wrf_value, entry.gpuwm_value)==(1, 0)
-    assert 'WOOF integrates dry theta' in entry.reason
-    assert 'not implemented' in entry.reason
-    # The door gate admits the declared divergence (isolated from the
-    # fixture's own mp_physics = 55 package substitution, which it refuses) ...
-    require_preserved_wrf_selectors(SimpleNamespace(substitutions=tuple(
-        item for item in report.substitutions if item.key == 'use_theta_m')))
-    # ... and still refuses a reason-less package replacement.
-    with pytest.raises(ValueError, match='no native implementation'):
-        require_preserved_wrf_selectors(SimpleNamespace(substitutions=(Substitution(
-            key='mp_physics', wrf_value=99, wrf_name='some scheme', gpuwm_key='mp_physics',
-            gpuwm_value=8, gpuwm_name='Thompson'),)))
+    text = INPUT_TEXT.replace(' use_theta_m = 0,', spelling)
+    toml, report = import_namelists(*_pair(tmp_path, inp=text), metgrid_initialization=True)
+    assert 'use_theta_m = 1' in toml
+    assert not any(item.key == 'use_theta_m' for item in report.fixed)
+    assert not any(item.key == 'use_theta_m' for item in report.substitutions)
     announce_wrf_substitutions(SimpleNamespace(substitution_report=report), tmp_path/'r.json')
-    out=capsys.readouterr().out
-    assert 'use_theta_m=1' in out and 'Declared divergence' in out
-    assert 'WOOF integrates dry theta' in out
-    assert 'Physics substitutions (ratified):' in report.format()
-    assert 'WOOF integrates dry theta' in report.format()
+    out = capsys.readouterr().out
+    assert 'use_theta_m=1' in out and 'moist potential temperature' in out
 
 
 def test_shared_deep_soil_formula_preserves_native_bytes():
@@ -372,6 +345,9 @@ def test_both_doors_carry_the_shared_gpu_remedy_their_own_preflight_prints(
     source = tmp_path/'source'
     source.mkdir()
     outdir = tmp_path/'forecast'
+    # This test exercises physical-card supervision, so remove the
+    # host-only gate mask that deliberately bypasses that owner.
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
     assert metem_forecast.run_metem_forecast(source, outdir) == 0
     assert calls[-1]['allow_shared_gpu'] is False
     assert metem_forecast.run_metem_forecast(source, outdir, allow_shared_gpu=True) == 0
@@ -540,3 +516,24 @@ def test_common_cli_rejects_metem_levels_on_wrfinput_before_readiness(monkeypatc
     with pytest.raises(SystemExit) as stopped:
         cli.main(['run', '--wrfinput', 'wrf', '--vertical-levels', '32'])
     assert stopped.value.code == 2
+
+
+def test_metem_worker_defines_terrain_helper_before_entrypoint():
+    """Execute the worker module up to main, where its helpers must exist."""
+    import runpy,sys
+    from types import SimpleNamespace
+    previous=sys.gettrace()
+    def entry(frame,event,arg):
+        if event=='call' and frame.f_code.co_name=='main' and frame.f_globals.get('__name__')=='__main__' and frame.f_globals.get('__package__')=='woof':
+            helper=frame.f_globals.get('_smooth_cg_case')
+            assert callable(helper), 'met_em worker starts before its terrain helper is defined'
+            case=object()
+            assert helper(SimpleNamespace(smooth_cg_topo=False),case,{}) is case
+            raise SystemExit(0)
+        return entry
+    try:
+        sys.settrace(entry)
+        with pytest.raises(SystemExit) as stopped:
+            runpy.run_module('woof.metem_forecast',run_name='__main__')
+        assert stopped.value.code==0
+    finally:sys.settrace(previous)

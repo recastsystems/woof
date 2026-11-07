@@ -174,7 +174,12 @@ def test_the_flushed_route_is_what_the_unflushed_compile_prevents(
 
     flushed = cp.RawModule(code=module_source("kf"),
                            options=("-std=c++17", "--fmad=false"))
-    monkeypatch.setattr(kf, "_kf_function", flushed.get_function)
+    # _kf_function takes the trigger since c35dbafafb; the flushed control
+    # is the default trigger-1 module only.
+    def flushed_function(name, trigger=1):
+        assert trigger == 1, trigger
+        return flushed.get_function(name)
+    monkeypatch.setattr(kf, "_kf_function", flushed_function)
     _, compare_woof = _harness()
     report = compare_woof.run(str(COLUMNS), str(ORACLE), label="flushed",
                               meta_path=str(META))

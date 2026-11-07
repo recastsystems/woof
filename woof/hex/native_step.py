@@ -68,7 +68,7 @@ class DeviceClear:
 class NativeSubmissionError(RuntimeError):
     def __init__(self, status, issued):
         self.status, self.issued = status, issued
-        super().__init__(f"CUDA status {status} at command {issued}; "
+        super().__init__(f"GPU driver status {status} at command {issued}; "
                          f"{issued} commands issued, step poisoned; no automatic retry")
 
 
@@ -94,7 +94,7 @@ class NativeStep:
     Concurrent submissions sharing mutable device buffers are caller errors.
     """
     def __init__(self, library: str | Path, commands, *, frame_type,
-                 owners, cuda_library="libcuda.so.1"):
+                 owners, cuda_library=None):
         if not issubclass(frame_type, C.Structure):
             raise TypeError("frame_type must be a ctypes Structure")
         # Resolve once, during setup. CDLL releases the GIL during submission.
@@ -103,8 +103,16 @@ class NativeStep:
         self._library.hex_step_abi_version.restype = C.c_uint32
         if self._library.hex_step_abi_version() != 1:
             raise ValueError("unsupported native step ABI")
+        prefix = ''
+        if cuda_library is None:
+            from woof.hip_backend import active
+            if active():
+                from woof.hip_rust import driver
+                cuda_library, prefix = driver(), 'gpuwm_'
+            else:
+                cuda_library = 'libcuda.so.1'
         self._cuda = C.CDLL(str(cuda_library))
-        self._driver = _Driver(*(C.cast(getattr(self._cuda, name), C.c_void_p).value
+        self._driver = _Driver(*(C.cast(getattr(self._cuda, prefix + name), C.c_void_p).value
                                  for name in ("cuLaunchKernel", "cuMemcpyDtoDAsync_v2",
                                               "cuMemsetD8Async")))
         self._library.hex_step_validate.argtypes = [C.POINTER(_Command), C.c_size_t, C.c_size_t]

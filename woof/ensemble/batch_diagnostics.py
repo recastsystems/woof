@@ -68,7 +68,7 @@ def diagnostics_kernel_spec(state, *, strict=None):
     expected_extra = {spec.name: spec for spec in diagnostics_specs(state.cfg, strict=strict)}
     output_names = {"p", "al", "alt", "p_perturbation"}
     pointers = []
-    for parameter, name in diagnostic_pointer_fields(strict=strict, moist=bool(state.cfg.moist)):
+    for parameter, name in diagnostic_pointer_fields(strict=strict, moist=bool(state.cfg.moist and not state.cfg.use_theta_m)):
         if name not in state.storage.specs:
             raise BatchStateUnsupported(
                 f"diagnostics requires planned member allocation {name!r}; "
@@ -124,6 +124,7 @@ def prepare_update_diagnostics(state, hypsometric_opt=1, window=None):
     moist = bool(state.cfg.moist) if batch else getattr(state, "qv", None) is not None
     if moist and getattr(state, "qv", None) is None:
         raise BatchStateUnsupported("moist diagnostics need the admitted member vapor field; an inactive dummy would diagnose dry pressure")
+    moist = moist and not int(getattr(state, "use_theta_m", getattr(getattr(state, "cfg", None), "use_theta_m", 0)))
     strict = _strict_enabled()
     if strict != bool(diagnostics.DIAGNOSTICS_ENABLED):
         raise BatchStateUnsupported("diagnostic compiler mode changed after the original helper was imported; a fresh process is needed for one consistent pressure ABI")
@@ -163,9 +164,11 @@ def prepare_update_diagnostics(state, hypsometric_opt=1, window=None):
     strides = {parameter: state.storage.pointer_stride_bytes(name)
                for parameter, name in diagnostic_pointer_fields(strict=strict, moist=moist)}
     _, _, nyw, nxw = normalized_window
+    from woof.core.kernel_shape import shape_defines
     launch = prepare_batch_kernel_launch(
         spec, members, ((nxw * nyw + 255) // 256,), (256,), args,
-        pointer_strides=strides)
+        pointer_strides=strides,
+        defines=shape_defines("diagnostics", "calc_p_alpha", (nz, ny, nx)))
     launch.numerical_entries = ("calc_p_alpha",)
     launch.window = normalized_window
     return launch

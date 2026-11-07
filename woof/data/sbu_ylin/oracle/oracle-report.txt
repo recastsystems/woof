@@ -1,0 +1,20 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# flags:    -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize -cpp -DRWORDSIZE=4 -ffree-form -ffree-line-length-none
+# scheme libm surface (pristine object):
+                 U __powisf2
+                 U expf
+                 U powf
+# lowering probe:
+amax1(+0,-0) 80000000
+amax1(-0,+0) 00000000
+amin1(+0,-0) 00000000
+amin1(-0,+0) 80000000
+powi k=1 3F50508D 3F50508D
+powi k=2 3F2982FE 3F2982FE
+powi k=3 3F09EFC5 3F09EFC5
+powi k=4 3EE07C6D 3EE07C6D
+powi k=5 3EB6ABBB 3EB6ABBB
+powi k=6 3E94A502 3E94A502
+powi k=7 3E71E9AE 3E71E9AE
+powi k=8 3E44D9FB 3E44D9FB

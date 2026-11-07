@@ -1,6 +1,6 @@
 """A progress heartbeat must never kill the forecast it reports on.
 
-MEASURED, 2026-08-17, Windows 11, RTX 3080, woof 2.4.1 wheel: a
+MEASURED, 2026-08-17, Windows 11, RTX 3080, gpuwm 2.4.1 wheel: a
 `woof-prepared-tree-forecast` 12-3 km run died at outer step 76 of 120
 with ``PermissionError: [WinError 5] Access is denied`` inside
 ``progress_callback`` -> ``_atomic_json`` -> ``os.replace``, because a

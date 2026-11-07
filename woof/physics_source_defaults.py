@@ -23,7 +23,7 @@ PHYSICS_SELECTOR_VALUES = {
     "diff_6th_form": ("wrf_461", "noaa_wrf39"),
     "upper_wind_limiter_form": ("wrf_461", "noaa_wrf39"),
     "rrtmg_cloud_optics_form": ("wrf_461", "noaa_wrf39"),
-    "bl_mynn_version": ("wrf_461", "gsd_41"),
+    "bl_mynn_version": ("wrf_461", "wrf_471", "gsd_41"),
     "bl_mynn_cloud_tendency_form": ("wrf_461", "gsd_41"),
 
     # ruc_soilprop has no stock-WRF key either. Without an entry here an
@@ -34,6 +34,10 @@ PHYSICS_SELECTOR_VALUES = {
     "ruc_snow": ("wrf_461", "wrf_45"),
     "ruc_qvg_cold_start": ("wrf", "air"),
     "ruc_2m_diagnostic": ("flux", "log_profile"),
+    # The aer_opt = 3 form: the operational fork's (RunConfig default) or
+    # WRF 4.6.1's.  No WRF key spells it; a stock namelist imports the
+    # stock form and a fork namelist the fork's (woof.namelist_import).
+    "rrtmg_aer3_source": ("operational_fork", "wrf_461"),
 }
 _SELECTOR_MARKER = "! gpuwm-physics-selectors-v1:"
 
@@ -288,7 +292,7 @@ def gsd41_admitted(settings) -> bool:
 #: woof-hour1-spinup).  It is filled only where the fork generation
 #: resolves, written or filled here, because woof.config refuses it
 #: under ``wrf_461``.
-#: The MYNN boundary layer generation joined them in lane/mynn-exact:
+#: The MYNN boundary layer generation joined them in development branch:
 #: the WOOF-HRRR door's carried experiment.toml and the shipped HRRR demo
 #: configurations name MYNN and the legacy RRTMG pair but no
 #: ``bl_mynn_version``, so they ran WRF v4.6.1's MYNN against HRRR's own

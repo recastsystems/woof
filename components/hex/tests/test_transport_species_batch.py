@@ -11,7 +11,10 @@ from woof.hex import cuda_transport_v841 as t
 def test_batch_budget_keeps_large_mesh_census_limit(monkeypatch):
     monkeypatch.delenv('WOOF_HEX_LIMITER_SPECIES_PER_PASS', raising=False)
     monkeypatch.delenv('WOOF_HEX_TRANSPORT_WORKSPACE_BYTES', raising=False)
+    monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', 'single')
     assert t.limiter_species_per_pass(11, nlev=55, ncells=167254, nedges=501756) == 3
+    monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', 'compact')
+    assert t.limiter_species_per_pass(11, nlev=55, ncells=167254, nedges=501756) == 1
     assert t.limiter_species_per_pass(11, nlev=55, ncells=655362, nedges=1966080) == 1
     assert t.limiter_species_per_pass(11, nlev=7, ncells=17, nedges=17) == 11
     assert t.limiter_species_per_pass(11, nlev=55, ncells=167254, nedges=501756, available_bytes=500_000_000) == 1
@@ -173,11 +176,20 @@ def test_host_kernel_launches_bitwise(host_launch,monkeypatch,case,order,density
 @pytest.mark.gpu
 @pytest.mark.parametrize('case',['mixed','all-zero','source-reactivation','stage-reactivation','signed-zero','subnormal','nonfinite-flow'])
 @pytest.mark.parametrize('order,density,hoist,regional',[(2,False,'0',False),(3,True,'0',True),(2,True,'1',True),(3,False,'1',False)])
-def test_device_kernel_launches_bitwise(monkeypatch,case,order,density,hoist,regional):
+def test_device_kernel_launches_bitwise(monkeypatch,case,order,density,hoist,regional,request):
     if os.environ.get('WOOF_HEX_TRANSPORT_BATCH_GPU_TEST')!='1':
         pytest.skip('set WOOF_HEX_TRANSPORT_BATCH_GPU_TEST=1 inside a card grant')
-    import cupy as cp
     from woof.hex import numerics
+    wanted = os.environ.get('HEX_TRANSPORT_TEST_NUMERICS', 'strict')
+    if numerics.mode() != wanted and numerics._bound:
+        # A shared battery worker may already hold fast kernels; strict proofs need a fresh process.
+        import subprocess
+        import sys
+        env = dict(os.environ, WOOF_HEX_NUMERICS=wanted, GPUWM_NUMERICS=wanted)
+        completed = subprocess.run([sys.executable, '-m', 'pytest', '-q', str(request.node.path) + '::' + request.node.name], env=env)
+        assert completed.returncode == 0
+        return
+    import cupy as cp
     numerics.set_mode(os.environ.get('HEX_TRANSPORT_TEST_NUMERICS','strict'),
                       source='transport bitwise test')
     monkeypatch.setenv('WOOF_HEX_EDGE_HOIST',hoist)

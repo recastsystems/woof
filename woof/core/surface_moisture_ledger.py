@@ -56,7 +56,10 @@ Q2_RESIDUAL_BUDGET_ULP = 8.0
 #: therefore overwrites SFCLAY's Q2.  Mirrors
 #: :data:`woof.core.physics.LAND_SURFACE_SFCDIAGS_SCHEMES`; asserted equal by
 #: the covering test so the two can never drift apart.
-SFCDIAGS_SCHEMES = frozenset({2})
+#: The slab scheme (1) joined with its port: WRF CASE (SLABSCHEME) runs the
+#: same SFCDIAGS after SLAB (module_surface_driver.F:2543-2583), so its Q2
+#: is the SFCDIAGS form too.
+SFCDIAGS_SCHEMES = frozenset({1, 2})
 
 
 def q2_residual_budget(q2: float) -> float:

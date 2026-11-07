@@ -7,7 +7,7 @@ while [ $(date +%s) -lt $STOP ]; do
   done_n=$(ls $W/results/rows6/*-blowup.json 2>/dev/null | wc -l)
   echo "$(date -u +%FT%TZ) loop6 $TAG: $done_n of $total rows present" >> $W/logs/sweep6-events.log
   [ $done_n -ge $total ] && break
-  card-lease tclock --cards 1 --est 1500 --wait 3000 $W/sweep6.sh $JOBS $NPROC 1200 >> $W/logs/mutex-loop6-$TAG.log 2>&1
+  ${GPU_MUTEX_DIR:?set GPU_MUTEX_DIR}/run.sh tclock --cards 1 --est 1500 --wait 3000 $W/sweep6.sh $JOBS $NPROC 1200 >> $W/logs/mutex-loop6-$TAG.log 2>&1
   rc=$?; [ $rc -eq 3 ] && { echo "$(date -u +%FT%TZ) loop6 $TAG: validate failed, stop" >> $W/logs/sweep6-events.log; break; }
   sleep 5
 done

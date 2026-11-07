@@ -2901,7 +2901,7 @@ _M1_MOIST_N2_D02_PIN_MS = {
     # 3.95 ms baseline, 2026-07-22.
     "NVIDIA GeForce RTX 5090": 6.5,
     # 8.656 ms idle baseline, the slower of two runs of five passes
-    # (8.631-8.657 ms), 2026-09-29, a development machine, NVRTC 13.4.92, driver 595.91.07.
+    # (8.631-8.657 ms), 2026-09-29, test host 4, NVRTC 13.4.92, driver 595.91.07.
     "NVIDIA GeForce RTX 5070 Ti": 14.2,
 }
 
@@ -2911,7 +2911,7 @@ _M1_MOIST_N2_D02_PIN_MS = {
 _M1B_INCREMENT_D02_PIN_MS = {
     "NVIDIA GeForce RTX 5090": 6.0,
     # 6.622 ms idle baseline, the slower of two runs of five passes
-    # (6.622-6.630 ms), 2026-09-29, a development machine, NVRTC 13.4.92, driver 595.91.07.
+    # (6.622-6.630 ms), 2026-09-29, test host 4, NVRTC 13.4.92, driver 595.91.07.
     "NVIDIA GeForce RTX 5070 Ti": 13.2,
 }
 

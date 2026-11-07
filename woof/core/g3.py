@@ -317,8 +317,14 @@ class Grell3D:
         rthraten = self._lane("rthratenlw", shape) + self._lane("rthratensw", shape)
         rthblten = self._lane("gf_rthblten", shape)
         rqvblten = self._lane("gf_rqvblten", shape)
-        thften = (self._lane("gf_rthdynten", shape) + rthraten + rthblten) * exner
-        qvften = self._lane("gf_rqvdynten", shape) + rqvblten
+        theta_advective = self._lane("gf_rthdynten", shape)
+        vapour_advective = self._lane("gf_rqvdynten", shape)
+        if getattr(state, "use_theta_m", 0):
+            from woof.core.theta_m_physics import dry_cumulus_theta_tendency
+            theta_advective = theta_advective.copy()
+            dry_cumulus_theta_tendency(state, theta_advective, vapour_advective)
+        thften = (theta_advective + rthraten + rthblten) * exner
+        qvften = vapour_advective + rqvblten
         lev_in = cp.empty((len(LEV_IN), nz, ny, nx), dtype=DTYPE)
         lev_in[0] = atmosphere["u"]
         lev_in[1] = atmosphere["v"]
@@ -371,7 +377,7 @@ class Grell3D:
             diag[name] = fields["g3_sfc"][k]
         for k, name in enumerate(ISFC_OUT):
             diag[name] = fields["g3_isfc"][k]
-        if cfg.cu_diag:
+        if cfg.cu_diag or cfg.cu_rad_feedback:
             averages = {key:fields[key] for key in
                 ('gd_cloud_a','qc_cu','gd_cloud2_a','qi_cu','gd_cldfr','raincv_a','raincv_b')}
             averages['clock'] = fields['g3_diag_clock']
@@ -387,7 +393,12 @@ class Grell3D:
         rqc = step.rqccuten
         return CumulusResult(
             rthcuten=step.rthcuten, rqvcuten=step.rqvcuten, rqccuten=rqc,
-            rqicuten=rqi, rainc=step.raincv)
+            rqicuten=rqi, rainc=step.raincv,
+            # G3DRV's native bounds include its .001 level marker.
+            cloud_base=(step.sfc[SFC_OUT.index('hbot')]
+                        if 99 in (cfg.ra_lw_physics, cfg.ra_sw_physics) else None),
+            cloud_top=(step.sfc[SFC_OUT.index('htop')]
+                       if 99 in (cfg.ra_lw_physics, cfg.ra_sw_physics) else None))
 
 
 __all__ = ["Grell3D", "run_g3", "run_g3_diag", "G3Step", "g3_band", "spread_band"]

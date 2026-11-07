@@ -1450,8 +1450,12 @@ def _halo_crop(window, full_shape: tuple[int, int]):
                  inner_ny=j1 - j0, inner_nx=i1 - i0)
 
 
-def mslp_hpa_from_state(state, *, window=None) -> np.ndarray:
-    """Smoothed mean-sea-level pressure (hPa) as a host ``(ny, nx)`` plane.
+def mslp_hpa_from_state(state, *, window=None, resident=False, smooth=True):
+    """Mean-sea-level pressure (hPa), smoothed and host-resident by default.
+
+    ``resident=True`` keeps a full-domain CUDA result on the caller's stream.
+    ``smooth=False`` exposes the raw native diagnostic for integral observation
+    operators. Existing tracker callers keep their original smoothing and copy.
 
     ``window`` is an optional ``(j_slice, i_slice)`` -- the shape
     :meth:`NestFootprint.search_box` returns -- and it is the reason this
@@ -1543,8 +1547,15 @@ def mslp_hpa_from_state(state, *, window=None) -> np.ndarray:
             f"sea-level pressure could not be reduced from the parent "
             f"column ({exc}); field = 'pressure' cannot track this "
             "state") from exc
-    smoothed = _nine_point_smooth(mslp, PRESSURE_SMOOTH_PASSES,
-                                  MSLP_SMOOTH_CENTER_WEIGHT, array_module=xp)
+    smoothed = (_nine_point_smooth(mslp, PRESSURE_SMOOTH_PASSES,
+                                   MSLP_SMOOTH_CENTER_WEIGHT, array_module=xp)
+                if smooth else mslp)
+    if resident:
+        if crop is not None:
+            raise TrackerRefusal("resident pressure diagnostics require the full domain, not a host-replanted crop")
+        if not hasattr(smoothed, "__cuda_array_interface__"):
+            raise TrackerRefusal("resident pressure diagnostics require a CUDA model state")
+        return smoothed
     smoothed = _host(smoothed)
     if crop is None:
         return smoothed

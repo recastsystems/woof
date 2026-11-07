@@ -29,7 +29,7 @@
 //     x*x, because at -O2 gfortran folds powf(x, 2.0) into a multiply (the
 //     strict wrf.exe's psim/psih_unstable_full call powf twice, not four
 //     times).  Keeping those four as powf calls, the -O0 spelling, put
-//     1-ULP surface fluxes in 3 of 12,000 9 km columns after one
+//     1-ULP surface fluxes in 3 of 12,000 nested-domain 9 km columns after one
 //     physics-on step against the strict wrf.exe 4.6.1 (2026-10-29);
 //   * every expression keeps WRF's own association, read from gfortran's
 //     -fdump-tree-original of the pinned source: the Exner factor's
@@ -360,10 +360,18 @@ void sfclay_column(
     real* __restrict__ cpm_o, real* __restrict__ ck_o,
     real* __restrict__ cka_o, real* __restrict__ cd_o,
     real* __restrict__ cda_o,
-    real dx, int option, int isfflx, int isftcflx, int iz0tlnd, int n)
+#ifdef GPUWM_SFCLAY_DX2D
+    const real* __restrict__ dx2d,
+#else
+    real dx,
+#endif
+    int option, int isfflx, int isftcflx, int iz0tlnd, int n)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n) return;
+#ifdef GPUWM_SFCLAY_DX2D
+    const real dx = dx2d[idx];
+#endif
     if (option == 91) {
         // Classic MM5 (module_sf_sfclay.F) is its own transcription,
         // sfclay_classic.cuh, graded bitwise against the WRF Fortran.  The

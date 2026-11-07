@@ -1,0 +1,7 @@
+# pinned -O0 vs pinned -O2 -fno-tree-vectorize -ffp-contract=off
+r1a0dt20 identical
+r0a0dt20 identical
+r1a0dt60 identical
+r1a2dt20 identical
+r0a2dt30 identical
+r1a1dt20 identical

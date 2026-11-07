@@ -69,6 +69,7 @@ pub fn native_history_name(wrf_name: &str) -> Option<&'static str> {
         "TSK" => Some("skintemp"),
         "PBLH" => Some("hpbl"),
         "SWDOWN" => Some("swdnb"),
+        "OLR" => Some("olrtoa"),
         _ => None,
     }
 }
@@ -143,6 +144,16 @@ pub static FIELD_MAP: &[FieldMapping] = &[
     f("SEAICE", Some("xice"), Rank::Surface, "1", "SEA ICE FLAG", FieldSource::History,
       "fractional sea-ice cover, MPAS xice"),
     f("SNOW", Some("snow"), Rank::Surface, "kg m-2", "SNOW WATER EQUIVALENT", FieldSource::History, ""),
+    // The column-maximum reflectivity MPAS writes to its diag stream. A run
+    // whose history keeps no 3-D refl10cm (hex's 72 h TC run) otherwise had
+    // no model reflectivity at all, and its maps were drawn from a
+    // nearest-cell Python plane instead. WRF's own name for the same plane.
+    f("REFD_MAX", Some("refl10cm_max"), Rank::Surface, "dBZ", "MAX REFLECTIVITY (column maximum)",
+      FieldSource::History,
+      "MPAS diag refl10cm_max, read from the history or its diag stream file"),
+    // Top-of-atmosphere outgoing longwave: the hex history spelling `olr`,
+    // MPAS-A's own `olrtoa` (diag stream) through native_history_name.
+    f("OLR", Some("olr"), Rank::Surface, "W m-2", "TOA OUTGOING LONG WAVE", FieldSource::History, ""),
     f("SNOWH", Some("snowh"), Rank::Surface, "m", "PHYSICAL SNOW DEPTH", FieldSource::History, ""),
     // --- grid geometry the renderer reads ------------------------------------
     f("SINALPHA", None, Rank::Surface, "", "Local sine of map rotation", FieldSource::Constant,
@@ -288,6 +299,12 @@ pub fn remap_class(wrf_name: &str) -> RemapClass {
 /// precipitation, MSLP, precipitable-water and 100 m wind products read -- which is the
 /// accurate content of a coarse overview anyway.
 pub fn field_set_allows(field_set: &str, mapping: &FieldMapping) -> bool {
+    // Interval-max updraft helicity (MPAS updraft_helicity_max 2-5 km; RRFS and hex 0-1, 0-2, 0-3 km) is a surface
+    // map deliverable, so it rides every set. THE BREAKAGE THIS PREVENTS: as mpassit-only rows no hex export
+    // (full or surface) carried any updraft helicity, so no hex run could draw a UH map.
+    if matches!(mapping.wrf_name, "UP_HELI_MAX" | "UP_HELI_MAX01" | "UP_HELI_MAX02" | "UP_HELI_MAX03") {
+        return true;
+    }
     if mapping.note == MPASSIT_ONLY {
         return field_set == "mpassit";
     }
@@ -296,9 +313,15 @@ pub fn field_set_allows(field_set: &str, mapping: &FieldMapping) -> bool {
         // REFL_10CM rides in the surface set because its consumer product --
         // composite reflectivity, the MRMS-comparable quantity -- is a
         // surface-deliverable map even though the carrier is 3-D.
+        // QCLOUD and QICE ride for the same reason: low, mid and high cloud
+        // cover (the maps and the point forecast's cloud planes) are surface
+        // deliverables read from them. THE BREAKAGE THIS PREVENTS: wrf-core's
+        // cloudfrac reads a missing QCLOUD/QICE as zero, so every cloud-cover
+        // map of a surface export (the WOOF site's hex runs) drew clear sky,
+        // and a hex run's point forecast had no cloud.
         "surface" => matches!(
             mapping.wrf_name,
-            "T" | "P" | "PB" | "QVAPOR" | "PH" | "PHB" | "U" | "V" | "W" | "REFL_10CM"
+            "T" | "P" | "PB" | "QVAPOR" | "PH" | "PHB" | "U" | "V" | "W" | "REFL_10CM" | "QCLOUD" | "QICE"
         ) || matches!(mapping.rank, Rank::Surface | Rank::Soil),
         _ => true,
     }
@@ -321,7 +344,7 @@ mod tests {
 
     #[test]
     fn export_carriers_survive_conversion_field_sets() {
-        for name in ["P", "PB", "PH", "PHB", "QVAPOR", "W", "U", "V", "T", "HGT"] {
+        for name in ["P", "PB", "PH", "PHB", "QVAPOR", "W", "U", "V", "T", "HGT", "QCLOUD", "QICE"] {
             let row = FIELD_MAP.iter().find(|row| row.wrf_name == name).unwrap();
             assert!(field_set_allows("full", row), "full lost {name}");
             assert!(field_set_allows("surface", row), "surface lost {name}");

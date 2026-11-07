@@ -7,7 +7,7 @@ verify`` -- the binary the bridge actually ships -- and requires it to
 say PASS, and requires it to say something else when a byte is wrong.
 
 Skipped, not failed, when the binary is absent: ``rw_goes`` lives on
-``lane/goes-bridge`` and this lane branched off ``feature/da-scorecard``,
+``development branch`` and this lane branched off ``feature/da-scorecard``,
 so until the two are merged the crate is not in this tree.  Point
 ``WOOF_RW_GOES`` at a built binary to run it before then.
 """

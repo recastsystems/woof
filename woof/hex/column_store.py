@@ -10,6 +10,12 @@ the export door's. The surface set carries the column too (T, P, PB, QVAPOR, PH,
 
 Files: ``<out>/<domain>/<YYYYMMDDTHHMMSSZ>.wcol``, the frames on whole hours plus the last frame when the run ends
 off the hour. ``WOOF_COLUMNS=off`` writes none. A store that cannot be written is said and never fails the door.
+
+Point forecasts: an engine with ``rw_soundings`` ABI ``columns-surface-v1`` writes every file with the surface section
+(precipitation, sea-level pressure, cloud, gust, CAPE and the rest, from the converted frame by the map renderer's
+own functions, the same on the MPAS-physics and ArWen-physics routes), and :func:`write_series` folds a view's hourly
+files into ``<out>/<domain>/series.wser`` when the view is finished (the products pass's columns index, the export
+door's end), so a whole meteogram at a point is three small reads.
 """
 from __future__ import annotations
 
@@ -51,6 +57,34 @@ def stored(frame: Path, out: Path) -> Path | None:
         return None
     path = Path(out) / m[1] / f"{m[2]}{m[3]}{m[4]}T{m[5]}{m[6]}{m[7]}Z.wcol"
     return path if path.is_file() and path.stat().st_size > 0 else None
+
+
+def write_series(out: Path, *, say=print) -> dict:
+    """Each fixed grid's point-forecast time series under a view's store ``out`` (``<out>/<dNN>/series.wser``,
+    :func:`woof.soundings.write_series`): called once the view's frames are all stored. Returns a receipt (rows per
+    grid, seconds) or why none was written; never raises (readers use the hourly files)."""
+    started = time.monotonic()
+    if not enabled():
+        return {"files": 0, "skipped": "WOOF_COLUMNS=off"}
+    if not Path(out).is_dir():
+        return {"files": 0, "skipped": "no column store"}
+    try:
+        from woof.soundings import write_series as engine_series
+    except ImportError as error:
+        return {"files": 0, "skipped": f"the engine has no series writer ({error})"}
+    try:
+        rows = engine_series(out, threads=os.cpu_count() or 4)
+    except Exception as error:  # a series never fails the door
+        receipt = {"files": 0, "error": f"{type(error).__name__}: {error}"[:300],
+                   "seconds": round(time.monotonic() - started, 3)}
+        say(f"SERIES none out={out}: {receipt['error']}", flush=True)
+        return receipt
+    written = [r for r in rows if r.get("path")]
+    receipt = {"files": len(written), "rows": rows, "bytes": int(sum(r.get("bytes", 0) for r in written)),
+               "out": str(out), "seconds": round(time.monotonic() - started, 3)}
+    say(f"SERIES files={receipt['files']} bytes={receipt['bytes']} out={out} seconds={receipt['seconds']}"
+        + "".join(f" skip[{r['domain']}]={r['skipped']}" for r in rows if r.get("skipped")), flush=True)
+    return receipt
 
 
 def write(frames: list[Path], out: Path, *, field_set: str = "full", say=print) -> dict:

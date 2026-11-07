@@ -149,6 +149,10 @@ GRID_ROTATE_SOURCE_HEAD = "4b5c11b4be471498da36a2637ad1cf49962b3d05"
 GRID_ROTATE_DEFAULT_REAL_PI = float(
     np.float32(2.0) * np.arcsin(np.float32(1.0))
 )
+# The published x4.163842 grid (sha256 48e747157bb1f0b83b96505e268699dfb562b4c1428468cb91457fbb03b1be55)
+# replays convert_xl with this literal: one binary32 ULP below 2*asin(1).
+# Recognize its exact branch arithmetic, never a wider coordinate tolerance.
+GRID_ROTATE_X4_REAL_PI = float(np.float32(3.1415926))
 GRID_ROTATE_PI_DELTA = GRID_ROTATE_DEFAULT_REAL_PI - float(np.pi)
 GRID_ROTATE_CONVERT_XL_EPS = float(np.float32(1.0e-10))
 GRID_ROTATE_PRODUCER_MAX_ULP_ERROR = 2.0
@@ -1151,7 +1155,8 @@ def _latitude_longitude_xyz(
 
 
 def _grid_rotate_convert_xl_longitude(
-    x: NDArray[np.float64], y: NDArray[np.float64]
+    x: NDArray[np.float64], y: NDArray[np.float64], *,
+    producer_pi: float = GRID_ROTATE_DEFAULT_REAL_PI,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Reproduce the pinned Fortran ``convert_xl`` longitude arithmetic.
 
@@ -1162,14 +1167,14 @@ def _grid_rotate_convert_xl_longitude(
 
     policy = np.geterr()
     if x.ndim != 1 or any(value in ("call", "log") for value in policy.values()):
-        return _grid_rotate_convert_xl_longitude_block(x, y)
+        return _grid_rotate_convert_xl_longitude_block(x, y, producer_pi=producer_pi)
     longitude = np.empty(x.shape, dtype=np.float64)
     multiplicity = np.empty(x.shape, dtype=np.float64)
 
     def construct(block: slice) -> None:
         with np.errstate(**policy):
             longitude[block], multiplicity[block] = _grid_rotate_convert_xl_longitude_block(
-                x[block], y[block]
+                x[block], y[block], producer_pi=producer_pi
             )
 
     run_blocks(construct, x.size, elements=x.size * 16, worker_limit=4)
@@ -1177,7 +1182,8 @@ def _grid_rotate_convert_xl_longitude(
 
 
 def _grid_rotate_convert_xl_longitude_block(
-    x: NDArray[np.float64], y: NDArray[np.float64],
+    x: NDArray[np.float64], y: NDArray[np.float64], *,
+    producer_pi: float = GRID_ROTATE_DEFAULT_REAL_PI,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     longitude = np.zeros(x.shape, dtype=np.float64)
     multiplicity = np.zeros(x.shape, dtype=np.float64)
@@ -1190,30 +1196,30 @@ def _grid_rotate_convert_xl_longitude_block(
 
     second_quadrant = (x[both_indices] <= 0.0) & (y[both_indices] >= 0.0)
     indices = both_indices[second_quadrant]
-    longitude[indices] = GRID_ROTATE_DEFAULT_REAL_PI - base[second_quadrant]
+    longitude[indices] = producer_pi - base[second_quadrant]
     multiplicity[indices] = 1.0
 
     third_quadrant = (x[both_indices] <= 0.0) & (y[both_indices] < 0.0)
     indices = both_indices[third_quadrant]
-    longitude[indices] = base[third_quadrant] + GRID_ROTATE_DEFAULT_REAL_PI
+    longitude[indices] = base[third_quadrant] + producer_pi
     multiplicity[indices] = 1.0
 
     fourth_quadrant = (x[both_indices] >= 0.0) & (y[both_indices] <= 0.0)
     indices = both_indices[fourth_quadrant]
-    longitude[indices] = 2.0 * GRID_ROTATE_DEFAULT_REAL_PI - base[fourth_quadrant]
+    longitude[indices] = 2.0 * producer_pi - base[fourth_quadrant]
     multiplicity[indices] = 2.0
 
     x_axis = x_active & ~y_active
     negative_x_axis = x_axis & (x <= 0.0)
-    longitude[negative_x_axis] = GRID_ROTATE_DEFAULT_REAL_PI
+    longitude[negative_x_axis] = producer_pi
     multiplicity[negative_x_axis] = 1.0
 
     y_axis = ~x_active & y_active
     positive_y_axis = y_axis & (y > 0.0)
-    longitude[positive_y_axis] = GRID_ROTATE_DEFAULT_REAL_PI / 2.0
+    longitude[positive_y_axis] = producer_pi / 2.0
     multiplicity[positive_y_axis] = 0.5
     negative_y_axis = y_axis & (y <= 0.0)
-    longitude[negative_y_axis] = 3.0 * GRID_ROTATE_DEFAULT_REAL_PI / 2.0
+    longitude[negative_y_axis] = 3.0 * producer_pi / 2.0
     multiplicity[negative_y_axis] = 1.5
     return longitude, multiplicity
 
@@ -1301,7 +1307,7 @@ class Mesh:
     #: partition_local_mesh_v841) is left out on the same rule: every local array a cached function reads is
     #: hashed already, and one whose reachable code names the source mesh is keyed on it after all, unless it
     #: declares its result independent of it (the deformation weights, mixing_v841).  No Mesh method reads it.  THE COST THIS REMOVES (RRFS hrrrv5 limited area, same-host rank processes, mv3km 4
-    #: ranks on V8X6000, 2026-10-29): every cached call on a rank's local mesh (advection coefficients, ...)
+    #: ranks on eight-card system, 2026-10-29): every cached call on a rank's local mesh (advection coefficients, ...)
     #: hashed the whole source mesh, so every rank process read all 2.0 GB of the shared mesh copy into its
     #: resident memory (23.9 GB per rank process on NOAA's conus3km) and spent the SHA-256 work on it.
     prep_cache_provenance = ("grid_path", "static_path", "provenance", "partition_source_mesh")
@@ -1778,7 +1784,7 @@ class Mesh:
             "kiteAreasOnVertex",
         )
 
-        # THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 2,341,818 cells and 7.03 M edges, V8X6000, 2026-10-29):
+        # THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 2,341,818 cells and 7.03 M edges, eight-card system, 2026-10-29):
         # these checks were 5.6-8.7 s of the conus3km start-up's 10-11 s Mesh.from_netcdf, 1.4-2.1 threads busy
         # on a 128-core host, one whole-mesh NumPy check after another.  They only read the arrays, so the
         # independent ones run at once on host threads (_ValidationChecks) and a row-wise range check runs in
@@ -2536,6 +2542,7 @@ def reconcile_grid_rotate_longitudes(
     entity_evidence: dict[str, Any] = {}
     modes: list[str] = []
     changed_fields: list[str] = []
+    producer_pi = GRID_ROTATE_DEFAULT_REAL_PI
 
     for entity in ("Cell", "Edge", "Vertex"):
         coordinate_names = tuple(f"{axis}{entity}" for axis in "xyz")
@@ -2603,7 +2610,19 @@ def reconcile_grid_rotate_longitudes(
             candidate = normalize_longitudes(corrected_unwrapped)
         else:
             mode = "grid_rotate_default_real_pi_reconciled"
+            producer_pi = GRID_ROTATE_DEFAULT_REAL_PI
             producer_longitude, multiplicity = _grid_rotate_convert_xl_longitude(x, y)
+            if _maximum_ulp_error(longitude, producer_longitude) > GRID_ROTATE_PRODUCER_MAX_ULP_ERROR:
+                # NCAR x4 uses the neighbouring default-real pi literal. Replay
+                # every branch, then require the same two-ULP signature and
+                # Cartesian correction as the original producer. A changed
+                # coordinate or a mixture of producers remains refused.
+                alternate, alternate_multiplicity = _grid_rotate_convert_xl_longitude(
+                    x, y, producer_pi=GRID_ROTATE_X4_REAL_PI)
+                if _maximum_ulp_error(longitude, alternate) <= GRID_ROTATE_PRODUCER_MAX_ULP_ERROR:
+                    producer_pi = GRID_ROTATE_X4_REAL_PI
+                    producer_longitude, multiplicity = alternate, alternate_multiplicity
+                    mode = "grid_rotate_x4_real_pi_reconciled"
             producer_gap = float(
                 np.max(np.abs(longitude - producer_longitude), initial=0.0)
             )
@@ -2621,7 +2640,7 @@ def reconcile_grid_rotate_longitudes(
                     "does not reproduce convert_xl "
                     f"(observed {latitude_ulp_error:g} ULP)"
                 )
-            corrected_unwrapped = longitude - multiplicity * GRID_ROTATE_PI_DELTA
+            corrected_unwrapped = longitude - multiplicity * (producer_pi - float(np.pi))
             candidate = normalize_longitudes(corrected_unwrapped)
             authoritative_normalized = normalize_longitudes(authoritative_longitude)
             corrected_gap = float(
@@ -2674,6 +2693,7 @@ def reconcile_grid_rotate_longitudes(
             "mode": mode,
             "count": int(longitude.size),
             "dtype": "float64",
+            "producer_pi": producer_pi if producer_gap is not None else None,
             "producer_formula_max_abs_gap_radians": producer_gap,
             "producer_formula_max_ulp_error": producer_ulp_error,
             "producer_latitude_max_ulp_error": latitude_ulp_error,
@@ -2712,7 +2732,7 @@ def reconcile_grid_rotate_longitudes(
             mesh.arrays[name] = candidate
             mesh.variable_sources[name] = (
                 "grid_binary64_grid_rotate_default_real_pi_reconciled_from_cartesian"
-                if modes[0] == "grid_rotate_default_real_pi_reconciled"
+                if modes[0].endswith("_real_pi_reconciled")
                 else "grid_binary64_equivalent_longitude_range"
             )
         mesh.validate()
@@ -2759,9 +2779,9 @@ def reconcile_grid_rotate_longitudes(
             "storage_kind": "RKIND=8",
             "expression_kind": "unsuffixed default real (binary32)",
         },
-        "producer_default_real_pi": GRID_ROTATE_DEFAULT_REAL_PI,
+        "producer_default_real_pi": producer_pi,
         "true_binary64_pi": float(np.pi),
-        "default_real_pi_delta_radians": GRID_ROTATE_PI_DELTA,
+        "default_real_pi_delta_radians": producer_pi - float(np.pi),
         "producer_match_max_ulp": GRID_ROTATE_PRODUCER_MAX_ULP_ERROR,
         "latitude_match_max_ulp": GRID_ROTATE_LATITUDE_MAX_ULP_ERROR,
         "corrected_atan2_atol_radians": GRID_ROTATE_CORRECTED_ATAN2_ATOL,

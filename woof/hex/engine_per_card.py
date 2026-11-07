@@ -1,7 +1,7 @@
 """Engine land-kernel modules held per card, for same-host ranks on several cards.
 
-THE BREAKAGE THIS PREVENTS (measured 2026-10-15 on a two-card host, woof 2.9.0): same-host ranks drive
-several cards from one process, and woof 2.9.0 holds its Noah-MP kernel modules once per process: the
+THE BREAKAGE THIS PREVENTS (measured 2026-10-15 on a two-card host, gpuwm 2.9.0): same-host ranks drive
+several cards from one process, and gpuwm 2.9.0 holds its Noah-MP kernel modules once per process: the
 driver, energy, thermal and glacier factories cache on their compile options alone, and the slab-libm
 module is one global.  A CUDA module belongs to the card it was loaded on, so the second card was handed
 the first card's kernel.  A two-card active local-time-stepping forecast stopped at step 4 with

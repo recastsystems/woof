@@ -181,8 +181,8 @@ def dudhia_shortwave_columns(
         raise ValueError("Dudhia surface inputs must have shape (ncol,)")
     if exner is not None and xp.asarray(exner).shape != shape:
         raise ValueError("Dudhia exner must match the layer shape")
-    if icloud not in (0, 1, 2):
-        raise ValueError("icloud=3 requires unported cal_cldfra3 condensate adjustment; choose 0, 1 or 2")
+    if icloud not in (0, 1, 2, 3):
+        raise ValueError("icloud must be 0, 1, 2 or 3")
     if (not np.isfinite(solcon) or solcon <= 0.0
             or not np.isfinite(swrad_scat) or swrad_scat < 0.0):
         raise ValueError("solcon must be positive and swrad_scat non-negative")
@@ -337,8 +337,8 @@ class DudhiaShortwaveRadiation:
             raise ValueError("radiation latitude/longitude shapes must match")
         if (not np.isfinite(self.swrad_scat) or self.swrad_scat < 0.0):
             raise ValueError("swrad_scat must be finite and non-negative")
-        if self.icloud not in (0, 1, 2):
-            raise ValueError("icloud=3 requires unported cal_cldfra3 condensate adjustment; choose 0, 1 or 2")
+        if self.icloud not in (0, 1, 2, 3):
+            raise ValueError("icloud must be 0, 1, 2 or 3")
 
     @staticmethod
     def _top_down(array):
@@ -365,9 +365,31 @@ class DudhiaShortwaveRadiation:
         qi = self._state_field(state, "qi", atmosphere["qi"])
         qs = self._state_field(state, "qs", zero)
         qg = self._state_field(state, "qg", zero)
+        if int(getattr(cfg, "cu_physics", 0)) == 10:
+            # module_radiation_driver.F:1510-1557 precedes every spectrum.
+            from woof.core.rrtmgp import cal_cldfra1, cal_cldfra2
+            from woof.core.rrtmg_legacy import legacy_cloud_fraction_flags
+            from woof.core.kfcup_radiation import merge_kfcup_clouds
+            level = lambda value: value.reshape(nz, -1)
+            f_qi, f_qs = legacy_cloud_fraction_flags(int(cfg.mp_physics))
+            liquid = level(qc).copy()
+            flags = None
+            if self.icloud == 1:
+                fraction, flags = cal_cldfra1(level(atmosphere["qv"]), liquid,
+                    level(qi), level(qs), level(temperature), level(atmosphere["pressure"]),
+                    f_qc=True, f_qi=f_qi, f_qs=f_qs,
+                    mp_physics=int(cfg.mp_physics), return_flags=True,
+                    f_ice_phy=level(state.f_ice_phy) if int(cfg.mp_physics)==95 else None)
+            elif self.icloud == 2:
+                fraction = cal_cldfra2(liquid, level(qi), f_qc=True, f_qi=f_qi)
+            else:
+                fraction = cp.zeros_like(liquid)
+            liquid, _ = merge_kfcup_clouds(liquid, fraction, flags,
+                fields, cfg, level_major=True)
+            qc = liquid.reshape(nz, ny, nx)
         qc_cols = self._top_down(qc)
         qi_cols = self._top_down(qi)
-        active_bl = self.icloud != 2 and mynn_bl_cloud_active(
+        active_bl = self.icloud not in (2, 3) and mynn_bl_cloud_active(
             getattr(cfg, "bl_pbl_physics", 0), getattr(cfg, "icloud_bl", 0))
         qc_bl = self._top_down(fields["qc_bl"]) if active_bl else None
         qi_bl = self._top_down(fields["qi_bl"]) if active_bl else None
@@ -377,12 +399,25 @@ class DudhiaShortwaveRadiation:
             qc_cols, qi_cols, None, qc_bl=qc_bl, qi_bl=qi_bl,
             cldfra_bl=cldfra_bl,
             bl_pbl_physics=getattr(cfg, "bl_pbl_physics", 0),
-            icloud_bl=(getattr(cfg, "icloud_bl", 0) if self.icloud != 2 else 0),
+            icloud_bl=(getattr(cfg, "icloud_bl", 0) if self.icloud not in (2, 3) else 0),
             itimestep=(wrf_itimestep(state.elapsed_seconds, cfg.dt)
                        if active_bl else 1),
             bl_mynn_version=getattr(cfg, "bl_mynn_version", "wrf_461"),
             temperature=self._top_down(temperature) if active_bl else None,
         )
+
+        from woof.core.column_cumulus import merge_column_cumulus_clouds
+        qc_cols, qi_cols, _ = merge_column_cumulus_clouds(
+            qc_cols, qi_cols, None, fields=fields, cfg=cfg,
+            columns=self._top_down)
+
+        qs_cols=self._top_down(qs)
+        feedback=atmosphere.get("cumulus_feedback")
+        if feedback is not None and self.icloud:
+            from woof.core.cumulus_feedback import merge_cumulus_feedback
+            packed={name:self._top_down(value) for name,value in feedback.items()}
+            qc_cols,qi_cols,qs_cols,_,_=merge_cumulus_feedback(qc_cols,qi_cols,qs_cols,cp.zeros_like(qc_cols),packed,aerosol=cfg.aercu_opt>0,
+                radii={target:self._top_down(getattr(state,source)) for target,source in (("effc","efcg"),("effi","efig"),("effs","efsg"))} if cfg.aercu_opt>0 else None)
 
         from woof.core.physics import (
             RadiationResult, _physics_period_seconds)
@@ -400,7 +435,7 @@ class DudhiaShortwaveRadiation:
             self._top_down(temperature),
             self._top_down(atmosphere["pressure"]),
             self._top_down(atmosphere["qv"]), qc_cols,
-            self._top_down(qr), qi_cols, self._top_down(qs),
+            self._top_down(qr), qi_cols, qs_cols,
             self._top_down(qg), self._top_down(atmosphere["dz"]),
             mu.reshape(-1), cp.asarray(fields["albedo"]).reshape(-1),
             solcon=solcon, exner=self._top_down(atmosphere["exner"]),

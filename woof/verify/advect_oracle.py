@@ -580,11 +580,11 @@ def control_source(module: str, variant: str) -> str:
         return source
     # Patch the code the default compile runs: the first flux5 coefficient
     # in the module text otherwise sits in an opt-in WRF-exact branch.
-    source = default_source(source)
-    if variant == "mutation":
-        if "37.0f" not in source:
+    source = default_source(_default_order_terms(source))
+    if variant == "mutation":  # default order-5 flux5; a bare 37.0f now lands first in the opt-in order-6 branch
+        if "__fdiv_rn((vel * (37.0f" not in source:
             raise ValueError("flux5 mutation site disappeared")
-        return source.replace("37.0f", "38.0f", 1)
+        return source.replace("__fdiv_rn((vel * (37.0f", "__fdiv_rn((vel * (38.0f", 1)
     if variant not in ("wrf_flux", "wrf_flux_no_fma"):
         raise ValueError(variant)
     prefix = "pd_" if module in ("pd_advection", "pd_vertical_sl") else ""
@@ -682,3 +682,37 @@ def _pd_diagnostics(case, a, coord, fluxes, variant):
             np.int32(m["open_x"]), np.int32(m["open_y"]), h, z)
     kernel(((nx + 127) // 128, ny, nz), (128, 1, 1), args)
     return h, z
+
+
+#: The transport-order kernels (dyn-options fold 6a79a9fb05) open with
+#: ``#if GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_NO_HADV || GPUWM_HORDER == 2 ...``.
+_EXACT_OR_ORDER_TERMS = re.compile(
+    r"^([ \t]*#[ \t]*if[ \t]+)GPUWM_WRF_EXACT_C_ADVECTION[ \t]*\|\|[ \t]*"
+    r"((?:GPUWM_NO_HADV|GPUWM_HORDER[ \t]*==[ \t]*[0-9]+)"
+    r"(?:[ \t]*\|\|[ \t]*(?:GPUWM_NO_HADV|GPUWM_HORDER[ \t]*==[ \t]*[0-9]+))*)[ \t]*$",
+    re.M)
+
+
+def _default_order_terms(source: str) -> str:
+    """The advection exact selector is undefined (0) in the default compile,
+    so such a directive is its order terms alone, still decided by the
+    compiler.  Only this enumerated form is rewritten; default_source keeps
+    refusing every other compound expression with an exact selector."""
+    return _EXACT_OR_ORDER_TERMS.sub(lambda match: match.group(1) + match.group(2), source)
+
+
+def advect_nvrtc_key() -> str | None:
+    """``"major.minor"`` of the NVRTC this process compiles with, or None.
+
+    The production advection compile allows multiply-add contraction, so a
+    receipt's words follow the NVRTC build as well as the card.  The query
+    lives in this module, as :func:`advect_gpu_identity` does, so the parity test module
+    holds no device import of its own: a module-level or helper import would
+    mark its CPU fixture rows GPU (tests/test_gpu_pin_set.py).
+    """
+    try:
+        from cupy.cuda import nvrtc
+        major, minor = nvrtc.getVersion()
+    except Exception:  # noqa: BLE001 - no CuPy NVRTC: no compiler receipt applies
+        return None
+    return f"{int(major)}.{int(minor)}"

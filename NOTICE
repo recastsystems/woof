@@ -3,10 +3,50 @@ Copyright 2026 Recast WOOF contributors
 
 WOOF derives from ArWen, Apache-2.0 code Copyright 2026 ArWen contributors.
 
+woof/core/gsfcgce_constants.py and kernels/gsfcgce.cu and
+kernels/gsfcgce_refl.cu transcribe the Goddard GCE microphysics and radar
+operators in WRF phys/module_mp_gsfcgce.F and module_mp_radar.F, pinned in
+tools/gsfcgce_wrf461_oracle/SOURCE.md. The embedded coefficient tables
+share that source's public-domain terms. The WRF notice below and
+licenses/LICENSE-WRF-public-domain.txt apply to these transcriptions.
+woof/core/kernels/slab.cu, the slab soil preparation in
+tools/grib1_bridge/src/slab_init.rs, and tools/slab_wrf461_oracle implement
+WRF's five-layer thermal diffusion scheme and its native replay. The
+v4.7.1 module_sf_slab.F and LANDUSE.TBL are byte-identical to v4.6.1.
+The WRF public-domain notice below and
+licenses/LICENSE-WRF-public-domain.txt apply to those portions.
+
+woof/core/kernels/gsfcgce4ice.cu, gsfcgce4ice_aux.cu and
+radar_backscatter_common.cuh transcribe WRF v4.6.1
+phys/module_mp_gsfcgce_4ice_nuwrf.F and phys/module_mp_radar.F.
+The WRF public-domain notice below and licenses/LICENSE-WRF-public-domain.txt
+apply. Source pins, the per-file licence review and table provenance are in
+tools/gsfcgce4ice_wrf461_oracle/SOURCE.md.
+The cu_physics=93 CUDA column kernel transcribes WRF phys/module_cu_gd.F.
+The source is identical in WRF v4.6.1 and v4.7.1. The WRF public-domain
+notice below and licenses/LICENSE-WRF-public-domain.txt apply. It uses no
+external coefficient tables. The existing shared float32 math headers keep
+their own notices and licences.
+
+
+woof/core/boulac.py and woof/core/kernels/boulac.cu transcribe the
+BouLac PBL from WRF v4.7.1 phys/module_bl_boulac.F. Its source is identical
+to the pinned v4.6.1 module used by tools/boulac_wrf461_oracle. The WRF
+public-domain notice below and licenses/LICENSE-WRF-public-domain.txt
+apply. tools/boulac_wrf471_oracle/PIN.json records the source and licence.
+
 woof/core/kernels/tiedtke.cu and tiedtke_routines.cuh implement the original
 cumulus scheme from WRF v4.6.1 phys/module_cu_tiedtke.F. The WRF public-domain
 notice below and licenses/LICENSE-WRF-public-domain.txt apply to those
 equations and tools/tiedtke_wrf461_oracle/oracle.F90.
+
+woof/core/kernels/bmj.cu transcribes BMJDRV, BMJ, TTBLEX, BMJINIT and
+SPLINE from WRF v4.6.1 phys/module_cu_bmj.F. Its sole model dependency is
+share/module_model_constants.F. Both files are covered by the WRF public
+domain statement below and licenses/LICENSE-WRF-public-domain.txt.
+BMJINIT generates its lookup tables on the GPU; no separate table asset
+is redistributed. The pinned source and licence hashes are recorded by
+tools/bmj_wrf461_oracle/build.sh and instrument_native.py.
 
 woof/ensemble/stochastic.py and
 woof/core/kernels/ensemble_stochastic.cu implement Philox4x32-10 using
@@ -103,6 +143,21 @@ See "Source Sans 3" below.
 
 --------------------------------------------------------------------------
 
+The Pleim-Xiu land-surface column in woof/core/kernels/pxlsm.cu and the
+land-use tables in woof/data/pxlsm/pxlsm_tables.json derive from WRF
+phys/module_sf_pxlsm.F and phys/module_sf_pxlsm_data.F. The standalone
+oracle also compiles share/module_model_constants.F and
+frame/module_wrf_error.F. These four source files are byte-identical in
+WRF v4.6.1 and v4.7.1. Their source and license hashes are retained in
+tools/pxlsm_wrf461_oracle/source-pin.json. The WRF public-domain notice
+below and licenses/LICENSE-WRF-public-domain.txt apply to these copies
+and derived tables. No competitor implementation was used.
+The PX coupled driver, initialization and lifecycle bindings also follow
+WRF's public-domain module_surface_driver.F, module_physics_init.F,
+module_soil_pre.F, module_check_a_mundo.F and Registry.EM_COMMON; hashes
+and source licence review are retained in
+tools/pxlsm_wrf461_oracle/coupling-source-pin.json.
+
 WRF / NCAR / UCAR
 
 The MYNN mixing-length option 2 and post-PBL scalar diffusion in
@@ -142,6 +197,16 @@ reproduction rather than paraphrase. WRF v4.6.1 LICENSE.txt, in full:
 
     WRF(R) is a registered trademark of the University Corporation for
     Atmospheric Research (UCAR).
+
+The CUDA cloud-fraction, FARMS, cumulus-radiation merge, stock aerosol
+optics and eclipse routines in woof/core/kernels/{cldfra3,farms,
+cu_radiation,wrf_stock_aer3,solar_eclipse}.cu transcribe public WRF source.
+The distributed eclipse_besselian_elements.dat table is also from WRF.
+Source and table pins and individual licence checks are retained in
+tools/cloud_aerosol_wrf471_oracle/sources.json. The WRF notice applies.
+The isolated strict log10 helper retains the CORE-MATH MIT notice in
+licenses/LICENSE-CORE-MATH-MIT.txt. The external CESM aerosol dataset is
+not distributed by this port.
 
 The unwrapped text, byte-identical to WRF v4.6.1's own LICENSE.txt
 (md5 ea0d72123846bafa972b29ca41f89b1a) and carrying the registered
@@ -439,14 +504,16 @@ by their own author. WOOF transcribed them from glibc's copy at
 sysdeps/ieee754/flt-32/, which reproduces Arm's text unchanged apart
 from symbol renaming, branch-hint and cast macro spellings, and
 symbol-versioning declarations -- none of which WOOF reproduces. Those
-transcriptions appear under woof/core/kernels/ in 20 files: glibc_flt32.cuh,
+transcriptions appear under woof/core/kernels/ in 23 files: glibc_flt32.cuh,
 glibc_trig_flt32.cuh, mynn_libm.cuh, mynn_pbl.cu, mynn_surface_libm.cuh,
-noahmp_bareflux.cu, noahmp_fluxprep.cu, noahmp_leaves.cu, noahmp_radiation.cu,
-noahmp_snow.cu, noahmp_soilwater.cu, noahmp_vegeflux.cu, noahmp_vegprecip.cu,
-noahmp_water.cu, rrtmg_lw.cu, rrtmg_sw.cu, rrtmgp_libm.cuh,
-thompson_aerosol_libm.cuh, tiedtke_support.cuh, vert_interp.cu. The scope is
-generated by tools/update_kernel_license_scopes.py from the coefficient
-tables. The Python log/exp/pow copy in woof/core/noahmp_libm.py is separate.
+noahmp_bareflux.cu, noahmp_bareflux_options.cuh, noahmp_fluxprep.cu,
+noahmp_leaves.cu, noahmp_radiation.cu, noahmp_snow.cu, noahmp_soilwater.cu,
+noahmp_vegeflux.cu, noahmp_vegprecip.cu, noahmp_water.cu,
+noahmp_water_options.cuh, p3_gnu239.cuh, rrtmg_lw.cu, rrtmg_sw.cu,
+rrtmgp_libm.cuh, thompson_aerosol_libm.cuh, tiedtke_support.cuh,
+vert_interp.cu. The scope is generated by
+tools/update_kernel_license_scopes.py from the coefficient tables. The Python
+log/exp/pow copy in woof/core/noahmp_libm.py is separate.
 
 vert_interp.cu's wrf_vi_pressure_log uses the Arm logf tables from
 glibc_flt32.cuh and reproduces its range reduction and polynomial with
@@ -596,19 +663,27 @@ portions of this work:
 
 FP32 libm transcriptions -- FDLIBM (Sun Microsystems, Inc.)
 
+woof/data/mynn471/erff.cuh carries the Sun single-precision erf routine
+with its original permission notice. The same routine is embedded in the
+generated model.cu and its source-bound images. The MYNN numerical source
+comes from WRF 4.7.1's public-domain modules, under the unchanged statement
+in licenses/LICENSE-WRF-public-domain.txt.
+
 The expm1f, tanhf, atanf, log10f and log1pf reductions descend from FDLIBM,
 developed at SunPro, a Sun Microsystems, Inc. business, and converted to
 single precision at Cygnus Support by Ian Lance Taylor; glibc carries them
 substantially unmodified and presents them, in its own LICENSES file, as
-Sun's code. They appear under woof/core/kernels/ in 25 audited files:
-atan_scalar_flt32.cuh, dudhia_sw.cu, gf_wrf_normalization.cuh,
-log10_flt32.cuh, mynn_libm.cuh, mynn_pbl.cu, mynn_surface_libm.cuh,
-noahmp_bareflux.cu, noahmp_energy.cu, noahmp_fluxprep.cu, noahmp_glacier.cu,
-noahmp_leaves.cu, noahmp_vegeflux.cu, nssl2_diagnostics.cu,
-portable_libm64.cuh, ruc.cu, sfclay.cu, sfclay_classic.cuh, shinhong.cu,
-tempo/tempo_common.cuh, terrain_drag.cu, thompson_aerosol_libm.cuh,
-thompson_classic.cu, thompson_fork.cu, ysu_480_topo.cuh. The scope is
-generated by tools/update_kernel_license_scopes.py. The Python copies are
+Sun's code. They appear under woof/core/kernels/ in 30 audited files:
+atan_scalar_flt32.cuh, dudhia_sw.cu, flt32_log10_tanh.cuh,
+gf_wrf_normalization.cuh, km5_math.cuh, log10_flt32.cuh, mynn_libm.cuh,
+mynn_pbl.cu, mynn_surface_libm.cuh, noahmp_bareflux.cu, noahmp_energy.cu,
+noahmp_fluxprep.cu, noahmp_glacier.cu, noahmp_leaves.cu, noahmp_vegeflux.cu,
+nssl2_diagnostics.cu, nssl2_shape_diagnostics.cu, p3_gnu239.cuh,
+portable_libm64.cuh, ruc.cu, scalar_atan.cuh, sfclay.cu, sfclay_classic.cuh,
+shinhong.cu, tempo/tempo_common.cuh, terrain_drag.cu,
+thompson_aerosol_libm.cuh, thompson_classic.cu, thompson_fork.cu,
+ysu_480_topo.cuh. The scope is generated by
+tools/update_kernel_license_scopes.py. The Python copies are
 woof/core/noahmp_libm.py, woof/core/mynn_pbl.py and
 woof/core/ruc.py. thompson_aerosol_libm.cuh also carries FDLIBM's binary64
 log10, log1p, atan and atan2 (e_log10.c, s_log1p.c, s_atan.c and
@@ -626,7 +701,12 @@ shrinkage. woof/core/kernels/glibc_flt32.cuh carried FDLIBM's expm1f
 the engine's earlier Grell-Freitas gamma. When that gamma was replaced at 2.6.6
 nothing called them any more, and they were removed. That removal took out
 the only transcription of e_lgammaf_r.c anywhere in this repository, which
-is why lgammaf no longer appears in the list of routines above. The notice
+is why lgammaf no longer appears in the list of routines above. Two
+strict-numerics replays carry WOOF's own earlier float32 gamma sequence
+again, so that they reproduce the native builds they are proved against
+bit for bit: gf_wrf_normalization.cuh (Grell-Freitas under GPUWM_WRF_EXACT)
+and p3_gnu239.cuh (the strict MP52/MP53 replay). Both compile only under
+strict numerics; every default path uses the current gamma. The notice
 below is unchanged and still required by the carriers listed above.
 
 (log10_flt32.cuh joined in 2.8.7 as the
@@ -925,7 +1005,7 @@ below; a renderer shipped without it would satisfy clause 2 nowhere.
 
 Compiled artifacts (release bridge bundles and platform wheels)
 
-78 Rust executables and libraries (woof.bridge_assets
+94 Rust executables and libraries (woof.bridge_assets
 .BUNDLED_ARTIFACTS) are distributed in compiled form: as GitHub release
 bridge bundles, and staged into platform wheels at woof/libexec/bridges/.
 A platform wheel carries all of them except the on-demand set
@@ -1383,6 +1463,85 @@ The startup kernel packs include generated CuPy and CUDA C++ Core Libraries
 (CCCL) code. Their upstream notices and terms are reproduced verbatim in
 licenses/LICENSE-CuPy-MIT.txt and licenses/LICENSE-CCCL.txt.
 
+The EEPS CUDA transcription in woof/core/kernels/eeps.cu derives from
+WRF v4.7.1 phys/module_bl_eepsilon.F and share/module_model_constants.F.
+Both files are byte-identical to their WRF v4.6.1 pins. The public-domain
+statement in licenses/LICENSE-WRF-public-domain.txt applies. No external
+EEPS table is required. See tools/eeps_wrf461_oracle/SOURCE.json.
+
+MP7 strict logarithm
+--------------------
+woof/core/kernels/gsfcgce4ice_log10.cuh adapts CORE-MATH's binary32 log10f
+at revision 284b3b0e198042c38f5c30316f696786b10816b0, under the MIT licence.
+Its full copyright and permission notice are preserved in that header.
+Source and licence review are recorded in
+tools/gsfcgce4ice_wrf461_oracle/SOURCE.md. This math helper is selected only
+by the MP7 strict replay path for glibc 2.41 or newer referees.
+
+KSAS cumulus (cu_physics=14), woof/core/kernels/ksas.cu, transcribes
+WRF phys/module_cu_ksas.F. Source and licence pins are retained in
+licenses/NOTICE-KSAS-WRF.txt. The WRF public-domain statement and
+licenses/LICENSE-WRF-public-domain.txt apply to that transcription.
+WRF GFS PBL and surface layer
+------------------------------------------------------------------------
+woof/core/kernels/gfs_pbl.cu and sf_gfs.cu, their launchers and CPU
+references, the packaged gfs_pbl constants and sfgfs FPVS table, and the
+two tools/*gfs*_wrf461_oracle directories transcribe WRF v4.6.1's
+phys/module_bl_gfs.F, module_sf_gfs.F, module_gfs_machine.F,
+module_gfs_physcons.F, module_gfs_funcphys.F and the reachable
+module_surface_driver.F wrapper statements. The WRF public-domain
+notice above and licenses/LICENSE-WRF-public-domain.txt apply. The
+source and table construction pins are recorded by the oracle build
+scripts. The shared exp/log/pow CUDA adaptations retain their upstream
+MIT grants in glibc_flt64.cuh and glibc_flt32.cuh. The package's own
+transcription and integration code is Apache-2.0.
+
+WRF native port source notices
+------------------------------
+The Held-Suarez radiation port retains its source grant in
+licenses/NOTICE-WRF-HS31.txt. The WRF transcriptions of solve_em.F and
+wrf_fddaobs_in.F use the same pinned WRF public-domain source declaration
+in licenses/LICENSE-WRF-public-domain.txt.
+
+The noahmp_log10_profile.cuh and wrf471_log10f.cuh headers transcribe
+CORE-MATH log10f and retain its full MIT notice in each header. The copy
+of those terms is licenses/LICENSE-CORE-MATH-MIT.txt. cldfra3.cu and
+farms.cu call that separately noticed helper. nssl2_shape_diagnostics.cu
+retains the same Sun FDLIBM e_log10f reduction as nssl2_diagnostics.cu;
+the generated FDLIBM scope below the existing libm notice includes both.
+Independently written snow optics and layered snow/ice transfer
+---------------------------------------------------------------
+Written from papers, not bitwise to WRF. New code uses Apache-2.0.
+Ice refractive indices: Warren and Brandt (2008), doi:10.1029/2007JD009744,
+via refractiveindex.info database commit c5c2f188e848453def5970e347399d653df2ffc2,
+CC0-1.0 (licenses/LICENSE-refractiveindex-CC0.txt).
+Mineral indices: Zhang, Z.; Saito, M.; Yang, P.; Schuster, G.; Trepte, C.
+(2024), Mineral spectral refractive index and bulk optical property dataset
+for aerosol studies, version 1.3, doi:10.5281/zenodo.14171144, CC-BY-4.0
+(https://creativecommons.org/licenses/by/4.0/; the legal code is at
+licenses/LICENSE-mineral-ri-CC-BY-4.0.html).
+CoarseModeRefInd.dat is included; first three columns are interpolated and
+new Mie coefficients are generated for an explicitly specified size
+distribution. The source's bulk optics are not used. The derived dust
+portion of optics.bin retains CC-BY-4.0.
+ASTM G173 spectra: credit U.S. Department of Energy (DOE)/NLR/ALLIANCE.
+The entire data-use notice is in licenses/LICENSE-NLR-solar.txt and
+accompanies the raw and generated spectra. Bin integration and diffuse
+separation are modifications, not an endorsement by these organisations.
+Source URLs, input hashes, parameter choices and modifications are in
+tools/snicar_optics/data/source-pin.json and docs/SNOW-PAPERS.md.
+Public cumulus aerosol climatology
+---------------------------------
+The public replacement input is derived from NASA GMAO and the MERRA-2 GMI
+project's 2001–2010 monthly replay aerosol fields. These are US government
+data. Acknowledge NASA GMAO and the MERRA-2 GMI project when using the derived
+climatology. Source: https://acd-ext.gsfc.nasa.gov/Projects/GEOSCCM/MERRA2GMI/
+The new conversion follows published methods and the public WRF interface:
+written from papers, not bitwise to WRF. It contains no uncleared CESM table.
+The species mapping, source collection, units, limitations and output digest
+are recorded in woof/data/cumulus_aerosol/public-source.json and
+docs/public-cumulus-aerosol.md.
+
 
 ========================================================================
 The hex model (woof.hex)
@@ -1404,9 +1563,9 @@ LICENSE.arm-powf and licenses/ ship in the sdist and in the wheel
 Two points to read before redistributing:
 
   - The public distribution carries only permissive third-party terms
-    (BSD-3-Clause, MIT, Apache-2.0 and the WRF public-domain notice) and
-    code it treats as works of the US Government (NOAA GSL's UGWP and the
-    RRFS fork's NOAA GSL physics, sections 8 and 9), as the sections below
+    (BSD-3-Clause, MIT, Apache-2.0, NOAA GSL's UGWP among them in section
+    8, and the WRF public-domain notice) and code it treats as works of the
+    US Government (the RRFS fork's NOAA GSL physics, section 9), as the sections below
     state one by one. Section 2 names the one routine that is kept on a
     stated reliance rather than a licence (Numerical Recipes' log-gamma, as
     MMM-physics carries it). One port is withheld because its upstream
@@ -1463,9 +1622,9 @@ that marking:
     the two are known to differ, the differences are measured, and the
     quantities are stated in README.md.
 
-The default physics is the regional engine's (section 10), not MPAS's.
-With it, the cumulus scheme is a different generation from the reference:
-the engine carries the 2018 Grell-Freitas formulation, MPAS-A carries the 2013 ensemble fork.
+The default physics uses the MPAS suites (sections 2 to 6). On the
+selectable engine route (section 10), the cumulus scheme is a different
+generation from the reference: the engine carries the 2018 Grell-Freitas formulation, MPAS-A carries the 2013 ensemble fork.
 They differ in closure membership, in the rain conversion coefficient and
 its temperature dependence, and in whether shallow convection precipitates.
 Three further differences of the engine's physics are measured and declared as
@@ -1692,7 +1851,7 @@ machine), and the hex-cuda backend is refused in a distribution that does
 not carry the port. By default that command builds the library with an
 Apache-2.0 interface stub in place of Noah-MP v5.0.
 
-The Noah-MP that the hex model runs by default is a different code: the
+The Noah-MP that the selectable engine route runs is a different code: the
 regional engine's WRF-lineage Noah-MP v4.x, ported from WRF v4.6.1's
 Noah-MP (NCAR/noahmp commit 848f54ad3d28c4303151fe5ad83724e232694422, the
 submodule WRF v4.6.1 pins). That commit carries no licence file, and WRF
@@ -1824,28 +1983,38 @@ carries a permissive notice, in the library's own copy as well as upstream.
     transcriptions from glibc_trig_flt32.cuh under the MIT notices above.
 
 ==========================================================================
-8. NOAA GSL Unified Gravity Wave Physics (UGWP) -- US Government code
+8. NOAA GSL Unified Gravity Wave Physics (UGWP) -- Apache-2.0
 ==========================================================================
 
 MPAS-Model v8.4.2 does not carry UGWP in its own tree. Its build fetches
 NOAA Global Systems Laboratory's UGWP repository (github.com/NOAA-GSL/UGWP,
 tag MPAS_20241223, commit c1c893edcf171af5639af60e3a3a528816f6cc2b) into
-physics_noaa/UGWP, so the MPAS licence does not cover it. That repository
-carries no licence file (read 2026-10-14). Most of its code is adapted from
-NOAA's CCPP physics (github.com/ufs-community/ccpp-physics, physics/GWD),
-which is released under the Apache License 2.0 ("Copyright 2017, NOAA,
-UCAR/NCAR CU/CIRES").
+physics_noaa/UGWP, so the MPAS licence does not cover it. On 2026-11-04
+NOAA GSL added an Apache License 2.0 LICENSE file to that repository
+(commit 4108d491470c2576a7c1e97cc6a38bf454590193,
+https://github.com/NOAA-GSL/UGWP/blob/main/LICENSE):
 
-The hex model treats UGWP as a work of the US Government (NOAA), by the
-project's ruling of 2026-10-14, and ships its CUDA ports in this
-distribution: woof/hex/mpasphys/ugwp_oro_v842.py (the orographic drag,
+    Copyright 2026, NOAA, UCAR/NCAR CU/CIRES
+    Licensed under the Apache License, Version 2.0
+
+The ported commit c1c893e is an ancestor of that commit; between the two
+the only source change is in bl_ugwp.F (alpha_fd, the TOFD coefficient,
+became a namelist option). licenses/LICENSE-UGWP-Apache-2.0.txt is the
+upstream LICENSE file as published. Most of UGWP is adapted from NOAA's
+CCPP physics (github.com/ufs-community/ccpp-physics, physics/GWD), which is
+released under the same terms ("Copyright 2017, NOAA, UCAR/NCAR CU/CIRES").
+
+The hex model ships CUDA ports of UGWP under those terms:
+woof/hex/mpasphys/ugwp_oro_v842.py (the orographic drag,
 config_gwdo_scheme='bl_ugwp_gwdo') and woof/hex/mpasphys/ugwp_ngw_v842.py
 (the non-stationary gravity waves, config_ngw_scheme), with their tests and
-oracles. They are ported from the commit above; credit for the scheme
-belongs to NOAA GSL and its authors. No opt-in is needed to select them.
-The MPAS-A suites default to the YSU drag of section 2; the RRFS stage's
-hrrrv5 suite selects bl_ugwp_gwdo, as the fork does. The regional engine's
-own GSL orographic drag is a separate code path (WRF public-domain notice).
+oracles. They are ported from the commit above and modified: the Fortran is
+rewritten as CUDA kernels with a Python launcher, as each file's header
+states. Credit for the scheme belongs to NOAA GSL and its authors. No
+opt-in is needed to select them. The MPAS-A suites default to the YSU drag
+of section 2; the RRFS stage's hrrrv5 suite selects bl_ugwp_gwdo, as the
+fork does. The regional engine's own GSL orographic drag is a separate code
+path (WRF public-domain notice).
 
 ==========================================================================
 9. RRFS (NOAA) -- the fork's dynamical core, and its NOAA GSL physics
@@ -1867,11 +2036,12 @@ comparison backend uses the user's own build of the fork. At the fork's
 pins they are NCAR/TEMPO 9adf9ef (Apache-2.0), NCAR/MYNN-EDMF c942418, NCAR/MYNN-SFC
 b66187f, NOAA-GSL/RUCLSM 8c9f1a8, NOAA-GSL/GFL bf6a4b0, NOAA-GSL/SMOKE
 9652bbf and NOAA-GSL/UGWP c1c893e. Apart from TEMPO they carry no licence
-file at those pins (MYNN-EDMF added Apache-2.0 upstream on 2026-09-30, after
-its pin); the hex model treats them, like UGWP (section 8), as works of the US
-Government (NOAA GSL), by the project's ruling of 2026-10-14. Credit for
-each scheme belongs to NOAA GSL, NCAR and their authors. Their hex ports,
-UGWP's included (section 8), ship under that ruling, with this attribution. The fork's Noah-MP is under UCAR's terms
+file at those pins (MYNN-EDMF added Apache-2.0 upstream on 2026-09-30 and
+UGWP on 2026-11-04, after their pins; UGWP's terms are in section 8).
+The hex model treats the others as works of the US Government (NOAA GSL), by
+the project's ruling of 2026-10-14. Credit for each scheme belongs to NOAA
+GSL, NCAR and their authors. Their hex ports ship under that ruling, with
+this attribution; the UGWP ports ship under section 8. The fork's Noah-MP is under UCAR's terms
 (section 4): it stays withheld, and an RRFS stage run that selects
 sf_noahmp is refused unless it names them with --licence-opt-in ucar-noahmp.
 
@@ -1889,8 +2059,8 @@ rrfs-workflow's LICENSE.md states no terms.
 10. The regional engine (woof) -- Apache-2.0, in this distribution
 ==========================================================================
 
-The default physics, and the shared device maths the MPAS suites compile
-with, come from the regional engine, which ships in this same
+The selectable engine physics and the shared device maths the MPAS suites
+compile with come from the regional engine, which ships in this same
 distribution under the Apache License, Version 2.0; the first part of
 this file covers the WRF-, RRTMG-, RRTMGP-, Noah-MP-, CORE-MATH-, Arm- and
 FDLIBM-derived material it carries. Its default land surface is the
@@ -2089,7 +2259,7 @@ release/asset-release-NOTICE.txt is generated from the asset census and
 contains each staged asset's name, hash, origins, licences and full notice
 texts. It accompanies the public assets. Fortran runtimes and native
 resource ZIPs that carry them are excluded from this release's asset set.
-Noah-MP v5 implementations are held out under section 4.
+Noah-MP v5 is held out under section 4. UGWP is included under section 8.
 
 The additional RRFS pin set rrfs-44c0849 uses MYNN-EDMF
 c6d08709e83fbc6245e91a65600fd78c7219f1ee and SMOKE
@@ -2114,6 +2284,37 @@ RRFS smoke worker synchronization uses libcu++ cuda::barrier from the installed
 CuPy headers, under Apache-2.0 WITH LLVM-exception. The bundled notice is
 reproduced in licenses/LICENSE.libcudacxx. No modified libcu++ source is vendored.
 
+==========================================================================
+17. Stochastic physics (SPPT, SKEB) -- project code written from papers
+==========================================================================
+
+woof/hex/stochastic.py and woof/hex/stochastic.cu are project code
+(Apache-2.0), written from these published methods:
+
+  Buizza, R., M. Miller and T. N. Palmer, 1999: Stochastic representation
+    of model uncertainties in the ECMWF Ensemble Prediction System.
+    Q. J. R. Meteorol. Soc., 125, 2887-2908.
+  Palmer, T. N., R. Buizza, F. Doblas-Reyes, T. Jung, M. Leutbecher,
+    G. J. Shutts, M. Steinheimer and A. Weisheimer, 2009: Stochastic
+    parametrization and model uncertainty. ECMWF Technical Memorandum 598.
+  Shutts, G., 2005: A kinetic energy backscatter algorithm for use in
+    ensemble prediction systems. Q. J. R. Meteorol. Soc., 131, 3079-3102.
+  Berner, J., G. J. Shutts, M. Leutbecher and T. N. Palmer, 2009: A
+    spectral stochastic kinetic energy backscatter scheme and its impact
+    on flow-dependent predictability in the ECMWF ensemble prediction
+    system. J. Atmos. Sci., 66, 603-626.
+  Weaver, A. and P. Courtier, 2001: Correlation modelling on the sphere
+    using a generalized diffusion equation. Q. J. R. Meteorol. Soc., 127,
+    1815-1846.
+  Bolton, D., 1980: The computation of equivalent potential temperature.
+    Mon. Wea. Rev., 108, 1046-1053.
+
+No code, registry or documentation from NOAA's stochastic_physics package
+(LGPL) was read, downloaded or used, and none is distributed. MPAS namelist
+option names are read only as run configuration. The Philox4x32-10 counter
+generator follows Random123 (BSD-3-Clause, section 16 and
+licenses/LICENSE-Random123.txt).
+
 
 Licence texts the hex model's components ship, by their path in this tree:
   licenses/LICENSE-AER-RRTMG-BSD-3-Clause-hex.txt
@@ -2122,6 +2323,9 @@ Licence texts the hex model's components ship, by their path in this tree:
   licenses/LICENSE-MPAS-BSD-3-Clause-hex.txt
   licenses/LICENSE-WRF-public-domain-hex.txt
   licenses/LICENSE-c-blosc-BSD-3-Clause.txt
+  licenses/psutil-LICENSE.txt
+  licenses/rapidgzip-LICENSE-APACHE.txt
+  licenses/rapidgzip-LICENSE-MIT.txt
   licenses/s2s-rust-NOTICE.md
   licenses/s2s-rust-autocfg-1.5.1-LICENSE-APACHE
   licenses/s2s-rust-autocfg-1.5.1-LICENSE-MIT

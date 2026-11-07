@@ -1664,8 +1664,8 @@ def _stop_for_failed_forecast(root, worker: threading.Thread,
     the forecast's own error, its cards released, instead of building every
     later forcing time first.
 
-    Named breakage: a forecast that failed 25 s after its preflight (V59
-    run 2a and V60 r1b/r1d, 2026-10-21, a store refusal) left its producer
+    Named breakage: a forecast that failed 25 s after its preflight (test host
+    run 2a and test host r1b/r1d, 2026-10-21, a store refusal) left its producer
     building all 48 remaining boundary times for 19-24 min while the run
     said waiting:preparation with every card idle, and only then raised;
     the wait read as a streaming regression.  A retry rebuilds the stopped
@@ -3216,7 +3216,11 @@ class TreeStartStates:
             directory / "native-static.npz", grid, cfg.ny, cfg.nx)
         return restore_prepared_cache(
             reader.path, expected_identity=identity, cfg=cfg, static=static,
-            allow_nested_without_lbc=nested, reader=reader, array_module=np)
+            allow_nested_without_lbc=nested, reader=reader, array_module=np,
+            # This is a byte-preserving preparation read, not entry into
+            # the strict dynamics. Re-expressing theta here changes the
+            # arrays sealed from the already-published child head.
+            adopt_dynamics_carrier=False)
 
     @staticmethod
     def _result(shell, restored):
@@ -3747,7 +3751,7 @@ class StreamedIntervals(Sequence):
         raises its failure.  Breakage this prevents: every hourly interval
         was read, hashed, copied and validated on the stepping thread at
         the hour boundary, a stall of every card at every forecast hour
-        (V59, 8 x RTX 5090, 2026-10-21).  Returns whether a load started.
+        (test host, 8 x RTX 5090, 2026-10-21).  Returns whether a load started.
         """
         k = int(index)
         if not 0 <= k < len(self):

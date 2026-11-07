@@ -392,7 +392,7 @@
       "bytes": 19303,
       "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
       "path": "gpuwm/source_cycles.py",
-      "sha256": "c89085b03b0d22c734879aab61736caed01f8c845c704dafce4b0a5a3d1b8e2c"
+      "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
     },
     "gpuwm.static": {
       "bytes": 139,
@@ -542,10 +542,10 @@
     "gpuwm/source_cycles.py": {
       "bytes": 19303,
       "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
-      "sha256": "c89085b03b0d22c734879aab61736caed01f8c845c704dafce4b0a5a3d1b8e2c"
+      "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
     }
   },
-  "original_pins_sha256": "a2736848ff02184bb6a73bfed869032d93ed0a555eb0c678fc97ed0a8c00edbc",
+  "original_pins_sha256": "e2213db473bc9c7a18fd10cd1415712cf55432c7b016ec1a25a34ac2632f4959",
   "python": "3.14.4",
   "schema": "handover-tolerance-stable-recipe-comparison-v1",
   "source_manifest_sha256": "5280301bf74669ccdddebbb385f18a316449735829ad7e0c7091b86c81ae0683",

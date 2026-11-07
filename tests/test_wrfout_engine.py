@@ -1,11 +1,11 @@
-"""The wrfout write path runs on the Rust classic writer BY DEFAULT.
+"""The wrfout write path runs on the Rust writer by default.
 
 2.5.0's law is that data-path processing is Rust; the product tape is the
 data path's most important artifact.  These tests pin the flip itself:
 
 * the DEFAULT engine is ``rust`` -- no flag, no env, a bare
-  ``WrfoutWriter`` writes the classic (CDF-2) container through
-  ``woof.io.nc_writer_bridge``;
+  ``WrfoutWriter`` writes lossless compressed NetCDF-4 through
+  ``woof.io.nc_writer_bridge``; explicit compression ``none`` keeps CDF-2;
 * the Python/netCDF4 engine remains reachable ONLY as an explicit escape
   (``WOOF_WRFOUT_WRITER=python`` or ``engine="python"``), documented as
   a workaround, and still writes exactly what it always wrote;
@@ -26,7 +26,7 @@ import pytest
 from woof.io import nc_writer_bridge
 from woof.io import wrfout as wrfout_module
 from woof.io.wrfout import (
-    WRFOUT_WRITER_ENV, WrfoutWriter, resolve_wrfout_engine,
+    HISTORY_COMPRESSION_ENV, WRFOUT_WRITER_ENV, WrfoutWriter, resolve_wrfout_engine,
 )
 
 _RUST_UNAVAILABLE = nc_writer_bridge.unavailable_reason()
@@ -74,31 +74,39 @@ def test_an_unknown_engine_is_refused_by_name(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# The default writes the classic container through the Rust seam.
+# Both compression modes use the Rust seam and preserve the frame words.
 # ---------------------------------------------------------------------------
 
-def test_default_writer_emits_a_classic_tape(tmp_path, monkeypatch):
+@pytest.mark.parametrize("compression,container", [
+    (None, "NETCDF4_CLASSIC"), ("none", "NETCDF3_64BIT_OFFSET"),
+])
+def test_rust_writer_preserves_words_in_each_container(
+        tmp_path, monkeypatch, compression, container):
     _require_rust_writer()
     monkeypatch.delenv(WRFOUT_WRITER_ENV, raising=False)
+    monkeypatch.delenv(HISTORY_COMPRESSION_ENV, raising=False)
     path = tmp_path / "wrfout_d01_rust"
     nz, ny, nx = 3, 4, 5
-    with WrfoutWriter(path, nx=nx, ny=ny, nz=nz, dx=100.0, dy=100.0) as w:
+    with WrfoutWriter(path, nx=nx, ny=ny, nz=nz, dx=100.0, dy=100.0,
+                      compression=compression) as w:
         assert w.engine == "rust"
         w.write_frame("1974-04-03_18:00:00", _frame(nz, ny, nx))
         w.write_frame("1974-04-03_18:05:00", _frame(nz, ny, nx))
     with netCDF4.Dataset(path) as ds:
-        # The container IS the flip: HDF5 (NETCDF4_CLASSIC) came from the
-        # C library, 64-bit-offset classic comes from the Rust writer.
-        assert ds.file_format == "NETCDF3_64BIT_OFFSET"
+        assert ds.file_format == container
         assert ds.dimensions["Time"].isunlimited()
         assert len(ds.dimensions["Time"]) == 2
         assert int(getattr(ds, "GPUWM_WRITE_COMPLETE")) == 1
         var = ds.variables["T"]
         var.set_auto_maskandscale(False)
+        if compression is None:
+            assert var.filters()["zlib"]
         assert var.dimensions == (
             "Time", "bottom_top", "south_north", "west_east")
-        np.testing.assert_array_equal(
-            np.asarray(var[0]), _frame(nz, ny, nx)["T"])
+        for frame in range(2):
+            np.testing.assert_array_equal(
+                np.asarray(var[frame]).view(np.uint32),
+                _frame(nz, ny, nx)["T"].view(np.uint32))
         times = ["".join(c.decode() for c in row)
                  for row in ds.variables["Times"][:]]
         assert times == ["1974-04-03_18:00:00", "1974-04-03_18:05:00"]
@@ -265,14 +273,20 @@ def test_an_aborted_default_write_leaves_no_final_file(tmp_path, monkeypatch):
 # The async production path inherits the default.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize("compression,container", [
+    (None, "NETCDF4_CLASSIC"), ("none", "NETCDF3_64BIT_OFFSET"),
+])
 def test_the_async_worker_writes_through_the_default_engine(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, compression, container):
     """The worker constructs the plain ``WrfoutWriter``, so one default
     governs the synchronous and asynchronous paths alike."""
     import threading
     from test_wrfout import _manual_async_writer, _queue_cpu_ticket
 
     monkeypatch.delenv(WRFOUT_WRITER_ENV, raising=False)
+    monkeypatch.delenv(HISTORY_COMPRESSION_ENV, raising=False)
+    if compression is not None:
+        monkeypatch.setenv(HISTORY_COMPRESSION_ENV, compression)
     _require_rust_writer()
     writer = _manual_async_writer(threading.Event())
     try:
@@ -281,5 +295,7 @@ def test_the_async_worker_writes_through_the_default_engine(
     finally:
         writer.close()
     with netCDF4.Dataset(tmp_path / "wrfout_d01_async") as ds:
-        assert ds.file_format == "NETCDF3_64BIT_OFFSET"
+        assert ds.file_format == container
+        if compression is None:
+            assert ds.variables["T"].filters()["zlib"]
         assert int(getattr(ds, "GPUWM_WRITE_COMPLETE")) == 1

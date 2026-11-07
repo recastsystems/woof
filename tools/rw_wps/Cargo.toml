@@ -23,6 +23,7 @@
 resolver = "2"
 members = [
     "crates/rw-wps",
+    "crates/wrf-surface",
     "crates/mapped-engine",
     "crates/projected-intermediate",
 ]

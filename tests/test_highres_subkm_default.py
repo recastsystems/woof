@@ -201,24 +201,9 @@ def test_the_default_s_refusal_gives_blocks_the_user_can_paste(
             case_date=__import__("datetime").date(2026, 9, 25),
             landuse_attrs=MODIS21_ATTRS, urlopen=_no_network)
     message = caught.value.detail
-    assert "declares no [static.highres] block" in message
     assert "copernicus-dem-glo30" in message
-    head, fallback_and_off = message.split("[static.highres]\n", 1)
-    fallback, off = fallback_and_off.split("[static.highres]\n", 1)
-    fallback = fallback.rsplit("\nor, ", 1)[0]
-    kept = production.parse_static_table(
-        tomllib.loads("[static.highres]\n" + fallback)["static"],
-        source="remedy", base_dir=tmp_path)
-    assert kept.on_refuse == "fallback-30s"
-    assert {key: value for key, value in kept.echo().items()
-            if key != "on_refuse"} == {
-        key: value for key, value in config.echo().items()
-        if key != "on_refuse"}
-    opted_out = production.parse_static_table(
-        tomllib.loads("[static.highres]\n" + off)["static"],
-        source="remedy", base_dir=tmp_path)
-    assert not opted_out.enabled
-    assert opted_out.cache_root == config.cache_root
+    assert "all-water" in message
+    assert "fallback-30s" not in message
 
 
 def test_a_declared_block_s_refusal_still_names_its_own_key(
@@ -233,7 +218,7 @@ def test_a_declared_block_s_refusal_still_names_its_own_key(
     monkeypatch.setattr(production, "require_geography_stack", lambda: None)
     monkeypatch.setattr(production, "_apply", refuse)
     with pytest.raises(production.HighresRefusal,
-                       match='set on_refuse = "fallback-30s"'):
+                       match="Check the declared terrain source"):
         apply_highres_statics(
             _baseline(), _grid(999.8), config=config, domain_id=1,
             case_date=__import__("datetime").date(2026, 9, 25),

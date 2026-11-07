@@ -1,0 +1,14 @@
+out-modis20-day-vegon.bin words=23040 differing=2
+out-modis21-lake-defect.bin words=23040 differing=68
+out-modis21-night-nudge.bin words=23040 differing=16
+out-modis61-day-nudge-vegon.bin words=23040 differing=4
+out-nlcd40-day-urban.bin words=23040 differing=12
+out-nlcd40-night-nudge.bin words=23040 differing=15
+out-nlcd50-day-nudge-vegon.bin words=23040 differing=18
+out-nlcd50-day.bin words=23040 differing=4
+out-usgs-day-init.bin words=23040 differing=5
+out-usgs-day-nudge.bin words=23040 differing=7
+out-usgs-night-nudge-init.bin words=23040 differing=7
+out-usgs-night.bin words=23040 differing=11
+out-usgs28-day.bin words=23040 differing=4
+TOTAL words=299520 differing=173

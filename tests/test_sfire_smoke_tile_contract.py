@@ -25,7 +25,7 @@ def test_native_global_shapes_do_not_expand_with_domain_extent():
 
 def test_the_pwp_status_word_is_a_domain_carrier_not_a_refused_field():
     # sf_ocean_physics = 2 adds fields/_pwp_status, shape (1,); a store-direct
-    # or streamed forecast refused its start over it (V59 run 2a, 2026-10-21).
+    # or streamed forecast refused its start over it (test host run 2a, 2026-10-21).
     from tilestream.global_inventory import global_keys
     from tilestream.hoststore import manifest_from_arrays
     assert global_keys(('fields/_pwp_status', 'fields/tsk')) == ('fields/_pwp_status',)

@@ -121,10 +121,10 @@ def signature(src, name):
     # too far, which silently corrupts only the LAST argument.
     src = re.sub(r"//[^\n]*", "", src)
     src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    m = re.search(r'extern\s+"C"\s+__global__\s+void\s+' + re.escape(name)
+    m = re.search(r'extern\s+"C"\s+__global__\s+(?:__launch_bounds__\s*\([^)]*\)\s*)?void\s+' + re.escape(name)
                   + r'\s*\(([^{)]*)\)\s*\{', src, re.S)
     if not m:
-        m = re.search(r'__global__\s+void\s+' + re.escape(name)
+        m = re.search(r'__global__\s+(?:__launch_bounds__\s*\([^)]*\)\s*)?void\s+' + re.escape(name)
                       + r'\s*\(([^{)]*)\)\s*\{', src, re.S)
     if not m:
         return None

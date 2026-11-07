@@ -99,7 +99,7 @@ KNOBS (each saving can be switched off for an A/B run)
 ``WOOF_HEX_POOL_RELEASE=0``  keep cached pool blocks across phase boundaries
 ``GPUWM_HEX_LMEM_RELEASE=0``  keep the local-memory store across phase boundaries
 ``GPUWM_HEX_LMEM_RELEASE_MIN_FRAME=<bytes>``  narrowest frame whose store is released (4096)
-``GPUWM_HEX_POOL_RELEASE_MIN_BYTES=<bytes>``  idle cached pool bytes a boundary keeps whatever the headroom (8 GiB)
+``GPUWM_HEX_POOL_RELEASE_MIN_BYTES=<bytes>``  idle cached pool bytes below which only the 10% pressure rule applies (compact 2 GiB, single 8 GiB, shared-card 1 GiB)
 ``GPUWM_HEX_RELEASE_HEADROOM=<fraction>``  free share of the card above which bigger idle sets and wide stores are kept (0.15; 1 releases them at every boundary)
 ``GPUWM_HEX_LMEM_REGROW_WAIT_S=<seconds>``  how long to wait for a refused regrow (1800)
 
@@ -151,6 +151,8 @@ does nothing: the outermost phase owns the boundary.
 
 from __future__ import annotations
 
+from woof.hip_backend import runtime_limit as _runtime_limit
+
 from contextlib import contextmanager
 import gc
 import os
@@ -179,6 +181,12 @@ HEADROOM_KNOB = "GPUWM_HEX_RELEASE_HEADROOM"
 #: Defaults; see "WHAT A BOUNDARY COSTS" above (U-MPASPHYS-1).
 LMEM_MIN_FRAME_DEFAULT = 4096
 POOL_MIN_BYTES_DEFAULT = 8 << 30
+# Compact retains small reusable blocks, but applies the existing pressure
+# check once idle blocks reach 2 GiB. The 8 GiB threshold hid 4-5 GiB of idle
+# blocks on a 16 GiB card until the last tenth of the card was already gone.
+# This is still pressure-driven: a roomy card keeps its cache. Unconditional
+# 1 GiB flushing failed the measured 5% stepping-time budget.
+COMPACT_POOL_MIN_BYTES_DEFAULT = 2 << 30
 #: See "RETURN ONLY UNDER PRESSURE" above (PROFILE-3KM item 4): idle sets over the keep, and wide stores, are kept
 #: while the card has at least this share of its memory free.
 HEADROOM_DEFAULT = 0.15
@@ -194,17 +202,18 @@ MEMBER_MEMORY_KNOB = "WOOF_HEX_MEMBER_MEMORY"
 
 
 def shared_card_memory(environ=None) -> bool:
-    """Run policy: single keeps release defaults; shared-card bounds member scratch.
+    """Run policy: compact bounds scratch for every forecast by default.
 
-    Launchers select shared-card only when multiple members reside on one card.
+    Shared-card uses the same bounded allocations for concurrent members.
+    Explicit single preserves the historical allocator policy for comparisons.
     Set before constructing a forecast; existing low-level budget overrides keep
     their precedence. No physics option or arithmetic changes with this policy.
     """
     env = os.environ if environ is None else environ
-    value = env.get(MEMBER_MEMORY_KNOB, "single").strip().lower()
-    if value not in ("single", "shared-card"):
-        raise ValueError(f"{MEMBER_MEMORY_KNOB} must be single or shared-card, got {value!r}")
-    return value == "shared-card"
+    value = env.get(MEMBER_MEMORY_KNOB, "compact").strip().lower()
+    if value not in ("single", "shared-card", "compact"):
+        raise ValueError(f"{MEMBER_MEMORY_KNOB} must be single or shared-card or compact, got {value!r}")
+    return value in ("shared-card", "compact")
 
 
 def knob_enabled(name: str, environ: Any = None) -> bool:
@@ -235,13 +244,14 @@ class DevicePhaseRelease:
         self.pool = knob_enabled(POOL_KNOB, environ) if pool is None else bool(pool)
         self.lmem = knob_enabled(LMEM_KNOB, environ) if lmem is None else bool(lmem)
         self.min_frame = int(_knob_number(LMEM_MIN_FRAME_KNOB, LMEM_MIN_FRAME_DEFAULT, environ))
-        shared = shared_card_memory(environ)
-        self.member_memory = "shared-card" if shared else "single"
+        shared_card_memory(environ)  # Validate the policy before reading its defaults.
+        self.member_memory = (os.environ if environ is None else environ).get(MEMBER_MEMORY_KNOB, "compact").strip().lower()
         self.pool_min_bytes = int(_knob_number(
-            POOL_MIN_BYTES_KNOB, 1 << 30 if shared else POOL_MIN_BYTES_DEFAULT, environ))
+            POOL_MIN_BYTES_KNOB, (1 << 30 if self.member_memory == "shared-card" else
+                COMPACT_POOL_MIN_BYTES_DEFAULT if self.member_memory == "compact" else POOL_MIN_BYTES_DEFAULT), environ))
         # Release gained a pressure-only policy after the memory branch. Shared
         # members need its original phase trimming even on an otherwise empty card.
-        self.headroom = _knob_number(HEADROOM_KNOB, 1.0 if shared else HEADROOM_DEFAULT, environ)
+        self.headroom = _knob_number(HEADROOM_KNOB, 1.0 if self.member_memory == "shared-card" else HEADROOM_DEFAULT, environ)
         self.regrow_wait_s = _knob_number(LMEM_WAIT_KNOB, 1800.0, environ)
         self._sleep, self._clock = sleep, clock
         # Nesting is tracked per thread: same-host ranks step on their own
@@ -294,7 +304,7 @@ class DevicePhaseRelease:
         """The current card's (free, total) bytes, read at most every ``POOL_PRESSURE_RECHECK_SECONDS``
         per card.
 
-        THE BREAKAGE THIS PREVENTS (hex host-bound, V5090 2026-10-27): every slot boundary under the
+        THE BREAKAGE THIS PREVENTS (hex host-bound, reference system 2026-10-27): every slot boundary under the
         keep asked the driver (cudaMemGetInfo), two per slot, about fourteen per physics step; on a
         shared 8-card host each call took about a millisecond on the thread that issues the card's
         work (py-spy: 4 % of the MPAS-physics LTS class threads' step-loop CPU).  Another process
@@ -358,7 +368,7 @@ class DevicePhaseRelease:
                 self._row(name)["pool_bytes_returned"] += returned
 
     def _reset_store(self, runtime: Any, device: int, to: int, name: str) -> None:
-        runtime.deviceSetLimit(runtime.cudaLimitStackSize, to)
+        _runtime_limit(runtime.cudaLimitStackSize, to, runtime=runtime)
         with self._lock:
             self._held.pop(device, None)
             self.lmem_resets += 1
@@ -389,7 +399,7 @@ class DevicePhaseRelease:
         started = None
         while True:
             try:
-                runtime.deviceSetLimit(limit, frame)
+                _runtime_limit(limit, frame, runtime=runtime)
             except runtime.CUDARuntimeError as error:
                 if getattr(error, "status", None) != _CUDA_ERROR_MEMORY_ALLOCATION:
                     raise
@@ -443,7 +453,7 @@ class DevicePhaseRelease:
         runtime = cp.cuda.runtime
         lmem = self.lmem and not self.lmem_pinned
         device = int(runtime.getDevice()) if lmem else 0
-        stack_at_entry = (int(runtime.deviceGetLimit(runtime.cudaLimitStackSize))
+        stack_at_entry = (int(_runtime_limit(runtime.cudaLimitStackSize, runtime=runtime))
                           if lmem else 0)
         if lmem:
             stack_at_entry = self._release_held_store(cp, runtime, device, stack_at_entry)
@@ -466,7 +476,7 @@ class DevicePhaseRelease:
             self.phases += 1
         if lmem:
             # The limit, and the store it sizes, belong to the current device.
-            stack = int(runtime.deviceGetLimit(runtime.cudaLimitStackSize))
+            stack = int(_runtime_limit(runtime.cudaLimitStackSize, runtime=runtime))
             if stack > stack_at_entry and stack >= self.min_frame:
                 with self._lock:
                     key = (device, name)

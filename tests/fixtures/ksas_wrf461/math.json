@@ -1,0 +1,12 @@
+{
+  "count": 223927,
+  "raw_sha256": "87c7ff02b5c05be73471badd2c9a47b0eb64856845d4e70ce30f3908b517c5e0",
+  "kinds": {
+    "0": "exp",
+    "1": "pow",
+    "2": "log",
+    "3": "tan",
+    "4": "atan"
+  },
+  "reference": "S4 native float32 math over the column kernel operands, g++ -O2 -ffp-contract=off -fno-fast-math -fno-tree-vectorize"
+}

@@ -42,7 +42,7 @@ def intensity_chart(root, *, experiment_label):
                     color='black', marker='o', linestyle='--',
                     label='NHC verification (linear between fixes)')
         if times[0] <= landfall <= times[-1]:
-            ax.axvline(landfall, color='black', linestyle=':', label='19:05Z landfall')
+            ax.axvline(landfall, color='black', linestyle=':', label=landfall.strftime('%H:%MZ landfall'))
         ax.set_ylabel(label)
         ax.set_xlim(times[0], times[-1])
         ax.grid(alpha=.25)

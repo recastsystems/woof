@@ -182,17 +182,29 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         surface.update(owner="prognostic-ocean", source="member initialization SST/ice", path=None, forecast_cycle=None)
     value["commands"]["forecast"] = [*value["commands"]["forecast"],
                                      *mpas_route_surface(value, surface, json.loads(args.ocean_options))]
+    tc_option = {}
+    if getattr(args, "tc_climate", None) is not None:
+        from dataclasses import asdict
+        from .tc_climate import Recipe
+        recipe = Recipe.load(args.tc_climate)
+        if args.history_hours != recipe.cadence_hours:
+            raise S2SError("TC climate history must match the recipe cadence")
+        # Track origin must include the spinup interval, not begin mid-trajectory.
+        for member in members:
+            member["history_from_minutes"] = 0
+        tc_option = {"tc_climate": {"path": str(args.tc_climate.resolve()),
+                                   "recipe": asdict(recipe)}}
     identity = {"row": args.row, "source": args.source, "cycle": args.cycle,
                 "days": args.days, "history_hours": args.history_hours, "members": members,
                 "surface": surface, "energy": energy,
-                "forecast_argv": value["commands"]["forecast"]}
+                "forecast_argv": value["commands"]["forecast"], **tc_option}
     identity["forecast_argv"] = [x for x in identity["forecast_argv"]]
     argv = identity["forecast_argv"]
     if "--samehost-devices" in argv:
         at = argv.index("--samehost-devices")
         del argv[at:at + 2]
     signature = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
-    return {**value, "schema": SCHEMA, "signature": signature, "days": args.days,
+    return {**value, **tc_option, "schema": SCHEMA, "signature": signature, "days": args.days,
             "members": members, "stages": list(STAGES), "surface_updating": True,
             "stochastic": {"sppt": members[0]["stochastic"]["sppt"],
                            "skeb": members[0]["stochastic"]["skeb"], "seed_base": args.seed,
@@ -218,7 +230,7 @@ def visible_cards(requested: str | None, environment=None) -> list[str]:
     from .global_ensemble import forecast_devices
     environment = os.environ if environment is None else environment
     if not requested and "CUDA_VISIBLE_DEVICES" not in environment:
-        result = subprocess.run(["nvidia-smi", "--query-gpu=index", "--format=csv,noheader"],
+        result = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=index", "--format=csv,noheader"],
                                 capture_output=True, text=True, check=True)
         requested = ",".join(result.stdout.splitlines())
         if not requested:
@@ -434,7 +446,14 @@ def science_arguments(value: dict) -> list[str]:
     if missing:
         raise S2SError("S2S science hooks missing: " + ", ".join(missing)
                        + "; integrate hex/s2s-surface-update and hex/s2s-stochastic")
-    return ["--stochastic", json.dumps({key: value["stochastic"][key] for key in ("sppt", "skeb")})]
+    extra = ["--stochastic", json.dumps({key: value["stochastic"][key] for key in ("sppt", "skeb")})]
+    if value.get("tc_climate") is not None:
+        from dataclasses import asdict
+        from .tc_climate import Recipe
+        if asdict(Recipe.load(value["tc_climate"]["path"])) != value["tc_climate"]["recipe"]:
+            raise S2SError("TC recipe changed after planning")
+        extra += ["--tc-climate", value["tc_climate"]["path"]]
+    return extra
 
 
 def surface_environment(value: dict) -> dict:
@@ -666,6 +685,8 @@ def add_s2s_parser(commands) -> None:
     parser._option_string_actions["--lagged"].help = "offsets in hours; balance total members across them; deterministic default uses earlier published cycles"
     # S2S energy products are default-on and need 6-hourly samples (daily samples alias the solar cycle).
     parser.add_argument("--history-hours", type=int, choices=(6, 24), default=6)
+    parser.add_argument("--tc-climate", type=Path, default=None, metavar="RECIPE",
+                        help="opt-in per-member GPU TC trajectories and daily GPI")
     parser.add_argument("--hub-heights", default="80,100", help="comma-separated hub heights in metres AGL, (10,1000]")
     parser.add_argument("--energy-table", type=Path, help="table-driven turbine and horizontal PV proxy rows")
     parser.add_argument("--energy-climatology", type=Path, help="dated energy window climatology for historical energy anomalies")

@@ -1,0 +1,8 @@
+{
+  "original_stop": "2026-10-16_09:57:00",
+  "restart": "<scratch>/port-cu11-mskf/native-run/wrfrst_d01_2026-10-16_09_45_00",
+  "native_mpi_ranks": 3,
+  "native_executable_sha256": "3b696121fc755f1091784088b8349d998a5551affe03be3f0e07a3a35cabbf92",
+  "cause": "capture-only writer indexed inactive WRF aerosol dummy arrays; replacement writes explicit zero slots without scientific assignments",
+  "accepted_replay": "safe capture steps 241 and 481 only"
+}

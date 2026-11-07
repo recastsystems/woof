@@ -84,7 +84,7 @@ _NUMPY = np
 
 
 _RUC_PROVISIONAL_TRANSCENDENTALS = """\
-RETIRED (lane/verify-ruc-lsm): RUC's float32 transcendentals are WOOF's libm.
+RETIRED: RUC's float32 transcendentals are WOOF's libm.
 
 gfortran lowers ``**``, ``EXP``, ``LOG``, ``LOG10``, ``TANH`` and ``COS`` on a
 default REAL to the C library's float32 powf/expf/logf/log10f/tanhf/cosf.
@@ -9267,7 +9267,7 @@ def ruc_land_surface_step(
     WRF accumulates ``sfcevp`` TWICE per land column, at ``:1095`` and again
     at ``:1116``, with nothing in between changing ``qfx``, so it reports twice
     the accumulated surface moisture flux.  WOOF accumulates it once
-    (lane/verify-ruc-lsm): a WRF defect is documented, not copied.  The
+    (development branch): a WRF defect is documented, not copied.  The
     fixtures still carry WRF's doubled word, so every comparison against them
     grades ``sfcevp`` against WRF's own entry value plus ``qfx*dt`` once
     (``tests/test_ruc.py::_lsmruc_wrf_single_count_sfcevp``).

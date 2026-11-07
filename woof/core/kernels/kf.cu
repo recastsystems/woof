@@ -1,3 +1,6 @@
+#ifndef KF_TRIGGER
+#define KF_TRIGGER 1
+#endif
 /* Kain--Fritsch cumulus (WRF cu_physics=1), one CUDA thread per column.
  *
  * AUTHORITY: WRF v4.6.1 phys/module_cu_kfeta.F (sha256 e6376c2d...6e5f, LF),
@@ -60,7 +63,7 @@
  * (frame - 1024) * SMs * maxThreadsPerSM, never returned), so the column
  * arrays live in a caller-provided GLOBAL workspace sized to the threads in
  * flight instead; gpuwm/core/kf.py tiles the columns to match.  MEASURED on
- * a development machine (RTX 5070 Ti, sm_120) for the previous kernel: a 9,216 B frame at
+ * an RTX 5070 Ti (sm_120) for the previous kernel: a 9,216 B frame at
  * nz = 49 reserved 842 MiB at first launch.
  *
  * Layout, interleaved across a warp exactly like local memory: element k of
@@ -450,6 +453,62 @@ __device__ __noinline__ bool kf_predict_trigger(
     return false;
 }
 
+#if KF_TRIGGER == 3
+/* WRF module_cu_kfeta.F:989-1016, kfeta_trigger = 3: the parcel's extra
+ * temperature perturbation DTRH from the environmental relative humidity at
+ * the LCL (Narita and Ohmori 2007).  U00 = 0.75 < 1, so the branch is always
+ * taken.  Every operation is an explicit round-to-nearest intrinsic in
+ * Fortran's left-to-right order, so neither arm can contract it:
+ *   QSLCL  = QES(K) + (QES(KLCL) - QES(K))*DLP
+ *   RHLCL  = QENV/QSLCL
+ *   DQSSDT = QMIX*(CLIQ - BLIQ*DLIQ)/((TLCL - DLIQ)*(TLCL - DLIQ))
+ *   DTRH   = 0.25*(RHLCL - 0.75)*QMIX/DQSSDT   0.75 <= RHLCL <= 0.95
+ *          = (1./RHLCL - 1.)*QMIX/DQSSDT       RHLCL > 0.95
+ *          = 0                                 otherwise
+ * CLIQ = SVP2*SVPT0 and BLIQ*DLIQ = SVP2*SVP3 are the run-time products of
+ * the model constants 17.67, 273.15 and 29.65 (module_cu_kfeta.F:730-733). */
+__device__ __forceinline__ float kf_trigger3_dtrh(
+        float qes_k, float qes_klcl, float dlp, float qenv, float qmix,
+        float tlcl) {
+    float qslcl = __fadd_rn(qes_k, __fmul_rn(__fsub_rn(qes_klcl, qes_k), dlp));
+    float rhlcl = __fdiv_rn(qenv, qslcl);
+    float cliq = __fmul_rn(17.67f, 273.15f);
+    float bliq_dliq = __fmul_rn(17.67f, 29.65f);
+    float tm = __fsub_rn(tlcl, 29.65f);
+    float dqssdt = __fdiv_rn(__fmul_rn(qmix, __fsub_rn(cliq, bliq_dliq)),
+                             __fmul_rn(tm, tm));
+    if (rhlcl >= 0.75f && rhlcl <= 0.95f)
+        return __fdiv_rn(__fmul_rn(__fmul_rn(0.25f, __fsub_rn(rhlcl, 0.75f)),
+                                   qmix), dqssdt);
+    if (rhlcl > 0.95f)
+        return __fdiv_rn(__fmul_rn(__fsub_rn(__fdiv_rn(1.0f, rhlcl), 1.0f),
+                                   qmix), dqssdt);
+    return 0.0f;
+}
+
+/* QENV = Q0(K) + (Q0(KLCL) - Q0(K))*DLP, module_cu_kfeta.F:947, in its own
+ * operation order; DTRH reads this form in both arms. */
+__device__ __forceinline__ float kf_lcl_interp(float lower, float upper,
+                                               float dlp) {
+    return __fadd_rn(lower, __fmul_rn(__fsub_rn(upper, lower), dlp));
+}
+
+/* The oracle hook: kf_trigger3_dtrh above, the function kf_column calls,
+ * evaluated on inputs WRF recorded at its own trigger evaluations
+ * (tools/kfeta_wrf461_oracle, gpuwm.core.kf.probe_trigger3_dtrh). */
+extern "C" __global__ __launch_bounds__(256)
+void kf_trigger3_dtrh_probe(
+        const float* __restrict__ qes_k, const float* __restrict__ qes_klcl,
+        const float* __restrict__ dlp, const float* __restrict__ qenv,
+        const float* __restrict__ qmix, const float* __restrict__ tlcl,
+        float* __restrict__ dtrh, int n) {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i < n)
+        dtrh[i] = kf_trigger3_dtrh(qes_k[i], qes_klcl[i], dlp[i], qenv[i],
+                                   qmix[i], tlcl[i]);
+}
+#endif
+
 extern "C" __global__ __launch_bounds__(256)
 void kf_column(
         const float* __restrict__ u,
@@ -461,6 +520,9 @@ void kf_column(
         const float* __restrict__ exner,
         const float* __restrict__ dz,
         const float* __restrict__ w0avg,
+#if KF_TRIGGER == 2
+        const float* __restrict__ tpart,
+#endif
         const float* __restrict__ ttab_f,
         const float* __restrict__ qstab_f,
         const float* __restrict__ the0k,
@@ -781,7 +843,14 @@ void kf_column(
         } else {
             dtlcl = 4.64f * gfk_pow(wkl, 0.33f);
         }
-        const float dtrh = 0.0f;                 /* trigger = 1 */
+#if KF_TRIGGER == 2
+        dtlcl = fmaxf(tpart[(size_t)(klcl - 1) * ncol + column], 0.0f);
+#endif
+#if KF_TRIGGER == 3
+        const float dtrh = kf_trigger3_dtrh(qes(k), qes(klcl), dlp, qenv, qmix, tlcl);
+#else
+        const float dtrh = 0.0f;
+#endif
         if ((tlcl + dtlcl) + dtrh < tenv) {
             continue;                                /* CYCLE usl */
         }
@@ -1759,3 +1828,167 @@ void kf_column(
     timec_out[column] = convected ? timec_kf : 0.0f;
 #undef KF_CLD
 }
+
+#if KF_TRIGGER == 2
+/* ==========================================================================
+ * kfeta_trigger = 2: the moisture-advection stencil pre-pass
+ * ==========================================================================
+ * WRF module_cu_kfeta.F:253-397, transcribed in operation order.  One
+ * thread per mass column of the WHOLE domain (WOOF runs KF on one patch, so
+ * its/ite = ids/ide-1 and the halo reads WRF makes past a tile edge are
+ * ordinary in-domain reads here).  Inputs are the temperature T and the
+ * decoupled, pure-advective qv tendency RQVFTEN WRF's driver passes this arm
+ * (module_cumulus_driver.F:1041; module_big_step_utilities_em.F:5301).
+ *
+ * Horizontal (tpart_h).  aveh_t/aveh_q are the 9-point means
+ * (T(i-1,j-1)+T(i-1,j)+...+T(i+1,j+1))/9. summed in that order, defined on
+ * i = ids+1..ide-2, j = jds+1..jde-2.  The domain-edge rows and columns COPY
+ * their inward neighbour and the four corners their diagonal one
+ * (:291-336); that copy rule is exactly "evaluate at the index clamped into
+ * [1, n-2]", which is how kf_aveh9 reads an edge.  tpart_h is formed on the
+ * interior only (istart = ids+1 .. iend = ide-2, :340-343) and is 0 on the
+ * domain's outer ring:
+ *   coef_h = (aveh_q - min9)/(max9 - min9), 0 when max9 == min9, then
+ *            amin1(coef_h, 1.0) and amax1(coef_h, 0.0)
+ *   tpart_h = coef_h*(T - aveh_t)
+ *
+ * Vertical (tpart_v), every column (:364-396):
+ *   Z0(1) = .5*DZ8W(1), Z0(K) = Z0(K-1) + .5*(DZ8W(K) + DZ8W(K-1))
+ *   ttop  = T(k) + ((T(k) - T(k+1))/(Z0(k) - Z0(k+1)))*(Z0(k) - Z0(k-1))
+ *   avev_t(k) = (T(k-1) + T(k) + ttop)/3.,  avev_q(k) = (Q(k-1)+Q(k)+Q(k+1))/3.
+ *   for k = kts+1..kte-1, copied to kts and kte from their neighbour;
+ *   coef_v = (avev_q - min3)/(max3 - min3), 0 when equal (no clamp in WRF);
+ *   tpart_v(k) = coef_v*(T(k) - avev_t(k)), copied to kts and kte.
+ *
+ * KF_eta_PARA then reads DTLCL = amax1(TPART_H0(KLCL) + TPART_V0(KLCL), 0.)
+ * (:984-987).  With tpart_v == nullptr the kernel stores that sum,
+ * __fadd_rn(tpart_h, tpart_v), at every level: one array for kf_column.
+ * With both pointers it stores the two parts, which is how the oracle
+ * grades them field by field.
+ *
+ * Every operation is an explicit round-to-nearest intrinsic, so the default
+ * arm cannot contract any of it either: the pre-pass is the same bits in
+ * both arms.  No local array: the vertical pass streams Z0 through three
+ * registers, so the kernel reserves no local-memory backing store.
+ */
+__device__ __forceinline__ int kf_edge_clamp(int index, int n) {
+    return min(max(index, 1), n - 2);
+}
+
+__device__ __forceinline__ float kf_aveh9(
+        const float* __restrict__ field, int level, int i, int j,
+        int ny, int nx) {
+    i = kf_edge_clamp(i, nx);
+    j = kf_edge_clamp(j, ny);
+    const float* f = field + (size_t)level * (size_t)ny * (size_t)nx;
+    // WRF's summation order: i-1 (j-1, j, j+1), i (...), i+1 (...).
+    float s = f[(j - 1) * nx + (i - 1)];
+    s = __fadd_rn(s, f[j * nx + (i - 1)]);
+    s = __fadd_rn(s, f[(j + 1) * nx + (i - 1)]);
+    s = __fadd_rn(s, f[(j - 1) * nx + i]);
+    s = __fadd_rn(s, f[j * nx + i]);
+    s = __fadd_rn(s, f[(j + 1) * nx + i]);
+    s = __fadd_rn(s, f[(j - 1) * nx + (i + 1)]);
+    s = __fadd_rn(s, f[j * nx + (i + 1)]);
+    s = __fadd_rn(s, f[(j + 1) * nx + (i + 1)]);
+    return __fdiv_rn(s, 9.0f);
+}
+
+__device__ __forceinline__ float kf_avev3(
+        const float* __restrict__ field, size_t column, size_t ncol, int k,
+        int nz) {
+    // avev_q(kts) = avev_q(kts+1), avev_q(kte) = avev_q(kte-1).
+    k = kf_edge_clamp(k, nz);
+    float s = __fadd_rn(field[(size_t)(k - 1) * ncol + column],
+                        field[(size_t)k * ncol + column]);
+    s = __fadd_rn(s, field[(size_t)(k + 1) * ncol + column]);
+    return __fdiv_rn(s, 3.0f);
+}
+
+extern "C" __global__ __launch_bounds__(256)
+void kf_trigger2_tpart(
+        const float* __restrict__ temperature,
+        const float* __restrict__ rqvften,
+        const float* __restrict__ dz,
+        float* __restrict__ tpart_h,
+        float* __restrict__ tpart_v,
+        int nz, int ny, int nx) {
+    int column = blockDim.x * blockIdx.x + threadIdx.x;
+    int ncol = ny * nx;
+    if (column >= ncol || nz < 3) return;
+    int i = column % nx, j = column / nx;
+    bool interior = nx >= 3 && ny >= 3
+        && i >= 1 && i <= nx - 2 && j >= 1 && j <= ny - 2;
+    size_t col = (size_t)column, n = (size_t)ncol;
+
+    // Vertical: Z0 of the levels k-1, k, k+1 rides in z_m, z_c, z_p.
+    float z_m = __fmul_rn(0.5f, dz[col]);
+    float z_c = __fadd_rn(z_m, __fmul_rn(0.5f, __fadd_rn(dz[n + col], dz[col])));
+    float tv_bottom = 0.0f, tv_top = 0.0f;
+    for (int k = 0; k < nz; ++k) {
+        size_t index = (size_t)k * n + col;
+        float h = 0.0f;
+        if (interior) {
+            float q_c = kf_aveh9(rqvften, k, i, j, ny, nx);
+            float q_max = q_c, q_min = q_c;
+            for (int ii = -1; ii <= 1; ++ii)
+                for (int jj = -1; jj <= 1; ++jj) {
+                    float q = kf_aveh9(rqvften, k, i + ii, j + jj, ny, nx);
+                    if (q > q_max) q_max = q;
+                    if (q < q_min) q_min = q;
+                }
+            float coef = q_max > q_min
+                ? __fdiv_rn(__fsub_rn(q_c, q_min), __fsub_rn(q_max, q_min))
+                : 0.0f;
+            coef = fminf(coef, 1.0f);
+            coef = fmaxf(coef, 0.0f);
+            h = __fmul_rn(coef, __fsub_rn(
+                temperature[index], kf_aveh9(temperature, k, i, j, ny, nx)));
+        }
+        float v = 0.0f;
+        if (k >= 1 && k <= nz - 2) {
+            float z_p = __fadd_rn(z_c, __fmul_rn(0.5f, __fadd_rn(
+                dz[index + n], dz[index])));
+            float t_c = temperature[index];
+            float t_p = temperature[index + n];
+            float ttop = __fadd_rn(t_c, __fmul_rn(
+                __fdiv_rn(__fsub_rn(t_c, t_p), __fsub_rn(z_c, z_p)),
+                __fsub_rn(z_c, z_m)));
+            float avev_t = __fdiv_rn(__fadd_rn(__fadd_rn(
+                temperature[index - n], t_c), ttop), 3.0f);
+            float q_c = kf_avev3(rqvften, col, n, k, nz);
+            float q_max = q_c, q_min = q_c;
+            for (int kk = -1; kk <= 1; ++kk) {
+                float q = kf_avev3(rqvften, col, n, k + kk, nz);
+                if (q > q_max) q_max = q;
+                if (q < q_min) q_min = q;
+            }
+            float coef = q_max > q_min
+                ? __fdiv_rn(__fsub_rn(q_c, q_min), __fsub_rn(q_max, q_min))
+                : 0.0f;
+            v = __fmul_rn(coef, __fsub_rn(t_c, avev_t));
+            if (k == 1) tv_bottom = v;
+            if (k == nz - 2) tv_top = v;
+            z_m = z_c;
+            z_c = z_p;
+        }
+        if (tpart_v == nullptr) {
+            // tpart_v(kts) and tpart_v(kte) are copies, known only once
+            // k = 1 and k = nz-2 are done: the two ends are stored below.
+            if (k >= 1 && k <= nz - 2) tpart_h[index] = __fadd_rn(h, v);
+            else tpart_h[index] = h;
+        } else {
+            tpart_h[index] = h;
+            if (k >= 1 && k <= nz - 2) tpart_v[index] = v;
+        }
+    }
+    if (tpart_v == nullptr) {
+        tpart_h[col] = __fadd_rn(tpart_h[col], tv_bottom);
+        size_t top = (size_t)(nz - 1) * n + col;
+        tpart_h[top] = __fadd_rn(tpart_h[top], tv_top);
+    } else {
+        tpart_v[col] = tv_bottom;
+        tpart_v[(size_t)(nz - 1) * n + col] = tv_top;
+    }
+}
+#endif

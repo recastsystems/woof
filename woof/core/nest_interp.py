@@ -487,7 +487,7 @@ _SIDES = ("west", "east", "south", "north")
 def bdy_interp1(cfld, nfld, reg: NestRegistration, *,
                 parent_dt_fp32, parent_interval_ticks=None,
                 spec_zone=1, relax_zone=4, spec_bdy_width=5,
-                out=None, alloc=None, sides=None):
+                out=None, alloc=None, sides=None, allow_backward=False):
     """Build the child's four-side boundary VALUE/TENDENCY device tables.
 
     Transliteration of ``bdy_interp1`` (interp_fcn.F:2423-2626): VALUE is
@@ -518,10 +518,11 @@ def bdy_interp1(cfld, nfld, reg: NestRegistration, *,
         raise ValueError("bdy_interp1 needs a wrapper='bdy' registration "
                          "(stagger ioff = MAX((nri-1)/2,1), "
                          "interp_fcn.F:2504-2510)")
-    if parent_interval_ticks is not None and int(parent_interval_ticks) <= 0:
-        raise ValueError("parent_interval_ticks must be positive")
+    direction = -1 if allow_backward else 1
+    if parent_interval_ticks is not None and int(parent_interval_ticks)*direction <= 0:
+        raise ValueError("parent_interval_ticks differs from the integration direction")
     cdt = np.float32(parent_dt_fp32)
-    if not np.isfinite(cdt) or cdt <= 0.0:
+    if not np.isfinite(cdt) or cdt*direction <= 0.0:
         raise ValueError("parent_dt_fp32 must be a positive finite parent "
                          "step (interp_fcn.F:2320 cdt semantics)")
     c3, n3 = _as3d(cfld), _as3d(nfld)
@@ -853,33 +854,83 @@ def feedback_child_window(reg, parent_window, *, spec_zone=1):
     return slice(j0, j1), slice(i0, i1)
 
 
-def copy_fcnm(cfld, nfld, reg: NestRegistration, *, spec_zone=1):
-    """Feedback 1-pt pick for masked REAL fields, in place.
+def feedback_pick_window(reg, parent_window, *, spec_zone=1):
+    """Exact bounding rectangle of copy_fcnm/copy_fcni's one-point donors.
 
-    ``copy_fcnm`` (interp_fcn.F:1747-1824): center child on odd ratios,
-    SW-corner nearest neighbor on even ratios (:1806).  WOOF's live
-    feedback inventory currently has no masked fields; this exact WRF
-    behavior is retained as the certification-matching default if that
-    inventory is extended.
+    Odd ratios use WRF's ``istag/jstag + 1`` pickup, including ratios
+    greater than three. It must not be replaced by a geometric centre.
+    ``copy_fcnm`` (interp_fcn.F:1747-1824): ISTAG/JSTAG child offset
+    on odd ratios, SW-corner nearest neighbor on even ratios (:1806).
+    Selected Noah-MP surface feedback uses the same word assignments in
+    bounded windows; its inventory is separate from atmospheric copy_fcn.
     """
-    c3, n3, args, count = _copy_common(cfld, nfld, reg, spec_zone)
+    # Validate the parent rectangle with the shared native loop bounds.
+    feedback_child_window(reg, parent_window, spec_zone=spec_zone)
+    y, x = parent_window
+    odd = reg.nrj % 2 != 0
+    di = int(not reg.xstag) if odd else reg.nri // 2 - 1
+    dj = int(not reg.ystag) if odd else reg.nrj // 2 - 1
+    i0 = (x.start + 1 - reg.i_parent_start) * reg.nri + di
+    i1 = (x.stop - reg.i_parent_start) * reg.nri + di + 1
+    j0 = (y.start + 1 - reg.j_parent_start) * reg.nrj + dj
+    j1 = (y.stop - reg.j_parent_start) * reg.nrj + dj + 1
+    if i0 < 0 or j0 < 0 or i1 > reg.nxc or j1 > reg.nyc:
+        raise ValueError("one-point feedback donors lie outside the child extent")
+    return slice(j0, j1), slice(i0, i1)
+
+
+def _copy_one(cfld, nfld, reg, spec_zone, parent_window, child_window, kernel):
+    def planes(value):
+        if value.ndim < 2 or not value.flags.c_contiguous:
+            raise ValueError("one-point feedback requires contiguous horizontal planes")
+        return value.reshape((-1,) + value.shape[-2:])
+    c3, n3 = planes(cfld), planes(nfld)
+    if (cfld.shape[:-2] != nfld.shape[:-2]
+            or cfld.dtype != nfld.dtype):
+        raise ValueError("one-point feedback carrier levels or dtypes differ")
+    if parent_window is None and child_window is None:
+        _, _, args, count = _copy_common(c3, n3, reg, spec_zone)
+        ilo, ihi, jlo, jhi = feedback_parent_bounds(reg, spec_zone=spec_zone)
+        origins = (0, 0, 0, 0, ilo, jlo, max(0, ihi-ilo+1), max(0, jhi-jlo+1))
+    elif parent_window is None or child_window is None:
+        raise ValueError("windowed feedback requires both operand windows")
+    else:
+        if child_window != feedback_pick_window(reg, parent_window, spec_zone=spec_zone):
+            raise ValueError("one-point feedback child window does not match exact donors")
+        py, px = parent_window
+        cy, cx = child_window
+        if (c3.shape[1:] != (py.stop-py.start, px.stop-px.start)
+                or n3.shape[1:] != (cy.stop-cy.start, cx.stop-cx.start)):
+            raise ValueError("one-point feedback operand does not match its window")
+        args = tuple(np.int32(v) for v in (
+            reg.i_parent_start, reg.j_parent_start, reg.nri, reg.nrj,
+            spec_zone, reg.xstag, reg.ystag, c3.shape[0], *c3.shape[1:],
+            *n3.shape[1:]))
+        origins = (px.start, py.start, cx.start, cy.start,
+                   px.start, py.start, c3.shape[2], c3.shape[1])
+        count = c3.size
     if count > 0:
-        _launch(_kernel("nest_copy_fcnm"), count, (c3, n3, *args))
+        _launch(_kernel(kernel), count,
+                (c3, n3, *args, *(np.int32(v) for v in origins)))
     return cfld
 
 
-def copy_fcni(cfld, nfld, reg: NestRegistration, *, spec_zone=1):
-    """Feedback 1-pt pick for INTEGER fields, in place.
+def copy_fcnm(cfld, nfld, reg: NestRegistration, *, spec_zone=1,
+              parent_window=None, child_window=None):
+    """WRF masked REAL feedback (interp_fcn.F:1747-1824), in place."""
+    if cfld.dtype != np.float32 or nfld.dtype != np.float32:
+        raise TypeError("copy_fcnm operates on REAL (float32) fields")
+    return _copy_one(cfld, nfld, reg, spec_zone, parent_window, child_window,
+                     "nest_copy_fcnm")
 
-    ``copy_fcni`` (interp_fcn.F:1829-1906), the int32 twin of copy_fcnm.
-    No integer field is present in WOOF's live feedback inventory.
-    """
-    c3, n3, args, count = _copy_common(cfld, nfld, reg, spec_zone)
-    if c3.dtype != np.int32 or n3.dtype != np.int32:
-        raise TypeError("copy_fcni operates on INTEGER (int32) fields")
-    if count > 0:
-        _launch(_kernel("nest_copy_fcni"), count, (c3, n3, *args))
-    return cfld
+
+def copy_fcni(cfld, nfld, reg: NestRegistration, *, spec_zone=1,
+              parent_window=None, child_window=None):
+    """WRF INTEGER feedback (interp_fcn.F:1829-1906), without REAL conversion."""
+    if cfld.dtype not in (np.int32, np.int64) or nfld.dtype != cfld.dtype:
+        raise TypeError("copy_fcni operates on matching INTEGER fields")
+    return _copy_one(cfld, nfld, reg, spec_zone, parent_window, child_window,
+                     "nest_copy_fcni64" if cfld.dtype == np.int64 else "nest_copy_fcni")
 
 
 #: ``smdsm``'s smoother/de-smoother pair, ``xnu = (/ 0.50 , -0.52 /)``

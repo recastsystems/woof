@@ -21,21 +21,22 @@ from woof.config import RunConfig, validate_run_config
 pytestmark = pytest.mark.gpu
 
 
-def _state():
+def _state(mp_physics=50):
     from woof.core.state import DomainState
     nz, ny, nx = 12, 6, 6
     cfg = validate_run_config(RunConfig(
         nx=nx, ny=ny, nz=nz, dx=3000.0, dy=3000.0, ztop=20000.0, dt=20.0,
-        run_seconds=40.0, mp_physics=50, moist=True))
+        run_seconds=40.0, mp_physics=mp_physics, moist=True))
     return DomainState(cfg), cfg
 
 
-def test_a_real_mp50_step_leaves_a_classifiable_state():
+@pytest.mark.parametrize('mp_physics',[50,52])
+def test_a_real_mp50_step_leaves_a_classifiable_state(mp_physics):
     pytest.importorskip("cupy")
     from woof.core import microphysics
     from woof.io import restart as restart_io
 
-    state, cfg = _state()
+    state, cfg = _state(mp_physics)
     restart_io.state_manifest(state)            # clean before the step
     microphysics.apply(state, cfg, 20.0)
     assert hasattr(state, "_p3_workspace"), (
@@ -45,12 +46,13 @@ def test_a_real_mp50_step_leaves_a_classifiable_state():
     assert manifest
 
 
-def test_every_attribute_a_real_step_leaves_is_classified():
+@pytest.mark.parametrize('mp_physics',[50,52])
+def test_every_attribute_a_real_step_leaves_is_classified(mp_physics):
     pytest.importorskip("cupy")
     from woof.core import microphysics
     from woof.io.restart import (RestartManifestError, classify_state_attr)
 
-    state, cfg = _state()
+    state, cfg = _state(mp_physics)
     microphysics.apply(state, cfg, 20.0)
     unclassified = []
     for name in vars(state):

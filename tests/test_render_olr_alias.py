@@ -3,7 +3,7 @@
 The breakage: ``woof render --help`` listed ``olr`` (and described TOA
 outgoing longwave "as synthetic IR"), but the rust engine, the default,
 was handed ``olr`` as a raw slug and refused it as an unknown product, so
-the advertised product drew nothing.  Measured on a development machine against a WOOF
+the advertised product drew nothing.  Measured on test host 1 against a WOOF
 history from a real GFS run: 2.8.7 and the 2.8.8 candidate both exit 1,
 "unknown product 'olr'".  The engine draws the stored OLR plane as
 ``var:wrf_olr``; ``simulated_ir_satellite`` is a brightness temperature the

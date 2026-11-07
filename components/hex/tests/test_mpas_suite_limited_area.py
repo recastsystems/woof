@@ -34,12 +34,19 @@ def test_namelist_limited_area_without_series_is_refused():
 
 @pytest.mark.parametrize('extra, named', [
     (dict(iau_window_seconds=3600.0, samehost_devices='0,1'), 'IAU on more than one card'),
-    (dict(stochastic='{"sppt":true}'), 'stochastic'),
     (dict(chemistry_config='chem.json'), 'chemistry'),
 ])
 def test_combinations_the_regional_dycore_does_not_carry_are_refused_by_name(tmp_path, extra, named):
     with pytest.raises(ValueError, match=named):
         bind_limited_area(_arguments(tmp_path, **extra), '')
+
+
+def test_limited_area_takes_stochastic_physics(tmp_path):
+    # feat/stochastic-physics (2026-10-29) retired the limited-area refusal: the pattern is synthesised on the
+    # fly at the region's own cells and vertices, boundary edges carry no SKEB curl and the lateral-boundary zone
+    # takes no forcing (woof.hex.stochastic).  The door binds the region instead of refusing.
+    text = bind_limited_area(_arguments(tmp_path, stochastic='{"sppt":true,"skeb":true}'), '')
+    assert namelist_option(text, 'limited_area', 'config_apply_lbcs') is True
 
 
 def test_namelist_iau_on_several_cards_is_refused_at_the_door(tmp_path):

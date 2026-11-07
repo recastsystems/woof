@@ -1,0 +1,20 @@
+[package]
+name = "gpuwm-tslist"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# Like the other data bridges, this is independently buildable offline.
+[workspace]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "rw_tslist"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

@@ -1,0 +1,114 @@
+{
+  "source": "Public-domain WRF v4.7.1 phys/module_bl_acm.F, byte-identical to v4.6.1",
+  "source_sha256": "f18685f7ea091f567c3f37e983f26357dcd7e9ec2eea9a6e70635c506a66d60c",
+  "license": "WRF public-domain statement; source has no additional licence",
+  "case": "2024-05-25 18 UTC, 150x150x49, 3 km, 12-second step, ACM2=7 / PX surface layer=7 / Noah=2 / Thompson=8 / RRTMG=4+4",
+  "capture": "tools/acm2_wrf461_oracle/capture_native.py; four MPI tiles, 81 sampled columns from the first native step",
+  "word_count": 32157,
+  "different_words": 0,
+  "files": [
+    {
+      "file": "acm2-1-1-1-in.bin.gz",
+      "raw_bytes": 89664,
+      "raw_sha256": "e80044712df7b066dcaa4ae6c33f22d520e023d0e494bf3c9bf429df0a40b71f",
+      "gzip_bytes": 35504,
+      "gzip_sha256": "6ce38e7e32a1532a3926294b8095b40029c38e39bcb496f452e30c97241b8e79"
+    },
+    {
+      "file": "acm2-1-1-1-out.bin.gz",
+      "raw_bytes": 39764,
+      "raw_sha256": "ec60347aa44a9d2bf6c2c891809ec4361df1236aa161f28a2870c3ac9fed846e",
+      "gzip_bytes": 17662,
+      "gzip_sha256": "3729ee96debbe43814216c62eabead68b327c2bb1bdcf644385cf79403e84c49"
+    },
+    {
+      "file": "acm2-1-1-76-in.bin.gz",
+      "raw_bytes": 71744,
+      "raw_sha256": "b697cdfecfce0c9cafe85741358084cf0e4227fb1bab4218db7bdccab4d65ce1",
+      "gzip_bytes": 28702,
+      "gzip_sha256": "f76279a58384bd2da33b6214afc5bddf65d3df403d5840e8707fcfdbdd146dff"
+    },
+    {
+      "file": "acm2-1-1-76-out.bin.gz",
+      "raw_bytes": 31824,
+      "raw_sha256": "96e55fdc77a85bb557f5c472fb25b96f5e999c1c32657f6174bfcf5ea89da5c0",
+      "gzip_bytes": 14481,
+      "gzip_sha256": "55c2dc48a6a4c61e8f2014b80f8b8b89853a58af752112608ee55f96705950f3"
+    },
+    {
+      "file": "acm2-1-76-1-in.bin.gz",
+      "raw_bytes": 71744,
+      "raw_sha256": "e8a6c0e662e01a614b5c0229a7837b682b61ba877370502c463f57108f6a900b",
+      "gzip_bytes": 28900,
+      "gzip_sha256": "e657324b71a3af72721a621ad163fafcf765b30092e8182ac12dabbbfcb38e69"
+    },
+    {
+      "file": "acm2-1-76-1-out.bin.gz",
+      "raw_bytes": 31824,
+      "raw_sha256": "ce8620f73544d460efd8c307a1d02c4625cc32632b5724173ed65317d6354b0c",
+      "gzip_bytes": 13984,
+      "gzip_sha256": "5cf2c3a4eeabb37397ebc402b9279e40bebd24c5ef22a1ef517d619b02d7701e"
+    },
+    {
+      "file": "acm2-1-76-76-in.bin.gz",
+      "raw_bytes": 57408,
+      "raw_sha256": "2623e6dc5d16035c5a60a618d26f2643f3f2e3aa06341a5ce1f04e53fc495726",
+      "gzip_bytes": 23009,
+      "gzip_sha256": "7379efae9ca637fc2eb7ef3643ba881087cd20ba4792a789b43f9f4e926458f2"
+    },
+    {
+      "file": "acm2-1-76-76-out.bin.gz",
+      "raw_bytes": 25472,
+      "raw_sha256": "b2472d4273a54bec907064f75d3b598bf392710c03a1a0df281ef65970a1f3a7",
+      "gzip_bytes": 11102,
+      "gzip_sha256": "4169f6eae9baf8e318e6cfc2aae97acb799cfdd80d94bd9235eff2bf87af6e64"
+    }
+  ],
+  "native_build": {
+    "wrf.exe": {
+      "sha256": "ec9ec6b85f251a3079be5cf325264d3d1f47110150197883c1cc9a9c80916193",
+      "bytes": 37988472
+    },
+    "module_bl_acm.F": {
+      "sha256": "6a6ee7922d30450b55d92da2afdfa949461ac12f344dfcd891d3987ab2451799",
+      "bytes": 72400
+    },
+    "module_bl_acm.o": {
+      "sha256": "d60a7d00d4a803d3563dd61ad4b1c39796b9bf9f148cbfe8c739fd6684ed52ce",
+      "bytes": 74160
+    },
+    "configure.wrf": {
+      "sha256": "4df110fa976d2bc18885030709ed89a110e4eb8bc06f84b7531b457edbab78a3",
+      "bytes": 21217
+    },
+    "compiler": "GNU Fortran (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+    "strict_flags": [
+      "-O2",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-fno-tree-vectorize"
+    ],
+    "build_command": [
+      "python3",
+      "evidence/queue_load.py",
+      "38",
+      "env",
+      "NETCDF=/usr",
+      "WRFIO_NCD_LARGE_FILE_SUPPORT=1",
+      "OMP_NUM_THREADS=1",
+      "OPENBLAS_NUM_THREADS=1",
+      "J=-j2",
+      "nice",
+      "-n",
+      "10",
+      "bash",
+      "-c",
+      "cd scratch/native-capture-build && ./compile -j 2 em_real"
+    ]
+  },
+  "prepared_input_hashes": {
+    "wrfinput_d01": "29f54e83c7bfed342da29e46b8d520376778aae5560be657e7b2fa519d658d16",
+    "wrfbdy_d01": "2ba7761e47d235ce7a88b9152a802fb97ee76f9086cd776c2e273518b7a3cda6"
+  },
+  "capture_namelist_sha256": "5902b1b98b070238eeb8840461535e565c0b9274037cadf4519e3d8d542ab899"
+}

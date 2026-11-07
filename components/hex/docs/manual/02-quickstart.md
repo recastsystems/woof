@@ -27,13 +27,13 @@ and the `woof` engine distribution at a version this port has measured.
 
 **No engine constraint of your own is needed, and that is new.** Until
 2026-08-27 this page told you to type an engine version beside the package,
-because the declared dependency was `woof>=2.5.5` with no ceiling: a bare
+because the declared dependency was `gpuwm>=2.5.5` with no ceiling: a bare
 install took the newest published engine, and the forecast lane pins sixteen
 individual woof source files by SHA-256. A bare install reached an engine the
 pin refused, and the forecast door refused at launch with a digest mismatch
 that named neither the version that works nor the fact that pip chose it.
 
-woof hex 0.4.2 declares `woof>=2.9.4,<2.10`, inside the 2.9 minor, so
+woof hex 0.4.14 declares `gpuwm>=2.9.12,<2.10`, inside the 2.9 minor, so
 installing it never downgrades an engine you already have. An engine inside
 that range whose radiation helper set this release has not measured is refused
 at the forecast door by name, with the version to install. The range is
@@ -51,8 +51,9 @@ pip install "recast-woof[gpu]"     # or, spelled out, "recast-woof[gpu-cu12]"
 **A CUDA 12 or a CUDA 13 driver runs this port.** `[gpu]` installs
 `cupy-cuda12x`, which runs on either, because a driver runs its own CUDA
 major and every older one. On a CUDA 13 driver you may instead install
-`"recast-woof[gpu-cu13]"` (`cupy-cuda13x`), the toolchain the byte-identity
-results in this release were measured with. Do not install `[gpu-cu13]` on a
+`"recast-woof[gpu-cu13]"` (`cupy-cuda13x`, with NVRTC 13.5.37 at most so a
+prebuilt kernel pack matches it). `woof hex doctor` warns when the loaded
+NVRTC matches no pinned pack. Do not install `[gpu-cu13]` on a
 CUDA 12 driver: it imports, and then every device call stops with
 `cudaErrorInsufficientDriver`.
 
@@ -103,7 +104,7 @@ INFO    interpreter: Python 3.14.4 on Linux x86_64
 OK      numpy (arrays; 48 modules import it at line one): imported, 2.5.2
 OK      netCDF4 (reads and writes every mesh, static and history file): imported, 1.7.4
 OK      scipy (the regridder's spatial index): imported, 1.18.1
-PRESENT woof (the physics seam): woof 2.5.2 is installed
+PRESENT woof (the physics seam): gpuwm 2.5.2 is installed
 INFO    woof git checkout (the forecast lane only): ...
 OK      cupy (the CUDA lane): imported, 14.2.0
 INFO    woof fetch-bridges coverage: the woof installed here bundles no rw_mpas_convert, rw_mpas_init, ...
@@ -142,8 +143,8 @@ one verified against its packaged pin). What it can supply depends on the
 woof you have: the transcript above was taken against the published woof
 2.5.2 wheel, whose bundle carries `rw_wrfbatch` and **not** `rw_mpas_init`
 or `rw_mpas_convert`, which is exactly the shortfall the doctor reports
-there. The four MPAS bridge binaries enter the bundle at woof 2.5.3, and
-this distribution's declared range is `woof>=2.9.4,<2.10` (the floor is
+there. The four MPAS bridge binaries enter the bundle at gpuwm 2.5.3, and
+this distribution's declared range is `gpuwm>=2.9.12,<2.10` (the floor is
 far past 2.5.3, for the seam bytes the port pins): a conforming install cannot
 land on the engine that transcript was taken from. Doctor
 asks the woof you actually have what its bundle declares, so it never sends

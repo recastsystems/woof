@@ -1,0 +1,835 @@
+{
+  "columns": 64,
+  "levels": 25,
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "source_sha256": "c4977cdf2ddf3f2279c9be7e1fc659ef23bbb37376e5cf11f9a98a73d33b0266",
+  "fixture_sha256": "3ef8cb95adc11a48bb852e2d3bde2cd9683c0fe358f4a57b39974b5ce210572b",
+  "coefficient_slices": {
+    "shortwave": [
+      {
+        "table": "band.coeh2o_2",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_3",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_4",
+        "gpoint": 2
+      },
+      {
+        "table": "band.coeh2o_5",
+        "gpoint": 3
+      },
+      {
+        "table": "band.coeh2o_6",
+        "gpoint": 4
+      },
+      {
+        "table": "band_new.coech4_5_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeco2_4_new",
+        "gpoint": 6
+      },
+      {
+        "table": "band_new.coeco2_5_new",
+        "gpoint": 7
+      },
+      {
+        "table": "band_new.coeco_4_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeh2o_2_new",
+        "gpoint": 9
+      },
+      {
+        "table": "band_new.coeh2o_3_new",
+        "gpoint": 10
+      },
+      {
+        "table": "band_new.coeh2o_4_new",
+        "gpoint": 11
+      },
+      {
+        "table": "band_new.coeh2o_5_new",
+        "gpoint": 12
+      },
+      {
+        "table": "band_new.coeh2o_6_new",
+        "gpoint": 13
+      },
+      {
+        "table": "band_new.coehh22_2_new",
+        "gpoint": 2
+      },
+      {
+        "table": "band_new.coehh32_3_new",
+        "gpoint": 3
+      },
+      {
+        "table": "band_new.coehh42_4_new",
+        "gpoint": 16
+      },
+      {
+        "table": "band_new.coehh52_5_new",
+        "gpoint": 17
+      },
+      {
+        "table": "band_new.coehh62_6_new",
+        "gpoint": 18
+      },
+      {
+        "table": "band_new.coen2o_5_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeo2_2_new",
+        "gpoint": 8
+      },
+      {
+        "table": "band_new.coeso2_6_new",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_2",
+        "gpoint": 6
+      },
+      {
+        "table": "band.coeh2o_3",
+        "gpoint": 11
+      },
+      {
+        "table": "band.coeh2o_4",
+        "gpoint": 3
+      },
+      {
+        "table": "band.coeh2o_5",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_6",
+        "gpoint": 1
+      },
+      {
+        "table": "band_new.coech4_5_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeco2_4_new",
+        "gpoint": 8
+      },
+      {
+        "table": "band_new.coeco2_5_new",
+        "gpoint": 9
+      },
+      {
+        "table": "band_new.coeco_4_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeh2o_2_new",
+        "gpoint": 7
+      },
+      {
+        "table": "band_new.coeh2o_3_new",
+        "gpoint": 8
+      },
+      {
+        "table": "band_new.coeh2o_4_new",
+        "gpoint": 13
+      },
+      {
+        "table": "band_new.coeh2o_5_new",
+        "gpoint": 14
+      },
+      {
+        "table": "band_new.coeh2o_6_new",
+        "gpoint": 15
+      },
+      {
+        "table": "band_new.coehh22_2_new",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coehh32_3_new",
+        "gpoint": 1
+      },
+      {
+        "table": "band_new.coehh42_4_new",
+        "gpoint": 18
+      },
+      {
+        "table": "band_new.coehh52_5_new",
+        "gpoint": 19
+      },
+      {
+        "table": "band_new.coehh62_6_new",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coen2o_5_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeo2_2_new",
+        "gpoint": 6
+      },
+      {
+        "table": "band_new.coeso2_6_new",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_2",
+        "gpoint": 4
+      },
+      {
+        "table": "band.coeh2o_3",
+        "gpoint": 9
+      },
+      {
+        "table": "band.coeh2o_4",
+        "gpoint": 4
+      },
+      {
+        "table": "band.coeh2o_5",
+        "gpoint": 11
+      },
+      {
+        "table": "band.coeh2o_6",
+        "gpoint": 3
+      },
+      {
+        "table": "band_new.coech4_5_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeco2_4_new",
+        "gpoint": 10
+      },
+      {
+        "table": "band_new.coeco2_5_new",
+        "gpoint": 11
+      },
+      {
+        "table": "band_new.coeco_4_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeh2o_2_new",
+        "gpoint": 5
+      },
+      {
+        "table": "band_new.coeh2o_3_new",
+        "gpoint": 6
+      },
+      {
+        "table": "band_new.coeh2o_4_new",
+        "gpoint": 15
+      },
+      {
+        "table": "band_new.coeh2o_5_new",
+        "gpoint": 16
+      },
+      {
+        "table": "band_new.coeh2o_6_new",
+        "gpoint": 17
+      },
+      {
+        "table": "band_new.coehh22_2_new",
+        "gpoint": 10
+      },
+      {
+        "table": "band_new.coehh32_3_new",
+        "gpoint": 11
+      },
+      {
+        "table": "band_new.coehh42_4_new",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coehh52_5_new",
+        "gpoint": 1
+      },
+      {
+        "table": "band_new.coehh62_6_new",
+        "gpoint": 2
+      },
+      {
+        "table": "band_new.coen2o_5_new",
+        "gpoint": null
+      }
+    ],
+    "longwave": [
+      {
+        "table": "band.coech4_10",
+        "gpoint": null
+      },
+      {
+        "table": "band.coech4_11",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_10",
+        "gpoint": 2
+      },
+      {
+        "table": "band.coeh2o_11",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_12",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_13",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_16",
+        "gpoint": 6
+      },
+      {
+        "table": "band.coeh2o_17",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_18",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_7",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_8",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_9",
+        "gpoint": 3
+      },
+      {
+        "table": "band.coehca_14",
+        "gpoint": 2
+      },
+      {
+        "table": "band.coehca_15",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coehcb_14",
+        "gpoint": 4
+      },
+      {
+        "table": "band.coehcb_15",
+        "gpoint": 3
+      },
+      {
+        "table": "band.coen2o_10",
+        "gpoint": null
+      },
+      {
+        "table": "band.coen2o_11",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeo3_12",
+        "gpoint": 3
+      },
+      {
+        "table": "band_new.coech3cl_14_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coech4_10_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coech4_11_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeh2o_10_new",
+        "gpoint": 2
+      },
+      {
+        "table": "band_new.coeh2o_11_new",
+        "gpoint": 2
+      },
+      {
+        "table": "band_new.coeh2o_12_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeh2o_13_new",
+        "gpoint": 1
+      },
+      {
+        "table": "band_new.coeh2o_16_new",
+        "gpoint": 5
+      },
+      {
+        "table": "band_new.coeh2o_17_new",
+        "gpoint": 6
+      },
+      {
+        "table": "band_new.coeh2o_18_new",
+        "gpoint": 4
+      },
+      {
+        "table": "band_new.coeh2o_7_new",
+        "gpoint": 1
+      },
+      {
+        "table": "band_new.coeh2o_8_new",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coeh2o_9_new",
+        "gpoint": 3
+      },
+      {
+        "table": "band_new.coehca_14_new",
+        "gpoint": 2
+      },
+      {
+        "table": "band_new.coehca_15_new",
+        "gpoint": 9
+      },
+      {
+        "table": "band_new.coehcb_14_new",
+        "gpoint": 4
+      },
+      {
+        "table": "band_new.coehcb_15_new",
+        "gpoint": 11
+      },
+      {
+        "table": "band_new.coen2o_10_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coen2o_11_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeno2_9_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeno_8_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeo3_12_new",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coeso2_10_new",
+        "gpoint": null
+      },
+      {
+        "table": "band.coech4_10",
+        "gpoint": null
+      },
+      {
+        "table": "band.coech4_11",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_10",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_11",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_12",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_13",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_16",
+        "gpoint": 6
+      },
+      {
+        "table": "band.coeh2o_17",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_18",
+        "gpoint": 2
+      },
+      {
+        "table": "band.coeh2o_7",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_8",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_9",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coehca_14",
+        "gpoint": 4
+      },
+      {
+        "table": "band.coehca_15",
+        "gpoint": 7
+      },
+      {
+        "table": "band.coehcb_14",
+        "gpoint": 6
+      },
+      {
+        "table": "band.coehcb_15",
+        "gpoint": 9
+      },
+      {
+        "table": "band.coen2o_10",
+        "gpoint": null
+      },
+      {
+        "table": "band.coen2o_11",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeo3_12",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coech3cl_14_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coech4_10_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coech4_11_new",
+        "gpoint": null
+      }
+    ],
+    "ozone": [
+      {
+        "table": "band.coech4_10",
+        "gpoint": null
+      },
+      {
+        "table": "band.coech4_11",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_10",
+        "gpoint": 2
+      },
+      {
+        "table": "band.coeh2o_11",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_12",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_13",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_16",
+        "gpoint": 6
+      },
+      {
+        "table": "band.coeh2o_17",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_18",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_7",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_8",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_9",
+        "gpoint": 3
+      },
+      {
+        "table": "band.coehca_14",
+        "gpoint": 2
+      },
+      {
+        "table": "band.coehca_15",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coehcb_14",
+        "gpoint": 4
+      },
+      {
+        "table": "band.coehcb_15",
+        "gpoint": 3
+      },
+      {
+        "table": "band.coen2o_10",
+        "gpoint": null
+      },
+      {
+        "table": "band.coen2o_11",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeo3_12",
+        "gpoint": 3
+      },
+      {
+        "table": "band_new.coech3cl_14_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coech4_10_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coech4_11_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeh2o_10_new",
+        "gpoint": 2
+      },
+      {
+        "table": "band_new.coeh2o_11_new",
+        "gpoint": 2
+      },
+      {
+        "table": "band_new.coeh2o_12_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeh2o_13_new",
+        "gpoint": 1
+      },
+      {
+        "table": "band_new.coeh2o_16_new",
+        "gpoint": 5
+      },
+      {
+        "table": "band_new.coeh2o_17_new",
+        "gpoint": 6
+      },
+      {
+        "table": "band_new.coeh2o_18_new",
+        "gpoint": 4
+      },
+      {
+        "table": "band_new.coeh2o_7_new",
+        "gpoint": 1
+      },
+      {
+        "table": "band_new.coeh2o_8_new",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coeh2o_9_new",
+        "gpoint": 3
+      },
+      {
+        "table": "band_new.coehca_14_new",
+        "gpoint": 2
+      },
+      {
+        "table": "band_new.coehca_15_new",
+        "gpoint": 9
+      },
+      {
+        "table": "band_new.coehcb_14_new",
+        "gpoint": 4
+      },
+      {
+        "table": "band_new.coehcb_15_new",
+        "gpoint": 11
+      },
+      {
+        "table": "band_new.coen2o_10_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coen2o_11_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeno2_9_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeno_8_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coeo3_12_new",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coeso2_10_new",
+        "gpoint": null
+      },
+      {
+        "table": "band.coech4_10",
+        "gpoint": null
+      },
+      {
+        "table": "band.coech4_11",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_10",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_11",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_12",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeh2o_13",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_16",
+        "gpoint": 6
+      },
+      {
+        "table": "band.coeh2o_17",
+        "gpoint": 0
+      },
+      {
+        "table": "band.coeh2o_18",
+        "gpoint": 2
+      },
+      {
+        "table": "band.coeh2o_7",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_8",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coeh2o_9",
+        "gpoint": 1
+      },
+      {
+        "table": "band.coehca_14",
+        "gpoint": 4
+      },
+      {
+        "table": "band.coehca_15",
+        "gpoint": 7
+      },
+      {
+        "table": "band.coehcb_14",
+        "gpoint": 6
+      },
+      {
+        "table": "band.coehcb_15",
+        "gpoint": 9
+      },
+      {
+        "table": "band.coen2o_10",
+        "gpoint": null
+      },
+      {
+        "table": "band.coen2o_11",
+        "gpoint": null
+      },
+      {
+        "table": "band.coeo3_12",
+        "gpoint": 0
+      },
+      {
+        "table": "band_new.coech3cl_14_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coech4_10_new",
+        "gpoint": null
+      },
+      {
+        "table": "band_new.coech4_11_new",
+        "gpoint": null
+      }
+    ]
+  },
+  "fields": {
+    "shortwave_fkg": {
+      "shape": [
+        64,
+        25
+      ],
+      "sha256": "d675f6e2e3b54d066ddfc5f5fe304aac2a030e253f23d4eb3ab54dcf781bcea6"
+    },
+    "shortwave_temperature_out": {
+      "shape": [
+        64,
+        25
+      ],
+      "sha256": "f2726cd801ab8c1a3d19e67c1190fb58041df087cd76f5950b61162790808358"
+    },
+    "longwave_fkg": {
+      "shape": [
+        64,
+        25
+      ],
+      "sha256": "7da3b39857d8472e733235652df91fa7a787df734dd83ed159b518f64a7b0780"
+    },
+    "longwave_temperature_out": {
+      "shape": [
+        64,
+        25
+      ],
+      "sha256": "cbe96771d6ae8021c870bc08f74be533907a4c05474ebeed359a1e0c19610701"
+    },
+    "ozone_fkg": {
+      "shape": [
+        64,
+        25
+      ],
+      "sha256": "30b4286c1dd93ab99ae5bc52c7130b7b9f91d2fb6d25a77d38b772f471864316"
+    },
+    "ozone_temperature_out": {
+      "shape": [
+        64,
+        25
+      ],
+      "sha256": "f2726cd801ab8c1a3d19e67c1190fb58041df087cd76f5950b61162790808358"
+    },
+    "continuum": {
+      "shape": [
+        64,
+        18,
+        24
+      ],
+      "sha256": "c11fad376ef39241d623d78b148528edc73a3b04632af4de59d62003bfc38594"
+    }
+  }
+}

@@ -602,6 +602,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9710d3b3739c2e349eb44fe848ad0b7c8cb1e42bd87ee49371df2f7acaf3e675"
+dependencies = [
+ "crc-catalog",
+]
+
+[[package]]
+name = "crc-catalog"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
+
+[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -696,8 +711,6 @@ dependencies = [
 [[package]]
 name = "cudarc"
 version = "0.19.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42310153e06cf4cd532901f7096beb27504d681736a29ee90728ae4e2d93b2a8"
 dependencies = [
  "libloading 0.9.0",
 ]
@@ -2106,6 +2119,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
 dependencies = [
  "twox-hash",
+]
+
+[[package]]
+name = "lzma-rust2"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d673a11333485e7d8b93d62a9a5b07b22daf5e8a8655a44c1bb18aa4bf3d1524"
+dependencies = [
+ "crc",
+ "sha2",
 ]
 
 [[package]]
@@ -3856,6 +3879,7 @@ dependencies = [
  "cudarc",
  "font8x8",
  "image",
+ "rayon",
  "rusttype",
  "rustwx-contour",
  "rustwx-core",
@@ -3889,6 +3913,7 @@ dependencies = [
  "rustwx-render",
  "rw-host-memory",
  "rw-store",
+ "serde",
  "serde_json",
 ]
 
@@ -3984,6 +4009,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rw-history-grib2"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "ndarray 0.17.2",
+ "netcrust",
+ "rayon",
+ "serde",
+ "serde_json",
+ "wx-core 0.3.10",
+]
+
+[[package]]
 name = "rw-host-memory"
 version = "0.1.0"
 dependencies = [
@@ -4063,8 +4101,12 @@ dependencies = [
  "chrono",
  "netcdf-writer",
  "netcrust",
+ "obs-regrid",
+ "rayon",
  "serde",
  "serde_json",
+ "sha2",
+ "wrf-surface",
 ]
 
 [[package]]
@@ -4130,6 +4172,16 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "rw-p3"
+version = "0.1.0"
+dependencies = [
+ "lzma-rust2",
+ "rayon",
+ "rw-libm",
+ "sha2",
 ]
 
 [[package]]
@@ -4232,7 +4284,9 @@ dependencies = [
  "netcdf-reader 0.5.0",
  "pollster",
  "rayon",
+ "rustwx-calc",
  "rustwx-sounding",
+ "rw-mpas",
  "rw-store",
  "serde",
  "serde_json",
@@ -4248,6 +4302,7 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "fs4",
+ "libc",
  "memmap2",
  "rayon",
  "rustwx-core",
@@ -4271,6 +4326,10 @@ dependencies = [
 
 [[package]]
 name = "rw-tempo"
+version = "0.1.0"
+
+[[package]]
+name = "rw-cu99-launch"
 version = "0.1.0"
 
 [[package]]
@@ -5864,6 +5923,18 @@ dependencies = [
  "ndarray 0.16.1",
  "netcdf-reader 0.5.0",
  "rayon",
+]
+
+[[package]]
+name = "wrf-surface"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "netcdf-writer",
+ "netcrust",
+ "rayon",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

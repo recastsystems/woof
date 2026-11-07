@@ -1,8 +1,8 @@
 """The admitted MYNN/MYNN/Noah surface trajectory stays byte-identical.
 
-RE-PINNED 2026-09-17 (lane/2.7.6-pin-gates) ON ONE CARD.  The fixture was
+RE-PINNED 2026-09-17 (the 2.7.6 verification change) ON ONE CARD.  The fixture was
 captured on 2026-07-30 (f122ee4ec) as one change's before/after harness and
-nothing ran it before a cut; on a development machine's RTX 4090 (compute capability 8.9,
+nothing ran it before a cut; on test host 1's RTX 4090 (compute capability 8.9,
 driver 610.57.04) at fc639c51f its reading is: field_inventory_sha256 HELD
 (9ef24b8d417eb5b6a3858d9f985572c3a5e931d812ab9eb6cb0cd05903d45303, the same
 fields in the same shapes and dtypes), sha256 MOVED (13ed8960c71c8a1957d4e6

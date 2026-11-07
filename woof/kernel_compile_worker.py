@@ -107,6 +107,25 @@ def _identity():
 
 
 def compile_request(arguments, arch, identity, *, trace=False):
+    from woof.hip_backend import active,compiler_binding,compile_aot,requested
+    if active():
+        if compiler_binding()!=identity:raise ValueError('HIP worker compiler identity changed')
+        begin_ns=time.monotonic_ns();wall=time.perf_counter();cpu=time.process_time()
+        target=str(arch)
+        if target.isdigit():target='sm_'+target
+        if arguments.get('method') not in (None,'ptx'):raise ValueError('HIP worker does not support LTO')
+        if requested() == 'hip-nvidia' and os.environ.get('WOOF_HIP_NVIDIA_COMPILER', 'aot') == 'nvrtc':
+            from woof.hip_nvidia_rtc import compile_explicit
+            result=compile_explicit(arguments,target)
+        elif arguments.get('name_expressions'):
+            from woof.hiprtc import compile
+            result=compile(arguments['source'],arguments['options'],target,arguments['filename'],arguments['name_expressions'])
+        else:
+            blob,_=compile_aot(arguments['source'],arguments['options'],target)
+            result=(blob,None)
+        timing=dict(pid=os.getpid(),seconds=time.perf_counter()-wall,cpu_seconds=time.process_time()-cpu)
+        if trace:timing.update(compile_begin_mono_ns=begin_ns,compile_end_mono_ns=time.monotonic_ns())
+        return result,timing
     from cupy.cuda import compiler
     from cupy_backends.cuda.libs import nvrtc
     from . import numerics
@@ -126,18 +145,16 @@ def compile_request(arguments, arch, identity, *, trace=False):
     begin_ns = time.monotonic_ns() if trace else None
     wall, cpu = time.perf_counter(), time.process_time()
     compiler._get_arch_for_options_for_nvrtc = explicit
-    previous_mode = numerics._mode
     # The parent has already applied its numerical boundary. In particular,
     # a builder may compile strict AND fast recipes in one process pool.
     # Never reinterpret those final options using this worker's environment.
-    numerics._mode = "strict"
     try:
-        result = compiler._compile_using_nvrtc_no_warning(
-            arguments["source"], tuple(arguments["options"]), target,
-            arguments["filename"], arguments["name_expressions"], None,
-            arguments["cache_in_memory"], None, arguments["method"])
+        with numerics.preserve_final_options():
+            result = compiler._compile_using_nvrtc_no_warning(
+                arguments["source"], tuple(arguments["options"]), target,
+                arguments["filename"], arguments["name_expressions"], None,
+                arguments["cache_in_memory"], None, arguments["method"])
     finally:
-        numerics._mode = previous_mode
         compiler._get_arch_for_options_for_nvrtc = selector
     timing = {"pid": os.getpid(), "seconds": time.perf_counter() - wall,
               "cpu_seconds": time.process_time() - cpu}

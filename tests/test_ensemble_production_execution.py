@@ -128,6 +128,19 @@ def test_provider_is_called_for_each_global_member_without_ignored_descriptors(t
     assert "Next: put the same list in a file and run woof ensemble CONFIG --trajectories FILE" in str(refused.value)
 
 
+def test_wofs_ladder_session_opens_before_its_runtime_provider_is_bound(tmp_path):
+    """The config-driven WoFS ladder (ERA5) names a source family and binds its
+    member provider in run_experiment, after the session opens: the session must
+    open (WOOF 2026-11-06, 21 members from era5, refused as "binds none of them"),
+    and a run that reaches members with no provider is still refused by name."""
+    ladder = {"members": 3, "recipe": "wofs", "sources": [{"source": "era5", "members": 3}]}
+    run = PreparedEnsembleSession(ladder, output_directory=tmp_path)
+    assert run.request.recipe == "wofs" and run.request.sources
+    with pytest.raises(ValueError) as refused:
+        run.run_prepared(lambda *a, **k: {"status": "PASS"}, inputs())
+    assert "the wofs recipe needs each member's own prepared source" in str(refused.value)
+
+
 def test_failure_records_partial_roster_and_never_calls_products_complete(tmp_path):
     prepared, collector = inputs(), Collector()
     seen = []

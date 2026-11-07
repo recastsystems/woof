@@ -486,8 +486,7 @@ with one exception:
   `namelists/`, `met_em/`, `static/` and `wrfout_reference/` subtrees.
   The bundle is third-party output of several gigabytes, is not
   redistributable, and there is no `woof fetch` for it. Point
-  `WOOF_REAL74_REFERENCE_BUNDLE` at a directory holding it, or place it
-  under the case data root as `WRF_1974_MP55_reference_bundle`. Without it the case
+  `WOOF_REAL74_REFERENCE_BUNDLE` at a directory holding it. Without it the case
   refuses by name and says the same thing.
 
 The two LES tornado cases are the module half of a case whose other half

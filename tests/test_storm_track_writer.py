@@ -200,6 +200,11 @@ class _Grid:
 
     def __init__(self, lat0=10.0, lon0=-80.0, step=0.01):
         self.lat0, self.lon0, self.step = lat0, lon0, step
+        self.e_we, self.e_sn = 121, 61
+
+    def latlon_to_ij(self, lat, lon):
+        return (1. + (lon-self.lon0)/self.step,
+                1. + (lat-self.lat0)/self.step)
 
     def ij_to_latlon(self, x, y):
         return (self.lat0 + (y - 1.0) * self.step,
@@ -226,6 +231,18 @@ def _fix(*, found=True, refined_on=None, extremum_units="hPa",
 def _state(u10=30.0, v10=40.0):
     return SimpleNamespace(physics=SimpleNamespace(fields={
         "u10": np.full((8, 8), u10), "v10": np.full((8, 8), v10)}))
+
+
+@pytest.fixture(autouse=True)
+def _native_surface_contract(monkeypatch):
+    """These are writer/clock tests. Native reductions have separate ABI tests."""
+    from woof.tc import field_products
+    def sample(state, grid, centre, **kwargs):
+        return dict(latitude_deg=centre[0], longitude_deg=centre[1],
+                    mslp_hpa=964.4, vmax10_m_s=tw.peak_wind_m_s(state),
+                    radii_nm={k:[0.]*4 for k in ('34','50','64')},
+                    radii_reach_grid_edge={k:[False]*4 for k in ('34','50','64')})
+    monkeypatch.setattr(field_products, 'diagnose', sample)
 
 
 def _writer(tmp_path, cfg=None, **over):
@@ -321,6 +338,17 @@ def test_without_a_refinement_the_parent_grid_is_named(tmp_path):
     writer.emit(_fix(), t=3600.0, parent_state=_state(), parent_grid=_Grid())
     writer.close()
     assert len(_lines(tmp_path)[1].split(",")) == 5
+
+
+def test_final_endpoint_can_be_written_between_requested_cadences(tmp_path):
+    writer = _writer(tmp_path, TrackConfig("track.csv", interval_seconds=3600.))
+    writer.emit(_fix(t=0.), t=0., parent_state=_state(), parent_grid=_Grid())
+    assert writer.emit(_fix(t=1800.), t=1800., parent_state=_state(), parent_grid=_Grid()) is None
+    row = writer.emit(_fix(t=1800.), t=1800., parent_state=_state(), parent_grid=_Grid(),force=True)
+    assert row['emitted']
+    writer.close()
+    assert len(_lines(tmp_path)) == 3
+    assert _lines(tmp_path)[-1].startswith('2025-10-24_12:30:00,')
 
 
 def test_no_signal_writes_a_NaN_row(tmp_path):
@@ -810,7 +838,7 @@ def test_the_route_takes_the_column_set_from_the_follow_block(tmp_path):
     from woof.core.storm_tracking import build_follow_config, levels_of
     from woof.runtime import build_track_writer
 
-    assert set(tw.TRACK_KEYS) == {"path", "interval_seconds", "output_level"}
+    assert set(tw.TRACK_KEYS) == {"path", "interval_seconds", "output_level", "storm_id"}
     cases = {
         "uh": {"field": "uh", "threshold": 25.0, "fallback_threshold": 40.0},
         "reflectivity": {"field": "reflectivity", "threshold": 40.0},

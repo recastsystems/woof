@@ -1,0 +1,283 @@
+{
+  "t_efrw": {
+    "typ": "double",
+    "shape": [
+      100,
+      100
+    ]
+  },
+  "t_efsw": {
+    "typ": "double",
+    "shape": [
+      100,
+      100
+    ]
+  },
+  "tcg_racg": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      1,
+      37,
+      37
+    ]
+  },
+  "tcr_gacr": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      1,
+      37,
+      37
+    ]
+  },
+  "tcr_sacr1": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tcr_sacr2": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tcs_racs1": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tcs_racs2": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tmr_racg": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      1,
+      37,
+      37
+    ]
+  },
+  "tmr_racs1": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tmr_racs2": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tms_sacr1": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tms_sacr2": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tnc_wev": {
+    "typ": "double",
+    "shape": [
+      100,
+      37,
+      100
+    ]
+  },
+  "tnccn_act": {
+    "typ": "float",
+    "shape": [
+      7,
+      9,
+      7,
+      5,
+      4
+    ]
+  },
+  "tni_iaus": {
+    "typ": "double",
+    "shape": [
+      64,
+      55
+    ]
+  },
+  "tni_qcfz": {
+    "typ": "double",
+    "shape": [
+      37,
+      100,
+      45,
+      55
+    ]
+  },
+  "tni_qrfz": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      45,
+      55
+    ]
+  },
+  "tnr_gacr": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      1,
+      37,
+      37
+    ]
+  },
+  "tnr_qrfz": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      45,
+      55
+    ]
+  },
+  "tnr_racg": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      1,
+      37,
+      37
+    ]
+  },
+  "tnr_racs1": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tnr_racs2": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tnr_rev": {
+    "typ": "double",
+    "shape": [
+      100,
+      37,
+      37
+    ]
+  },
+  "tnr_sacr1": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tnr_sacr2": {
+    "typ": "double",
+    "shape": [
+      37,
+      9,
+      37,
+      37
+    ]
+  },
+  "tpc_wev": {
+    "typ": "double",
+    "shape": [
+      100,
+      37,
+      100
+    ]
+  },
+  "tpg_qrfz": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      45,
+      55
+    ]
+  },
+  "tpi_ide": {
+    "typ": "double",
+    "shape": [
+      64,
+      55
+    ]
+  },
+  "tpi_qcfz": {
+    "typ": "double",
+    "shape": [
+      37,
+      100,
+      45,
+      55
+    ]
+  },
+  "tpi_qrfz": {
+    "typ": "double",
+    "shape": [
+      37,
+      37,
+      45,
+      55
+    ]
+  },
+  "tps_iaus": {
+    "typ": "double",
+    "shape": [
+      64,
+      55
+    ]
+  }
+}

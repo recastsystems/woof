@@ -1,6 +1,6 @@
 """A stalled source connection is hedged on a new connection instead of holding the fetch for the socket timeout.
 
-THE BREAKAGE (hex LAM vs zoom-globe measurement, V5090, 2026-10-27): one GFS f006 byte-range request stalled on
+THE BREAKAGE (hex LAM vs zoom-globe measurement, reference system, 2026-10-27): one GFS f006 byte-range request stalled on
 its S3 connection and the region's boundaries waited the full 300 s socket timeout before retrying it.  These tests
 run the real fetch code against a local HTTP server that forces that stall (a connection that is accepted and never
 answered, or one that stops part way through its body) and require the bytes to arrive, unchanged, a few stall
@@ -119,7 +119,14 @@ def test_a_stalled_range_request_is_hedged_on_a_new_connection(origin, how):
     took = time.monotonic() - started
     assert body == PAYLOAD[span[0]:span[1] + 1]
     assert took < 4 * STALL + 2.0, f"took {took:.1f} s: the stall was waited out, not hedged"
-    assert len(src._HEDGES) == 1 and src._HEDGES[0]["range"] == f"bytes={span[0]}-{span[1]}"
+    # The stalled request is hedged on a new connection, and every hedge follows the rule: no byte from any live
+    # copy for STALL.  How many hedges that takes is the host's: under load the hedge copy itself can send nothing
+    # for STALL and is hedged once more, as the rule requires (two hedges in the hex 0.4.12 gate), so the count is
+    # not fixed.  Only this one request was made, so every hedge is for its range, numbered from copy 2 on.
+    events = list(src._HEDGES)
+    assert events and all(event["range"] == f"bytes={span[0]}-{span[1]}" for event in events)
+    assert events[0]["copy"] == 2
+    assert all(event["no_byte_for_s"] >= STALL for event in events)
 
 
 def test_the_selected_records_arrive_whole_and_in_order_when_one_piece_stalls(origin, tmp_path):
@@ -149,7 +156,12 @@ def test_the_selected_records_arrive_whole_and_in_order_when_one_piece_stalls(or
     want = grib[:10_500_000]
     assert (tmp_path / "gfs.f006.grib2").read_bytes() == want
     assert took < 4 * STALL + 2.0, f"took {took:.1f} s"
-    assert [event["range"] for event in receipt["stalls_hedged"]] == [stalled]
+    # The stalled piece is hedged; any other hedge is a piece of this plan that also sent nothing for STALL on a
+    # loaded host (the rule, not a fixed count).
+    hedged = [event["range"] for event in receipt["stalls_hedged"]]
+    assert stalled in hedged
+    assert set(hedged) <= {f"bytes={first}-{last}" for first, last in pieces}
+    assert all(event["no_byte_for_s"] >= STALL for event in receipt["stalls_hedged"])
     assert receipt["requests"] == len(pieces) and receipt["records"] == 3
     assert not list(tmp_path.glob("*.part*"))
 
@@ -169,7 +181,13 @@ def test_a_whole_bz2_object_on_one_stream_is_hedged_and_the_loser_leaves_nothing
     how = src._fetch_whole_from(plan, target, plan.url)
     took = time.monotonic() - started
     assert target.read_bytes() == text
-    assert how["hedges"] == 1 and took < 4 * STALL + 2.0
+    assert took < 4 * STALL + 2.0
+    # The stalled copy is hedged on a new connection, and every hedge follows the rule: no byte from any live copy
+    # for STALL.  How many hedges that takes is the host's: at load ~55 (hex 0.5.0 sealing pass) the first hedge
+    # copy itself sent nothing for STALL and was hedged once more, as the rule requires, so the count is not fixed.
+    events = [event for event in src._HEDGES if event["url"] == plan.url]
+    assert how["hedges"] >= 1 and how["hedges"] == len(events) and how["attempts"] == how["hedges"] + 1
+    assert events[0]["copy"] == 2 and all(event["no_byte_for_s"] >= STALL for event in events)
     origin.release.set()  # the stalled copy wakes, finds the race decided and drops its part file
     deadline = time.monotonic() + 5.0
     while list(tmp_path.glob("*.part*")) and time.monotonic() < deadline:

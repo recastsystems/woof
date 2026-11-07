@@ -1020,7 +1020,7 @@ def test_real74_model_top_downward_flux_cpu_reference(monkeypatch):
     # ratio; the longwave is untouched.
     assert sw_flux.flux_dn[0, -1] == pytest.approx(
         684.8520507812499, rel=2.0e-13)
-    # Re-pinned by lane/verify-rte-rrtmgp from 659.7770262288319: the SW
+    # Re-pinned by development branch from 659.7770262288319: the SW
     # solar source table is now set_solar_variability evaluated in float32
     # (as the single-precision reference does), which moves 64 of its 224
     # g-point weights by 1 ULP; the spectral redistribution moves the
@@ -2116,7 +2116,7 @@ def test_rfmip_clear_sky_full_profile_acceptance():
         # for word (fa107a1, single precision; tests/
         # test_rrtmgp_upstream_oracle_gpu.py) itself reaches 0.05188 W m-2 on
         # rsd against them (its own rrtmgp_rfmip_sw example, gfortran 13.3,
-        # measured on W1 by lane/verify-rte-rrtmgp; rsu 0.0253, rld 0.00058,
+        # measured on W1 by development branch; rsu 0.0253, rld 0.00058,
         # rlu 0.00061).  The bound still refuses a real defect: any error
         # above single-precision rounding of this size fails it.
         assert np.max(np.abs(residual)) <= 0.06, name

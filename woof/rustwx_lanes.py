@@ -87,7 +87,7 @@ __getattr__ = lazy_build_hints(
 #: the literal and every older build fails the handshake instead of
 #: quietly answering the old grammar.
 ENSEMBLE_ABI_MARKER = (
-    "gpuwm-rw-ensbatch-products-v1\tmean\tspread\tprob\tpmm\tpaintball\t"
+    "gpuwm-rw-ensbatch-products-v1\tmean\tspread\tprob\tpmm\tpaintball\tmax\t"
     "gpuwm-rw-ensbatch-fields-v1\tFIELD\tname\ttitle\tunits\t"
     "default_threshold\tunit_slug\t"
     "gpuwm-rw-ensbatch-events-v1\tRENDERED\tSKIPPED\tFAILED\t"
@@ -119,7 +119,7 @@ NOWCAST_FRAMES_ABI_MARKER = (
     "--causal\t--receipt\t--source-kind\t--package\t--revision")
 
 #: Ensemble products, in the order ``all`` expands to.
-ENSEMBLE_PRODUCTS = ("mean", "spread", "prob", "pmm", "paintball")
+ENSEMBLE_PRODUCTS = ("mean", "spread", "prob", "pmm", "paintball", "max")
 
 #: Ensemble fields, as of the build this wrapper was written against.
 #:
@@ -486,8 +486,8 @@ def ensemble_workaround_notice() -> str:
     """What the matplotlib ensemble route must say, every run.
 
     Fixed means default-on; an opt-in route is a workaround and reports
-    itself as one.  The numbers are this lane's own -- five fields by
-    five products -- not the wrfout catalog's.
+    itself as one.  The numbers are this lane's own fields and
+    products, not the wrfout catalog's.
     """
 
     return (f"WORKAROUND: these panels are drawn by matplotlib, not by "
@@ -541,7 +541,7 @@ def _read_events(stdout: str, stderr: str, subject: str
 
 def run_ensemble_renderer(
         engine: Path, manifest: Path, *, store_root: Path, out_dir: Path,
-        field: str = "refl", products: str = "mean,spread,prob,pmm,paintball",
+        field: str = "refl", products: str = "mean,spread,prob,pmm,paintball,max",
         threshold: float | None = None, neighborhood_km: float = 0.0,
         frames: int | None = None, nan_policy: str = "mask",
         pmm_tie_rule: str = "flat-index",

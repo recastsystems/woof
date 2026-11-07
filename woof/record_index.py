@@ -35,6 +35,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, getproxies
 
 from woof import fetch_pool
+from woof.fetch_ranges import RangeRefused
 from woof.nomads_governor import is_nomads_url, paced_urlopen
 
 #: Index formats a selection may name.
@@ -104,6 +105,18 @@ class SelectionAbsent(IndexAbsent, ValueError):
     and says so; the decode then reads the field or refuses it by name, as
     it would have before.  It stays a ``ValueError`` for callers that treat
     a selection that cannot be served as a payload that did not verify.
+    """
+
+
+class IndexStale(IndexAbsent, ValueError):
+    """The index's offsets do not land on the object's GRIB messages.
+
+    Named breakage (fix/ecmwf-open-data-range): an index written for an
+    earlier upload of the object, or one a mirror copied out of step,
+    cuts records mid-message; the walk refused the file on every round
+    of every endpoint although the object itself was whole.  As an
+    :class:`IndexAbsent` the callers move the object whole (the decode
+    reads the same records from it) instead of failing the start.
     """
 
 
@@ -383,16 +396,70 @@ def _object_size(url: str, *, opener, timeout: float) -> int:
         return int(response.headers["Content-Length"])
 
 
+def _cut_whole(url: str, part: Path, ranges: Sequence[tuple[int, int]], *,
+               opener, timeout: float, reason: str, progress) -> dict:
+    """Move ``url`` whole on one plain GET and cut the selected records.
+
+    For a host that ignores or changes a byte range (:class:`RangeRefused`).
+    Every selected ``(offset, length)`` must be one whole GRIB message of
+    the downloaded object (``GRIB`` at the offset, the header's length
+    equal to the index's, ``7777`` at its end), so the published file is
+    byte for byte what the ranged transfer writes.  An index that does not
+    land on the object's messages is :class:`IndexStale`.
+    """
+    from woof.fetch_ranges import download
+
+    if progress is not None:
+        progress(f"{part.name.removesuffix('.part')}: {reason}; moving the whole "
+                 "object on one request and cutting the selected records from it")
+    whole = part.with_name(part.name.removesuffix(".part") + ".whole.part")
+    try:
+        size, _digest = download(url, whole, user_agent=_USER_AGENT, streams=1,
+                                 timeout=timeout, opener=opener)
+        with whole.open("rb") as source, part.open("wb") as output:
+            for offset, length in ranges:
+                source.seek(offset)
+                head = source.read(16)
+                edition = head[7] if len(head) >= 8 else None
+                declared = (int.from_bytes(head[8:16], "big") if edition == 2 else
+                            int.from_bytes(head[4:7], "big") if edition == 1 else None)
+                if head[:4] != b"GRIB" or declared != length or offset + length > size:
+                    raise IndexStale(f"the index record at byte {offset} ({length} B) is "
+                                     "not a whole GRIB message of the object")
+                source.seek(offset + length - 4)
+                if source.read(4) != b"7777":
+                    raise IndexStale(f"the index record at byte {offset} has no 7777 "
+                                     "terminator in the object")
+                source.seek(offset)
+                remaining = length
+                while remaining:
+                    fetch_pool.raise_if_stopped()
+                    chunk = source.read(min(_CHUNK, remaining))
+                    if not chunk:
+                        raise ValueError(f"{whole.name}: the object ended inside the "
+                                         f"record at byte {offset}")
+                    output.write(chunk)
+                    remaining -= len(chunk)
+    finally:
+        whole.unlink(missing_ok=True)
+    return {"object_bytes": size, "requests": 1, "range_fallback": reason}
+
+
 def download_records(url: str, index_url: str, dest: Path, *,
                      declaration: Mapping[str, object], opener=None,
-                     timeout: float = 300.0, streams: int = STREAMS) -> dict:
+                     timeout: float = 300.0, streams: int = STREAMS,
+                     progress=None) -> dict:
     """Range-fetch the selected records of ``url``, verify, publish ``dest``.
 
     Every reply must be a 206 for exactly the bytes asked, from one object
     version (the same total size, and the same ETag or Last-Modified when
     the host sends one); the file must walk as whole GRIB messages, one per
-    selected record.  Anything else is a ``ValueError`` the ladder treats as
-    a payload that did not verify.
+    selected record.  A host that answers a range with anything else (a
+    200 with the whole object, other bytes) has the object moved whole on
+    one request and the records cut from it locally; an index whose
+    offsets do not land on the object's messages is :class:`IndexStale`,
+    which callers answer by moving the object whole.  Anything else is a
+    ``ValueError`` the ladder treats as a payload that did not verify.
     """
     from woof.filesystem_paths import io_path
 
@@ -508,13 +575,27 @@ def download_records(url: str, index_url: str, dest: Path, *,
             with fetch_pool.working_for(job):
                 fetch_pool.raise_if_stopped()
                 with ranged(headers) as body:
-                    match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)",
-                                         body.headers.get("Content-Range", ""))
-                    if (getattr(body, "status", None) != 206 or match is None
+                    status = getattr(body, "status", None)
+                    if isinstance(status, int) and status >= 400:
+                        # The persistent-connection path reads every answer
+                        # itself, so a throttle or a server fault (S3's 503
+                        # SlowDown, a 500) arrives here as a status, not as
+                        # urllib's HTTPError.  Named breakage (WOOF incident
+                        # 2026-11-04, fix/ecmwf-open-data-range): it was
+                        # reported as "the host ignored or changed the
+                        # requested byte range" and never retried as the
+                        # fault it was.  As an HTTPError the ladder's shared
+                        # classification asks again or asks the next host.
+                        raise HTTPError(url, status, f"{getattr(body, 'reason', '')} "
+                                        f"(range {source}-{end})", body.headers, None)
+                    got = body.headers.get("Content-Range", "")
+                    match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", got)
+                    if (status != 206 or match is None
                             or (int(match.group(1)), int(match.group(2))) != (source, end)
                             or body.headers.get("Content-Encoding", "identity") != "identity"):
-                        raise ValueError(f"{dest.name}: the host ignored or changed the "
-                                         f"requested byte range {source}-{end}")
+                        raise RangeRefused(f"{dest.name}: the host ignored or changed the "
+                                           f"requested byte range {source}-{end} (HTTP "
+                                           f"{status}, Content-Range {got or 'absent'})")
                     version = (int(match.group(3)), body.headers.get("ETag"),
                                body.headers.get("Last-Modified"))
                     with lock:
@@ -566,17 +647,29 @@ def download_records(url: str, index_url: str, dest: Path, *,
                     fetch_pool.sleep_unless_stopped(float(attempt), sleep=time.sleep)
         return transfer_once(piece)
 
+    fallback: dict = {}
     try:
         try:
             with ThreadPoolExecutor(max_workers=width,
                                     thread_name_prefix="gpuwm-records") as pool:
                 list(pool.map(transfer, pieces))
+        except RangeRefused as error:
+            for connection in opened:
+                connection.close()
+            fallback = _cut_whole(url, part, ranges, opener=opener, timeout=timeout,
+                                  reason=str(error).split(": ", 1)[-1], progress=progress)
         finally:
             for connection in opened:
                 connection.close()
-        messages = grib_messages(part)
+        try:
+            messages = grib_messages(part)
+        except ValueError as error:
+            # Every range came back exactly as asked, so bytes that do not
+            # walk as GRIB mean the offsets do not describe this object.
+            raise IndexStale(f"{dest.name}: the index offsets do not land on the "
+                             f"object's GRIB messages ({error})") from None
         if messages != len(ranges):
-            raise ValueError(f"{dest.name}: {messages} GRIB messages for {len(ranges)} "
+            raise IndexStale(f"{dest.name}: {messages} GRIB messages for {len(ranges)} "
                              "selected records")
         digest = hashlib.sha256()
         with part.open("rb") as payload:
@@ -587,9 +680,15 @@ def download_records(url: str, index_url: str, dest: Path, *,
         part.unlink(missing_ok=True)
         raise
     version = seen.get("version") or (object_size, None, None)
-    return {
+    if fallback:
+        version = (fallback["object_bytes"], None, None)
+    entry = {
         "name": dest.name, "bytes": total, "sha256": digest.hexdigest(), "url": url,
         "index_url": index_url, "index_sha256": hashlib.sha256(index).hexdigest(),
-        "index_format": form, "selected_records": len(ranges), "requests": len(pieces),
+        "index_format": form, "selected_records": len(ranges),
+        "requests": fallback.get("requests", len(pieces)),
         "object_bytes": version[0], "object_etag": version[1],
     }
+    if fallback:
+        entry["range_fallback"] = fallback["range_fallback"]
+    return entry

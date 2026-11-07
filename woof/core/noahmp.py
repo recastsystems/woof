@@ -501,20 +501,13 @@ def transfer_mp_parameters(
 ) -> NoahmpTransferredParameters:
     """Reproduce WRF v4.6.1 ``TRANSFER_MP_PARAMETERS`` from the pinned tables.
 
-    Faithful to ``phys/module_sf_noahmpdrv.F`` lines 1435-1710 for the
-    non-crop, non-irrigation branch: ``croptype > 0`` and the irrigation block
-    are refused rather than approximated, because the pinned option identity
-    (``opt_crop = 0``, ``opt_irr = 0``) never assigns those components and the
-    packaged MPTABLE offers no way to validate them.
+    Includes the complete native crop table transfer, preserving vegetation
+    values on the crop-off branch and replacing only native crop components.
     """
 
     soiltype = tuple(int(value) for value in soiltype)
     if not soiltype:
         raise ValueError("soiltype must name at least one layer")
-    if croptype != 0:
-        raise NotImplementedError(
-            "TRANSFER_MP_PARAMETERS crop branch (CROPTYPE > 0) is not ported"
-        )
     categories, veg = bundle.vegetation_groups(dataset_identifier)
     nveg = categories.scalar("NVEG")
     if not 1 <= vegtype <= nveg:
@@ -573,6 +566,63 @@ def transfer_mp_parameters(
         put(name, *(_r4(entry) for entry in rad.values[name]))
     for name in _RAD_SCALAR_FIELDS:
         put(name, _r4(rad.scalar(name)))
+
+    if croptype:
+        crop = bundle.mptable["noahmp_crop_parameters"]
+        if not 1 <= int(croptype) <= 5:
+            raise ValueError(f"croptype {croptype} outside 1..5")
+        values['PLTDAY'] = (_r4(crop.values['PLTDAY'][croptype-1]),)
+        values['HSDAY'] = (_r4(crop.values['HSDAY'][croptype-1]),)
+        values['PLANTPOP'] = (_r4(crop.values['PLANTPOP'][croptype-1]),)
+        values['IRRI'] = (_r4(crop.values['IRRI'][croptype-1]),)
+        values['GDDTBASE'] = (_r4(crop.values['GDDTBASE'][croptype-1]),)
+        values['GDDTCUT'] = (_r4(crop.values['GDDTCUT'][croptype-1]),)
+        values['GDDS1'] = (_r4(crop.values['GDDS1'][croptype-1]),)
+        values['GDDS2'] = (_r4(crop.values['GDDS2'][croptype-1]),)
+        values['GDDS3'] = (_r4(crop.values['GDDS3'][croptype-1]),)
+        values['GDDS4'] = (_r4(crop.values['GDDS4'][croptype-1]),)
+        values['GDDS5'] = (_r4(crop.values['GDDS5'][croptype-1]),)
+        values['C3PSN'] = (_r4(crop.values['C3PSN'][croptype-1]),)
+        values['KC25'] = (_r4(crop.values['KC25'][croptype-1]),)
+        values['AKC'] = (_r4(crop.values['AKC'][croptype-1]),)
+        values['KO25'] = (_r4(crop.values['KO25'][croptype-1]),)
+        values['AKO'] = (_r4(crop.values['AKO'][croptype-1]),)
+        values['AVCMX'] = (_r4(crop.values['AVCMX'][croptype-1]),)
+        values['VCMX25'] = (_r4(crop.values['VCMX25'][croptype-1]),)
+        values['BP'] = (_r4(crop.values['BP'][croptype-1]),)
+        values['MP'] = (_r4(crop.values['MP'][croptype-1]),)
+        values['FOLNMX'] = (_r4(crop.values['FOLNMX'][croptype-1]),)
+        values['QE25'] = (_r4(crop.values['QE25'][croptype-1]),)
+        values['C3C4'] = (_r4(crop.values['C3C4'][croptype-1]),)
+        values['AREF'] = (_r4(crop.values['AREF'][croptype-1]),)
+        values['PSNRF'] = (_r4(crop.values['PSNRF'][croptype-1]),)
+        values['I2PAR'] = (_r4(crop.values['I2PAR'][croptype-1]),)
+        values['TASSIM0'] = (_r4(crop.values['TASSIM0'][croptype-1]),)
+        values['TASSIM1'] = (_r4(crop.values['TASSIM1'][croptype-1]),)
+        values['TASSIM2'] = (_r4(crop.values['TASSIM2'][croptype-1]),)
+        values['K'] = (_r4(crop.values['K'][croptype-1]),)
+        values['EPSI'] = (_r4(crop.values['EPSI'][croptype-1]),)
+        values['Q10MR'] = (_r4(crop.values['Q10MR'][croptype-1]),)
+        values['FOLN_MX'] = (_r4(crop.values['FOLN_MX'][croptype-1]),)
+        values['LEFREEZ'] = (_r4(crop.values['LEFREEZ'][croptype-1]),)
+        values['DILE_FC'] = tuple(_r4(crop.values['DILE_FC_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['DILE_FW'] = tuple(_r4(crop.values['DILE_FW_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['FRA_GR'] = (_r4(crop.values['FRA_GR'][croptype-1]),)
+        values['LF_OVRC'] = tuple(_r4(crop.values['LF_OVRC_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['ST_OVRC'] = tuple(_r4(crop.values['ST_OVRC_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['RT_OVRC'] = tuple(_r4(crop.values['RT_OVRC_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['LFMR25'] = (_r4(crop.values['LFMR25'][croptype-1]),)
+        values['STMR25'] = (_r4(crop.values['STMR25'][croptype-1]),)
+        values['RTMR25'] = (_r4(crop.values['RTMR25'][croptype-1]),)
+        values['GRAINMR25'] = (_r4(crop.values['GRAINMR25'][croptype-1]),)
+        values['LFPT'] = tuple(_r4(crop.values['LFPT_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['STPT'] = tuple(_r4(crop.values['STPT_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['RTPT'] = tuple(_r4(crop.values['RTPT_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['GRAINPT'] = tuple(_r4(crop.values['GRAINPT_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['LFCT'] = tuple(_r4(crop.values['LFCT_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['STCT'] = tuple(_r4(crop.values['STCT_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['RTCT'] = tuple(_r4(crop.values['RTCT_S'+str(stage)][croptype-1]) for stage in range(1,9))
+        values['BIO2LAI'] = (_r4(crop.values['BIO2LAI'][croptype-1]),)
 
     # Global block (lines 1607-1628).
     for name in _GLOBAL_SCALAR_FIELDS:

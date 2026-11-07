@@ -10,7 +10,7 @@ consecutive steps carried on the same fields: 36 cases.  The port is the
 table-driven ``chem_settling_gocart`` kernel handed the rows' radius, density
 and growth arm.
 
-Measured on the a development machine RTX 4090 (sm_89), NVRTC 13: every species value, the
+Measured on the test host 1 RTX 4090 (sm_89), NVRTC 13: every species value, the
 GRASET accumulators, the SETVEL velocities and the sub-step counts equal the
 Fortran bit for bit (93,312 species values, max 0 ULP).  The fixtures were
 rebuilt independently from the pinned sources and matched every recorded

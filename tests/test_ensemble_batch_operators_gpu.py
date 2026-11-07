@@ -283,7 +283,8 @@ def test_advection_words_equal_independent_scalar_launches(
             np.int32(nz), np.int32(ny), np.int32(nx), np.int32(open_x),
             np.int32(open_y), np.int32(has_msf), np.int32(specified),
             np.int32(vorder))
-    scalar = get_kernel("advection", entry)
+    # Compare the production scalar launcher, which specializes these dimensions.
+    scalar = get_kernel("advection", entry, (nz, ny, nx))
     for _ in range(2):
         batch()
         for member in range(members):

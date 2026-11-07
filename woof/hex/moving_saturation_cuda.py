@@ -63,8 +63,8 @@ def _device_evaporation(rho, heat, zz, vapor, cloud):
         dz=cp.asarray(np.ascontiguousarray(zz))
         exner,pressure=exner_pressure(dz,arrays[1])
     else:
-        exner=(zz*(DRY_RGAS/1.e5)*heat)**(DRY_RGAS/(DRY_CP-DRY_RGAS))
-        pressure=1.e5*exner**(DRY_CP/DRY_RGAS)
+        exner=np.float_power(zz*(DRY_RGAS/1.e5)*heat,DRY_RGAS/(DRY_CP-DRY_RGAS))
+        pressure=1.e5*np.float_power(exner,DRY_CP/DRY_RGAS)
         exner,pressure=(cp.asarray(np.ascontiguousarray(x)) for x in (exner,pressure))
     arrays += exner,pressure
     result = cp.empty((2, *rho.shape), dtype=cp.float64)

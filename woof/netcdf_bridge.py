@@ -723,22 +723,37 @@ class Dataset:
         )
         return values, times
 
-    def stored_words(self, names) -> dict[str, np.ndarray]:
+    def stored_words(self, names, *, record=None) -> dict[str, np.ndarray]:
         """Read stored numeric or character words in one Rust process.
 
         Unlike promoted CF reads, this preserves integer bits and NaN payloads.
         Python maps the bridge output using its declared dtype and shape only.
         """
         names = list(dict.fromkeys(names))
+        if record is not None and (type(record) is not int or record < 0):
+            raise ValueError("stored-word record must be a nonnegative integer")
         if not names:
             return {}
+        shapes = {}
+        for name in names:
+            variable = self.variables[name]
+            shape = variable.shape
+            if record is not None:
+                if (not shape or variable.dimensions[0] != "Time"
+                        or record >= shape[0]):
+                    raise ValueError(f"{name}: record {record} requires an in-range leading Time axis")
+                shape = (1, *shape[1:])
+            shapes[name] = shape
         with tempfile.TemporaryDirectory(prefix="gpuwm-netcdf-words-") as temporary:
             out = Path(temporary)
-            _run([os.fspath(self._executable), "stored-words", os.fspath(self.path),
+            command = ["stored-words"] if record is None else ["stored-words-record", str(record)]
+            _run([os.fspath(self._executable), *command, os.fspath(self.path),
                   os.fspath(out), *names], what=f"stored-word read failed for {self.path}", file=self.path)
             document = json.loads((out / "metadata.json").read_text("utf-8"))
             if document.get("schema") != "gpuwm-rw-netcdf-stored-words-v1":
                 raise NetcdfDecodeError("stored-word bridge schema mismatch; rebuild rw_netcdf")
+            if record is not None and document.get("record") != record:
+                raise NetcdfDecodeError("stored-word bridge returned a different Time record")
             records = document.get("variables", [])
             if len(records) != len(names) or [r.get("name") for r in records] != names:
                 raise NetcdfDecodeError("stored-word bridge returned different variables")
@@ -749,13 +764,13 @@ class Dataset:
                 dtype = np.dtype(record["dtype"])
                 shape = tuple(record["shape"])
                 expected_dtype = np.dtype("S1") if variable.is_character else variable.dtype
-                if dtype != expected_dtype or shape != variable.shape:
+                if dtype != expected_dtype or shape != shapes[name]:
                     raise NetcdfDecodeError(f"{name}: stored-word dtype or shape changed")
                 filename = str(record["filename"])
                 if Path(filename).name != filename:
                     raise NetcdfDecodeError("stored-word filename leaves output directory")
                 data = np.fromfile(out / filename, dtype=dtype)
-                if data.size != variable.size:
+                if data.size != int(np.prod(shapes[name], dtype=np.int64)):
                     raise NetcdfDecodeError(f"{name}: stored-word extent changed")
                 arrays[name] = data.reshape(shape)
             return arrays
@@ -814,7 +829,7 @@ def decode_beside(path: Path | str) -> None:
     """Decode every variable of ``path`` under the default policy on a host thread, for a reader that will.
 
     Breakage it prevents (single-core law, 2026-10-29: DA member legs on
-    woof 2.9.9 spent ~26 s at ~1 core before the engine started): a cycling-restart leg's worker decoded
+    gpuwm 2.9.9 spent ~26 s at ~1 core before the engine started): a cycling-restart leg's worker decoded
     its run's wrfinput (1.25 GB) and wrfbdy on its main thread only after the analysis door had finished,
     although neither depends on anything the door writes.  Started at the leg's start
     (``woof.leg_server``), the decode runs beside the door; a later default-policy read of the file in

@@ -24,7 +24,7 @@ from woof.verify.advect_oracle import (
     ADVECT_ORACLE_DIR, ROUTINES, SUPPORTED_ROUTINES, SUPPORTED_OUTPUTS,
     advection_orders, load_advect_cases, validate_case, write_fortran_input,
     defined_output_mask, measure_words, measure_advect_parity, advect_port_outputs,
-    advect_gpu_identity, architecture_is_certified, check_receipt_format,
+    advect_gpu_identity, advect_nvrtc_key, architecture_is_certified, check_receipt_format,
     receipt_staleness, check_uncertified_stale_records, uncertified_stale_report,
     UncertifiedReceiptStale, UNCERTIFIED_STALE_KEY)
 
@@ -52,11 +52,26 @@ assert _INDEX["schema_version"] == 1
 GPU_RECEIPTS = dict(_INDEX["cards"])
 ARCH_RECEIPTS = {tuple(int(part) for part in key.split(".")): name
                  for key, name in _INDEX["architectures"].items()}
+#: (NVRTC "major.minor", architecture) -> receipt.  The production advection
+#: compile allows multiply-add contraction, so its words follow the NVRTC
+#: build as well as the card: NVRTC 13.2.51 and 13.4.x put 338 of 2,867,200
+#: HRRR-fork words in different places on the same sm_120 card.  A compiler
+#: with its own capture replays it ahead of the card/architecture receipt.
+COMPILER_RECEIPTS = {(nvrtc, tuple(int(part) for part in key.split("."))): name
+                     for nvrtc, rows in _INDEX.get("compilers", {}).items()
+                     for key, name in rows.items()}
 
 
-def _receipt_for_gpu(gpu_name, compute_capability=None):
-    name = GPU_RECEIPTS.get(gpu_name)
+def _nvrtc_key():
+    """``"major.minor"`` of the NVRTC this process compiles with, or None."""
+    return advect_nvrtc_key()
+
+
+def _receipt_for_gpu(gpu_name, compute_capability=None, nvrtc=None):
     architecture = tuple(compute_capability) if compute_capability is not None else None
+    name = COMPILER_RECEIPTS.get((nvrtc, architecture)) if nvrtc is not None else None
+    if name is None:
+        name = GPU_RECEIPTS.get(gpu_name)
     if name is None:
         name = ARCH_RECEIPTS.get(architecture)
     assert name is not None, (
@@ -83,13 +98,13 @@ def _device_receipt():
             pytest.skip(f"{gpu} (sm_{capability[0]}{capability[1]}) has no HRRR-fork advection "
                         "receipt and is not certified: byte identity is certified on Blackwell "
                         "and newer only (ruling 2026-10-04)")
-        receipt = _receipt_for_gpu(gpu, capability)
+        receipt = _receipt_for_gpu(gpu, capability, _nvrtc_key())
         moved = receipt_staleness(receipt, LEGACY_DIR, RECEIPT_MODULES)
         if moved:
             pytest.skip(uncertified_stale_report(
                 name, receipt, moved, _INDEX.get(UNCERTIFIED_STALE_KEY, {}).get(name)))
         return receipt
-    return _receipt_for_gpu(gpu, capability)
+    return _receipt_for_gpu(gpu, capability, _nvrtc_key())
 
 
 def test_device_receipt_gates_blackwell_and_skips_older_cards_only_when_stale(monkeypatch):
@@ -100,6 +115,9 @@ def test_device_receipt_gates_blackwell_and_skips_older_cards_only_when_stale(mo
     a Blackwell card losing its coverage-gap failure or its comparison.
     """
     module = sys.modules[__name__]
+    # The card receipts, whichever NVRTC this process has (compiler receipts
+    # have their own row below).
+    monkeypatch.setattr(module, "_nvrtc_key", lambda: None)
 
     def card(name, capability, moved=None):
         monkeypatch.setattr(module, "advect_gpu_identity", lambda: (name, capability))
@@ -125,6 +143,20 @@ def _available_receipts():
     for gpu_name, name in GPU_RECEIPTS.items():
         if (LEGACY_DIR / name).is_file():
             yield name, _receipt_for_gpu(gpu_name)
+    for (nvrtc, architecture), name in sorted(COMPILER_RECEIPTS.items()):
+        yield name, _receipt_for_gpu(None, architecture, nvrtc)
+
+
+def test_a_compiler_capture_is_selected_ahead_of_the_card_receipt(monkeypatch):
+    """STRICT-04: a compiler with its own capture replays it; every other
+    compiler keeps the card/architecture receipt."""
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "COMPILER_RECEIPTS",
+                        {("13.2", (12, 0)): "gpu-receipt-sm120.json"})
+    monkeypatch.setattr(module, "GPU_RECEIPTS", {"Card A": "gpu-receipt.json"})
+    assert _receipt_for_gpu("Card A", (12, 0), "13.2")["gpu"] == "NVIDIA GeForce RTX 5090"
+    assert _receipt_for_gpu("Card A", (12, 0), "13.4")["gpu"] == "NVIDIA GeForce RTX 4090"
+    assert _receipt_for_gpu("Card A", (12, 0))["gpu"] == "NVIDIA GeForce RTX 4090"
 
 
 def _cases():

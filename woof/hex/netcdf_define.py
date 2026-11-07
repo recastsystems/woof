@@ -1,6 +1,6 @@
 """One define session for many definitions in a classic (CDF-1/2/5) netCDF file.
 
-THE COST THIS REMOVES (WOOF 3 km region shape on the V5090 box, 2026-10-27): netCDF4-python ends
+THE COST THIS REMOVES (WOOF 3 km region shape on the reference system box, 2026-10-27): netCDF4-python ends
 define mode after every classic variable and every attribute it writes.  Once a file holds data, each
 of those ends grows the header past its padding and libnetcdf moves the whole data section, so a file
 that gains N definitions after its first data is rewritten N times on one core.  The region door paid

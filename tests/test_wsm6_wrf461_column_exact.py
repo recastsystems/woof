@@ -2,7 +2,7 @@
 
 THE BREAKAGE THIS PREVENTS
 --------------------------
-Until lane/verify-wsm6-mp6 the CUDA WSM6 kernel was a restructured
+Until development branch the CUDA WSM6 kernel was a restructured
 transcription graded only within a committed ULP table: up to 596 ULP on
 real-valued fields, 7.7e8 ULP on near-zero cells, reflectivity off by up
 to 15,421 ULP, because it re-associated WRF's sums, used CUDA's expf/

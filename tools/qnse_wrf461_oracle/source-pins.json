@@ -1,0 +1,72 @@
+[
+  {
+    "version": "v4.6.1",
+    "path": "LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+    "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+    "bytes": 1027
+  },
+  {
+    "version": "v4.6.1",
+    "path": "phys/module_bl_qnsepbl.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_bl_qnsepbl.F",
+    "sha256": "737a235b9febb01004d5bfe7a9364a0fc57e8af79cbced8239d68ab623e80e66",
+    "bytes": 52187
+  },
+  {
+    "version": "v4.6.1",
+    "path": "phys/module_sf_qnsesfc.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_sf_qnsesfc.F",
+    "sha256": "7bf8453672022736e3ee67a43c53d1551ad2e2a7127ef005b01112ba7821405b",
+    "bytes": 44981
+  },
+  {
+    "version": "v4.6.1",
+    "path": "phys/module_bl_mfshconvpbl.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_bl_mfshconvpbl.F",
+    "sha256": "cb678bb818adda9906ab6479cf04e665285042e5bfe9f39c7ddef2e9221c7a34",
+    "bytes": 98733
+  },
+  {
+    "version": "v4.6.1",
+    "path": "share/module_model_constants.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/share/module_model_constants.F",
+    "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+    "bytes": 8280
+  },
+  {
+    "version": "v4.7.1",
+    "path": "LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+    "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+    "bytes": 1027
+  },
+  {
+    "version": "v4.7.1",
+    "path": "phys/module_bl_qnsepbl.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_bl_qnsepbl.F",
+    "sha256": "737a235b9febb01004d5bfe7a9364a0fc57e8af79cbced8239d68ab623e80e66",
+    "bytes": 52187
+  },
+  {
+    "version": "v4.7.1",
+    "path": "phys/module_sf_qnsesfc.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_sf_qnsesfc.F",
+    "sha256": "7bf8453672022736e3ee67a43c53d1551ad2e2a7127ef005b01112ba7821405b",
+    "bytes": 44981
+  },
+  {
+    "version": "v4.7.1",
+    "path": "phys/module_bl_mfshconvpbl.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_bl_mfshconvpbl.F",
+    "sha256": "cb678bb818adda9906ab6479cf04e665285042e5bfe9f39c7ddef2e9221c7a34",
+    "bytes": 98733
+  },
+  {
+    "version": "v4.7.1",
+    "path": "share/module_model_constants.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_model_constants.F",
+    "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+    "bytes": 8280
+  }
+]

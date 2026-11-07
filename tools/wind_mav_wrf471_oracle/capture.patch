@@ -1,0 +1,122 @@
+--- a/phys/module_wind_mav.F
++++ b/phys/module_wind_mav.F
+@@ -136,6 +136,8 @@
+   real :: dm_local_xland_nt(nt), dm_global_xland_nt(nt)
+   real :: dm_local_terrain_nt(nt), dm_global_terrain_nt(nt)
+   integer :: ic_tb
++  integer :: lane_unit
++  logical, save :: lane_capture = .true.
+ 
+   integer,save :: n_valid_cur = 0
+   integer :: tb_valid_cur(nt)
+@@ -146,6 +148,19 @@
+ #else 
+   wfdensity = 1.0/(dx*dx)
+ #endif
++
++  if (lane_capture) then
++      open(newunit=lane_unit,file='mav-native.in',access='stream',form='unformatted',status='replace')
++      write(lane_unit) min(ite,ide-1)-its+1,min(jte,jde-1)-jts+1,kte-kts+1,nt,windfarm_wake_model,windfarm_overlap_method
++      write(lane_unit) dx,dt,correction_factor
++      write(lane_unit) diameter,hubheight,area,ival(:,id)-its+1,jval(:,id)-jts+1,xturb(:,id),yturb(:,id),nval
++      write(lane_unit) stc,stc2,turbws,turbtc,turbpwcof
++      write(lane_unit) u(its:min(ite,ide-1),kts:kte,jts:min(jte,jde-1)),v(its:min(ite,ide-1),kts:kte,jts:min(jte,jde-1))
++      write(lane_unit) dz(its:min(ite,ide-1),kts:kte,jts:min(jte,jde-1)),z_at_w(its:min(ite,ide-1),kts:kte+1,jts:min(jte,jde-1)),z_at_m(its:min(ite,ide-1),kts:kte,jts:min(jte,jde-1))
++      write(lane_unit) xland(its:min(ite,ide-1),jts:min(jte,jde-1)),cosa(its:min(ite,ide-1),jts:min(jte,jde-1)),sina(its:min(ite,ide-1),jts:min(jte,jde-1))
++      write(lane_unit) du(its:min(ite,ide-1),kts:kte,jts:min(jte,jde-1)),dv(its:min(ite,ide-1),kts:kte,jts:min(jte,jde-1))
++      close(lane_unit)
++  endif
+ 
+   tb_valid_cur(:) = 1 ! set all tbs in operation
+ 
+@@ -359,6 +374,16 @@
+                                   nt, radius, tb_valid_cur)
+         end if
+ 
++        if (lane_capture) then
++          if (dir_ii==1.and.ii==1) then
++            open(newunit=lane_unit,file='mav-arms.bin',access='stream',form='unformatted',status='replace')
++          else
++            open(newunit=lane_unit,file='mav-arms.bin',access='stream',form='unformatted',status='old',position='append')
++          endif
++          write(lane_unit) uinf,ulocal
++          close(lane_unit)
++        endif
++
+         ! cal power and WRF tendencies
+         call cal_power_wrf_tend(ulocal, uinf, tb_valid_cur, blockfrac, blockdist, u, v, dz, z_at_w, &
+                                 ival(:,id), jval(:,id), nt, radius, diameter, hubheight, area, &
+@@ -381,6 +406,13 @@
+       power_nt(:) = power_nt(:) + power_nt_md(ii,:)
+   enddo
+   power_nt = power_nt/num_models
++
++  if (lane_capture) then
++      open(newunit=lane_unit,file='mav-native.out',access='stream',form='unformatted',status='replace')
++      write(lane_unit) du(its:itf,kts:kte,jts:jtf),dv(its:itf,kts:kte,jts:jtf),tke(its:itf,kts:kte,jts:jtf),power(its:itf,jts:jtf)
++      close(lane_unit)
++      lane_capture=.false.
++  endif
+ 
+   ! write fraction power of each turbine to a txt at 4 hr
+   !call write_power_txt(windfarm_wake_model, windfarm_overlap_method, itimestep, dt, its, jts, &
+--- a/phys/module_wind_fitch.F
++++ b/phys/module_wind_fitch.F
+@@ -74,7 +74,7 @@
+        &,du,dv                                   &
+        &,windfarm_opt,power                      &
+        ! THE FOLLOWING LINES OF CODE ARE LICENSED UNDER doc/licenses/fraunhofer_license.txt
+-       &,thrust                                  &
++! local thrust capture; pinned driver signature
+        ! END LICENSE
+        &,ids,ide,jds,jde,kds,kde                 &
+        &,ims,ime,jms,jme,kms,kme                 &
+@@ -92,7 +92,7 @@
+   REAL, DIMENSION(ims:ime,kms:kme,jms:jme), INTENT(INOUT) :: du,dv,qke
+   REAL, DIMENSION(ims:ime,jms:jme), INTENT(INOUT) :: power
+   ! THE FOLLOWING LINES OF CODE ARE LICENSED UNDER doc/licenses/fraunhofer_license.txt
+-  REAL, DIMENSION(ims:ime,jms:jme), INTENT(INOUT) :: thrust
++  REAL, DIMENSION(ims:ime,jms:jme) :: thrust
+   ! END LICENSE
+ !
+ ! Local
+@@ -111,6 +111,8 @@
+   real :: power1,power2,area,ec
+   INTEGER :: kbot,ktop,kt
+   ! THE FOLLOWING LINES OF CODE ARE LICENSED UNDER doc/licenses/fraunhofer_license.txt
++  integer :: lane_unit
++  logical, save :: lane_capture = .true.
+   REAL :: a_ind ! axial induction factor
+   REAL :: thrust1
+   INTEGER :: ii ! running index
+@@ -118,6 +120,17 @@
+   INTEGER :: nturb ! number of turbines in grid cell
+   ! END LICENSE
+   
++  if (lane_capture) then
++    open(newunit=lane_unit,file='fitch-native.in',access='stream',form='unformatted',status='replace')
++    write(lane_unit) min(ite,ide-1)-its+1,min(jte,jde-1)-jts+1,min(kte,kde-1)-kts+1,nt,induction_correction
++    write(lane_unit) dx,dt,correction_factor
++    write(lane_unit) diameter,hubheight,ival(:,id)-its+1,jval(:,id)-jts+1,nkind,stc,stc2,cutin,cutout,npower
++    write(lane_unit) turbws,turbtc,turbpw
++    write(lane_unit) u(its:min(ite,ide-1),kts:min(kte,kde-1),jts:min(jte,jde-1)),v(its:min(ite,ide-1),kts:min(kte,kde-1),jts:min(jte,jde-1))
++    write(lane_unit) dz(its:min(ite,ide-1),kts:min(kte,kde-1),jts:min(jte,jde-1)),z_at_w(its:min(ite,ide-1),kts:min(kte,kde-1)+1,jts:min(jte,jde-1))
++    write(lane_unit) du(its:min(ite,ide-1),kts:min(kte,kde-1),jts:min(jte,jde-1)),dv(its:min(ite,ide-1),kts:min(kte,kde-1),jts:min(jte,jde-1)),qke(its:min(ite,ide-1),kts:min(kte,kde-1),jts:min(jte,jde-1))
++    close(lane_unit)
++  endif
+   itf=MIN0(ite,ide-1)
+   jtf=MIN0(jte,jde-1)
+   ktf=MIN0(kte,kde-1)
+@@ -343,6 +356,12 @@
+       ENDIF
+     ENDDO
+ 
++  if (lane_capture) then
++    open(newunit=lane_unit,file='fitch-native.out',access='stream',form='unformatted',status='replace')
++    write(lane_unit) du(its:itf,kts:ktf,jts:jtf),dv(its:itf,kts:ktf,jts:jtf),qke(its:itf,kts:ktf,jts:jtf),power(its:itf,jts:jtf),thrust(its:itf,jts:jtf)
++    close(lane_unit)
++    lane_capture=.false.
++  endif
+   END SUBROUTINE dragforce
+ 
+ ! This subroutine calculates area of turbine between two vertical levels

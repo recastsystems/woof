@@ -64,6 +64,16 @@ def test_creation_never_reresolves_latest_or_accepts_bad_selection():
         tc.configuration_text(cycle="2026090900", point=(float("nan"), -65.))
 
 
+def test_inner_core_controls_the_carried_nest_placement():
+    text, exp = tc.configuration_text(cycle="2026090900", point=(20.,-80.),
+                                      inner_nest=(3,120.))
+    raw = tomllib.loads(text)
+    assert len(exp.domains) == 3
+    assert exp.domains[-1].run.dx == 1000.
+    assert raw['domain'][1]['follow']['refine_grid_id'] == exp.domains[-1].grid_id
+    assert exp.domains[1].follow.tracker.refine_grid_id == 3
+
+
 def test_target_machine_reaches_pricing_and_memory_refusal_keeps_config_unpublished(monkeypatch):
     seen = []
     machine = object()

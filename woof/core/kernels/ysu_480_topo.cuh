@@ -83,7 +83,7 @@ __device__ __forceinline__ double ysu_f2d(real x) {
 // verification (Ubuntu 24.04, glibc 2.39; the MYNN oracles' platform too)
 // returns the classic expm1f-based tanhf instead, and the two disagree on
 // 113,763,220 of the 2,149,580,801 floats in [-0.5, 10] (5.3%), measured on
-// box W1.  get_pblh's weight sets pblh_ysu, which sets vconvlim
+// the reference host.  get_pblh's weight sets pblh_ysu, which sets vconvlim
 // and so the surface-drag diagonal on every column where vconvlim < 1: the
 // wide oracle's 20,000-column sweep showed six columns off WRF in du/dv (up
 // to 819 ULP) and nowhere else until this function replaced the double tanh.

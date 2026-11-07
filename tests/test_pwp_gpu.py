@@ -12,6 +12,7 @@ from test_oml_contract import run_config
 def columns(cp,levels=30):
     fields={name:cp.zeros((8,10),cp.float32) for name in
             ('hfx','lh','gsw','glw','qfx','ust','uair','vair','f')}
+    fields['rhoair']=cp.full((8,10),1.2,cp.float32)
     fields['xland']=cp.full((8,10),2.,cp.float32)
     fields['xland'][:,-1]=1.
     fields['tsk']=cp.full((8,10),302.,cp.float32)
@@ -45,14 +46,13 @@ def test_unequal_layers_mix_without_truncated_weight_and_conserve_tracers():
     a['om_tini'][...]=a['om_tmp']
     a['om_u'][0]=3.
     a['glw'][...]=cp.float32(5.67051e-8)*a['om_tmp'][0]**4
-    # Balance the *integrated* heat flux, accounting for penetrating radiation.
+    # Surface longwave balances emission; no longwave penetrates.
     dz=cp.diff(cp.concatenate((cp.zeros_like(z[:1]),z)),axis=0)
     before=cp.sum(a['om_tmp']*dz,axis=0)
     step(a,dt=30.,dx=10000.,dy=10000.);check(a)
     assert bool(cp.all(cp.isfinite(a['om_u'])))
     assert float(a['om_u'][0,3,3])<3.
-    # Outgoing longwave is fully emitted, incoming longwave partly exits below 100 m.
-    expected=before-30*a['glw']*cp.exp(-100/20)/(1024*4183.3)
+    expected=before
     cp.testing.assert_allclose(cp.sum(a['om_tmp']*dz,axis=0)[:,:-1],expected[:,:-1],rtol=2e-6,atol=0.01)
 
 
@@ -212,7 +212,7 @@ def test_ocean_sst_change_tracks_coupled_initial_state_and_masks_land(option):
 @pytest.mark.gpu
 def test_water_beyond_one_degree_of_woa18_borrows_the_nearest_mld_instead_of_refusing():
     # PWP is the 48 h+ default; inland water far from the WOA18 ocean refused
-    # every continental forecast (full-CONUS HRRR, V58 2026-10-21).
+    # every continental forecast (full-CONUS HRRR, test host 2026-10-21).
     import cupy as cp
     from woof.ocean.mixed_layer.climatology import _borrow_beyond_one_degree
     lon, lat = cp.meshgrid(cp.arange(0., 4., 0.25, dtype=cp.float32),
@@ -237,7 +237,7 @@ def test_water_beyond_one_degree_of_woa18_borrows_the_nearest_mld_instead_of_ref
 def test_the_woa18_profile_stops_its_lapse_rate_at_sea_water_freezing():
     # Cold (275 K) water under a 10 m WOA18 MLD fell below 260 K at 150 m with
     # the 0.14 K/m default lapse rate and the forecast refused its ocean
-    # (full-CONUS HRRR 48 h on the fold, V58 2026-10-21).
+    # (full-CONUS HRRR 48 h on the fold, test host 2026-10-21).
     import cupy as cp
     import numpy as np
     from woof.ocean.mixed_layer import kernels
@@ -291,3 +291,79 @@ def test_upwelling_through_the_floor_does_not_cool_the_bottom_layer_without_boun
     w, tend = _floor_tendency(cp, -1.)
     assert w[-1] < 0                      # convergence: water sinks onto the floor from above
     assert tend[-1] > 0.                  # upwind from the warmer layer above, as before
+@requires_gpu
+@pytest.mark.gpu
+def test_column_momentum_matches_atmospheric_stress_and_true_layer_thickness():
+    import cupy as cp
+    a=columns(cp,4)
+    a['om_tmp'].fill(300);a['om_tini'].fill(300)
+    a['glw'].fill(5.67051e-8*300**4)
+    a['ust'].fill(2);a['uair'].fill(40);a['rhoair'].fill(1.2)
+    step(a,dt=30,dx=10000,dy=10000);check(a)
+    momentum=cp.sum(a['om_u']*5,axis=0)
+    cp.testing.assert_allclose(momentum[:,:-1],1.2*2**2*30/1024,rtol=2e-5)
+
+
+@requires_gpu
+@pytest.mark.gpu
+def test_analysis_layer_integrals_across_source_interfaces():
+    import cupy as cp
+    from woof.ocean.mixed_layer import kernels
+    # A linear profile has analytic layer means even where source intervals
+    # straddle multiple target layers. The surface extrapolation is constant.
+    depth=cp.asarray([0,3,8,20],dtype='f4')
+    values=2*depth+10
+    out=cp.empty((4,1),dtype='f4');z=cp.empty_like(out)
+    kernels(4).get_function('ocean_profiles')((1,),(128,),
+        (values,depth,cp.asarray([0],dtype='i4'),out,z,
+         np.int32(1),np.int32(1),np.int32(4),np.int32(0),np.float32(5)))
+    cp.testing.assert_allclose(out[:,0],cp.asarray([15,25,35,45],dtype='f4'))
+    cp.testing.assert_array_equal(z[:,0],cp.asarray([5,10,15,20],dtype='f4'))
+
+
+@requires_gpu
+@pytest.mark.gpu
+def test_uncovered_analysis_cells_keep_prescribed_sst_and_exclude_transport():
+    import cupy as cp
+    from woof.ocean.mixed_layer import ocean_land
+    a=columns(cp,4)
+    initial={name:a[name].copy() for name in STATE_FIELDS}
+    initial['om_active'][:,3:5]=0
+    initial['om_tmp'][:,:,3:5]=0
+    cfg=run_config(sf_ocean_physics=2,ocean_levels=4)
+    initialize(a,cfg,initial)
+    a['hfx'].fill(200.);a['lh'].fill(500.);a['ust'].fill(1.)
+    before=a['tsk'].copy()
+    step(a,dt=30.,dx=10000.,dy=10000.);check(a)
+    cp.testing.assert_array_equal(a['tsk'][:,3:5],before[:,3:5])
+    assert bool(cp.all(a['_pwp_land'][:,3:5]==1))
+    assert bool(cp.all(a['tsk'][:,:3]<before[:,:3]))
+
+@requires_gpu
+@pytest.mark.gpu
+def test_dated_analysis_rust_decode_to_layer_means(tmp_path):
+    """Exercise the complete decoder path, including scalar depth searches."""
+    import cupy as cp
+    from netCDF4 import Dataset
+    from woof.ocean.mixed_layer.analysis import load
+    p = tmp_path / 'analysis.nc'
+    with Dataset(p, 'w') as d:
+        for name, values, units in [('time', [0], 'hours since 2022-09-26 00:00:00'),
+                                    ('depth', [0, 50, 100, 200], 'm'),
+                                    ('lat', [0, .1], 'degrees_north'),
+                                    ('lon', [0, .1], 'degrees_east')]:
+            d.createDimension(name, len(values))
+            v = d.createVariable(name, 'f4', (name,)); v[:] = values; v.units = units
+        for name, units, value in [('water_temp', 'degC', 30), ('salinity', 'psu', 35),
+                                   ('water_u', 'm/s', 0), ('water_v', 'm/s', 0)]:
+            v = d.createVariable(name, 'f4', ('time', 'depth', 'lat', 'lon'))
+            v.units = units
+            v[:] = (np.array([30, 25, 20, 10])[None, :, None, None]
+                    if name == 'water_temp' else value)
+    land = cp.full((1, 2), 2, cp.float32)
+    a = load(p, latitude=cp.asarray([[0, 80]], cp.float32),
+             longitude=cp.zeros_like(land), land=land, levels=2, layer_m=100,
+             source='hycom', rotation=(cp.zeros_like(land), cp.ones_like(land)),
+             expected_time='2022-09-26T00:00:00', uncovered='prescribed')
+    np.testing.assert_array_equal(cp.asnumpy(a['om_active']), [[1, 0]])
+    cp.testing.assert_allclose(a['om_tmp'][:, 0, 0], cp.asarray([298.15, 288.15]), atol=4e-5)

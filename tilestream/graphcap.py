@@ -190,8 +190,10 @@ def cadence_key(state, cfg) -> tuple:
         _radiation_step_due, _surface_pbl_step_due, physics_enabled,
         radiation_enabled)
 
+    cold = (("wrf-mass-cold",)
+            if getattr(state, "_wrf_mass_carriers_cold", False) else ())
     if not physics_enabled(cfg) or getattr(state, "physics", None) is None:
-        return ("dry",)
+        return ("dry",) + cold
 
     drv = state.physics
     # dycore.step -> PhysicsDriver.compute, physics.py:3399-3400.  The
@@ -223,7 +225,7 @@ def cadence_key(state, cfg) -> tuple:
         end = float(state.elapsed_seconds) + float(cfg.dt)
         remainder = abs(math.fmod(end, clock_dt))
         cu_clock = min(remainder, clock_dt - remainder) <= 1.0e-6 * clock_dt
-    return ("physics", itimestep == 1, radiation, surface, cumulus, cu_clock)
+    return ("physics", itimestep == 1, radiation, surface, cumulus, cu_clock) + cold
 
 
 # ---------------------------------------------------------------------------

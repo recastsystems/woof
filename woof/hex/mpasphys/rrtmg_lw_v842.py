@@ -233,6 +233,16 @@ def _solver_source():
 
 # MPAS: module_ra_rrtmg_lw.F:11538-11747 static wrapper tables.
 _DRIVER_SOURCE = r"""
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_43B68000_DEFINED
+#define HEX_DIVISOR_43B68000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43b68000 = 365.0f;
+#else
+static const float hex_divisor_43b68000 = 365.0f;
+#endif
+#endif
+
 __device__ const float mpas_retab[95] = {5.92779f,6.26422f,6.61973f,6.99539f,7.39234f,7.81177f,8.25496f,8.72323f,9.21800f,9.74075f,10.2930f,10.8765f,11.4929f,12.1440f,12.8317f,13.5581f,14.2319f,15.0351f,15.8799f,16.7674f,17.6986f,18.6744f,19.6955f,20.7623f,21.8757f,23.0364f,24.2452f,25.5034f,26.8125f,27.7895f,28.6450f,29.4167f,30.1088f,30.7306f,31.2943f,31.8151f,32.3077f,32.7870f,33.2657f,33.7540f,34.2601f,34.7892f,35.3442f,35.9255f,36.5316f,37.1602f,37.8078f,38.4720f,39.1508f,39.8442f,40.5552f,41.2912f,42.0635f,42.8876f,43.7863f,44.7853f,45.9170f,47.2165f,48.7221f,50.4710f,52.4980f,54.8315f,57.4898f,60.4785f,63.7898f,65.5604f,71.2885f,75.4113f,79.7368f,84.2351f,88.8833f,93.6658f,98.5739f,103.603f,108.752f,114.025f,119.424f,124.954f,130.630f,136.457f,142.446f,148.608f,154.956f,161.503f,168.262f,175.248f,182.473f,189.952f,197.699f,205.728f,214.055f,222.694f,231.661f,240.971f,250.639f};
 __device__ const float mpas_pprof[60] = {1000.00f,855.47f,731.82f,626.05f,535.57f,458.16f,391.94f,335.29f,286.83f,245.38f,209.91f,179.57f,153.62f,131.41f,112.42f,96.17f,82.27f,70.38f,60.21f,51.51f,44.06f,37.69f,32.25f,27.59f,23.60f,20.19f,17.27f,14.77f,12.64f,10.81f,9.25f,7.91f,6.77f,5.79f,4.95f,4.24f,3.63f,3.10f,2.65f,2.27f,1.94f,1.66f,1.42f,1.22f,1.04f,0.89f,0.76f,0.65f,0.56f,0.48f,0.41f,0.35f,0.30f,0.26f,0.22f,0.19f,0.16f,0.14f,0.12f,0.10f};
 __device__ const float mpas_tprof[60] = {286.96f,281.07f,275.16f,268.11f,260.56f,253.02f,245.62f,238.41f,231.57f,225.91f,221.72f,217.79f,215.06f,212.74f,210.25f,210.16f,210.69f,212.14f,213.74f,215.37f,216.82f,217.94f,219.03f,220.18f,221.37f,222.64f,224.16f,225.88f,227.63f,229.51f,231.50f,233.73f,236.18f,238.78f,241.60f,244.44f,247.35f,250.33f,253.32f,256.30f,259.22f,262.12f,264.80f,266.50f,267.59f,268.44f,268.69f,267.76f,266.13f,263.96f,261.54f,258.93f,256.15f,253.23f,249.89f,246.67f,243.48f,240.25f,236.66f,233.86f};
@@ -443,7 +453,7 @@ __device__ void mpas_mcica_make(int nl,int overlap,int idcor,int julday,const fl
     }else if(!cdf_input)mpas_mt_scalar(mt,(unsigned int)permuteseed);
     float length=2500.0f;
     if(idcor==1){
-        float am3=RLW_MU(julday>181?(-28.0f/365.0f):(28.0f/365.0f),(float)(julday-(julday>181?272:91)));
+        float am3=RLW_MU(julday>181?(-28.0f/hex_divisor_43b68000):(28.0f/hex_divisor_43b68000),(float)(julday-(julday>181?272:91)));
         float delta=RLW_SU(surface[5],am3);
         length=RLW_MU(RLW_AD(1.4315f,RLW_MU(2.1219f,rlw_exp(RLW_DV(-RLW_MU(delta,delta),(-25.584f*-25.584f))))),1000.0f);
     }
@@ -514,7 +524,7 @@ extern "C" __global__ void mpas_lw_mcica_seeds(int nc,int nl,int overlap,int idc
     if(overlap<4)return;
     float length=2500.0f;
     if(idcor==1){
-        float am3=RLW_MU(julday>181?(-28.0f/365.0f):(28.0f/365.0f),(float)(julday-(julday>181?272:91)));
+        float am3=RLW_MU(julday>181?(-28.0f/hex_divisor_43b68000):(28.0f/hex_divisor_43b68000),(float)(julday-(julday>181?272:91)));
         float delta=RLW_SU(surface[c*6+5],am3);
         length=RLW_MU(RLW_AD(1.4315f,RLW_MU(2.1219f,rlw_exp(RLW_DV(-RLW_MU(delta,delta),(-25.584f*-25.584f))))),1000.0f);
     }
@@ -1118,19 +1128,41 @@ def _lw_mcica_wrapper(ng, nl, cldovrlp, idcor, julday, surface, a):
     return outputs
 
 
-#: Device bytes one wrapper column holds at once: five 140-g-point McICA slabs, the twelve-field
-#: prepared layer block, the gathered model/interface/surface/ozone rows and the solver outputs.
+#: Wrapper storage beside the solver: McICA, packed inputs and gas profiles.
+#: The solver's live slabs are priced separately by lw_batched_vram_bytes.
 _LW_WRAPPER_COLUMN_WORDS_PER_LAYER = 5 * 140 + 12 + 2 + 16 + 2 * 12 + 8
 _LW_WRAPPER_BUDGET_BYTES = 1 << 30
 
 
 def _lw_wrapper_chunk(ncol, nlayers):
-    """Wrapper columns per batch: at most 1 GiB, and at most an eighth of free memory, never below 256."""
+    """Bound the complete wrapper and solver batch, including allocator headroom.
+
+    The former budget counted only the wrapper, then passed its entire batch
+    to the solver. Its radiance and optical-depth slabs were additional live
+    storage, so the advertised 1 GiB bound did not bound a radiation call.
+    Column width changes storage only: each column has independent KISS state.
+    The budget and the compact ceiling are divided among the same-host ranks
+    on this card (woof.hex.device_share names the breakage).
+    """
     import cupy as cp
-    per_column = 4 * _LW_WRAPPER_COLUMN_WORDS_PER_LAYER * max(1, int(nlayers))
+    from ..device_share import ranks_on_device
+    ranks = ranks_on_device(cp=cp)
+    layers = max(1, int(nlayers))
+    quantum = 256
+    wrapper_column = 4 * _LW_WRAPPER_COLUMN_WORDS_PER_LAYER * layers
+    solver = _legacy.lw_batched_vram_bytes(quantum, layers)
+    per_column = wrapper_column + (solver + quantum - 1) // quantum
     free_bytes, _ = cp.cuda.runtime.memGetInfo()
-    budget = min(_LW_WRAPPER_BUDGET_BYTES, free_bytes // 8)
-    return int(min(max(1, ncol), max(256, budget // per_column)))
+    pool = cp.get_default_memory_pool()
+    available = (int(free_bytes) + int(pool.free_bytes())) // ranks
+    limit = int(pool.get_limit())
+    if limit > 0:
+        available = min(available, max(0, limit - int(pool.used_bytes())))
+    budget = min(_LW_WRAPPER_BUDGET_BYTES // ranks, available // 8)
+    width = max(quantum, budget // per_column // quantum * quantum)
+    from ..device_memory_release import shared_card_memory
+    ceiling = max(quantum, 1024 // ranks // quantum * quantum) if shared_card_memory() else max(1, ncol)
+    return int(min(max(1, ncol), ceiling, width))
 
 
 def rrtmg_lwrad_device(model, interfaces, surface, tables, *, icloud,
@@ -1448,6 +1480,16 @@ _REDUCTIONS = ((1, 'kg01/ka', 'kao', 65, False, True), (1, 'kg01/kb', 'kbo', 235
 _STATIC_ARRAYS = (('chi', 413, False), ('totplnk', 2896, False), ('totplk16', 181, False), ('preflog', 59, False), ('tref', 59, False), ('absice1', 10, False), ('absice2', 688, False), ('absice3', 736, False), ('absice0', 2, False), ('absliq1', 928, False), ('ngb', 140, True), ('ngs', 16, True), ('delwave', 16, False), ('ngc', 16, True), ('ngn', 140, True), ('ngm', 256, True), ('wt', 16, False), ('a0', 16, False), ('a1', 16, False), ('a2', 16, False))
 _STATIC_SCALARS = {'oneminus': 0.9999989867210388, 'bpade': 3.5971224308013916, 'absliq0': 0.09036140143871307, 'grav': 9.806599617004395, 'avogad': 6.02214208470173e+23, 'fluxfac': 62831.85546875, 'heatfac': 8.434944152832031}
 _INIT_SOURCE = r"""
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_3E8E5604_DEFINED
+#define HEX_DIVISOR_3E8E5604_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3e8e5604 = 0.278f;
+#else
+static const float hex_divisor_3e8e5604 = 0.278f;
+#endif
+#endif
+
 // MPAS: module_ra_rrtmg_lw.F:3935-4801,8137-8328,9985-10623.
 // Generated immutable DATA arrays; initialization replay checks every word.
 extern "C" __device__ const float mpas_static_chi[413] = {
@@ -2345,7 +2387,7 @@ extern "C" __global__ void mpas_init_tables(float* tau,float* exp_table,float* t
  if(i==0){tau[i]=0.0f;exp_table[i]=1.0f;tfn[i]=0.0f;return;}
  if(i==10000){tau[i]=1.e10f;exp_table[i]=1.e-20f;tfn[i]=1.0f;return;}
  float t=RLW_DV((float)i,10000.0f);
- tau[i]=RLW_DV(RLW_MU((1.0f/0.278f),t),RLW_SU(1.0f,t));
+ tau[i]=RLW_DV(RLW_MU((1.0f/hex_divisor_3e8e5604),t),RLW_SU(1.0f,t));
  exp_table[i]=fmaxf(rlw_exp(-tau[i]),1.e-20f);
  if(tau[i]<0.06f)tfn[i]=RLW_DV(tau[i],6.0f);
  else tfn[i]=RLW_SU(1.0f,RLW_MU(2.0f,RLW_SU(RLW_DV(1.0f,tau[i]),RLW_DV(exp_table[i],RLW_SU(1.0f,exp_table[i])))));

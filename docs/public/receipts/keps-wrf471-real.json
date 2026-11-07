@@ -1,0 +1,198 @@
+{
+  "schema": "gpuwm-keps-wrf471-real-v1",
+  "selector": {
+    "bl_pbl_physics": 17
+  },
+  "native_source": {
+    "release": "WRF v4.7.1",
+    "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+    "file": "phys/module_bl_keps.F",
+    "sha256": "a79058405affcd293740b15137002e788d168a5eba51586d14cee41342ffc204",
+    "license_url": "https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt",
+    "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+    "notice": "gpuwm/data/keps/WRF-NOTICE.txt",
+    "license": "WRF public-domain statement; no external coefficient table"
+  },
+  "native_compiler": "GNU Fortran 13.3, glibc 2.39, -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+  "replay": {
+    "captures": 7,
+    "words": 420336,
+    "unmodified_differing_words": 15372,
+    "diagnostic_defined_differing_words": 0,
+    "witness": "same-compiler unmodified single-call outputs reproduce full-run captures byte for byte",
+    "only_native_changes": [
+      "GET_PBLH: ttke -> tke in comparison and assignment",
+      "surface_bl_pra_ri: radsum=0 before accumulation"
+    ],
+    "excluded_undefined_output": "WQ_TUR is never assigned by native WRF; device writes zero",
+    "steps": [
+      {
+        "step": 1,
+        "words": 60048,
+        "differing_words": 0
+      },
+      {
+        "step": 2,
+        "words": 60048,
+        "differing_words": 0
+      },
+      {
+        "step": 3,
+        "words": 60048,
+        "differing_words": 0
+      },
+      {
+        "step": 4,
+        "words": 60048,
+        "differing_words": 0
+      },
+      {
+        "step": 60,
+        "words": 60048,
+        "differing_words": 25
+      },
+      {
+        "step": 120,
+        "words": 60048,
+        "differing_words": 6488
+      },
+      {
+        "step": 180,
+        "words": 60048,
+        "differing_words": 8859
+      }
+    ],
+    "fixtures": "gpuwm/data/keps/wrf471/{original,defined}/*.bin.xz",
+    "command": "GPUWM_WRF_EXACT=1 GPUWM_NUMERICS=strict python -m pytest -q tests/test_keps_wrf471_parity.py"
+  },
+  "forecast": {
+    "initial": "1974-04-03T12:00:00Z",
+    "end": "1974-04-03T15:00:00Z",
+    "shape": [
+      49,
+      200,
+      250
+    ],
+    "dx_m": 12000,
+    "dt_s": 60,
+    "steps": 180,
+    "history_frames": 4,
+    "physics": {
+      "mp": 10,
+      "sfclay": 91,
+      "lsm": 2,
+      "pbl": 17,
+      "cumulus": 1,
+      "lw": 4,
+      "sw": 4,
+      "radt_minutes": 12
+    },
+    "command": "GPUWM_HISTORY_COMPRESSION=none python -m gpuwm.cli go --wrfinput INPUT --outdir OUTPUT --rrtmg-variant rrtmg_legacy --allow-shared-gpu --no-supervise --products none",
+    "status": "PASS",
+    "numerics": "fast",
+    "receipt_wall_seconds": 30.057681992999278,
+    "forecast_execution_seconds": 27.590178481070325,
+    "initial_input_limit": "Original shared real.exe pair disappeared during native integration. Boundary recovered with original SHA; retained native initial-history fields unchanged, with AL/ALB/T_INIT rebuilt by existing cold-start authority.",
+    "compression_limit": "Installed Rust writer lacks the NetCDF4 creation ABI; declared uncompressed Rust history path used.",
+    "visual_products": [
+      "2m_temperature_10m_winds",
+      "2m_dewpoint_10m_winds"
+    ],
+    "visual_hours_utc": [
+      12,
+      13,
+      14,
+      15
+    ],
+    "visual_result": "Same broad thermal gradient, moisture corridor, surface low and wind pattern, with small local differences; no striping or unstable surface-field pattern.",
+    "unavailable_visual": "Renderer rejected var:PBLH despite the native and GPU raw history variables. PBLH compared numerically only.",
+    "observation_method": "nearest 12-km grid cell; dewpoint from Q2 mixing ratio and PSFC with 17.67/243.5 Magnus relation; station coordinates from pinned NOAA metadata",
+    "observation_metrics": {
+      "native_t2_c": {
+        "count": 12,
+        "bias": -0.34996643066403993,
+        "mae": 1.357552083333322,
+        "rmse": 1.6291737763940424
+      },
+      "native_td2_c": {
+        "count": 12,
+        "bias": 0.192868812203654,
+        "mae": 0.9474635955703165,
+        "rmse": 1.1396823902104778
+      },
+      "native_wind_ms": {
+        "count": 12,
+        "bias": -0.7441338168008303,
+        "mae": 1.2388319713878004,
+        "rmse": 1.5932481554796474
+      },
+      "gpu_t2_c": {
+        "count": 12,
+        "bias": -0.3348882039387795,
+        "mae": 1.3415532430012906,
+        "rmse": 1.6097161095911854
+      },
+      "gpu_td2_c": {
+        "count": 12,
+        "bias": 0.23234011374098884,
+        "mae": 0.9401725640533228,
+        "rmse": 1.129630134825925
+      },
+      "gpu_wind_ms": {
+        "count": 12,
+        "bias": -0.7654220329100406,
+        "mae": 1.2658569149275907,
+        "rmse": 1.614148754513823
+      }
+    },
+    "observation_limit": "Three stations and twelve station-hour samples in one case; no general skill claim.",
+    "optimization_identity": {
+      "schema": "keps-pruned-whole-forecast-identity-v1",
+      "method": "Rust raw dump with mask and scale disabled; exact finite f32 to f64 widening",
+      "arrays": 837,
+      "bytes": 2588413408,
+      "differing_arrays": 0
+    }
+  },
+  "stage_timing": {
+    "device": "NVIDIA GeForce RTX 4090",
+    "shape": [
+      49,
+      200,
+      250
+    ],
+    "numerics": "fast",
+    "method": "CUDA events, three warmups then five samples, same tiled real captured columns",
+    "keps_ms": 2.6398720741271973,
+    "myj_ms": 1.6978880167007446,
+    "ysu_ms": 1.6906239986419678,
+    "ratio_to_myj": 1.5547975179522566,
+    "within_1p2": false,
+    "physics_cost": "KEPS carries and solves TKE, dissipation and TPE, uses an analytic coupled source closure, and performs eight implicit diffusion solves. The full Bougeault search remains when the dissipation repair consumes it.",
+    "optimization": "Skipping the unused Bougeault search reduced KEPS from 5.652480 to 2.639872 ms on this card; no consuming-branch or forecast words changed.",
+    "nonconsuming_search": "All seven native captures had no DLS consumer. A planted control forces 3456 consuming levels and compares 60048 words with zero differences.",
+    "strict_local_bytes": 0,
+    "fast_local_bytes": 0,
+    "qualification": "historical tiled replay microbenchmark; not current forecast qualification",
+    "shipping_cost_exception": false,
+    "qualification_note": "The 1.5548x physics-cost exception is withdrawn. Current same-commit interleaved forecast evidence is recorded separately.",
+    "replacement_receipt": "retime-pbl-forecast.json"
+  },
+  "seams": {
+    "restart": "40 steps versus 20 + checkpoint + 20, serialized state bit-identical",
+    "nests": "two domains, feedback 0 and 1, dry advected carriers active",
+    "ensemble": "independent allocations and evolving one member leaves the other byte-identical",
+    "adaptive": "model step-count binding tested; no full adaptive real forecast",
+    "off": {
+      "schema": "keps-off-gpu-identity-v1",
+      "candidate": "4123f1916e3",
+      "steps": 8,
+      "scheme": 1,
+      "arrays": 185,
+      "bytes": 106720,
+      "differing_arrays": [],
+      "extra_arrays": []
+    }
+  },
+  "scope": "Implemented-unverified. No whole-suite bitwise equality, broad observation skill, full ensemble real forecast or other GPU architecture qualification is claimed."
+}

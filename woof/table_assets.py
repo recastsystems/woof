@@ -133,10 +133,30 @@ def fetch_asset_from_sources(root: Path, asset: TableAsset) -> Path:
 #: Other classic files ship in the package. Their pinned source rows also
 #: support empty explicit roots; an undeclared gap still names an incomplete
 #: install rather than fetching unspecified lookup coefficients.
+#: Everything else in CLASSIC_TABLE_ASSETS ships in the package, so its
+#: absence means a broken install (reinstall), not a pending download.
+def packaged_constant_table_manifest() -> dict:
+    """Small generated device tables. No external download is needed."""
+    from woof.core.temf_constants import TEMF_CONSTANTS_SHA256, TEMF_CONSTANTS
+    return {"temf": {
+        "generator": "woof.core.temf_constants:cuda_table",
+        "sha256": TEMF_CONSTANTS_SHA256,
+        "words": len(TEMF_CONSTANTS),
+        "kernel": "woof/core/kernels/temf.cu"}}
+
+
 EXTERNALIZED_TABLE_FILENAMES = frozenset({
     "freezeH2O.dat",
     "qr_acr_qg_V4.dat",
 })
+
+# Native CAM table reader and orchestration share this metadata authority.
+# Source/table pins are shared by the admitted CAM runtime and its native oracle.
+import json as _json
+_CAM_METADATA = _json.loads((Path(__file__).parent / "data/cam3/table-assets.json").read_text(encoding="utf-8"))
+CAM3_TABLE_ASSETS = tuple(TableAsset(row["filename"],row["size_bytes"],row["sha256"])
+                         for row in _CAM_METADATA["assets"])
+
 
 #: Release the pinned assets were published with.  The pins themselves
 #: live in thompson_contract; this only says where the bytes are hosted.
@@ -840,6 +860,28 @@ def stage_classic_tables(args) -> int:
     return 0
 
 
+def stage_cam3_tables(source_dir=None,root=None) -> int:
+    """Stage the pinned public WRF CAM assets through the shared transfer path."""
+    root=Path(root or os.environ.get('WOOF_CAM_TABLE_ROOT',Path.home()/'.woof/tables/cam3')).expanduser().resolve()
+    try:
+        root.mkdir(parents=True,exist_ok=True)
+        for asset,row in zip(CAM3_TABLE_ASSETS,_CAM_METADATA['assets']):
+            path=root/asset.filename
+            if path.is_file():
+                _verify_in_place(path,asset)
+                continue
+            if source_dir is not None:
+                fetch_asset_from_dir(root,asset,Path(source_dir))
+            else:
+                filename=row.get('source_filename',asset.filename)
+                fetch_asset_from_url(root,asset,'https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/run/'+filename)
+    except (OSError,TableAssetError) as error:
+        print(f'CAM table staging refused: {error}',file=sys.stderr)
+        return 1
+    print(f'CAM tables verified: {root}')
+    return 0
+
+
 def fetch_tables_main(args) -> int:
     """Run the mandatory table leg and the optional ``--wif`` leg.
 
@@ -858,6 +900,13 @@ def fetch_tables_main(args) -> int:
     """
 
     schemes = getattr(args, "schemes", None)
+    cam_only = bool(getattr(args, "cam3_only", False))
+    if cam_only:
+        if schemes or any(getattr(args, key, False) for key in
+                ("wif", "wif_only", "ocean", "ocean_only", "thompson_fork", "thompson_fork_only", "replace_damaged")):
+            print("woof fetch-tables: --cam3-only selects its own table set; run other table legs separately", file=sys.stderr)
+            return 2
+        return stage_cam3_tables(getattr(args, "from_dir", None), getattr(args, "cam3_root", None))
     if getattr(args, "replace_damaged", False) and (not schemes or not getattr(args, "from_dir", None)):
         print("woof fetch-tables: --replace-damaged requires --schemes and --from DIR "
               "so the replacement source is explicit", file=sys.stderr)
@@ -877,6 +926,22 @@ def fetch_tables_main(args) -> int:
             return 2
         print(f"woof fetch-tables: {len(report.present)} required files verified (size + SHA-256)")
         return 0
+    if bool(getattr(args, "ishmael", False)):
+        from woof.core.ishmael import ISHMAEL_TABLE_ASSETS, TABLE_URL_BASE, table_root
+        root = Path(getattr(args, "ishmael_root", None) or table_root())
+        root.mkdir(parents=True, exist_ok=True)
+        try:
+            for asset in ISHMAEL_TABLE_ASSETS:
+                source = getattr(args, "from_dir", None)
+                if source:
+                    fetch_asset_from_dir(root, asset, Path(source))
+                else:
+                    fetch_asset_from_url(root, asset, TABLE_URL_BASE+"/"+asset.filename)
+            print(f"woof fetch-tables: verified ISHMAEL tables in {root}")
+            return 0
+        except (TableAssetError, OSError, ValueError) as error:
+            print(f"woof fetch-tables: ISHMAEL REFUSED: {error}")
+            return 2
     wif_requested = bool(getattr(args, "wif", False))
     wif_only = bool(getattr(args, "wif_only", False))
     fork_requested = bool(getattr(args, "thompson_fork", False))
@@ -1036,7 +1101,11 @@ def register_cli(subparsers) -> None:
              "before install; idempotent when everything is already "
              "present")
     parser.add_argument("--schemes", nargs="+", metavar="FAMILY",
-                        help="stage only named physics table families, e.g. p3 noah tempo rrtmgp; see woof.tables")
+                        help="stage only named physics table families, e.g. p3 noah tempo rrtmgp thompson38; see woof.tables")
+    parser.add_argument("--cam3-only", action="store_true",
+                        help="stage only the pinned WRF CAM radiation tables")
+    parser.add_argument("--cam3-root", metavar="DIR", default=None,
+                        help="CAM table cache (same as WOOF_CAM_TABLE_ROOT)")
     parser.add_argument("--replace-damaged", action="store_true",
                         help="with --schemes and --from, replace damaged files only after source pin verification")
     parser.add_argument(
@@ -1088,6 +1157,10 @@ def register_cli(subparsers) -> None:
         "--ocean-root", metavar="DIR", default=None,
         help="stage the ocean climatology into DIR (same meaning as "
              "WOOF_OCEAN_CACHE)")
+    parser.add_argument("--ishmael", action="store_true",
+                        help="stage the three pinned WRF adaptive-habit ice tables")
+    parser.add_argument("--ishmael-root", metavar="DIR", default=None,
+                        help="ISHMAEL staging root, otherwise the selected table cache")
     parser.set_defaults(func=fetch_tables_main)
     return parser
 
@@ -1124,3 +1197,163 @@ def generated_table_root(name: str) -> Path:
         raise ValueError("generated table family must be a plain identifier")
     base=os.environ.get("WOOF_GENERATED_TABLE_ROOT")
     return (Path(base) if base else Path.home()/".woof"/"tables")/name
+
+def read_pinned_text_asset(root: Path, asset: TableAsset) -> str:
+    """Read a coefficient header only after its size and hash match the pin."""
+    # These small compiler headers must bind the bytes actually returned,
+    # including a same-size rewrite within a filesystem timestamp tick.
+    # The large-file digest memo cannot establish that read's identity.
+    import hashlib
+    path = Path(root) / asset.filename
+    data = path.read_bytes()
+    if len(data) != asset.bytes:
+        raise ValueError(
+            f"coefficient header {path} has {len(data)} bytes; expected {asset.bytes}")
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != asset.sha256:
+        raise ValueError(
+            f"coefficient header {path} SHA-256 {actual}; expected {asset.sha256}")
+    return data.decode("utf-8")
+def physics_table_root(family: str, root=None) -> Path:
+    """Resolve and validate a versioned physics table family."""
+    import hashlib
+    import json
+    if not family.replace("-", "").isalnum():
+        raise ValueError("physics table family must be a simple name")
+    if root is None:
+        override = os.environ.get("WOOF_TABLE_ROOT")
+        root = Path(override) / family if override else Path(__file__).parent / "data" / family
+    else:
+        root = Path(root)
+    manifest_path = root / "MANIFEST.json"
+    if not manifest_path.is_file():
+        raise MissingTableAssets(f"{family} physics tables need {manifest_path}")
+    manifest = json.loads(manifest_path.read_text())
+    pinned = json.loads((Path(__file__).parent / "data" / family / "MANIFEST.json").read_text())
+    if manifest != pinned:
+        raise TableAssetError(f"{family} table manifest differs from the package pin")
+    for name, expected in pinned["assets"].items():
+        path = root / name
+        if not path.is_file():
+            raise MissingTableAssets(f"{family} physics table {path} is missing")
+        data = path.read_bytes()
+        if len(data) != expected["bytes"] or hashlib.sha256(data).hexdigest() != expected["sha256"]:
+            raise TableAssetError(f"{family} physics table {path} changed; refusing corrupted radiation coefficients")
+    return root
+def read_table_header(path: Path) -> str:
+    """Read a generated coefficient header after its manifest pin passes."""
+    import json
+    import hashlib
+    path = Path(path)
+    manifest = json.loads((path.parent / "MANIFEST.json").read_text("utf-8"))
+    pin = manifest["assets"][path.name]
+    data = path.read_bytes()
+    actual = hashlib.sha256(data).hexdigest()
+    if len(data) != pin["bytes"] or actual != pin["sha256"]:
+        raise ValueError(
+            f"coefficient asset {path} does not match its manifest: "
+            f"{len(data)} bytes, SHA-256 {actual}; expected "
+            f"{pin['bytes']} bytes, SHA-256 {pin['sha256']}. "
+            "Compiling it would use coefficient words outside the oracle "
+            "qualification; restore the packaged asset.")
+    return data.decode("utf-8")
+
+
+def read_binary_table(path: Path) -> bytes:
+    """Read a packaged binary table after its byte count and manifest pin pass."""
+    import json
+    import hashlib
+    path = Path(path)
+    manifest = json.loads((path.parent / "MANIFEST.json").read_text("utf-8"))
+    pin = manifest["assets"][path.name]
+    data = path.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    if len(data) != pin["bytes"] or digest != pin["sha256"]:
+        raise ValueError(
+            f"table asset {path} does not match its manifest: "
+            f"{len(data)} bytes, SHA-256 {digest}; expected "
+            f"{pin['bytes']} bytes, SHA-256 {pin['sha256']}. "
+            "Its table words would change the surface fluxes; restore the packaged asset.")
+    return data
+
+
+
+# Pinned compile-time parameter assets use the same byte and SHA checks as
+# coefficient tables. No host arithmetic reconstructs their folded words.
+_KERNEL_PARAMETER_ASSETS = {
+    "keps": TableAsset("constants.cuh", 1383, "dc68a8d267c7cab43cff6813dd7035d9ff1fc43defbfae8fe68a96dda94b8bdf"),
+}
+
+
+def kernel_parameter_source_pieces(
+        name: str, *, data_root: Path | None = None) -> tuple[tuple[str, str], ...]:
+    """Return validated parameter declarations with their source paths."""
+    asset = _KERNEL_PARAMETER_ASSETS.get(name)
+    if asset is None:
+        return ()
+    from woof.data_assets import data_path
+    root = (data_path(f"{name}/tables") if data_root is None
+            else Path(data_root) / name / "tables")
+    validate_table_assets(root, assets=(asset,))
+    return ((f"woof/data/{name}/tables/{asset.filename}",
+             (root / asset.filename).read_text(encoding="utf-8")),)
+
+
+def kernel_parameter_source(name: str, *, data_root: Path | None = None) -> str:
+    """Return validated parameter declarations for a registered kernel."""
+    return "".join(text for _, text in kernel_parameter_source_pieces(name, data_root=data_root))
+
+IRRIGATION_STATIC_FIELDS = ("IRRIGATION", "IRR_PH_FIELD")
+
+def irrigation_static_manifest(cfg, static):
+    """Validate the two Registry static assets without inventing missing water."""
+    if not cfg.sf_surf_irr_scheme:
+        return {}, {}
+    import numpy as np
+    import hashlib
+    fields, manifest = {}, {}
+    for name in IRRIGATION_STATIC_FIELDS:
+        if name not in static or static[name] is None:
+            raise ValueError(f"sf_surf_irr_scheme={cfg.sf_surf_irr_scheme} requires missing static field {name}; irrigation amount or phase cannot be invented")
+        raw = np.asarray(static[name])
+        if raw.shape != (cfg.ny, cfg.nx) or not np.isfinite(raw).all():
+            raise ValueError(f"{name} must be finite with shape {(cfg.ny, cfg.nx)}")
+        if name == 'IRRIGATION' and np.any((raw < 0) | (raw > 100)):
+            raise ValueError('IRRIGATION must be a percentage in 0..100')
+        if name == 'IRR_PH_FIELD' and (np.any(raw != np.floor(raw)) or np.any(raw < 0) or np.any(raw >= cfg.irr_freq)):
+            raise ValueError('IRR_PH_FIELD must contain integer phases in 0..irr_freq-1')
+        arr = np.ascontiguousarray(raw, dtype=np.float32 if name == 'IRRIGATION' else np.int32)
+        fields[name] = arr
+        manifest[name] = {'sha256': hashlib.sha256(arr.tobytes()).hexdigest(), 'dtype': str(arr.dtype), 'shape': list(arr.shape)}
+    return fields, manifest
+
+
+def irrigation_calendar_scalars(start_time, elapsed_seconds):
+    """WRF domain_clock_get float cast before subtracting day one.
+
+    frame/module_domain.F:2157-2165 and share/module_date_time.F:27-56.
+    Solar interpolation has a different existing rounding order; irrigation
+    carries this WRF order without changing that independent calculation.
+    """
+    from datetime import timedelta
+    import numpy as np
+    valid = start_time + timedelta(seconds=float(elapsed_seconds))
+    seconds = ((valid.timetuple().tm_yday - 1) * 86400
+               + valid.hour * 3600 + valid.minute * 60 + valid.second
+               + valid.microsecond / 1e6)
+    day_r8 = np.float64(seconds) / np.float64(86400) + np.float64(1)
+    julian = np.float32(np.float32(day_r8) - np.float32(1))
+    gmt = np.float32(np.float32(start_time.hour)
+                    + np.float32(np.float32(start_time.minute) / np.float32(60)))
+    # get_julgmt's Earth branch reads whole start seconds, not fractions.
+    gmt = np.float32(gmt + np.float32(np.float32(start_time.second) / np.float32(3600)))
+    import math
+    days = math.floor(float(elapsed_seconds) / 86400)
+    remainder = float(elapsed_seconds) - days * 86400
+    whole = math.floor(remainder)
+    fraction = remainder - whole
+    xtime = np.float32(np.float32(np.float32(days) * np.float32(24)) * np.float32(60))
+    xtime = np.float32(xtime + np.float32(np.float32(whole) / np.float32(60)))
+    if fraction:
+        xtime = np.float32(xtime + np.float32(np.float32(fraction) / np.float32(60)))
+    return julian, xtime, gmt

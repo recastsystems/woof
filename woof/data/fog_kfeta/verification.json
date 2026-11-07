@@ -1,0 +1,63 @@
+{
+  "schema": "fog-kfeta-wrf471-native-call-replay-v1",
+  "native_commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "native_build": {
+    "precision": "REAL32",
+    "compiler": "GNU Fortran 13.3.0",
+    "flags": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize"
+  },
+  "replay_source": "85a1b6f33f165229c2916d9b0f76cdc53c0f1ac4",
+  "original_replay_source": "868edfe4808e76f6a21db5346dff8abed31f5250",
+  "kept_capture_root": "~/weather/data/datasets/paper/wrf-ports/port-fog-kfeta",
+  "command": "GPUWM_WRF_EXACT=1 python tools/fog_kfeta_wrf471/replay.py <kept_capture_root>/<case>/captures --landuse MODIFIED_IGBP_MODIS_NOAH --out replay.json",
+  "scope": "Native surface/PBL calls and eligible KF columns; full trigger-2 perturbation arrays. Includes signed zero. Held KF columns are outside the column replay. Surface QC is below deposition threshold in these real captures; active surface deposition is covered by committed fog fixtures. No whole-forecast parity or observation skill claim.",
+  "rows": [
+    {
+      "setting": {
+        "grav_settling": 1
+      },
+      "case": "grav1-kf2",
+      "differing_words": 0,
+      "compared_words": 1170000,
+      "undefined_words_excluded": 0,
+      "manifest_sha256": "a6fd8f88a4532528eb14ec08641a76c785d3fa1219ca75109285688aa6c6a92c",
+      "replay_receipt_sha256": "466eb0e7a41897a38e6ccef91de509fbafd092766b6427231cf284871938978d"
+    },
+    {
+      "setting": {
+        "grav_settling": 2
+      },
+      "case": "grav2-kf3",
+      "differing_words": 0,
+      "compared_words": 1170000,
+      "undefined_words_excluded": 0,
+      "manifest_sha256": "5fcabc8631d96abdc9df5e3931e9f8ae62d9ef782411f91d697af9ba2ba298cd",
+      "replay_receipt_sha256": "92e89330b2e287c537acd25e3b9c5c6abe66a0543a56b9455221d07e05cf7c9d"
+    },
+    {
+      "setting": {
+        "kfeta_trigger": 2
+      },
+      "case": "grav1-kf2",
+      "differing_words": 0,
+      "compared_words": 8955000,
+      "undefined_words_excluded": 0,
+      "manifest_sha256": "a6fd8f88a4532528eb14ec08641a76c785d3fa1219ca75109285688aa6c6a92c",
+      "replay_receipt_sha256": "466eb0e7a41897a38e6ccef91de509fbafd092766b6427231cf284871938978d"
+    },
+    {
+      "setting": {
+        "kfeta_trigger": 3
+      },
+      "case": "grav2-kf3",
+      "differing_words": 0,
+      "compared_words": 6740100,
+      "undefined_words_excluded": 0,
+      "manifest_sha256": "5fcabc8631d96abdc9df5e3931e9f8ae62d9ef782411f91d697af9ba2ba298cd",
+      "replay_receipt_sha256": "92e89330b2e287c537acd25e3b9c5c6abe66a0543a56b9455221d07e05cf7c9d"
+    }
+  ],
+  "native_work_profile": "woof/data/fog_kfeta/native-profile.json",
+  "real_forecast_stage_profile": "woof/data/fog_kfeta/stage-ratios.json",
+  "timing_hardware": "woof/data/fog_kfeta/timing-hardware.json"
+}

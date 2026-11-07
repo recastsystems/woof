@@ -164,6 +164,8 @@ _PRODUCED_SOURCES = frozenset({
 #: * 0 -- no land-surface model, so nothing consumes a carrier.  An
 #:   atmosphere-only run with radiation off is a legitimate idealised
 #:   configuration and this contract has no business refusing it.
+#: * 1 -- the slab scheme (woof/core/slab.py) reads GLW and GSW: SLAB1D's
+#:   RNET is GSW + EMISS*(GLW - sigma*TG**4).
 #: * 2 -- Noah (woof/core/noah.py) reads GLW and SWDOWN.
 #: * 3 -- RUC (woof/core/ruc_runtime.py) reads GLW and GSW.  GSW, not
 #:   SWDOWN: RUC takes the NET shortwave, which is why RUC's hole needed
@@ -178,9 +180,12 @@ _PRODUCED_SOURCES = frozenset({
 #: first new scheme.
 CONSUMER_CARRIERS: dict[int, tuple[str, ...]] = {
     0: (),
+    1: ("glw", "gsw"),
     2: ("glw", "swdown"),
     3: ("glw", "gsw"),
+    7: ("glw", "gsw"),
     4: ("glw", "swdown", "coszen"),
+    8: ("glw", "swdown", "coszen"),
 }
 
 #: The two policies, RE-EXPORTED from :mod:`woof.config` rather than
@@ -192,7 +197,8 @@ CONSUMER_CARRIERS: dict[int, tuple[str, ...]] = {
 
 #: Human names for the refusal text, so a message can say "Noah-MP"
 #: rather than "sf_surface_physics=4" alone.
-_CONSUMER_NAMES = {0: "no land-surface model", 2: "Noah", 3: "RUC",
+_CONSUMER_NAMES = {0: "no land-surface model", 1: "slab", 2: "Noah",
+                   3: "RUC",
                    4: "Noah-MP"}
 
 #: What each carrier is, for the refusal text.

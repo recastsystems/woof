@@ -512,14 +512,99 @@ def is_development_module(package: str, module: str) -> bool:
 DECLARATION_ONLY_DATA_PACKAGES: tuple[str, ...] = ("docs",)
 
 
+@functools.lru_cache(maxsize=None)
+def verify_oracle_trees() -> tuple[str, ...]:
+    """``woof.data_assets.VERIFY_ORACLE_TREES``, read without importing woof."""
+
+    import ast
+
+    source = _HERE / "woof" / "data_assets.py"
+    for node in ast.parse(source.read_text(encoding="utf-8")).body:
+        if (isinstance(node, ast.AnnAssign)
+                and getattr(node.target, "id", None) == "VERIFY_ORACLE_TREES"):
+            return tuple(ast.literal_eval(node.value))
+    raise SystemExit("woof/data_assets.py declares no VERIFY_ORACLE_TREES")
+
+
+def is_verify_oracle_file(path: str) -> bool:
+    """Is ``path`` inside a verification-oracle tree the gpuwm-kernels companion ships?
+
+    pyproject's exclude-package-data drops these trees from the wheel for
+    files the ``woof`` package-data glob finds, but MANIFEST.in keeps them
+    in the sdist, and a wheel built FROM that sdist sees them as manifest
+    files of the PEP 420 namespace packages under woof/data (``namespaces =
+    true``), where a ``woof`` key cannot reach.  Measured before this
+    filter: the wheel built from the sdist carried all 713 oracle files
+    again.  Filtering on the path covers every package they could land in.
+    """
+
+    posix = "/" + Path(path).as_posix().lstrip("/")
+    return any(f"/woof/data/{tree}/" in posix for tree in verify_oracle_trees())
+
+
+@functools.lru_cache(maxsize=None)
+def wheel_xz_data() -> tuple[str, ...]:
+    """``woof.packed_data.WHEEL_XZ_DATA``, read without importing woof."""
+
+    import ast
+
+    source = _HERE / "woof" / "packed_data.py"
+    for node in ast.parse(source.read_text(encoding="utf-8")).body:
+        if (isinstance(node, ast.AnnAssign)
+                and getattr(node.target, "id", None) == "WHEEL_XZ_DATA"):
+            return tuple(ast.literal_eval(node.value))
+    raise SystemExit("woof/packed_data.py declares no WHEEL_XZ_DATA")
+
+
+def pack_wheel_xz_data(build_lib: Path) -> list[tuple[str, int, int]]:
+    """Re-encode the :func:`wheel_xz_data` members of ``build_lib`` as ``<name>.xz``.
+
+    The breakage this prevents (WOOF 1.1.6): the platform wheel built at
+    105,480,112 bytes against PyPI's 100,000,000-byte per-file limit.  These
+    four members deflate to 13.9 MB in a wheel and to 3.6 MB as xz; their
+    readers (woof.packed_data) take either form, so only the wheel changes:
+    the tree, the sdist and an editable install keep the plain files.
+    Returns (path, plain bytes, xz bytes) per member re-encoded.
+    """
+
+    import lzma
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(relative: str):
+        plain = build_lib / relative
+        if not plain.is_file():
+            return None
+        raw = plain.read_bytes()
+        packed = lzma.compress(raw, preset=9)
+        if lzma.decompress(packed) != raw:
+            raise SystemExit(f"{relative}: xz round trip differs; prevents shipping altered data")
+        plain.with_name(plain.name + ".xz").write_bytes(packed)
+        plain.unlink()
+        return relative, len(raw), len(packed)
+
+    with ThreadPoolExecutor(max_workers=len(wheel_xz_data()) or 1) as pool:
+        return [row for row in pool.map(one, wheel_xz_data()) if row is not None]
+
+
 class _OperationalBuildPy(_BuildPy):
     """Copies every module of a package into the wheel EXCEPT the probes."""
+
+    def build_package_data(self) -> None:  # noqa: D102
+        super().build_package_data()
+        if getattr(self, "editable_mode", False):
+            return  # an editable install reads the checkout's plain files
+        for relative, plain, packed in pack_wheel_xz_data(Path(self.build_lib)):
+            self.announce(f"packed {relative} as xz: {plain:,} -> {packed:,} B", level=2)
 
     def find_package_modules(self, package, package_dir):  # noqa: D102
         return [row for row in super().find_package_modules(package, package_dir)
                 if not is_development_module(row[0], row[1])]
 
     def find_data_files(self, package, src_dir):  # noqa: D102
+        return [path for path in self._declared_data_files(package, src_dir)
+                if not is_verify_oracle_file(path)]
+
+    def _declared_data_files(self, package, src_dir):
         if package not in DECLARATION_ONLY_DATA_PACKAGES:
             return super().find_data_files(package, src_dir)
         manifest = self.manifest_files

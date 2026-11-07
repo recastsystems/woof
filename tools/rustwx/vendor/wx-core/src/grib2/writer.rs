@@ -1,6 +1,7 @@
 //! Native GRIB2 grid-point writer following WMO FM 92, Edition 2.
-//! Supports simple packing (5.0), complex spatial packing (5.3), WRF
-//! projections, and statistical intervals (4.8).
+//! Supports simple packing (5.0), complex spatial packing (5.3), IEEE
+//! floating point (5.4, lossless), WRF projections, and statistical
+//! intervals (4.8).
 
 use super::parser::{GridDefinition, ProductDefinition};
 
@@ -55,6 +56,11 @@ pub enum PackingMethod {
     /// Template 5.3: group packing with first or second spatial differences.
     /// `bits_per_value` controls quantization before differencing (0 = 16).
     ComplexSpatial { bits_per_value: u8, order: u8 },
+    /// Template 5.4: IEEE 754 binary32 values, big-endian (precision code 1).
+    /// Lossless for values that are binary32 already: each value's 32 bits
+    /// are written as they are, with no scaling or rounding (a binary64
+    /// value is narrowed to binary32, so pass binary32 values widened).
+    Ieee32,
 }
 
 /// A continuous time interval encoded using product template 4.8.
@@ -798,7 +804,24 @@ fn encode_data(values: &[f64], packing: &PackingMethod) -> Result<(Vec<u8>, Vec<
             bits_per_value,
             order,
         } => encode_complex_spatial(values, *bits_per_value, *order),
+        PackingMethod::Ieee32 => Ok(encode_ieee32(values)),
     }
+}
+
+/// Template 5.4 (IEEE floating point, precision 1 = 32-bit) and its data
+/// section: every packed value's binary32 bits, big-endian, as they are.
+fn encode_ieee32(values: &[f64]) -> (Vec<u8>, Vec<u8>) {
+    let mut sec5 = Vec::with_capacity(12);
+    sec5.extend_from_slice(&12u32.to_be_bytes()); // octets 1-4: length
+    sec5.push(5); // octet 5: section number
+    sec5.extend_from_slice(&(values.len() as u32).to_be_bytes()); // octets 6-9: values packed
+    sec5.extend_from_slice(&4u16.to_be_bytes()); // octets 10-11: template 5.4
+    sec5.push(1); // octet 12: precision, code table 5.7: 1 = IEEE 32-bit
+    let mut data = Vec::with_capacity(values.len() * 4);
+    for &v in values {
+        data.extend_from_slice(&(v as f32).to_bits().to_be_bytes());
+    }
+    (sec5, encode_section7(&data))
 }
 
 /// Quantize once for either packing method: Y = R + X * 2^E.
@@ -2317,6 +2340,26 @@ mod tests {
 
         // Cleanup
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn ieee32_round_trips_every_bit() {
+        let raw: Vec<f32> = vec![0.0, -1.5, 1.0e-38, f32::from_bits(1), 3.402_823_5e38, 287.153_2, 9.969_21e36, -273.15];
+        let grid = GridDefinition { template: 0, ..square_grid(4, 2) };
+        let msg = MessageBuilder::new(0, raw.iter().map(|&v| v as f64).collect())
+            .grid(grid)
+            .product(ProductDefinition { template: 0, parameter_category: 0, parameter_number: 0,
+                generating_process: 2, forecast_time: 1, time_range_unit: 1, level_type: 1, level_value: 0.0 })
+            .packing(PackingMethod::Ieee32);
+        let bytes = Grib2Writer::new().add_message(msg).to_bytes().unwrap();
+        let sec5 = section(&bytes, 5);
+        assert_eq!(u16::from_be_bytes([sec5[9], sec5[10]]), 4);
+        assert_eq!(sec5[11], 1);
+        let file = Grib2File::from_bytes(&bytes).unwrap();
+        let back = unpack_message(&file.messages[0]).unwrap();
+        for (a, b) in raw.iter().zip(back.iter()) {
+            assert_eq!(a.to_bits(), (*b as f32).to_bits());
+        }
     }
 
     #[test]

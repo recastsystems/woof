@@ -246,7 +246,7 @@ _DERIVED_RULES = {
     # a fresh array that no carrier identity can match.  Named breakage: every
     # streamed or store-direct run with an ocean (PWP is the 48 h+ default)
     # refused its first frame with ShortFrameRefused(['OCEAN_SST',
-    # 'OCEAN_SST_CHANGE']) (full-CONUS HRRR 48 h on the fold, V58 2026-10-21).
+    # 'OCEAN_SST_CHANGE']) (full-CONUS HRRR 48 h on 2026-10-21).
     "OCEAN_SST": "fields/ocean_sst where xland > 1.5 and lakemask < 0.5, else NaN",
     "OCEAN_SST_CHANGE": "fields/ocean_sst_change where xland > 1.5 and lakemask < 0.5, else NaN",
 }
@@ -385,6 +385,13 @@ def _frame_plan_on_device(state, *, include_diagnostic_pressure,
         dtype[name] = np.dtype(getattr(value, "dtype", np.float32))
         if name in fire_origins:
             source[name], origin[name] = SOURCE_CARRIER, fire_origins[name]
+            continue
+        if (name == "RTHRATEN" and "diag/rthraten" in extra
+                and getattr(getattr(state, "physics", None), "_wrf_rthraten", None) is not None):
+            # This stable diagnostic supplies the frame shape. The strict
+            # frame boundary decouples the held producer with live mass;
+            # publication must not overwrite this checkpoint-owned slot.
+            source[name], origin[name] = SOURCE_CARRIER, "diag/rthraten"
             continue
         key = carriers.get(id(value))
         if key is not None:
@@ -657,6 +664,12 @@ def _domain_row_shape(shape, template_hw, domain_hw) -> tuple[int, ...]:
 _DIAGNOSTIC_PRODUCERS = {
     "XKMH": ("scratch", "smag_km"),
     "XKHH": ("scratch", "smag_kh"),
+    "v_ice": ("scratch", "p3_vmi"),
+    "d_ice": ("scratch", "p3_di"),
+    "rho_ice": ("scratch", "p3_rhopo"),
+    "v_ice2": ("scratch", "p3_vmi2"),
+    "d_ice2": ("scratch", "p3_di2"),
+    "rho_ice2": ("scratch", "p3_rhopo2"),
 }
 
 
@@ -735,6 +748,13 @@ def diagnostic_members(obj) -> dict:
                     members[f"diag/{attr}/{key}"] = item
         elif hasattr(held, "shape"):
             members[f"diag/{attr}"] = held
+    # P3 writes these output-only arrays directly in canonical scratch,
+    # without a driver bundle. Only MP52 publishes the category diagnostics.
+    if getattr(obj, "qi2", None) is not None:
+        for name in ("v_ice", "d_ice", "rho_ice", "v_ice2", "d_ice2", "rho_ice2"):
+            producer = _producer_array(obj, name)
+            if producer is not None:
+                members[f"diag/{name}"] = producer
     return {key: value for key, value in members.items() if value is not None}
 
 
@@ -782,6 +802,17 @@ def derive_t(thb, thp, out):
     """
     thb3 = thb if np.ndim(thb) == 3 else np.asarray(thb)[:, None, None]
     np.add(thb3, thp, out=out)
+    np.subtract(out, np.float32(300.0), out=out)
+    return out
+
+
+def derive_dry_t(thb, thp, qv, out):
+    """Dry WRF history T from the moist prognostic, in resident order."""
+    from woof.core.constants import RVOVRD
+    thb3 = thb if np.ndim(thb) == 3 else np.asarray(thb)[:, None, None]
+    np.add(thb3, thp, out=out)
+    factor = np.float32(1.0) + np.float32(RVOVRD) * qv
+    np.divide(out, factor, out=out)
     np.subtract(out, np.float32(300.0), out=out)
     return out
 
@@ -905,7 +936,7 @@ class StoreFrame:
     #: the carriers' own origins.  Kept next to ``fields`` so the two cannot
     #: drift: a road that copies only a frame's members to the host
     #: (``tilestream.ranks.RankedRun.download``) copies exactly these.
-    _DERIVED_INPUTS = {"T": ("state/thp",), "THM": ("state/thp",), "P": ("state/p",),
+    _DERIVED_INPUTS = {"T": ("state/thp", "state/qv"), "THM": ("state/thp",), "P": ("state/p",),
                        "PSFC": ("state/php", "state/p"),
                        "FS_GEN_IDMAX": ("fire/spotting.control",),
                        **{row: (key, "fields/xland", "fields/lakemask")
@@ -921,7 +952,9 @@ class StoreFrame:
             elif kind == SOURCE_DERIVED:
                 # An optional input (the lake mask) a run does not hold is not read.
                 keys.extend(key for key in self._DERIVED_INPUTS.get(name, ())
-                            if key != "fields/lakemask" or key in self._store)
+                            if (key != "fields/lakemask" or key in self._store)
+                            and (key != "state/qv" or
+                                 (getattr(self.cfg, "use_theta_m", 0) and key in self._store)))
         return tuple(dict.fromkeys(keys))
 
     def nbytes(self) -> int:
@@ -990,8 +1023,13 @@ class StoreFrame:
                 if name in ("PB", "PHB", "P_TOP"):
                     out[name] = self._statics[name]
                 elif name in ("T", "THM"):
-                    out[name] = derive_t(self._thb, store["state/thp"],
-                                         self._dst[name])
+                    if (name == "T" and getattr(self.cfg, "use_theta_m", 0)
+                            and "state/qv" in store):
+                        out[name] = derive_dry_t(self._thb, store["state/thp"],
+                                                store["state/qv"], self._dst[name])
+                    else:
+                        out[name] = derive_t(self._thb, store["state/thp"],
+                                             self._dst[name])
                 elif name == "P":
                     pb3 = (self._pb if self._pb.ndim == 3
                            else self._pb[:, None, None])

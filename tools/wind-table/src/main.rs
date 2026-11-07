@@ -7,14 +7,27 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, env, fs, error::Error, time::Instant};
 mod wrf;
+mod legacy;
 const SOURCE_REVISION: &str = concat!("GPUWM_BRIDGE_SOURCE_REV=", env!("GPUWM_BRIDGE_SOURCE_REV"));
 fn main() -> Result<(), Box<dyn Error>> {
  let args:Vec<String>=env::args().collect();
  if args.len()==2 && matches!(args[1].as_str(), "--version" | "--abi") {
   println!("rw-wind-table input-v1 {SOURCE_REVISION}");return Ok(());
  }
- if args.len()==3 && args[1]=="--wrf" {
-  println!("{}",wrf::read(std::path::Path::new(&args[2]))?);return Ok(());
+ if args.len()==3 && matches!(args[1].as_str(), "--mav-xy" | "--mav-ll") {
+  rayon::ThreadPoolBuilder::new().num_threads(2).build_global()?;
+  println!("{}",wrf::read_mav(std::path::Path::new(&args[2]),if args[1]=="--mav-xy" {1} else {2})?);return Ok(());
+ }
+ if args.len()==3 && args[1]=="--windspec" {
+  rayon::ThreadPoolBuilder::new().num_threads(2).build_global()?;
+  println!("{}",legacy::read(std::path::Path::new(&args[2]))?);return Ok(());
+ }
+ if args.len()==3 && args[1]=="--wind-ideal" {
+  rayon::ThreadPoolBuilder::new().num_threads(2).build_global()?;
+  println!("{}",legacy::ideal(&serde_json::from_str(&args[2])?)?);return Ok(());
+ }
+ if args.len()==3 && matches!(args[1].as_str(), "--wrf" | "--wrf-ij") {
+  println!("{}",wrf::read(std::path::Path::new(&args[2]),args[1]=="--wrf-ij")?);return Ok(());
  }
  if args.len()!=12 {return Err("usage: rw-wind-table DATABASES.json SOURCE CLASSES.json INPUT.csv OUTPUT.json WEST SOUTH EAST NORTH YEAR WORKERS (year 0=all years)".into());}
  let begin=Instant::now();

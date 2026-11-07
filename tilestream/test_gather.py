@@ -229,9 +229,9 @@ def _fill_unique(arrays, *, enforce_duplicates=True):
         vals = vals.astype(np.float32)
         base += n + 7.0
         if enforce_duplicates:
-            if arr.ndim >= 2 and name in ("u", "nudging_tendency_u"):
+            if arr.ndim >= 2 and name in U_FACES:
                 vals[..., -1] = vals[..., 0]
-            if arr.ndim >= 2 and name in ("v", "nudging_tendency_v"):
+            if arr.ndim >= 2 and name in V_FACES:
                 vals[..., -1, :] = vals[..., 0, :]
         if isinstance(arr, cp.ndarray):
             arr[...] = cp.asarray(vals)
@@ -286,7 +286,7 @@ def _compare(ref, got, label):
     return dref
 
 
-def _roundtrip(store_arrays, sink_arrays, tile_arrays, specs, stream=None):
+def _roundtrip(store_arrays, sink_arrays, tile_arrays, specs, stream=None, *, nz=None):
     """Gather every tile then scatter its interior into ``sink_arrays``."""
     import cupy as cp
 
@@ -295,8 +295,8 @@ def _roundtrip(store_arrays, sink_arrays, tile_arrays, specs, stream=None):
     gathered_bytes = scattered_bytes = 0
     with stream:
         for spec in specs:
-            gp = G.gather_tile(store_arrays, tile_arrays, spec, stream)
-            sp = G.scatter_tile(tile_arrays, sink_arrays, spec, stream)
+            gp = G.gather_tile(store_arrays, tile_arrays, spec, stream, nz=nz)
+            sp = G.scatter_tile(tile_arrays, sink_arrays, spec, stream, nz=nz)
             gathered_bytes += gp.nbytes
             scattered_bytes += sp.nbytes
             stream.synchronize()   # tile buffer is reused; serialize the test
@@ -306,31 +306,74 @@ def _roundtrip(store_arrays, sink_arrays, tile_arrays, specs, stream=None):
 
 
 # ==========================================================================
-# synthetic all-41 inventory
+# closed spatial restart inventory
 # ==========================================================================
 
+# Shape authorities: DomainState allocation (core/state.py), the surface FDDA
+# allocator (spectral_nudging/surface_forecast.py:allocate), and aerosol setup
+# (core/cumulus_aerosol.py). All unspecified names are REFUSED, not made mass.
+BASE_41 = tuple("""u v w thp php mup p al alt qv qc qr h_diabatic tke qi qs qg
+nc nr ni ns ng qh qndrop qnr qni qns qng qnh qnn qvolg qvolh effc effr effi effs
+nwfa nifa nwfa2d nifa2d e_sgs""".split())
+
+# 3.0 restart carriers: held radiation/theta and FDDA rates; LES stress and
+# nonlocal momentum; CAM/NTU/P3/Ferrier moments; KEPS, passive tracers, column
+# diagnostics and Morrison activation state. Dropping any of these loses a
+# prognostic moment or a preceding-step value on continuation. Bulk/column/bin
+# allocations are mass points unless an explicit stagger or plane below says
+# otherwise. aerocu retains all ten species, not just its first leading axis.
+SINCE_204 = tuple("""_wrf_th_phy_m_t0
+fddaobs_rko fddaobs_varobs fddaobs_errf fddaobs_savwt fddaobs_clock fddaobs_frame
+fddaobs_uratx fddaobs_vratx fddaobs_tratx traj_coordinates traj_status
+surface_fdda_u surface_fdda_v surface_fdda_theta surface_fdda_qv hfx_fdda
+sda_hfx sda_qfx qnorm hfx_both qfx_both m11 m22 m33 m12 m13 m23 global_rthraten
+gamu gamv cldfra_old_mp cldfra_mp cldfra_mp_all cldfra_conv cldfrai cldfral
+wsedl3d lradius iradius rh_old_mp lcd_old_mp qdcn qtcn qccn qrcn qnin fi fs vi vs
+vg ai as_ ag ah i3m rimi qi2 ni2 qir2 qib2 qzi qi3 ni3 qvoli qaoli qvoli2 qaoli2
+qvoli3 qaoli3 qrimef f_ice_phy f_rain_phy f_rimef_phy etanew_restart_state
+etanew_tbpvs etanew_tbpvs0 etanew_restart_dt aerocu pek_adv pep_adv keps_tke_adv
+keps_diss_adv keps_tpe_adv tr17_1 tr17_2 tr17_3 tr17_4 tr17_5 tr17_6 tr17_7
+tr17_8 tr_qc tr_qi tr_qs physc physe physd physs physm physf acphysc acphyse
+acphysd acphyss acphysm acphysf re_cloud_gsfc re_rain_gsfc re_ice_gsfc re_snow_gsfc
+re_graupel_gsfc re_hail_gsfc preci3d precs3d precg3d prech3d precr3d phys_tot
+acphys_tot efcg efig efsg wact ccn1_gs ccn2_gs ccn3_gs ccn4_gs ccn5_gs ccn6_gs
+ccn7_gs""".split())
+
+# Resident-only carriers have no horizontal tile window. Never invent one.
+# Observation pack/weights/clock: fddaobs/forecast.py:74-85. Trajectories:
+# core/state.py:998-1003; forecast admission already refuses a streamed gather.
+# Eta setup/restart vectors: core/state.py:760-763. Their resident restart tests
+# own continuation; this file must show spatial transport rejects these shapes.
+NONSPATIAL = {
+    "fddaobs_rko": (13,), "fddaobs_varobs": (6 * 13,),
+    "fddaobs_errf": (10 * 13,), "fddaobs_savwt": (6 * 6 * 49 * 49,),
+    "fddaobs_clock": (1,), "fddaobs_frame": (32,),
+    "fddaobs_uratx": (49 * 49,), "fddaobs_vratx": (49 * 49,),
+    "fddaobs_tratx": (49 * 49,), "traj_coordinates": (5, 7),
+    "traj_status": (2,), "etanew_restart_state": (43,),
+    "etanew_tbpvs": (7501,), "etanew_tbpvs0": (7501,),
+    "etanew_restart_dt": (1,),
+}
+U_FACES = {"u", "nudging_tendency_u", "surface_fdda_u"}
+V_FACES = {"v", "nudging_tendency_v", "surface_fdda_v"}
+W_LEVELS = {"w", "php", "nudging_tendency_geopotential"}
+SURFACE_PLANES = {"mup", "nwfa2d", "nifa2d", "sda_hfx", "sda_qfx",
+                  "qnorm", "hfx_both", "qfx_both"}
+
+
 def _synthetic_shapes(nz, ny, nx):
-    """``{name: shape}`` for every one of the serialized attributes (47).
-
-    Staggering follows the WRF-ARW registry: ``u`` on x faces, ``v`` on y
-    faces, ``w``/``php`` on w levels, ``mup``/``nwfa2d``/``nifa2d`` 2-D at the
-    surface, every microphysics/aerosol/TKE species on 3-D mass points.
-    """
-    two_d = {"mup", "nwfa2d", "nifa2d"}
-    shapes = {}
-    for name in G.serialized_attrs():
-        if name in ("u", "nudging_tendency_u"):
-            shapes[name] = (nz, ny, nx + 1)
-        elif name in ("v", "nudging_tendency_v"):
-            shapes[name] = (nz, ny + 1, nx)
-        elif name in ("w", "php", "nudging_tendency_geopotential"):
-            shapes[name] = (nz + 1, ny, nx)
-        elif name in two_d:
-            shapes[name] = (ny, nx)
-        else:
-            shapes[name] = (nz, ny, nx)
+    """Actual spatial shapes, with a closed inventory and no mass fallback."""
+    names = set(BASE_41 + NEW_SINCE_41 + FSBM_BINS + SINCE_204)
+    assert len(names) == 336 and names == set(G.serialized_attrs())
+    mass = names - (U_FACES | V_FACES | W_LEVELS | SURFACE_PLANES
+                    | set(NONSPATIAL) | {"aerocu"})
+    shapes = {name: (nz, ny, nx) for name in sorted(mass)}
+    shapes.update({name: (nz, ny, nx + 1) for name in U_FACES})
+    shapes.update({name: (nz, ny + 1, nx) for name in V_FACES})
+    shapes.update({name: (nz + 1, ny, nx) for name in W_LEVELS})
+    shapes.update({name: (ny, nx) for name in SURFACE_PLANES})
+    shapes["aerocu"] = (10, nz, ny, nx)
     return shapes
-
 
 def _device_dict(shapes, dtype=np.float32):
     import cupy as cp
@@ -378,12 +421,12 @@ def test_classify_derives_stagger_from_shape():
 def test_extents_inferred_from_inventory():
     shapes = _synthetic_shapes(6, 40, 80)
     arrays = _device_dict(shapes)
-    assert G.domain_extents(arrays) == (6, 40, 80)
+    assert G.domain_extents(arrays, nz=6) == (6, 40, 80)
     # a dry inventory (9 fields, incl. 2-D mup and nz+1 php) infers the same
     dry = {k: arrays[k] for k in
            ("u", "v", "w", "thp", "php", "mup", "p", "al", "alt")}
     assert G.domain_extents(dry) == (6, 40, 80)
-    print("  domain_extents: (6, 40, 80) from both the full 41 and the dry 9")
+    print("  domain_extents: (6, 40, 80) from the spatial inventory (explicit nz) and the dry 9")
 
 
 def test_layered_fields_gather_like_mass_fields():
@@ -679,25 +722,30 @@ FSBM_BINS = tuple(f"{group}i{i:02d}"
                   for i in range(1, count + 1))
 
 
-def test_all_49_names_device_and_host():
-    """Every name in STATE_SERIALIZED_ATTRS, both memory paths, both specs.
 
-    The count is asserted EXACTLY, not as a floor: this suite synthesizes a
-    shape for every contract name, so a name this file's stagger table does
-    not know would otherwise ride through as 3-D mass by default.  When the
-    contract grows, this number moves ON PURPOSE, together with a named
-    justification above -- 41 became 47 when the P3 restart fix and the
-    mp9/WDM6 moment fix landed their six fields without this gate moving,
-    which left the streamed-serialization round trip formally proven for a
-    set the product no longer serialized.
+def test_nonspatial_restart_carriers_are_not_spatial_fields():
+    """Flat resident state must fail closed instead of receiving tile slices."""
+    for name, shape in NONSPATIAL.items():
+        try:
+            G.classify(shape, 6, 48, 48, layers_ok=True)
+        except G.SpecError:
+            pass
+        else:
+            raise AssertionError(f"{name} {shape} was accepted as a horizontal field")
+
+
+def test_all_49_names_device_and_host():
+    """All spatial restart carriers, byte-exact, with both specs/memory paths.
+
+    The full contract is closed at336:321 spatial arrays plus15 known resident
+    carriers. Non-spatial arrays are tested for rejection below, not assigned
+    invented mass shapes. This establishes no tiled FDDA/trajectory/Eta claim.
     """
     names = G.serialized_attrs()
-    assert len(names) == 204, (
-        f"STATE_SERIALIZED_ATTRS has {len(names)} names, this gate knows 204 "
-        "(62 bulk + 142 FAST_SBM bins). "
-        "A new field joined (or left) the streamed serialization set: extend "
-        "NEW_SINCE_41's justification block and this count TOGETHER, and "
-        "check the new name's stagger against _synthetic_shapes")
+    assert len(BASE_41) == 41 and len(SINCE_204) == 132
+    expected = BASE_41 + NEW_SINCE_41 + FSBM_BINS + SINCE_204
+    assert len(expected) == len(set(expected)) == len(names) == 336
+    assert set(expected) == set(names)
     assert len(FSBM_BINS) == 142
     for name in NEW_SINCE_41 + FSBM_BINS:
         assert name in names, (
@@ -705,7 +753,9 @@ def test_all_49_names_device_and_host():
             "documented above -- removing it needs an argument, not a tidy-up")
     nz, ny, nx, tile, halo = 6, 48, 48, 16, 8
     shapes = _synthetic_shapes(nz, ny, nx)
-    assert set(shapes) == set(names)
+    assert set(shapes) | set(NONSPATIAL) == set(names)
+    assert not set(shapes) & set(NONSPATIAL)
+    assert len(shapes) == 321
     gx, gy = tile + 2 * halo, tile + 2 * halo
     tile_shapes = _synthetic_shapes(nz, gy, gx)
 
@@ -721,19 +771,19 @@ def test_all_49_names_device_and_host():
             _zero(sink)
             ref = {n: (a.copy() if hasattr(a, "copy") else np.array(a))
                    for n, a in store.items()}
-            gb, sb = _roundtrip(store, sink, tile_arrays, specs)
+            gb, sb = _roundtrip(store, sink, tile_arrays, specs, nz=nz)
             key = f"{spec_label}/{mem_label}"
-            results[key] = _compare(ref, sink, f"all-47 round trip [{key}]")
+            results[key] = _compare(ref, sink, f"all-321 spatial round trip [{key}]")
             total = sum(int(a.nbytes) for a in ref.values())
             assert sb == total, (key, sb, total)
             # The six post-41 joiners moved on THIS path, not by argument:
             # each was filled, gathered, scattered into a zeroed sink and
-            # byte-compared -- the compare above walks all 47, and this pins
+            # byte-compared -- the compare above walks all spatial names, and this pins
             # that the six were among them in both directions.
-            for name in NEW_SINCE_41 + FSBM_BINS:
+            for name in shapes:
                 assert name in ref and name in sink, name
                 assert _bytes_of(sink[name]) == _bytes_of(ref[name]), name
-            print(f"  [{key}] {len(names)}/{len(names)} fields, "
+            print(f"  [{key}] {len(shapes)} spatial fields; {len(NONSPATIAL)} resident-only, "
                   f"{len(specs)} tiles, "
                   f"{total/1e6:.2f} MB domain, gathered {gb/1e6:.2f} MB, "
                   f"sha256 {results[key][:16]}...")
@@ -742,7 +792,7 @@ def test_all_49_names_device_and_host():
     print(f"  all {len(results)} (spec x memory) combinations agree bitwise")
     kinds = {}
     for n, s in shapes.items():
-        kinds.setdefault(G.classify(s, nz, ny, nx), []).append(n)
+        kinds.setdefault(G.classify(s, nz, ny, nx, layers_ok=True), []).append(n)
     print("  kinds covered: " + ", ".join(
         f"{k}={len(v)}" for k, v in sorted(kinds.items())))
     assert set(kinds) == set(G.KINDS)
@@ -827,7 +877,7 @@ def test_wrapped_edge_tile_matches_rolled_reference():
         _zero(tile_arrays)
         stream = cp.cuda.Stream(non_blocking=True)
         with stream:
-            G.gather_tile(store, tile_arrays, spec, stream)
+            G.gather_tile(store, tile_arrays, spec, stream, nz=nz)
         stream.synchronize()
 
         n_seg = len(G.segments_for(spec, "gather", "mass"))
@@ -945,16 +995,16 @@ def test_no_allocation_and_plan_reuse():
         specs = planner(nx, ny, tile, tile, halo=halo, periodic=True)
         with stream:
             for spec in specs:                  # warm up plans and pool
-                G.gather_tile(store, tile_a, spec, stream)
-                G.gather_tile(store, tile_b, spec, stream)
+                G.gather_tile(store, tile_a, spec, stream, nz=nz)
+                G.gather_tile(store, tile_b, spec, stream, nz=nz)
         stream.synchronize()
         before = pool.used_bytes(), pool.total_bytes()
         plans = []
         with stream:
             for _ in range(5):
                 for spec in specs:
-                    plans.append(G.gather_tile(store, tile_a, spec, stream))
-                    plans.append(G.gather_tile(store, tile_b, spec, stream))
+                    plans.append(G.gather_tile(store, tile_a, spec, stream, nz=nz))
+                    plans.append(G.gather_tile(store, tile_b, spec, stream, nz=nz))
         stream.synchronize()
         after = pool.used_bytes(), pool.total_bytes()
         assert after == before, f"[{label}] memory pool grew: {before} -> {after}"
@@ -1151,13 +1201,13 @@ def benchmark_gather_bandwidth(*, force=False):
 
     with stream:                                    # warm up plans + pinning
         for spec in specs:
-            plan = G.gather_tile(store, tile_arrays, spec, stream)
+            plan = G.gather_tile(store, tile_arrays, spec, stream, nz=nz)
     stream.synchronize()
 
     # correctness on the LAST tile gathered, before any timing is reported
     spec = specs[-1]
     with stream:
-        G.gather_tile(store, tile_arrays, spec, stream)
+        G.gather_tile(store, tile_arrays, spec, stream, nz=nz)
     stream.synchronize()
     yi = ((np.arange(gy) + spec.i0 * 0 + (spec.j0 - halo)) % ny)[:, None]
     xi = ((np.arange(gx) + (spec.i0 - halo)) % nx)[None, :]
@@ -1175,7 +1225,7 @@ def benchmark_gather_bandwidth(*, force=False):
     with stream:
         for _ in range(reps):
             for spec in specs:
-                G.gather_tile(store, tile_arrays, spec, stream)
+                G.gather_tile(store, tile_arrays, spec, stream, nz=nz)
     end.record(stream)
     end.synchronize()
     cp.cuda.runtime.deviceSynchronize()

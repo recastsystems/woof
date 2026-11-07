@@ -1,245 +1,219 @@
-# Stochastic physics on the global mesh
+# Stochastic physics (SPPT, SKEB) on any MPAS mesh
 
-Both forecast physics routes accept `--stochastic JSON`. Single forecasts
-default to SPPT and SKEB off. Global and hourly ensembles default to both on
-when they have more than one output member and fewer than ten source members.
-Ten source members default to off. The comparison required for qualification
-must therefore explicitly turn both on for its stochastic arm.
+hex carries its own stochastic physics, written from the published methods.
+No code, registry or documentation of NOAA's `stochastic_physics` package
+(LGPL) was read, downloaded or used, and none ships; MPAS namelist option
+names (`do_sppt`, `config_sppt_*`) are read only as configuration.
 
-For example, append this to a forecast command:
+| Piece | Method | Reference |
+| --- | --- | --- |
+| SPPT | The net physics tendency (theta, qv, edge momentum) is multiplied by `1+r`. `r` is a smooth random pattern, clipped so `1+r` stays in [0,2]. It is tapered to zero near the ground and in the stratosphere. Where the perturbed humidity tendency would supersaturate the air or make the humidity negative, the unperturbed tendencies are used at that point. | Buizza, Miller & Palmer (1999), QJRMS 125, 2887-2908; Palmer et al. (2009), ECMWF Tech. Memo. 598 |
+| Multi-scale SPPT | Up to five independent patterns, each with its own amplitude, length, time scale and seed, are summed. | Palmer et al. (2009) |
+| SKEB | A streamfunction pattern's rotational wind, scaled so it injects a fraction of the dissipated kinetic energy back into the flow. A thermal pattern does the same for temperature. | Shutts (2005), QJRMS 131, 3079-3102; Berner et al. (2009), JAS 66, 603-626 |
+| Pattern | Real spherical-harmonic coefficients follow AR(1) in time, with a Gaussian variance spectrum. | Weaver & Courtier (2001), QJRMS 127, 1815-1846 (Gaussian correlation on the sphere) |
+| Saturation | Saturation vapour pressure over water. | Bolton (1980), MWR 108, 1046-1053 |
 
-```sh
---stochastic '{"sppt":true,"skeb":true,"member":3,"seed":711}'
-```
+## The pattern law
 
-Global ensembles assign `member` from the source roster and accept
-`--stochastic-seed 711`. Their JSON cannot replace member identity.
-Resident forecast rosters accept a `stochastic` object in each record.
-Hourly manifests accept manifest-wide and per-member `stochastic` objects,
-`stochastic_seed`, and `source_members` when source cardinality differs from
-the selected member count. Named rosters derive identity from the member
-name, preserving seeds through reordering and card grouping. Explicit
-booleans override the ensemble default. The control arm uses
-`{"sppt":false,"skeb":false}`.
+- **Space.** The correlation is `exp(-r**2/(2*length_m**2))`, with `r` the
+  great-circle distance. `length_m` is therefore the distance at which the
+  correlation falls to `exp(-1/2)` = 0.61. The variance spectrum is
+  `exp(-l(l+1)*length_m**2/(2*R**2))`, normalised to unit point variance by
+  the addition theorem.
+- **Time.** Coefficients follow AR(1): the lag correlation is
+  `exp(-dt/time_s)`, with a stationary first draw.
+- **Truncation.** `degree: 0` (the default) picks the smallest degree whose
+  omitted variance is below 1e-4: 55 at 500 km, 61 at 450 km, 182 at 150 km,
+  capped at 512.
+- **Synthesis.** The harmonics are summed on the GPU at every mesh cell and
+  vertex (the `harmonic_sum` kernel, one thread per point). No
+  points-by-modes basis is stored, so the same law holds unchanged on a
+  global, variable-resolution (zoom globe) or limited-area mesh. The m
+  diagonal and the longitude rotation are carried in double precision. The
+  l recurrence runs in float on a power-of-two-scaled value, so a high-order
+  term near a pole cannot underflow before it matters.
+- **Seeds.** Philox4x32-10 (Random123, BSD; `licenses/LICENSE-Random123.txt`)
+  draws the innovations from a per-member seed:
+  `sha256(schema, member, seed)`. Members, reorderings and restarts therefore
+  reproduce the same words with the same build.
+- **Restart.** The checkpoint holds the coefficients, the clock and the draw
+  counter (schema `gpuwm-hex.stochastic/v3`). A restart with different
+  stochastic settings is refused.
 
-Overrides merge by option, preserving shared values a member does not name.
-For hourly manifests the order is manifest `stochastic`, manifest forecast
-flags, member `stochastic`, then member forecast flags. Within one scope,
-the last `--stochastic` occurrence wins for the options it names. For resident
-rosters a record's `stochastic` options override the shared forecast options,
-including when a resident group contains only one member. A member can turn
-SPPT off while retaining the shared seed, harmonic degree and time scale.
-Named resident members keep their identity when a group is reduced to one
-record, including a retry after admission splits a group. With explicit
-stochastic settings, that member's derived seed stays the same through
-reordering, selection and singleton grouping. A singleton roster still
-defaults both schemes off when no explicit switches are supplied.
+## SPPT details
 
-The pattern uses normalized real spherical harmonics, excluding degree zero,
-on cell centers and vertices. CUDA builds the basis once per mesh and degree;
-resident members sharing immutable mesh arrays share this resource. GPU
-Philox4x32-10 generates independent coefficient innovations. cuBLAS evaluates
-the harmonic sums. The spectrum is proportional to
-`exp(-l*(l+1)*(length_m/radius)**2)`, normalized to unit point variance by the
-addition theorem. `length_m` is the spectral length parameter, not a measured
-geodesic e-fold distance. AR(1) memory is `exp(-dt/time_s)` with a stationary
-first draw. The default degree is 48, length 500 km, time six hours, amplitude
-0.5 and clip 1. These are initial settings awaiting spread-skill qualification.
-Normalization cancels the common degree-one exponential before taking the
-sum, retaining a finite dipole limit at long correlation lengths. The AR(1)
-innovation uses `sqrt(-expm1(-2*dt/time_s))` directly so a rounded memory
-coefficient of one does not erase a representable innovation. Repeatability
-comparisons require the same build as well as the same member and seed.
+- **Bound.** The default is a hard clip `|r| <= clip` (clip 1). `logit: true`
+  (or `config_sppt_logit`) selects a smooth bound of the same range,
+  `clip*tanh(r/clip)`, whose slope at zero is one.
+- **Vertical taper.** It rises linearly from 0 at the ground to 1 at
+  `surface_m` (500 m; the lowest level is always 0). It falls linearly to 0
+  between `top_start_m` and `top_end_m` (18 and 25 km by default, 15 and
+  27 km for RRFS).
+- **Moisture guard (`moist_guard`, on by default).** The guard forms the
+  state after one step with the perturbed tendencies, using MPAS's equation
+  of state, `p = p0*(zz*Rd*rho_zz*theta_m/p0)**(cp/cv)`. If the perturbed
+  qv would be above saturation over water (Bolton 1980) or below zero, both
+  the theta and qv tendencies at that point keep their unperturbed values.
+  The receipt counts the reverted points on the first calls.
+- **Edges.** The edge factor is the mean of the two adjacent cell factors.
+  On a limited-area boundary edge it is the one existing cell's factor.
+- **Not perturbed.** Density, other species, and the lagged microphysics
+  heating carrier are left unchanged.
 
-Basis row offsets and harmonic work-item indices use 64-bit arithmetic.
-A valid basis can exceed the signed 32-bit limit of float words. The Linux
-host regression compiles the actual CUDA source with syntax shims and checks
-one protected sparse row beyond that limit against the addition theorem for
-every degree. This checks addressing and arithmetic without allocating a full
-basis. It does not establish GPU execution or performance.
+## SKEB details
 
-The WOOF door and driver memory floor add a component ledger for the
-stochastic arrays. The exact float32 basis allocation is
-`(3*nCells-4)*((degree+1)**2-1)*4` bytes for a closed trivalent spherical mesh.
-At 40,962 cells and degree 48 this is 1,179,667,200 bytes. The ledger also
-counts retained mesh topology/geometry, mode metadata, member tapers,
-coefficients, weights, pattern outputs, the SPPT combination array and,
-when SKEB is enabled, the named forcing arrays live at the tendency-write
-kernels. Extra SPPT scales each carry their own spectral and pattern buffers.
-Inactive scales are not charged. Admission and the direct driver's fallback
-use the same sum, including at the one-byte free-memory boundary.
+- **Dissipation.** The rate is the positive kinetic-energy sink of the
+  unperturbed physics momentum sources (boundary-layer drag, gravity-wave
+  drag, convective momentum transport), reduced per level over the mesh.
+  Numerical (dycore) dissipation is not added.
+- **Momentum.** A vertex streamfunction gives a dual-edge curl. The taper is
+  applied before the curl, so the forcing is non-divergent.
+- **Normalisation.** The streamfunction and thermal patterns are the
+  unit-variance pattern channels, used unclipped (Berner et al. 2009). The
+  curl is divided by its expected one-component RMS for the pattern's
+  spectrum, `sqrt(sum w**2 l(l+1)/(8 pi))/R`. This is a property of the
+  spectrum, not a sample over the mesh: a limited area much smaller than the
+  length scale is not amplified. The earlier sample norm reached 0 on lam7k,
+  where the clipped streamfunction was flat, and the winds went NaN.
+- **Temperature.** On a closed mesh the thermal pattern has its area mean
+  removed, so it adds no net heat. A limited area keeps its slice of the
+  global pattern.
+- **Energy budget.** The fractions are 0.1 (kinetic) and 0.01 (thermal) of
+  the dissipation, with the integrated AR(1) covariance
+  `2*D/h*tanh(h/(2*time_s))`, `h = max(dt, interval_s)`.
+- **Limited-area meshes.** An edge without both cells and both dual vertices
+  carries no curl and contributes no dissipation; native leaves its edge
+  density undefined.
 
-Ordinary, resident and one-rank same-host admission charge each member its
-full ledger without a sharing credit. This is a logical array floor rather
-than a measured peak. Construction scratch, temporary expression outputs,
-allocator placement, reduction workspaces and opaque cuBLAS workspaces are
-excluded. Full peak VRAM still needs GPU measurement on both physics routes.
-The native route does not use the WOOF footprint fit.
+## Limited-area meshes
 
-SPPT multiplies held theta, qv and edge momentum tendencies.
-Both routes keep the separately staged lagged microphysics heating carrier
-unchanged.
-The edge factor averages the two adjacent cell factors, applying a common
-cell pattern to the projected horizontal wind. Density and other species
-are untouched. The default clipped multiplier stays in [0,2]. The optional
-logistic transform follows the pinned stochastic wrapper's
-`2/(1+exp(taper*pattern))-1` perturbation. Height tapering suppresses the lowest
-level and decreases from 18 to 25 km. Surface height and upper bounds are
-configurable. Namelist surface limiting also supplies the pinned seven-level
-surface weights.
+The same law holds on a limited-area mesh, because the harmonics are summed
+at the region's own points. Cells in the lateral-boundary zone
+(`bdyMaskCell > 0`) take no forcing: the boundary series drives them.
+Missing neighbours (outside the region, or the padded garbage cell) are
+ignored. The limited-area MPAS suite route (`--lbc-dir`, including RRFS)
+admits `--stochastic`, `--sppt` and `--skeb`.
 
-SKEB estimates dissipation from the positive kinetic-energy sink of the
-unperturbed physics momentum sources. A vertex streamfunction supplies a
-dual-edge curl, with the taper applied before the curl. A separate thermal
-pattern has its area mean removed. Default kinetic and thermal fractions are
-0.1 and 0.01. Thermal conversion uses a 300 K reference and 1004 J/kg/K heat
-capacity. Rate variance uses the integrated AR(1) covariance,
-`2*fraction*dissipation/h*tanh(h/(2*time_s))`, with `h=max(dt,interval_s)`.
-For held patterns this assumes the update interval is an integer multiple of
-the model timestep. The previous white-noise normalization overstated the
-long-time energy input by about 72 at dt=600 s and time_s=21600 s. It caused
-the initial SKEB-only and combined global forecasts to fail within 27 hours.
-The v2 checkpoint schema keeps states from that normalization separate. These
-fractions set a nominal covariance budget; they are not an exact
-net energy budget after cross terms with the existing wind. This mesh
-adaptation has not established equivalence to WRF SKEBS or forecast skill.
-It currently does not diagnose dycore numerical dissipation.
+## Controls
 
-Two 128-thread CUDA kernels apply cell and edge forcing directly to the held
-tendencies. They fuse clipping, tapering, SPPT multiplication and SKEB addition,
-without allocating full level-by-edge curl/backscatter arrays or full cell
-SPPT-factor/heat arrays. Dissipation is reduced before either source is changed.
-Float32 source arrays may have padded columns and strided levels/cells; mesh
-topology and taper resources are made contiguous once during construction.
-cuBLAS writes each pattern into a reused member buffer. Returned pattern arrays
-are borrowed storage and must be copied when retaining an earlier sample.
-The independent GPU comparison test covers both transforms, individual and
-combined schemes, missing qv, padding, reversed levels and untouched carriers.
-Compilation succeeds offline; the padded/strided comparison also passed on
-the RTX 5070 Ti. Complete-step performance remains unqualified.
+- **Forecast door.** `--sppt/--no-sppt` and `--skeb/--no-skeb` override the
+  same keys of `--stochastic JSON`. For example:
+  `--sppt --stochastic '{"member":3,"seed":711}'`.
+- **Global ensemble door.** `--sppt/--skeb` work the same way, with
+  `--stochastic-seed`. The member identity comes from the source roster.
+- **Ensemble default.** SPPT and SKEB are on in every ensemble of more than
+  one member, GEFS-sourced ones included. `--no-sppt` and `--no-skeb` turn
+  them off. This follows the spread-skill run below; before it, they were on
+  only below ten source members.
+- **MPAS namelist (`&nam_stochy`).** `do_sppt`, `do_skeb`,
+  `config_sppt_N`, `config_sppt_lscale_N`, `config_sppt_tau_N` and
+  `config_iseed_spptN` set the scales (N = 1..5). `config_sppt_logit` sets
+  the smooth bound and `config_sppt_sfclimit` the surface taper.
+  `config_sppt_hgt_top1/2` set the stratospheric taper, `config_spptint` the
+  update interval (0 = every step) and `config_stochini` whether a restart
+  must carry the state. Any other active stochastic option is refused by
+  name.
+- **RRFS v2 (hrrrv5) ensemble settings.** NOAA's published RRFS v2
+  namelist (`verification/source-namelists/rrfs-v2-hrrrv5-namelist.atmosphere`)
+  sets one SPPT scale: amplitude 0.8, 450 km, 6 h, smooth bound, surface
+  limit, taper 15-27 km, update every step. SKEB is off.
+  `do_sppt = .true.` in that deck runs exactly those values.
 
-Runtime receipts report logical retained member-array bytes for tapers,
-coefficients, weights and pattern buffers. These counts exclude the shared
-mesh resource, allocator pool, cuBLAS workspace and transient reductions.
-The SKEB sink/reduction still creates level-by-edge temporary arrays.
-Neither these counts nor fusion alone establishes peak VRAM or the five
-percent step-cost requirement.
+## Cost
 
-`sppt_scales` accepts up to five independent
-`[amplitude,length_m,time_s,seed]` records. Legacy `do_sppt`, `do_skeb`,
-`config_sppt_*`, `config_iseed_sppt*`, `config_spptint` and
-`config_stochini` are consumed by the same resolver. Unknown active stochastic
-controls raise an option-specific error. A namelist containing only switches,
-taper or cadence controls uses the base pattern; scalar JSON seed, amplitude,
-length and time overrides then control SPPT as well as the base SKEB pattern.
-Indexed namelist scale controls declare independent SPPT scales whose explicit
-seeds and settings take precedence over scalar controls. Replace `sppt_scales`
-explicitly, or set it to `[]` to return to the base pattern.
-`config_stochini` requires spectral
-restart state. WOOF checkpoints and the native moving carrier include the
-coefficients, clock and draw counters. A restart with changed stochastic
-parameters is refused. The workflow restart flag itself may change.
-The shared WOOF stack builder also constructs the adapter for the one-rank
-same-host route. Rank checkpoints retain spectral state and bind seed/settings.
-Partitioned and multi-class routes need halo-aware curls, global dissipation
-reductions and shared spectral clocks; they report those specific missing
-operations before execution. Open regional meshes are not supported yet.
+The synthesis is one kernel per pattern update. Its measured time is in the
+evidence receipt beside the step time; with `config_spptint = 0` it runs
+every step. The memory ledger (`device_admission.stochastic_array_ledger`)
+holds coordinates, topology, recurrence tables, tapers, the moisture metric
+and patterns. There is no basis term: at x1.40962 with degree 48, the stored
+basis that this replaces was 1.18 GB per member.
 
-Lineage: the engine's `woof/ensemble/stochastic.py` and
-`woof/core/kernels/ensemble_stochastic.cu`, WRF's `module_stoch.F`, and
-[the pinned stochastic wrapper](https://github.com/dtcenter/stochastic_physics/blob/1ed03f55444fdf7d49b7687fc4e477de0a276e99/stochastic_physics_m.F90).
-The rectangular FFT cannot evaluate patterns directly on a Voronoi mesh;
-the mesh transform and forcing adapters here are new. The Philox notice is
-included in `licenses/LICENSE-Random123.txt`.
+## Measured (2026-10-29)
 
-GPU statistics and restart tests are in `tests/test_stochastic.py`. Run them
-only on an authorized card with `HEX_STOCHASTIC_GPU_TESTS=1`.
-On 2026-10-17, ten GPU stochastic and verification tests passed on an
-RTX 5070 Ti under the the reference GPU host OWNER mutex, using CuPy 14.2.0 and CUDA 13.2.
-They cover GPU seed words, variance, temporal and spatial correlation,
-restart, clipping, mesh curl, padded/strided forcing, extraction and scoring.
-The curl check propagates the float32 carrier's output-rounding bound through
-the incidence operator; reversing one edge's forcing fails that bound.
+Evidence folder: `HEX-STOCHASTIC-PHYSICS-2026-10-29` (receipts and maps).
 
-The published x1.40962 mesh, converted from its unit sphere to Earth metrics
-on the GPU, also passed a two-day prescribed-tendency stress check with
-55 levels, a 300 second update and default degree 48. Basis storage was
-1,179,667,200 bytes. Construction took 63.15 ms wall time; warmed basis
-kernel calls took about 57.23 ms. Pattern evaluation median was 3.99 ms,
-and complete stochastic forcing median was 4.90 ms. Same seeds produced
-identical words at 0, 300, 86400 and 172800 seconds; changing the seed changed
-each output. Measured coefficient variance was 0.9948 and lag correlation
-0.98613 versus the configured 0.98621. Basis, pattern and forcing computation
-ran on the GPU, without CUDA graphs. This check uses prescribed sources,
-not a weather forecast or either complete physics route. Its memory reading
-is end-of-check occupancy, not peak VRAM. Receipts are in the lane delivery's
-`receipts/gpu-mesh-measurements.json` and `receipts/gpu-stochastic-tests.json`.
+**Pattern law** (`tools/stochastic_pattern_stats.py`, RTX 4090; 450 km,
+6 h; 200 independent draws on x1.10242 and 2 million cell pairs):
 
-Qualification still requires the paired ten-member, ten-day, 120 km forecasts, daily
-area-weighted z500 and 2 m temperature spread and mean RMSE against the same
-GFS analyses, inspected plots, complete-route repeatability and pattern cost
-below five percent of complete step cost.
-Receipts include nonblocking CUDA event samples for basis construction and
-the first four pattern and forcing calls when those events have completed.
-Sample zero includes cold setup. Compare warm samples with complete step
-timings to establish the five percent limit. Enqueue wall time alone does
-not establish GPU elapsed time.
+- **Space:** the correlation falls to `exp(-1/2)` at 450.5 km, and a
+  Gaussian fit gives 451.0 km. The largest gap from the exact truncated
+  Legendre series is 0.014.
+- **Variance:** the point variance is 1.001 on average. A regional subset
+  (the points a limited-area mesh holds) gives the same law; its own
+  measurement, 460 km, comes from only 209 points.
+- **Time:** over 2,160 steps of 600 s, the lag correlation reaches `1/e` at
+  5.996 h. The lag-1 value is 0.97259 (expected 0.97260).
+- **Spectrum:** projected back with area-weighted quadrature, each degree is
+  within 5.7 % of the requested variance, inside the sampling error of 100
+  draws.
+- **On-the-fly synthesis:** it equals the stored-basis product to 2.0e-5,
+  where field values reach 3.57.
+- **Kernel time:** degree 61 at 5.87 million points (conus3km cells and
+  vertices) takes 41-73 ms for one channel and 119-221 ms for three. Those
+  are two measurements on a 4090 shared with live jobs. SPPT alone is
+  synthesised at cells only, a third of those points.
 
-The shared WOOF composite step and the MPAS outer-step loop also bracket
-the first four compute steps with CUDA events on the active member stream.
-`stochastic.step_cost` pairs each step with its pattern and complete forcing
-calls. It excludes output and checkpoints. Event queries do not wait; pending
-samples are reported as incomplete. Stream elapsed includes host dispatch
-gaps and waits, so this is distinct from summed kernel execution time.
-The first step and the first forcing call are cold samples. Failed steps,
-steps without forcing, and samples crossing streams cannot pass the cost bar.
-With at least three matched warm steps, `pattern_cost_passed` requires pattern
-time strictly below five percent on every sample. Aggregate pattern and
-forcing fractions are also reported. Until then the verdict is `null`.
-This timing verdict always leaves full qualification incomplete. It does not
-establish seed words, spread-skill, the no-single-core bar or landing gates.
+**MPAS-A route, global ensemble door** (10 GEFS members, 2026-10-27 00Z,
+x1.40962, convection_permitting, 6 h, scored by
+`tools/stochastic_verify_day.py` against the GFS 06Z analysis, area weighted):
 
-The host restart unit compiles `tests/stochastic_pattern_shim.cpp` as a
-test-only ABI for the actual CUDA-source AR(1). It exercises the production
-Python pattern classes with tiny NumPy matrix products: snapshot ownership,
-pickle roundtrip, resumed words, cadence without extra draws, stable member
-identity, and rejection of changed configurations or invalid coefficient
-state. It covers the base pattern and two extra SPPT scales. A disposable
-mutation skipping a draw on restore fails resumed-word equality. These checks
-do not establish CUDA words, cuBLAS behavior or model checkpoint execution.
-Fractional cadence checks cover 0.1, 0.2, 0.7, 1.1 and 60 second intervals:
-21 boundary updates, 41 held calls and resumed-word equality per case. The
-clock quotient admits one floating-point ULP below an integral tick so a
-decimal boundary such as `0.3/0.1` does not hold the previous pattern for an
-extra interval. Times materially before a boundary still hold. This corrects
-fractional-clock updates and does not change integer cadence or the seed law.
+| | z500 spread | z500 mean RMSE | ratio | t2m spread | t2m mean RMSE | ratio |
+| --- | --- | --- | --- | --- | --- | --- |
+| SPPT and SKEB off | 3.21 m | 4.065 m | 0.79 | 0.439 K | 1.698 K | 0.26 |
+| SPPT and SKEB on | 3.50 m | 4.078 m | 0.86 | 0.511 K | 1.692 K | 0.30 |
 
-The ordinary unit suite also compiles `tests/stochastic_forcing.cpp` with
-Linux g++ and host syntax shims for the actual CUDA kernels. It checks SPPT
-bounds, the logistic transform, cell/qv and edge factors, reversed and padded
-array layouts, and untouched padding. A tetrahedral mesh checks SKEB curl
-divergence with nonuniform vertical taper. Thermal checks use unequal areas
-and densities to check zero mean and prescribed variance with uniform taper;
-zero dissipation produces no forcing. A disposable mutation applying taper
-after the curl fails the divergence invariant. These are small host unit
-checks, without a GPU context or a production CPU backend.
+The spread maps (Rust renderer, CONUS) show the same structures in both arms,
+with more spread in the "on" arm, most over the western Atlantic and New
+England. Pattern synthesis took 2.4 ms per update and the whole forcing
+3.1 ms per step (36 steps of 600 s), under 1 % of the step. Forecast stage
+medians were 18.8 s on and 19.7 s off.
 
-The ordinary unit suite also compiles `tests/stochastic_statistics.cpp` with
-Linux g++ and executes the actual CUDA source through host syntax shims.
-It checks three published Random123 Philox vectors, the upper draw-counter
-word, sampled seed/member words, stationary point variance, independent
-channels, temporal AR(1) correlation and the analytical Legendre spatial
-covariance. Its small host matrix sum is an independent test oracle for the
-spectral law. These checks use host math and do not validate GPU words,
-cuBLAS execution, the GPU cache, restart plumbing or forecast performance.
+**Restart.** A member with SPPT and SKEB on was run three ways:
 
-The host unit `tests/stochastic_harmonic_covariance.cpp` independently checks
-the addition theorem at degrees 1, 12, 48, 132 and 512. Ten points include
-poles, near-poles, longitude seams and antipodes. Every degree band is checked
-against ordinary Legendre polynomials of all 55 point-pair separations.
-This tests spatial covariance as well as point variance. A disposable
-longitude-phase mutation that preserves point variance fails the covariance
-check. Host results do not establish GPU execution, words or timings.
+- straight;
+- with a checkpoint written at 3 h;
+- restarted from that checkpoint.
+
+At 6 h all three are identical: 0 of 95,686,466 history words and 0 of
+5,243,123 diagnostics words differ.
+
+**Both off is unchanged.** A member with SPPT and SKEB off is identical in
+every word to the release before this change (rel/hex-0.4.10 c8704ed0):
+
+- MPAS-A route: 0 of 95,686,466 history and 0 of 5,243,123 diagnostics
+  words differ.
+- RRFS hrrrv5 x1.2562, 6 h: 0 of 3,666,223 history and 0 of 568,751
+  diagnostics words differ.
+
+**RRFS hrrrv5 x1.2562** (2023-03-31 12Z, 6 h, `--sppt` with NOAA's RRFS v2
+settings, 10 members from one initial state): every member completes. The
+2 m temperature spread at 18Z is 0.5-1.5 K over land in the afternoon
+boundary layer and small over the oceans.
+
+| Against the GFS analysis at 18Z | z500 spread | z500 mean RMSE | t2m spread | t2m mean RMSE |
+| --- | --- | --- | --- | --- |
+| SPPT off (deterministic) | 0 | 11.42 m | 0 | 2.516 K |
+| SPPT on (10 members) | 0.98 m | 11.41 m | 0.37 K | 2.513 K |
+
+A `--restart-from` run on this route is not the straight run, with or
+without stochastic physics: 1.79 M of 3.67 M history words differ at 18Z on
+rel/hex-0.4.10 itself. The stochastic restart was therefore proved on the
+MPAS-A route; the route's own restart defect is filed for its owner.
+
+**RRFS hrrrv5 limited area** (lam7k, a 270 km cut of conus3km, 3 km,
+2 h, members 1 and 2, `--sppt --skeb`): both complete. The 2,567 cells of
+the lateral-boundary zone take no forcing. Against the run with both off at
+14Z:
+
+- 10 m v wind differs by 0.6-1.0 m/s RMS;
+- 2 m temperature by 0.12-0.17 K RMS;
+- MSLP by 5-11 Pa RMS.
+
+Every word is finite. With SPPT alone, the 10 m v wind differs by 0.23 m/s
+RMS. The moisture guard reverts 6-14 % of the level-cells, the saturated
+cloudy columns of a convective day.
+
+## Verification tools
 
 `woof.hex.stochastic_verification.forecast_fields_gpu` extracts z500 from
 GPU `(cell, level)` pressure (Pa) and geopotential height (metres) arrays,

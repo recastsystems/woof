@@ -28,6 +28,7 @@ platform in :mod:`woof.core.kernel_frame_recordings`
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
@@ -63,6 +64,7 @@ NOAHMP_TRANSLATION_UNITS: dict[str, tuple[str, ...]] = {
     "noahmp_vegeflux": ("noahmp_vegeflux",),
     "noahmp_vegprecip": ("noahmp_vegprecip",),
     "noahmp_water": ("noahmp_water",),
+    "noahmp_output": ("noahmp_output",),
 }
 
 #: The units that are *fragments*: they need :data:`LIBM_UNIT` in front and
@@ -118,6 +120,8 @@ DEFAULT_OPTIONS = ("-std=c++17", "--ftz=false")
 
 def pricing_key(name: str) -> str:
     """The memory-inventory key for the runtime unit (never a raw fragment)."""
+    if name == "noahmp_gecros":
+        return name
     parts = NOAHMP_TRANSLATION_UNITS[name]
     if len(parts) > 1:
         return name + "_composed"
@@ -217,7 +221,9 @@ def validate_vege_atan_profile(profile: str) -> str:
 
 
 def runtime_unit(name: str, *, kernel_dir: Path = KERNEL_DIR,
-                 atan_profile: str = "glibc_2_39") -> RuntimeUnit:
+                 atan_profile: str = "glibc_2_39",
+                 log10_profile: str = "glibc_2_39",
+                 selected_options: bool = False) -> RuntimeUnit:
     """Snapshot the production composition and options, including VEGE_FLUX.
 
     All custom runtime factories and the compile-only measurement harness use
@@ -231,6 +237,18 @@ def runtime_unit(name: str, *, kernel_dir: Path = KERNEL_DIR,
     oracle arithmetic. The opt-in 2.43 profile uses the retained CORE-MATH
     header and records it as a source component. No other libm is switched.
     """
+    if name == "noahmp_gecros":
+        base = runtime_unit("noahmp_vegeflux", kernel_dir=kernel_dir,
+                            atan_profile=atan_profile, selected_options=True)
+        headers = ([] if atan_profile == "glibc_2_43" else ["glibc_trig_flt32.cuh"]) + [
+            "noahmp_gecros.cuh", "noahmp_gecros_lifecycle.cuh", "noahmp_gecros_flux.cuh"]
+        extra = tuple((h, (Path(kernel_dir)/h).read_text(encoding="ascii")) for h in headers)
+        extra=tuple((h,("#define glibc_atanf nmp_gecros_atanf\n"+t+"\n#undef glibc_atanf\n") if h=="glibc_trig_flt32.cuh" else t) for h,t in extra)
+        source = base.source + "\n" + _assemble(extra, "")
+        return RuntimeUnit(name=name, source=source,
+            parts=base.parts+tuple((h,_sha(t)) for h,t in extra),
+            preamble_sha256=base.preamble_sha256,
+            options=("-std=c++17","--ftz=false"), exports=exported_kernels(source))
     validate_vege_atan_profile(atan_profile)
     if atan_profile != "glibc_2_39" and name != "noahmp_vegeflux":
         raise ValueError("the selected atan profile is implemented only for VEGE_FLUX")
@@ -238,6 +256,37 @@ def runtime_unit(name: str, *, kernel_dir: Path = KERNEL_DIR,
     # Read each component ONCE so its recorded digest and compiled text cannot
     # describe different reads of a concurrently edited file.
     texts = _component_texts(parts, kernel_dir)
+    if log10_profile not in ("glibc_2_39","glibc_2_43"):
+        raise ValueError("unknown Noah-MP native LOG10 profile")
+    if log10_profile != "glibc_2_39":
+        if name != "noahmp_thermal":
+            raise ValueError("native LOG10 profile is implemented only for THERMOPROP")
+        header="noahmp_log10_profile.cuh"
+        texts=((header,(Path(kernel_dir)/header).read_text(encoding="ascii")),)+tuple(
+            (part,text.replace("r_log10(satratio)","noahmp_native_log10(satratio)"))
+            for part,text in texts)
+
+    if selected_options:
+        if name not in {"noahmp_vegprecip", "noahmp_thermal", "noahmp_leaves", "noahmp_water", "noahmp_bareflux", "noahmp_glacier", "noahmp_radiation",
+                        "noahmp_vegeflux"}:
+            raise ValueError(f"no selected option unit for {name}")
+        # Default images retain their source, exports and measured identity.
+        # Extensions reuse its helpers and add separately sealed entry points.
+        if name == "noahmp_radiation":
+            trig = "glibc_trig_flt32.cuh"
+            texts = texts + ((trig, (Path(kernel_dir) / trig).read_text(encoding="ascii")),)
+        if name=="noahmp_leaves":
+            header="noahmp_carbon_options.cuh"
+            texts=texts+((header,(Path(kernel_dir)/header).read_text(encoding="ascii")),)
+            header="noahmp_crop_options.cuh"
+            texts=texts+((header,(Path(kernel_dir)/header).read_text(encoding="ascii")),)
+            header="noahmp_soil_options.cuh"
+            texts=texts+((header,(Path(kernel_dir)/header).read_text(encoding="ascii")),)
+        header = name + "_options.cuh"
+        texts = texts + ((header, (Path(kernel_dir) / header).read_text(encoding="ascii")),)
+        if name=="noahmp_water":
+            header="noahmp_groundwater_options.cuh"
+            texts=texts+((header,(Path(kernel_dir)/header).read_text(encoding="ascii")),)
     if name == "noahmp_vegeflux":
         prefix = ""
         options = ("-std=c++14", "--ftz=false")
@@ -267,7 +316,9 @@ def runtime_unit(name: str, *, kernel_dir: Path = KERNEL_DIR,
 def compile_runtime_unit(name: str, *, module_key: str,
                          options: tuple[str, ...] | None = None,
                          source: str | None = None, log_stream=None,
-                         atan_profile: str = "glibc_2_39"):
+                         atan_profile: str = "glibc_2_39",
+                         log10_profile: str = "glibc_2_39",
+                         selected_options: bool = False):
     """Compile and load one Noah-MP runtime unit; no launch, no constant upload.
 
     The one direct-NVRTC route for Noah-MP. Every runtime factory
@@ -282,7 +333,8 @@ def compile_runtime_unit(name: str, *, module_key: str,
     suites compile (a perturbed copy, ``-fmad=false``); they are recorded
     under the caller's own ``module_key`` and are not the production unit.
     """
-    unit = runtime_unit(name, atan_profile=atan_profile)
+    unit = runtime_unit(name, atan_profile=atan_profile, log10_profile=log10_profile,
+                        selected_options=selected_options)
     code = unit.source if source is None else source
     opts = unit.options if options is None else tuple(options)
     return _compile_loaded_module(code, opts, module_key, log_stream)
@@ -304,7 +356,20 @@ def compile_generated_slab_kernel(source, name):
     return module.get_function(name)
 
 
+@lru_cache(maxsize=None)
+def _selected_module_on(device, name):
+    return compile_runtime_unit(
+        name, module_key=f"woof.core.noahmp.selected:{name}",
+        selected_options=True)
+
+
+def selected_kernel(name, symbol):
+    """Selected leaf image, isolated from the measured default image."""
+    import cupy as cp
+    return _selected_module_on(cp.cuda.runtime.getDevice(), name).get_function(symbol)
+
+
 
 __all__ += ["DEFAULT_OPTIONS", "NOAHMP_PRICING_MODULES", "RuntimeUnit",
             "compile_runtime_unit", "compile_generated_slab_kernel", "exported_kernels", "pricing_key",
-            "runtime_unit"]
+            "runtime_unit", "selected_kernel"]

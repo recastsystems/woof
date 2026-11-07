@@ -383,7 +383,10 @@ def test_the_composed_unit_compiles_to_the_frame_it_is_priced_at():
     p3_cu = Path(K.__file__).resolve().parent / "p3.cu"
     symbol = re.compile(
         r'extern\s+"C"\s+__global__\s+void\s+([A-Za-z_][A-Za-z0-9_]*)')
-    names = sorted(set(symbol.findall(p3_cu.read_text(encoding="utf-8"))))
+    text = p3_cu.read_text(encoding="utf-8")
+    instantiated = re.findall(r"^P3_BOTH_CATEGORY_COUNTS\(([^)]+)\)", text, re.M)
+    names = sorted({PD.kernel_name(name, cat) for name in instantiated for cat in (1,2)}
+                   | {name for name in symbol.findall(text) if name != "name"})
     assert len(names) >= 12, names
 
     module = PD.p3_module(PD.DEFAULT_OPTIONS)

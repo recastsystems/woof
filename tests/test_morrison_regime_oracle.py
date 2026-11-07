@@ -47,7 +47,7 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
 #: Columns whose production words may differ (the nucleation cap's
-#: regimes), and how many of them differ per set, measured on W1's RTX PRO
+#: regimes), and how many of them differ per set, measured on the test host's RTX PRO
 #: 6000 (strict and default arithmetic alike).
 CAP_REGIMES = {"cirrus_anvil", "edge_stratosphere", "edge_supersat_homog"}
 PRODUCTION_DIFFERING_COLUMNS = {"m0_dt72_nz50": 4, "m1_dt20_nz50_x30": 3}

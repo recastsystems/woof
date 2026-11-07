@@ -432,7 +432,7 @@ def nest_config(woof: str, out: Path, name: str, *, lat: float, lon: float, dx_k
     config = out / f"{name}.toml"
     profile = nest_physics_profile(dx_km, physics_profile)
     _run([woof, "domain", "--source", "hex-global", "--cadence", f"{cadence_h:g}",
-          "--point", f"{lat},{lon}", "--root-dx", f"{dx_km:g}",
+          f"--point={lat},{lon}", "--root-dx", f"{dx_km:g}",
           "--point-extent-km", f"{size_km:g}", "--hours", str(hours), "--cycle", cycle,
           *(["--physics-profile", profile] if profile else []),
           "--name", name, "--out", config], out / "logs" / "domain.log")
@@ -477,7 +477,7 @@ def hold_budget_seconds(stop_after_cents: float | None, usd_per_hour: float | No
 
 
 #: The maps a nest draws by default: the WOOF worker's "met" product set (contracts/product-sets.json), not
-#: ``all``.  THE BREAKAGE THIS PREVENTS: on woof 2.9.5 and 2.9.6, ``--render-products all`` includes the
+#: ``all``.  THE BREAKAGE THIS PREVENTS: on gpuwm 2.9.5 and 2.9.6, ``--render-products all`` includes the
 #: hub-height maps, which refuse a dot in the domain folder name, so any nest whose spacing is not a whole
 #: number of km (1.5 or 2.5 km) died at its end-of-run render with exit 2 (fixed in 2.9.7 by
 #: fix/go-render-exit2).  ``add-nest --render-products all`` still asks for everything.
@@ -495,7 +495,7 @@ NEST_PRODUCTS = ",".join((
 
 #: What the nest's maps call its grid in the headline: ``nest 3 km``, not the ``d01 3 km`` it is in its own
 #: one-domain run.  THE BREAKAGE THIS PREVENTS (WOOF Hex with Regional, 2026-10-28, canary run_9a0796b2e9c8e251):
-#: every nest map was headlined ``d01 3 km`` while the site files the nest as d05.  The engine (woof >= 2.9.10,
+#: every nest map was headlined ``d01 3 km`` while the site files the nest as d05.  The engine (gpuwm >= 2.9.10,
 #: ``woof.runtime.GRID_NAME_ENV``) stamps it on d01's frames as ``GPUWM_GRID_NAME`` and ``rw_wrfbatch`` prints it
 #: in the headline only, so the domain folder stays ``d01-3km`` (the WOOF worker's ``nest_view`` matches on it).
 #: An older engine ignores the variable and draws ``d01`` as before.

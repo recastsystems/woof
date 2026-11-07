@@ -241,8 +241,9 @@ def source_row(name: str) -> SourceRow:
             f"--source {name!r} is not a projected source this door knows.  "
             f"Known rows: {', '.join(sorted(SOURCE_ROWS))}.  A source is a row "
             f"in woof.hex.hrrr_intermediate.SOURCE_ROWS naming the engine's "
-            f"decoder, its loader and its field map; a uniform lat-lon source "
-            f"does not need this door at all (docs/source-matrix.md)"
+            f"decoder, its loader and its field map; a packaged woof source with a "
+            f"table fetch route takes the packaged road (woof.hex.packaged_intermediate); "
+            f"a uniform lat-lon source does not need this door at all (docs/source-matrix.md)"
         )
     return SOURCE_ROWS[key]
 
@@ -329,17 +330,21 @@ def west_longitude(value: float) -> float:
 
 
 def mesh_cell_degrees(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Every cell centre of an MPAS grid, init or static file: (latitude, longitude east 0..360) in degrees."""
+    """Every cell centre: (latitude, longitude east 0..360) in degrees."""
+    return _mesh_point_degrees(path, "Cell")
 
+
+def _mesh_point_degrees(path: Path, location: str) -> tuple[np.ndarray, np.ndarray]:
+    """Read one mesh coordinate set; no weather fields enter Python."""
     from netCDF4 import Dataset
 
     try:
         with Dataset(Path(path)) as dataset:
-            lat = np.degrees(np.asarray(dataset.variables["latCell"][:], dtype=np.float64))
-            lon = np.degrees(np.asarray(dataset.variables["lonCell"][:], dtype=np.float64)) % 360.0
+            lat = np.degrees(np.asarray(dataset.variables["lat" + location][:], dtype=np.float64))
+            lon = np.degrees(np.asarray(dataset.variables["lon" + location][:], dtype=np.float64)) % 360.0
     except (OSError, KeyError) as error:
-        raise IntermediateRefusal(f"--grid {path} is not an MPAS mesh with latCell/lonCell: {error}") from error
-    if lat.size == 0 or not (np.isfinite(lat).all() and np.isfinite(lon).all()):
+        raise IntermediateRefusal(f"--grid {path} is not an MPAS mesh with lat{location}/lon{location}: {error}") from error
+    if lat.size == 0 or lat.shape != lon.shape or not (np.isfinite(lat).all() and np.isfinite(lon).all()):
         raise IntermediateRefusal(f"--grid {path} holds no finite cell centres")
     return lat, lon
 
@@ -358,7 +363,7 @@ STENCIL_POINTS = 2
 
 
 def target_from_mesh(
-    grid: Path, row: SourceRow, *, margin_km: float = DEFAULT_MARGIN_KM,
+    grid: Path, row: SourceRow | None, *, margin_km: float = DEFAULT_MARGIN_KM,
     spacing_deg: float = DEFAULT_SPACING_DEG,
 ) -> tuple[LatLonTarget, dict[str, Any]]:
     """The lat-lon box over EVERY cell of a mesh (its relaxation and specified rings are cells too), with
@@ -376,6 +381,14 @@ def target_from_mesh(
     if not spacing_deg > 0.0:
         raise IntermediateRefusal(f"--spacing-deg {spacing_deg} is not positive")
     lat, lon = mesh_cell_degrees(grid)
+    counts = {"cells": int(lat.size)}
+    if row is None:
+        # Packaged exports authenticate both cell and edge stencils. Outer
+        # edges can extend beyond a cell-only box on coarse regional meshes.
+        edge_lat, edge_lon = _mesh_point_degrees(grid, "Edge")
+        counts["edges"] = int(edge_lat.size)
+        lat = np.concatenate((lat, edge_lat))
+        lon = np.concatenate((lon, edge_lon))
     centre, relative = _relative_longitudes(lon)
     stencil = STENCIL_POINTS * spacing_deg
     lat_margin = float(margin_km) / KM_PER_DEG
@@ -395,6 +408,9 @@ def target_from_mesh(
     need = {"south": float(lat.min()) - stencil, "north": float(lat.max()) + stencil,
             "west_rel": float(relative.min()) - stencil, "east_rel": float(relative.max()) + stencil,
             "centre": centre}
+    if row is None:
+        # A packaged source's box export carries its own coverage refusal; the box is the mesh's.
+        return target, {"from_grid": str(grid), **counts, "trimmed_to_source": None}
     try:
         target, trimmed = clip_to_source(target, row, need)
     except IntermediateRefusal as refusal:
@@ -1035,7 +1051,7 @@ def first_guess_levels(row: SourceRow, soil_set: str) -> tuple[int, int]:
     return row.levels + 1, (len(row.soil_node_names) if soil_set == "nodes" else len(row.soil_layer_names))
 
 
-def soil_set_for_suite(row: SourceRow, suite: str | None) -> str:
+def soil_set_for_suite(row: SourceRow | dict, suite: str | None) -> str:
     """The soil set an init for ``suite`` reads: the source's own nodes when the suite's init producer reads
     first-guess nodes (``soil.first_guess_soil`` = ``source-nodes`` in data/profiles/init-producers.v1.json; the
     RRFS fork's RUC column) and the row carries them, else the interpolated layers."""
@@ -1048,7 +1064,9 @@ def soil_set_for_suite(row: SourceRow, suite: str | None) -> str:
     if producer is None:
         return "layers"
     wanted = (producer[1].get("soil") or {}).get("first_guess_soil")
-    return "nodes" if wanted == "source-nodes" and row.soil_node_names else "layers"
+    nodes = ((row.get("intermediate") or {}).get("soil_node_depths_cm")
+             if isinstance(row, dict) else row.soil_node_names)
+    return "nodes" if wanted == "source-nodes" and nodes else "layers"
 
 
 def regrid_hour(
@@ -1566,7 +1584,9 @@ def add_intermediate_parser(commands: Any) -> None:
         ),
     )
     parser.add_argument("--source", default="hrrr", metavar="ROW",
-                        help=f"a row of SOURCE_ROWS ({', '.join(sorted(SOURCE_ROWS))})")
+                        help=f"a row of SOURCE_ROWS ({', '.join(sorted(SOURCE_ROWS))}), or any packaged woof "
+                             "source with a table fetch route (gem-hrdps, gem-rdps, ...), which takes the "
+                             "packaged road (woof.hex.packaged_intermediate)")
     parser.add_argument("--grib-dir", type=Path, required=True, metavar="DIR",
                         help="where `woof fetch --source hrrr` wrote the cycle")
     parser.add_argument("--cycle", required=True, metavar="YYYY-MM-DDTHH",
@@ -1596,11 +1616,28 @@ def add_intermediate_parser(commands: Any) -> None:
                         help="the engine's decoder binary (default: woof's bridge ladder)")
     parser.add_argument("--workers", type=int, default=4, metavar="N",
                         help="decoder workers, 1..13 (default 4)")
+    parser.add_argument("--source-parameters", help="table-declared KEY=VALUE selectors")
+    from woof.storm_merge import add_arguments
+    add_arguments(parser)
     parser.set_defaults(handler=run_intermediate)
 
 
 def request_from_arguments(arguments: argparse.Namespace) -> IntermediateRequest:
     row = source_row(arguments.source)
+    target, basis = _target_from_arguments(arguments, row)
+    return IntermediateRequest(
+        source=row, grib_dir=arguments.grib_dir, cycle=parse_cycle(arguments.cycle),
+        hours=parse_hours(arguments.hours), target=target, out_dir=arguments.out_dir,
+        decoder=arguments.decoder, workers=int(arguments.workers), prefix=str(arguments.prefix),
+        target_basis=basis, soil_set=soil_set_for_suite(row, getattr(arguments, "physics_suite", None)),
+        physics_suite=getattr(arguments, "physics_suite", None),
+    )
+
+
+def _target_from_arguments(arguments: argparse.Namespace,
+                           row: SourceRow | None = None) -> tuple[LatLonTarget, dict[str, Any]]:
+    """The box both roads write, from a mesh's cells, a plan's cull region or a point and reach.  A projected
+    row (``row``) trims a mesh box to what its decoder can carry; the packaged road takes the mesh box as is."""
     given = [flag for flag, value in (("--from-plan", arguments.from_plan), ("--point", arguments.point),
                                       ("--grid", getattr(arguments, "grid", None))) if value is not None]
     if len(given) > 1:
@@ -1628,16 +1665,31 @@ def request_from_arguments(arguments: argparse.Namespace) -> IntermediateRequest
             "box and nothing here guesses one"
         )
     basis["margin_km"] = float(arguments.margin_km)
-    return IntermediateRequest(
-        source=row, grib_dir=arguments.grib_dir, cycle=parse_cycle(arguments.cycle),
-        hours=parse_hours(arguments.hours), target=target, out_dir=arguments.out_dir,
-        decoder=arguments.decoder, workers=int(arguments.workers), prefix=str(arguments.prefix),
-        target_basis=basis, soil_set=soil_set_for_suite(row, getattr(arguments, "physics_suite", None)),
-        physics_suite=getattr(arguments, "physics_suite", None),
-    )
+    return target, basis
 
 
 def run_intermediate(arguments: argparse.Namespace) -> int:
+    from . import packaged_intermediate
+
+    if str(arguments.source).strip().lower() not in SOURCE_ROWS and packaged_intermediate.handles(arguments.source):
+        # The second road: a packaged woof source (HRDPS, RDPS, ...) through
+        # its table fetch route and the mapped engine's box export.
+        target, basis = _target_from_arguments(arguments)
+        receipt = packaged_intermediate.build_packaged_intermediates(
+            source=str(arguments.source), grib_dir=arguments.grib_dir, cycle=parse_cycle(arguments.cycle),
+            hours=parse_hours(arguments.hours), target=target, out_dir=arguments.out_dir,
+            workers=int(arguments.workers), prefix=str(arguments.prefix), target_basis=basis,
+            physics_suite=getattr(arguments, "physics_suite", None))
+        print(json.dumps({"files": [item["path"] for item in receipt["files"]], "target": receipt["target"],
+                          "levels": receipt["levels"]}, indent=2))
+        return 0
+    from .init_sources import load_table, resolve_source
+    row = resolve_source(load_table(), arguments.source, coverage="limited_area")
+    if row.get("intermediate", {}).get("backend") == "mapped-composition":
+        from .mapped_intermediate import run
+        return run(arguments, row)
+    if getattr(arguments, "storm_merge", None):
+        raise IntermediateRefusal("storm merge requires a canonical composition source row")
     request = request_from_arguments(arguments)
     receipt = build_intermediates(request)
     print(json.dumps({
@@ -1725,6 +1777,8 @@ def add_lbc_parser(commands: Any) -> None:
                           help="the run's suite; one with an init producer row gets that producer's boundaries")
     producer.add_argument("--physics-pin-set", default=None,
                           help="source pin set of the suite route whose producer writes the boundaries")
+    from .mpasphys.rrfs.cold_start_rrfs import add_boundary_recipe_argument
+    add_boundary_recipe_argument(producer)
     producer.add_argument("--rrfs-worker", type=Path, default=None,
                           help="rw_mpas_init_v831 (default $WOOF_HEX_RW_MPAS_INIT_V831, then the engine ladder)")
     producer.add_argument("--wif-climatology", type=Path, default=None,
@@ -1775,16 +1829,15 @@ def _run_producer_lbc(arguments: argparse.Namespace, producer, grid: Path) -> in
         record = run_rrfs_lbc(producer, init=grid, intervals=[(f"{t:%Y-%m-%d_%H:%M:%S}", p) for t, p in times],
                               nfglevels=int(arguments.nfglevels), out_dir=out_dir,
                               worker=getattr(arguments, "rrfs_worker", None),
-                              wif_climatology=getattr(arguments, "wif_climatology", None))
+                              wif_climatology=getattr(arguments, "wif_climatology", None),
+                              recipe=getattr(arguments, "boundary_recipe", None))
     except RrfsInitError as error:
         raise IntermediateRefusal(str(error)) from error
     files = [Path(path) for path in record["files"]]
     door_receipt = {
         "schema": "gpuwm-hex.lbc-door/v1", "route": "init-producer case 9",
         "physics_suite": arguments.physics_suite, "grid": str(grid), **record,
-        "intermediates": [{"valid_time": f"{t:%Y-%m-%d_%H:%M:%S}", "path": str(p), "sha256": sha256_file(p)}
-                          for t, p in times],
-        "files": [{"path": str(p), "bytes": p.stat().st_size, "sha256": sha256_file(p)} for p in files],
+        **_boundary_digests(times, files),
     }
     (out_dir / "lbc-door-receipt.json").write_text(
         json.dumps(door_receipt, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
@@ -1792,6 +1845,22 @@ def _run_producer_lbc(arguments: argparse.Namespace, producer, grid: Path) -> in
                       "receipt": str(out_dir / "lbc-door-receipt.json")}, indent=2))
     print(f"NEXT woof hex forecast ... --lbc-dir {out_dir}")
     return 0
+
+
+def _boundary_digests(times, files) -> dict[str, list[dict[str, Any]]]:
+    """The boundary receipt's two digest lists, each file on its own thread (hashlib lets go of the GIL).
+
+    THE BREAKAGE THIS PREVENTS (hrrrv5 regional region, build host, 2026-10-31): the lists hashed 14 files one after the
+    other, about 10 s on one core at the end of the boundary stage while the card waited for the first step. The
+    digests are the same; only the order they are computed in changes."""
+    from .cpu_budget import available_cpus
+
+    paths = [path for _, path in times] + list(files)
+    with ThreadPoolExecutor(max_workers=max(1, min(len(paths), available_cpus()))) as pool:
+        digests = dict(zip(paths, pool.map(sha256_file, paths)))
+    return {"intermediates": [{"valid_time": f"{t:%Y-%m-%d_%H:%M:%S}", "path": str(p), "sha256": digests[p]}
+                              for t, p in times],
+            "files": [{"path": str(p), "bytes": p.stat().st_size, "sha256": digests[p]} for p in files]}
 
 
 def run_lbc(arguments: argparse.Namespace) -> int:
@@ -1809,10 +1878,12 @@ def run_lbc(arguments: argparse.Namespace) -> int:
         except RrfsInitError as error:
             raise IntermediateRefusal(str(error)) from error
         if producer is not None:
-            if getattr(arguments, "stream", False):
-                raise IntermediateRefusal(f"--stream publishes rw_mpas_lbc hours; {suite}'s boundaries come from "
-                                          "its producer's case 9, which writes the whole series at once")
             return _run_producer_lbc(arguments, producer, grid)
+    from .mpasphys.rrfs.cold_start_rrfs import RrfsInitError, require_boundary_producer
+    try:
+        require_boundary_producer(getattr(arguments, "boundary_recipe", None), None)
+    except RrfsInitError as error:
+        raise IntermediateRefusal(str(error)) from error
     try:
         engine = resolve_lbc_engine(arguments.lbc_exe)
     except CycleRefusal as error:
@@ -1921,9 +1992,7 @@ def run_lbc(arguments: argparse.Namespace) -> int:
         "engine": str(engine), "engine_sha256": sha256_file(engine),
         "grid": str(grid), "argv": argv, "seconds": round(elapsed, 2), "processes": workers,
         "interval_seconds": interval,
-        "intermediates": [{"valid_time": f"{t:%Y-%m-%d_%H:%M:%S}", "path": str(p), "sha256": sha256_file(p)}
-                          for t, p in times],
-        "files": [{"path": str(p), "bytes": p.stat().st_size, "sha256": sha256_file(p)} for p in files],
+        **_boundary_digests(times, files),
         "engine_receipt": str(receipt) if receipt.is_file() else None,
         # Correct mode only (an exact door receipt is the one written before the key existed).
         **({"correct_mode": correct_record} if correct_record else {}),

@@ -12,7 +12,7 @@ def inventory():
     devices=[]
     error=None
     try:
-        command=["nvidia-smi","--query-gpu=index,uuid,name,memory.total","--format=csv,noheader,nounits"]
+        command=[*__import__('woof.gpu_smi', fromlist=['command']).command(),"--query-gpu=index,uuid,name,memory.total","--format=csv,noheader,nounits"]
         output=subprocess.run(command,text=True,capture_output=True,check=True,timeout=15).stdout
         for line in output.splitlines():
             index,uuid,name,memory=[part.strip() for part in line.split(",")]

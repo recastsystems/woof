@@ -81,7 +81,7 @@ class SharedLbcReads:
     def rows(self, consumer: int, path, extra_scalars, layout) -> LbcFile:
         """The sole consumer's rows of one file, read without the whole file (read_lbc_rows).
 
-        THE COST THIS REMOVES (NOAA RRFS v2 conus3km, V8X6000, 2026-10-29): with one process per card every process
+        THE COST THIS REMOVES (NOAA RRFS v2 conus3km, eight-card system, 2026-10-29): with one process per card every process
         is its series' only consumer, so ``take`` read each 13.3 GB boundary file whole in every rank process to keep
         a quarter or an eighth of it (4 cards: every rank read 12Z, 13Z and 14Z whole in a 1 h run), while the rank
         processes spent more CPU time in the kernel than in user code (8 cards: 149-199 s system per child in 1 h,

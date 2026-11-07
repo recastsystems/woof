@@ -1,0 +1,54 @@
+{
+  "columns": 64,
+  "layers": 24,
+  "routines": [
+    "ice",
+    "ice_new_zf",
+    "ice_new_comb",
+    "ice_new_trop",
+    "ice_new_midlat",
+    "ice_98",
+    "ice_singleice",
+    "ice_new_single",
+    "water_fl",
+    "rain",
+    "graup"
+  ],
+  "bands": 18,
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "source_sha256": "c4977cdf2ddf3f2279c9be7e1fc659ef23bbb37376e5cf11f9a98a73d33b0266",
+  "fixture_sha256": "78929addffc3c1d7acf13c4416058872906e0c75493d724408e28cc0cd475982",
+  "fields": {
+    "tau": {
+      "shape": [
+        64,
+        11,
+        18,
+        24
+      ],
+      "sha256": "542d25d4df2da709821d7151d257649107f3959b59051cab68b506c0a0b16170",
+      "finite": true
+    },
+    "ssa": {
+      "shape": [
+        64,
+        11,
+        18,
+        24
+      ],
+      "sha256": "282b3adc0be3202dde3fe1d16c934bf211cb7bb43eb1859fdf52d04f186d4ecc",
+      "finite": true
+    },
+    "moments": {
+      "shape": [
+        64,
+        11,
+        18,
+        24,
+        4
+      ],
+      "sha256": "24b10a564175abd69dfa6bc0b6f06ca7abf7b7616191d74b0e00feb9f66c684d",
+      "finite": true
+    }
+  }
+}

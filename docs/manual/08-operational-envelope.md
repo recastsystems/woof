@@ -2,7 +2,7 @@
 
 Every number here carries its conditions; a number without its grid, lead, or
 software version is a different claim. Note the version caveat on the reference
-envelope: it was measured 2026-08-03 with the engine's published 1.5.0 wheel (a WRF
+envelope: it was measured 2026-08-03 with the published gpuwm 1.5.0 wheel (a WRF
 v4.6.1 dmpar arm ran alongside it in the same receipt). These are not 2.5.0-line
 numbers, and no newer throughput measurement exists; the 2.5.0-line measurements
 in this chapter are the first-contact walk (section 8.3) and the memory-gate
@@ -69,7 +69,7 @@ takes about 1.5 GB off any RAM ceiling
 ## 8.3 Launch-to-first-step and fetch
 
 Prep scaling (single domain, GFS, 6 h forcing, wizard defaults, warm caches,
-cold download, a development machine): 15 s at 0.14 M cells, 37 s at 4.39 M, 79 s at
+cold download, test host 1): 15 s at 0.14 M cells, 37 s at 4.39 M, 79 s at
 12.6 M, 100 s at the largest card-resident 16.8 M, 373 s at a tile-streamed
 41.6 M; 24 h forcing at mid size +68%; a 3-domain tree 61 s for 13.3 M cells;
 first run on a box +31 s flat [receipt:ARWEN-PRESIM-SCALING-2026-08-16.md].

@@ -1,0 +1,170 @@
+{
+ "row": "flg-column-storage",
+ "date": "2026-11-02",
+ "engine_base": "rel/3.0.0 fe0ddb9fb64",
+ "branch": "flg-speed",
+ "device": "NVIDIA GeForce RTX 4090 (rented 4x4090 box, card 3 alone; host load 1.4-16 at arm start, final arms <=5)",
+ "numerics": "fast (default)",
+ "case": "stock WRF input, 3 km Lambert 150 x 150 x 49 layers, 2024-05-25 18Z, mp8, KF, YSU, Noah; 30-minute forecast (150 steps of 12 s), radiation every 3 min",
+ "measure": "CUDA-event time of the radiation stage per call, median over warm calls 2-10, averaged over arms; whole step = synchronised wall time mean over steps 7-150",
+ "radiation_call_ms": {
+  "rte_rrtmgp": 90.56563059488933,
+  "legacy_rrtmg": 197.10975646972656,
+  "flg_before": 237.61151885986328,
+  "flg_after": 160.90572357177734
+ },
+ "whole_step_ms": {
+  "rte_rrtmgp": 44.0311663706207,
+  "legacy_rrtmg": 51.49555225059683,
+  "flg_before": 55.62431437829218,
+  "flg_after": 48.09876750303172
+ },
+ "ratios": {
+  "flg_after_vs_rte_rrtmgp": 1.7766753515086477,
+  "flg_before_vs_rte_rrtmgp": 2.6236389820187687,
+  "flg_after_vs_legacy_rrtmg": 0.8163255155585885,
+  "flg_before_vs_legacy_rrtmg": 1.205478222466158,
+  "flg_speedup": 1.476712658725709,
+  "whole_step_after_vs_rte_rrtmgp": 1.0923800450383954,
+  "whole_step_before_vs_rte_rrtmgp": 1.2632941382948892
+ },
+ "arms": {
+  "rrtmgp-a": {
+   "rad_calls": 9,
+   "rad_median_ms": 90.84928131103516,
+   "rad_mean_ms": 91.11983235677083,
+   "step_mean_ms": 43.09250494497974,
+   "steps": 144,
+   "load": [
+    11.234375
+   ]
+  },
+  "rrtmgp-b": {
+   "rad_calls": 9,
+   "rad_median_ms": 90.01983642578125,
+   "rad_mean_ms": 90.09140523274739,
+   "step_mean_ms": 43.38528779913354,
+   "steps": 144,
+   "load": [
+    16.41015625
+   ]
+  },
+  "rrtmgp-c": {
+   "rad_calls": 9,
+   "rad_median_ms": 90.82777404785156,
+   "rad_mean_ms": 90.71104007297092,
+   "step_mean_ms": 45.61570636774882,
+   "steps": 144,
+   "load": [
+    2.31103515625
+   ]
+  },
+  "rrtmg-base": {
+   "rad_calls": 9,
+   "rad_median_ms": 194.48626708984375,
+   "rad_mean_ms": 190.1329057481554,
+   "step_mean_ms": 51.45714583381454,
+   "steps": 144,
+   "load": [
+    15.26611328125
+   ]
+  },
+  "rrtmg-new": {
+   "rad_calls": 9,
+   "rad_median_ms": 199.73324584960938,
+   "rad_mean_ms": 199.70581563313803,
+   "step_mean_ms": 51.53395866737911,
+   "steps": 144,
+   "load": [
+    3.93798828125
+   ]
+  },
+  "flg-base": {
+   "rad_calls": 9,
+   "rad_median_ms": 237.38470458984375,
+   "rad_mean_ms": 237.60657755533853,
+   "step_mean_ms": 57.189407534881155,
+   "steps": 144,
+   "load": [
+    13.49267578125
+   ]
+  },
+  "flg-base2": {
+   "rad_calls": 9,
+   "rad_median_ms": 237.76870727539062,
+   "rad_mean_ms": 238.56092495388455,
+   "step_mean_ms": 54.87397104136309,
+   "steps": 144,
+   "load": [
+    4.0439453125
+   ]
+  },
+  "flg-base3": {
+   "rad_calls": 9,
+   "rad_median_ms": 237.85061645507812,
+   "rad_mean_ms": 237.96393500434027,
+   "step_mean_ms": 55.19805580540075,
+   "steps": 144,
+   "load": [
+    2.47509765625
+   ]
+  },
+  "flg-base4": {
+   "rad_calls": 9,
+   "rad_median_ms": 237.44204711914062,
+   "rad_mean_ms": 237.9749789767795,
+   "step_mean_ms": 55.23582313152373,
+   "steps": 144,
+   "load": [
+    3.10498046875
+   ]
+  },
+  "flg-final-a": {
+   "rad_calls": 9,
+   "rad_median_ms": 160.8949737548828,
+   "rad_mean_ms": 161.0601806640625,
+   "step_mean_ms": 48.43453764584006,
+   "steps": 144,
+   "load": [
+    2.7060546875
+   ]
+  },
+  "flg-final-b": {
+   "rad_calls": 9,
+   "rad_median_ms": 160.91647338867188,
+   "rad_mean_ms": 162.24958970811633,
+   "step_mean_ms": 47.76299736022338,
+   "steps": 144,
+   "load": [
+    4.7626953125
+   ]
+  }
+ },
+ "column_kernel_only_22500_columns_49_layers_ms": {
+  "all_day": {
+   "before": 233.2,
+   "after": 156.9
+  },
+  "all_night": {
+   "before": 80.0,
+   "after": 67.3
+  },
+  "half_cloudy_day": {
+   "before": 239.6,
+   "after": 163.9
+  },
+  "all_day_strict": {
+   "before": 242.0,
+   "after": 164.5
+  }
+ },
+ "words": "FLGColumn outputs on the captured first-call deck (22,500 columns) and its all-night and half-cloudy variants: 0 of 12,307,500 words differ per deck in fast numerics; 0 differ in strict numerics (day and cloudy decks); strict native WRF 4.6.1 twelve-column replay (4,320 words) and strict clear column pass",
+ "workspace_bytes_per_column_49_layers": {
+  "before": 86648,
+  "after": 60004
+ },
+ "flg_column_local_frame_bytes": {
+  "sm_89/NVRTC 13.4.59": 928,
+  "sm_120/NVRTC 13.4.92": 832
+ }
+}

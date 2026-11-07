@@ -134,7 +134,43 @@ def rank_carrier(carrier):
     continuation = physics.get('continuation')
     if continuation is not None:
         kept['continuation'] = {key: value for key, value in continuation.items() if key != 'output_accumulators'}
-    return dict(physics=kept)
+    result = dict(physics=kept)
+    if carrier.get('waves') is not None:
+        # Every rank learns that the carrier holds a wave state, and its clock origin (runtime_v842 checks the wave
+        # mode; waves.attach_mpas reads the origin); the state itself reaches rank 0 alone (wave_state below).
+        result['waves'] = wave_marker(carrier['waves'])
+    return result
+
+
+class RankZeroOnly:
+    """A value the forecast process keeps for rank 0 and never sends to a rank process (it pickles to None).
+
+    The wave state of a carrier is the whole-mesh spectrum (tens of MB at 120 km, GBs on fine meshes); only rank 0
+    restores it (waves._attach_mpas_ranks), so the other ranks' requests do not carry it.
+    """
+
+    def __init__(self, value=None):
+        self.value = value
+
+    def __reduce__(self):
+        return (RankZeroOnly, (None,))
+
+
+def wave_marker(state):
+    """What a rank other than 0 holds of a carried wave state: that there is one, and its clock origin."""
+    return dict(schema=state.get('schema'), start_epoch=state['start_epoch'], clock=state.get('clock'),
+                held_by_rank=0)
+
+
+def is_wave_marker(value):
+    return isinstance(value, dict) and value.get('held_by_rank') == 0 and 'solver' not in value
+
+
+def weights_for_waves(route, weights):
+    """The global physics map a remapped move used, or None on the run's own mesh (a plain wave restore)."""
+    if weights is None or getattr(route, 'fixed_mesh', False):
+        return None
+    return weights
 
 
 def prepare_moving(route, inputs, config, layout, payload, arguments):
@@ -147,6 +183,7 @@ def prepare_moving(route, inputs, config, layout, payload, arguments):
     session = SimpleNamespace(native=native, config=config, precipitation_window=None,
                               surface_service=None)
     restored = None
+    weights = None
     if route.carrier is not None:
         target_grid = getattr(arguments, 'grid', None) or arguments.init
         physics = route.carrier['physics']
@@ -154,6 +191,11 @@ def prepare_moving(route, inputs, config, layout, payload, arguments):
             session.precipitation_window = WindowWords()
         if physics.get('surface_service') is not None:
             session.surface_service = ServiceWords()
+        if physics.get('ocean_pwp') is not None:
+            # The global PWP columns take their target-cell donors here, once; each rank then
+            # receives its owned cells (project_restored_pools) and checks its own selection.
+            from .ocean_pwp_v842 import OceanWords
+            session.ocean_pwp = OceanWords()
         early = getattr(route, 'move_weights', None)
         if os.environ.get('WOOF_HEX_MOVING_PHYSICS_BESIDE', '1') == '0':
             early = None   # the comparison knob: the physics restore after the atmosphere remap, as before
@@ -185,12 +227,21 @@ def prepare_moving(route, inputs, config, layout, payload, arguments):
     worker_route.control = None
     worker_route.carrier = None if route.carrier is None else rank_carrier(route.carrier)
     continuation = None if route.carrier is None else route.carrier['physics'].get('continuation')
+    waves = None if route.carrier is None else route.carrier.get('waves')
+    # THE BREAKAGE THIS FIXES (hex 0.4.14): rank_carrier dropped the wave state, so every same-host resume with
+    # --waves on refused ("wave mode differs between checkpoint and resumed forecast"), and rank 0, which owns the
+    # run's one wave service, had nothing to restore.  A remapped move hands rank 0 the global map and source mesh.
+    wave_state = RankZeroOnly(None if waves is None else dict(
+        state=waves, weights=weights_for_waves(route, weights),
+        source_mesh=None if route.carrier is None else route.carrier.get('mesh')))
     return result, dict(route=worker_route, control=control, layout=layout, mesh=mesh, vertical=grid.vertical_grid,
+        wave_state=wave_state,
         restored=native.written_words() if route.carrier is not None else {},
         restore_receipt=restored,
         accumulators=None if continuation is None else continuation.get('output_accumulators'),
         window=None if session.precipitation_window is None else session.precipitation_window.snapshot(),
-        surface_service=None if session.surface_service is None else session.surface_service.restart_state())
+        surface_service=None if session.surface_service is None else session.surface_service.restart_state(),
+        ocean_pwp=None if getattr(session, 'ocean_pwp', None) is None else session.ocean_pwp.restart_state())
 
 
 def project_restored_words(moving, layout, partitions, *, workers=None, gpu=False):
@@ -226,6 +277,7 @@ def project_restored_words(moving, layout, partitions, *, workers=None, gpu=Fals
             source_bytes=sum(v.nbytes for v in moving['restored'].values()))
     window = moving['window']
     accumulators = moving.get('accumulators')
+    from .ocean_pwp_v842 import project_owned
     result = []
     for which, partition in enumerate(partitions):
         cells = partition.cell_l2g[:partition.n_owned_cells]
@@ -235,7 +287,8 @@ def project_restored_words(moving, layout, partitions, *, workers=None, gpu=Fals
         sums = None if not accumulators else {
             name: np.ascontiguousarray(np.asarray(value)[..., cells]) for name, value in accumulators.items()}
         result.append(dict(pools={key: words[which] for key, words in zip(keys, projected)}, window=owned,
-                           service=moving['surface_service'], accumulators=sums))
+                           service=moving['surface_service'], accumulators=sums,
+                           ocean=project_owned(moving.get('ocean_pwp'), partition)))
     return result
 
 
@@ -259,6 +312,13 @@ def apply_restored(session, restored):
         window.restore(restored['window'])
     if session.surface_service is not None and restored['service'] is not None:
         session.surface_service.restore_restart_state(restored['service'])
+    ocean, carried = getattr(session, 'ocean_pwp', None), restored.get('ocean')
+    if ocean is None and carried is not None:
+        # THE BREAKAGE THIS PREVENTS: the carried ocean columns would be dropped and the SST would jump
+        # back to the member's initial field.
+        raise ValueError('the moving carrier ran the PWP ocean; this member does not select --ocean-mode pwp')
+    if ocean is not None:
+        ocean.restore_state(carried)
 
 
 def assemble_columns(buffers, partitions, *, entity):
@@ -392,7 +452,16 @@ def rank_words(route, layout, session, dycore, columns=None, *, continuation=Fal
         window=None if window is None else window.snapshot(),
         service=None if service is None else deepcopy(service.restart_state()),
         psfc=None if columns is None else dycore.cp.asnumpy(columns.psfc_p),
-        continuation=rank_continuation(session) if continuation else None)
+        ocean=None if getattr(session, 'ocean_pwp', None) is None else session.ocean_pwp.restart_state(),
+        continuation=rank_continuation(session) if continuation else None,
+        # Rank 0's wave service state at this step (waves.RankWaveBinding: every rank handed its forcing at this
+        # step's end, so the service stands where one card's does); None on every other rank and with waves off.
+        waves=_wave_snapshot(session))
+
+
+def _wave_snapshot(session):
+    binding = getattr(session, 'wave_binding', None)
+    return None if binding is None else binding.service.snapshot()
 
 
 def assemble_snapshot(pieces, layout, partitions, *, config, manager, maps=None):
@@ -417,13 +486,23 @@ def assemble_snapshot(pieces, layout, partitions, *, config, manager, maps=None)
     if windows[0] is not None:
         global_window = {key: assemble_columns([window[key] for window in windows],
             partitions, entity='cell') for key in windows[0]}
+    from .ocean_pwp_v842 import OceanWords, assemble_owned
+    global_ocean = assemble_owned([piece.get('ocean') for piece in pieces], partitions)
     continuations = [piece['continuation'] for piece in pieces]
     # Rank 0's physics alarms: their phase is in model seconds, the same on every rank.  THE BREAKAGE THIS
     # FIXES: the proxy had no driver, so every carrier sealed on same-host ranks held no alarm phase.
-    proxy = SimpleNamespace(native=native, config=config,
+    # THE BREAKAGE THIS FIXES (hex 0.4.14): the proxy had no wave binding, so every carrier and checkpoint sealed on
+    # same-host ranks dropped the wave state (carrier_payload writes waves=None) and its resume could not continue it.
+    waves = [piece.get('waves') for piece in pieces if piece.get('waves') is not None]
+    if len(waves) > 1:
+        raise ValueError('more than one rank sealed a wave state; prevents two wave services in one carrier')
+    wave_binding = (None if not waves else
+                    SimpleNamespace(service=SimpleNamespace(snapshot=(lambda state=waves[0]: state))))
+    proxy = SimpleNamespace(native=native, config=config, wave_binding=wave_binding,
         driver=SimpleNamespace(manager=manager),
         precipitation_window=None if global_window is None else WindowWords(global_window),
         surface_service=None if services[0] is None else ServiceWords(services[0]),
+        ocean_pwp=None if global_ocean is None else OceanWords(global_ocean),
         continuation=None if continuations[0] is None else assemble_continuation(continuations, partitions))
     global_dycore = SimpleNamespace(cp=HostArrays, atmosphere=SimpleNamespace(
         state=SimpleNamespace(**state), saved=SimpleNamespace(**saved)))
@@ -439,10 +518,31 @@ class DistributedMoving:
         self.comm, self.prepared, self.partitions = comm, prepared, partitions
         self.execution = execution
         self.route = prepared['route']
+        # The remap shock series is a per-step diagnostic of one card's surface pressure; it never steers a move. Across
+        # ranks it would gather every card's pressure every step on the critical path, so it is off here (the
+        # one-card run keeps it). THE BREAKAGE THIS FIXES: the door always asks for it, runtime_v842 prepares the columns
+        # only on the steps this class says are due, and it holds no `shock`, so step 1 died on every same-host moving run,
+        # "'NoneType' object has no attribute 'psfc_p'" (run_d96c5f5d5b30cfa5, four-way box, 2026-10-31).
+        self.route.shock = False
         if prepared['control'] is not None:
             from ..moving_control import MovingControl
             self.route.control = MovingControl(**prepared['control'])
         self.carrier = self.route.carrier
+        held = prepared.get('wave_state')
+        held = None if held is None else held.value
+        self.wave_weights = None
+        if held is not None and comm.Get_rank() == 0:
+            # Rank 0 owns the run's one wave service (waves._attach_mpas_ranks) and restores the carried state.
+            self.carrier = dict(self.carrier, waves=held['state'], mesh=held['source_mesh'])
+            self.wave_weights = held['weights']
+        # runtime_v842 reads the segment's clock offset from its moving hooks (wave clock, frame publication), as one
+        # card's route offers it.  THE BREAKAGE THIS FIXES (hex 0.4.14): this class had none, so a resumed same-host
+        # run read 0, and its wave service, restored at the checkpoint's clock, saw the owner clock move backwards.
+        self.offset_seconds = float(getattr(self.route, 'offset_seconds', 0.0) or 0.0)
+        # runtime_v842.moving_publication_due reads these to prepare the columns at a frame step. THE BREAKAGE THIS FIXES:
+        # without them a frame found the resident wind reconstruction, "'SimpleNamespace' object has no attribute 'psfc_p'"
+        # (run_b7f4e675dd39903b, four-way box, 2026-10-31).
+        self.control, self.frame_seconds = self.route.control, self.route.frame_seconds
         # A checkpoint, restart or DA analysis on the run's own mesh (checkpoint_v842 CheckpointRoute.fixed_mesh)
         # moves nothing, on every rank as on one card.  THE BREAKAGE THIS FIXES: this class did not carry the flag,
         # so runtime_v842 read every same-host rank as a moving run and refused a limited-area run ('takes the plain
@@ -525,6 +625,11 @@ class DistributedMoving:
         due = getattr(self.route, 'checkpoint_due', lambda step, dt: False)(step, values['dt'])
         if not frame and not self.route.shock and not due:
             return False
+        cadence = getattr(self.route.control, 'seal_every_seconds', 0) if frame else 0
+        if cadence and not model_seconds % cadence and not due:
+            # A recovery seal at this frame (MovingControl.at_frame) holds what the next step reads, on every rank
+            # (moving_v842.publish_after_output; the tracker frame's words are not among the output resets).
+            mv.publish_after_output(values['session'])
         if due:
             # As CheckpointRoute.after_step on one card: the step's publication ran before its output event, whose
             # resets (refl10cm_1km_max, the hail maxima) changed the device words since.  Every rank seals what its
@@ -547,7 +652,7 @@ class DistributedMoving:
         # x1.2562, 2 rank processes, --checkpoint-hours 1).
         snapshot = self._snapshot(values['session'], values['dycore'],
                                   values['columns'] if frame or self.route.shock else None,
-                                  continuation=due and hasattr(self.route, 'restore_continuation'))
+                                  continuation=due or frame)
         result = False
         if self.comm.Get_rank() == 0:
             session, dycore, columns = snapshot
@@ -600,8 +705,8 @@ class DistributedMoving:
             self._receipt = self.comm.bcast(self.route.receipt() if self.comm.Get_rank() == 0 else None, root=0)
         if not self.route.export_path:
             return
-        snapshot = self._snapshot(values['session'], values['dycore'],
-                                  continuation=hasattr(self.route, 'restore_continuation'))
+        mv.publish_after_output(values['session'])   # every rank: what the next step reads (moving_v842)
+        snapshot = self._snapshot(values['session'], values['dycore'], continuation=True)
         if self.comm.Get_rank() == 0:
             session, dycore, _ = snapshot
             self.route.finish(**{**values, 'session': session, 'dycore': dycore,

@@ -32,7 +32,7 @@ See :mod:`woof.cycle.mpas_bridge` for the launcher and
 :mod:`mpas_cycle_bridge.worker` for the far side.
 
 What the port actually offers, verified against
-``lane/mesh-binding@12fe6a3`` on test host A rather than from notes:
+``development branch@12fe6a3`` on test host A rather than from notes:
 
 ``tools/run_cuda_v841_full_physics_x4.py``
     ``_construct_device_stack(*, host, cache, arwen_checkout, state=None,
@@ -58,7 +58,7 @@ upstream.
 Disposition, 2026-08-31: the port now also ships standalone as the
 ``woof hex`` package, which carries no woof pin and no import guard.
 This seam stays written against the frozen-checkout shape it was proven
-on (``lane/mesh-binding@12fe6a3`` via ``--port-root``); adapting
+on (``development branch@12fe6a3`` via ``--port-root``); adapting
 ``mpas_cycle_bridge.portbind`` to load an installed ``woof hex`` is a
 named follow-up.  The process boundary, anchor schema and receipt
 grading are port-shape-independent and carry over unchanged.

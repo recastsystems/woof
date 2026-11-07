@@ -1,0 +1,171 @@
+{
+  "schema": "gpuwm.madwrf-wrf471-qualification.v1",
+  "native": {
+    "version": "4.7.1",
+    "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+    "compiler": "GNU Fortran 13",
+    "precision": "REAL32",
+    "flags": [
+      "-O2",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-fno-tree-vectorize"
+    ],
+    "mpi_ranks": 8
+  },
+  "prior_implementation": [
+    "c12d80d012fbd3ef6ad024a90b12ccae259e0bd7",
+    "d4e9785f724eb832aea720b702f72f960d00ab54"
+  ],
+  "replay": {
+    "1": {
+      "differing_words": 0,
+      "words": 703950,
+      "satellite_flags": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "2": {
+      "differing_words": 0,
+      "words": 4413936,
+      "satellite_flags": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "replay_scope": "Native real-input cloud entry/exit; mode 2 also post-RK nudging and production tracer initialization. Physical mass levels; extra storage level retained. No undefined-word exclusions. Satellite flags zero. No above-model-top or observation-skill claim.",
+  "permanent_native_evidence": "~/weather/data/datasets/paper/wrf-ports/port-madwrf-raoffset/madwrf_opt{1,2}/MANIFEST.md",
+  "replay_command": "GPUWM_WRF_EXACT=1 GPUWM_RW_NETCDF=/path/to/rw_netcdf PYTHONPATH=engine python engine/tools/madwrf_wrf471_oracle/replay.py CAPTURE_DIR result.json",
+  "forecast": {
+    "modes": [
+      1,
+      2
+    ],
+    "numerics": "fast",
+    "duration_s": 3600,
+    "steps": 300,
+    "mass_grid": [
+      150,
+      150,
+      49
+    ],
+    "dx_m": 3000,
+    "dt_s": 12,
+    "mp_physics": 96,
+    "use_mp_re": 0,
+    "madwrf_cldinit": 1,
+    "radiation": "legacy RRTMG 4/4",
+    "maps": "Rust rw_wrfbatch via gpuwm.rustwx; inspected; continuous warm southwest corner and northeast, cooler west-central areas; no holes or blow-up"
+  },
+  "default_off": {
+    "identical_bytes": 111928472,
+    "history_files": [
+      {
+        "name": "wrfout_d01_2024-05-25_18_00_00",
+        "bytes": 28609440,
+        "before_sha256": "9c0667e125bd605775be655e70ccdac0357bd8cfd8494b3ea649b64112d101ef",
+        "after_sha256": "9c0667e125bd605775be655e70ccdac0357bd8cfd8494b3ea649b64112d101ef",
+        "identical": true
+      },
+      {
+        "name": "wrfout_d01_2024-05-25_18_06_00",
+        "bytes": 41636376,
+        "before_sha256": "1ed16a51673e49ccc971e70d721ff5773739ca900b1c014d63cbda41dd751b46",
+        "after_sha256": "1ed16a51673e49ccc971e70d721ff5773739ca900b1c014d63cbda41dd751b46",
+        "identical": true
+      },
+      {
+        "name": "wrfout_d01_2024-05-25_18_12_00",
+        "bytes": 41682656,
+        "before_sha256": "93cf92e0719ab149d76d4c40caa50b99f16c23eae7ffc9d617a360d865759988",
+        "after_sha256": "93cf92e0719ab149d76d4c40caa50b99f16c23eae7ffc9d617a360d865759988",
+        "identical": true
+      }
+    ]
+  },
+  "native_extra_work": {
+    "native": "WRF 4.7.1 f52c197ed39d12e087d02c50f412d90d418f6186 strict REAL32",
+    "units": "microseconds",
+    "timer": "solve_em.F BENCH tracer_adv_tim, monitor rank, three RK stages per step",
+    "arms": {
+      "off": [
+        1,
+        0,
+        0,
+        1,
+        0
+      ],
+      "on": [
+        144522,
+        293474,
+        301682,
+        483763,
+        415913
+      ]
+    },
+    "median_us": {
+      "off": 0,
+      "on": 301682
+    },
+    "native_work": "MAD mode 2 transports three additional tracers in the native tracer_advance loop; MAD-off has no tracer array. MP96 water package is identical."
+  },
+  "evidence_sha256": {
+    "mad-replay-merged-strict-1.json": "1540d5832addccfbcf2a2cd8e9e1b37b5e22907c7f4c6c8e4338deb17fc3331e",
+    "mad-replay-merged-strict-2.json": "9c30699d186db49ae39793dad508dc49b827bc2172aa529a740927f86e8b4a01",
+    "mad-default-byte-comparison.json": "ae4249451dac23e96a07257c7b33468cc14bcc2a0b539e0cbb21f7f68a1d7bcd",
+    "mad-native-profile.json": "2f6fb2ca0fb6f9a32f72ccfa599aca6b0292d1872de6ec24d636f6ccebb2d40e",
+    "mad-go-1.namelist.input": "15da144ae66dbe6170d10c4dcd1b4155aec9391a88974cdfa5fda6e82a7e5ff3",
+    "mad-go-2.namelist.input": "394545c02c63911ea2a3c6d56b2ec568004bea7fcba7f8781985817ba761914a",
+    "mad-replay-source-identity.json": "2a0eee0eaf7e2bffb079a677e6d193fffda9957a51d7084ab56847860b56fccf",
+    "mad-timed-1-temperature.png": "9a7e79b9badbaa7199c06f1bb28cbfa63404de34879e52a6befb78565b267f30",
+    "mad-timed-2-temperature.png": "15c33f78bb0a3e814b1438bfd31f2e885c9f0e17c0214305b4f8173d074d10ed"
+  },
+  "stage_timing": {
+    "gpu": "RTX PRO 6000 Blackwell",
+    "card": "quiet card 1, timed-card1 lock",
+    "nearest": "madwrf_opt=0, mp_physics=96",
+    "selection_policy": {
+      "1": "explicit selector; FOLD-READY",
+      "2": "explicit selector; FOLD-READY-OPTIN; never default"
+    },
+    "scope": "Final RK scalar transport plus the separately timed post-RK MAD hook, not whole-forecast speed. Median of 299 pairs after excluding the first warm pair. Both modes have 300 alternating pairs; resets and copies outside events.",
+    "modes": {
+      "1": {
+        "stage": "final RK scalar transport",
+        "pairs": 300,
+        "warm_pairs_excluded": 1,
+        "off_ms": 0.40067198872566223,
+        "on_ms": 0.40143999457359314,
+        "transport_ratio": 1.0019167944591623,
+        "nudge_ms": 0.00041599999531172216,
+        "transport_plus_nudge_ms": 0.401887994579738,
+        "transport_plus_nudge_ratio": 1.0030349160617473,
+        "load_start": "46.59 54.54 49.35 22/7128 3375413",
+        "load_end": "35.21 50.84 48.31 20/7129 3381913",
+        "runtime_commit": "2db2fcde52a688a20d79555f733ef64bcb50bab9",
+        "raw_receipt_sha256": "688ca604d8fa791e67b56b00dd4d04697c2ae2992fe29fa558c0c0ecbb4f9f30"
+      },
+      "2": {
+        "stage": "final RK scalar transport",
+        "pairs": 300,
+        "warm_pairs_excluded": 1,
+        "off_ms": 0.40460801124572754,
+        "on_ms": 0.6828799843788147,
+        "transport_ratio": 1.687756953393803,
+        "nudge_ms": 0.020447999238967896,
+        "transport_plus_nudge_ms": 0.703359991312027,
+        "transport_plus_nudge_ratio": 1.7383738625107465,
+        "load_start": "57.74 57.43 50.06 21/7025 3373313",
+        "load_end": "46.59 54.54 49.35 22/7197 3375349",
+        "runtime_commit": "2db2fcde52a688a20d79555f733ef64bcb50bab9",
+        "raw_receipt_sha256": "7efc69c27f3273b21a72dd1e257718ac0899a09dc1efa1affaab1b252b0fe55a"
+      }
+    }
+  }
+}

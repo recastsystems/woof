@@ -104,6 +104,19 @@ def main():
             entry["ref_rms"] = float(np.sqrt(np.mean(ar * ar)))
             row["fields"][name] = entry
         result["frames"].append(row)
+    incomplete = []
+    if not rf or not cf:
+        incomplete.append("both arms must contain history frames")
+    if set(rf) != set(cf):
+        incomplete.append("history clocks differ between arms")
+    if any(not row["fields"] for row in result["frames"]):
+        incomplete.append("a matched frame has no compared fields")
+    if wanted:
+        absent = sorted({name for row in result["frames"] for name in wanted - row["fields"].keys()})
+        if absent:
+            incomplete.append("requested fields absent: " + ", ".join(absent))
+    result["complete"] = not incomplete
+    result["incomplete_reasons"] = incomplete
     result["only_ref"] = only_ref or []
     result["only_cand"] = only_cand or []
     for ds in handles.values():
@@ -117,6 +130,8 @@ def main():
         print(row["time"], f"{len(bad)}/{len(row['fields'])} fields differ",
               " ".join(f"{k}:{bad[k]['max_ulp']}ulp" for k in lead))
 
+    return 0 if result["complete"] else 2
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

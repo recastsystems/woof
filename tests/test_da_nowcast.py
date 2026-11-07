@@ -227,12 +227,17 @@ class TestBackgroundSelection:
         from now, so the door plans on it like any other member.  The
         refusal below is the one that was actually being tested: a
         source the roster does not carry.
+
+        Re-pinned for 3.0.0: the rrfs posting row is hourly with a
+        declared publication lag of 4676.4 s, so at 05:45 the newest
+        posted cycle covering the 05:00 init is 03Z (leads 2..5), not 00Z.
         """
         plan = plan_window(utc(2026, 8, 5, 5, 30), cycles=2,
                            cycle_seconds=900, free_legs=6,
                            now=utc(2026, 8, 5, 5, 45), source="rrfs")
         assert plan.background_source == "rrfs"
-        assert plan.background_cycle == utc(2026, 8, 5, 0)
+        assert plan.background_cycle == utc(2026, 8, 5, 3)
+        assert plan.forecast_start_hour == 2
 
     def test_an_unregistered_source_is_refused_with_the_roster(self):
         """The name has to be one the roster does not carry.

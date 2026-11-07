@@ -1,0 +1,2 @@
+special words: ok
+positive finite binary32 words: 2139095039 checked, 0 differ from MPFR's correctly rounded log10

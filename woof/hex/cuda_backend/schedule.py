@@ -76,6 +76,13 @@ def apply(device_id: int, *, environ: Any = None, driver: Any = None) -> str:
     mode = requested(environ)
     if mode == "auto":
         return "auto"
+    from woof.gpu_smi import is_amd
+    if driver is None and is_amd():
+        from woof.hip_runtime import wait_mode
+        how = wait_mode(mode, [int(device_id)]).get(int(device_id), 'no-device')
+        with _lock:
+            _done[int(device_id)] = how
+        return how
     cu = driver if driver is not None else _load_driver()
     if cu is None:
         return "no-driver"

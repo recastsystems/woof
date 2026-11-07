@@ -275,6 +275,17 @@ def _direct_export_soil_geometry(
 
     scheme = int(sf_surface_physics)
     count = int(num_soil_layers)
+    if scheme == 0:
+        # NOLSMSCHEME never calls init_soil_depth_* (module_soil_pre.F).
+        # The supplied axis is inactive; zeros state that absence without
+        # assigning another land scheme's depths to it.
+        return np.zeros(count, np.float64), np.zeros(count, np.float64)
+    if scheme == 1:
+        from woof.core.slab import NUM_SOIL_LAYERS, soil_depths
+        if count != NUM_SOIL_LAYERS:
+            raise ValueError(f"slab direct export requires five soil layers, got {count}; a different count would mislabel TSLB depths")
+        zs, dzs = soil_depths()
+        return np.asarray(zs, np.float64), np.asarray(dzs, np.float64)
     if scheme in {2, 4}:
         if count != 4:
             raise ValueError(
@@ -289,10 +300,17 @@ def _direct_export_soil_geometry(
             np.asarray(depths, dtype=np.float64),
             np.asarray(thicknesses, dtype=np.float64),
         )
+    from woof.physics_registry import column_surface_contract
+    ingest = (column_surface_contract(scheme) or {}).get("soil_ingest")
+    if ingest is not None:
+        if count != len(ingest["depths_m"]):
+            raise ValueError("direct-export soil count differs from the registered geometry")
+        return (np.asarray(ingest["depths_m"], dtype=np.float64),
+                np.asarray(ingest["thickness_m"], dtype=np.float64))
     raise ValueError(
         f"sf_surface_physics={scheme} has no source-driven direct-export "
         "soil geometry; woof/ingest/ruc_soil.py:"
-        "preprocess_land_surface_soil implements selectors 2, 3, and 4")
+        "preprocess_land_surface_soil implements selectors 0, 1, 2, 3, and 4")
 
 
 @dataclass(frozen=True)
@@ -365,7 +383,26 @@ _FROZEN_CONTRACT_MOIST_MEMBERS = frozenset({
 })
 
 _PACKAGE_FIELD_METADATA = {
+    # WRF 4.6.1 Registry.EM_COMMON: CN and multi-moment ice scalars.
+    "QDCN": ("Mass mixing ratio for dry CN ", "kg kg-1"),
+    "QTCN": ("Mass mixing ratio for total CN", "kg kg-1"),
+    "QCCN": ("Mass mixing ratio for cloud CN", "kg kg-1"),
+    "QRCN": ("Mass mixing ratio for rain CN", "kg kg-1"),
+    "QNIN": ("Potential ice nuclei number mixing ratio", "# kg-1"),
+    "FI": ("Shape moment mixing ratio for pristine ice", "m^3 kg-1"),
+    "FS": ("Shape moment mixing ratio for snow-aggregates", "m^3 kg-1"),
+    "VI": ("Volume moment mixing ratio for pristine ice", "m^3 kg-1"),
+    "VS": ("Volume moment mixing ratio for snow-aggragates", "m^3 kg-1"),
+    "VG": ("Volume moment mixing ratio for rimed ice", "m^3 kg-1"),
+    "AI": ("Second moment mixing ratio for pristine ice", "m^2 kg-1"),
+    "AS": ("Second moment mixing ratio for snow-aggregates", "m^2 kg-1"),
+    "AG": ("Second moment mixing ratio for rimed ice", "m^2 kg-1"),
+    "AH": ("Second moment mixing ratio for hail", "m^2 kg-1"),
+    "I3M": ("Third moment mixing ratio for pristine ice", "m^3 kg-1"),
     "CWM": ("Total condensate mixing ratio", "kg kg-1"),
+    # Registry.EM_COMMON:491: input/restart/history state, no boundary flags.
+    "RIMI": ("riming intensity", "fraction"),
+    "QRIMEF": ("rime factor * qi", "kg kg-1"),
     "QHAIL": ("Hail mixing ratio", "kg kg-1"),
     "QNDROP": ("Droplet number mixing ratio", "# kg-1"),
     "QNICE": ("Ice Number concentration", "# kg-1"),
@@ -387,6 +424,22 @@ _PACKAGE_FIELD_METADATA = {
     # failure mode the mp=28 row's docstring names as a known downstream gap.
     "QIR": ("Rime ice mass-1 mixing ratio", "kg kg(-1)"),
     "QIB": ("Rime ice volume-1 mixing ratio", "m(3) kg(-1)"),
+    # P3 second category, Registry.EM_COMMON:559-562.
+    "QICE2": ("Ice mixing ratio-2", "kg kg-1"),
+    "QNICE2": ("Ice Number concentration-2", "# kg-1"),
+    "QIR2": ("Rime ice mass-2 mixing ratio", "kg kg(-1)"),
+    "QIB2": ("Rime ice volume-2 mixing ratio", "m(3) kg(-1)"),
+    # P3 three-moment ice, Registry.EM_COMMON:563-564.
+    "QZI": ("Sq root of sixth moment ice mixing ratio times number mixing ratio",
+            "m(3) kg(-1)"),
+    "QICE3": ("Ice mixing ratio cat 3", "kg kg-1"),
+    "QNICE3": ("Ice Number concentration cat 3", "  kg-1"),
+    "QVOLI": ("Ice volume-1 mixing ratio", "m(3) kg(-1)"),
+    "QAOLI": ("Ice volume-1 times aspect ratio mixing ratio", "m(3) kg(-1)"),
+    "QVOLI2": ("Ice volume-2 mixing ratio", "m(3) kg(-1)"),
+    "QAOLI2": ("Ice volume-2 times aspect ratio mixing ratio", "m(3) kg(-1)"),
+    "QVOLI3": ("Ice volume-3 mixing ratio", "m(3) kg(-1)"),
+    "QAOLI3": ("Ice volume-3 times aspect ratio mixing ratio", "m(3) kg(-1)"),
     # Thompson aerosol-aware (mp_physics=28, Registry.EM_COMMON:3036 for
     # the scalars and :492-493 for the two 2-D emission members).  These
     # six rows are audit R-054: without them an mp=28 stock export wrote 8
@@ -410,6 +463,10 @@ _PACKAGE_FIELD_METADATA.update({
     for name in _FSBM_BIN_SPECIES
 })
 
+
+# NTU scalars, WRF v4.7.1 Registry.EM_COMMON:636-665.
+_PACKAGE_FIELD_METADATA.update({'AG': ('Second moment mixing ratio for rimed ice', 'm^2 kg-1'), 'AH': ('Second moment mixing ratio for hail', 'm^2 kg-1'), 'AI': ('Second moment mixing ratio for pristine ice', 'm^2 kg-1'), 'AS': ('Second moment mixing ratio for snow-aggregates', 'm^2 kg-1'), 'FI': ('Shape moment mixing ratio for pristine ice', 'm^3 kg-1'), 'FS': ('Shape moment mixing ratio for snow-aggregates', 'm^3 kg-1'), 'I3M': ('Third moment mixing ratio for pristine ice', 'm^3 kg-1'), 'QCCN': ('Mass mixing ratio for cloud CN', 'kg kg-1'), 'QDCN': ('Mass mixing ratio for dry CN ', 'kg kg-1'), 'QNIN': ('Potential ice nuclei number mixing ratio', '# kg-1'), 'QRCN': ('Mass mixing ratio for rain CN', 'kg kg-1'), 'QTCN': ('Mass mixing ratio for total CN', 'kg kg-1'), 'VG': ('Volume moment mixing ratio for rimed ice', 'm^3 kg-1'), 'VI': ('Volume moment mixing ratio for pristine ice', 'm^3 kg-1'), 'VS': ('Volume moment mixing ratio for snow-aggragates', 'm^3 kg-1')})
+
 #: Inventoried wrfinput members ``_PACKAGE_FIELD_METADATA`` has NO row for,
 #: each with the defect that leaves it out.  ``_physics_contract_bundle``
 #: skips an inventoried member this dict does not name WITHOUT A WORD, so a
@@ -421,6 +478,10 @@ _PACKAGE_FIELD_METADATA.update({
 #: registry's inventory and the metadata, so the truncation cannot come
 #: back unnamed: a new package member with no row fails at import.
 _PACKAGE_FIELDS_NOT_YET_EXPORTED: dict[str, str] = {}
+
+from woof.core.passive_tracer_contract import input_fields as _tracer_input_fields
+from woof.core.passive_tracer_contract import TRACER_INPUT_NAMES
+_PACKAGE_FIELD_METADATA.update({name: (name, "Dimensionless") for name in TRACER_INPUT_NAMES.values()})
 
 
 def _require_agreement_with_the_registry() -> None:
@@ -522,7 +583,13 @@ def _physics_contract_bundle(
         for field in inventory.wrfinput_fields
         if field.netcdf_name in _PACKAGE_FIELD_METADATA
     ]
-    extension_names = [field.netcdf_name for field in extensions]
+    extensions.extend(_tracer_input_fields(run_config or {}))
+    # Registry state fields may be input/restart/history only. Boundary
+    # arrays belong to advected moisture and scalar collections.
+    boundary_extension_names = [
+        field.netcdf_name for field in extensions
+        if field.collection in ("moist", "scalar")
+    ]
     input_names = {item["name"] for item in input_contract["variables"]}
     input_prototype = next(
         item for item in input_contract["variables"]
@@ -573,7 +640,7 @@ def _physics_contract_bundle(
         item for item in bdy_contract["variables"]
         if item["name"].startswith("QCLOUD_B")
     ]
-    for name in extension_names:
+    for name in boundary_extension_names:
         if name in two_dimensional:
             # A 2-D surface emission member has no lateral boundary arrays
             # in WRF's Registry either: there is nothing to force on the
@@ -590,6 +657,14 @@ def _physics_contract_bundle(
             spec["attributes"]["description"] = description
             spec["attributes"]["units"] = units
             bdy_contract["variables"].append(spec)
+    if cfg.get("traj_opt",0) == 1:
+        from woof.core.trajectory_contract import COORDINATES
+        input_contract["dimensions"].append({"name":"num_traj_stag","length":int(cfg.get("num_traj",1000)),"unlimited":False})
+        for name in COORDINATES:
+            spec=copy.deepcopy(input_prototype)
+            spec.update(name=name.upper(),dimensions=["Time","num_traj_stag"])
+            spec["attributes"].update(description=name,units="degrees" if name in ("traj_long","traj_lat") else "dimensionless",MemoryOrder="C",stagger="")
+            input_contract["variables"].append(spec)
     return result
 
 
@@ -1176,7 +1251,7 @@ def _global_updates(*, valid_time: datetime, nx: int, ny: int, nz: int,
         "TITLE": " OUTPUT FROM GPUWM NATIVE WRF V4.6.1-COMPAT DIRECT EXPORTER",
         # The representation the fields below are written in; WRF's input
         # gate compares it with the namelist (EXPORT_USE_THETA_M).
-        "USE_THETA_M": EXPORT_USE_THETA_M,
+        "USE_THETA_M": int(cfg.get("use_theta_m", EXPORT_USE_THETA_M)),
         "START_DATE": stamp,
         "SIMULATION_START_DATE": stamp,
         "WEST-EAST_GRID_DIMENSION": nx + 1,
@@ -1226,6 +1301,10 @@ def _global_updates(*, valid_time: datetime, nx: int, ny: int, nz: int,
         "JULYR": valid_time.year,
         "JULDAY": valid_time.timetuple().tm_yday,
     }
+    if cfg.get("tracer_opt", 0) == 2:
+        updates["TRACER_OPT"] = 2
+    if cfg.get("traj_opt",0) == 1:
+        updates["TRAJ_OPT"] = 1
     if physics_selection is not None:
         selectors = physics_selection.get("selectors")
         if not isinstance(selectors, Mapping):
@@ -1665,7 +1744,7 @@ def _real_exe_extrapolation_constants(dn, dnw, fnp, fnm) -> dict[str, np.ndarray
     never recomputes them: the surface (CF1-3) and model-top (CFN/CFN1)
     extrapolations of every step read the file's words.  The writer used to
     leave all five to the contract's prototype, a template's values for some
-    other vertical grid (a 44-level export carried CFN 1.4764977 where
+    other vertical grid (the nested 44-level export carried CFN 1.4764977 where
     its own DN/DNW give 1.4612311), so wrf.exe ran a different top boundary
     than the levels it was handed.
     """
@@ -1686,6 +1765,43 @@ def _real_exe_extrapolation_constants(dn, dnw, fnp, fnm) -> dict[str, np.ndarray
         "CFN": np.asarray(f32(f32(f32(f32(0.5) * top_dnw) + top_dn) / top_dn)),
         "CFN1": np.asarray(f32(-f32(f32(f32(0.5) * top_dnw) / top_dn))),
     }
+
+
+def runtime_wrfinput_fields(initial_result, met, soil, static, grid, cfg, valid_time):
+    """Apply the same input contract to an in-process real initialization.
+
+    DFI can start from a live case without a prepared cache on disk. Capture
+    its input-only fields before startup, so the filtered output preserves
+    the actual geography, vertical coordinate and surface initialization.
+    """
+    from dataclasses import asdict, fields
+    from types import SimpleNamespace
+    from woof.config import soil_layer_count
+    from woof.native_wrf_contract import (canonical_noah_surface, native_geometry_contract,
+                                          native_static_export_fields)
+    from woof.state_serialization_contract import serialized_state_attrs
+
+    def host(value):
+        return value.get() if hasattr(value, '__cuda_array_interface__') else value
+
+    arrays = {f'state/{name}': value for name in serialized_state_attrs(initial_result.state)
+              if (value := getattr(initial_result.state, name, None)) is not None}
+    for prefix, owner in (('coord', initial_result.coord), ('base', initial_result.base)):
+        arrays.update((f'{prefix}/{field.name}', getattr(owner, field.name))
+                      for field in fields(owner)
+                      if isinstance(getattr(owner, field.name), np.ndarray))
+    arrays.update((f'met/{name}', value) for name, value in met.fields.items())
+    arrays.update((f'surface/{name}', value)
+                  for name, value in canonical_noah_surface(soil).items())
+    arrays.update({'result/surface_pressure': initial_result.surface_pressure,
+                   'result/surface_qv': initial_result.surface_qv})
+    view = SimpleNamespace(_arrays=arrays, array=lambda name: host(arrays[name]))
+    geometry = native_geometry_contract(grid, cfg)
+    values = _wrfinput_fields(view, native_static_export_fields(static, grid), geometry, valid_time,
+        p_top=float(initial_result.base.p_top), mp_physics=cfg.mp_physics,
+        sf_surface_physics=cfg.sf_surface_physics, num_soil_layers=soil_layer_count(cfg),
+        run_config=asdict(cfg))
+    return geometry, {name: np.array(value, copy=True) for name, value in values.items()}
 
 
 def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
@@ -1736,7 +1852,15 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
         np.asarray(cache.array("base/thb"), dtype=np.float32)
         + np.asarray(cache.array("state/thp"), dtype=np.float32)
     ) - np.float32(_THETA_OFFSET_K)
-    theta_m = theta * (1.0 + _RVOVRD * qv)
+    prognostic_perturbation = dry_theta_perturbation
+    if int((run_config or {}).get("use_theta_m", 0)):
+        theta_m = theta
+        dry_theta_perturbation = (
+            (prognostic_perturbation + np.float32(_THETA_OFFSET_K))
+            / (np.float32(1.0) + np.float32(_RVOVRD) * qv.astype(np.float32))
+            - np.float32(_THETA_OFFSET_K))
+    else:
+        theta_m = theta * (1.0 + _RVOVRD * qv)
     pressure_perturbation, total_pressure = _moist_pressure(cache)
     alpha = (_RD * theta_m * (total_pressure / _P0) ** _RCP
              / total_pressure)
@@ -1807,10 +1931,9 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
         "PH": cache.array("state/php"),
         "PHB": cache.array("base/phb"),
         "T": dry_theta_perturbation,
-        # WRF's prognostic record.  Under use_theta_m = 0 it is the dry
-        # perturbation itself, equal to T (EXPORT_USE_THETA_M); theta_m
+        # WRF's selected prognostic record. At 0 this equals dry T; theta_m
         # above still enters the equation of state, as it does in WRF.
-        "THM": dry_theta_perturbation,
+        "THM": prognostic_perturbation,
         # T_INIT is not trajectory-active after input.  The prepared cache
         # retains the final dry-theta state but not real.exe's pre-adjustment
         # diagnostic, so bind it to the final dry theta explicitly.
@@ -1851,7 +1974,7 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
         "QVAPOR": cache.array("state/qv"),
         "QCLOUD": cache.array("state/qc"),
         "QRAIN": cache.array("state/qr"),
-        "QICE": cache.array("state/qi"),
+        **({"QICE": cache.array("state/qi")} if mp_physics != 95 else {}),
         "SHDMAX": surface["SHDMAX"],
         "SHDMIN": surface["SHDMIN"],
         "SHDAVG": surface["SHDAVG"],
@@ -1882,7 +2005,7 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
         # (module_initialize_real.F:580).  wrf.exe couples v with this array
         # (couple_momentum, calc_ww_cp, rk_addtend_dry, the emdiv filter);
         # the float64 reciprocal rounded once differed from it in 4,560 of
-        # 12,120 d01 words and moved every coupled v flux.
+        # 12,120 nested d01 words and moved every coupled v flux.
         "MF_VX_INV": np.float32(1.0) / np.asarray(static["MAPFAC_V"], dtype=np.float32),
         "F": static["F"],
         "E": static["E"],
@@ -1904,6 +2027,15 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
     # members to zero.  Preserve any explicitly prepared scheme state and
     # otherwise materialize zeros so the stock-WRF file is complete and its
     # package choice is auditable.
+    if (run_config or {}).get("traj_opt",0) == 1:
+        from woof.core.trajectory_contract import COORDINATES
+        coordinates=(cache.array("state/traj_coordinates")
+                     if "state/traj_coordinates" in cache._arrays else None)
+        capacity=int(run_config.get("num_traj",1000))
+        if coordinates is None:
+            coordinates=np.full((5,capacity),-9999.,np.float32)
+        if coordinates.shape != (5,capacity):raise ValueError("trajectory export allocation differs from num_traj")
+        result.update((name.upper(),coordinates[j]) for j,name in enumerate(COORDINATES))
     inventory = stock_wrf_physics_inventory(mp_physics)
     # QSNOW/QGRAUP used to be listed unconditionally beside QCLOUD above.
     # They are package members like any other, and mp_physics=50 declares
@@ -1912,7 +2044,7 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
     # below already handles every declared member -- prepared state when the
     # cache carries it, real.exe's zeros when it does not -- so the two
     # species simply join it.
-    for field in inventory.wrfinput_fields:
+    for field in (*inventory.wrfinput_fields, *_tracer_input_fields(run_config or {})):
         if field.netcdf_name in result:
             continue
         # The key is DECLARED, not guessed.  It used to be
@@ -2003,7 +2135,8 @@ def _wrfbdy_export_fields(cache: PreparedCache, inventory,
 
 
 def _initial_boundary_head(wrfinput_fields: Mapping[str, np.ndarray],
-                           export_fields: Mapping[str, str]
+                           export_fields: Mapping[str, str], *,
+                           use_theta_m: int = 0
                            ) -> dict[str, np.ndarray]:
     """real.exe's first wrfbdy record for the wrfinput this export writes.
 
@@ -2020,8 +2153,9 @@ def _initial_boundary_head(wrfinput_fields: Mapping[str, np.ndarray],
              "MAPFAC_M", "MAPFAC_U", "MAPFAC_V", *export_fields}
     raw = {name: np.asarray(wrfinput_fields[name], dtype=np.float32)
            for name in names}
-    return wrf_initial_boundary_head(
-        raw, layouts, moist_theta=EXPORT_USE_THETA_M == 1)
+    if use_theta_m:
+        raw["T"] = np.asarray(wrfinput_fields["THM"], dtype=np.float32)
+    return wrf_initial_boundary_head(raw, layouts, moist_theta=False)
 
 
 def _wrfbdy_fields(cache: PreparedCache, interval_index: int, *,
@@ -2450,7 +2584,9 @@ def validate_stock_wrf_export_config(
 
     Prepared arrays still receive every existing identity, shape and value
     check when exported. This only answers configuration representability.
-    Historical profile-free export keeps its original fixed physics slice.
+    Profile-free surface export still requires the Noah state layout.
+    PBL and surface-layer selectors are stamped from the prepared settings;
+    their cold-start inputs use that same Noah layout.
     """
     from dataclasses import asdict, is_dataclass
 
@@ -2472,8 +2608,11 @@ def validate_stock_wrf_export_config(
     required = {"hybrid_opt": 2, "hypsometric_opt": 2,
                 "specified": root, "nested": not root}
     if not configured_suite:
-        required.update({"bl_pbl_physics": 1, "sf_sfclay_physics": 91,
-                         "sf_surface_physics": 2})
+        # The old PBL=1/surface-layer=91 pins described the frozen proof
+        # file, not an array-layout restriction. They refused a complete
+        # km_opt=5/Noah preparation even though the exporter stamps its real
+        # selectors and already writes their common cold-start fields.
+        required.update({"sf_surface_physics": 2})
     mismatch = {name: (cfg.get(name), expected)
                 for name, expected in required.items() if cfg.get(name) != expected}
     width = cfg.get("spec_bdy_width")
@@ -2775,7 +2914,7 @@ def export_prepared_wrf_hierarchy(
             "valid_time": _date_text(valid_time),
             # What a stock namelist must say to run these files, for a
             # consumer that reads only the manifest (EXPORT_USE_THETA_M).
-            "use_theta_m": EXPORT_USE_THETA_M,
+            "use_theta_m": int(getattr(root_domain.run, "use_theta_m", 0)),
             "boundary_interval_seconds": boundary_interval_seconds,
             "boundary_record_count": root_manifest["boundary_record_count"],
             "boundary_times": root_manifest["boundary_times"],
@@ -2886,9 +3025,9 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
       equality check proves the prepared physics came from this config
       under this registry.  Expert tuples retain their registry-owned
       acknowledgement here too.
-    - Neither: the historical v2 contract, pinned to the stock
-      YSU+classic-MM5+Noah slice with any inventoried microphysics; see
-      test_the_profile_free_export_gate_keeps_its_exact_v2_stock_slice.
+    - Neither: the profile-free Noah input layout with any inventoried
+      microphysics and its recorded PBL and surface-layer selectors; see
+      test_profile_free_export_refuses_a_surface_without_the_noah_input_contract.
       Its global physics attributes are the cache's own recorded ones
       (:func:`recorded_physics_selectors`), so an mp_physics=8 cache
       states MP_PHYSICS = 8.
@@ -3014,7 +3153,7 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
             updates, cache, boundary_times, boundary_interval_seconds,
             engine, export_fields=export_fields,
             initial_head=_initial_boundary_head(
-                wrfinput_fields, export_fields))
+                wrfinput_fields, export_fields, use_theta_m=int(cfg.get("use_theta_m", 0))))
         files = {
             "wrfinput_d01": _validate_file(
                 staging / "wrfinput_d01", input_contract,
@@ -3059,7 +3198,7 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
             "valid_time": stamp,
             # What a stock namelist must say to run these files, for a
             # consumer that reads only the manifest (EXPORT_USE_THETA_M).
-            "use_theta_m": EXPORT_USE_THETA_M,
+            "use_theta_m": int(cfg.get("use_theta_m", EXPORT_USE_THETA_M)),
             "next_boundary_time": next_boundary_stamps[0],
             "boundary_interval_seconds": boundary_interval_seconds,
             "boundary_record_count": len(boundary_times),

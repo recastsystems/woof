@@ -523,6 +523,22 @@ thread_local! {
     static RENDER_SCRATCH: RefCell<RenderScratch> = RefCell::new(RenderScratch::default());
 }
 
+// Raster work can yield to another product on this same Rayon worker. Keep
+// only the idle buffer in TLS; an active render owns its scratch and never
+// holds a RefCell borrow across a callback or a parallel operation.
+fn with_render_scratch<T>(render: impl FnOnce(&mut RenderScratch) -> T) -> T {
+    struct Lease(RenderScratch);
+    impl Drop for Lease {
+        fn drop(&mut self) {
+            RENDER_SCRATCH.with(|slot| {
+                slot.replace(std::mem::take(&mut self.0));
+            });
+        }
+    }
+    let mut scratch = Lease(RENDER_SCRATCH.with(RefCell::take));
+    render(&mut scratch.0)
+}
+
 impl RustRenderer {
     pub fn render_png(self, request: &MapRenderRequest) -> Result<Vec<u8>, RustwxRenderError> {
         with_render_state(request, |data, ny, nx, opts| {
@@ -1036,8 +1052,7 @@ fn with_render_state_profile_with_style<T>(
     let projected_domain = request.projected_domain.as_ref();
     let default_title = default_title(&request.field);
 
-    RENDER_SCRATCH.with(|scratch_cell| {
-        let mut scratch = scratch_cell.borrow_mut();
+    with_render_scratch(|scratch| {
 
         let data_start = Instant::now();
         let data = if overlay_only {

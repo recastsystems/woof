@@ -99,6 +99,13 @@ class SameHostHaloExchanger(HaloExchanger):
         stats["seconds"] += time.perf_counter() - started
         self._observed.append(letter)
 
+    def end_step(self):
+        super().end_step()
+        # Address bindings of this step's temporaries are dropped once stale (SameHostTransport.retire_stale_bindings).
+        retire = getattr(self.link, "retire_stale_bindings", None)
+        if retire is not None:
+            retire(self.tables.rank)
+
     def round_acoustic(self, acoustic, *, interior_work=None):
         self._round("C", [("rho_pp", acoustic.rho_pp, "cell"),
                           ("rtheta_pp", acoustic.rtheta_pp, "cell"),
@@ -201,6 +208,10 @@ class SameHostRanks:
                     self.streams.append(cp.cuda.Stream(non_blocking=True))
         if streams is not None:
             self.streams = list(streams)
+        # Per-call memory budgets (the radiation wrappers) divide by the ranks sharing a card, and read-only
+        # tables are held once per card (woof.hex.device_share names the breakage).  Undone in close().
+        from .device_share import register as _register_share
+        self._device_share = _register_share(self.devices) if cp is not None else ()
         self.pools = [
             ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"hex-rank-{rank}",
                                initializer=self._initialize_worker, initargs=(rank,))
@@ -322,6 +333,10 @@ class SameHostRanks:
 
     def close(self):
         error = None
+        held, self._device_share = getattr(self, "_device_share", ()), ()
+        if held:
+            from .device_share import unregister
+            unregister(held)
         for rank, pool in enumerate(self.pools):
             try:
                 pool.shutdown(wait=True)

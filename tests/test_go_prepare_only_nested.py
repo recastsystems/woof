@@ -1,6 +1,6 @@
 """`woof go --prepare-only` on a two-domain config prepares and stops.
 
-The breakage, measured on box B on 2026-10-06 with woof 2.8.6: the
+The breakage, measured on box B on 2026-10-06 with gpuwm 2.8.6: the
 two-domain Toronto 750 m city template (hrrr-prs, 750 m nest) launched
 with --prepare-only ran the whole 12 h forecast anyway (27 history
 writes, 441 s), while a single-domain GFS config honoured the flag.  The

@@ -377,6 +377,7 @@ _HRRR_DISPOSITION_OPERATOR = {
 #:  18  nssl_2mom       Registry.EM_COMMON:3033  moist:qv,qc,qr,qi,qs,qg
 #:  28  thompsonaero    Registry.EM_COMMON:3036  moist:qv,qc,qr,qi,qs,qg
 #:  50  p3_1category    Registry.EM_COMMON:3038  moist:qv,qc,qr,qi
+#:  51  p3_1category_nc Registry.EM_COMMON:3039  moist:qv,qc,qr,qi
 #:
 #: mp=28's moist list is character for character mp=8's -- the aerosol-aware
 #: scheme adds only ``scalar:`` members -- so the mass-species handling is
@@ -435,30 +436,62 @@ HRRR_ANALYZED_HYDROMETEOR_MOIST_PACKAGE = {
         "retained": HRRR_ANALYZED_HYDROMETEORS},
     106: {"registry_citation": "Registry/Registry.EM_COMMON:3022",
           "retained": HRRR_ANALYZED_HYDROMETEORS},
+    7: {"registry_citation": "Registry/Registry.EM_COMMON:3023",
+        "retained": HRRR_ANALYZED_HYDROMETEORS},
     8: {"registry_citation": "Registry/Registry.EM_COMMON:3024",
         "retained": HRRR_ANALYZED_HYDROMETEORS},
     9: {"registry_citation": "Registry/Registry.EM_COMMON:3025",
         "retained": HRRR_ANALYZED_HYDROMETEORS},
     10: {"registry_citation": "Registry/Registry.EM_COMMON:3026",
          "retained": HRRR_ANALYZED_HYDROMETEORS},
+    14: {"registry_citation": "Registry/Registry.EM_COMMON:3030",
+         "retained": ("QC", "QR", "QI", "QS")},
     16: {"registry_citation": "Registry/Registry.EM_COMMON:3031",
          "retained": HRRR_ANALYZED_HYDROMETEORS},
     18: {"registry_citation": "Registry/Registry.EM_COMMON:3033",
          "retained": HRRR_ANALYZED_HYDROMETEORS},
     24: {"registry_citation": "Registry/Registry.EM_COMMON:3034",
          "retained": HRRR_ANALYZED_HYDROMETEORS},
+    26: {"registry_citation": "Registry/Registry.EM_COMMON:3035",
+         "retained": HRRR_ANALYZED_HYDROMETEORS},
+    27: {"registry_citation": "WRF 4.7.1 Registry/Registry.EM_COMMON:3040",
+         "retained": HRRR_ANALYZED_HYDROMETEORS},
     28: {"registry_citation": "Registry/Registry.EM_COMMON:3036",
+         "retained": HRRR_ANALYZED_HYDROMETEORS},
+    29: {"registry_citation": "WRF 4.7.1 Registry/Registry.EM_COMMON:3053",
+         "retained": HRRR_ANALYZED_HYDROMETEORS},
+    38: {"registry_citation": "Registry/Registry.EM_COMMON:3037",
          "retained": HRRR_ANALYZED_HYDROMETEORS},
     30: {"registry_citation": "Registry/registry.sbm:318",
          "retained": HRRR_ANALYZED_HYDROMETEORS},
+    52: {"registry_citation": "Registry/Registry.EM_COMMON:3040",
+         "retained": ("QC", "QR", "QI")},
     50: {"registry_citation": "Registry/Registry.EM_COMMON:3038",
          "retained": ("QC", "QR", "QI")},
     # Ferrier-Aligo: moist:qv,qc,qr,qi, so real.exe interpolates QC, QR and
     # QI and drops QS/QG (dyn_em/module_initialize_real.F:1859-1977 keys
     # every species on its P_Q* membership).  QI here is the analysis's
     # cloud ice alone, which is exactly what real.exe hands the scheme.
+    15: {"registry_citation": "Registry/Registry.EM_COMMON:3020",
+         "retained": ("QC", "QR", "QI")},
     5: {"registry_citation": "Registry/Registry.EM_COMMON:3019",
         "retained": ("QC", "QR", "QI")},
+    97: {"registry_citation": "Registry/Registry.EM_COMMON:3046",
+         "retained": HRRR_ANALYZED_HYDROMETEORS},
+    # mp=51 carries mp=50's moist list (:3039); its extra member, the
+    # droplet number qnc, is a ``scalar:`` one no source read here supplies,
+    # so it stays at the allocator's FP32 zero exactly like qni/qnr -- what
+    # real.exe does too, whose QNC interpolation runs only under flag_qnc
+    # (dyn_em/module_initialize_real.F:2019-2024).  P3 is defined at that
+    # zero: get_cloud_dsd2 floors nc at nsmall and its lambda limiter
+    # rebuilds a droplet number from the cloud water (module_mp_p3.F
+    # :6655-6685) before any process rate reads it.
+    51: {"registry_citation": "Registry/Registry.EM_COMMON:3039",
+         "retained": ("QC", "QR", "QI")},
+    53: {"registry_citation": "Registry/Registry.EM_COMMON:3041",
+         "retained": ("QC", "QR", "QI")},
+    56: {"registry_citation": "Registry/Registry.EM_COMMON:3044",
+         "retained": DECLARED_ANALYZED_HYDROMETEORS},
 }
 
 #: The microphysics ids whose WRF Registry ``moist:`` package can receive the
@@ -495,7 +528,7 @@ HRRR_ANALYZED_HYDROMETEOR_MOIST_PACKAGE = {
 #: integer sets and would go blind on a comprehension -- can still see this
 #: site.  ``test_the_analyzed_inventory_tuple_and_its_moist_packages_agree``
 #: pins the two equal.
-HRRR_ANALYZED_HYDROMETEOR_MP_PHYSICS = (1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106)
+HRRR_ANALYZED_HYDROMETEOR_MP_PHYSICS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16, 18, 24, 26, 27, 28, 29, 30, 38, 50, 51, 52, 53, 56, 97, 106)
 # Named schemes with the six-mass moist package retain every analysed
 # hydrometeor (capability row, woof.microphysics_schemes).
 from woof.microphysics_schemes import NAMED_SCHEMES as _NAMED_MP_SCHEMES
@@ -4273,7 +4306,7 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
     device_route = (
         route_name == "cuda" and state_route in ("cuda", "preprocess")
         and {"PRES", "SPFH", "Q2"}.issubset(snapshot.fields)
-        and initial_perturbation is None and cfg.mp_physics != 28
+        and initial_perturbation is None and cfg.mp_physics not in THOMPSON_AEROSOL_FAMILY
         and bool(sfcp_to_sfcp))
     release_completed_host = bounded_cuda or route_name == "cpu"
     if device_route:
@@ -4395,7 +4428,7 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
                             if name in analyzed_number_fields or name in donor_numbers)
     main_numbers = tuple(name for name in decoded_numbers if name not in donor_numbers)
     number_targets = metgrid_number_targets(cfg) if decoded_numbers else {}
-    if cfg.mp_physics == 28:
+    if cfg.mp_physics in THOMPSON_AEROSOL_FAMILY:
         # The aerosol-source selectors decide what this function is even
         # allowed to leave in nwfa/nifa, so they are checked HERE and not
         # only in validate_run_config: initialize_real is reachable with a
@@ -4404,7 +4437,7 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
         # stream nothing in this module can read and then hand the
         # microphysics an all-zero aerosol field as if that were the
         # requested climatology.  Refusing by name is the same posture the
-        # namelist importer already prints, which since lane/wif-default
+        # namelist importer already prints, which since development branch
         # prints a RESOLUTION (MP28_AEROSOL_SOURCE_DEFAULT) or a named
         # fallback (MP28_AEROSOL_SYNTHETIC_FALLBACK) rather than a
         # deviation notice.
@@ -5685,7 +5718,7 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
     # The mp=28 branch resolves whether aerosols were READ; None keeps the
     # configuration's own default for every other scheme.
     boundary_aerosol_from_input = None
-    if cfg.mp_physics == 28:
+    if cfg.mp_physics in THOMPSON_AEROSOL_FAMILY:
         # Aerosol-aware Thompson.  Its Registry package
         # (Registry.EM_COMMON:3036) carries the same six moist mass members
         # as mp=8 -- so every mass decision above is already correct for it
@@ -5769,7 +5802,7 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
         # module_initialize_real.F, the domain construction the fill belongs
         # to has not happened yet here, and filling would make the
         # "awaiting_profile_fill" receipt this function publishes false.
-        # THE DEFAULT (lane/wif-default).  This used to read
+        # THE DEFAULT (development branch).  This used to read
         # ``(aer_init_opt, wif_input_opt) == (1, 1)`` -- an opt-in.  An
         # opt-in flag on a correctness remedy is a workaround, so it is
         # gone: a real-data mp=28 run now RESOLVES WRF's monthly WIF
@@ -5962,14 +5995,14 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
                 wif_grid_latlon = _wif_grid_latlon_from(grid, state)
             if wif_grid_latlon is None or wif_valid_date is None:
                 # The dataset resolved but this CALLER still cannot use
-                # it.  The derivation above (lane/static-dataset-door)
+                # it.  The derivation above (development branch)
                 # takes the valid date from snapshot.valid_time and the
                 # mass-point lat/lon from whichever carrier the caller
                 # holds, so reaching here means the caller supplied NONE
                 # of them -- not that a front door forgot to pass grid=.
                 #
                 # WHICH BEHAVIOUR is decided by who asked, not by what is
-                # missing (lane/wif-default).  An EXPLICIT climatology
+                # missing (development branch).  An EXPLICIT climatology
                 # request refuses: honouring it is impossible, and
                 # silently substituting a different initial condition for
                 # a named one is the failure that lane exists to remove.
@@ -6007,10 +6040,10 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
                 wif_climatology_selected = False
         if wif_climatology_selected:
             wif_lat2d, wif_lon2d = wif_grid_latlon
-            # ONE RESOLVER, not two.  lane/static-dataset-door reached the
+            # ONE RESOLVER, not two.  development branch reached the
             # dataset a second time here through
             # wif_dataset.resolve_wif_climatology_path.  It cannot stay:
-            # resolve_wif_climatology (lane/wif-default) has ALREADY chosen
+            # resolve_wif_climatology (development branch) has ALREADY chosen
             # the file above -- that choice is what made
             # wif_climatology_selected true -- and a second resolver over
             # the same config field with a different precedence is how a
@@ -6237,7 +6270,7 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
             closure_receipt = thompson_cold_start_moment_closure(
                 state, state_xp, cfg, alpha, receipt=not boundary_only,
                 aerosol_number=(state.nwfa
-                                if cfg.mp_physics == 28 else None),
+                                if cfg.mp_physics in THOMPSON_AEROSOL_FAMILY else None),
                 landmask=landmask,
                 temperature=make_temperature_provider(theta_h, total_pressure_h),
                 **({"chunk_cells": preprocess.chunk_cells} if bounded_cuda else {}))
@@ -6246,7 +6279,7 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
                 closure_receipt = _thompson_cold_start_moment_closure(
                     state, state_xp, cfg, alpha, receipt=not boundary_only,
                     aerosol_number=(state.nwfa
-                                    if cfg.mp_physics == 28 else None),
+                                    if cfg.mp_physics in THOMPSON_AEROSOL_FAMILY else None),
                     landmask=landmask,
                     temperature_fields=(theta_h, total_pressure_h),
                     # Built only if a rain or ice cell is seeded; only the
@@ -6343,6 +6376,16 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
         mark_timing("hydrometeor_disposition_receipt_join")
     if timing_report is not None:
         timing_report["total_seconds"] = perf_counter() - timing_start
+    if cfg.use_theta_m:
+        # Native real converts after all dry initialization (initialize_real:4904).
+        # These are setup arrays only; forecast time never takes a host path.
+        thermal_base = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
+        state.thp[...] = ((thermal_base + state.thp)
+                          * (state_xp.float32(1.0) + state_xp.float32(c.RVOVRD) * state.qv)
+                          - thermal_base)
+        state.thp0[...] = state.thp
+    from woof.core.passive_tracer_contract import initialize_real_tracers
+    initialize_real_tracers(state, cfg)
     result = RealInitResult(
         state=state, coord=coord, base=host_base,
         surface_pressure=surface_pressure, surface_qv=published_surface_qv,
@@ -6401,7 +6444,7 @@ def hydrostatic_residual(result: RealInitResult) -> np.ndarray:
                                         dtype=np.float32),
                       dtype=np.float32).astype(np.float64)
     dry_mass = _host(state.mub2d + state.mup)
-    theta = _host(state.thb + state.thp)
+    theta = _host(state.total_theta()) if getattr(state, "use_theta_m", 0) else _host(state.thb + state.thp)
     qv = _host(state.qv)
     pressure = np.asarray(result.total_pressure, dtype=np.float64)
     alpha = (c.RD * theta * (1.0 + c.RVOVRD * qv)
@@ -6440,3 +6483,5 @@ __all__ = ["HRRR_ANALYZED_HYDROMETEORS",
            "WRF_REAL_MP28_AEROSOL_SOURCE_POLICY", "hydrostatic_residual",
            "initialize_real", "source_orography_from_catalog",
            "surface_pressure_from_surface"]
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

@@ -66,6 +66,11 @@ def _run(monkeypatch, cp, rng_seed, use_scheme_sr):
     # The MYJ CHKLOWQ arm (paper/conus-suite-exact, 2.9.11) is off with a
     # non-MYJ surface layer, as initialize_physics sets it.
     driver.noah_myj = False
+    # No surface FDDA owner on the state (2e0e878fea reads
+    # state._surface_fdda_owner) and no urban coupling.
+    from types import SimpleNamespace
+    driver.state = SimpleNamespace()
+    driver.urban_coupler = None
     seen = {}
 
     def probe(f, *args, **kwargs):
@@ -78,7 +83,11 @@ def _run(monkeypatch, cp, rng_seed, use_scheme_sr):
     driver._run_noah_seaice = lambda *args, **kwargs: None
     monkeypatch.setattr(physics, "microphysics_scheme_sr_available",
                         lambda mp: use_scheme_sr)
-    driver._run_noah(atmosphere, None, 1)
+    # _run_noah reads its cfg since the fractional-ice fold (dd6bf885c3:
+    # noah_fractional_seaice.active) and the irrigation arm; a default
+    # Noah run's config, not None.
+    from _run_config_fake import run_config_fake
+    driver._run_noah(atmosphere, run_config_fake(sf_surface_physics=2), 1)
     after = {name: cp.asnumpy(v).view(np.uint32)
              for name, v in (("rainbl", fields["rainbl"]),
                              ("pending", driver._pending_rainbl))}

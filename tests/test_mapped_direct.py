@@ -2559,7 +2559,10 @@ def test_mapped_export_intent_preserves_requested_native_physics(
             assert selectors[name] == changes[name]
 
 
-@pytest.mark.parametrize("surface", [1, 5])
+# The compatibility export represents sf_sfclay_physics 1/5 and MYNN since
+# 3f8833f0643; what it still cannot write is RUC's soil (it demands Noah, 2),
+# so the MYNN/RUC tree is the one that must refuse before decoding.
+@pytest.mark.parametrize("surface", [5])
 def test_required_hierarchy_export_refuses_before_decode_or_output(
         monkeypatch, tmp_path, surface):
     from woof.config import RunConfig
@@ -2580,7 +2583,7 @@ def test_required_hierarchy_export_refuses_before_decode_or_output(
     monkeypatch.setattr(mapped_direct, "decode_composed_source", forbidden)
     with pytest.raises(StockWrfExportUnsupported) as caught:
         mapped_direct.prepare_mapped_wrf(**args, stock_wrf_export="required")
-    assert caught.value.unsupported["sf_sfclay_physics"] == (surface, 91)
+    assert caught.value.unsupported == {"sf_surface_physics": (3, 2)}
     assert calls["build_static"] == calls["initialize"] == 0
     assert not args["output_root"].exists()
 

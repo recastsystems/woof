@@ -1,4 +1,4 @@
-"""The shared-card policy preserves release allocations for single members."""
+"""Compact defaults bound idle storage; explicit legacy mode stays replayable."""
 from types import SimpleNamespace
 import numpy as np
 import pytest
@@ -6,12 +6,15 @@ from woof.hex.device_memory_release import DevicePhaseRelease, shared_card_memor
 
 
 def test_policy_validation_and_release_defaults():
-    assert not shared_card_memory({})
+    assert shared_card_memory({})
+    assert shared_card_memory({"WOOF_HEX_MEMBER_MEMORY": "compact"})
     assert not shared_card_memory({'WOOF_HEX_MEMBER_MEMORY': 'single'})
     assert shared_card_memory({'WOOF_HEX_MEMBER_MEMORY': 'shared-card'})
     with pytest.raises(ValueError, match='must be single or shared-card'):
         shared_card_memory({'WOOF_HEX_MEMBER_MEMORY': 'shared'})
-    solo = DevicePhaseRelease(environ={})
+    solo = DevicePhaseRelease(environ={"WOOF_HEX_MEMBER_MEMORY": "single"})
+    compact = DevicePhaseRelease(environ={})
+    assert (compact.pool_min_bytes, compact.headroom) == (2 << 30, .15)
     shared = DevicePhaseRelease(environ={'WOOF_HEX_MEMBER_MEMORY': 'shared-card'})
     assert (solo.pool_min_bytes, solo.headroom) == (8 << 30, .15)
     assert (shared.pool_min_bytes, shared.headroom) == (1 << 30, 1.)
@@ -20,12 +23,15 @@ def test_policy_validation_and_release_defaults():
     assert (override.pool_min_bytes, override.headroom) == (123, .25)
 
 
-@pytest.mark.parametrize('shared', [False, True])
-def test_mynn_worker_capacity_and_scratch_lifetime(shared, monkeypatch):
+@pytest.mark.parametrize('policy,expected', [('single',512),('shared-card',128),('compact',256)])
+def test_mynn_worker_capacity_and_scratch_lifetime(policy, expected, monkeypatch):
+    shared=policy != 'single'
+    monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY',policy)
     from woof.hex.mpasphys import bl_mynn_v842 as m
     monkeypatch.setattr(m, '_SHARED_WORKSPACE', {})
     module = m.MynnCudaModule.__new__(m.MynnCudaModule)
     module.cp = SimpleNamespace(empty=np.empty, uint8=np.uint8, int32=np.int32,
+        get_default_memory_pool=lambda: SimpleNamespace(free_bytes=lambda:0),
         cuda=SimpleNamespace(get_current_stream=lambda: SimpleNamespace(ptr=0),
             runtime=SimpleNamespace(getDevice=lambda: 0,
                 getDeviceProperties=lambda d: {'multiProcessorCount': 2},
@@ -34,12 +40,12 @@ def test_mynn_worker_capacity_and_scratch_lifetime(shared, monkeypatch):
     module._shared_card_memory = shared
     first, e1, workers = module._storage(1024, 16)
     second, e2, next_workers = module._storage(1024, 16)
-    assert workers == next_workers == (128 if shared else 512)
+    assert workers == next_workers == expected
     assert (first is second) is (not shared)
     assert e1 is not e2
 
 
-@pytest.mark.parametrize('mode,expected', [('single', 1536), ('shared-card', 512)])
+@pytest.mark.parametrize('mode,expected', [('single', 1536), ('shared-card', 512), ('compact', 512)])
 def test_thompson_budget_and_explicit_override(mode, expected, monkeypatch):
     from woof.hex.mpasphys.thompson_v842 import workspace_budget_bytes
     monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', mode)
@@ -61,7 +67,22 @@ def test_single_snapshot_keeps_output_inputs(monkeypatch):
     assert obj.buffers == before and obj.acoustic == {}
 
 
+def test_compact_snapshot_drops_only_reconstructible_inputs(monkeypatch):
+    from woof.hex.mpasphys.resident_output_diagnostics_v842 import ResidentOutputDiagnostics
+    monkeypatch.delenv('WOOF_HEX_MEMBER_MEMORY', raising=False)
+    obj = ResidentOutputDiagnostics.__new__(ResidentOutputDiagnostics)
+    obj.convective = SimpleNamespace(reset=lambda: None)
+    obj.acoustic = {'old': True}
+    retained = object()
+    obj.buffers = {('state', 'scalars:index_qv'): object(),
+                   ('state', 'theta_m'): object(), ('diag', 'rainnc'): retained}
+    obj.after_snapshot()
+    assert obj.buffers == {('diag', 'rainnc'): retained}
+    assert obj.acoustic == {}
+
+
 def test_single_shortwave_keeps_release_width(monkeypatch):
+    pytest.importorskip("woof")
     from woof.hex.mpasphys.rrtmg_sw_v842 import MPASShortwave
     monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', 'single')
     obj = MPASShortwave.__new__(MPASShortwave)
@@ -85,7 +106,7 @@ def test_spawned_suite_member_sets_policy_before_forecast(mode, monkeypatch):
     assert exc.value.code == 0 and seen == [mode]
 
 
-@pytest.mark.parametrize('count,expected', [(1, 'single'), (2, 'shared-card')])
+@pytest.mark.parametrize('count,expected', [(1, 'compact'), (2, 'shared-card')])
 def test_roster_selects_memory_policy_without_changing_parent(count, expected, monkeypatch, tmp_path):
     import multiprocessing, os
     from woof.hex import multi_member, card_handoff

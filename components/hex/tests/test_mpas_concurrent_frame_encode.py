@@ -1,6 +1,6 @@
 """MPAS-route history frames encode side by side, in frame order where order is observable (no GPU, no netCDF).
 
-THE COST THIS REMOVES (30 km globe over 4 cards, V5090 box, 2026-10-27): one rw_mpas_stream process encoded each
+THE COST THIS REMOVES (30 km globe over 4 cards, reference system box, 2026-10-27): one rw_mpas_stream process encoded each
 history frame on one core, 24-36 s against ~23 s of stepping per forecast hour, so the run waited 40-63 s after its
 last step.  Frames now encode concurrently; file ids are drawn in frame order, an appending frame waits for every
 earlier one, and frames are published (history-ready.jsonl) in frame order.  Synthetic frames exercise ordering only.

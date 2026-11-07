@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 # The 2026-10-14 07:45Z source-authority ruling record carries private context, so it is kept in the
-# reference store (each init derivative publication's DREW-RULING.json), not in this tree; these tests
+# reference store (each init derivative publication's REFERENCE-RULING.json), not in this tree; these tests
 # bind its exact bytes and run where RRFS_SOURCE_AUTHORITY_RULING names it (the reference hosts).
 _RULING_TESTS = {
     "test_restart_only_forecast_preserves_approved_initializer_authority",
@@ -33,6 +33,31 @@ ROOT = Path(__file__).parents[1] / 'tools/native_physics_reference/rrfs'
 spec = importlib.util.spec_from_file_location('rrfs_flags', ROOT / 'audit_flags.py')
 flags = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(flags)
+
+
+def test_approved_build_verifies_neutral_ruling_filename(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT))
+    spec = importlib.util.spec_from_file_location('approved_reference_test', ROOT / 'verify_approved_reference.py')
+    verifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verifier)
+    approved = dict(kind='init', patch_sha256='patch', ruling_sha256='ruling')
+    (tmp_path / 'MANIFEST.json').write_text(json.dumps(dict(
+        source_correction=approved, binary_sha256='binary', core='init_atmosphere',
+        recipe='gnu-strict', flags_sha256='flags', toolchain_sha256='toolchain')))
+    (tmp_path / 'SOURCE-PINS.json').write_text(json.dumps(dict(source_correction=approved)))
+    (tmp_path / 'flag-audit.json').write_text('{}')
+    (tmp_path / 'compile-commands.jsonl').write_text('')
+    members = {'init_atmosphere_model': 'binary', 'flag-audit.json': 'flags',
+               'toolchain.txt': 'toolchain', 'APPROVED.patch': 'patch',
+               'REFERENCE-RULING.json': 'ruling'}
+    monkeypatch.setattr(verifier, 'publication', lambda *_: {'files': members})
+    monkeypatch.setattr(verifier, 'validate_authority', lambda *_: approved)
+    monkeypatch.setattr(verifier, 'verify_commands', lambda *_: {})
+    entry = dict(path=str(tmp_path), publication_sha256='publication')
+    assert verifier.verify_build(entry)['kind'] == 'init'
+    del members['REFERENCE-RULING.json']
+    with pytest.raises(ValueError, match='member binding differs'):
+        verifier.verify_build(entry)
 
 
 @pytest.mark.parametrize('field', ['patch_sha256', 'binary_sha256', 'ruling_sha256', 'label', 'ruling'])

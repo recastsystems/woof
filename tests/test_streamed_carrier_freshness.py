@@ -60,6 +60,7 @@ def _driver(*, glw_at=None, swdown_at=None, policy="required"):
         ysu_nan_guard_fires=0,
         microphysics_updates=3,
         carriers=contract,
+        radiation_callable=None,
         carriers_need_producer_refresh=False)
     state = SimpleNamespace(elapsed_seconds=0.0, physics=driver)
     return state, driver

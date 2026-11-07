@@ -17,3 +17,6 @@ sha2 = "0.10"
 thiserror.workspace = true
 zstd = "0.13"
 rustwx-core = { path = "../rustwx-core" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

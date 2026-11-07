@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use ureq::http::header::{CONTENT_RANGE, LOCATION};
+use ureq::http::header::{CONTENT_LENGTH, CONTENT_RANGE, LOCATION};
 use ureq::unversioned::resolver::DefaultResolver;
 use ureq::unversioned::transport::time::Duration as WaitDuration;
 use ureq::unversioned::transport::{
@@ -1209,7 +1209,7 @@ impl DownloadClient {
             }
         }
 
-        let total_len = match self.probe_range_total_length(url) {
+        let total_len = match self.probe_range_total_length(url, false) {
             Ok(Some(total_len)) if total_len > 0 => total_len,
             _ => return self.get_bytes(url),
         };
@@ -1245,14 +1245,21 @@ impl DownloadClient {
     }
 
     /// The object's total length as the origin states it in the
-    /// `Content-Range` of a one-byte range answer, or `None` when the
-    /// origin answers without a total (not 206, or `*`).
+    /// `Content-Range` of a one-byte answer or the `Content-Length` of a
+    /// complete HTTP 200 answer. Unknown totals return `None`.
     pub fn object_length(&self, url: &str) -> crate::error::Result<Option<u64>> {
-        self.probe_range_total_length(url)
+        self.probe_range_total_length(url, true)
     }
 
-    fn probe_range_total_length(&self, url: &str) -> crate::error::Result<Option<u64>> {
+    fn probe_range_total_length(&self, url: &str, allow_full: bool) -> crate::error::Result<Option<u64>> {
         let response = self.get_response_following_redirects(url, Some("bytes=0-0"))?;
+        if allow_full && response.status().as_u16() == 200 {
+            // A server may ignore the probe's Range and answer with the whole
+            // object. Its Content-Length still proves the full object size.
+            return Ok(response.headers().get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse().ok()));
+        }
         if response.status().as_u16() != 206 {
             return Ok(None);
         }
@@ -1326,7 +1333,13 @@ impl DownloadClient {
             // same three-clause check the Python range transport has always
             // applied, made against the span THIS request asked for.
             let status = response.status().as_u16();
-            if status != 206 {
+            // HTTP 200 is safe only when this request is exactly the whole
+            // object. A subset or a resumed request must still answer 206.
+            let whole_answer = status == 200 && from == 0 && last.is_some_and(|end|
+                response.headers().get(CONTENT_LENGTH)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<u64>().ok()) == end.checked_add(1));
+            if status != 206 && !whole_answer {
                 return Err(crate::RustmetError::Http(format!(
                     "range request for {} ({}) returned HTTP {}, not 206; the \
                      origin did not serve the requested span",
@@ -1343,7 +1356,7 @@ impl DownloadClient {
                 Some(last) => format!("bytes {}-{}/", from, last),
                 None => format!("bytes {}-", from),
             };
-            if !content_range.starts_with(&expected_prefix) {
+            if !whole_answer && !content_range.starts_with(&expected_prefix) {
                 return Err(crate::RustmetError::Http(format!(
                     "range request for {} ({}) answered with Content-Range {:?}, \
                      which is not the requested span",
@@ -2072,6 +2085,19 @@ mod tests {
         assert_eq!(full_file_ranges(0, 4), Vec::<(u64, u64)>::new());
         assert_eq!(full_file_ranges(1, 4), vec![(0, 0)]);
         assert_eq!(full_file_ranges(10, 4), vec![(0, 3), (4, 7), (8, 9)]);
+    }
+
+    #[test]
+    fn full_object_answer_proves_length_and_can_resume() {
+        let base = spawn_http_server(vec![
+            b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\nhello world".to_vec(),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\nhello".to_vec(),
+            b"HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 5-10/11\r\nContent-Length: 6\r\nConnection: close\r\n\r\n world".to_vec(),
+        ]);
+        let client = test_client();
+        let url = format!("{base}/object");
+        assert_eq!(client.object_length(&url).unwrap(), Some(11));
+        assert_eq!(client.get_range(&url, 0, 10).unwrap(), b"hello world");
     }
 
     /// A range GET must be answered with the span it asked for.

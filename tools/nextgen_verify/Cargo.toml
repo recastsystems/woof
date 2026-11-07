@@ -29,3 +29,7 @@ tiff = { version = "0.11", default-features = false, features = ["deflate", "lzw
 
 [profile.release]
 lto = "thin"
+
+# The shared GPU adapter is a recorded local patch of cudarc.
+[patch.crates-io]
+cudarc = { path = "../rustwx/vendor/crates-io/cudarc-0.19.8" }

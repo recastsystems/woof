@@ -97,4 +97,5 @@ class CoupledWaveSolver:
 
 
 def create_solver(grid, bathymetry, *, config=None):
-    return CoupledWaveSolver(grid,bathymetry,config or {})
+    from .action import ActionSolver
+    return ActionSolver(grid,bathymetry,config or {})

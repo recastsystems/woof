@@ -200,6 +200,7 @@ SM120_NVRTC_13_0_48 = KernelFrameRecording(
     measured='2026-07-26',
     complete=False,
     frames=MappingProxyType({
+
         'acoustic': 544,
         'advection': 0,
         'coriolis_map': 0,
@@ -293,8 +294,8 @@ SM120_NVRTC_13_0_48 = KernelFrameRecording(
         # 9,776 -> 9,264 B at WDM6_KMAX 64, 11,568 B at 80.
         'wdm6': 9264,
         'wdm6_refl': 16128,
-        # RE-READ 2026-10-07 on W1's RTX PRO 6000 (sm_120) with this NVRTC
-        # build, after lane/verify-wsm6-mp6 rewrote kernels/wsm6.cu as WRF's
+        # RE-READ 2026-10-07 on the test host's RTX PRO 6000 (sm_120) with this NVRTC
+        # build, after development branch rewrote kernels/wsm6.cu as WRF's
         # own call chain: 7,216 -> 6,448 B at WSM6_KMAX 64 (8,048 B at 80);
         # wsm6_refl10cm_column, the module's other kernel, is 3,392 B.
         'wsm6': 6448,
@@ -424,8 +425,8 @@ SM120_NVRTC_13_3_33 = KernelFrameRecording(
         # 9,776 -> 9,264 B at WDM6_KMAX 64, 11,568 B at 80.
         'wdm6': 9264,
         'wdm6_refl': 16128,
-        # RE-READ 2026-10-07 on W1's RTX PRO 6000 (sm_120) with this NVRTC
-        # build, after lane/verify-wsm6-mp6 rewrote kernels/wsm6.cu as WRF's
+        # RE-READ 2026-10-07 on the test host's RTX PRO 6000 (sm_120) with this NVRTC
+        # build, after development branch rewrote kernels/wsm6.cu as WRF's
         # own call chain: 7,216 -> 6,448 B at WSM6_KMAX 64 (8,048 B at 80);
         # wsm6_refl10cm_column, the module's other kernel, is 3,392 B.
         'wsm6': 6448,
@@ -723,6 +724,7 @@ SM120_NVRTC_13_4_92 = KernelFrameRecording(
     # FAST_SBM and the full-column Thompson generation arrived after this
     # full reading; their own rows (G2, V12) do not back-fill a measurement
     # on this compile platform.  Lin, Ferrier-Aligo, WSM-family (WSM7) and CCPP TKE-EDMF units also arrived after it.
+# BouLac has no frame receipt on this target yet.
     complete=False,
     frames=MappingProxyType({
         # The original cu6 kernel (cu_physics = 6), read 2026-10-09 on V9's
@@ -751,11 +753,8 @@ SM120_NVRTC_13_4_92 = KernelFrameRecording(
         # reproduced every other row of this recording to the byte.
         'pd_vertical_sl': 0,
         'rrtmg_smoke_manifest': 0,
-        # Re-pinned for the WOOF 1.0.0 text scrub: comments only (punctuation, host
-        # labels), proven equal with comments stripped; the preprocessor drops
-        # comments, so the compiled binary does not move.
         'upper_wind_limiter': 0,
-        # The coupled fire's standalone units (lane/ec-sfire), read
+        # The coupled fire's standalone units (development branch), read
         # 2026-10-06 with `tools/vram_reserve_probe.py frames` on test host D's
         # RTX 5070 Ti (sm_120), CuPy 14.2.0, nvidia-cuda-nvrtc 13.4.92,
         # through the production loader: 0 B each.  The same reading
@@ -766,7 +765,7 @@ SM120_NVRTC_13_4_92 = KernelFrameRecording(
         'sfire_ideal': 0,
         'sfire_ideal_atmos': 0,
         # Classic Thompson's transcription of WRF v4.6.1 mp_thompson
-        # (lane/parity-mp-libm), read 2026-10-05 through the production
+        # (development branch), read 2026-10-05 through the production
         # loader (-std=c++17 --fmad=false) on an RTX PRO 6000 Blackwell
         # (a rented box, sm_120), CuPy 14.2.0, NVRTC 13.4: every entry point 0 B
         # (tc_entry, tc_sources, tc_column, tc_refl10cm,
@@ -812,7 +811,7 @@ SM120_NVRTC_13_4_92 = KernelFrameRecording(
         # in a venv of cupy-cuda13x 14.2.0 and nvidia-cuda-nvrtc 13.4.92
         # (read_compile_platform() == ('120', '13.4.92')); the same pass
         # at nvidia-cuda-nvrtc 13.4.59 read every value identically
-        # (lane/aq-gocart; lane/aq-core's chem kernels are entered below
+        # (development branch; development branch's chem kernels are entered below
         # from its own read, which the same pass reproduced, and so are
         # the dycore-host speed lane's four units).  The same pass on
         # test host A's RTX 4090 (sm_89, NVRTC 13.0.48) is
@@ -827,13 +826,13 @@ SM120_NVRTC_13_4_92 = KernelFrameRecording(
         'chem_seasalt': 0,
         'chem_settling': 0,
         'chem_sulfur': 32,
-        # lane/aq-cams, read 2026-09-30 on test host B's RTX 5090 with
+        # development branch, read 2026-09-30 on test host B's RTX 5090 with
         # tools/vram_reserve_probe.py frames (NVRTC 13.4.92, CL-38855100);
         # the same kernel reads 0 B on test host A's RTX 4090 (sm_89).
         'chem_drydep_wesely': 0,
         'acoustic': 544,
         'advection': 0,
-        # The chem program's kernels (lane/aq-core), read 2026-09-30 on
+        # The chem program's kernels (development branch), read 2026-09-30 on
         # this box at this NVRTC with the frames reader: every entry point
         # 0 B except chem_vertmx, whose two Thomas recurrences are the only
         # per-level arrays in any chem kernel: 2,048 B at its unspecialized
@@ -842,7 +841,7 @@ SM120_NVRTC_13_4_92 = KernelFrameRecording(
         # levels.  The same six read the same bytes on test host A's RTX
         # 4090 (sm_89, NVRTC 13.4).  mono_advection sits in order below.
         'chem_bdy': 0,
-        # The smoke lane's three units (lane/aq-smoke), read 2026-09-30 on
+        # The smoke lane's three units (development branch), read 2026-09-30 on
         # this box and on test host A's RTX 4090 (sm_89, NVRTC 13.4.92)
         # with the same frames reader, every entry point equal on both:
         # chem_fire 64 B (its fire-type classifier's 16 group sums),
@@ -1006,8 +1005,8 @@ SM120_NVRTC_13_4_92 = KernelFrameRecording(
         'vert_interp': 512,
         'wdm6': 9264,
         'wdm6_refl': 16128,
-        # RE-READ 2026-10-07 on W1's RTX PRO 6000 (sm_120) with this NVRTC
-        # build, after lane/verify-wsm6-mp6 rewrote kernels/wsm6.cu as WRF's
+        # RE-READ 2026-10-07 on the test host's RTX PRO 6000 (sm_120) with this NVRTC
+        # build, after development branch rewrote kernels/wsm6.cu as WRF's
         # own call chain: 7,216 -> 6,448 B at WSM6_KMAX 64 (8,048 B at 80);
         # wsm6_refl10cm_column, the module's other kernel, is 3,392 B.
         # RE-READ 2026-10-16 on an RTX 5090 (this NVRTC build) after
@@ -1040,8 +1039,8 @@ SM120_NVRTC_13_4_92 = KernelFrameRecording(
         # Production loader, RTX 5090, same compiler, 2026-10-04.
         # Oracle replay covers all 2,048 columns at three radiation calls.
         'solar_albedo': 0,
-        # Dudhia shortwave (lane/verify-dudhia-sw), read 2026-10-07 through
-        # the production loader (get_function().attributes) on box W1's RTX
+        # Dudhia shortwave (development branch), read 2026-10-07 through
+        # the production loader (get_function().attributes) on test host's RTX
         # PRO 6000 Blackwell (sm_120), CuPy 14.2.0, nvidia-cuda-nvrtc
         # 13.4.92: 0 B, 48 registers.  Same architecture and compiler as
         # this recording; the frame is a property of the two.
@@ -1056,19 +1055,25 @@ PHYSICS_PARAMS_MEASURED_SOURCE_SHA256 = (
 # Composed sources read through actual loaded modules during the same
 # completed forecast as the two SM120_NVRTC_13_4_92 rows above.
 # pd_vertical_sl was re-read 2026-10-06 after its production faces at
-# Courant <= 1 kept the upwind flux (lane/ec-tracer-mass): RTX 5090
+# Courant <= 1 kept the upwind flux (development branch): RTX 5090
 # (a rented box), CuPy 14.2.0, nvidia-cuda-nvrtc 13.4.92, through the production
 # loader with `tools/vram_reserve_probe.py frames`: 0 B, as before.
 # upper_wind_limiter was re-read 2026-10-07 after glibc_flt32.cuh's gfk_exp
-# took a fused argument reduction (lane/verify-noah-lsm, d22f6ff48; the
-# limiter's own source is unchanged): box W1, RTX PRO 6000 (sm_120), CuPy
+# took a fused argument reduction (development branch, d22f6ff48; the
+# limiter's own source is unchanged): test host, RTX PRO 6000 (sm_120), CuPy
 # 14.2.0, NVRTC 12.9.86, `tools/vram_reserve_probe.py frames` through the
 # production loader on the lane tree and on the verify-base tree: 0 B on
 # both, and every module of the frames census reads the same on both
 # (noah 176 B, ruc 144 B, ysu 0 B).  Previously e9b862f4.
+# Both were re-read 2026-11-03 after the 3.0 transport-order port edited
+# pd_advection.cu and glibc_flt32.cuh (8b98ac87ced, 2582c065c99): RTX 5090
+# (test host B, sm_120), CuPy 14.2.0, NVRTC 13.4.92, the production
+# module_source/load_module path in fast and strict: 0 B on every kernel
+# (pd_fluxes, pd_renorm_apply, pd_vertical_sl, upper_wind_limiter).
+# Previously 929291a5 and d5ae17c0.
 DYCORE_FRAME_MEASURED_SOURCE_SHA256 = MappingProxyType({
-    "pd_vertical_sl": "929291a52c94c01fc7a3c648d867e26f0339b84865a24445911d8f7b2f862222",
-    "upper_wind_limiter": "0b57b55c7acd1139831d1be904441213150690facd7c4593010456066457a587",
+    "pd_vertical_sl": "dad6c8c0d6c5bf32a602d324c88685dd788faedfe2a44368df32623782cd9733",
+    "upper_wind_limiter": "8b3208d53826688a69566b1bbe71a5ffa6a492b918d0bf77d9e59c9077f40286",
 })
 
 #: A167: sm_120 at NVRTC 12.9.86, the compiler of the default recast-woof[gpu]
@@ -1103,14 +1108,26 @@ SM120_NVRTC_12_9_86 = KernelFrameRecording(
     measured='2026-10-02',
     complete=False,  # The new lake module has not been read on this compiler.
     frames=MappingProxyType({
-        # Dudhia shortwave (lane/verify-dudhia-sw): read 2026-10-07 through
-        # the production loader on box W1's RTX PRO 6000 Blackwell (sm_120),
+        # Dudhia shortwave (development branch): read 2026-10-07 through
+        # the production loader on test host's RTX PRO 6000 Blackwell (sm_120),
         # CuPy 14.2.0, NVRTC 12.9.86: 0 B, 48 registers.
         'dudhia_sw': 0,
         # Lin row measured on G2, same arch/compiler, 2026-10-08.
         # Default tier 128; tiers 256/512 are 45488/60848 bytes.
         "lin": 37808,
         'satmedmf': 0,  # G2 2026-10-08, production loader, three entry points, NVRTC 12.9.86.
+        # V10, 2026-10-09, production loader: both TEMF exports are 0 B.
+        'temf': 0,
+
+        # TMN production loader, G2 RTX PRO 6000, NVRTC 12.9.86,
+        # 2026-10-08: tmn_columns and tmn_counters each read 0 B.
+        'tmn_update': 0,
+        # Slab added: G2 sm_120 / NVRTC 12.9.86, 2026-10-08.
+        # Default production loader: local 0 B, 76 registers.
+        'slab': 0,
+        # 2026-10-08, production loader on RTX PRO 6000 Blackwell.
+        # Both exports, default and strict, local_size_bytes = 0.
+        'gsfcgce4ice': 0,
         'acoustic': 544,
         'advection': 0,
         'coriolis_map': 0,
@@ -1157,7 +1174,7 @@ SM120_NVRTC_12_9_86 = KernelFrameRecording(
         'milbrandt2': 2048,
         'milbrandt2_zet': 0,
         # Re-read 2026-10-07 at the WRF v4.6.1 transcription
-        # (lane/verify-morrison-mp10) on box W1's RTX PRO 6000 (sm_120,
+        # (development branch) on test host's RTX PRO 6000 (sm_120,
         # NVRTC 12.9.86, the production loader, by
         # tests/test_preflight.py::test_the_recorded_local_frames_match_the_driver):
         # 4,096 B, down from the replaced kernel's 5,120 B.  The other
@@ -1220,7 +1237,7 @@ SM120_NVRTC_12_9_86 = KernelFrameRecording(
         'thompson_aerosol_state': 40,
         'thompson_aerosol_warm': 0,
         'tke_budget': 0,
-        # Re-read 2026-10-07 on W1's RTX PRO 6000 (sm_120) at this NVRTC,
+        # Re-read 2026-10-07 on the test host's RTX PRO 6000 (sm_120) at this NVRTC,
         # fresh cache (lane verify-topo-radiation): 0 B on every entry point
         # with the float32 libm words; the pre-change unit reads 40 B.
         'topo_radiation': 0,
@@ -1235,8 +1252,8 @@ SM120_NVRTC_12_9_86 = KernelFrameRecording(
         'vert_interp': 512,
         'wdm6': 9264,
         'wdm6_refl': 16128,
-        # RE-READ 2026-10-07 on W1's RTX PRO 6000 (sm_120) with this NVRTC
-        # build, after lane/verify-wsm6-mp6 rewrote kernels/wsm6.cu as WRF's
+        # RE-READ 2026-10-07 on the test host's RTX PRO 6000 (sm_120) with this NVRTC
+        # build, after development branch rewrote kernels/wsm6.cu as WRF's
         # own call chain: 7,216 -> 6,448 B at WSM6_KMAX 64 (8,048 B at 80);
         # wsm6_refl10cm_column, the module's other kernel, is 3,392 B.
         'wsm6': 6448,
@@ -1247,8 +1264,8 @@ SM120_NVRTC_12_9_86 = KernelFrameRecording(
         # build: tiedtke_column holds 24 B (255 registers). Its column
         # arrays live in a per-call global arena, not in the frame.
         'tiedtke': 24,
-        # lane/verify-rrtmg-legacy-lw-sw: the legacy RRTMG solar unit
-        # (rrtmg_legacy_solar.cu), read 2026-10-07 on W1's RTX PRO 6000
+        # development branch: the legacy RRTMG solar unit
+        # (rrtmg_legacy_solar.cu), read 2026-10-07 on the test host's RTX PRO 6000
         # Blackwell (sm_120) at this NVRTC through the production loader:
         # 0 B for rls_radconst and rls_calc_coszen.  Not yet read at NVRTC
         # 13.4.92, so that complete recording does not list it.
@@ -1443,7 +1460,7 @@ SM89_NVRTC_13_4_92 = KernelFrameRecording(
         'wdm6': 9264,
         'wdm6_refl': 16128,
         # RE-READ 2026-10-16 on an RTX 4090 (sm_89, this NVRTC build) after the WSM6 column
-        # workspace (lane/292-mem-cuts): wsm6_refl10cm_column holds 24 B, wsm6_column less.
+        # workspace (development branch): wsm6_refl10cm_column holds 24 B, wsm6_column less.
         'wsm6': 24,
         'ysu': 0,
         'ysu_validation': 0,
@@ -1484,10 +1501,35 @@ SM89_NVRTC_13_4_59_COLD_START = KernelFrameRecording(
     frames=MappingProxyType({'thompson_cold_start': 48}),
 )
 
+# Compile-only: production NVRTC 12.9.86 PTX assembled by matching ptxas
+# 12.9.86 on V26 for sm_89, without a GPU context. The surface entry is 0 B;
+# QNSE PBL is 9,232 B and its mass-flux entry is 15,360 B. Live driver
+# checks remain required on other platforms. Receipt includes source hashes,
+# options, both compiler identities and every exported entry's stack frame.
+QNSE_COMPILE_ONLY_SM89_NVRTC_12_9_86 = KernelFrameRecording(
+    box='V26 (compile-only NVRTC plus ptxas)',
+    device='sm_89 compiler target (no GPU execution)',
+    compute_capability='89', nvrtc_build='12.9.86',
+    platform_family='linux', measured='2026-10-10', complete=False,
+    frames=MappingProxyType({'qnsesfc': 0, 'qnsepbl': 15360}),
+)
+
+# Current QNSE sources, production loaders, fast and strict. Driver attributes
+# read on the shared RTX 4090, 2026-11-01. Lane evidence/frames.json records
+# source hashes, both option lists, and every entry. Native tile reduction
+# widens the strict mass-flux frame to 16896 B (fast: 15360 B).
+QNSE_SM89_NVRTC_12_9 = KernelFrameRecording(
+    box="test host A", device="NVIDIA GeForce RTX 4090",
+    compute_capability="89", nvrtc_build="12.9.86",
+    platform_family="linux", measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"qnsesfc": 0, "qnsepbl": 16896}),
+)
+
 # Driver attributes read through the production integer-define loader.
 # Lin 128/256/512: 37808/45488/60848 B; radar: 7040/14080/28160 B.
 # Higher tiers are priced by the matching TieredKernelFrame declarations.
 KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
+    QNSE_SM89_NVRTC_12_9,
     # Direct NVRTC production loader on G2, f84cd9bf7. Driver local-size
     # attributes: f32 prepare 16656, columns 17968, tile 18016;
     # f64 columns 26576, tile 26736. Receipt: local-frame-fixed.log.
@@ -1535,6 +1577,25 @@ KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
         platform_family="linux", measured="2026-10-08", complete=False,
         frames=MappingProxyType({"wsm5": 7072}),
     ),
+    # Only the new skin unit was measured on this platform. Existing units
+    # retain their own recordings and ceilings; this row is partial.
+    KernelFrameRecording(
+        box='V11', device='NVIDIA RTX PRO 6000 Blackwell',
+        compute_capability='120', nvrtc_build='12.8.93',
+        platform_family='linux', measured='2026-10-09', complete=False,
+        frames=MappingProxyType({'sstskin': 0}),
+    ),
+    KernelFrameRecording(
+        box="V12-driverless-nvrtc-ptxas",
+        device="sm_120 compiler target",
+        compute_capability="120", nvrtc_build="12.8.93",
+        platform_family="linux", measured="2026-10-09", complete=False,
+        # Production module_source/module_options, NVRTC PTX and ptxas
+        # resource usage: both TMN exports and all three surface exports
+        # have zero stack, spills and local bytes. No older recording is
+        # back-filled. Driver attributes need a separate queued reread.
+        frames=MappingProxyType({"tmn_update": 0, "surface_analysis": 0}),
+    ),
     # The 2026-10-03 RTX PRO 6000 / NVRTC 12.8.93 lake reading (14,400 B)
     # described the local-frame source that the device arena replaced on
     # 2026-10-05, so it is retired rather than kept as a ceiling for code
@@ -1556,6 +1617,15 @@ KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
         compute_capability='89', nvrtc_build='13.4.59',
         platform_family='linux', measured='2026-09-30', complete=False,
         frames=MappingProxyType({'portable_libm64_grade': 48}),
+    ),
+    # Old KF measured through the shared no-FTZ loader on G2.
+    # Driver funcGetAttribute(CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES): column
+    # 240 B, floating-point probe 0 B. Partial reading, no other modules.
+    KernelFrameRecording(
+        box='sprint-G2', device='NVIDIA RTX PRO 6000 Blackwell',
+        compute_capability='120', nvrtc_build='12.9.86',
+        platform_family='linux', measured='2026-10-08', complete=False,
+        frames=MappingProxyType({'kf_old': 240}),
     ),
     SM120_NVRTC_13_4_59_COLD_START,
     SM89_NVRTC_13_4_59_COLD_START,
@@ -1701,8 +1771,8 @@ KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
             # 9,776 -> 9,264 B at WDM6_KMAX 64, 11,568 B at 80.
             'wdm6': 9264,
             'wdm6_refl': 16128,
-            # RE-READ 2026-10-07 on W1's RTX PRO 6000 (sm_120) with this
-            # NVRTC build, after lane/verify-wsm6-mp6 rewrote kernels/wsm6.cu
+            # RE-READ 2026-10-07 on the test host's RTX PRO 6000 (sm_120) with this
+            # NVRTC build, after development branch rewrote kernels/wsm6.cu
             # as WRF's own call chain: 7,216 -> 6,448 B at WSM6_KMAX 64 (8,048
             # B at 80); wsm6_refl10cm_column, the module's other kernel, is
             # 3,392 B.
@@ -1734,6 +1804,22 @@ KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
     # 2026-09-28 on an RTX 5090 and an RTX 5070 Ti.  Defined above.
     SM120_NVRTC_13_4_92,
     SM120_NVRTC_12_9_86,
+    # BouLac production loader, G2, frame.log and gpu-first.log.
+    KernelFrameRecording(
+        box="G2", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        compute_capability="120", nvrtc_build="12.9.86",
+        platform_family="linux", measured="2026-10-08", complete=False,
+        frames=MappingProxyType({"boulac": 7696}),
+    ),
+    # Default fast arithmetic after the native-capture port, production
+    # loader; evidence/stage-timing.json, assembled source f9a1fadec3b4.
+    KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090",
+        compute_capability="120", nvrtc_build="12.9.86",
+        platform_family="linux", measured="2026-11-01", complete=False,
+        frames=MappingProxyType({"boulac": 8208}),
+    ),
+
     # The same compiler on sm_89 (RTX 4090), read 2026-09-30 for the
     # urban canopy models and the UW moist-turbulence PBL.  Defined above.
     SM89_NVRTC_13_4_92,
@@ -1742,7 +1828,7 @@ KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
 
     # A FIFTH COMPILE PLATFORM, partial on purpose: sm_89 at NVRTC
     # 13.0.48, test host A's RTX 4090 (CuPy 14.0.1), read 2026-09-30
-    # by lane/aq-gocart with the same instrument (load_module, then the
+    # by development branch with the same instrument (load_module, then the
     # widest local_size_bytes over each module's exported __global__
     # symbols, zero launches) over the chem program's standalone modules
     # only.  Two differ from sm_120 at 13.4.92 and RAISE the ceiling:
@@ -1776,7 +1862,7 @@ KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
 
     # A SIXTH COMPILE PLATFORM, partial on purpose: sm_89 at NVRTC 13.4.59
     # (CuPy 14.2.0, CUDA runtime 13.2), test host A's RTX 4090, read
-    # 2026-10-01 on the integrated chem line (lane/aq-integrate) with
+    # 2026-10-01 on the integrated chem line (development branch) with
     # tools/vram_reserve_probe.py frames: load_module, then the widest
     # local_size_bytes over each module's exported __global__ symbols, zero
     # launches.  Every chem program translation unit, smoke, GOCART and CAMS
@@ -1846,6 +1932,35 @@ KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
 #: cross-platform drift check (``preflight.under_priced_kernel_frames``,
 #: driven from the ``.cu`` enumeration) is structurally unable to see it.
 CHAINED_UNITS_WITHOUT_A_PER_PLATFORM_ROW = MappingProxyType({
+    "kf_trigger2":
+        "woof/core/kf.py _kf_module(device, 2) compiles kf.cu with "
+        "KF_TRIGGER 2 prepended, so no *.cu enumeration reaches that image. "
+        "Every kernel in it (kf_column, kf_trigger2_tpart, kf_w0avg_update) "
+        "read 0 B on an RTX 5090, sm_120 / NVRTC 13.4.92, fast and strict, "
+        "2026-11-03.",
+    "kf_trigger3":
+        "woof/core/kf.py _kf_module(device, 3) compiles kf.cu with "
+        "KF_TRIGGER 3 prepended, so no *.cu enumeration reaches that image. "
+        "Every kernel in it (kf_column, kf_trigger3_dtrh_probe, "
+        "kf_w0avg_update) read 0 B on an RTX 5090, sm_120 / NVRTC 13.4.92, "
+        "fast and strict, 2026-11-03.",
+    "fogdes_composed":
+        "woof/core/fog_settling.py loads fogdes.cu with glibc_flt32.cuh "
+        "through the shared no-FTZ loader; this is the unit a grav_settling "
+        "domain prices.  fogdes_column and fogdes_surface read 0 B on an "
+        "RTX 5090, sm_120 / NVRTC 13.4.92, fast and strict, 2026-11-03.",
+    "acm2pbl_composed":
+        "woof/core/acm2pbl.py composes acm2pbl.cu with its math header; "
+        "the production module_source/compile_module path owns one image. "
+        "CHAINED_TRANSLATION_UNIT_FRAMES retains the widest measured "
+        "reading (32 B on sm_89, zero on sm_120); a standalone file "
+        "enumeration cannot supply a per-platform composed-unit row.",
+    "gbmpbl_composed": ("woof/core/gbmpbl.py loads gbmpbl.cu with WOOF's own float32 "
+                         "math header through the shared no-FTZ route. "
+                         "tests/test_gbmpbl_driver_seam.py rechecks its frame "
+                         "on the current device and compiler."),
+
+    'etanew': 'woof/core/etanew.py composes its math header and etanew.cu through the direct no-FTZ loader. Both V12 arithmetic modes read zero local bytes on sm_120 NVRTC 12.8.93; the stored source-sealed receipts audit that ceiling. Other compiler platforms have no standalone row for this composed source.',
     "noah_mosaic_ucm_unit":
         "glibc_flt32.cuh, unchanged urban_ucm.cu and noah_mosaic.cu compose "
         "one NOAH_MOSAIC_UCM translation unit through _mosaic_ucm_module, "
@@ -1888,6 +2003,8 @@ CHAINED_UNITS_WITHOUT_A_PER_PLATFORM_ROW = MappingProxyType({
     # box with a device, is ``tests/test_p3_cuda_gpu.py::
     # test_the_composed_unit_compiles_to_the_frame_it_is_priced_at``.
     "p3_composed":
+        "Two-category instantiations measured at 64 B maximum on G2 sm_120, "
+        "NVRTC 12.9.86, 2026-10-08; category-1 kernels remain 0 B. "
         "noahmp_leaves.cu + p3.cu, assembled by "
         "woof/core/p3_device.p3_source(); p3.cu cannot compile standalone "
         "(it borrows the tree's one glibc r_pow/r_exp/r_log), so no *.cu "
@@ -1947,7 +2064,7 @@ CHAINED_UNITS_WITHOUT_A_PER_PLATFORM_ROW = MappingProxyType({
         "2026-10-01 over every export; re-read 2026-10-02 on sm_120 at "
         "13.4.59, 13.4.92 and 12.9.86 with the same maximum. Re-read "
         "2026-10-07 on sm_120 (RTX PRO 6000) at 12.9.86 after "
-        "lane/verify-gwdo-kim's td_atan2f, unchanged. Re-audited by "
+        "the updated td_atan2f, unchanged. Re-audited by "
         "tests/test_terrain_drag_wrf471_parity.py::"
         "test_production_drag_frames_match_the_recorded_unit.",
     "thompson_fork_unit":
@@ -1969,12 +2086,12 @@ CHAINED_UNITS_WITHOUT_A_PER_PLATFORM_ROW = MappingProxyType({
 # export.  These are separate from standalone .cu recordings: the unit
 # requires the two glibc headers.  The source and options bind the readings
 # to the composition that was measured, rather than only to its filename.
-# Re-pinned by lane/verify-gsl-drag (gwdo_gsl_column gained the SPP pattern
+# Re-pinned by development branch (gwdo_gsl_column gained the SPP pattern
 # pointer and one load): the (120, 12.9.86) row was re-read on the RTX PRO
 # 6000 on 2026-10-07 with the new source and is unchanged; the other three
 # rows are carried from the previous composition, not re-read.
 TERRAIN_DRAG_COMPOSED_SOURCE_SHA256 = (
-    '417b8731c7c4eba6ca5211dbc8656f9ab6f248a1c33e06c62312744546a8135e')
+    '8a1f55196912ccb14419563711d74a3f229090eb3af5db096ab00f5b9f740bae')
 
 TERRAIN_DRAG_COMPOSED_OPTIONS = ("-std=c++17", "-fmad=false", "--ftz=false")
 TERRAIN_DRAG_COMPOSED_FRAME_READINGS = MappingProxyType({
@@ -2596,7 +2713,7 @@ class ResolvedToolchainPin:
 
 # 2026-10-18 resource-only re-read of the 110 current exports on the RTX 5070 Ti host.
 # Old source identities above stay historical; never relabel a measurement.
-NOAHMP_COMPOSED_FRAME_RECORDINGS: tuple[ComposedUnitFrameRecording, ...] = (
+_NOAHMP_PRE_OPTION_FRAME_RECORDINGS: tuple[ComposedUnitFrameRecording, ...] = (
     # 2026-10-19 re-read on a lab RTX 5090 (sm_120, NVRTC 13.4.92, the
     # same compile platform as the RTX 5070 Ti row below it in the historical
     # table): the 2.9.3 speed2 landing (de768fc2770) gave noahmp_vegeflux.cu
@@ -2685,7 +2802,7 @@ RESOLVED_TOOLCHAIN_PINS: tuple[ResolvedToolchainPin, ...] = (
         nvrtc_build='13.4.92',
         resolved='2026-09-28',
         current=True,
-        noahmp_architectures=('120',),
+        noahmp_architectures=(),  # source identity withdrawn; see historical rows
     ),
     # The window before it: cuda-toolkit 13.4.1.0 (uploaded 2026-09-09)
     # pinned nvidia-cuda-nvrtc 13.4.59, resolved 2026-09-10 with pip 25.2.
@@ -2741,7 +2858,7 @@ RESOLVED_TOOLCHAIN_PINS: tuple[ResolvedToolchainPin, ...] = (
         current=True,
         # '86' withdrawn with its row (golden/wrf-fixes, 2026-10-13); see
         # NOAHMP_COMPOSED_FRAME_RECORDINGS.
-        noahmp_architectures=(),
+        noahmp_architectures=('120',),  # fresh 2026-11-01 test host B reading
     ),
 )
 
@@ -2793,6 +2910,41 @@ KERNEL_LOCAL_FRAME_RECORDINGS += (
         frames=MappingProxyType({"wsm7": 7216}),
     ),
 )
+
+
+# GSFC uses a bounded device arena. The default specialized image and
+# unchanged native-replay strict image were measured through production's
+# direct NVRTC loader; the old 110,784 B automatic-array image is retired.
+KERNEL_LOCAL_FRAME_RECORDINGS += (
+    KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090",
+        compute_capability="120", nvrtc_build="13.4.92",
+        platform_family="linux", measured="2026-11-01", complete=False,
+        frames=MappingProxyType({"gsfcsw": 0}),
+        strict_recording=KernelFrameRecording(
+            box="test host B", device="NVIDIA GeForce RTX 5090",
+            compute_capability="120", nvrtc_build="13.4.92",
+            platform_family="linux", measured="2026-11-01", complete=False,
+            frames=MappingProxyType({"gsfcsw": 16}),
+        ),
+    ),
+)
+# New units read through the production loader on V12 in both arithmetic
+# modes. Keep older platform rows intact; ceilings include these readings.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="pool-V12", device="NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-10-10", complete=False,
+    frames=MappingProxyType({"ssib": 1648, "soil_points": 0, "record_select": 0}),
+),)
+
+
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"ssib_records": 0}),
+),)
 
 
 def frame_ceiling() -> dict[str, int]:
@@ -2930,31 +3082,31 @@ KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
 ),)
 
 # HAILCAST's complete five-embryo column, measured through the production
-# loader on V58; the three preparation/PSD/duration entries have zero frame.
+# loader on test host; the three preparation/PSD/duration entries have zero frame.
 KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
     replace(row, complete=False) if "hail" not in row.frames else row
     for row in KERNEL_LOCAL_FRAME_RECORDINGS)
 KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
-    box="V58", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    box="measured-host", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
     compute_capability="120", nvrtc_build="12.8.93", platform_family="linux",
     measured="2026-10-20", complete=False,
     frames=MappingProxyType({"hail": 7392}),
 ),)
 
-# Chemistry aerosol/cloud finalizer, production loader on V58, strict
+# Chemistry aerosol/cloud finalizer, production loader on test host, strict
 # numerics, sm_120 NVRTC 12.9.86. gpu-tests.json records attributes.
 # Only this new unit is measured here; prior source-wide claims are partial.
 KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
     replace(row, complete=False) if "chem_radiation" not in row.frames else row
     for row in KERNEL_LOCAL_FRAME_RECORDINGS)
 KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
-    box="V58", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    box="measured-host", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
     compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
     measured="2026-10-20", complete=False,
     frames=MappingProxyType({"chem_radiation": 0}),
 ),)
 
-# The saved-frame freezing-rain / FRAM ice unit (lane/cap-fzra aa11dd9dc41),
+# The saved-frame freezing-rain / FRAM ice unit (development branch aa11dd9dc41),
 # compiled at woof/ensemble/ice_accretion.py with --std=c++17 (the loader's
 # options for it are the same): saved_frame_ice reads 0 B local frame.
 # Attributes only: compile, no kernel launch.
@@ -3007,6 +3159,19 @@ KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
     frames=MappingProxyType({'fast_sbm': 28576}),
 ),)
 
+# Stock module_diag_cl.F: production loader on RTX 5090, NVRTC 12.9.86,
+# 2026-11-01. clwrf_output_calc has local_size_bytes=0 in fast numerics.
+# Evidence: port-diag-climate-ltng/evidence/clwrf-timing.json.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "clwrf" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"clwrf": 0}),
+),)
+
 # clwrf_output_calc through the production loader; all 48 fields fused,
 # measured with fast and strict numerics, local_size_bytes=0, 2026-10-21.
 KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
@@ -3042,3 +3207,607 @@ KERNEL_LOCAL_FRAME_RECORDINGS += tuple(KernelFrameRecording(
     measured="2026-10-30", complete=False,
     frames=MappingProxyType({"wind_farm": 56}),
 ) for build in ("12.9.86", "13.4.92"))
+
+# Interval flux means, production loader on test host B, 2026-10-31.
+# update_avgflx and advance_avgflx_count both report local_size_bytes=0.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "avgflx" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-10-31", complete=False,
+    frames=MappingProxyType({"avgflx": 0}),
+),)
+
+
+# KF-CuP production loader, fast numerics, RTX 5090, local_size_bytes=0.
+# Receipt: port-cu10-kfcup/evidence/kfcup-frame-final.json, 2026-11-01.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "kfcup" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.59", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"kfcup": 0}),
+),)
+
+# FLG forecast units, production loader, RTX 5090 / NVRTC 13.4.92,
+# 2026-11-01. Full-column workspace arrays are global and warp interleaved.
+# flg_column re-read 2026-11-02 (fast and strict, FLG_NV1 33/50/101 alike):
+# 832 B, after small fixed scratch moved to thread-local storage and the
+# qcfel band window moved to registers (generate_workspace_kernel.py).
+# The 33- and 101-interface specializations read the same frame. These are
+# partial platform readings. Component-only units are also measured, but
+# forecast selection never loads them. Receipts: port-ra7-flg fast-frames,
+# strict-frames, component-fast-frames and component-strict-frames.json.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "flg_column" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B",device="NVIDIA GeForce RTX 5090",compute_capability="120",
+    nvrtc_build="13.4.92",platform_family="linux",measured="2026-11-01",
+    complete=False,frames=MappingProxyType({"flg_column":832,"flg_driver":368,
+        "flg":408,"flg_gases":5256,"flg_streams":48096}),
+    strict_recording=KernelFrameRecording(
+        box="test host B",device="NVIDIA GeForce RTX 5090",compute_capability="120",
+        nvrtc_build="13.4.92",platform_family="linux",measured="2026-11-01",
+        complete=False,frames=MappingProxyType({"flg_column":832,"flg_driver":368,
+            "flg":408,"flg_gases":5256,"flg_streams":48096}))),)
+# flg_column, production loader, rented RTX 4090 box (sm_89, NVRTC 13.4.59),
+# 2026-11-02, fast and strict, FLG_NV1 33/50/101 alike. Partial reading.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="v4090-rented",device="NVIDIA GeForce RTX 4090",compute_capability="89",
+    nvrtc_build="13.4.59",platform_family="linux",measured="2026-11-02",
+    complete=False,frames=MappingProxyType({"flg_column":928}),
+    strict_recording=KernelFrameRecording(
+        box="v4090-rented",device="NVIDIA GeForce RTX 4090",compute_capability="89",
+        nvrtc_build="13.4.59",platform_family="linux",measured="2026-11-02",
+        complete=False,frames=MappingProxyType({"flg_column":928}))),)
+
+# MP13 production loader, native formulas, 2026-11-01.
+# Deeper SBU_KMAX tiers are priced separately in preflight: 128=5248, 256=10368 B.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "sbu_ylin" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"sbu_ylin": 2688, "sbu_ylin_edge": 0}),
+),)
+
+# WDM5 and WDM7 private units, production loader, native WRF arithmetic.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.2.51", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"wdm5": 9248, "wdm7": 9776, "wdm7_refl": 16128}),
+),)
+
+# GFS SAS CU_SAS, through the production loader in both numerics modes.
+# Tables/shallow: 0 B; deep and full column: 192 B. The column arrays
+# live in the tiled device workspace, which preflight prices separately.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "sas" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"gfs_sas":192}),
+),)
+
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"sas": 8}),
+    strict_recording=KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090",
+        compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+        measured="2026-11-01", complete=False,
+        frames=MappingProxyType({"sas": 128}),
+    ),
+),)
+
+# Production ISHMAEL direct-NVRTC image, two exported entries, 2026-11-01.
+# Fast: coltab 272 B, column 824 B. Strict: coltab 240 B, column 808 B.
+# Both fit within the default 1024 B stack. The prior assumed 50,016 B
+# bound charged a 12 GiB backing store no ISHMAEL launch reserves.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "ishmael" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"ishmael": 824}),
+),)
+
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="V12", device="NVIDIA RTX PRO 6000 Blackwell WORKSTATION Edition",
+    compute_capability="120", nvrtc_build="12.8.93", platform_family="linux",
+    measured="2026-10-10", complete=False,
+    frames=MappingProxyType({'gsfcgce4ice': 0, 'gsfcgce4ice_aux': 1408}),
+),)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="V16", device="RTX PRO 6000 Blackwell", compute_capability="120",
+    nvrtc_build="12.8.93", platform_family="linux", measured="2026-10-10",
+    complete=False, frames=MappingProxyType({"morrison_aero": 3104, "morrison_aero_refl": 18432})),)
+# The pre-staging OSAS image's 256 B reading is retired. The production
+# source now uses environmental-loop fusion and staged driver launches;
+# its fast/strict measurements for both retained platforms appear below.
+
+# PORT_ALL_20261101_FRAMES: direct production-loader reads, both numerics modes.
+# Command: python probe_batch005_frames.py. Retained receipt:
+# logs/batch005-new-frames-{fast,strict}.json in the integration evidence.
+# NVRTC CL-38657139, library SHA256
+# 5fc18c75a772c5fe0684d2a1bf3fa6ea964b6a71d0caaa828e5e1785dc16daba.
+# CAM uses its unspecialized source default of 32 levels here. Other CAM
+# specializations are not readings of this table.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.59", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({'bmj': 0,
+ 'cam3_emissivity': 1920,
+ 'cam3_paths': 0,
+ 'cam3_prepare': 0,
+ 'gfdleta_co2_init': 26912,
+ 'gfdleta_column': 14320,
+ 'gfdleta_init': 0,
+ 'gfdleta_lw_helpers': 0,
+ 'gfdleta_math_probe': 0,
+ 'gfdleta_table_runtime': 6288,
+ 'gfdleta_tables': 6288,
+ 'gsfcgce': 0,
+ 'gsfcgce_refl': 13056,
+ 'km5': 0,
+ 'km5_geometry': 0,
+ 'mrf': 0,
+ 'mrf_validation': 0,
+ 'temf_sfclay': 0}),
+    strict_recording=KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090",
+        compute_capability="120", nvrtc_build="13.4.59", platform_family="linux",
+        measured="2026-11-01", complete=False,
+        frames=MappingProxyType({'bmj': 0,
+ 'cam3_emissivity': 2048,
+ 'cam3_paths': 0,
+ 'cam3_prepare': 0,
+ 'gfdleta_co2_init': 26912,
+ 'gfdleta_column': 14304,
+ 'gfdleta_init': 0,
+ 'gfdleta_lw_helpers': 0,
+ 'gfdleta_math_probe': 0,
+ 'gfdleta_table_runtime': 6288,
+ 'gfdleta_tables': 6288,
+ 'gsfcgce': 0,
+ 'gsfcgce_refl': 13056,
+ 'km5': 0,
+ 'km5_geometry': 0,
+ 'mrf': 0,
+ 'mrf_validation': 0,
+ 'temf_sfclay': 0}),
+    ),
+),)
+
+
+# KEPS partial production reading: RTX 4090 / NVRTC 12.9.86.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host A", device="NVIDIA GeForce RTX 4090",
+    compute_capability="89", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"keps": 0}),
+    strict_recording=KernelFrameRecording(
+        box="test host A", device="NVIDIA GeForce RTX 4090",
+        compute_capability="89", nvrtc_build="12.9.86", platform_family="linux",
+        measured="2026-11-01", complete=False,
+        frames=MappingProxyType({"keps": 0})),
+),)
+
+# PORT_ALL_20261101_BATCH006_FRAMES: every exported production symbol.
+# Command: python measure_batch006_new_frames.py {fast,strict}.
+# Receipts: logs/batch006-new-frames-{fast,strict}.json in lane evidence.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.59", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"gd": 208, "gfs_pbl": 0, "sf_gfs": 0}),
+    strict_recording=KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090",
+        compute_capability="120", nvrtc_build="13.4.59", platform_family="linux",
+        measured="2026-11-01", complete=False,
+        frames=MappingProxyType({"gd": 208, "gfs_pbl": 0, "sf_gfs": 0})),
+),)
+
+# 2026-11-01, test host B production factory, all exports, fast and strict agree.
+# Receipts: noahmp-current-frames-{strict-,}result.json in the Noah-MP lane.
+# The signed-zero WATER/SOILWATER correction changed the complete unit
+# identities. Preserve the old reading as history, never relabel its compiler
+# or claim it measured the changed sources. Fresh unread platforms use the
+# ceiling over the current measurements and explicitly say so.
+HISTORICAL_NOAHMP_COMPOSED_FRAME_RECORDINGS += _NOAHMP_PRE_OPTION_FRAME_RECORDINGS
+NOAHMP_COMPOSED_FRAME_RECORDINGS = (
+    ComposedUnitFrameRecording(
+        box='test host B',
+        device='NVIDIA GeForce RTX 5090',
+        compute_capability='120',
+        nvrtc_build='12.9.86',
+        platform_family='linux',
+        measured='2026-11-01',
+        frames=MappingProxyType({
+            'noahmp_bareflux': 0,
+            'noahmp_driver_composed': 288,
+            'noahmp_energy_composed': 272,
+            'noahmp_fluxprep': 0,
+            'noahmp_glacier_composed': 456,
+            'noahmp_leaves': 272,
+            'noahmp_libm_slab_composed': 272,
+            'noahmp_radiation': 0,
+            'noahmp_sflx': 0,
+            'noahmp_snow': 200,
+            'noahmp_soilwater': 0,
+            'noahmp_thermal_composed': 368,
+            'noahmp_vegeflux_runtime': 0,
+            'noahmp_vegprecip': 0,
+            'noahmp_water': 224,
+        }),
+        unit_identity=MappingProxyType({
+            'noahmp_bareflux':
+                'd2e09c2ccc2bcc6524f542b41aabcdfadced27c6e091274caef9a6afee96b701',
+            'noahmp_driver_composed':
+                'dbfa9c8b4ec51833c24ac9c9105f6638f76851aa12185531456685d1b947a673',
+            'noahmp_energy_composed':
+                '56229ed3168b83845f6d9820d2585d4485ee7cf7f479217d9838573c3654b55f',
+            'noahmp_fluxprep':
+                'c1f15fefd60c05cb774135b7ad976a584432a0c5d19ef545720eb66d0c1a0f7a',
+            'noahmp_glacier_composed':
+                '0bcf3db1d33e20ce46234bbfcdce083f0652952bbe886bee63d61c67c61077a4',
+            'noahmp_leaves':
+                '98d7020604c6fbd067d5b22b92c5c910b1119f84b9dc1b11ab51b3ab484c7e97',
+            'noahmp_libm_slab_composed':
+                '5240c4820d045777237e86a1cae372e79a65aad0ca415a955774b7a6f7c5ec81',
+            'noahmp_radiation':
+                'fd3a2198282ef306f58aa256471287c7cacbd25cd0a7daa6ccf7fdb320b6ef46',
+            'noahmp_sflx':
+                'a40b1871465f6d795438483f8ade620a34dffdfe0f333833107404053cf072e4',
+            'noahmp_snow':
+                '8fbb7ebd7e02544af651d2809e60e3a4acd2012ac20649ffb46e3209a7c1eeb0',
+            'noahmp_soilwater':
+                '761c107eb267b1dded45f5a353040b629870444b49c1000f8a2fd8e551abad01',
+            'noahmp_thermal_composed':
+                '90edf4cb7b87d54a0062c8373decab6b510f77388beaaa5ac3c35b71a91a6342',
+            'noahmp_vegeflux_runtime':
+                'ede775ebaa5b65ee85e846c2046f4f0ef5744ebb8e977fbf62905170ae69ab85',
+            'noahmp_vegprecip':
+                '754bbe9b73b37bd9db74b40f5dc12bb58c27a66329a125b342b8d3c067d7dd7f',
+            'noahmp_water':
+                '89573c1b1303f56980dc184704e260e06153ad71076aaf3177ccdd80321988b3',
+        }),
+    ),
+)
+
+# Native diagnostics production entry points, default and strict, test host B.
+# No older platform is assigned values it never measured.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if not {"level_diagnostics", "nwp_windows", "nwp_hail"} <= row.frames.keys()
+    else row for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+# Native output accumulator unit, read in both numeric modes on test host B.
+# Receipts: output-frames-{0,1}-result.json in the Noah-MP lane.
+HISTORICAL_NOAHMP_COMPOSED_FRAME_RECORDINGS += NOAHMP_COMPOSED_FRAME_RECORDINGS
+NOAHMP_COMPOSED_FRAME_RECORDINGS = (
+    ComposedUnitFrameRecording(
+        box='test host B',
+        device='NVIDIA GeForce RTX 5090',
+        compute_capability='120',
+        nvrtc_build='12.9.86',
+        platform_family='linux',
+        measured='2026-11-01',
+        frames=MappingProxyType({
+            'noahmp_bareflux': 0,
+            'noahmp_driver_composed': 288,
+            'noahmp_energy_composed': 272,
+            'noahmp_fluxprep': 0,
+            'noahmp_glacier_composed': 456,
+            'noahmp_leaves': 272,
+            'noahmp_libm_slab_composed': 272,
+            'noahmp_output': 0,
+            'noahmp_radiation': 0,
+            'noahmp_sflx': 0,
+            'noahmp_snow': 200,
+            'noahmp_soilwater': 0,
+            'noahmp_thermal_composed': 368,
+            'noahmp_vegeflux_runtime': 0,
+            'noahmp_vegprecip': 0,
+            'noahmp_water': 224,
+        }),
+        unit_identity=MappingProxyType({
+            'noahmp_bareflux':
+                'd2e09c2ccc2bcc6524f542b41aabcdfadced27c6e091274caef9a6afee96b701',
+            'noahmp_driver_composed':
+                'dbfa9c8b4ec51833c24ac9c9105f6638f76851aa12185531456685d1b947a673',
+            'noahmp_energy_composed':
+                '56229ed3168b83845f6d9820d2585d4485ee7cf7f479217d9838573c3654b55f',
+            'noahmp_fluxprep':
+                'c1f15fefd60c05cb774135b7ad976a584432a0c5d19ef545720eb66d0c1a0f7a',
+            'noahmp_glacier_composed':
+                '0bcf3db1d33e20ce46234bbfcdce083f0652952bbe886bee63d61c67c61077a4',
+            'noahmp_leaves':
+                '98d7020604c6fbd067d5b22b92c5c910b1119f84b9dc1b11ab51b3ab484c7e97',
+            'noahmp_libm_slab_composed':
+                '5240c4820d045777237e86a1cae372e79a65aad0ca415a955774b7a6f7c5ec81',
+            'noahmp_output':
+                '9becce8c9d883118d760b0e6cea2ae624d886458ff9f1b3f8d5624646b625626',
+            'noahmp_radiation':
+                'fd3a2198282ef306f58aa256471287c7cacbd25cd0a7daa6ccf7fdb320b6ef46',
+            'noahmp_sflx':
+                'a40b1871465f6d795438483f8ade620a34dffdfe0f333833107404053cf072e4',
+            'noahmp_snow':
+                '8fbb7ebd7e02544af651d2809e60e3a4acd2012ac20649ffb46e3209a7c1eeb0',
+            'noahmp_soilwater':
+                '761c107eb267b1dded45f5a353040b629870444b49c1000f8a2fd8e551abad01',
+            'noahmp_thermal_composed':
+                '90edf4cb7b87d54a0062c8373decab6b510f77388beaaa5ac3c35b71a91a6342',
+            'noahmp_vegeflux_runtime':
+                'ede775ebaa5b65ee85e846c2046f4f0ef5744ebb8e977fbf62905170ae69ab85',
+            'noahmp_vegprecip':
+                '754bbe9b73b37bd9db74b40f5dc12bb58c27a66329a125b342b8d3c067d7dd7f',
+            'noahmp_water':
+                '89573c1b1303f56980dc184704e260e06153ad71076aaf3177ccdd80321988b3',
+        }),
+    ),
+)
+
+# Standalone output-unit reading from the same production factory and receipt.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"level_diagnostics": 0, "nwp_windows": 0, "nwp_hail": 40}),
+),)
+
+# PX column and fractional sea-ice entries, production loader in both
+# arithmetic modes. Each reads 0 B local frame on RTX 4090 / NVRTC 12.9.86.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "pxsfclay" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host A", device="NVIDIA GeForce RTX 4090",
+    compute_capability="89", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"pxsfclay": 0}),
+),)
+
+# CAM production column entry points, read in both numerics modes on test host B.
+# Maxima: MP fast 2336 / strict 2832; ZM 64 / 24; UW shallow 1040 / 2416.
+# Evidence: tools.cam5_wrf471_oracle.measure_frames, 2026-11-01.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if not {"cammgmp", "camzm", "uwshcu"}.issubset(row.frames)
+    else row for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"cammgmp": 2832, "camzm": 64, "uwshcu": 2416}),
+),)
+
+# WRF cloud/FARMS production loader, measured in both numerics modes.
+# tools/cloud_aerosol_wrf471_oracle/read_frames.py reproduces the reading.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"cldfra3": 0, "farms": 136}),
+),)
+
+# Native cloud-feedback/stock aerosol units, production loader, fast and
+# strict, test host B RTX 5090 / NVRTC 13.4.92, 2026-11-01. All entry points.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"cu_radiation": 0, "wrf_stock_aer3": 0, "solar_eclipse": 32}),
+),)
+
+# Measured default and strict port exports on the intake platform.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="V16", device="RTX PRO 6000 Blackwell", compute_capability='120',
+    nvrtc_build='12.8.93', platform_family="linux", measured="2026-10-10",
+    complete=False, frames=MappingProxyType({'morrison_aero': 3104, 'morrison_aero_refl': 18432, 'mskf': 0, 'cumulus_aerosol': 176, 'cumulus_feedback': 0, 'mskf_aerosol_replay': 984})), )
+
+# OSAS after environmental-loop fusion and staged driver launches, 2026-11-01.
+# Each reading covers every entry, including __launch_bounds__ declarations
+# and the retained single-kernel referee. Native table builders and RNG use 0.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "cu_osas" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += tuple(KernelFrameRecording(
+    box=box, device=device, compute_capability=capability,
+    nvrtc_build=build, platform_family="linux", measured="2026-11-01",
+    complete=False, frames=MappingProxyType({"cu_osas": fast_frame}),
+    strict_recording=KernelFrameRecording(
+        box=box, device=device, compute_capability=capability,
+        nvrtc_build=build, platform_family="linux", measured="2026-11-01",
+        complete=False, frames=MappingProxyType({"cu_osas": strict_frame})),
+) for box, device, capability, build, fast_frame, strict_frame in (
+    ("test host A", "NVIDIA GeForce RTX 4090", "89", "12.9.86", 240, 224),
+    ("test host B", "NVIDIA GeForce RTX 5090", "120", "13.4.59", 56, 48),
+))
+
+# Real RASM/solar replay image, test host B RTX 5090, 2026-11-01.
+# evidence/third-surface-kernel-frames.json: all five kernels read 0 B.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(replace(row,complete=False)
+    if "native_surface_diagnostics" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B",device="NVIDIA GeForce RTX 5090",compute_capability="120",
+    nvrtc_build="12.9.86",platform_family="linux",measured="2026-11-01",complete=False,
+    frames=MappingProxyType({"native_surface_diagnostics":0})),)
+
+# Observation FDDA: all nine entries of the production compilation unit,
+# measured through frame_module on test host B, fast and WRF-exact loaders.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "fddaobs" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"fddaobs": 0}),
+),)
+
+# PX column and its shared initialization/driver kernels, production loader.
+# test host B RTX 5090, NVRTC 12.9.86, fast and strict, 2026-11-01.
+# evidence/px-frames-fast.json and px-frames-strict.json: all five entry
+# points have zero-byte local frames; this row records module maxima.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "pxlsm" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="12.9.86", platform_family="linux",
+    measured="2026-11-01", complete=False,
+    frames=MappingProxyType({"pxlsm": 0, "pxlsm_init": 0, "pxlsm_driver": 0}),
+),)
+
+# Ideal SCM surface: both production entry points, measured 2026-11-02.
+# tools/idealscm_wrf471_oracle/read_frames.py; retained sf89-frames-*.json.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "idealscmsfclay" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="release-test", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-02", complete=False,
+    frames=MappingProxyType({"idealscmsfclay": 0}),
+),)
+
+# Integration port standalone units, actual production loaders, 2026-11-02.
+# sm_120 NVRTC13.4.59; deepest NTU tier includes the staged parallel driver.
+# Partial measurement only. Every new architecture/compiler needs its own row.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090", compute_capability="120", nvrtc_build="13.4.59", platform_family="linux", measured="2026-11-02", complete=False,
+    frames=MappingProxyType({'afwa_diagnostics': 0, 'dfi': 0, 'dfi_reset': 0, 'global_acoustic': 0, 'global_advection': 0, 'global_geometry': 0, 'global_hydrostatic': 0, 'global_ideal_init': 0, 'global_polar': 0, 'global_rotation': 0, 'held_suarez_mesh': 0, 'idealized_forcing': 0, 'level_diagnostics': 0, 'nssl2_shape_diagnostics': 0, 'nssl2_shape_driver': 15504, 'nssl2_shape_gs': 112, 'nssl2_shape_nucond': 0, 'ntu': 9256, 'nwp_windows': 0, 'pxsfclay': 0, 'ssib': 896, 'thompson_collision': 0, 'tracer_pblmix': 0, 'trajectory': 32, 'tslist': 0, 'wind_legacy': 0, 'wind_mav': 32, 'wrf_stock_aer3': 0}),
+    strict_recording=KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090", compute_capability="120", nvrtc_build="13.4.59", platform_family="linux", measured="2026-11-02", complete=False,
+        frames=MappingProxyType({'afwa_diagnostics': 0, 'dfi': 0, 'dfi_reset': 0, 'global_acoustic': 0, 'global_advection': 0, 'global_geometry': 0, 'global_hydrostatic': 0, 'global_ideal_init': 0, 'global_polar': 0, 'global_rotation': 0, 'held_suarez_mesh': 0, 'idealized_forcing': 0, 'level_diagnostics': 0, 'nssl2_shape_diagnostics': 0, 'nssl2_shape_driver': 15504, 'nssl2_shape_gs': 112, 'nssl2_shape_nucond': 0, 'ntu': 9256, 'nwp_windows': 0, 'pxsfclay': 0, 'ssib': 896, 'thompson_collision': 0, 'tracer_pblmix': 0, 'trajectory': 0, 'tslist': 0, 'wind_legacy': 0, 'wind_mav': 192, 'wrf_stock_aer3': 0})),
+),)
+
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host D", device="NVIDIA GeForce RTX 5070 Ti",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-02", complete=False,
+    frames=MappingProxyType({"sfs_output": 0}),
+),)
+
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090", compute_capability="120",
+    nvrtc_build="12.9.86", platform_family="linux", measured="2026-11-01",
+    complete=False, frames=MappingProxyType({"noahmp_output": 0}),
+),)
+
+# Whole MAD-WRF production loader, release card 0, 2026-11-02.
+# Receipt: evidence/port-madwrf-raoffset/mad-frames.json.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "madwrf" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="release-box", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-02", complete=False,
+    frames=MappingProxyType({"madwrf": 0}),
+),)
+
+# Shallow production loaders, tools/shallow_wrf471_frames.py; both modes.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if not {'grims', 'shcu_nscv'}.issubset(row.frames)
+    else row for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box='release-box', device='NVIDIA RTX PRO 6000 Blackwell Server Edition',
+    compute_capability='120', nvrtc_build='13.4.92', platform_family='linux',
+    measured='2026-11-02', complete=False,
+    frames=MappingProxyType({'grims': 0, 'shcu_nscv': 0}),
+),)
+
+# Deng driver production loader: tools/shallow_wrf471_frames.py, fast and strict.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if 'deng' not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box='release-box', device='NVIDIA RTX PRO 6000 Blackwell Server Edition',
+    compute_capability='120', nvrtc_build='13.4.92', platform_family='linux',
+    measured='2026-11-02', complete=False,
+    frames=MappingProxyType({'deng': 184}),
+),)
+
+# RCON production loader, fast and strict; retained rcon-aot-{fast,strict}.json.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="WRF471-release", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-02", complete=False,
+    frames=MappingProxyType({"rcon": 65136}),
+),)
+
+# Production UDM fast/strict AOT loads, test host D; udm-{fast,strict}-frames.json.
+# Capacities 64/128/256 use 38896/77504/154560 bytes; the tier multiplier
+# in preflight intentionally rounds the larger two upward.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host D", device="NVIDIA GeForce RTX 5070 Ti",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-02", complete=False,
+    frames=MappingProxyType({"udm": 38896}),
+),)
+
+# Surface-option production images, all exports in fast and strict modes.
+# tools/sfc_irr_seaice_wrf471/measure_frames.py; kept frames-complete.json.
+_SURFACE_PORT_FRAMES = {
+    "noah_ua": 224, "noah_mosaic_ua": 176, "noah_ua_sfcdiags": 0,
+    "noah_seaice_options": 224, "noah_fractional": 0,
+    "irrigation": 0, "sfclay_dx2d": 0,
+}
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if not _SURFACE_PORT_FRAMES.keys() <= row.frames.keys()
+    else row for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="release-box", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-02", complete=False,
+    frames=MappingProxyType(_SURFACE_PORT_FRAMES),
+    strict_recording=KernelFrameRecording(
+        box="release-box", device="NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+        measured="2026-11-02", complete=False,
+        frames=MappingProxyType(_SURFACE_PORT_FRAMES)),
+),)
+
+# Seal-4 production reads (3.0 port folds), fast and strict identical:
+# test host B, RTX 5090, CuPy 14.2.0, NVRTC 13.4.92 (CL-38855100),
+# 2026-11-03.  load_module for the standalone units; snow_papers through
+# snow_papers._module and vortex_init through tc.vortex._module, their
+# production loaders (widest kernels: snow_papers_albedo 1,136 B; the
+# tc_move/tc_profile*/tc_ring family 40 B).  Retained receipt
+# seal4-frames-{fast,strict}.json in the release evidence.
+_SEAL4_FRAMES = {
+    "afwa_buoyancy": 0, "afwa_severe": 0, "fogdes": 0, "misc_diag_print": 0,
+    "snow_papers": 1136, "tc_exchange": 0, "tc_mixing": 0, "tc_spray": 0,
+    "tc_waves": 0, "vortex_init": 40,
+}
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if not _SEAL4_FRAMES.keys() <= row.frames.keys()
+    else row for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-03", complete=False,
+    frames=MappingProxyType(_SEAL4_FRAMES),
+    strict_recording=KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090",
+        compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+        measured="2026-11-03", complete=False,
+        frames=MappingProxyType(_SEAL4_FRAMES)),
+),)

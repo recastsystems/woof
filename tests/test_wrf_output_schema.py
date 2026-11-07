@@ -32,21 +32,44 @@ import numpy as np
 import pytest
 
 from woof.io.wrf_output_schema import (
-    MYNN_PBL_OUTPUT_FIELDS, NOAHMP_OUTPUT_FIELDS,
+    GFDLETA_OUTPUT_FIELDS, BOULAC_PBL_OUTPUT_FIELDS, MYNN_PBL_OUTPUT_FIELDS, NOAHMP_OUTPUT_FIELDS,
     OUTPUT_FIELDS_BY_NETCDF_NAME, PHYSICS_SELECTOR_GLOBALS,
     PRECIPITATION_OUTPUT_FIELDS, RUC_OUTPUT_FIELDS, SCHEME_OUTPUT_FIELDS,
     WRF_FIELD_TYPE_INTEGER, WRF_FIELD_TYPE_REAL,
 )
 from woof.io.wrfout import WrfoutWriter
 
-#: The four integer scheme fields, and the selector each belongs to.  Both
-#: schemes and all four names are listed: a dtype gate proved at one field
+#: Integer scheme fields, and the selector each belongs to. All
+#: schemes and names are listed: a dtype gate proved at one field
 #: name in one scheme proves that field name in that scheme.
 INTEGER_FIELDS = {
+    # Registry/registry.cam:55-58, integer workspace indices.
+    "ideep2d": "CAM/SSiB", "jt2d": "CAM/SSiB",
+    "maxg2d": "CAM/SSiB", "lengath2d": "CAM/SSiB",
+    # WRF v4.7.1 Registry.EM_COMMON:1581-1582,1797-1812.
+    "i_rainc": "precipitation bucket", "i_rainnc": "precipitation bucket",
+    "i_acswupt": "radiation bucket", "i_acswuptc": "radiation bucket",
+    "i_acswdnt": "radiation bucket", "i_acswdntc": "radiation bucket",
+    "i_acswupb": "radiation bucket", "i_acswupbc": "radiation bucket",
+    "i_acswdnb": "radiation bucket", "i_acswdnbc": "radiation bucket",
+    "i_aclwupt": "radiation bucket", "i_aclwuptc": "radiation bucket",
+    "i_aclwdnt": "radiation bucket", "i_aclwdntc": "radiation bucket",
+    "i_aclwupb": "radiation bucket", "i_aclwupbc": "radiation bucket",
+    "i_aclwdnb": "radiation bucket", "i_aclwdnbc": "radiation bucket",
+    "cupflag": "cu_physics=10",
+    "cu_act_flag": "cu_physics=10",
+    "ideep2d": "cu_physics=7",
+    "jt2d": "cu_physics=7",
+    "lengath2d": "cu_physics=7",
+    "maxg2d": "cu_physics=7",
+    "ktop_deep": "GD",
     "ktop_plume": "bl_pbl_physics=5",
     "kpbl": "bl_pbl_physics=5",
     "isnowxy": "sf_surface_physics=4",
     "pgsxy": "sf_surface_physics=4",
+    **dict.fromkeys(("cropcat", "irnumsi", "irnummi", "irnumfi"), "sf_surface_physics=4"),
+    "ncfrst": "ra_lw_physics=99 or ra_sw_physics=99",
+    "ncfrcv": "ra_lw_physics=99 or ra_sw_physics=99",
 }
 
 #: Real-valued neighbours, one per scheme.  A gate that only ever sees ``i4``
@@ -81,18 +104,39 @@ def _runtime_inventories():
                                            NOAHMP_STATE_INT_2D,
                                            NOAHMP_STATE_SNOWSOIL_3D,
                                            NOAHMP_STATE_SNOW_3D)
+    from woof.core.noahmp_runtime import state_fields_2d, diagnostic_fields_2d
+    from woof.core.noahmp_gecros_slab import STATE as GECROS_STATE
+    from woof.core.noahmp_output import shapes as output_shapes
+    from woof.core.noahmp_groundwater_slab import shapes as groundwater_shapes
+    from woof.core.noahmp_irrigation_slab import COUNTERS as IRR_COUNTERS
+    from woof.core.noahmp_soil_cadence import ACCUMULATORS
+    from woof.core.noahmp_soil_options import active_soil_inputs
     from woof.core.ruc_runtime import (RUC_DIAGNOSTICS_2D, RUC_STATE_2D,
                                         RUC_STATE_3D)
+    from woof.gfdleta_contract import GFDLETA_FIELDS
+    from woof.core.physics_inventory import BOULAC_STATE_3D
     return {
+        "GFDL": (GFDLETA_OUTPUT_FIELDS, GFDLETA_FIELDS),
         "MYNN": (MYNN_PBL_OUTPUT_FIELDS,
                  (*MYNN_PBL_STATE_3D, *MYNN_PBL_DIAGNOSTICS_2D,
                   *MYNN_PBL_DIAGNOSTICS_INT_2D,
                   # shared EM_COMMON rows the MYNN block also publishes
                   "exch_h", "exch_m", "rmol", "kpbl", "tke_pbl")),
+        # BouLac's two carried columns and the shared rows its block
+        # publishes beside them (woof/io/history_layout.py).
+        "BouLac": (BOULAC_PBL_OUTPUT_FIELDS,
+                   (*BOULAC_STATE_3D, "exch_h", "exch_m", "kpbl")),
         "Noah-MP": (NOAHMP_OUTPUT_FIELDS,
-                    (*NOAHMP_STATE_2D, *NOAHMP_STATE_INT_2D,
-                     *NOAHMP_STATE_SNOW_3D, *NOAHMP_STATE_SNOWSOIL_3D,
-                     *NOAHMP_DIAGNOSTICS_2D)),
+                    (*state_fields_2d(opt_run=1, dveg=2, opt_tdrn=1, opt_irr=3, opt_crop=2),
+                     *groundwater_shapes((1, 1)),
+                     *(n for n in output_shapes(3, (1, 1)) if n != "swnorm"),
+                     *IRR_COUNTERS, "cropcat", "croptype",
+                     *GECROS_STATE,
+                     *NOAHMP_STATE_INT_2D, *NOAHMP_STATE_SNOW_3D,
+                     *NOAHMP_STATE_SNOWSOIL_3D, *diagnostic_fields_2d(dveg=2),
+                     *ACCUMULATORS.values(),
+                     *(n.lower() for option in (2, 3)
+                       for n in active_soil_inputs(option)))),
         "RUC": (RUC_OUTPUT_FIELDS,
                 (*RUC_STATE_2D, *RUC_STATE_3D, *RUC_DIAGNOSTICS_2D)),
     }
@@ -137,23 +181,73 @@ def test_schema_rows_cite_the_pinned_registry_or_declare_themselves_gpuwm():
     addition is a row somebody invented, which is the failure mode the whole
     module exists to end.
     """
+    uncited_expected = {'ice_growth', 'ice_energy_error', 'ice_snow_mass', 'ice_snow_depth', 'ice_thickness', 'ice_melt', 'ice_skin', 'ice_thickness_change', 'ice_volume', 'om_density', 'ice_ocean_exchange', 'ruc_infiltr', 'ruc_runoff2', 'ruc_runoff1', 'ice_concentration_change', 'ruc_smelt', 'ocean_sst_change', 'ocean_sst', 'ice_energy'}
+    # Total convective fraction is a driver extension, not a Registry state row.
+    uncited_expected.add("cldfra_cu")
+    uncited_seen = set()
     cited = 0
     for name, field in SCHEME_OUTPUT_FIELDS.items():
+        native_call_outputs = {
+            "coszr": "phys/module_ra_cam.F:360",
+            "cemiss": "phys/module_ra_cam.F:362",
+        }
+        if name in native_call_outputs:
+            assert field.registry == native_call_outputs[name]
+            assert not field.wrf_history
+        if field.registry == "module_microphysics_driver.F:2095":
+            # Native HAILNCV is a call-local accumulation extension.
+            assert name == "hailncv" and field.netcdf_name == "HAILNCV"
+            assert not field.wrf_history
         if field.registry:
             assert (field.registry.startswith("Registry.EM_COMMON:")
                     or field.registry.startswith("Registry.EM:")
-                    or field.registry.startswith("registry.noahmp:")), name
-            assert field.description, name
+                    or field.registry.startswith("registry.noahmp:")
+                    or field.registry.startswith("Registry/Registry.EM_COMMON:")
+                    or field.registry.startswith("Registry/registry.cam:")
+                    or (name == "hailncv" and field.registry == "module_microphysics_driver.F:2095")
+                    or (name in native_call_outputs and field.registry == native_call_outputs[name])
+                    or (name in {"chs", "chs2", "cqs2", "cpm", "qgh"}
+                        and field.registry.startswith("phys/module_sf_pxsfclay.F:"))
+                    or field.registry.startswith("Registry/registry.ssib:")
+                    or field.registry.startswith("Registry/registry.cam:")
+                    or field.registry.startswith("Registry/Registry.EM_COMMON:")
+                    or field.registry.startswith("WRF v4.7.1 Registry.EM_COMMON:")), name
+            # The pinned native Registry leaves these ten GFDL descriptions
+            # empty. Preserve native metadata instead of inventing a label.
+            native_blank = {
+                "rswtoa": 1253, "rlwtoa": 1254, "czmean": 1255,
+                "cfracl": 1256, "cfracm": 1257, "cfrach": 1258,
+                "acfrst": 1259, "ncfrst": 1260, "acfrcv": 1261,
+                "ncfrcv": 1262,
+            }
+            cam_blank = {"du3d": 49, "ed3d": 50, "eu3d": 51,
+                         "md3d": 52, "mu3d": 53, "lengath2d": 58}
+            if name in cam_blank:
+                assert field.registry == f"Registry/registry.cam:{cam_blank[name]}"
+                assert field.description == field.units == ""
+            elif name in native_blank:
+                assert field.registry == f"Registry.EM_COMMON:{native_blank[name]}"
+                assert field.description == field.units == ""
+            else:
+                assert field.description, name
             cited += 1
         else:
             assert "no WRF Registry counterpart" in field.description, name
-            assert field.netcdf_name.startswith("RUC_"), name
-    assert cited == len(SCHEME_OUTPUT_FIELDS) - 4
+            assert name in uncited_expected, name
+            assert not field.wrf_history, name
+            uncited_seen.add(name)
+    assert uncited_seen == uncited_expected
+    assert cited == len(SCHEME_OUTPUT_FIELDS) - len(uncited_expected)
 
 
 def test_no_two_gpuwm_fields_claim_one_netcdf_name():
-    assert len(OUTPUT_FIELDS_BY_NETCDF_NAME) == (
-        len(SCHEME_OUTPUT_FIELDS) + len(PRECIPITATION_OUTPUT_FIELDS))
+    expected = {}
+    for fields in (SCHEME_OUTPUT_FIELDS, PRECIPITATION_OUTPUT_FIELDS):
+        for field in fields.values():
+            if field.netcdf_name in expected:
+                assert field == expected[field.netcdf_name]
+            expected[field.netcdf_name] = field
+    assert OUTPUT_FIELDS_BY_NETCDF_NAME == expected
 
 
 def test_noahmp_external_names_are_not_the_runtime_keys_upper_cased():
@@ -254,7 +348,7 @@ def _write(path, frame, *, nx, ny, nz):
 
 
 def test_the_writer_publishes_integers_as_integers(tmp_path):
-    """Four integer names across two schemes, and two real neighbours."""
+    """Every named integer field retains its dtype beside real fields."""
     nx, ny, nz = 5, 4, 6
     frame = _schema_frame(nx, ny, nz)
     path = tmp_path / "wrfout_d01_2026-07-01_18_00_36"
@@ -270,7 +364,9 @@ def test_the_writer_publishes_integers_as_integers(tmp_path):
             np.testing.assert_array_equal(
                 np.asarray(variable[0]), frame[name], err_msg=name)
             schemes.add(scheme)
-        assert len(schemes) == 2, schemes
+        assert schemes == {"GD", "bl_pbl_physics=5", "cu_physics=10", "sf_surface_physics=4",
+                           "ra_lw_physics=99 or ra_sw_physics=99", "CAM/SSiB",
+                           "precipitation bucket", "radiation bucket"}, schemes
         for key in REAL_FIELDS:
             name = SCHEME_OUTPUT_FIELDS[key].netcdf_name
             variable = ds.variables[name]
@@ -609,3 +705,19 @@ def test_wrf_rust_reads_the_written_scheme_fields(tmp_path):
         with pytest.raises(Exception) as excinfo:
             reader.getvar(absent)
         assert absent in str(excinfo.value)
+
+
+def test_qnse_tke_uses_the_registry_vertical_axis(tmp_path):
+    from woof import netcdf_bridge
+    nz,ny,nx=6,4,5
+    path=tmp_path/"wrfout_d01_2024-01-01_00_00_00"
+    values=np.arange(nz*ny*nx,dtype=np.float32).reshape(nz,ny,nx)/np.float32(100.)
+    _write(path,{"TKE_PBL":values},nx=nx,ny=ny,nz=nz)
+    with netcdf_bridge.open_dataset(path) as ds:
+        variable=ds.variables["TKE_PBL"]
+        assert variable.dimensions==("Time","bottom_top_stag","south_north","west_east")
+        assert variable.getncattr("stagger")=="Z"
+        assert variable.dtype == np.dtype(np.float32)
+        got=np.asarray(variable[0],dtype=variable.dtype)
+        assert got[:nz].tobytes()==values.tobytes()
+        assert got[nz].tobytes()==np.zeros((ny,nx),dtype=np.float32).tobytes()

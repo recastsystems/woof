@@ -36,4 +36,6 @@ def test_changed_established_edge_and_classification_are_not_ignored():
     assert before['components.pbl.options.mynn']!=after['components.pbl.options.mynn']
 
 def test_whole_registry_keeps_every_declared_transition():
-    assert len(registry_physics_part_sources(physics_registry())['transitions']['microphysics-one-way-v1']['cross_options'])==110
+    # 110 rows through 2.9.12, plus the 22 SBU-YLin (mp13) one-way rows the 3.0
+    # port added; every earlier row is unchanged (additive, measured 2026-11-02).
+    assert len(registry_physics_part_sources(physics_registry())['transitions']['microphysics-one-way-v1']['cross_options'])==132

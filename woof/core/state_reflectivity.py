@@ -5,7 +5,7 @@ This entry runs between steps and never advances the prognostic state.
 """
 from woof.core import constants as c
 
-def _nssl_reflectivity(state, temperature, pressure):
+def _nssl_reflectivity(state, temperature, pressure, cfg=None):
     """``mp_physics=18`` through the product's own NSSL diagnostic.
 
     Not a fourth Z formula and not a mapping onto Morrison: the same
@@ -22,6 +22,11 @@ def _nssl_reflectivity(state, temperature, pressure):
     a ``DomainState`` carries; the coordinator passes ``True`` because it
     hands over the scheme's internal per-volume slab.
     """
+    if cfg is not None:
+        from woof.core.nssl2_contract import resolve_nssl2_mode_for_config
+        if not resolve_nssl2_mode_for_config(cfg).two_moment:
+            from woof.core.nssl1 import reflectivity
+            return reflectivity(state,cfg,temperature,pressure)
     import cupy as cp
 
     from woof.core.nssl2_diagnostics import (       # noqa: PLC0415
@@ -37,13 +42,16 @@ def _nssl_reflectivity(state, temperature, pressure):
     if temperature is None:
         thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
         t = state.scratch(shape, "da_nssl_t")
-        t[...] = (thb + state.thp) * cp.power(
+        t[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+                  else thb + state.thp) * cp.power(
             state.p / DTYPE(c.P0), DTYPE(c.RCP))
     else:
         t = temperature
     refl = state.scratch(shape, "refl_10cm")
     diagnose_radardd02_if_due(state, rho, t, refl, output_due=True,
-                              concentration_space=False)
+                              concentration_space=False,
+                              shapes=(getattr(cfg, "nssl_alphah", 0.0),
+                                      getattr(cfg, "nssl_alphahl", 1.0)))
     return refl
 
 
@@ -119,7 +127,8 @@ def _thompson_graupel_number(state, temperature, pressure, *,
         thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
         pressure = state.p
         temperature = state.scratch(shape, "refl_t")
-        temperature[...] = (thb + state.thp) * cp.power(
+        temperature[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+                  else thb + state.thp) * cp.power(
             state.p / DTYPE(c.P0), DTYPE(c.RCP))
     shadow = state.scratch(shape, "mp_thompson_graupel_number_shadow")
     # A transient copy, not a scratch slot: it is dead when this returns,
@@ -197,26 +206,36 @@ def thompson_generation(cfg) -> str:
 def diagnose(state, cfg):
     """Run the scheme's own diagnostic over a resident GPU state."""
     import cupy as cp
-    if int(cfg.mp_physics) == 5:
+    if int(cfg.mp_physics) == 97:
+        from woof.core.mp_column_schemes import reflectivity
+        return reflectivity(state, cfg)
+    if int(cfg.mp_physics) in (5, 15):
         from woof.core.fer_hires import reflectivity
         return reflectivity(state, cfg)
     if int(cfg.mp_physics) == 900:
         from woof.core.tempo import _runtime
         return _runtime(cfg, state.p.shape[0]).reflectivity(state, cfg)
-    if int(cfg.mp_physics) == 50:
+    if int(cfg.mp_physics) == 55:
+        from woof.core.ishmael import reflectivity
+        return reflectivity(state)
+    if int(cfg.mp_physics) in (50, 51, 52, 53):
         from woof.core.p3_device import reflectivity
         return reflectivity(state)
+    if int(cfg.mp_physics) == 56:
+        from woof.core.ntu import reflectivity
+        return reflectivity(state, cfg=cfg)
     if int(cfg.mp_physics) == 9:
         from woof.core.milbrandt2 import reflectivity
         return reflectivity(state)
     if int(cfg.mp_physics) == 18:
-        return _nssl_reflectivity(state, None, None)
+        return _nssl_reflectivity(state, None, None, cfg)
     from woof.core.wsm_family import family_selectors, row, launch_refl10cm
     if int(cfg.mp_physics) in family_selectors():
         mp = int(cfg.mp_physics)
         thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
         temperature = state.scratch(tuple(state.p.shape), "refl_t")
-        temperature[...] = (thb + state.thp) * cp.power(state.p / c.P0, c.RCP)
+        temperature[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+                  else thb + state.thp) * cp.power(state.p / c.P0, c.RCP)
         refl = state.scratch(tuple(state.p.shape), "refl_10cm")
         launch_refl10cm(mp, qv=state.qv,
                        species={n: getattr(state, n) for n in row(mp).refl_species},
@@ -230,7 +249,8 @@ def diagnose(state, cfg):
         launch_aerosol_exner(pressure, exner)
         thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
         temperature = state.scratch(tuple(pressure.shape), "refl_t")
-        temperature[...] = (thb + state.thp) * exner
+        temperature[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+                  else thb + state.thp) * exner
     if int(cfg.mp_physics) in (8, 28):
         temperature, pressure, shadow = _thompson_graupel_number(
             state, temperature, pressure, version=thompson_generation(cfg),

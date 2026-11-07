@@ -1,6 +1,6 @@
 """SharedObjects: the global source mesh reaches every child rank once, with the same words (woof.hex.rank_processes).
 
-THE COST IT REMOVES (NOAA RRFS v2 conus3km, 8 rank processes, V8X6000, 2026-10-29): every child request carried the
+THE COST IT REMOVES (NOAA RRFS v2 conus3km, 8 rank processes, eight-card system, 2026-10-29): every child request carried the
 whole global mesh (29.0 of 30.5 GB), copied into 7 memfds while the cards waited, and every child held its own copy.
 These check that a request sent with a shared reference unpickles to the same values in a separate process, that a
 child's write stays in that child, and that a request without the shared object is unchanged.
@@ -90,3 +90,41 @@ def test_plain_send_is_unchanged():
     finally:
         sender.close()
         receiver.close()
+
+
+def test_arwen_start_sends_one_source_to_all_children():
+    from woof.hex.drivers.samehost_rank_group_v841 import ProcessRankGroup
+    source = _source()
+    requests = [None] + [dict(host=dict(prepared=SimpleNamespace(mesh=SimpleNamespace(
+        partition_source_mesh=source, own=np.arange(1 << 18, dtype=np.float32))))) for _ in range(2)]
+    senders, receivers, views = {}, {}, {}
+    for rank in (1, 2):
+        a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        senders[rank] = rp.Link(a, timeout=20)
+        receivers[rank] = rp.Link(b, timeout=20)
+
+    class Children:
+        step_links = senders
+        processes = {rank: SimpleNamespace(pid=os.getpid()) for rank in (1, 2)}
+        def on_failure(self, callback):
+            pass
+        def start(self):
+            # RankProcesses passes this descriptor to every child before delivery.
+            for rank in (1, 2):
+                views[rank] = rp.SharedObjectsView(os.dup(self.shared_fd))
+
+    group = ProcessRankGroup.__new__(ProcessRankGroup)
+    group.group, group.size, group.neighbours = Children(), 3, {0: []}
+    try:
+        group.start(requests)
+        assert requests == [None, None, None]
+        with pytest.raises(OSError):
+            os.fstat(group.group.shared_fd)  # the parent released its descriptor after delivery
+        for rank in (1, 2):
+            mesh = receivers[rank].recv(views[rank].resolve)['host']['prepared'].mesh
+            assert np.array_equal(mesh.partition_source_mesh.big.view(np.uint32), source.big.view(np.uint32))
+            assert np.array_equal(mesh.own, np.arange(1 << 18, dtype=np.float32))
+            assert senders[rank].sent_bytes < source.big.nbytes
+    finally:
+        for link in [*senders.values(), *receivers.values()]:
+            link.close()

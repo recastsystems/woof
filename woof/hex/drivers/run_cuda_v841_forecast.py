@@ -169,7 +169,8 @@ from typing import Any, Callable
 import numpy as np
 
 _SRC = Path(__file__).resolve().parents[2]
-if str(_SRC) not in sys.path:
+if not any(isinstance(entry, str) and Path(entry or ".").resolve() == _SRC.resolve()
+                     for entry in sys.path):
     sys.path.insert(0, str(_SRC))
 
 from woof.hex.drivers import run_cuda_v841_full_physics_x4 as proof  # noqa: E402
@@ -2526,7 +2527,7 @@ def step_health_gate(
     Before the fused envelope this gate was 31 CuPy reductions on strided
     ``[..., :n_solve]`` views, each on one block of 512 threads and each
     read back with a drain: 78 ms of every 0.38 s step, a fifth of it
-    (the 2026-09-13 performance profile).
+    (``evidence/hex-perf-profile-2026-09-13``).
     """
 
     atmosphere = stack["driver"].atmosphere
@@ -2916,6 +2917,11 @@ def _seam_leaf_fields(backend_state: Mapping[str, Any]) -> dict[str, np.ndarray]
     for key, value in arrays.items():
         if str(key).startswith("fields/"):
             leaves[str(key).split("/", 1)[1]] = np.asarray(value)
+    # The engine restart carries microphysics radii under state/, not fields/.
+    # Include them at initialization and after every committed class step.
+    for name in ("effc", "effi", "effs"):
+        if f"state/{name}" in arrays:
+            leaves[name] = np.asarray(arrays[f"state/{name}"])
     return leaves
 
 
@@ -3030,8 +3036,10 @@ def _physics_cadence_proof(
     due = 0
     radiation_due = 0
     counts: Mapping[str, Any] = {}
+    surface_enabled = True
     for receipt in step_receipts:
         cadence = receipt.get("backend", {}).get("cadence", {})
+        surface_enabled = bool(cadence.get("surface_pbl_enabled", True))
         if cadence.get("surface_pbl_ran"):
             due += 1
         if cadence.get("radiation_ran"):
@@ -3041,30 +3049,38 @@ def _physics_cadence_proof(
     expected = pbl_cadence.calls_in_steps(
         steps_between_calls=stepbl, executed_steps=int(executed_steps)
     )
+    if not surface_enabled:
+        expected = 0
     # The surface layer remains active when LES replaces YSU. Older seam
     # receipts carry only the YSU counter, so retain that fallback.
     counter = "sfclay" if "sfclay" in counts else "ysu"
     engine_calls = None if counter not in counts else int(counts[counter])
     consistent = due == expected and (engine_calls in (None, expected))
+    if not surface_enabled:
+        consistent = consistent and all(
+            int(counts.get(name, 0)) == 0 for name in ("sfclay", "ysu", "noah"))
     return {
         "schema": "gpuwm-hex.physics-cadence-proof/v1",
         "surface_pbl_seconds": float(decision["surface_pbl_seconds"]),
         "steps_between_calls": stepbl,
-        "held": bool(decision["held"]),
+        "held": bool(decision["held"]) if surface_enabled else False,
+        "surface_pbl_enabled": surface_enabled,
         "source": decision["source"],
         "executed_steps": int(executed_steps),
         "surface_pbl_calls_expected": expected,
         "surface_pbl_steps_reported_due": due,
-        "surface_pbl_steps_held": int(executed_steps) - due,
+        "surface_pbl_steps_held": int(executed_steps) - due if surface_enabled else 0,
+        "surface_pbl_steps_disabled": 0 if surface_enabled else int(executed_steps),
         "engine_call_counts_at_last_step": dict(counts),
         "radiation_steps_reported_due": radiation_due,
         "radiation_seconds": float(decision["radiation_seconds"]),
         "consistent": bool(consistent),
         "note": (
             f"the seam reported the surface/PBL stack due on {due} of "
-            f"{int(executed_steps)} steps and held on the other "
-            f"{int(executed_steps) - due}; the declared cadence "
-            f"({decision['label']}) predicts {expected} calls"
+            f"{int(executed_steps)} steps; the remaining "
+            f"{int(executed_steps) - due} were "
+            + ("held" if surface_enabled else "disabled by the selected physics")
+            + f"; the declared cadence ({decision['label']}) predicts {expected} calls"
             + (
                 "" if engine_calls is None
                 else f"; the engine's own {counter} counter reads {engine_calls}"
@@ -3192,6 +3208,7 @@ def execute_forecast(
     cycling: Mapping[str, Any] | None = None,
     iau: Mapping[str, Any] | None = None,
     balance_series: bool = False,
+    tc_climate: Path | None = None,
     on_history_ready: Callable[[dict[str, Any]], Any] | None = None,
     history_product_session: Callable[[], Any] | None = None,
     history_product_max_pending: int = 2,
@@ -3209,6 +3226,20 @@ def execute_forecast(
     if required_product_ids and on_history_ready is None and history_product_session is None:
         raise ValueError("required products need a history consumer")
     join_prepared_fingerprint(host)
+    tc_frame_count = 0
+    tc_allowance = 0
+    if tc_climate is not None:
+        from woof.hex.tc_climate import Recipe, workspace_allowance
+        from woof.hex.tc_climate.session import validate_schedule
+
+        tc_frame_count = validate_schedule(Recipe.load(tc_climate), schedule, float(DT_SECONDS))
+        tc_allowance = workspace_allowance(int(N_CELLS), int(N_LEVELS), tc_frame_count,
+                                           Recipe.load(tc_climate))
+        if (cycling and cycling.get("restart_from")) or host["prepared"].mesh.is_regional:
+            raise ValueError("TC diagnostics currently require a global run starting at hour zero; "
+                             "tracker restart state is not implemented")
+        if fullstep_lts_options and fullstep_lts_options.get("fullstep_lts_mode") == "active":
+            raise ValueError("TC diagnostics are not wired to the active class executor")
     if (fullstep_lts_options is not None
             and fullstep_lts_options.get("fullstep_lts_mode") == "active"
             and int(fullstep_lts_options.get("fullstep_lts_max_rate", 8)) != 1):
@@ -3262,7 +3293,7 @@ def execute_forecast(
             levels=int(host["prepared"].vertical.n_vert_levels))
             if StochasticConfig.parse(stochastic_options).enabled else 0)
         memory = proof.gpu_memory_admission(cp, minimum=int(proof.MIN_FREE_DEVICE_BYTES) +
-            stochastic_bytes)
+            stochastic_bytes + tc_allowance)
     else:
         memory = proof.gpu_memory_admission(cp, minimum=int(required_free_bytes))
     cache = KernelCache(capability=capability, cache_dir=cache_root)
@@ -3360,6 +3391,9 @@ def execute_forecast(
         physics_rollback_snapshot=bool(stop_on_refusal),
         stochastic_restart=stochastic_restart,
     )
+    tc_lake_receipt = stack.get('tc_lake_mask')
+    if tc_lake_receipt is not None:
+        print(json.dumps({"tc_lake_mask": tc_lake_receipt}), flush=True)
     from woof.hex.chem_transport import attach as attach_chemistry
     attach_chemistry(stack["backend"], host, stack["driver"])
     if host.get("wind_farms") not in (None, "", "off"):
@@ -3495,6 +3529,15 @@ def execute_forecast(
                                                       tables=_Namespace(rate=1))])
         balance.sample(balance_view, float(start_step) * float(DT_SECONDS), cp)
     static = proof._static_output_fields(host)
+    tc_session = None
+    if tc_climate is not None:
+        from woof.hex.tc_climate.session import ForecastSession
+
+        tc_session = ForecastSession(host["prepared"].mesh, static["ter"],
+            np.asarray(host["constructor_values"]["landmask"]) == 0,
+            tc_climate, tc_frame_count, schedule["valid_times"][0],
+            stack["f000_surface_diagnostics"]["arrays"])
+    tc_sampler = tc_session.sample if tc_session is not None else None
     jedi_files: dict[str, Any] = {}
     checkpoint_files: dict[str, Any] = {}
     init_fallback_cache: dict[str, Any] = {}
@@ -3544,6 +3587,11 @@ def execute_forecast(
     capture_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="hex-capture") if async_capture else None
     capture_pending = []
     wind_frames = {}
+    # Running-max updraft helicity (woof.hex.uh_layers): the 2-5 km maximum by default, as every MPAS-physics run
+    # writes it; --uh-layers on adds 0-1/0-2/0-3 km, off writes none (uh_layers.arwen_names).
+    uh_frames = {}
+    from woof.hex import uh_layers as uh_layers_module
+    uh_layers = uh_layers_module.for_arwen(cp, host["prepared"].mesh, n_cells=int(N_CELLS))
     capture_finish_seconds = 0.0
     # F000's surface-layer diagnostics come from the first physics call
     # (woof.hex.f000_first_call): the frame is captured before step 1 and
@@ -3629,6 +3677,8 @@ def execute_forecast(
         finish_started = time.perf_counter()
         if step in wind_frames:
             snapshot['wind_fields'], snapshot['wind_metadata'] = wind_frames.pop(step)
+        if step in uh_frames:
+            snapshot['arrays'].update(uh_frames.pop(step))
         time_ledger.emit("forecast.output.capture.finish", "begin", attrs={"step": step})
         if step == 0:
             if "f000_completed_surface_diagnostics" not in snapshot["receipt"]:
@@ -3698,6 +3748,8 @@ def execute_forecast(
 
     def capture(step: int) -> None:
         nonlocal capture_seconds
+        if getattr(stack["backend"], "wave_binding", None) is not None:
+            stack["backend"].wave_binding.service.output(float(step)*float(DT_SECONDS))
         time_ledger.emit("forecast.output.capture", "begin", attrs={"step": step})
         mark = time.perf_counter()
         if capture_pending:
@@ -3722,11 +3774,14 @@ def execute_forecast(
             solve_cells=stack.get("solve_cells"),
             scalar_names=host["scalar_names"],
             surface_accumulators=host["surface_accumulators"],
+            **({"tc_sampler": tc_sampler} if tc_sampler is not None else {}),
         )
         capture_seconds += time.perf_counter() - mark
         wind = getattr(stack['backend'], 'wind_farms', None)
         if wind is not None:
             wind_frames[step] = (wind.history_fields(), wind.metadata())
+        if uh_layers is not None:
+            uh_frames[step] = uh_layers_module.arwen_history_arrays(uh_layers)
         if async_capture:
             def complete():
                 time_ledger.emit("forecast.output.capture.materialize", "begin", attrs={"step": step})
@@ -3761,6 +3816,8 @@ def execute_forecast(
     previous = proof._previous_surface_updates(
         stack, host["surface_accumulators"]
     )
+    if uh_layers is not None and start_step == 0:
+        uh_layers_module.update_from_driver(uh_layers, stack["driver"])
     if 0 in capture_steps:
         capture(0)
     if fingerprints is not None:
@@ -3982,6 +4039,8 @@ def execute_forecast(
                 backend_receipt, executed=True, label=f"step {step} backend receipt"
             )
             receipt_writer.submit(step, elapsed, result, surface_execution)
+            if uh_layers is not None:
+                uh_layers_module.update_from_driver(uh_layers, stack["driver"])
             if nest_trigger is not None:
                 if nest_trigger.due(step):
                     from woof.hex.nest_look_dycore import look_arrays
@@ -4142,6 +4201,7 @@ def execute_forecast(
     history_receipt = product_ready_receipt = None
     if not deferred:
         history_receipt, write_wait_seconds, product_ready_receipt = drain_output()
+    tc_receipt = None if tc_session is None else tc_session.finish(output_root)
 
     proof._write_exclusive_json(
         output_root / "snapshot-hashes.json",
@@ -4181,7 +4241,14 @@ def execute_forecast(
         if (executed_steps * DT_SECONDS >= float(iau.get("window_start_seconds") or 0.0) + float(iau["window_seconds"])
                 and not iau_record.get("complete")):
             raise RuntimeError(f"IAU window not fully applied: {iau_record}")
+    # Completion boundary only: TC CUDA events must never be harvested in
+    # the per-step physics receipt, which would introduce synchronization.
+    from woof.hex.tc_flux import final_receipt as tc_final_receipt
+    tc_flux_receipt = (tc_final_receipt(stack["backend"], steps=executed_steps - start_step)
+                       if retired_physics is None else None)
     returned = {
+        **({"tc_climate": tc_receipt} if tc_receipt is not None else {}),
+        **({"tc_flux": tc_flux_receipt} if tc_flux_receipt is not None else {}),
         "stochastic": (None if getattr(stack["driver"], "stochastic", None) is None
                        else stack["driver"].stochastic.receipt()),
         **({"iau": iau_record} if iau_record is not None else {}),
@@ -4756,6 +4823,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
              "the coupled analysis minus background as a constant tendency.  Default: "
              + ", ".join(f"{route} in {mode} mode" for mode, route in IAU_ROUTE_DEFAULT.items()))
     parser.add_argument("--stochastic", default=None, metavar="JSON")
+    parser.add_argument("--tc-climate", type=Path, default=None, metavar="RECIPE",
+                        help="opt-in resident TC tracking and daily GPI at history boundaries")
     parser.add_argument("--balance-series", action="store_true",
                         help="write balance-series.jsonl: surface-pressure tendency statistics "
                              "at every macro boundary (initialization-shock measure)")
@@ -5328,7 +5397,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     cache_root, output_root = proof.validate_destination(
         args.cache_root, args.output, tuple(paths.values())
     )
-    cache_root.mkdir(parents=False)
+    from woof.hex.run_owner import claim_directory
+    claim_directory(cache_root)
     output_root.mkdir(parents=False)
     time_ledger.emit("prep.destination", "mark", root=output_root)
     write_start_record(output_root, paths=paths, schedule=schedule)
@@ -5355,6 +5425,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "increment": (None if args.iau_increment is None else Path(args.iau_increment).resolve(strict=True)),
             "background": paths["init"], "window_seconds": float(args.iau_window_seconds)}),
         balance_series=bool(args.balance_series),
+        tc_climate=args.tc_climate,
     )
     join_prepared_fingerprint(host)
     source_after = proof.measure_execution_sources()

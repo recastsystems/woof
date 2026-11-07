@@ -67,7 +67,7 @@ offline command, build the hydro payload (`tools/nextgen_hydrofabric`),
 forcing (`tools/nextgen_forcing`), gauge verification (`tools/nextgen_verify`) and
 hydro fabric preparation (`tools/hydro_world`, `tools/hydro_world_params`,
 `tools/nextgen_reservoir_prepare`, `tools/hydro_world_init`) and ocean
-preparation (`tools/ocean_prepare`, `tools/rw-bathy`), the wind-turbine table decoder (`tools/wind-table`) and hydro output (`tools/nextgen_output`), and the Icechunk store writer (`tools/rw_icechunk`)
+preparation (`tools/ocean_prepare`, `tools/rw-bathy`), the wind-turbine table decoder (`tools/wind-table`) and hydro output (`tools/nextgen_output`), and the Icechunk store writer (`tools/rw_icechunk`) and CAM table initialization (`tools/cam_tables`), wave helpers (`tools/waves_data`), digital-filter initialization (`tools/dfi-runtime`), station output (`tools/tslist_bridge`), public aerosol climatology preparation (`tools/aerosol_grid`) and the tropical-cyclone tools (`tools/storm_merge`, `tools/tc_vitals`, `tools/tc_frames_io`, `tools/tc-verify`)
 workspaces (fetching their locked dependencies first), and finish with `woof doctor`, whose exit status the script propagates.
 
 A pip install on Windows x86-64 or Linux x86-64 needs no toolchain for
@@ -136,7 +136,7 @@ python -m pip install --upgrade pip
 python -m pip install -e recast-woof-data
 python -m pip install -e '.[gpu-cu12,render]'   # or gpu-cu13
 woof fetch-tables
-for workspace in tools/grib1_bridge tools/rustwx tools/zarr_bridge tools/rw_wps tools/region_global_dealias tools/nextgen_hydrofabric tools/nextgen_forcing tools/nextgen_verify tools/hydro_world tools/hydro_world_params tools/nextgen_reservoir_prepare tools/hydro_world_init tools/ocean_prepare tools/rw-bathy tools/wind-table tools/nextgen_output tools/rw_icechunk; do
+for workspace in tools/grib1_bridge tools/rustwx tools/zarr_bridge tools/rw_wps tools/region_global_dealias tools/nextgen_hydrofabric tools/nextgen_forcing tools/nextgen_verify tools/hydro_world tools/hydro_world_params tools/nextgen_reservoir_prepare tools/hydro_world_init tools/ocean_prepare tools/rw-bathy tools/wind-table tools/nextgen_output tools/rw_icechunk tools/cam_tables tools/waves_data tools/dfi-runtime tools/tslist_bridge tools/aerosol_grid tools/storm_merge tools/tc_vitals tools/tc_frames_io tools/tc-verify; do
   (cd "$workspace" && cargo fetch --locked && cargo build --release --locked --offline)
 done
 woof doctor
@@ -152,7 +152,7 @@ python -m pip install --upgrade pip
 python -m pip install -e recast-woof-data
 python -m pip install -e '.[gpu-cu12,render]'   # or gpu-cu13
 woof fetch-tables
-foreach ($workspace in 'tools\grib1_bridge', 'tools\rustwx', 'tools\zarr_bridge', 'tools\rw_wps', 'tools\region_global_dealias', 'tools\nextgen_hydrofabric', 'tools\nextgen_forcing', 'tools\nextgen_verify', 'tools\hydro_world', 'tools\hydro_world_params', 'tools\nextgen_reservoir_prepare', 'tools\hydro_world_init', 'tools\ocean_prepare', 'tools\rw-bathy', 'tools\wind-table', 'tools\nextgen_output', 'tools\rw_icechunk') {
+foreach ($workspace in 'tools\grib1_bridge', 'tools\rustwx', 'tools\zarr_bridge', 'tools\rw_wps', 'tools\region_global_dealias', 'tools\nextgen_hydrofabric', 'tools\nextgen_forcing', 'tools\nextgen_verify', 'tools\hydro_world', 'tools\hydro_world_params', 'tools\nextgen_reservoir_prepare', 'tools\hydro_world_init', 'tools\ocean_prepare', 'tools\rw-bathy', 'tools\wind-table', 'tools\nextgen_output', 'tools\rw_icechunk', 'tools\cam_tables', 'tools\waves_data', 'tools\dfi-runtime', 'tools\tslist_bridge', 'tools\aerosol_grid', 'tools\storm_merge', 'tools\tc_vitals', 'tools\tc_frames_io', 'tools\tc-verify') {
   Push-Location $workspace; cargo fetch --locked; cargo build --release --locked --offline; Pop-Location
 }
 woof doctor
@@ -195,11 +195,20 @@ bundle carries, and the gate below judges each one it finds built:
 | `tools/wind-table` | `rw-wind-table`, wind-turbine inventories and WRF Fitch tables (`--wind-farms`) |
 | `tools/nextgen_output` | `rw_nextgen_output`, coupled hydro history, restart and products |
 | `tools/rw_icechunk` | `rw_icechunk`, the optional Icechunk output store writer |
+| `tools/cam_tables` | `rw_cam_tables`, native CAM initialization tables |
+| `tools/waves_data` | `rw_waves_data` and `rw_waves_coupled_prepare`, wave input preparation |
+| `tools/dfi-runtime` | `arwen_dfi`, digital-filter initialization |
+| `tools/tslist_bridge` | `gpuwm_tslist`, station output |
+| `tools/aerosol_grid` | `aerosol-grid` and `public-aerosol-build`, public monthly aerosol climatology |
+| `tools/storm_merge` | `rw_storm_merge`, balanced donor storm-core initialization |
+| `tools/tc_vitals` | `rw_tc_vitals` and `rw_tc_rmw_score`, tropical cyclone vitals and RMW verification |
+| `tools/tc_frames_io` | `tc_frames_io`, canonical TC initialization and storm products |
+| `tools/tc-verify` | `tc-verify`, MET-TC matched tropical cyclone verification |
 
 By hand, POSIX:
 
 ```bash
-for workspace in tools/grib1_bridge tools/rustwx tools/zarr_bridge tools/rw_wps tools/region_global_dealias tools/nextgen_hydrofabric tools/nextgen_forcing tools/nextgen_verify tools/hydro_world tools/hydro_world_params tools/nextgen_reservoir_prepare tools/hydro_world_init tools/ocean_prepare tools/rw-bathy tools/wind-table tools/nextgen_output tools/rw_icechunk; do
+for workspace in tools/grib1_bridge tools/rustwx tools/zarr_bridge tools/rw_wps tools/region_global_dealias tools/nextgen_hydrofabric tools/nextgen_forcing tools/nextgen_verify tools/hydro_world tools/hydro_world_params tools/nextgen_reservoir_prepare tools/hydro_world_init tools/ocean_prepare tools/rw-bathy tools/wind-table tools/nextgen_output tools/rw_icechunk tools/cam_tables tools/waves_data tools/dfi-runtime tools/tslist_bridge tools/aerosol_grid tools/storm_merge tools/tc_vitals tools/tc_frames_io tools/tc-verify; do
   (cd "$workspace" && cargo fetch --locked && cargo build --release --locked --offline)
 done
 ```
@@ -207,7 +216,7 @@ done
 Windows (PowerShell):
 
 ```powershell
-foreach ($workspace in 'tools\grib1_bridge', 'tools\rustwx', 'tools\zarr_bridge', 'tools\rw_wps', 'tools\region_global_dealias', 'tools\nextgen_hydrofabric', 'tools\nextgen_forcing', 'tools\nextgen_verify', 'tools\hydro_world', 'tools\hydro_world_params', 'tools\nextgen_reservoir_prepare', 'tools\hydro_world_init', 'tools\ocean_prepare', 'tools\rw-bathy', 'tools\wind-table', 'tools\nextgen_output', 'tools\rw_icechunk') {
+foreach ($workspace in 'tools\grib1_bridge', 'tools\rustwx', 'tools\zarr_bridge', 'tools\rw_wps', 'tools\region_global_dealias', 'tools\nextgen_hydrofabric', 'tools\nextgen_forcing', 'tools\nextgen_verify', 'tools\hydro_world', 'tools\hydro_world_params', 'tools\nextgen_reservoir_prepare', 'tools\hydro_world_init', 'tools\ocean_prepare', 'tools\rw-bathy', 'tools\wind-table', 'tools\nextgen_output', 'tools\rw_icechunk', 'tools\cam_tables', 'tools\waves_data', 'tools\dfi-runtime', 'tools\tslist_bridge', 'tools\aerosol_grid', 'tools\storm_merge', 'tools\tc_vitals', 'tools\tc_frames_io', 'tools\tc-verify') {
   Push-Location $workspace; cargo fetch --locked; cargo build --release --locked --offline; Pop-Location
 }
 ```

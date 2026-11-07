@@ -311,7 +311,7 @@ def _visible_cards() -> list[int]:
     honouring CUDA_VISIBLE_DEVICES; [] when it cannot be read."""
 
     try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=index,uuid,memory.total", "--format=csv,noheader,nounits"],
+        out = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=index,uuid,memory.total", "--format=csv,noheader,nounits"],
                              capture_output=True, text=True, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return []
@@ -378,7 +378,7 @@ def lease_estimate(grid: Path, cells: int, count: int | None, levels: int, suite
 
 def _visible_card_names() -> list[str]:
     try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+        out = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=name", "--format=csv,noheader"],
                              capture_output=True, text=True, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return []
@@ -579,6 +579,8 @@ def plan(args: argparse.Namespace, table: Mapping[str, Any] | None = None) -> di
                      "--case-label", f"{row['id']}-{cycle.strftime('%Y%m%d%H')}", "--no-products"]
     from woof.output_formats import argument_values
     forecast_argv += argument_values(args)
+    from .wave_options import argument_values as wave_arguments
+    forecast_argv += wave_arguments(args)
     # Resolve a config-only base before ensemble commands add their member paths.
     from woof.output_formats import options
     _, output_store = options(args)
@@ -765,20 +767,46 @@ def stage_mesh(value: Mapping[str, Any], status) -> dict[str, Any]:
         status.note(f"fetching {mesh['url']}")
         if size and archive.is_file() and archive.stat().st_size < size:
             os.replace(archive, archive.with_name(archive.name + ".part"))  # a short archive is resumed, not refused
-        _download(mesh["url"], archive, status, size or None)  # a cut is resumed there or refused as a cut
+        # Use the engine's bounded ranged transfer and pin gate. It splits a
+        # whole object into 16 MiB requests, with the box-wide socket cap.
+        from woof.table_assets import _rw_asset
+        from woof.geog_assets import GeogFetchError
+        try:
+            _rw_asset("asset", url=mesh["url"], output=archive,
+                      bytes=size, sha256=mesh["archive_sha256"])
+        except GeogFetchError as error:
+            detail = str(error)
+            if "pin refused" in detail or "pinned object refused" in detail:
+                archive.unlink(missing_ok=True)
+                raise GlobalDoorError(f"{mesh['url']}: not the published mesh; {detail}") from error
+            raise GlobalDoorError(detail) from error
         got = sha256_file(archive)
         if got != mesh["archive_sha256"]:
             archive.unlink()
             raise GlobalDoorError(
                 f"{mesh['url']} has sha256 {got}, not the pinned {mesh['archive_sha256']}; the archive "
                 f"is not the published mesh and was removed")
-    with tarfile.open(archive, "r:gz") as tar:
-        member = tar.getmember(mesh["grid_member"])
-        if not member.isfile():
-            raise GlobalDoorError(f"{archive.name} holds {mesh['grid_member']} but not as a file")
-        with tar.extractfile(member) as source, grid.with_name(grid.name + ".part").open("wb") as out:
-            shutil.copyfileobj(source, out, 1 << 22)
-    os.replace(grid.with_name(grid.name + ".part"), grid)
+    from woof.table_assets import _rw_asset
+    from woof.geog_assets import GeogFetchError
+    decoder = shutil.which("rapidgzip")
+    if decoder is None:
+        raise GlobalDoorError("rapidgzip is missing; reinstall woof hex to get the parallel mesh decoder")
+    # The Rust tar reader walks the decoded stream once, checking paths and
+    # the decoder's CRC/exit status before publishing the grid.
+    import uuid
+    staging = grid.with_name(grid.name + ".unpack." + uuid.uuid4().hex)
+    try:
+        _rw_asset("unpack", input=archive, output=staging,
+                  datasets=mesh["grid_member"], gzip_decoder=decoder)
+        source = staging / mesh["grid_member"]
+        if not source.is_file():
+            raise GlobalDoorError(f"{archive.name} has no file {mesh['grid_member']}")
+        os.replace(source, grid)
+    except GeogFetchError as error:
+        raise GlobalDoorError(str(error)) from error
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
     got = sha256_file(grid)
     if got != mesh["grid_sha256"]:
         grid.unlink()
@@ -1010,9 +1038,8 @@ def run_global(args: argparse.Namespace) -> int:
                     receipt["stages"][name] = {"skipped": True}
                     continue
                 if name == "score":
-                    from .observation_scorecard import completed_scorecard, join_automatic_scorer
-                    joined = (completed_scorecard(value["paths"]["forecast"], score_config)
-                              or join_automatic_scorer(value["paths"]["forecast"], score_config))
+                    from .observation_scorecard import door_scorecard
+                    joined = door_scorecard(value["paths"]["forecast"], score_config)
                     if joined is not None:
                         status.skip("score", joined["note"])
                         receipt["stages"][name] = {**joined, "seconds": round(time.monotonic() - started, 1)}
@@ -1046,14 +1073,9 @@ def run_global(args: argparse.Namespace) -> int:
                     # gets its card back now instead of after them (woof.hex.card_lease).
                     from .card_lease import gpu_work_done
                     result["card_given_back"] = gpu_work_done(env)
-                if name == "score" and rc == 3:
-                    completed = completed_scorecard(value["paths"]["forecast"], score_config)
-                    if completed is not None:
-                        # Exit 3 reports incomplete coverage, not a failed forecast or scorer.
-                        # Preserve that coverage status and the standalone command's exit code.
-                        result = {**completed, "scorer_returncode": rc}
-                        status.note(completed["note"])
-                        rc = 0
+                    if "score" in stages:
+                        from .observation_scorecard import door_scorecard
+                        result["observation_scoring"] = door_scorecard(value["paths"]["forecast"], score_config)
                 if rc != 0:
                     receipt["stages"][name] = {**result, "seconds": round(time.monotonic() - started, 1)}
                     status.failed(f"the {name} stage exited {rc}")
@@ -1107,6 +1129,8 @@ def run_plan_command(args: argparse.Namespace) -> int:
 def _add_common(parser: argparse.ArgumentParser) -> None:
     from woof.output_formats import add_arguments
     add_arguments(parser)
+    from .wave_options import add_arguments as add_wave_arguments
+    add_wave_arguments(parser)
     parser.add_argument("--row", default=None, help="a row of data/global-runs.v1.json (see --list)")
     parser.add_argument("--cycle", default=None,
                         help="YYYY-MM-DDTHH, the init cycle; or latest: the source's newest due cycle, "

@@ -1,0 +1,15 @@
+KSAS (cu_physics=14) physics authority
+
+https://github.com/wrf-model/WRF/blob/v4.7.1/phys/module_cu_ksas.F
+SHA256 84d88fe79c3aba7c299d0efaee216c596021c9659b445dd8d3365c5799a48854
+The WRF v4.6.1 module has the same bytes.
+
+Licence checked at the source before this forward port:
+https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt
+SHA256 b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6
+WRF public-domain statement, retained in LICENSE-WRF-public-domain.txt.
+The physics module has no imported modules or external table dependencies.
+No code from wrf_gpu is used.
+
+The CUDA port uses the candidate's existing strict math headers and their
+retained notices. No new external math implementation is added here.

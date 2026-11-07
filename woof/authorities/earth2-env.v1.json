@@ -23,7 +23,7 @@
     },
     "cu13": {
       "fcn3": ["torch-harmonics @ git+https://github.com/NVIDIA/torch-harmonics.git@a632ca748a12bd9f74dbc1e00653317810991f74", "makani @ git+https://github.com/NVIDIA/makani.git@b38fcb2799d7dbc146fa60459f3f9823394a8bf1", "ruamel.yaml>=0.18.14", "scipy>=1.10.0", "moviepy"],
-      "reason": "earth2studio 0.19.0's [fcn3] extra names makani, which is not on PyPI (earth2studio's own [tool.uv.sources] takes makani and torch-harmonics from these git revisions), so a wheel install of earth2studio[fcn3] cannot resolve it and the managed environment had no torch_harmonics or makani: every FCN3 run there died at model import (2.9.4 landing, V58 2026-10-20). The same packages are installed from earth2studio 0.19.0's pinned revisions; torch-harmonics is BSD-3-Clause, makani Apache-2.0, built with --no-build-isolation as the recipe installs earth2studio"
+      "reason": "earth2studio 0.19.0's [fcn3] extra names makani, which is not on PyPI (earth2studio's own [tool.uv.sources] takes makani and torch-harmonics from these git revisions), so a wheel install of earth2studio[fcn3] cannot resolve it and the managed environment had no torch_harmonics or makani: every FCN3 run there died at model import (2.9.4 landing, 2026-10-20). The same packages are installed from earth2studio 0.19.0's pinned revisions; torch-harmonics is BSD-3-Clause, makani Apache-2.0, built with --no-build-isolation as the recipe installs earth2studio"
     }
   },
   "recipe_by_driver_major": {

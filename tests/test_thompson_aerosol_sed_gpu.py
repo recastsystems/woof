@@ -1576,7 +1576,7 @@ def test_this_module_sediments_cloud_and_nothing_else():
     Rain and ice exist here only as ``_accumulate`` launchers since the
     2.8.6 accumulator rework: the v4.6.1 generation carries WRF's
     qrten/nrten/qiten/niten through its own TENDENCY-FORM rain and ice
-    fallout.  Snow and graupel are mp=28's own since lane/mp28fix-sedim-refl
+    fallout.  Snow and graupel are mp=28's own since development branch
     (the classic passes in thompson.cu are byte-frozen for mp=8 and their
     arithmetic is not WRF's; tests/test_thompson_aerosol_sedim_refl.py), and
     so are the surface totals in mp_gt_driver's order.
@@ -1677,6 +1677,15 @@ def test_only_cloud_fallout_is_a_single_pass_in_the_frozen_kernel_too():
     import re
     aerosol = re.sub(r"^#if defined\(THOMPSON_AA_WRF39\)\n.*?^#endif[^\n]*\n",
                      "", aerosol, flags=re.S | re.M)
+    # The hail image owns a separate graupel substep loop. It does not
+    # change the single-pass cloud operation in the non-hail image.
+    start = aerosol.rindex("#if defined(THOMPSON_AA_HAIL)")
+    marker = "#endif  // THOMPSON_AA_HAIL"
+    stop = aerosol.index(marker, start) + len(marker)
+    hail = aerosol[start:stop]
+    assert "thompson_aa_hail_graupel_sediment_impl" in hail
+    assert "nstep" in hail and "onstep" in hail
+    aerosol = aerosol[:start] + aerosol[stop:]
     # The v4.6.1 accumulator path's rain and ice fallout (2.8.6) carry the
     # substep loop rain and ice have; set aside likewise.
     start = aerosol.index("// RAIN AND ICE FALLOUT IN WRF'S TENDENCY FORM")
@@ -1685,7 +1694,7 @@ def test_only_cloud_fallout_is_a_single_pass_in_the_frozen_kernel_too():
     tendency_form = aerosol[start:stop]
     assert "nstep" in tendency_form and "onstep" in tendency_form
     aerosol = aerosol[:start] + aerosol[stop:]
-    # The v4.6.1 snow and graupel fallout (lane/mp28fix-sedim-refl) carry
+    # The v4.6.1 snow and graupel fallout (development branch) carry
     # the substep loop those species have, and the surface totals follow
     # them; set aside likewise.
     start = aerosol.index("// SNOW AND GRAUPEL FALLOUT AND THE SURFACE TOTALS")
@@ -2634,7 +2643,7 @@ def test_bridge_two_ports_agree_where_aerosol_is_neutral_and_split_where_it_is_n
     assert disagreeing.size == 2, disagreeing.tolist()
     level = int(np.argmax(np.abs(mine - theirs)))
     wrf = want_qc[level]
-    # Since lane/mp28fix-warm-network (WRF's REAL qvten/tten through the
+    # Since development branch (WRF's REAL qvten/tten through the
     # condensation) the strict build lands mp=28 ON WRF at this level, so the
     # product is zero there; the split is then mp=8's distance alone, which
     # the sum below still states.  mp=8 must still be off WRF.

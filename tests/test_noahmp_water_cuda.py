@@ -73,7 +73,9 @@ P_SCALAR = {"kdt": 20, "frzx": 21, "slope": 22, "ch2op": 23, "ssi": 24,
 
 W_INT_STRIDE = 9
 W_IN_STRIDE = NSTATE + 39
-W_OUT_STRIDE = NSTATE + 36
+# SOLDRAIN is an additional production diagnostic after the 36 oracle
+# slots. Allocate its word too, without adding or changing oracle values.
+W_OUT_STRIDE = NSTATE + 37
 
 IN = {"dt": 0, "fcev": 1, "fctr": 2, "elai": 3, "esai": 4, "fveg": 5,
       "bdfall": 6, "sfctmp": 7, "qvap": 8, "qdew": 9, "qsnow": 10,

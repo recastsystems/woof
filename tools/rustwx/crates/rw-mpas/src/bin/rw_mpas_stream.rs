@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub static GPUWM_BRIDGE_SOURCE_REV_STAMP: &str =
@@ -255,7 +256,14 @@ fn prepare(v: &Variable, dims: &BTreeMap<String,usize>) -> Result<Vec<u64>> {
         if !unique.insert(d) || !v.dimensions.contains(d) || dims.get(d)!=Some(n) { return Err(format!("{}: incompatible input axis {d}",v.name).into()); }
     }
     if v.dimensions.iter().any(|d| d!="Time" && !unique.contains(d)) { return Err(format!("{}: missing input axis",v.name).into()); }
-    let raw=fs::read(&v.filename)?;
+    let input=fs::File::open(&v.filename)?;
+    // Raw handoff files can already occupy tmpfs. Map their words instead of
+    // allocating another whole variable while forming the output layout.
+    let mapped = if input.metadata()?.len() == 0 { None } else {
+        // The caller owns immutable handoff files until this bridge exits.
+        Some(unsafe { memmap2::MmapOptions::new().map(&input)? })
+    };
+    let raw = mapped.as_deref().unwrap_or(&[]);
     if raw.len()!=product(&v.shape)?.checked_mul(input_size).ok_or("input size overflow")? { return Err(format!("{}: raw handoff byte count mismatch",v.name).into()); }
     if count==0 { return Ok(out); }
     // The conversion is chosen once per variable, in the per-word order the
@@ -308,21 +316,25 @@ thread_local! { static PERMUTE_WORKERS: std::cell::Cell<usize> = const { std::ce
 // order, and "duplicate variable" only when every variable before the repeat
 // prepared. Each variable's bytes come from the same prepare as before.
 fn prepare_all(req: &Request) -> Result<Vec<Vec<u64>>> {
+    prepare_variables(&req.variables, &req.dimensions)
+}
+
+fn prepare_variables(variables: &[Variable], dimensions: &BTreeMap<String,usize>) -> Result<Vec<Vec<u64>>> {
     let mut names=std::collections::BTreeSet::new();
-    let upto=req.variables.iter().position(|v| !names.insert(&v.name)).unwrap_or(req.variables.len());
-    let vars=&req.variables[..upto];
+    let upto=variables.iter().position(|v| !names.insert(&v.name)).unwrap_or(variables.len());
+    let vars=&variables[..upto];
     let cores=std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let outer=cores.min(8).min(vars.len());
     let mut slots:Vec<Option<std::result::Result<Vec<u64>,String>>>=(0..vars.len()).map(|_| None).collect();
     if outer<2 {
         for (slot,v) in slots.iter_mut().zip(vars) {
-            let done=prepare(v,&req.dimensions).map_err(|e| e.to_string());
+            let done=prepare(v,dimensions).map_err(|e| e.to_string());
             let failed=done.is_err(); *slot=Some(done); if failed {break;}
         }
     } else {
         // Largest first, so no worker is left with a big variable at the end.
         let mut order:Vec<usize>=(0..vars.len()).collect();
-        let words=|v: &Variable| v.dimensions.iter().map(|d| req.dimensions.get(d).copied().unwrap_or(0)).fold(1usize,|a,b| a.saturating_mul(b));
+        let words=|v: &Variable| v.dimensions.iter().map(|d| dimensions.get(d).copied().unwrap_or(0)).fold(1usize,|a,b| a.saturating_mul(b));
         order.sort_by(|a,b| words(&vars[*b]).cmp(&words(&vars[*a])).then(a.cmp(b)));
         let next=std::sync::atomic::AtomicUsize::new(0);
         let inner=(cores/outer).max(1);
@@ -333,7 +345,7 @@ fn prepare_all(req: &Request) -> Result<Vec<Vec<u64>>> {
                 loop {
                     let k=next.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
                     let Some(&i)=order.get(k) else {break};
-                    done.push((i,prepare(&vars[i],&req.dimensions).map_err(|e| e.to_string())));
+                    done.push((i,prepare(&vars[i],dimensions).map_err(|e| e.to_string())));
                 }
                 done
             })).collect();
@@ -344,7 +356,7 @@ fn prepare_all(req: &Request) -> Result<Vec<Vec<u64>>> {
             for (i,result) in done {slots[i]=Some(result);}
         }
     }
-    let mut prepared=Vec::with_capacity(req.variables.len());
+    let mut prepared=Vec::with_capacity(variables.len());
     for slot in slots {
         match slot {
             Some(Ok(data)) => prepared.push(data),
@@ -352,8 +364,96 @@ fn prepare_all(req: &Request) -> Result<Vec<Vec<u64>>> {
             None => return Err("variable was not prepared".into()),
         }
     }
-    if upto<req.variables.len() {return Err("duplicate variable".into());}
+    if upto<variables.len() {return Err("duplicate variable".into());}
     Ok(prepared)
+}
+
+// Large frames used to retain every converted field while the forecast held
+// the global snapshot and each rank's pinned snapshot. Bound that extra copy
+// to one batch (or one larger variable). The validated words spill beside the
+// staged output, then each variable is mapped only while it is encoded.
+const PREPARE_BATCH_BYTES: usize = 256 << 20;
+enum Prepared {
+    Memory(Vec<Vec<u64>>),
+    Spool { file: Option<fs::File>, path: PathBuf, spans: Vec<(u64,usize)> },
+}
+enum PreparedBytes<'a> { Memory(&'a [u8]), Mapped(memmap2::Mmap) }
+impl AsRef<[u8]> for PreparedBytes<'_> {
+    fn as_ref(&self) -> &[u8] {
+        match self { Self::Memory(data) => data, Self::Mapped(data) => data }
+    }
+}
+impl Prepared {
+    fn get(&self, index: usize) -> Result<PreparedBytes<'_>> {
+        match self {
+            Self::Memory(data) => Ok(PreparedBytes::Memory(bytes(&data[index],data[index].len()*8))),
+            Self::Spool { file, spans, .. } => {
+                let (offset, size) = spans[index];
+                if size == 0 { return Ok(PreparedBytes::Memory(&[])); }
+                // This private spool is never changed after preparation.
+                Ok(PreparedBytes::Mapped(unsafe {
+                    memmap2::MmapOptions::new().offset(offset).len(size).map(file.as_ref().unwrap())?
+                }))
+            }
+        }
+    }
+}
+impl Drop for Prepared {
+    fn drop(&mut self) {
+        if let Self::Spool { file, path, .. } = self {
+            drop(file.take());
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+fn prepare_stream(req: &Request, budget: usize) -> Result<Prepared> {
+    let size = |v: &Variable| -> usize {
+        let words = v.dimensions.iter().map(|d| req.dimensions.get(d).copied().unwrap_or(0))
+            .fold(1usize, |a,b| a.saturating_mul(b));
+        words.saturating_mul(kind(&v.dtype).and_then(dtype).map(|d| d.1).unwrap_or(0))
+    };
+    if req.variables.iter().map(&size).fold(0usize,usize::saturating_add) <= budget {
+        return Ok(Prepared::Memory(prepare_all(req)?));
+    }
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let parent = req.path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let (file, path) = loop {
+        let nonce = NEXT.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
+        let path = parent.join(format!(".mpas-stream-{}-{nonce}.prepared",std::process::id()));
+        match fs::OpenOptions::new().read(true).write(true).create_new(true).open(&path) {
+            Ok(file) => break (file,path),
+            Err(error) if error.kind()==std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    };
+    let mut result = Prepared::Spool { file: Some(file), path, spans: Vec::new() };
+    let Prepared::Spool { file, spans, .. } = &mut result else { unreachable!() };
+    let file=file.as_mut().unwrap();
+    let mut names=std::collections::BTreeSet::new();
+    let mut begin=0;
+    let mut offset=0u64;
+    while begin<req.variables.len() {
+        let mut end=begin;
+        let mut used=0usize;
+        while end<req.variables.len() && (end==begin || used.saturating_add(size(&req.variables[end]))<=budget) {
+            if !names.insert(&req.variables[end].name) { break; }
+            used=used.saturating_add(size(&req.variables[end]));
+            end+=1;
+        }
+        if end==begin { return Err("duplicate variable".into()); }
+        let batch=prepare_variables(&req.variables[begin..end],&req.dimensions)?;
+        for data in batch {
+            let raw=bytes(&data,data.len()*8);
+            file.write_all(raw)?;
+            spans.push((offset,raw.len()));
+            offset+=raw.len() as u64;
+        }
+        begin=end;
+        if begin<req.variables.len() && names.contains(&req.variables[begin].name) {
+            return Err("duplicate variable".into());
+        }
+    }
+    Ok(result)
 }
 // Rows of the last output axis, each a strided walk of the input. Large
 // variables are split over every core in output order; the first failing word
@@ -440,7 +540,7 @@ fn keep_fill() -> bool { false }
 // MPAS v8.4.2 src/framework/mpas_io_streams.F:3254-3927: native primitive/layout semantics.
 fn write(req: &Request) -> Result<Value> {
     // Validate and prepare every variable before touching the destination.
-    let prepared=prepare_all(req)?;
+    let prepared=prepare_stream(req,PREPARE_BATCH_BYTES)?;
     if let Some(compression)=&req.compression { return write_compressed(req,compression,prepared); }
     let nc=if req.append {Nc::open_for_write(&req.path)?} else {Nc::create(&req.path,&req.format)?};
     // Before nc_enddef, which is where a new file's fixed variables are filled.
@@ -482,12 +582,13 @@ fn write(req: &Request) -> Result<Value> {
         } else {check(unsafe {nc_enddef(nc.0)})?;}
     }
     let mut bytes_written=0;
-    for ((v,id),data) in req.variables.iter().zip(ids).zip(prepared) {
+    for (index,(v,id)) in req.variables.iter().zip(ids).enumerate() {
         if req.append && !v.dimensions.iter().any(|d|d=="Time") {continue;}
+        let data=prepared.get(index)?;
         let mut start=vec![0;v.dimensions.len()];
         let count:Vec<_>=v.dimensions.iter().map(|d|req.dimensions[d]).collect();
         if let Some(axis)=v.dimensions.iter().position(|d|d=="Time") {start[axis]=req.record_index.unwrap_or(0);}
-        check(unsafe {nc_put_vara(nc.0,id,start.as_ptr(),count.as_ptr(),data.as_ptr().cast())})?;
+        check(unsafe {nc_put_vara(nc.0,id,start.as_ptr(),count.as_ptr(),data.as_ref().as_ptr().cast())})?;
         bytes_written+=product(&count)?*dtype(kind(&v.dtype)?)?.1;
     }
     nc.close()?;
@@ -500,7 +601,7 @@ fn write(req: &Request) -> Result<Value> {
 /// history and diagnostics files only: native MPAS reads init, restart and LBC files through pnetcdf, which has no
 /// NetCDF-4 reader. A new file only: the writer cannot extend a file already on disk, so an append (a stream whose
 /// file holds several output times) or a record past the first is refused, naming why.
-fn write_compressed(req: &Request, compression: &Compression, prepared: Vec<Vec<u64>>) -> Result<Value> {
+fn write_compressed(req: &Request, compression: &Compression, prepared: Prepared) -> Result<Value> {
     use netcdf_writer::{AttrValue, NcFormat, NcType, Nc4Options, Nc4Writer, Schema};
     if req.append || req.record_index.unwrap_or(0)!=0 {
         return Err("compressed write: a compressed file is written whole, so it cannot take an append or a record past the first (ask for the uncompressed format for a file that holds several output times)".into());
@@ -549,10 +650,11 @@ fn write_compressed(req: &Request, compression: &Compression, prepared: Vec<Vec<
     let mut writer=Nc4Writer::create(&req.path,schema,options).map_err(wrap)?;
     let mut bytes_written=0;
     let outcome=(|| -> Result<()> {
-        for ((v,(id,ty,record)),data) in req.variables.iter().zip(&ids).zip(&prepared) {
+        for (index,(v,(id,ty,record))) in req.variables.iter().zip(&ids).enumerate() {
             let count:Vec<_>=v.dimensions.iter().map(|d|req.dimensions[d]).collect();
             let size=product(&count)?*dtype(kind(&v.dtype)?)?.1;
-            let raw=bytes(data,size);
+            let data=prepared.get(index)?;
+            let raw=&data.as_ref()[..size];
             if *record {
                 // The file's records are the Time extent of the request, each written whole.
                 let records=req.dimensions.get("Time").copied().unwrap_or(1);
@@ -919,13 +1021,23 @@ mod tests {
         let req=make(&variables)?;
         let together=prepare_all(&req)?;
         for (v,data) in req.variables.iter().zip(&together) {assert!(prepare(v,&req.dimensions)? == *data);}
+        let spilled=prepare_stream(&req,2<<20)?;
+        let Prepared::Spool { path, .. } = &spilled else {panic!("large frame must spill")};
+        let spill_path=path.clone();
+        for (index,data) in together.iter().enumerate() {
+            assert_eq!(spilled.get(index)?.as_ref(),bytes(data,data.len()*8));
+        }
+        drop(spilled);
+        assert!(!spill_path.exists());
         // v3 and v9 have the wrong byte count and v10 repeats v2's name: v3 is reported.
         let mut broken=variables.clone();
         broken[3]=variable(3,4*n-1)?; broken[9]=variable(9,4*n-1)?; broken[10]["name"]=json!("v2");
         let serial_error=prepare(&make(&broken)?.variables[3],&req.dimensions).unwrap_err().to_string();
         assert_eq!(prepare_all(&make(&broken)?).unwrap_err().to_string(),serial_error);
+        assert_eq!(prepare_stream(&make(&broken)?,2<<20).err().unwrap().to_string(),serial_error);
         broken[3]=variable(3,4*n)?; broken[9]=variable(9,4*n)?;
         assert_eq!(prepare_all(&make(&broken)?).unwrap_err().to_string(),"duplicate variable");
+        assert_eq!(prepare_stream(&make(&broken)?,2<<20).err().unwrap().to_string(),"duplicate variable");
         fs::remove_dir_all(&root)?;
         Ok(())
     }

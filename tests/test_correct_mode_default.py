@@ -318,7 +318,11 @@ def test_a_wrf_namelist_can_name_exact_mode(tmp_path):
     text = (fixture / "hrrr_wrf.nl.c18c").read_text()
     carried = with_physics_selector_comment(text, exact_mode_selectors())
     assert read_physics_selector_comment(carried) == exact_mode_selectors()
-    namelist = tmp_path / "namelist.input"
+    # The fixture is the operational fork's namelist (output_diagnostics = 1
+    # with no auxhist3_interval: the fork's climate statistics). Under its own
+    # name the importer reads it as the fork; as a plain namelist.input it is
+    # a stock namelist, which native CLWRF stops on (39c203139fb).
+    namelist = tmp_path / "hrrr_wrf.nl"
     namelist.write_text(carried)
     resolved, _ = import_namelists(fixture / "hrrr_namelist.wps.c18", namelist)
     run = build_experiment(tomllib.loads(resolved), source="exact").root.run

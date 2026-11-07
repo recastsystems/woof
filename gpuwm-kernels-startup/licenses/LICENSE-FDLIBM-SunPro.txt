@@ -1,0 +1,71 @@
+FDLIBM -- Sun Microsystems, Inc.
+
+The notice below is reproduced verbatim.  It is the whole of the licence:
+its single condition is that the notice itself be preserved, and this file
+is that preservation.
+
+It appears in this form at the head of every FDLIBM float file in the GNU C
+Library that WOOF transcribes -- sysdeps/ieee754/flt-32/s_expm1f.c,
+s_tanhf.c, s_atanf.c, e_log10f.c and e_lgammaf_r.c -- and in glibc's own
+LICENSES file under the heading "Files from Sun fdlibm are copyright Sun
+Microsystems, Inc.".
+
+
+/*
+ * ====================================================
+ * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+ *
+ * Developed at SunPro, a Sun Microsystems, Inc. business.
+ * Permission to use, copy, modify, and distribute this
+ * software is freely granted, provided that this notice
+ * is preserved.
+ * ====================================================
+ */
+
+
+The same notice, as glibc's LICENSES file presents it without the C comment
+decoration:
+
+    Files from Sun fdlibm are copyright Sun Microsystems, Inc.:
+
+    Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+
+    Developed at SunPro, a Sun Microsystems, Inc. business.
+    Permission to use, copy, modify, and distribute this
+    software is freely granted, provided that this notice
+    is preserved.
+
+
+Netlib's original double-precision FDLIBM 5.3 carries the same notice with
+"SunSoft" in place of "SunPro"; the float files, which are the ones WOOF
+transcribes, say SunPro.  The float conversions themselves were made at
+Cygnus Support by Ian Lance Taylor -- netlib FDLIBM 5.3 ships no float files
+at all ("only double precision is supported") -- and glibc carried the line
+"Conversion to float by Ian Lance Taylor, Cygnus Support" until it stripped
+those headers in commit 30891f35. Cygnus attached no separate condition;
+Sun's notice above is the one with conditions, and it is the one preserved.
+
+woof/core/kernels/portable_libm64.cuh also transcribes the double exp,
+log, log1p and pow algorithms through Rust libm 0.2.16. Their notices
+are preserved in that header. The additional original forms are:
+
+/*
+ * ====================================================
+ * Copyright (C) 2004 by Sun Microsystems, Inc. All rights reserved.
+ *
+ * Permission to use, copy, modify, and distribute this
+ * software is freely granted, provided that this notice
+ * is preserved.
+ * ====================================================
+ */
+
+/*
+ * ====================================================
+ * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+ *
+ * Developed at SunSoft, a Sun Microsystems, Inc. business.
+ * Permission to use, copy, modify, and distribute this
+ * software is freely granted, provided that this notice
+ * is preserved.
+ * ====================================================
+ */

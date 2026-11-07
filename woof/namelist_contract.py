@@ -130,7 +130,10 @@ BASELINES = (
                                        "cudt": [0, 0]})),
     ("grell-freitas", _variant(physics={"cu_physics": [3, 3]})),
     ("new-tiedtke", _variant(physics={"cu_physics": [16, 16]})),
+    ("gfs-sas", _variant(physics={"cu_physics": [94, 94]})),
     ("new-sas", _variant(physics={"cu_physics": [96, 96]})),
+    ("kiaps-sas", _variant(physics={"cu_physics": [14, 14]})),
+    ("old-gfs-sas", _variant(physics={"cu_physics": [95, 95]})),
     ("thompson-aerosol", _variant(physics={"mp_physics": [28, 28]})),
     ("nssl", _variant(physics={"mp_physics": [18, 18]})),
     ("morrison", _variant(physics={"mp_physics": [10, 10]})),
@@ -247,16 +250,22 @@ def _probe_vocabulary() -> tuple[dict[str, set[str]], list[dict]]:
 def _value_rules() -> dict[tuple[str, str], dict]:
     """The importer's single-key value tables, as contract rows."""
     from woof import namelist_import as ni
-    from woof.config import (MYNN_PBL_OPTION_IDENTITY,
+    from woof.config import (MYNN_PBL_OPTION_IDENTITY, MYNN471_OPTION_VALUES,
                               NOAHMP_OPTION_IDENTITY_EVIDENCE,
+                              NOAHMP_OPTION_VALUES,
                               NOAHMP_OPTIONS_WITHOUT_CONSUMER)
     from woof.core.nssl2_contract import DEPRECATED_MP_PHYSICS_FLAGS
 
     rules: dict[tuple[str, str], dict] = {}
 
-    def rule(section, key, values, why, *, scalar=False):
+    def rule(section, key, values, why, *, scalar=False, applies_when=None):
         rules[(section, key)] = {"values": list(values), "scalar": scalar,
                                  "why": why}
+        if applies_when is not None:
+            # {"section/key": [values]}: the rule binds only on a namelist
+            # that selects one of these values on some domain; elsewhere
+            # the importer records the key as inert (6d79b6e9c5d for MYNN).
+            rules[(section, key)]["applies_when"] = applies_when
 
     maps = (
         ("mp_physics", sorted(set(ni._MP_MAP)
@@ -279,6 +288,8 @@ def _value_rules() -> dict[tuple[str, str], dict]:
             in sorted(unported_scheme_reasons(key).items())}
     rule("physics", "sf_ocean_physics", [0, 1, 2],
          "must be 0 (off), 1 (Pollard) or 2 (3DPWP)", scalar=True)
+    rule("physics", "shalconv", [0, 1], "CU_SAS optional ARW shallow switch, default 1; explicit extension.")
+    rule("physics", "pert_sas", [False, True], ni.PERT_SAS_ARW_NOTE)
     rule("physics", "sf_lake_physics", [0, 1],
          "must be integer 0 (off) or 1 (CLM lake).")
     rule("physics", "use_lakedepth", [0, 1],
@@ -286,6 +297,9 @@ def _value_rules() -> dict[tuple[str, str], dict]:
     for key in ("mosaic_lu", "mosaic_soil"):
         rule("physics", key, [0, 1],
              "must be 0 or 1; nonzero requires RUC land surface.", scalar=True)
+    rule("physics", "kf_edrates", [0, 1],
+         "1 publishes KF entrainment/detrainment profiles and convective "
+         "timescale; requires cu_physics=99.")
     for key, pin, why in ni.PHYSICS_PINS:
         rule("physics", key, [pin], f"woof implements {key} = {pin} only "
                                     f"({why}).")
@@ -320,15 +334,23 @@ def _value_rules() -> dict[tuple[str, str], dict]:
              "must be 0, 1 or 3 on every domain (WRF v4.7.1: 1 the KIM drag, "
              "3 the GSL drag suite; 2 is not ported).")
     for key, admitted in MYNN_PBL_OPTION_IDENTITY.items():
-        rule("physics", key, [admitted],
-             f"woof implements {key} = {admitted!r} only (MYNN option "
-             "identity); no nearby branch is substituted for an unported "
-             "one.")
+        rule("physics", key, MYNN471_OPTION_VALUES[key],
+             "WRF 4.7.1 MYNN control; nondefault values select wrf_471",
+             applies_when={"physics/bl_pbl_physics": [5]})
+    rule("physics", "tke_budget", [0,1], "MYNN TKE budget output")
     for key, (admitted, evidence) in NOAHMP_OPTION_IDENTITY_EVIDENCE.items():
         if key in NOAHMP_OPTIONS_WITHOUT_CONSUMER:
             continue
-        rule("noah_mp", key, [admitted],
-             f"woof's Noah-MP port implements {key} = {admitted!r} only "
+        if key in ("soiltstep", "noahmp_acc_dt"):
+            # Numeric intervals since the Noah-MP option port: the soil
+            # cadence in seconds (woof.core.noahmp_soil_cadence.validate) and
+            # the output accumulator reset in minutes
+            # (woof.core.noahmp_output.validate), not value lists; the
+            # importer checks them.
+            continue
+        values = list(NOAHMP_OPTION_VALUES.get(key, (admitted,)))
+        rule("noah_mp", key, values,
+             f"woof's Noah-MP port implements {key} values {values!r} "
              f"({evidence}).")
     rule("physics", "num_land_cat", [20, 21, 61],
          "the MODIFIED_IGBP_MODIS_NOAH category count the static build "
@@ -354,8 +376,10 @@ def _value_rules() -> dict[tuple[str, str], dict]:
                   "woof does not build.")}
     rule("fdda", "grid_fdda", [0, 1, 2],
          "0 disables nudging; 1 selects grid analysis nudging; 2 selects spectral nudging. Active modes require a positive analysis interval and complete prepared analyses.")
-    for key in ("grid_sfdda", "obs_nudge_opt"):
-        rule("fdda", key, [0], ni.FDDA_OBSERVATION_INPUT)
+    rule("fdda", "obs_nudge_opt", [0, 1],
+         "0 disables observation nudging; 1 reads native OBS_DOMAIN files and runs WRF observation weights and tendencies on the GPU.")
+    rule("fdda", "grid_sfdda", [0, 1, 2],
+         "Surface analysis nudging requires grid_fdda=1 and complete native auxinput9 OLD/NEW records. Mode 2 couples FASDAS to Noah.")
     rule("geogrid", "map_proj", ["lambert", "mercator", "polar"],
          "implemented projections: 'lambert', 'mercator', 'polar'.",
          scalar=True)
@@ -395,6 +419,17 @@ def _outside(values: list):
     while bad in numbers:
         bad += 1.0
     return bad if kind == "float" else int(bad)
+
+
+def _applies(rule: dict, pair) -> bool:
+    """Whether a rule's ``applies_when`` selection holds on this pair."""
+    for name, admitted in rule.get("applies_when", {}).items():
+        section, key = name.split("/")
+        document = pair[0] if section in _WPS_GROUPS else pair[1]
+        if not any(value in admitted
+                   for value in document.get(section, {}).get(key) or ()):
+            return False
+    return True
 
 
 def _refused(problems: list, section: str, key: str) -> bool:
@@ -446,6 +481,8 @@ def _measure_rules(rules: dict) -> None:
         reach = None
         for label, pair, options in pairs:
             document = pair[0] if section in _WPS_GROUPS else pair[1]
+            if not _applies(rule, pair):
+                continue
             own = document.get(section, {}).get(key)
             width = 1 if rule["scalar"] else 2
 

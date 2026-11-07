@@ -627,7 +627,7 @@ def test_a_native_batch_publishes_each_verified_hour_before_transfer_returns(
     monkeypatch.setattr(fetch_as_posted, "pause", clock.sleep)
     monkeypatch.setattr(native_transport, "_download_product",
                         _dated_hrrr_product([]))
-    # 6a69b356f061, lane/hrrr-statics, adds analyzed VEGFRA to the soil
+    # 6a69b356f061, development branch, adds analyzed VEGFRA to the soil
     # stream. Keep this existing synthetic batch offline at the native
     # transport and numeric extractor seams, retaining the actual append,
     # digest, per-hour publication and repeated-marker checks below.
@@ -952,7 +952,7 @@ def test_a_native_hrrr_host_that_refuses_index_head_still_fetches_as_posted(
         return rows.expected_at("hrrr", CYCLE, lead) + timedelta(seconds=20)
 
     host = HrrrIndexHeadRefused(CYCLE, clock, reveal)
-    # 6a69b356f061, lane/hrrr-statics, appends one analyzed VEGFRA record
+    # 6a69b356f061, development branch, appends one analyzed VEGFRA record
     # from wrfsfc to each native soil stream. These minimal envelopes test
     # posting/transfer, not native numeric decoding: route only that fetch
     # and extractor seam to this same replay instead of a live NOAA object.
@@ -1021,7 +1021,7 @@ def test_a_native_hrrr_host_that_refuses_index_head_still_fetches_as_posted(
                 >= reveal(marker["lead"]))
     manifest = json.loads((out / "fetch-manifest.json").read_text())
     assert manifest["forecast_hours"] == [0, 1]
-    # 6a69b356f061, lane/hrrr-statics: 18 soil messages plus the separate
+    # 6a69b356f061, development branch: 18 soil messages plus the separate
     # analyzed VEGFRA message. This is a message count, not a request count.
     assert [entry["records"] for entry in manifest["files"]
             if "records" in entry] == [transport.ATMOSPHERE_RECORD_COUNT,
@@ -1499,7 +1499,7 @@ def test_a_lead_waiting_to_post_under_a_chain_stop_ends_when_either_stop_fires(
     waiting for a later lead slept its wait out, and the pool, which waits
     for its jobs to wind down before it raises, raised only then: no
     ``failed.json``, the preparation still waiting on the failed lead, and
-    the other workers still downloading.  Reproduced on a development machine: the
+    the other workers still downloading.  Reproduced on test host 2: the
     request raised after the 20 s posting wait instead of at 0.5 s.  The
     wait now ends on either stop: the request's (``TransferCancelled``,
     e4224502f) and the chain's (``FetchStopped``)."""

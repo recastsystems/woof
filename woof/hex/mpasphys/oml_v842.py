@@ -8,6 +8,8 @@ buffers and launches. The f4 slot table selects launch_slot.
 """
 
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -147,7 +149,7 @@ def _kernels_on(device: int):
         header + "\n" + CUDA_SOURCE,
         options=_hex_numerics.options(("--std=c++17", "--fmad=false", "--ftz=false",
                  "--prec-div=true", "--prec-sqrt=true")),
-        arch=cp.cuda.Device(device).compute_capability)
+        arch=_compilation_target(device, xp=cp))
     with cp.cuda.Device(device):
         module = cp.cuda.function.Module()
         module.load(binary)

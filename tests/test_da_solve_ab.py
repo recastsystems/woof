@@ -322,7 +322,7 @@ def test_letkf_diagnostics_time_the_phases_it_claims():
         analysis_fields=("u", "v"), rtps_alpha=0.9)
     # The phases are read as the minimum over repeats after one warm-up
     # call.  The first analyze in a process bills its one-time costs
-    # (lazy imports and caches) to setup: on a development machine, 7.4-9.0 ms of setup
+    # (lazy imports and caches) to setup: on test host 4, 7.4-9.0 ms of setup
     # against 5.2-6.3 ms of solve on the first call and 1.6-1.8 ms against
     # 4.0 ms on every later one, at 3ad7ac74d and after.  And one
     # millisecond-scale sample under a loaded parallel run read 3.6 ms of

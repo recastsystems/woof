@@ -1299,3 +1299,59 @@ def test_provenance_d4_registered():
                    "implemented-identical", "dtbc_fp32",
                    "module_integrate.F:439-445"):
         assert needle in text, f"PROVENANCE D4 lost cite {needle}"
+
+
+def test_cycle_restart_stop_preserves_full_schedule_and_resume_operations():
+    exp = dataclasses.replace(_chain_experiment((1, 3, 3), run_seconds=600),
+                              restart_interval_s=300)
+    schedule = build_schedule(exp, resolve_clock(exp, lbc_interval_s=1800))
+    identity = schedule.table_hash()
+    def callbacks(events):
+        return dict(on_step=lambda gid, clock: events.append(('step',gid,clock.ticks)),
+            on_force=lambda gid,pid,c,p: events.append(('force',gid,c.ticks)),
+            on_feedback_commit=lambda gid,pid,c,p: events.append(('feedback',gid,c.ticks)),
+            on_history=lambda gid,tick: events.append(('history',gid,tick)),
+            on_restart=lambda tick: events.append(('restart',tick)))
+    uninterrupted=[]
+    full=execute_schedule(schedule,**callbacks(uninterrupted))
+    resumed=[]
+    first=execute_schedule(schedule,stop_at_restart_ticks=300*schedule.clock.tick_den,
+                           **callbacks(resumed))
+    assert all(c.ticks==300*schedule.clock.tick_den for c in first.clocks.values())
+    second=execute_schedule(schedule,clocks=first.clocks,start_period=5,
+        started_grid_ids=tuple(first.clocks),committed_initial_history_grid_ids=tuple(first.clocks),
+        **callbacks(resumed))
+    assert resumed==uninterrupted
+    assert schedule.table_hash()==identity
+    assert second.steps+first.steps==full.steps
+    for gid,c in second.clocks.items():
+        assert (c.ticks,c.step_count,c.dtbc_launch_fp32)==(full.clocks[gid].ticks,
+            full.clocks[gid].step_count,full.clocks[gid].dtbc_launch_fp32)
+
+
+@pytest.mark.parametrize('stop',[0,120,301,900,300.0])
+def test_cycle_stop_refuses_non_restart_boundaries_before_callbacks(stop):
+    exp=dataclasses.replace(_chain_experiment((1,3),run_seconds=600),restart_interval_s=300)
+    schedule=build_schedule(exp,resolve_clock(exp,lbc_interval_s=1800))
+    with pytest.raises(ValueError,match='restart boundary'):
+        execute_schedule(schedule,stop_at_restart_ticks=stop,
+                         on_step=lambda *args:pytest.fail('advanced before validation'))
+
+
+def test_cycle_stop_retains_adaptive_controller_and_clocks():
+    from woof.core.restart_boundary import dispatch_at_restart
+    exp=dataclasses.replace(_chain_experiment((1,3),run_seconds=600),restart_interval_s=300)
+    schedule=build_schedule(exp,resolve_clock(exp,lbc_interval_s=1800))
+    clocks=schedule.clock.clocks()
+    calls=[]
+    def controller(period, current):
+        calls.append(current[1].ticks)
+        for clock in current.values():
+            clock.step_ticks=clock.spec.step_ticks//2
+    result=dispatch_at_restart(300)(model=None,schedule=schedule,callbacks={},
+        adaptive_driver=controller,clocks=clocks,step_bindings={},skip_feedback_path=True,
+        start_period=0,started_grid_ids=tuple(clocks),committed_initial_history_grid_ids=())
+    assert calls==list(range(0,300,30))
+    assert all(c.ticks==300 for c in result.clocks.values())
+    assert all(c.run_ticks==600 for c in result.clocks.values())
+    assert result.restarts==1

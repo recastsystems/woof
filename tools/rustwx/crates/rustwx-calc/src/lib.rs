@@ -1,4 +1,6 @@
 pub mod visibility;
+pub mod surface;
+pub mod mslp_smoothing;
 pub mod snow;
 pub mod ice_accretion;
 mod derived;

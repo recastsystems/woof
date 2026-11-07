@@ -229,8 +229,8 @@ class Tiedtke:
                 # module_em.F:1372 set_tend, then phy_prep_part2 :5301.
                 # The last RK transport is coupled; WRF decouples with
                 # the acoustic mass carried into this physics call.
-                from woof.state_serialization_contract import WRF_MUTS_SLOT
-                mut = state.existing_scratch(WRF_MUTS_SLOT)
+                from woof.state_serialization_contract import carried_wrf_muts
+                mut = carried_wrf_muts(state)
                 if mut is None:
                     mut = state.total_mu()
                 a = a / (state.c1h[:, None, None] * mut[None]

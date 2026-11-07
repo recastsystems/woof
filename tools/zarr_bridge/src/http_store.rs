@@ -237,32 +237,35 @@ mod tests {
     fn stalled_partial_body_retries_without_shortening_whole_chunk_timeout() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/era5.zarr", listener.local_addr().unwrap());
-        let server = std::thread::spawn(move || {
-            for (attempt, stream) in listener.incoming().take(2).enumerate() {
-                let mut stream = stream.unwrap();
+        // The server answers every retry the client makes (the client gives up after five tries), and ignores
+        // write errors on all of them. Breakage this prevents (2.9.12 R7b route A, a loaded 8-CPU container): a
+        // retry that itself ran past the 50 ms read timeout closed before the full body was written, the
+        // second-attempt unwrap panicked, the server thread died after two connections, and every later retry
+        // failed to connect. The thread is left to end with the test process rather than joined, because a
+        // client that succeeds early never makes the connections the loop would otherwise wait for.
+        std::thread::spawn(move || {
+            for (attempt, stream) in listener.incoming().take(5).enumerate() {
+                let Ok(mut stream) = stream else { continue };
                 let mut request = Vec::new();
                 let mut byte = [0u8; 1];
-                while !request.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap() == 1 {
+                while !request.ends_with(b"\r\n\r\n") && matches!(stream.read(&mut byte), Ok(1)) {
                     request.push(byte[0]);
                 }
                 let header = b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\n";
                 if attempt == 0 {
                     // The stalled attempt's client may already have timed out and closed (its read timeout is
-                    // 50 ms), so its writes may fail. Breakage this prevents (public ci native windows-2025, run
-                    // 40418223243): the unwrap panicked on WSAECONNABORTED (10053), the server thread died, and
-                    // every retry then failed to connect.
+                    // 50 ms), so its writes may fail (public ci native windows-2025, run 40418223243:
+                    // WSAECONNABORTED, 10053).
                     let _ = stream.write_all(header).and_then(|_| stream.write_all(b"a"));
                     std::thread::sleep(Duration::from_millis(250));
                 } else {
-                    stream.write_all(header).unwrap();
-                    stream.write_all(b"abcd").unwrap();
+                    let _ = stream.write_all(header).and_then(|_| stream.write_all(b"abcd"));
                 }
             }
         });
         let store = HttpStore::with_read_timeout(&url, Duration::from_millis(50)).unwrap();
         let bytes = store.get(&StoreKey::new("chunk").unwrap()).unwrap().unwrap();
         assert_eq!(bytes.as_ref(), b"abcd");
-        server.join().unwrap();
     }
 
     /// The defect: one HTTP 500 from the store aborted the init door.  A HEAD

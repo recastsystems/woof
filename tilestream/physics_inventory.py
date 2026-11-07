@@ -272,7 +272,10 @@ def carrier_manifest(state) -> dict[str, object]:
     from woof.io import restart
 
     manifest: dict[str, object] = {}
-    manifest.update(restart.state_manifest(state))
+    # Evolved Registry-u setup is owned by geography, serialized separately
+    # at a checkpoint. It must never become a tile-scattered prognostic.
+    manifest.update({key: value for key, value in restart.state_manifest(state).items()
+                     if not key.startswith(("feedback_base/", "feedback_geography/"))})
     manifest.update(restart._scratch_manifest(state))
     manifest.update(restart.carried_scratch_manifest(state))
     # A fixed-frame nest archive is restart state but is not a tile field.
@@ -282,7 +285,7 @@ def carrier_manifest(state) -> dict[str, object]:
                 if not (k.startswith('scratch/') and is_archive_slot(k[8:]))}
     driver = getattr(state, "physics", None)
     if driver is not None:
-        manifest.update(restart._driver_manifest(driver))
+        manifest.update(restart._driver_manifest(driver,streaming=True,state_shape=state.p.shape))
     # A standalone adapter's host ozone output is restart-only; a tree's
     # explicit device owner is a swept field under the same checkpoint key.
     for slot in restart.RESTART_ONLY_DRIVER_SLOTS:
@@ -406,7 +409,8 @@ def is_checkpointed(key: str) -> bool:
         return True
     from woof.io import restart
 
-    return restart.classify_scratch_slot(rest) == "serialize"
+    return (restart.classify_scratch_slot(rest) == "serialize"
+            or rest in restart.CHECKPOINTED_CARRIED_SCRATCH_SLOTS)
 
 
 def is_absent_tolerant(key: str) -> bool:
@@ -554,11 +558,38 @@ def carrier_scalars(state) -> dict[str, object]:
     """
     out: dict[str, object] = {
         "elapsed_seconds": float(state.elapsed_seconds)}
+    if hasattr(state, "_wrf_mass_carriers_cold"):
+        out["wrf_mass_carriers_cold"] = bool(state._wrf_mass_carriers_cold)
+    from woof.wrf_exact import ENABLED as wrf_exact
+    if wrf_exact:
+        out["wrf_mass_carriers_ready"] = bool(getattr(
+            state, "_wrf_mass_carriers_ready",
+            state.existing_scratch("wrf_exact_muts") is not None))
+        out["wrf_start_diagnostics_carried"] = bool(getattr(
+            state, "_wrf_start_diagnostics_carried", False))
+
+
+    if getattr(state, "_scratch", {}).get("ltng_ltngacttime") is not None:
+        from woof.core.lightning import host_clock
+        clock = host_clock(state)
+        out["lightning_clock"] = {"activation": clock["activation"],
+                                  "calendar": list(clock["calendar"])}
+    for name in ("_nwp_itimestep", "_native_nwp_prepared"):
+        if hasattr(state, name):
+            out[name] = getattr(state, name)
     driver = getattr(state, "physics", None)
     if driver is not None:
+        from woof.core.radiation_composition import radiation_adapters
+        radiation={str(i):a.streaming_scalars() for i,a in enumerate(
+            radiation_adapters(driver.radiation_callable))
+            if callable(getattr(a,'streaming_scalars',None))}
+        if radiation:out['radiation_owned']=radiation
+        if wrf_exact and getattr(driver, "_wrf_rthraten", None) is not None:
+            out["wrf_rthraten_coupled"] = bool(driver._wrf_rthraten_coupled)
         out["call_counts"] = dict(driver.call_counts)
         out["ysu_nan_guard_fires"] = int(driver.ysu_nan_guard_fires)
         out["microphysics_updates"] = int(driver.microphysics_updates)
+        out["swdd_from_scheme"] = bool(getattr(driver, "_swdd_from_scheme", False))
         fire = getattr(driver, "fire", None)
         if fire is not None:
             from tilestream.sfire import clock_values
@@ -640,12 +671,39 @@ def set_carrier_scalars(state, values) -> None:
     restart.py's own legacy remedy, one off-cadence radiation call.
     """
     state.elapsed_seconds = float(values["elapsed_seconds"])
+    if "wrf_mass_carriers_cold" in values:
+        state._wrf_mass_carriers_cold = bool(values["wrf_mass_carriers_cold"])
+    elif hasattr(state, "_wrf_mass_carriers_cold"):
+        state._wrf_mass_carriers_cold = False
+    if "wrf_mass_carriers_ready" in values:
+        state._wrf_mass_carriers_ready = bool(values["wrf_mass_carriers_ready"])
+        state._wrf_start_diagnostics_carried = bool(
+            values.get("wrf_start_diagnostics_carried", False))
+
+
+    incoming = values.get("lightning_clock")
+    # An old restart has only array carriers. One resumed read rebuilds
+    # the mirror; later sweeps carry it without any device scalar reads.
+    if incoming is not None or getattr(state, "_lightning_host_clock", None) is not None:
+        state._lightning_host_clock = (None if incoming is None else
+            {"activation": incoming["activation"], "calendar": list(incoming["calendar"])})
+    for name in ("_nwp_itimestep", "_native_nwp_prepared"):
+        if name in values:
+            setattr(state, name, values[name])
     driver = getattr(state, "physics", None)
+    if driver is not None and "wrf_rthraten_coupled" in values:
+        driver._wrf_rthraten_coupled = bool(values["wrf_rthraten_coupled"])
     if driver is not None and "call_counts" in values:
+        if 'radiation_owned' in values:
+            from woof.core.radiation_composition import radiation_adapters
+            adapters=radiation_adapters(driver.radiation_callable)
+            for index,payload in values['radiation_owned'].items():
+                adapters[int(index)].streaming_restore_scalars(payload)
         driver.call_counts.clear()
         driver.call_counts.update(values["call_counts"])
         driver.ysu_nan_guard_fires = int(values["ysu_nan_guard_fires"])
         driver.microphysics_updates = int(values["microphysics_updates"])
+        driver._swdd_from_scheme = bool(values.get("swdd_from_scheme", False))
         if "fire_clocks" in values:
             from tilestream.sfire import restore_clocks
             restore_clocks(driver.fire, values["fire_clocks"])

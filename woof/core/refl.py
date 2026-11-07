@@ -570,7 +570,7 @@ def _wdm6_device_words(hail_opt: int):
 
 
 def launch_refl10cm_wdm6(qv, qr, nr, qs, qg, t, p, refl, *,
-                         hail_opt: int = 0) -> None:
+                         hail_opt: int = 0, mp_physics: int = 16) -> None:
     """One CUDA thread per column: WRF ``refl10cm_wdm6`` into dBZ.
 
     ``nr`` is WDM6's transported rain number moment.  Unlike Thompson's
@@ -589,12 +589,76 @@ def launch_refl10cm_wdm6(qv, qr, nr, qs, qg, t, p, refl, *,
         raise ValueError(f"nz={nz} exceeds REFL_KMAX={_KMAX}")
     _check_fields({"qv": qv, "qr": qr, "nr": nr, "qs": qs, "qg": qg,
                    "t": t, "p": p, "refl": refl}, shape)
+    if int(mp_physics) == 26:
+        from woof.core.kernels import get_kernel_int_defines
+        words_f, words_d = _wdm6_device_words(0)
+        blocks = (ny * nx + _COLUMN_TPB - 1) // _COLUMN_TPB
+        kernel = get_kernel_int_defines("wdm7_refl", "refl10cm_wdm6_column",
+                                        (("REFL_KMAX", _KMAX), ("WDM_HAIL", 1)))
+        kernel((blocks,), (_COLUMN_TPB,),
+               (qv, qr, nr, qs, qg, t, p, _device_tables(), words_f, words_d,
+                refl, np.int32(nz), np.int32(ny), np.int32(nx)))
+        return
     words_f, words_d = _wdm6_device_words(int(hail_opt))
     blocks = (ny * nx + _COLUMN_TPB - 1) // _COLUMN_TPB
     _column_kernel("refl10cm_wdm6_column", nz, module="wdm6_refl")(
         (blocks,), (_COLUMN_TPB,),
         (qv, qr, nr, qs, qg, t, p, _device_tables(), words_f, words_d,
          refl, np.int32(nz), np.int32(ny), np.int32(nx)))
+
+
+#: The binary64 words WRF v4.6.1's radar_init leaves for the melting-
+#: particle backscatter WDM5 calls (module_mp_radar.F:76-81, dumped by
+#: tools/wdm5_wrf461_oracle).  m_w_0 is evaluated by m_complex_water_ray in
+#: default REAL and widened, so its words carry float32 precision; the
+#: float64 radar_init mirror above carries more digits than WRF has, which is
+#: why these are WRF's words and not the mirror's.
+WDM5_RADAR_WORDS = {
+    "K_w": 0x3FEDE4B5A805B813,
+    "m_w_0_re": 0x402213D1A0000000,
+    "m_w_0_im": 0xBFF634D6E0000000,
+    "m_i_0_re": 0x3FFC91DAE74D3B24,
+    "m_i_0_im": 0xBF21ACB622AE704E,
+}
+
+
+def _wdm5_radar_word(name: str) -> np.float64:
+    return np.frombuffer(
+        np.uint64(WDM5_RADAR_WORDS[name]).tobytes(), np.float64)[0]
+
+
+def launch_refl10cm_wdm5(qv, qr, nr, qs, t, p, refl) -> None:
+    """One CUDA thread per column: WRF ``refl10cm_wdm5`` into dBZ.
+
+    Rain and snow only (WDM5 has no graupel); rain's intercept comes from
+    the scheme's own transported ``nr`` (module_mp_wdm5.F:2202-2208).  The
+    kernel lives in ``kernels/wdm5.cu`` beside the scheme, reusing
+    the family melting-particle routines; it carries the radar module's
+    REAL words for WDM5's m(D) inputs itself. The native -35 dBZ floor is
+    retained and included in the strict replay.
+    """
+    from woof.core.kernels import get_kernel, get_kernel_int_defines
+    from woof.core.wdm6_constants import WDM5_SHALLOW_KMAX, wdm5_level_tier
+
+    shape = refl.shape
+    if len(shape) != 3:
+        raise ValueError(f"refl fields must be 3-D, got {shape}")
+    nz, ny, nx = shape
+    capacity = wdm5_level_tier(nz)
+    _check_fields({"qv": qv, "qr": qr, "nr": nr, "qs": qs,
+                   "t": t, "p": p, "refl": refl}, shape)
+    kernel = (get_kernel("wdm5", "refl10cm_wdm5_column")
+              if capacity == WDM5_SHALLOW_KMAX else
+              get_kernel_int_defines("wdm5", "refl10cm_wdm5_column",
+                                     (("WDM5_KMAX", capacity),)))
+    blocks = (ny * nx + _COLUMN_TPB - 1) // _COLUMN_TPB
+    kernel(
+        (blocks,), (_COLUMN_TPB,),
+        (qv, qr, nr, qs, t, p, _device_tables(),
+         _wdm5_radar_word("K_w"), _wdm5_radar_word("m_w_0_re"),
+         _wdm5_radar_word("m_w_0_im"), _wdm5_radar_word("m_i_0_re"),
+         _wdm5_radar_word("m_i_0_im"), refl,
+         np.int32(nz), np.int32(ny), np.int32(nx)))
 
 
 #: Pointwise classic Thompson REFL_10CM WITHOUT the melting-snow term:
@@ -727,7 +791,18 @@ class NativeReflectivityScheme(ValueError):
 #: Adding any of these keys to the gate tuple is a DEFECT, not a widening:
 #: none of them has a routine here to dispatch to, and the fall-through arm
 #: is Kessler's rain-only Marshall-Palmer form.
+# These schemes never write a forecast reflectivity diagnostic in WRF.
+# Keep this separate from schemes that compute and stash their own field.
+SCHEME_ABSENT_REFL_10CM: dict[int, str] = {
+    96: "WRF MADWRF_MP is empty and never writes REFL_10CM",
+    95: "WRF phys/module_mp_etanew.F writes no REFL_10CM diagnostic",
+    0: "no microphysics, no reflectivity",
+    11: "WRF CAMMGMP never writes REFL_10CM; its initialized zero field is retained",
+}
+
 SCHEME_NATIVE_REFL_10CM: dict[int, str] = {
+    27: "UDM writes reflectivity in udm_step; no shared reflectivity kernel.",
+    29: 'WRF 4.7.1 RCON computes reflectivity inside rcon_step and stashes its completed field; no shared refl kernel.',
     5: (
         "Ferrier-Aligo computes a reflectivity column inside EGCP01COLUMN "
         "(module_mp_fer_hires.F:2232-2251 snow/graupel Zsnow with its "
@@ -746,6 +821,19 @@ SCHEME_NATIVE_REFL_10CM: dict[int, str] = {
         "WSM7 uses its own wsm7 translation unit via the WSM-family "
         "table runner. The runner fills the refl_10cm slot on output-due "
         "steps, including the declared hail Rayleigh term."
+    ),
+    55: "The adaptive-habit column produces REFL_10CM directly in WRF driver operation order",
+    7: 'NU-WRF saticel_s computes hail-inclusive DBZ during its state update; '
+       'module_mp_gsfcgce_4ice_nuwrf.F:4271-4318 and 4493-4503.',
+    56: (
+        "NTU multi-moment: WRF's NTU arm writes no REFL_10CM at all "
+        "(module_microphysics_driver.F:1295-1319 binds no reflectivity "
+        "argument), so the field is WOOF's own operator over the "
+        "scheme's predicted gamma distributions -- each category's "
+        "shape and slope from its own SOLVE_AFA* routine, Rayleigh sixth "
+        "moments, ice dielectric factor and predicted density for the "
+        "frozen categories (woof.core.ntu.reflectivity, kernel "
+        "ntu_refl_cell).  It floors at -35 dBZ."
     ),
     9: (
         "Milbrandt-Yau two-moment carries Zet as an INOUT dummy that WRF's "
@@ -794,7 +882,36 @@ SCHEME_NATIVE_REFL_10CM: dict[int, str] = {
         "differencing H(x) against a clear-air observation must take the "
         "floor from the scheme and not from here."
     ),
+    97: (
+        "Goddard GCE (and every row of woof.core.mp_column_schemes) runs "
+        "its own refl10cm_gsfc inside the microphysics call, as WRF's "
+        "gsfcgce does (module_mp_gsfcgce.F:2866-2904, refl10cm_gsfc "
+        ":2942-3115): fixed-intercept exponential rain, snow and "
+        "graupel-or-hail PSDs with the scheme's own densities, launched "
+        "from its own translation unit (kernels/gsfcgce_refl.cu) and "
+        "stashed into this module's refl_10cm slot.  Its clear-air floor "
+        "is this family's -35 dBZ.  Its H(x) between steps is "
+        "woof.core.mp_column_schemes.reflectivity."
+    ),
+    53: (
+        "P3 three-moment ice (CASE(P3_1CAT_3MOM)) is mp=50's p3_main with Z "
+        "prognostic: dBZ is computed INSIDE its final-diagnostics loop "
+        "(module_mp_p3.F:4795-4887, ze_ice from the 3momI table's "
+        "reflectivity column at the solved mu_i) and the driver binds "
+        "diag_zdbz_3d straight to refl_10cm "
+        "(module_microphysics_driver.F:1739).  woof/core/p3.py stashes "
+        "that field exactly as it does for mp=50, with the same -99 dBZ "
+        "clear-air floor."
+    ),
 }
+# mp=51 (CASE (P3_1CATEGORY_NC), module_microphysics_driver.F:1607-1647)
+# binds diag_zdbz_3d to refl_10cm exactly as mp=50 does, and its Z reads
+# rain and ice only (the predicted droplet number does not enter it), so the
+# mp=50 sentence is its sentence.
+SCHEME_NATIVE_REFL_10CM[51] = SCHEME_NATIVE_REFL_10CM[50]
+SCHEME_NATIVE_REFL_10CM[52] = "P3 two-category computes reflectivity within its shared category diagnostics; use the P3 native operator to include both ice populations"
+
+SCHEME_NATIVE_REFL_10CM[15] = SCHEME_NATIVE_REFL_10CM[5].replace("under mp=5", "under mp=5 or 15")
 
 
 from woof.microphysics_schemes import NAMED_SCHEMES as _NAMED_MP_SCHEMES
@@ -844,11 +961,25 @@ REFL_10CM_INPUT_SPECIES: dict[int, tuple[str, ...]] = {
     8: ("qv", "qr", "nr", "qs", "qg"),
     # Morrison: three two-moment species (``launch_refl10cm_morrison``).
     10: ("qv", "qr", "nr", "qs", "ns", "qg", "ng"),
+    # WDM5: rain mass and number, snow mass (``launch_refl10cm_wdm5``).
+    14: ("qv", "qr", "nr", "qs"),
+    40: ("qv", "qr", "nr", "qs", "ns", "qg", "ng"),
     # WDM6: Thompson's list with WDM6's own kernel (``launch_refl10cm_wdm6``).
     16: ("qv", "qr", "nr", "qs", "qg"),
+    # WDM7: refl10cm_wdm7 is refl10cm_wdm6 byte for byte
+    # (module_mp_wdm7.F:3316-3490) and reads no hail; the same list and
+    # kernel at WDM6's hail_opt = 0 radar constants, which are WDM7's.
+    26: ("qv", "qr", "nr", "qs", "qg"),
     # Aerosol-aware Thompson: mp=8's list exactly -- see the docstring of
     # compute_refl_10cm for why nc/nwfa/nifa contribute nothing to Z.
     28: ("qv", "qr", "nr", "qs", "qg"),
+    # SBU-YLin.  WRF computes no REFL_10CM for mp=13; the scheme's author
+    # states how a reflectivity post-processor must read it: snow is
+    # (1-Ri)*qs and graupel is Ri*qs (module_mp_sbu_ylin.F:12-13).  The
+    # operator is the refl10cm_wsm6 routine over that partition, so rimi
+    # is an input species.
+    13: ("qv", "qr", "qs", "rimi"),
+    38: ("qv", "qr", "nr", "qs", "qg", "ng", "qvolg"),
 }
 
 from woof.core.column_schemes import COLUMN_SCHEMES
@@ -901,7 +1032,8 @@ def compute_refl_10cm(
     output uses the explicit microphysics-time pair (PROVENANCE.md D2).
     Dispatches like ``microphysics.apply``: 1 = Kessler fallback, 6 =
     WSM6 ``refl10cm_wsm6``, 8 and 28 = Thompson ``calc_refl10cm``,
-    10 = Morrison ``refl10cm_hm``, and 16 = WDM6 ``refl10cm_wdm6``, whose
+    10 = Morrison ``refl10cm_hm``, 14 = WDM5 ``refl10cm_wdm5``, and 16 =
+    WDM6 ``refl10cm_wdm6``, the WDM pair whose
     rain intercept is diagnosed from the scheme's own prognostic ``nr``
     rather than fixed.  Thompson requires its output-due private
     graupel-number scratch through ``thompson_graupel_number``.  Results
@@ -972,7 +1104,8 @@ def compute_refl_10cm(
         p = state.p
         # Standalone-current-state path.  Production output passes the
         # microphysics adapter's post-call T and prepared p explicitly.
-        t[...] = (thb + state.thp) * cp.power(
+        t[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+                  else thb + state.thp) * cp.power(
             p / DTYPE(c.P0), DTYPE(c.RCP))
     else:
         t = temperature
@@ -985,6 +1118,11 @@ def compute_refl_10cm(
         if missing:
             raise ValueError(f"{row.label} reflectivity lacks fields: " + ", ".join(missing))
         launch_column_refl(row, [getattr(state, n) for n in row.refl_species], t, p, refl)
+    elif cfg.mp_physics == 40:
+        from woof.core.morrison_aero import launch_refl_morrison_aero
+        launch_refl_morrison_aero(
+            state.qv, state.qr, state.nr, state.qs, state.ns, state.qg, state.ng,
+            t, p, refl, morr_rimed_ice=cfg.morr_rimed_ice)
     elif cfg.mp_physics == 10:
         missing = _missing_refl_inputs(state, 10)
         if missing:
@@ -994,7 +1132,7 @@ def compute_refl_10cm(
                                  state.qs, state.ns, state.qg, state.ng,
                                  t, p, refl,
                                  morr_rimed_ice=cfg.morr_rimed_ice)
-    elif cfg.mp_physics in (8, 28):
+    elif cfg.mp_physics in (8, 28, 38):
         # ONE branch for both Thompson schemes.  See the docstring: WRF's
         # calc_refl10cm has no aerosol-aware arm and reads no droplet
         # number, so a separate mp=28 branch could only ever differ from
@@ -1005,6 +1143,8 @@ def compute_refl_10cm(
             raise ValueError(
                 f"mp_physics={cfg.mp_physics} reflectivity lacks Thompson "
                 "fields: " + ", ".join(missing))
+        if cfg.mp_physics == 38 and thompson_graupel_number is None:
+            thompson_graupel_number = state.ng
         if thompson_graupel_number is None:
             raise ValueError(
                 f"mp_physics={cfg.mp_physics} reflectivity requires the "
@@ -1019,31 +1159,63 @@ def compute_refl_10cm(
                 "woof.da.obsop.simulated_reflectivity derives the "
                 "wrapper's own diagnosis from the state and passes it "
                 "here.")
-        if (cfg.mp_physics == 28 and getattr(
+        if (cfg.mp_physics in THOMPSON_AEROSOL_FAMILY and getattr(
                 cfg, "thompson_version", "wrf_461") == "wrf_461"):
             # The same WRF routine, through mp=28's own transcription
             # (thompson_aerosol_state.cu, thompson_aa_refl10cm): WOOF's
             # own math routines and WRF's REAL(4)/DOUBLE PRECISION
             # arithmetic, measured against WRF v4.6.1 by the 0 ULP column
             # oracle.  refl.cu's classic kernel is byte-frozen for mp=8.
-            from woof.core.thompson_aerosol_state import launch_aa_refl10cm
-            launch_aa_refl10cm(
-                state.qv, state.qr, state.nr, state.qs, state.qg,
-                thompson_graupel_number, t, p, refl,
-                melting=refl_melting_for(state))
+            from woof.core.thompson_aerosol_state import launch_aa_refl10cm, stash_hail_size
+            from woof.core.thompson_aerosol_launch import hail_aware_scope
+            hail = THOMPSON_AEROSOL_FAMILY[cfg.mp_physics].hail_aware
+            with hail_aware_scope(hail):
+                launch_aa_refl10cm(
+                    state.qv, state.qr, state.nr, state.qs, state.qg,
+                    thompson_graupel_number, t, p, refl,
+                    melting=refl_melting_for(state),
+                    graupel_volume=getattr(state, "qvolg", None))
+                if hail:
+                    stash_hail_size(state)
         else:
             launch_refl10cm_thompson(
                 state.qv, state.qr, state.nr, state.qs, state.qg,
                 thompson_graupel_number, t, p, refl,
                 melting=refl_melting_for(state))
-    elif cfg.mp_physics == 16:
-        missing = _missing_refl_inputs(state, 16)
+    elif cfg.mp_physics == 14:
+        missing = _missing_refl_inputs(state, 14)
         if missing:
-            raise ValueError("mp_physics=16 reflectivity lacks WDM6 fields: "
+            raise ValueError("mp_physics=14 reflectivity lacks WDM5 fields: "
                              + ", ".join(missing))
+        launch_refl10cm_wdm5(state.qv, state.qr, state.nr, state.qs,
+                             t, p, refl)
+    elif cfg.mp_physics in (16, 26):
+        mp = int(cfg.mp_physics)
+        missing = _missing_refl_inputs(state, mp)
+        if missing:
+            raise ValueError(f"mp_physics={mp} reflectivity lacks "
+                             f"{'WDM6' if mp == 16 else 'WDM7'} fields: "
+                             + ", ".join(missing))
+        # WDM7 has no hail_opt: its radar constants are WDM6's hail_opt = 0
+        # set (wdm7init sets xam_g from deng = 500, module_mp_wdm7.F:2499).
         launch_refl10cm_wdm6(state.qv, state.qr, state.nr, state.qs,
                              state.qg, t, p, refl,
-                             hail_opt=cfg.wdm6_hail_opt)
+                             hail_opt=cfg.wdm6_hail_opt if mp == 16 else 0, mp_physics=mp)
+    elif cfg.mp_physics == 13:
+        missing = _missing_refl_inputs(state, 13)
+        if missing:
+            raise ValueError("mp_physics=13 reflectivity lacks SBU-YLin "
+                             "fields: " + ", ".join(missing))
+        # The author's partition (module_mp_sbu_ylin.F:12-13): without it
+        # every rimed particle would radiate as low-density snow and the
+        # echo would be underestimated, which is the note's own warning.
+        snow = state.scratch((nz, ny, nx), "refl_sbu_snow")
+        graupel = state.scratch((nz, ny, nx), "refl_sbu_graupel")
+        cp.multiply(state.rimi, state.qs, out=graupel)
+        cp.subtract(state.qs, graupel, out=snow)
+        launch_refl10cm_wsm6(
+            state.qv, state.qr, snow, graupel, t, p, refl,
+            hail_opt=0, melting=refl_melting_for(state))
     elif cfg.mp_physics == 2:
         from woof.core.lin import launch_refl10cm_lin
         launch_refl10cm_lin(state.qv, state.qr, state.qs, state.qg, t, p, refl)
@@ -1159,8 +1331,12 @@ def domain_start_ticks_of(node) -> int:
     single-domain or hand-built caller, whose domain starts with the
     experiment by construction -- the same 0 the field defaults to.
     """
-    spec = getattr(getattr(node, "clock", None), "spec", None)
-    return int(getattr(spec, "start_ticks", 0) or 0)
+    clock = getattr(node, "clock", None)
+    spec = getattr(clock, "spec", None)
+    # DFL starts its ordinary forecast at the filtered midpoint. No
+    # forecast microphysics stash exists at that new analysis instant.
+    return (int(getattr(spec, "start_ticks", 0) or 0)
+            + int(getattr(clock, "dfi_start_ticks", 0) or 0))
 
 
 def analysis_refl_10cm(state, cfg=None, *, shape=None, array_module=None):
@@ -1196,7 +1372,23 @@ def analysis_refl_10cm(state, cfg=None, *, shape=None, array_module=None):
         getattr(state, "physics", None), "refl_config", None)
     from woof.core.gsd_initial_reflectivity import enabled as gsd_initial_enabled
     initial_gsd = gsd_initial_enabled(cfg)
-    if ENABLED and not initial_gsd:
+    # NU-WRF 4-ice computes DBZ inside its state update, so there is no
+    # between-step diagnostic to run before that first update.  Its native
+    # WRF analysis array is zero (Registry hdu; real MP7 capture at step 1).
+    # Keep that initial value in both arithmetic modes rather than sending
+    # MP7 to the standalone operator, which correctly refuses this scheme.
+    # CAMMGMP never writes REFL_10CM, at analysis or on later steps.
+    native_inactive_initial = getattr(cfg, "mp_physics", None) in (7, 11)
+    # Native mp=38 leaves its history-only radar field at the initialized
+    # zero until a diagnostic-due microphysics call. Its real initialization
+    # also leaves number/volume moments zero, so evaluating a PSD against
+    # those unanalyzed moments here produces spurious extreme echoes.
+    # UDM (27) and RCON (29) also start with an initialized-zero history
+    # radar field. Their retained first driver inputs witness those words;
+    # module_mp_udm.F:374-395 fills it only after the microphysics call.
+    # Keep these selectors' native initial-history contract in fast mode.
+    native_mp38_initial = int(getattr(cfg, "mp_physics", 0)) in (27, 29, 38)
+    if native_inactive_initial or ((ENABLED or native_mp38_initial) and not initial_gsd):
         if host:
             return np.zeros(shape, dtype=np.float32)
         import cupy as cp
@@ -1236,7 +1428,8 @@ def analysis_refl_10cm(state, cfg=None, *, shape=None, array_module=None):
         slab = SimpleNamespace()
         for name in ("p", "thb", "thp", "alt", "qv", "qc", "qr", "qi", "qs", "qg", "qh",
                      "nr", "ni", "ns", "ng", "nh", "nc", "qir", "qib", "qirv", "qhw", "qhl",
-                     "volg", "f_rimef"):
+                     "volg", "f_rimef", "qrimef", "qzi", "qi2", "qi3", "ni2", "ni3",
+                     "qvoli", "qvoli2", "qvoli3", "qaoli", "qaoli2", "qaoli3", "qnr", "qni", "qns", "qng", "qnh", "qvolg", "qvolh"):
             value = field(name)
             if value is not None:
                 if value.ndim == 3:
@@ -1250,6 +1443,13 @@ def analysis_refl_10cm(state, cfg=None, *, shape=None, array_module=None):
                 buffers[name] = cp.empty(size, dtype=cp.float32)
             return buffers[name]
         slab.scratch = scratch
+        slab.use_theta_m = int(getattr(state, "use_theta_m", 0))
+        if slab.use_theta_m:
+            from woof.core import constants as c
+            def dry_theta():
+                base = slab.thb if slab.thb.ndim == 3 else slab.thb[:, None, None]
+                return (base + slab.thp) / (cp.float32(1.0) + cp.float32(c.RVOVRD) * slab.qv)
+            slab.total_theta = dry_theta
         slab.refl10cm_from_melting = refl_melting_for(state)
         result[:, y0:y1, :] = cp.asnumpy(diagnose(slab, cfg))
     return result
@@ -1272,10 +1472,11 @@ def compute_and_stash_refl_10cm(
     """Compute from WRF's microphysics-time inputs and stage for output."""
     from woof.wrf_exact import ENABLED
     from woof.core.physics_inventory import WRF_INACTIVE_REFL_MICROPHYSICS
-    if ENABLED and cfg.mp_physics in WRF_INACTIVE_REFL_MICROPHYSICS:
+    if (cfg.mp_physics == 11 or
+            ENABLED and cfg.mp_physics in WRF_INACTIVE_REFL_MICROPHYSICS):
         # Stock Kessler never writes the forecast radar slot. Retain its
-        # real initialized value; standalone reflectivity still computes
-        # the rain diagnostic and default forecast arithmetic is unchanged.
+        # real initialized value. CAMMGMP also never writes this slot and
+        # has no standalone radar operator, under either arithmetic mode.
         refl = state.scratch(state.p.shape, "refl_10cm")
         refl.fill(0.0)
         stash_refl_10cm(state, refl)
@@ -1305,7 +1506,9 @@ def _require_agreement_with_the_registry() -> None:
         "woof.core.refl (REFL_10CM_INPUT_SPECIES, SCHEME_NATIVE_REFL_10CM)",
         "microphysics", "reflectivity_input_species", observed,
         project=lambda row: None if row is None else list(row),
-        cited_absences={0: "no microphysics, no reflectivity"})
+        cited_absences=SCHEME_ABSENT_REFL_10CM)
 
 
 _require_agreement_with_the_registry()
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

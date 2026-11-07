@@ -1,3 +1,19 @@
+# Copyright 2026, NOAA, UCAR/NCAR CU/CIRES (NOAA GSL Unified Gravity Wave Physics, UGWP)
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this
+# file except in compliance with the License. You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software distributed under
+# the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
+# ANY KIND, either express or implied. See the License for the specific language
+# governing permissions and limitations under the License.
+#
+# Source: https://github.com/NOAA-GSL/UGWP, commit c1c893edcf171af5639af60e3a3a528816f6cc2b
+# (tag MPAS_20241223), bl_ugwp.F. Upstream LICENSE: https://github.com/NOAA-GSL/UGWP/blob/main/LICENSE
+# (added at 4108d491470c2576a7c1e97cc6a38bf454590193); copy in licenses/LICENSE-UGWP-Apache-2.0.txt.
+# Ported to CUDA for woof hex: the Fortran is rewritten as CUDA kernels with a Python
+# launcher; changes are this project's, under the same licence. NOTICE section 8.
+# The lines from physics_wrf/module_bl_ugwp_gwdo.F keep the WRF public-domain notice
+# (licenses/LICENSE-WRF-public-domain.txt).
 """MPAS-A v8.4.2 GSL orographic UGWP, RKIND=4, resident CUDA columns.
 
 Authority: physics_noaa/UGWP/bl_ugwp.F:1-1114 (UGWP c1c893e),
@@ -42,6 +58,24 @@ SURFACE_OUTPUTS = ("dusfcg", "dvsfcg", "dusfc_ls", "dvsfc_ls", "dusfc_bl",
 # Explicit RN sqrt/division preserve the strict Fortran result and subnormals.
 # Level arrays retain Fortran indexing to keep the source comparison direct.
 CUDA_SOURCE = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_3F800000_DEFINED
+#define HEX_DIVISOR_3F800000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3f800000 = 1.0f;
+#else
+static const float hex_divisor_3f800000 = 1.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_44BB8000_DEFINED
+#define HEX_DIVISOR_44BB8000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_44bb8000 = 1500.0f;
+#else
+static const float hex_divisor_44bb8000 = 1500.0f;
+#endif
+#endif
+
 // MPAS physics_noaa/UGWP/bl_ugwp.F:15-1059, complete bl_ugwp_run.
 extern "C" __global__ void ugwp_oro_run(
     const float *layers, const float *prsi0, const float *surface,
@@ -160,7 +194,7 @@ extern "C" __global__ void ugwp_oro_run(
             const float bnv=__fsqrt_rn(bnv2[1]);
             float fr=bnv*rulow*var*od; fr=fminf(fr,10.0f);
             xn=ubar*rulow; yn=vbar*rulow;
-            float efact=gfk_pow(oa+2.0f,0.8f*fr/1.0f);
+            float efact=gfk_pow(oa+2.0f,0.8f*fr/hex_divisor_3f800000);
             efact=fminf(fmaxf(efact,0.0f),10.0f);
             coefm=gfk_pow(1.0f+ol,oa+1.0f);
             const float xlinv=coefm*8.84e-6f;
@@ -235,11 +269,11 @@ extern "C" __global__ void ugwp_oro_run(
         float ut=0.0f,vt=0.0f;
         if(form) {
             const float wsp=__fsqrt_rn(u[k]*u[k]+v[k]*v[k]);
-            var_temp=12.0f*6.325e-3f*gfk_exp(-gfk_pow(za[k]/1500.0f,1.5f))*a2
+            var_temp=12.0f*6.325e-3f*gfk_exp(-gfk_pow(za[k]/hex_divisor_44bb8000,1.5f))*a2
                      *gfk_pow(za[k],-1.2f)*ss_taper;
             ut=-var_temp*wsp*u[k]/(1.0f+var_temp*dt*wsp);
             vt=-var_temp*wsp*v[k]/(1.0f+var_temp*dt*wsp);
-            if(za[k]/1500.0f>4.0f) form=false;
+            if(za[k]/hex_divisor_44bb8000>4.0f) form=false;
         }
         dudt[k]=dudt[k]+ut; dvdt[k]=dvdt[k]+vt;
         O(2,k)=O(2,k)+ut; O(3,k)=O(3,k)+vt;

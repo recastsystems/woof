@@ -531,6 +531,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
         acoustic_output_callback: Any | None = None,
     ) -> _CudaDynamicsSubcycleResult:
         """Advance one native chained v8.4.1 dynamics subcycle on device."""
+        column_flag = self._column_flag_v841(validation_flag)
 
         if self.v841_context is None:
             raise RuntimeError("v8.4.1 device context is missing")
@@ -583,7 +584,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             saved_diag.theta_m,
             saved_diag.rho_theta_perturbation,
             exner=saved_diag.exner,
-            validation_flag=validation_flag,
+            validation_flag=column_flag,
             cqw=None if moist_coefficients is None else moist_coefficients.cqw,
             qtot=None if moist_coefficients is None else moist_coefficients.qtot,
         )
@@ -595,7 +596,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             dpdz = self._moist_dpdz_v841(
                 saved_diag.density_perturbation,
                 moist_coefficients.qtot,
-                validation_flag,
+                column_flag,
             )
         saved_euler_ru = self.horizontal.pressure_gradient_euler_tendency(
             saved_diag.pressure_perturbation,
@@ -649,7 +650,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                 saved_diag.pressure_perturbation,
                 dpdz,
                 moist_coefficients.cqw,
-                validation_flag,
+                column_flag,
             )
         saved_euler_theta = None
         if self.mixing_config_v841 is not None:
@@ -731,7 +732,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                     current_diag.theta_m,
                     current_diag.rho_theta_perturbation,
                     exner=saved_diag.exner,
-                    validation_flag=validation_flag,
+                    validation_flag=column_flag,
                     cqw=None if moist_coefficients is None else moist_coefficients.cqw,
                     qtot=None if moist_coefficients is None else moist_coefficients.qtot,
                 )
@@ -760,6 +761,10 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             self._add(tend_ru, saved_euler_ru)
             if physics_tendencies is not None:
                 self._add(tend_ru, physics_tendencies.rho_u)
+            if self.held_suarez_momentum is not None:
+                self.held_suarez_momentum.apply(
+                    tend_ru, current_state.rho_u,
+                    current_diag.pressure_perturbation)
             tend_rt = self._theta_tendency(
                 current_state,
                 current_diag.theta_m,
@@ -787,7 +792,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                         current_state.rho,
                         current_diag.theta_m,
                         final_modified_theta_dynamics_rate,
-                        validation_flag,
+                        column_flag,
                     ),
                 )
             # MPAS-Model-rrfs/src/core_atmosphere/dynamics/mpas_atm_time_integration.F:6291-6293 at 1d6e370e.
@@ -959,22 +964,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                 # does. Without this a restart (or any stream naming them) refused the step it was due on.
                 acoustic_output_callback(ru_p=acoustic.ru_p, rw_p=acoustic.rw_p)
             acoustic = None
-            if self.regional_v841 is None:
-                validate_recovered_state_cuda_v841(
-                    current_state,
-                    current_diag,
-                    invalid_flag=validation_flag,
-                    kernel_cache=self.cache,
-                )
-            else:
-                # The same test, term for term, over the elements native
-                # solves: the shared kernel is launched over the padded
-                # extent and would refuse the garbage element for holding
-                # the native allocation zero where it demands a positive
-                # density.  See CudaRegionalRuntimeV841.validate_recovered.
-                self.regional_v841.validate_recovered(
-                    current_state, current_diag, validation_flag
-                )
+            self._validate_recovered_stage_v841(current_state, current_diag, validation_flag)
             if self.halo_exchanger_v841 is not None:
                 # Round B (design 44-round schedule): the recovered state and
                 # saved diagnostics become owner truth on the halo BEFORE
@@ -1006,13 +996,12 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                     config_positive_definite=self.config.config_positive_definite,
                     config_split_dynamics_transport=False,
                     config_scalar_adv_order=3,config_scalar_vadv_order=3,
-                    scalar_tendency=coupled_source,validation_flag=validation_flag,
+                    scalar_tendency=coupled_source,validation_flag=column_flag,
                     kernel_cache=self.cache,halo_exchange=self.halo_exchanger_v841,**options)
                 current_state.scalars=transported.scalars
                 if self.regional_v841 is not None:
                     self.regional_v841.bdy_adjust_scalars(current_state.scalars,stage.stage)
-                accumulate_finite_array_cuda_v841(current_state.scalars,
-                    invalid_flag=validation_flag,kernel_cache=self.cache)
+                self._validate_finite_scalars_v841(current_state.scalars, validation_flag)
             if stage.stage == 3:
                 final_flux_u = flux_u
                 final_flux_w = flux_w
@@ -1080,6 +1069,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             )
         cp = self.cp
         validation_flag = cp.zeros((1,), dtype=cp.int32)
+        column_flag = self._column_flag_v841(validation_flag)
         if self.regional_v841 is not None:
             # driver.py:3085-3089 -- mpas_atm_core.F:735-781 reads lbc_in and
             # re-forms the boundary tendencies at the start of any step whose
@@ -1146,7 +1136,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             moist_coefficients = self._compute_moist_dynamics_coefficients_v841(
                 outer_saved.scalars,
                 scalar_names=scalar_names,
-                validation_flag=validation_flag,
+                validation_flag=column_flag,
             )
         outer_dt = float(self.config.config_dt)
         dynamics_splits = (int(self.config.config_dynamics_split_steps)
@@ -1200,7 +1190,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                 n_mass_loading=(int(outer_saved.scalars.shape[0])
                     if physics_mass_loading_count is None
                     else int(physics_mass_loading_count)),
-                validation_flag=validation_flag,
+                validation_flag=column_flag,
             )
         current = outer_saved
         carried = time_level_one
@@ -1314,7 +1304,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                             config_coef_3rd_order=self.config.config_coef_3rd_order,
                             coefficients=self.coefficients, fzm=self.atmosphere.vertical.fzm,
                             fzp=self.atmosphere.vertical.fzp, rdzw=self.atmosphere.vertical.rdzw,
-                            validation_flag=validation_flag, indices_prevalidated=True,
+                            validation_flag=column_flag, indices_prevalidated=True,
                             rho_old_prevalidated=True, kernel_cache=self.cache,
                             config_apply_lbcs=True,
                             bdy_mask_cell=self.regional_v841.bdy_mask_cell,
@@ -1330,9 +1320,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                         )
                         scalar_stage = transported.scalars
                         self.regional_v841.bdy_adjust_scalars(scalar_stage, stage.stage)
-                        accumulate_finite_array_cuda_v841(
-                            scalar_stage, invalid_flag=validation_flag, kernel_cache=self.cache,
-                        )
+                        self._validate_finite_scalars_v841(scalar_stage, validation_flag)
                         continue
                     scalar_result = self._rrfs_scalar_transport(
                         self.atmosphere.mesh,
@@ -1353,7 +1341,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                         config_coef_3rd_order=(
                             self.config.config_coef_3rd_order
                         ),
-                        validation_flag=validation_flag,config_scalar_advection=True,
+                        validation_flag=column_flag,config_scalar_advection=True,
                         config_monotonic=False,config_positive_definite=False,
                         config_split_dynamics_transport=True,config_apply_lbcs=True,
                         bdy_mask_cell=self.regional_v841.bdy_mask_cell,
@@ -1364,11 +1352,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                     self.regional_v841.bdy_adjust_scalars(
                         scalar_stage, stage.stage
                     )
-                    accumulate_finite_array_cuda_v841(
-                        scalar_stage,
-                        invalid_flag=validation_flag,
-                        kernel_cache=self.cache,
-                    )
+                    self._validate_finite_scalars_v841(scalar_stage, validation_flag)
                     continue
                 transported = self._rrfs_scalar_transport(
                     self.atmosphere.mesh,
@@ -1393,7 +1377,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                     config_scalar_adv_order=3,
                     config_scalar_vadv_order=3,
                     config_coef_3rd_order=self.config.config_coef_3rd_order,
-                    validation_flag=validation_flag,
+                    validation_flag=column_flag,
                     indices_prevalidated=True,
                     rho_old_prevalidated=True,
                     kernel_cache=self.cache,
@@ -1401,11 +1385,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                     scalar_tendency=rrfs_scalar_source,
                 )
                 scalar_stage = transported.scalars
-                accumulate_finite_array_cuda_v841(
-                    scalar_stage,
-                    invalid_flag=validation_flag,
-                    kernel_cache=self.cache,
-                )
+                self._validate_finite_scalars_v841(scalar_stage, validation_flag)
             if self.halo_exchanger_v841 is not None:
                 # Final D round: the last stage's transported scalars become
                 # owner truth on the halo BEFORE phase-2 (WSM6) consumes the
@@ -1469,7 +1449,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                     current.scalars[0],
                     rthdynten,
                     rqvdynten,
-                    validation_flag,
+                    column_flag,
                 ),
             )
             gf_rate_arrays = (rthdynten, rqvdynten)

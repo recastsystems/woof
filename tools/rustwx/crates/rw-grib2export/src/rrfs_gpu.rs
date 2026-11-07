@@ -53,14 +53,22 @@ impl RrfsGpu {
         }
         let ctx = CudaContext::new(ordinal).map_err(drv("open CUDA device"))?;
         let name = ctx.name().map_err(drv("device name"))?;
-        let module = ctx.load_module(Ptx::from_src(PTX)).map_err(drv("load rrfs_upp.ptx"))?;
+        let hip=cudarc::gpuwm_hip::requested();
+        let image=if hip {
+            let source=cudarc::gpuwm_hip::compose(include_str!("../kernels/rrfs_upp.cu"), &[
+                ("woof_math.cuh",include_str!("../../rw-post/kernels/woof_math.cuh")),
+                ("severe_c.cu",include_str!("../../rw-post/kernels/severe_c.cu")),
+            ]);
+            Ptx::from_binary(cudarc::gpuwm_hip::compile(&source,&["--std=c++17".into(),"--fmad=false".into(),"--ftz=false".into()]).map_err(drv("compile HIP RRFS source"))?)
+        } else {Ptx::from_src(PTX)};
+        let module=ctx.load_module(image).map_err(drv("load RRFS image"))?;
         let f = |n: &str| module.load_function(n).map_err(drv("resolve rrfs_upp kernel"));
         Ok(Self {
             stream: ctx.default_stream(),
             column: f("rrfs_upp_column_v1")?,
             isobaric: f("rrfs_upp_isobaric_v1")?,
             absv: f("rrfs_upp_absv_v1")?,
-            label: format!("{name}: rrfs_upp.ptx (compute_60, JIT)"),
+            label: if hip {format!("{name}: HIP {} canonical RRFS source",cudarc::gpuwm_hip::architecture(ordinal)?)} else {format!("{name}: rrfs_upp.ptx (compute_60, JIT)")},
             _ctx: ctx,
         })
     }

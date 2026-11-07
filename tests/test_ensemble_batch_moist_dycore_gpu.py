@@ -9,9 +9,10 @@ from conftest import requires_gpu
 pytestmark = [pytest.mark.gpu, requires_gpu]
 
 
+@pytest.mark.parametrize("use_theta_m", [0, 1])
 @pytest.mark.parametrize('count', (1, 4, 10))
 @pytest.mark.parametrize('terrain,mapped', ((False, False), (False, True), (True, False), (True, True)))
-def test_two_moist_rk_steps_and_native_histories_match_original(count, terrain, mapped, tmp_path):
+def test_two_moist_rk_steps_and_native_histories_match_original(count, terrain, mapped, tmp_path, use_theta_m):
     import cupy as cp
     from test_ensemble_batch_acoustic_gpu import _pack_physical
     from woof.core import dycore
@@ -23,10 +24,16 @@ def test_two_moist_rk_steps_and_native_histories_match_original(count, terrain, 
     from woof.io import nc_writer_bridge
     assert nc_writer_bridge.unavailable_reason() is None, 'Rust history output is required'
     component, references, source_cfg, _ = _pack_physical(count, moist=True, terrain=terrain, mapped=mapped)
-    cfg = replace(source_cfg, km_opt=1, diff_opt=2, khdif=0., kvdif=0., diff_6th_opt=0)
+    cfg = replace(source_cfg, use_theta_m=use_theta_m, km_opt=1, diff_opt=2, khdif=0., kvdif=0., diff_6th_opt=0)
     shapes, extras = state_array_shapes(cfg), workspace_specs(cfg)
     inputs=[]
     for scalar in references:
+        if use_theta_m:
+            from woof.core.constants import RVOVRD
+            base = scalar.thb if scalar.thb.ndim == 3 else scalar.thb[:, None, None]
+            scalar.thp[...] = (base + scalar.thp) * (np.float32(1) + np.float32(RVOVRD) * scalar.qv) - base
+            scalar.thp0[...] = scalar.thp
+            scalar.use_theta_m = use_theta_m
         arrays={name: cp.asnumpy(getattr(scalar,name)) for name in shapes}
         arrays.update({spec.name:np.zeros(spec.shape,spec.dtype) for spec in extras})
         controls={'physics','lateral_boundaries','_scratch','_scratch_arena','_host_setup_state','_phb_host'}

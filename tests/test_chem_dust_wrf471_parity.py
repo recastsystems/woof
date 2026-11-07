@@ -8,7 +8,7 @@ u_phy/v_phy) and class-by-class zero erodibility, four variants of three
 consecutive steps.  The port is the table-driven ``chem_dust_gocart`` kernel
 handed the five bins' WRF constants as row parameters.
 
-Measured on the a development machine RTX 4090 (sm_89): every dust mixing ratio and EDUST
+Measured on the test host 1 RTX 4090 (sm_89): every dust mixing ratio and EDUST
 accumulator equals the Fortran bit for bit.  Made to fire before commit:
 taking source_du's ``0.13*1.0D-2`` with a double 0.13 instead of the float32
 literal gfortran widens fails this test and the AFWA one.

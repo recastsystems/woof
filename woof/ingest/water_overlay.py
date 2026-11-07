@@ -466,11 +466,11 @@ def _source_cell_coordinates(snapshot, rows, cols):
     projection = declared_source_projection(snapshot)
     if projection is None:
         return snapshot.latitude[rows], snapshot.longitude[cols]
-    from woof.mapped_source import declared_lambert_source_grid
+    from woof.mapped_source import declared_projected_source_grid
 
     parameters = projection["parameters"]
     unit = float(parameters["axis_unit_m"])
-    source = declared_lambert_source_grid(parameters)
+    source = declared_projected_source_grid(projection)
     # The inverse of source_coordinate_transform's forward step:
     # LambertGrid coordinates are one-based and axis zero sits on the
     # first grid point, so axis value v is grid coordinate v/d + 1.

@@ -37,7 +37,7 @@ def runtime(monkeypatch):
             area=np.array([.4,.6], np.float32), receipt={})
         return NS(config=stochastic.StochasticConfig.parse(config), resource=resource,
             process=Process(), taper=np.ones((2,2), np.float32),
-            vertex_taper=np.ones((2,3), np.float32))
+            vertex_taper=np.ones((2,3), np.float32), skeb_norm=np.ones(1, np.float32))
     monkeypatch.setattr(stochastic, 'StochasticPhysics', physics)
     def kernel(name):
         def launch(grid, block, args):

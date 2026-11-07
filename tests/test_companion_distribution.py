@@ -64,7 +64,7 @@ MOVED_MEMBER_SHA256 = {
     # in the woof wheel); the digests are the ones they had at e9d54cc17.
     "case-catalog/historical.zip":
         "39a2318da1608ac7e77aa71a946b950370bdb7c8888a7efbc1ca1f1629a20195",
-    # Re-provisioned after the move by lane/verify-spp-stochastic: the same
+    # Re-provisioned after the move by development branch: the same
     # captures rebuilt on the oracle platform (gfortran 13.3.0, glibc 2.39);
     # the moved bytes were 9bc14a88c46b5454... (gfortran 15.2.0, glibc 2.43).
     # 2.9.1: its GF captures re-run on the corrected GF harness (receipt.json
@@ -769,7 +769,7 @@ def test_the_sentinel_for_an_uninstalled_tree_is_not_stripped(
 
     It is compared by identity at three call sites; stripping it to `0` would
     make every one of them miss and turn "woof is an uninstalled source tree"
-    into "woof 0 requires recast-woof-data 0".
+    into "gpuwm 0 requires recast-woof-data 0".
     """
 
     import woof

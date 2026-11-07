@@ -781,7 +781,7 @@ def test_a_bridge_that_predates_the_contract_is_missing_not_ok(
     launched and still printed its usage diagnostic, so doctor reported
     it `ok` -- and then every preparation died with `series line 1 must
     be HOUR<TAB>GRIB2`, blaming the series file woof had just written
-    correctly.  A a development machine validation run found the cause by diffing two
+    correctly.  A test host 7 validation run found the cause by diffing two
     git tags, which is not a diagnostic path a product may rely on.
     """
 
@@ -852,8 +852,12 @@ def test_a_bridge_that_predates_the_contract_is_missing_not_ok(
     # The isobaric-height reader resolves through its own ladder
     # (woof.isobaric_bridge, the obs-regrid one) for the MPAS binaries'
     # reason: it builds in `tools/rustwx`, not the grib1_bridge crate.
+    # The DFI and CU99 libraries and the observation FDDA reader carry no
+    # byte marker: their contract is the loader ABI version and entry set,
+    # checked by test_physics_startup_doctor_checks_the_loader_contract.
     from _woof_snapshot import without_left_out_artifacts
-    assert extra == without_left_out_artifacts({"region_global_dealias", "netcdf_writer",
+    assert extra == without_left_out_artifacts({"gpuwm_tslist", "rw_waves_data", "rw_waves_coupled_prepare",
+                     "region_global_dealias", "netcdf_writer",
                      "gpuwm_preprocess_cpu",
                      "gpuwm_mapped_engine", "static_fields", "obs_regrid", "obs_score",
                      "rw_isobaric", "rw_superob",
@@ -862,7 +866,7 @@ def test_a_bridge_that_predates_the_contract_is_missing_not_ok(
                      # 2.9.0: the MPAS point renderer (the MPAS binaries'
                      # ladder and reason) and the TEMPO init library (its
                      # own ladder, woof.core.tempo_rust).
-                     "rw_hex_points", "rw_tempo",
+                     "rw_hex_points", "rw_tempo", "rw_p3", "rw_cam_tables",
                      # The RRFS init door's two binaries (the MPAS binaries'
                      # ladder and reason).
                      "rw_mpas_init_v831", "rw_mpas_gsl_oro",
@@ -871,6 +875,8 @@ def test_a_bridge_that_predates_the_contract_is_missing_not_ok(
                      # own ladder, the mapped engine's reason.
                      "rw_projected_intermediate",
                      "rw_icechunk", "rw_mlexport", "rw_simradar", "rw_grib2export",
+                     # Raw-history exporter has its own renderer-workspace ladder.
+                     "rw_history_grib2",
                      # 2.9.3: the tropical-cyclone field reader (7b6ffde29b2) builds in
                      # tools/rustwx and resolves through woof.tc_tracks, the MPAS binaries reason.
                      "rw_tc_fields",
@@ -1004,7 +1010,7 @@ def test_the_unpinned_pip_bootstrap_wires_what_it_builds(
         monkeypatch, tmp_path, windows):
     """Running every command must actually close the gap it was for.
 
-    A a development machine validation run pasted the whole report on a pip-only
+    A test host 8 validation run pasted the whole report on a pip-only
     machine, ran every line of it, and doctor still reported six MISSING
     bridges: the wiring step -- copy into the default directory, or set
     the environment variable -- was offered as two `#` alternatives,
@@ -1110,7 +1116,7 @@ _REMEDY_COMMANDS = frozenset({
     "bash", "sh", ".", "export", "$env:Path",
     # The wiring step, which the pip bootstrap now RUNS rather than
     # describing in a comment: a literal paste that builds six bridges
-    # and installs none of them left a a development machine validation run at six
+    # and installs none of them left a test host 8 validation run at six
     # MISSING while every line it pasted was, technically, accurate.
     "mkdir", "cp", "New-Item", "Copy-Item",
     # The CuPy remedy's first step when the box's CUDA major could not
@@ -2986,7 +2992,7 @@ def test_the_gpu_extras_pin_one_cupy_wheel_per_cuda_major():
 def test_the_gpu_extras_carry_the_cuda_toolkit_cupy_cannot_run_without():
     """F2's other half: the documented install line must WORK on a bare box.
 
-    MEASURED on a development machine (driver-only Ubuntu, CUDA 13 driver, no
+    MEASURED on test host 1 (driver-only Ubuntu, CUDA 13 driver, no
     nvcc, no /usr/local/cuda, python3.14), 2026-08-17:
 
       * `pip install cupy-cuda13x`        -> 274 MiB venv; cuBLAS, a
@@ -3461,3 +3467,58 @@ def test_a_full_card_is_not_judged_and_never_sent_to_reinstall_cupy(
     assert "not judged" in check.detail
     assert "CUDA_VISIBLE_DEVICES=0" in check.detail
     assert "pip install" not in (check.remedy or "")
+
+
+@pytest.mark.parametrize("scheme", ["P3", "CAM", "CU99", "DFI", "station output"])
+@pytest.mark.parametrize("case", ["missing", "unloadable", "abi", "entry", "valid"])
+def test_physics_startup_doctor_checks_the_loader_contract(tmp_path, monkeypatch, scheme, case):
+    """A present file is insufficient: initialization needs its ABI and entries."""
+    import ctypes
+    from types import SimpleNamespace
+    from woof.core import cam3_tables, p3_rust, cu99_launch, dfi_runtime
+    from woof import tslist_bridge
+
+    definitions = {
+        "P3": (p3_rust, "gpuwm_p3_abi_version", (
+            "gpuwm_p3_init_2mom", "gpuwm_p3_init_3mom", "gpuwm_p3_init_table2",
+            "gpuwm_p3_last_error")),
+        "CAM": (cam3_tables, "gpuwm_cam_tables_abi_version", (
+            "cam_tables_open", "cam_tables_close", "cam_tables_state", "cam_tables_ozone",
+            "cam_tables_gases", "cam_tables_copy_state", "cam_tables_error")),
+    }
+    definitions.update({
+        "CU99": (cu99_launch, "gpuwm_cu99_launch_abi_version",
+                 ("gpuwm_cu99_launch_tiles", "gpuwm_cu99_plan_step")),
+        "DFI": (dfi_runtime, "aw_dfi_runtime_abi",
+                ("aw_dfi_submit_compiled_pass", "aw_dfi_weights", "aw_dfi_lifecycle")),
+        "station output": (tslist_bridge, "gpuwm_tslist_abi_version",
+            tuple("gpuwm_tslist_" + name for name in ("open", "write", "close", "read",
+                  "place", "validate", "rewind_initial", "checkpoint", "last_error"))),
+    })
+    libraries = {}
+    for name, (module, abi, entries) in definitions.items():
+        path = tmp_path / module.library_name()
+        path.write_bytes(b"fixture")
+        if name == scheme and case == "missing":
+            def resolve_missing():
+                raise FileNotFoundError("fixture is absent")
+            monkeypatch.setattr(module, "resolve", resolve_missing)
+        else:
+            monkeypatch.setattr(module, "resolve", lambda path=path: path)
+        def version(name=name, module=module):
+            return module.ABI_VERSION + int(name == scheme and case == "abi")
+        exports = {entry: lambda: None for entry in entries}
+        exports[abi] = version
+        if name == scheme and case == "entry":
+            del exports[entries[-1]]
+        libraries[str(path)] = SimpleNamespace(**exports)
+
+    def load(path):
+        if Path(path).name == definitions[scheme][0].library_name() and case == "unloadable":
+            raise OSError("fixture cannot load")
+        return libraries[str(path)]
+    monkeypatch.setattr(ctypes, "CDLL", load)
+    rows = {row.name: row for row in doctor._physics_startup_library_checks()}
+    selected = rows[f"{scheme} initialization library"]
+    assert selected.status == ("verified" if case == "valid" else "missing")
+    assert rows[f"{'CAM' if scheme == 'P3' else 'P3'} initialization library"].status == "verified"

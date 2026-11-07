@@ -1,0 +1,17 @@
+{
+  "version": "WRF v4.7.1",
+  "module": {
+    "path": "phys/module_mp_ntu.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_mp_ntu.F",
+    "sha256": "c864483fa572d42ab1dc51cc538f8062dc2f582369f597261e8c850c49ce34dd",
+    "licence": "WRF public domain statement"
+  },
+  "licence": {
+    "path": "LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+    "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+  },
+  "tables": "AERO_CONST DATA statements and module parameters in module_mp_ntu.F; no external NTU table file",
+  "source_changes": [],
+  "qualification": "Strict GPU replay: 0 / 2,048,705 differing words on a real native MP_NTU capture; three-hour stock-namelist forecast completed. See README.md for scope, native undefined reads and performance."
+}

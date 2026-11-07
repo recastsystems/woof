@@ -1,0 +1,79 @@
+{
+  "columns": 64,
+  "levels": 25,
+  "routine_sources": {
+    "thicks": 9561,
+    "rayle2": 10869,
+    "rayle": 10888,
+    "planck": 12786,
+    "o3prof": 15275
+  },
+  "compiler_flags": "-O0 -fPIC -ffree-form -ffree-line-length-none -fno-tree-vectorize -ffp-contract=off",
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "fixture_sha256": "05806a23c9064c317ad596581f94274225fd28be18651cbb1ec2157ff800c242",
+  "source_sha256": "c4977cdf2ddf3f2279c9be7e1fc659ef23bbb37376e5cf11f9a98a73d33b0266",
+  "fields": {
+    "dz": {
+      "shape": [
+        64,
+        24
+      ],
+      "sha256": "e43b1ccd04b2be9cb5ebc1f586261715aea99e7037fda0e5c2898a86207429bb"
+    },
+    "trp": {
+      "shape": [
+        64,
+        24
+      ],
+      "sha256": "ec9c0136ef1765c46e0a060ed7d3ec56e7b04b02258408565822ad676a26b691"
+    },
+    "tr": {
+      "shape": [
+        64,
+        18,
+        24
+      ],
+      "sha256": "e442b44ff77017b40ef75d39bf0a021a13fa5c434fdc0705c4a1506a1681b6fa"
+    },
+    "wr": {
+      "shape": [
+        64,
+        18,
+        24
+      ],
+      "sha256": "f025438476b276d890e9ccdcb22dbe98cfb50e848f9447a486ac8b69381db0a8"
+    },
+    "wwr": {
+      "shape": [
+        64,
+        18,
+        24,
+        4
+      ],
+      "sha256": "8b46db625f17561b6c9975a044ec036ead563594a1e243c04b703f87cd5ac84d"
+    },
+    "bf": {
+      "shape": [
+        64,
+        12,
+        25
+      ],
+      "sha256": "9923b58aa5d9f6ce759adf0dc48eeb4e253f504799cfef69eb666c78a1e944e6"
+    },
+    "bs": {
+      "shape": [
+        64,
+        12
+      ],
+      "sha256": "933a34ce8c6d4a66d531db14c6a80876195d45ace1d44a90ce962af3e9b2e62c"
+    },
+    "ozone": {
+      "shape": [
+        64,
+        5,
+        25
+      ],
+      "sha256": "ec9a2d6b4a43b9d7c4f2c7d47b9c9c8559a89168defb101da76e81b7efff139d"
+    }
+  }
+}

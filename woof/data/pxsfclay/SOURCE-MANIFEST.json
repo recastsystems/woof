@@ -1,0 +1,103 @@
+{
+  "schema": "gpuwm-pxsfclay-source-provenance-v1",
+  "native_pin": {
+    "version": "4.6.1",
+    "commit": "d66e442fccc04111067e29274c9f9eaccc3cef28"
+  },
+  "files": {
+    "v4.6.1/phys/module_sf_pxsfclay.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_sf_pxsfclay.F",
+      "sha256": "cd1b2095f8e093d4bc423ebbc4a3bfbce58a7d17b34f1f41d770c6061b68d0a4",
+      "bytes": 26570,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.6.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.6.1/phys/module_surface_driver.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_surface_driver.F",
+      "sha256": "fde0533233b2b11524ef78da1e48178c867bde0de08a4de03d97d410b103b4fb",
+      "bytes": 396169,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.6.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.6.1/phys/module_physics_init.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_physics_init.F",
+      "sha256": "b4e4332c1e39c5ab77bc669ae977c8d183b0015aefaab5709a2f4ebe32e0963e",
+      "bytes": 287983,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.6.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.6.1/LICENSE.txt": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.6.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.7.1/phys/module_sf_pxsfclay.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_sf_pxsfclay.F",
+      "sha256": "cd1b2095f8e093d4bc423ebbc4a3bfbce58a7d17b34f1f41d770c6061b68d0a4",
+      "bytes": 26570,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.7.1/phys/module_surface_driver.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_surface_driver.F",
+      "sha256": "a653965f9ffd1db5e4c42aa79e41b4d111755b6fca0f1a3b91f3a93455813ffd",
+      "bytes": 396530,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.7.1/phys/module_physics_init.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_physics_init.F",
+      "sha256": "f48cf9793f782a72c3969e986eef24746252f030cd33cfba71cc82b81d128d90",
+      "bytes": 289619,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.7.1/LICENSE.txt": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.6.1/share/module_model_constants.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/share/module_model_constants.F",
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "bytes": 8280,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.6.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.7.1/share/module_model_constants.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_model_constants.F",
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "bytes": 8280,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    "v4.6.1/Registry/Registry.EM_COMMON": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/Registry/Registry.EM_COMMON",
+      "sha256": "28cf7a2d369e898217d7231f4ed19310af7f0bec920f3cb57831e3dc4c80beec",
+      "bytes": 436138,
+      "license": "WRF public domain",
+      "license_url": "https://github.com/wrf-model/WRF/blob/v4.6.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    }
+  },
+  "tables": {
+    "external_scheme_tables": [],
+    "constants.json": "Derived coefficient words from the pinned WRF sources and the existing permissive scalar math headers. CONSTANTS-MANIFEST.json pins its exact bytes."
+  },
+  "comparison": "Complete PX module and extracted sea-ice routines are byte-identical in WRF v4.7.1. The complete surface driver differs outside those routines.",
+  "competitor_source_used": false
+}

@@ -1,0 +1,1169 @@
+{
+  "schema": "gpuwm.surface-fdda.qualified-proof.v1",
+  "date": "2026-11-01",
+  "source_pin": "WRF v4.6.1",
+  "licence": "WRF public domain; surface_sources.json records each reviewed file. Existing Noah/PX tables retain individual source licence receipts.",
+  "numerics": {
+    "default": "fast",
+    "proof": "GPUWM_NUMERICS=strict GPUWM_WRF_EXACT=1 GPUWM_WRF_GLIBC=2.43"
+  },
+  "forcing": "Real atmosphere initializations and boundary data; native OLD endpoints derived from initialization, NEW winds +0.5 m/s, temperature +1 K, Q2*0.95 and distance 20 km. This is constructed analysis forcing, not an independent observational analysis.",
+  "replay": {
+    "sf1": {
+      "kind": "native-run-module-capture",
+      "qualifying_native_run_capture": true,
+      "backend": "cuda",
+      "strict_numerics": true,
+      "results": [
+        {
+          "fasdas": 0,
+          "tendencies": {
+            "words": 17757796,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          },
+          "single_graph_launch_ms": 0.16569599509239197,
+          "captured_native_tendencies": {
+            "words": 17757796,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          },
+          "native_reexecution": {
+            "words": 17757796,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          }
+        }
+      ],
+      "provenance": {
+        "command": [
+          "<scratch>/port-fdda-sfc/native/main/wrf.exe"
+        ],
+        "namelist": "namelist.native-fixed-sf1.input",
+        "native_numerics": "SFDDAGD: -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize; surrounding reused native build O0 strict",
+        "source_pin": "WRF v4.6.1, exact public SFDDAGD source; reused serial strict native build",
+        "forcing": "Native ingestion verified nonzero; real WRF initialization and boundary data. Surface analyses constructed from the real initial analysis, with explicit NEW perturbations; not an external observation analysis.",
+        "qualifying_native_run_capture": true,
+        "reason": "Real native WRF module inputs captured on its second call. Supersedes the zero-analysis fixture.",
+        "native_exe_sha256": "8729b31f90442b0279f0d249e9b29e6a57effa6f7e8349adc4fb35060fa28898",
+        "namelist_sha256": "a64e229aaacb7dba16983527400864212d353d19f1a095a893e2e969216829a1",
+        "instrumented_source_sha256": "ed353db66d72b6eea3b2629520810f4b56f64c4c77db15e7de9a4bbaa1d19c20"
+      },
+      "kernel_sha256": "318009c549d38f42a6e0610272fb95abc0abc18f37df6c37a98e03f8ae2c9b7a",
+      "capture": {
+        "sha256": "342b61f1e9bf31b3e932d0d5093bdbfa46d6180847bed3752717a116608d5f13",
+        "bytes": 342110212,
+        "shape": [
+          49,
+          301,
+          301
+        ]
+      }
+    },
+    "sf2": {
+      "kind": "native-run-module-capture",
+      "qualifying_native_run_capture": true,
+      "backend": "cuda",
+      "strict_numerics": true,
+      "results": [
+        {
+          "fasdas": 1,
+          "tendencies": {
+            "words": 17757796,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          },
+          "single_graph_launch_ms": 0.14336000382900238,
+          "sda_hfx": {
+            "words": 90601,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          },
+          "sda_qfx": {
+            "words": 90601,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          },
+          "captured_native_tendencies": {
+            "words": 17757796,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          },
+          "native_reexecution": {
+            "words": 17757796,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          },
+          "captured_sda_hfx": {
+            "words": 90000,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          },
+          "captured_sda_qfx": {
+            "words": 90000,
+            "differing_words": 0,
+            "max_abs": 0.0,
+            "first": [],
+            "first_native_words": [],
+            "first_translated_words": []
+          }
+        }
+      ],
+      "provenance": {
+        "command": [
+          "<scratch>/port-fdda-sfc/native/main/wrf.exe"
+        ],
+        "namelist": "namelist.native-fixed-sf2.input",
+        "native_numerics": "SFDDAGD: -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize; surrounding reused native build O0 strict",
+        "source_pin": "WRF v4.6.1, exact public SFDDAGD source; reused serial strict native build",
+        "forcing": "Native ingestion verified nonzero; real WRF initialization and boundary data. Surface analyses constructed from the real initial analysis, with explicit NEW perturbations; not an external observation analysis.",
+        "qualifying_native_run_capture": true,
+        "reason": "Real native WRF module inputs captured on its second call. Supersedes the zero-analysis fixture.",
+        "native_exe_sha256": "8729b31f90442b0279f0d249e9b29e6a57effa6f7e8349adc4fb35060fa28898",
+        "namelist_sha256": "4728b1938dccc5a2f0fd1c11b54cf178cc8e5ff0d7f772191dac8f5f90b943ca",
+        "instrumented_source_sha256": "ed353db66d72b6eea3b2629520810f4b56f64c4c77db15e7de9a4bbaa1d19c20"
+      },
+      "kernel_sha256": "318009c549d38f42a6e0610272fb95abc0abc18f37df6c37a98e03f8ae2c9b7a",
+      "capture": {
+        "sha256": "a1d92cdd079ad41465bb7a4bc69f059e9e8252ce92f32da4f43ddc750e06062c",
+        "bytes": 342835020,
+        "shape": [
+          49,
+          301,
+          301
+        ]
+      }
+    },
+    "noah_fasdas": {
+      "words": 5850000,
+      "differing_words": 0,
+      "fields": {
+        "psfc": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "sfcprs": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "sfctmp": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "qv1": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "qgh": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "dz8w1": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "glw": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "swdown": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "rainbl": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "sr": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "chs": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "cqs2": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "chs2": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "rib": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "vegfra": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "shdmin": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "shdmax": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "tmn": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "xland": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "xice": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "snoalb": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "embck": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "tsk": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "hfx": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "qfx": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "lh": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "grdflx": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "qsfc": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "canwat": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "snow": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "snowc": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "snowh": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "albedo": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "albbck": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "emiss": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "znt": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "z0": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "snotime": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "lai": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "smstav": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "smstot": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "sfcrunoff": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "udrunoff": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "acsnow": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "acsnom": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "snopcx": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "potevp": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "noahres": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "chklowq": {
+          "words": 90000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "smois": {
+          "words": 360000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "tslb": {
+          "words": 360000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "sh2o": {
+          "words": 360000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        },
+        "smcrel": {
+          "words": 360000,
+          "differing_words": 0,
+          "max_abs": 0.0,
+          "first": []
+        }
+      },
+      "shape": [
+        300,
+        300
+      ],
+      "step": 2,
+      "fasdas": 1,
+      "nonzero_sda_hfx": 85097,
+      "nonzero_qnorm": 31218,
+      "capture_sha256": "76e00315e69aaf657be1a8d177129dbe4fcca5a818fda10f7bd8bb235ed0e6da"
+    },
+    "ysu_qnorm": {
+      "words": 90000,
+      "differing_words": 0,
+      "nonzero": 31218,
+      "dt": 15.0,
+      "capture_sha256": "f78de96fc85823e25d1d2632196e5c6cc4da12684320491c5bb3c2c9097e3781",
+      "shape": [
+        300,
+        300
+      ],
+      "min": 0.0,
+      "max": 0.00742443697527051
+    }
+  },
+  "undefined": {
+    "sda_padding": "1202 native INTENT(OUT) words outside written bounds excluded from captured SDA comparison; all 180000 defined words exact. Native reexecution witnesses the bounds.",
+    "glacier_heat_capacity": "SFLX_GLACIAL never sets HCPCT_FASDAS; native glacier FASDAS is undefined, so this combination has a named refusal."
+  },
+  "timing": {
+    "sf1": {
+      "schema": "surface-fdda-stage-timing-v1",
+      "shape": [
+        49,
+        300,
+        300
+      ],
+      "gpu": "NVIDIA GeForce RTX 5090",
+      "numerics": "fast",
+      "scope": "complete CUDA surface graph plus physics-tendency fold; setup and output excluded",
+      "benchmark_setup": "real wrfinput fields; PBLH=700 m, ZNT=0.1 m, REGIME=4 when diagnostics absent",
+      "surface_ms_batches": [
+        1.0072298685709635,
+        0.989572270711263,
+        1.005570157368978,
+        0.9398474375406901,
+        0.9836330413818359
+      ],
+      "nearest_grid_nudging_ms_batches": [
+        1.6584490458170573,
+        1.787179692586263,
+        1.6712650299072265,
+        1.6845738728841146,
+        1.6221803029378254
+      ],
+      "surface_ms": 0.989572270711263,
+      "nearest_grid_nudging_ms": 1.6712650299072265,
+      "ratio": 0.5921097210812788,
+      "phase_ms": {
+        "clock": 0.005310933291912079,
+        "select": 0.0040725332995255785,
+        "pack_live_fields_and_pbl": 0.37417494455973305,
+        "native_surface_operator": 0.21132267316182454,
+        "hfx_diagnostic": 0.04045973221460978,
+        "mass_and_map_coupling": 0.16146772702534992
+      },
+      "shared_gpu": "20426 MiB, 100 %"
+    },
+    "sf2": {
+      "schema": "fasdas-stage-timing-v1",
+      "gpu": "NVIDIA GeForce RTX 5090",
+      "shape": [
+        49,
+        300,
+        300
+      ],
+      "numerics": "fast",
+      "scope": "surface FDDA clock/select/PBL/operator/coupling/fold plus Noah; FASDAS includes QNORM and physical flux conversion",
+      "sf1_noah_ms": 0.9870719909667969,
+      "sf2_noah_ms": 0.9909440279006958,
+      "ratio": 1.0039227502850185,
+      "sf1_samples": [
+        0.9936320185661316,
+        0.991487979888916,
+        0.982367992401123,
+        0.9863680005073547,
+        0.9951679706573486,
+        0.9870719909667969,
+        0.9814720153808594,
+        0.9832640290260315,
+        0.9882240295410156,
+        0.994592010974884,
+        0.9876160025596619,
+        0.9809920191764832,
+        0.9847360253334045,
+        1.0133440494537354,
+        0.9846720099449158
+      ],
+      "sf2_samples": [
+        0.9956160187721252,
+        0.9875839948654175,
+        0.9949759840965271,
+        0.9912319779396057,
+        0.9850879907608032,
+        0.9935359954833984,
+        1.0054080486297607,
+        0.9892479777336121,
+        0.9880959987640381,
+        0.9892160296440125,
+        0.9959679841995239,
+        0.9930559992790222,
+        0.9906560182571411,
+        0.9904639720916748,
+        0.9909440279006958
+      ]
+    }
+  },
+  "default_off": {
+    "history_candidate": {
+      "bytes": 342776,
+      "sha256": "f80c6b18aad064a5d41bca52e7797f40e96766d6a42dc34a63e42c8defafa2ac"
+    },
+    "history_lane": {
+      "bytes": 342776,
+      "sha256": "f80c6b18aad064a5d41bca52e7797f40e96766d6a42dc34a63e42c8defafa2ac"
+    },
+    "state_arrays_compared": 134,
+    "state_arrays_differing": [],
+    "header_note": "Checkpoint inventory adds nullable surface fields. Scientific arrays and complete history bytes unchanged."
+  },
+  "forecasts": {
+    "sf1": {
+      "start": "2026-10-16T09:00:00Z",
+      "hours": 3,
+      "steps": 720,
+      "shape": [
+        49,
+        300,
+        300
+      ],
+      "dx_m": 3000,
+      "dt_s": 15,
+      "gpu_log": "gpu-go-complete.log",
+      "native_log": "native-fixed-forecast-rsl.log",
+      "native_version": "4.7.1 whole forecast referee; strict module replay separately uses the pinned 4.6.1 source",
+      "map_sheet": "figures/paired-current/d01-3km/compare_panels_{2m_temperature,2m_dewpoint,10m_wind_speed}/2026-10-16/surface-fdda-native-asos.png"
+    },
+    "sf2": {
+      "start": "2026-10-16T09:00:00Z",
+      "hours": 3,
+      "steps": 720,
+      "shape": [
+        49,
+        300,
+        300
+      ],
+      "dx_m": 3000,
+      "dt_s": 15,
+      "gpu_log": "gpu-fasdas-go-final.log",
+      "native_log": "native-fasdas-forecast-rsl.log",
+      "native_version": "4.7.1 whole forecast referee; strict module replay separately uses the pinned 4.6.1 source",
+      "map_sheet": "figures/paired-fasdas/d01-3km/compare_panels_{2m_temperature,2m_dewpoint,10m_wind_speed}/2026-10-16/surface-fasdas-native-asos.png"
+    }
+  },
+  "map_review": "Viewed temperature, dewpoint and 10m wind sheets at hours 0\u20133. Broad gradients align with native; no seams or blowups. ASOS overlaps hours 0 and 2; no observation claim for hours 1 or 3.",
+  "observations": {
+    "0": {
+      "sf1": [
+        {
+          "arms": [
+            {
+              "bias": 0.053178442997669495,
+              "count": 193,
+              "label": "Native WRF",
+              "rmse": 1.3678824402375884
+            },
+            {
+              "bias": 0.053178442997669495,
+              "count": 193,
+              "label": "GPU surface FDDA",
+              "rmse": 1.3678824402375884
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": -1.6083068382432317,
+              "count": 193,
+              "label": "Native WRF",
+              "rmse": 2.523244148336264
+            },
+            {
+              "bias": -1.6083068382432317,
+              "count": 193,
+              "label": "GPU surface FDDA",
+              "rmse": 2.523244148336264
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": 1.5564300453468445,
+              "count": 193,
+              "label": "Native WRF",
+              "rmse": 2.447308254676293
+            },
+            {
+              "bias": 1.5564300453468445,
+              "count": 193,
+              "label": "GPU surface FDDA",
+              "rmse": 2.447308254676293
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": null
+        }
+      ],
+      "sf2": [
+        {
+          "arms": [
+            {
+              "bias": 0.053178442997669495,
+              "count": 193,
+              "label": "Native WRF",
+              "rmse": 1.3678824402375884
+            },
+            {
+              "bias": 0.053178442997669495,
+              "count": 193,
+              "label": "GPU FASDAS",
+              "rmse": 1.3678824402375884
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": -1.6083068382432317,
+              "count": 193,
+              "label": "Native WRF",
+              "rmse": 2.523244148336264
+            },
+            {
+              "bias": -1.6083068382432317,
+              "count": 193,
+              "label": "GPU FASDAS",
+              "rmse": 2.523244148336264
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": 1.5564300453468445,
+              "count": 193,
+              "label": "Native WRF",
+              "rmse": 2.447308254676293
+            },
+            {
+              "bias": 1.5564300453468445,
+              "count": 193,
+              "label": "GPU FASDAS",
+              "rmse": 2.447308254676293
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": null
+        }
+      ]
+    },
+    "1": {
+      "sf1": [
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU surface FDDA",
+              "rmse": null
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "missing",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU surface FDDA",
+              "rmse": null
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "missing",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU surface FDDA",
+              "rmse": null
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "missing",
+          "units": "m s-1",
+          "winner": null
+        }
+      ],
+      "sf2": [
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU FASDAS",
+              "rmse": null
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "missing",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU FASDAS",
+              "rmse": null
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "missing",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU FASDAS",
+              "rmse": null
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "missing",
+          "units": "m s-1",
+          "winner": null
+        }
+      ]
+    },
+    "2": {
+      "sf1": [
+        {
+          "arms": [
+            {
+              "bias": 0.9258295859694143,
+              "count": 197,
+              "label": "Native WRF",
+              "rmse": 1.6090153662536169
+            },
+            {
+              "bias": 0.9256121006959381,
+              "count": 197,
+              "label": "GPU surface FDDA",
+              "rmse": 1.6100085106854902
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF"
+        },
+        {
+          "arms": [
+            {
+              "bias": -0.901412033347785,
+              "count": 197,
+              "label": "Native WRF",
+              "rmse": 1.961371089659095
+            },
+            {
+              "bias": -0.901746977723684,
+              "count": 197,
+              "label": "GPU surface FDDA",
+              "rmse": 1.961542038015604
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF"
+        },
+        {
+          "arms": [
+            {
+              "bias": 0.3408612588182101,
+              "count": 196,
+              "label": "Native WRF",
+              "rmse": 2.1824461064865477
+            },
+            {
+              "bias": 0.33925823554452805,
+              "count": 196,
+              "label": "GPU surface FDDA",
+              "rmse": 2.184636729588737
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "Native WRF"
+        }
+      ],
+      "sf2": [
+        {
+          "arms": [
+            {
+              "bias": 0.21773026398915651,
+              "count": 197,
+              "label": "Native WRF",
+              "rmse": 1.3073724748561766
+            },
+            {
+              "bias": 0.21708374148783743,
+              "count": 197,
+              "label": "GPU FASDAS",
+              "rmse": 1.3080979354174584
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF"
+        },
+        {
+          "arms": [
+            {
+              "bias": -2.1110425291489805,
+              "count": 197,
+              "label": "Native WRF",
+              "rmse": 2.9113594417068445
+            },
+            {
+              "bias": -2.112872157654973,
+              "count": 197,
+              "label": "GPU FASDAS",
+              "rmse": 2.9135680360349023
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF"
+        },
+        {
+          "arms": [
+            {
+              "bias": 0.38035289849396725,
+              "count": 196,
+              "label": "Native WRF",
+              "rmse": 2.112186322321419
+            },
+            {
+              "bias": 0.375977909855891,
+              "count": 196,
+              "label": "GPU FASDAS",
+              "rmse": 2.115932252051306
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "Native WRF"
+        }
+      ]
+    },
+    "3": {
+      "sf1": [
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU surface FDDA",
+              "rmse": null
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "missing",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU surface FDDA",
+              "rmse": null
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "missing",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU surface FDDA",
+              "rmse": null
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "missing",
+          "units": "m s-1",
+          "winner": null
+        }
+      ],
+      "sf2": [
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU FASDAS",
+              "rmse": null
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "missing",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU FASDAS",
+              "rmse": null
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "missing",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": null,
+              "count": 0,
+              "label": "Native WRF",
+              "rmse": null
+            },
+            {
+              "bias": null,
+              "count": 0,
+              "label": "GPU FASDAS",
+              "rmse": null
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "missing",
+          "units": "m s-1",
+          "winner": null
+        }
+      ]
+    }
+  },
+  "lifecycle": {
+    "surface-gpu-final.log": "10 passed: both modes; cadence/clearing; member state isolation; actual parent/child CUDA steps in feedback 0/1, with Noah for FASDAS",
+    "surface-contract-final.log": "12 passed: stock combined import, native restart held words, cadence and parent/child checkpoint including FASDAS fields",
+    "px-lifecycle-final.log": "10 passed: ordinary PX and soil-nudging restart across record change, members and both nest feedback modes",
+    "contracts-registry-final.log": "204 passed: surface contracts, existing nudging configuration and registry reproduction; final added native-FASDAS restart contract is included in the separate 12-test receipt."
+  },
+  "build": "cargo build --workspace --bins --locked --offline; passed; rust-whole-build-final.log",
+  "bounds": [
+    "Resident regional domains with fixed time step.",
+    "Moving/tiled or adaptive nudging clocks remain outside the existing resident nudging path.",
+    "No general skill or whole-model bitwise equality is claimed."
+  ]
+}

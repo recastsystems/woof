@@ -2,7 +2,7 @@
 
 theta and dz keep the CuPy ufunc roundings; the Exner function is WRF's
 phy_prep (p/p1000mb)**rcp with glibc's powf (morrison.cu mo_exner) since
-lane/parity-mp-libm, graded against the host glibc on normal pressures.
+development branch, graded against the host glibc on normal pressures.
 """
 import numpy as np
 import pytest

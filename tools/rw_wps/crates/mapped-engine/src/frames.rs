@@ -17,7 +17,7 @@ use crate::derive::{
     complete_geopotential_height, completed_fields, derivation_dependencies, derivation_shape_operand,
     evaluate_derivation, CanonicalField, CanonicalFields, HYPSOMETRIC_OPERANDS,
 };
-use crate::model::{FieldSpec, Mapping, GRID_FAMILY_LAMBERT, PROJECTED_AXIS_UNIT_M};
+use crate::model::{FieldSpec, Mapping, GRID_FAMILY_LAMBERT, GRID_FAMILY_ROTATED, PROJECTED_AXIS_UNIT_M};
 use crate::refusal::{frame_invalid, mapping_invalid, Result};
 
 /// One completed field as a canonical field; `None` while an operand of
@@ -766,6 +766,36 @@ pub fn source_grid(
             grid["parameters"]["same_grid_pairing"] = json!(pairing);
         }
         grid
+    } else if let Some(parameters) = declaration.rotated.as_ref() {
+        // The rotated lattice states its own GRIB2 numbers plus the
+        // plane spacings every projected consumer reads (dx_m, dy_m,
+        // earth_radius_m, axis_unit_m), so pairing, soil meshes and
+        // coverage refusals need no family-specific reader.
+        json!({
+            "projection": GRID_FAMILY_ROTATED,
+            "nx": longitude.len(),
+            "ny": latitude.len(),
+            "earth_shape": format!("grib_shape_of_earth:{}", parameters.shape_of_earth),
+            "scan_order": "+x,+y",
+            "wind_basis": "earth_relative",
+            "parameters": {
+                "axis_unit_m": PROJECTED_AXIS_UNIT_M,
+                "dlat_deg": parameters.dlat_deg,
+                "dlon_deg": parameters.dlon_deg,
+                "dx_m": parameters.dx_m(),
+                "dy_m": parameters.dy_m(),
+                "earth_radius_m": parameters.earth_radius_m,
+                "lat1": parameters.lat1,
+                "lon1": parameters.lon1,
+                "nx": parameters.nx,
+                "ny": parameters.ny,
+                "rotation_angle": parameters.rotation_angle,
+                "shape_of_earth": parameters.shape_of_earth,
+                "source_wind_basis": declaration.wind_basis,
+                "south_pole_lat": parameters.south_pole_lat,
+                "south_pole_lon": parameters.south_pole_lon,
+            },
+        })
     } else {
         regular_latlon_grid(latitude, longitude)
     }

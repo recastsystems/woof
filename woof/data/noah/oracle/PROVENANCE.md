@@ -44,8 +44,8 @@ commit, every source hash as above.  Before adding them the unchanged harness
 rebuilt all four committed CSVs byte-identical on that toolchain, and with
 them present rows 1-42 of every CSV are still byte-identical.
 
-Rebuilt 2026-10-07 on box W1 (gfortran 13.3.0, glibc 2.39, Ubuntu 24.04)
-for lane/verify-noah-lsm, against the full WRF v4.6.1 checkout of the same
+Rebuilt 2026-10-07 on the test host (gfortran 13.3.0, glibc 2.39, Ubuntu 24.04)
+for development branch, against the full WRF v4.6.1 checkout of the same
 pinned commit.  Twenty regime columns (56-75) were added first: convective
 downpour, outflow, high terrain in summer and winter, dewfall, hoar frost,
 desert, rainforest, two ocean columns, wetland, freezing rain and melt on

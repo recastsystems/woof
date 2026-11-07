@@ -30,7 +30,7 @@
 // COMPILE TIME.  The four psi forms, the table lookup, Li et al. (2010) and
 // the three z/L solvers (zolri, zolri2, zolrib) are __noinline__.  Inlined,
 // every one of the table's call sites expands two psi forms of several libm
-// routines each, inside solver loops: on box W1 under load NVRTC took 33-40 s
+// routines each, inside solver loops: on the reference host under load NVRTC took 33-40 s
 // for the wrf_461 form and 12-13 minutes for gsl_wrf39 (3-5 s before
 // the libm header).  With these call boundaries both forms take about 1.5 s.
 // The unit compiles with --fmad=false, so a call boundary cannot change a

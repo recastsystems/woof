@@ -36,7 +36,7 @@ def tree_cpu_seconds(*, clock=time.monotonic):
     """This process tree's CPU seconds, counted as ``woof.timeline.parallelism.tree_cpu_seconds`` counts them
     (every pid of the tree: its own ticks plus its reaped children's), at a cost that does not grow with threads.
 
-    THE BREAKAGE THIS PREVENTS (hex host-bound, V5090 2026-10-27): ``tree_cpu_seconds`` finds the live
+    THE BREAKAGE THIS PREVENTS (hex host-bound, reference system 2026-10-27): ``tree_cpu_seconds`` finds the live
     descendants by reading ``/proc/<pid>/task/<tid>/children`` for every thread, at every stage boundary.  A hex
     forecast holds ~170 threads (the 128-thread kernel I/O pool among them) and the MPAS-physics step loop opens
     and closes three timed stages a step, so every step read ~1,000 /proc files on the thread that issues the
@@ -134,7 +134,7 @@ def emit(stage, phase="mark", *, attrs=None, root=None, t_mono=None, t_unix=None
             try:
                 from woof.timeline.ledger import Ledger
             except ModuleNotFoundError:
-                # An engine without woof.timeline (woof 2.8.7 and earlier)
+                # An engine without woof.timeline (gpuwm 2.8.7 and earlier)
                 # has no ledger to append to; the forecast runs unrecorded.
                 state["pending"].clear()
                 return
@@ -162,7 +162,7 @@ def emit(stage, phase="mark", *, attrs=None, root=None, t_mono=None, t_unix=None
         try:
             from woof.timeline.ledger import Ledger, emit as append
         except ModuleNotFoundError:
-            # No woof.timeline in this engine (woof 2.8.7 and earlier):
+            # No woof.timeline in this engine (gpuwm 2.8.7 and earlier):
             # nothing to append to, and nothing to warn about every run.
             _pending.clear()
             return

@@ -97,7 +97,7 @@ def production_physics_memory_plan(drivers, configs, *, reuse_original_workspace
         bank(namespace + ":atmosphere", name, (nz, ny, nx))
     bank(namespace + ":atmosphere", "p_interface", (nz + 1, ny, nx))
     field_banks(namespace + ":fields", (name for name in
-        ("tsk", "albedo", "emiss", "glw", "xland", "qc_bl", "qi_bl", "cldfra_bl") if name in driver.fields))
+        ("tsk", "albedo", "emiss", "glw", "xland", "swddir", "qc_bl", "qi_bl", "cldfra_bl") if name in driver.fields))
     for name in ("qc", "qr", "qi", "qs", "effc", "effr", "effi", "effs", "nc", "nr", "ni", "ns", "qnc", "qnr", "qni", "qns"):
         value = getattr(driver.state, name, None)
         if value is not None:
@@ -128,6 +128,16 @@ def production_physics_memory_plan(drivers, configs, *, reuse_original_workspace
                 if isinstance(value, np.ndarray) and value.size:
                     dtype = "uint8" if value.dtype == np.dtype("bool") else "float32"
                     specs.append(BatchArraySpec(namespace + f":new_table:{table_name}:{name}", value.shape, "shared", dtype))
+    if int(getattr(cfg, "cu_physics", 0)) == 99:
+        from woof.ensemble.batch_kf import kf_old_column_layout, kf_old_call_reservation
+        namespace = f"cumulus:{('cumulus', 0)}"
+        inputs, outputs = kf_old_column_layout(nz, ny, nx, edrates=bool(cfg.kf_edrates))
+        for name, (shape, dtype) in inputs.items():
+            bank(namespace + ":inputs", name, shape, dtype)
+        for name, (shape, dtype) in outputs.items():
+            bank(namespace + ":returned", name, shape, dtype, joined=False)
+        reserve += kf_old_call_reservation(nz, ny, nx, members=members,
+            edrates=bool(cfg.kf_edrates))
     return BatchMemoryPlan(tuple(specs), reserved_bytes=reserve)
 
 

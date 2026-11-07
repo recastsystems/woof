@@ -2662,7 +2662,10 @@ _CQ_MASS_SPECIES_BY_MP = {
     # WDM6 (Registry.EM_COMMON:3031) carries WSM6's six moist masses with
     # qnn/qnc/qnr in ``scalar``, so its row is byte-for-byte mp=6's --
     # missing for the same reason and found by the same census.
+    14: _CQ_MASS_SPECIES[:5],
     16: _CQ_MASS_SPECIES,
+    26: _CQ_NSSL_MASS_SPECIES,
+    27: _CQ_NSSL_MASS_SPECIES,
     18: _CQ_NSSL_MASS_SPECIES,
     # Thompson aerosol-aware (Registry.EM_COMMON:3036) adds qnc/qnwfa/qnifa
     # to the ``scalar`` package only, so its ``moist`` package -- and thus
@@ -2691,6 +2694,9 @@ _CQ_MASS_SPECIES_BY_MP = {
     # four species here is the same number, and
     # tests/test_acoustic_npref.py gates the two against each other.
     50: _CQ_MASS_SPECIES[:4],
+    # mp=53 (p3_1cat_3mom, Registry.EM_COMMON:3041) declares the same
+    # moist:qv,qc,qr,qi package; qnc and qzi are scalars, outside calc_cq.
+    53: _CQ_MASS_SPECIES[:4],
 }
 
 
@@ -5646,7 +5652,7 @@ def _noah_shflx(stc, smc, smcmax, nsoil, t1, dt, yy, zz1, zsoil, tbot,
     return t1, ssoil
 
 
-def _noah_snowpack(esd, dtsec, snowh, sndens, tsnow, tsoil):
+def _noah_snowpack(esd, dtsec, snowh, sndens, tsnow, tsoil, ua_phys=False, snomlt=0.):
     """SNOWPACK: compaction (Koren polynomial) + melt-season densifying."""
     c1k, c2k = 0.01, 21.0
     snowhc = snowh * 100.0
@@ -5673,6 +5679,9 @@ def _noah_snowpack(esd, dtsec, snowh, sndens, tsnow, tsoil):
     sndens = dsx
     if tsnowc >= 0.0:
         dw = 0.13 * dthr / 24.0
+        if ua_phys and tsoilc>=0.:
+            cm=snomlt*100.
+            dw=min(dw,0.13*cm/(esdcx+0.13*cm))
         sndens = sndens * (1.0 - dw) + dw
         if sndens >= 0.40:
             sndens = 0.40
@@ -5755,6 +5764,9 @@ def _noah_snopac(etp, prcp, prcpf, snowng, smc, smcmax, smcwlt, smcref,
     """SNOPAC: snowpack-present land update.  Mutates smc/sh2o/stc;
     returns a dict (evap components kinematic; reslin computed here
     with the branch-exact identity)."""
+    ua_phys=flags.get('ua_phys',False)
+    flx4=flags.get('flx4',0.)
+    etpn=flags.get('etpn',0.)
     esdmin = 1.0e-6
     snoexp = 2.0
     dew = 0.0
@@ -5803,7 +5815,7 @@ def _noah_snopac(etp, prcp, prcpf, snowng, smc, smcmax, smcwlt, smcref,
             et = [x * 1000.0 for x in et1]
             ett = ett1 * 1000.0
             etns = etns1 * 1000.0
-        esnow = etp * sncovr
+        esnow = (etpn if ua_phys else etp) * sncovr
         esnow1 = esnow * 0.001
         esnow2 = esnow1 * dt
         etanrg = esnow * _NLSUBS + etns * _NLSUBC
@@ -5833,6 +5845,7 @@ def _noah_snopac(etp, prcp, prcpf, snowng, smc, smcmax, smcwlt, smcref,
             flags["clamped"] = True     # sublimated more than the pack
         esd = max(0.0, esd - esnow2)
         flx3 = 0.0
+        if ua_phys: flx4=0.
         ex = 0.0
         snomlt = 0.0
         # exact linearized identity for this branch
@@ -5852,6 +5865,7 @@ def _noah_snopac(etp, prcp, prcpf, snowng, smc, smcmax, smcwlt, smcref,
             ex = 0.0
             snomlt = 0.0
             flx3 = 0.0
+            if ua_phys: flx4=0.
         else:
             esd = esd - esnow2
             etp3 = etp * _NLSUBC        # kept: the Fortran computes it
@@ -5865,6 +5879,11 @@ def _noah_snopac(etp, prcp, prcpf, snowng, smc, smcmax, smcwlt, smcref,
                 flx3 = 0.0
             if abs(flx3_def) < 2.0:
                 flags["near_branch"] = True
+            if ua_phys:
+                if flx4>0. and flx3>0.:
+                    if flx3>=flx4: flx3=flx3-flx4
+                    else: flx4=flx3;flx3=0.
+                else: flx4=0.
             ex = flx3 * 0.001 / _NLSUBF
             snomlt = ex * dt
             if abs(esd - snomlt - esdmin) < 2e-6:
@@ -5896,12 +5915,13 @@ def _noah_snopac(etp, prcp, prcpf, snowng, smc, smcmax, smcwlt, smcref,
                                 bexp, f1, df1, quartz, csoil, vegtyp,
                                 isurban, soiltyp, opt_thcnd)
     if esd > 0.0:
-        snowh, sndens = _noah_snowpack(esd, dt, snowh, sndens, t1, yy)
+        snowh, sndens = _noah_snowpack(esd, dt, snowh, sndens, t1, yy, ua_phys, snomlt)
     else:
         esd = 0.0
         snowh = 0.0
         sndens = 0.0
         sncovr = 0.0
+    if ua_phys: flags['flx4']=flx4
     return dict(eta=0.0, t1=t1, beta=beta, cmc=cmc, dew=dew, drip=drip,
                 flx1=flx1, flx3=flx3, ssoil=ssoil, runoff1=runoff1,
                 runoff2=runoff2, runoff3=runoff3, edir=edir, ec=ec,
@@ -6090,7 +6110,7 @@ def _noah_sflx(ffrozp, dt, nsoil, sldpth, lwdn, soldn, solnet, sfcprs,
                shdfac, shdmin, shdmax, alb, snoalb, tbot, z0brd, cmc,
                t1, stc, smc, sh2o, snowh, sneqv, ch, xlai, snotime1,
                ribb, params, isurban, opt_thcnd, rdlai2d, usemonalb,
-               flags):
+               flags, ua_phys=False):
     """SFLX: the unified Noah column update.  Mutates stc/smc/sh2o
     (lists); returns a dict of everything the WRF driver consumes plus
     the energy-identity diagnostics."""
@@ -6236,6 +6256,8 @@ def _noah_sflx(ffrozp, dt, nsoil, sldpth, lwdn, soldn, solnet, sfcprs,
     else:
         prcpf = prcp
 
+    fvb=gama=fbur=fgsn=flx4=etpn=0.0
+    flags['ua_phys']=ua_phys
     # ---- snow cover fraction, snow albedo, emissivity
     sncovr_in_arg = None
     if sneqv == 0.0:
@@ -6244,6 +6266,19 @@ def _noah_sflx(ffrozp, dt, nsoil, sldpth, lwdn, soldn, solnet, sfcprs,
         emissi = embrd
     else:
         sncovr = _noah_snfrac(sneqv, snup, salp)
+        if ua_phys:
+            top,bottom=params.canopy[vegtyp-1]
+            if abs(snowh-bottom)<1.e-6: flags['near_branch']=True
+            fgsn=sneqv/0.02 if sneqv<0.02 else 1.
+            if bottom>0. and snowh>bottom:
+                if bottom<=0.5: fbur=(snowh-0.4*bottom)/(0.4*(top-bottom))
+                else: fbur=(snowh-bottom)/(top-bottom)
+            fbur=min(max(fbur,0.),1.)
+            xlai=xlai*(1.-fbur)
+            fvb=shdfac*fgsn*(1.-fbur)
+            gama=math.exp(-1.*xlai)
+            ru=0. if sfctmp<=t1 else 100.*shdfac*fgsn*min((sfctmp-t1)/5.,1.)*(1.-math.exp(-xlai))
+            ch=ch/(1.+ru*ch)
         if abs(sncovr - 0.98) < 0.005 or abs(sncovr - 0.97) < 0.005:
             flags["near_branch"] = True
         sncovr = min(sncovr, 0.98)
@@ -6277,12 +6312,35 @@ def _noah_sflx(ffrozp, dt, nsoil, sldpth, lwdn, soldn, solnet, sfcprs,
     else:
         z0 = z0brd
 
+    if ua_phys:
+        fv=shdmax*(1.-fbur)
+        a1=(1.-fv)**2*((1.-fgsn**2)*math.log(0.01)+fgsn**2*math.log(0.001))
+        a2=(1.-(1.-fv)**2)*math.log(z0brd)
+        z0=math.exp(a1+a2)
     # ---- Penman potential evaporation
     fdown = solnet + lwdn
     t2v = sfctmp * (1.0 + 0.61 * q2)
     etp, rch, rr, epsca, t24, flx2, lvs = _noah_penman(
         sfctmp, sfcprs, ch, t2v, th2, prcp, fdown, ssoil, q2, q2sat,
         dqsdt2, snowng, frzgra, emissi, sncovr)
+    if ua_phys:
+        fnet=fdown-emissi*_NSIGMA*t24-ssoil
+        if sneqv>0. and fnet>0. and soldn>0.:
+            total=(1.-albedo)*soldn*fvb
+            under=min(total,((1.-0.5)*(1.-0.13)*soldn*gama)*fvb)
+            flx4=min(total-under,min(250.,0.5*(1.-albedo)*soldn))
+        signck=(stc[0]-273.15)*(sfctmp-273.15)
+        if flx4>0. and (signck<=0. or stc[0]<273.15):
+            if fnet>=flx4: fnetn=fnet-flx4
+            else: flx4=fnet;fnetn=0.
+        else: flx4=0.;fnetn=0.
+        if frzgra: fnetn=fnetn-flx2
+        elcp1=(1.-sncovr)*_NELCP+sncovr*_NELCP*_NLSUBS/_NLSUBC
+        delta=elcp1*dqsdt2
+        radn=fnetn/rch+th2-sfctmp
+        a=elcp1*(q2sat-q2)
+        etpn=((a*rr+radn*delta)/(delta+rr))*rch/lvs
+        flags["flx4"]=flx4;flags["etpn"]=etpn
     if abs(etp) < 1e-9:
         flags["near_branch"] = True
 
@@ -6348,6 +6406,9 @@ def _noah_sflx(ffrozp, dt, nsoil, sldpth, lwdn, soldn, solnet, sfcprs,
     q1 = q2 + eta_kinematic * _NCP / rch
     sheat = -(ch * _NCP * sfcprs) / (_NR * t2v) * (th2 - t1)
 
+    if ua_phys:
+        flx4=flags["flx4"]
+        sheat=sheat+flx4
     # ---- kinematic -> energy conversions
     edir = p["edir"] * _NLVH2O
     ec = p["ec"] * _NLVH2O
@@ -6396,7 +6457,7 @@ def _noah_sflx(ffrozp, dt, nsoil, sldpth, lwdn, soldn, solnet, sfcprs,
     else:
         soilw = soilww / soilwm
 
-    return dict(t1=t1, cmc=cmc, sneqv=sneqv, snowh=snowh,
+    return dict(flx4=flx4,fvb=fvb,fbur=fbur,fgsn=fgsn,t1=t1, cmc=cmc, sneqv=sneqv, snowh=snowh,
                 sncovr=sncovr, albedo=albedo, emissi=emissi, z0=z0,
                 z0brd=z0brd, alb=alb, xlai=xlai, snotime1=snotime1,
                 eta_kinematic=eta_kinematic, eta=eta_e, sheat=sheat,
@@ -6412,7 +6473,7 @@ def _noah_sflx(ffrozp, dt, nsoil, sldpth, lwdn, soldn, solnet, sfcprs,
 
 def np_noah_column(col, params, dt, dzs, isurban=None, isice=None,
                    xice_threshold=0.5, frpcpn=False, usemonalb=False,
-                   rdlai2d=False, opt_thcnd=1):
+                   rdlai2d=False, opt_thcnd=1, ua_phys=False):
     """Float64 mirror of one Noah column step: the WRF v4.6.1 driver
     ``lsm`` prep + ``SFLX`` + post-update, for a single (i, j).
 
@@ -6588,7 +6649,7 @@ def np_noah_column(col, params, dt, dzs, isurban=None, isice=None,
                    vegtyp, soiltyp, shdfac, shmin, shmax, albbrd,
                    snoalb1, tbot, z0brd, cmc, t1, stc, smc, swc,
                    snowhk, sneqv, chk, xlai, snotime1, ribb, params,
-                   isurban, opt_thcnd, rdlai2d, usemonalb, flags)
+                   isurban, opt_thcnd, rdlai2d, usemonalb, flags, ua_phys)
 
     # ---- driver post-SFLX state/flux updates
     out["lai"] = r["xlai"]
@@ -6618,6 +6679,9 @@ def np_noah_column(col, params, dt, dzs, isurban=None, isice=None,
                       - r["eta"]
                       - (r["emissi"] * _NSTBOLT * r["t1"] ** 4)
                       - r["flx1"] - r["flx2"] - r["flx3"])
+    if ua_phys:
+        for field in ("flx4","fvb","fbur","fgsn"): out[field]=r[field]
+        out["noahres"]-=r["flx4"]
     out["smstav"] = r["soilw"]
     out["smstot"] = r["soilm"] * 1000.0
     out["smcrel"] = np.array(r["smav"])

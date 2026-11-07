@@ -198,3 +198,31 @@ pub unsafe extern "C" fn gpuwm_tempo_last_error(buf: *mut u8, cap: usize) -> usi
         bytes.len()
     })
 }
+
+/// Contract marker for WRF big-endian f32 sequential table records.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpuwm_wrf_table_f32_v1() -> u32 { 1 }
+
+/// Read, hash, validate and decode one pinned WRF table during setup.
+/// Safety: path addresses path_len UTF-8 bytes, sha256 addresses 64 ASCII
+/// bytes, and out addresses out_len writable, aligned floats, disjoint from
+/// both input buffers. No pointers are retained after this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_wrf_table_read_f32(
+    path: *const u8, path_len: usize, sha256: *const u8,
+    records: usize, values: usize, out: *mut f32, out_len: usize,
+) -> i32 {
+    guard(ERR, || {
+        let (Some(path), Some(hash)) =
+            (unsafe { utf8(path, path_len) }, unsafe { utf8(sha256, 64) })
+        else { return set_error("path or hash is not UTF-8"); };
+        if out.is_null() || out_len == 0 || out_len > isize::MAX as usize / 4 {
+            return set_error("invalid table output buffer");
+        }
+        let output = unsafe { std::slice::from_raw_parts_mut(out, out_len) };
+        match crate::wrf_tables::read_f32(Path::new(path), hash, records, values, output) {
+            Ok(()) => OK,
+            Err(e) => set_error(e),
+        }
+    })
+}

@@ -1243,7 +1243,7 @@ def _relative_change(after: float, before: float) -> float:
     return abs(after - before) / scale
 
 
-# THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 2,341,819 cells x 59 levels, V8X6000 2026-10-29, host-only):
+# THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 2,341,819 cells x 59 levels, eight-card system 2026-10-29, host-only):
 # after the terrain bridge, load_mpas_initial_state spent about 7 s on one thread in whole-array NumPy
 # expressions over (level, cell) and (level, edge) fields (coupled perturbations, base and saved pressure,
 # Exner arguments, the w coupling, the saved-diagnostic copies).  Each is elementwise, so it is now written in
@@ -1341,7 +1341,7 @@ class _WholeVariable:
 class _WholeReadVariables(abc.Mapping):
     """``dataset.variables`` whose variables in ``reads`` come from threaded whole reads (see _WholeVariable).
 
-    THE COST THIS REMOVES (own24 zoom globe, 167,254 cells x 55 levels, hex 0.4.9 DA member leg on an RTX 5090,
+    THE COST THIS REMOVES (own24 zoom globe, 167,254 cells x 55 levels, hex 0.4.9 state analysis member leg on an RTX 5090,
     2026-10-28): the vertical-grid and initial-state loaders read about 1 GB of the init through netCDF4 one
     variable after another on the main thread, before the card's first kernel.
     """

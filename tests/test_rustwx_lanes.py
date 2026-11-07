@@ -14,6 +14,7 @@ cannot be produced without shipping a stale build.
 from __future__ import annotations
 
 import datetime
+import inspect
 import re
 import struct
 import subprocess
@@ -345,6 +346,24 @@ def test_the_observation_grid_lane_refuses_by_name(monkeypatch):
     assert rustwx_lanes.resolve_obsgrid_engine("matplotlib")[0] == "matplotlib"
 
 
+def test_the_ensemble_vocabulary_names_max_on_both_halves():
+    """The ensemble max map is in the contract line, the product list
+    and the default request, and enprod can name it."""
+
+    from woof.da import enprod
+
+    products_field = rustwx_lanes.ENSEMBLE_ABI_MARKER.split(
+        "gpuwm-rw-ensbatch-fields-v1")[0].split("\t")
+    assert products_field[0] == "gpuwm-rw-ensbatch-products-v1"
+    assert [p for p in products_field[1:] if p] == list(
+        rustwx_lanes.ENSEMBLE_PRODUCTS)
+    assert "max" in rustwx_lanes.ENSEMBLE_PRODUCTS
+    default = inspect.signature(
+        rustwx_lanes.run_ensemble_renderer).parameters["products"].default
+    assert default.split(",") == list(rustwx_lanes.ENSEMBLE_PRODUCTS)
+    assert set(rustwx_lanes.ENSEMBLE_PRODUCTS) == set(enprod.PRODUCTS)
+
+
 def test_the_matplotlib_ensemble_route_reports_itself_as_a_workaround():
     notice = rustwx_lanes.ensemble_workaround_notice()
     assert notice.startswith("WORKAROUND:")
@@ -492,8 +511,7 @@ def ensemble_root(tmp_path_factory) -> Path:
 
 
 @needs_ensemble
-def test_the_ensemble_engine_draws_all_five_products(ensemble_root,
-                                                     tmp_path):
+def test_the_ensemble_engine_draws_every_product(ensemble_root, tmp_path):
     from woof.da.enprod import MANIFEST_FILENAME
 
     out = tmp_path / "png"

@@ -35,10 +35,13 @@ MANIFEST_SCHEMA = "gpuwm-wheel-bridge-bundle-v1"
 
 #: Where each workspace puts its release build, by crate-relative path.
 _WORKSPACE_TARGET = {
+    "tools/dfi-runtime": "target/release",
+    "tools/aerosol_grid": "target/release",
     "tools/rw_icechunk": "target/release",
     "tools/nextgen_hydrofabric": "target/release",
     "tools/nextgen_verify": "target/release",
     "tools/nextgen_output": "target/release",
+    "tools/cam_tables": "target/release",
     "tools/nextgen_forcing": "target/release",
     "tools/hydro_world": "target/release",
     "tools/hydro_world_params": "target/release",
@@ -52,6 +55,13 @@ _WORKSPACE_TARGET = {
     "tools/region_global_dealias": "target/release",
     "tools/rw_wps": "target/release",
     "tools/zarr_bridge": "target/release",
+    # 3.0.0 bundled workspaces: station output, waves and the hurricane line.
+    "tools/tslist_bridge": "target/release",
+    "tools/waves_data": "target/release",
+    "tools/storm_merge": "target/release",
+    "tools/tc_frames_io": "target/release",
+    "tools/tc_vitals": "target/release",
+    "tools/tc-verify": "target/release",
 }
 
 

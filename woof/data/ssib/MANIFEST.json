@@ -1,0 +1,20 @@
+{
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "files": {
+    "ssib_veg_tables.json": "2f1022209b782534eddf5d9a969e8e8169f867cde49a3145ec06eb2db991ca84",
+    "../noah_tables/LANDUSE.TBL": "cafdb5f4982b88c93f2cb321f18d9559e7c03b6d213388d5ae3d07b7280caa08"
+  },
+  "landuse_section": "SSIB",
+  "soil_layers": 3,
+  "license": "Public domain under WRF LICENSE.txt; notice included in WRF-LICENSE.txt",
+  "upstream_repository": "https://github.com/wrf-model/WRF",
+  "compatible_release": "v4.7.1",
+  "upstream_sources": {
+    "LICENSE.txt": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+    "phys/module_sf_ssib.F": "2b83b39640fd5d53859f1f281be59a9866baf97924e5d03d9964ec5d69bd5c73",
+    "phys/module_surface_driver.F": "a653965f9ffd1db5e4c42aa79e41b4d111755b6fca0f1a3b91f3a93455813ffd",
+    "share/module_soil_pre.F": "f981a2cce2cd1a8ca5b8ced100bf2d34eb2725d1d0bc7c42daf05fd05aa2c074",
+    "Registry/registry.ssib": "7fa144a8741211edf39adf8363db4f8f9022861a4c758644f53867d100ca02f6",
+    "run/LANDUSE.TBL": "7f661318ff5f06aed6b4b5508e4d077dc794cff03d5fb4447fe59c88d0ed2ece"
+  }
+}

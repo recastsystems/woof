@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retain exact static comparisons; Linux is explicitly unqualified, never waived functional CI."""
+"""Qualify native static arithmetic against independently run Python references."""
 from __future__ import annotations
 
 import argparse
@@ -131,11 +131,11 @@ def main(argv=None) -> int:
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
     report = {"schema": "arwen.static-qualification-result.v1", "system": platform.system(),
               "machine": platform.machine(), "python": platform.python_version(),
-              "scope": "exact Windows-reference comparisons; Linux Python parity remains unqualified",
+              "scope": "exact native-platform Python comparisons and pinned portable sampling bounds",
               "status": "operational_failure", "commands": []}
     environment = dict(os.environ, CARGO_TARGET_DIR=str(target), CARGO_TERM_COLOR="never",
                        GPUWM_NO_LOCAL_GPU="1", GPUWM_NPMATH_SWEEP=str(output / "sweep"))
-    environment.pop("GPUWM_STATIC_LANE1_GOLDENS", None)
+    environment["GPUWM_STATIC_LANE1_GOLDENS"] = str(output / "native-goldens")
     environment["WOOF_STATIC_BRIDGE"] = str(target / "debug" /
         ("static_fields.dll" if sys.platform == "win32" else "libstatic_fields.so"))
 
@@ -158,6 +158,8 @@ def main(argv=None) -> int:
             raise RuntimeError("the declared comparison profile requires NumPy 2.2.6")
         workspace = ROOT / "tools/rustwx"
         prepare = [
+            ("native-reference", [sys.executable, str(ROOT / "tools/static_rust_port/extract_lane1_goldens.py"),
+                                  "--output", str(output / "native-goldens"), "--require-numpy", "2.2.6"], ROOT),
             ("build", ["cargo", "build", "--locked", "--offline", "-p", "static-fields", "--lib"], workspace),
             ("test-build", ["cargo", "test", "--locked", "--offline", "-p", "static-fields", "--test", "lane1_goldens", "--no-run"], workspace),
             ("bridge-load", [sys.executable, "-c", "from woof.static import rust_bridge; reason=rust_bridge.unavailable_reason(); print(reason or 'PASS: static bridge loads'); assert reason is None, reason"], ROOT),
@@ -184,10 +186,14 @@ def main(argv=None) -> int:
             raise RuntimeError("a prerequisite, functional control, or test execution failed; see raw reports")
         comparisons_failed = any(result["failed"] for result in results)
         report["qualification_complete"] = not any(result["failed"] or result["skipped"] for result in results)
-        report["status"] = ("UNQUALIFIED" if sys.platform.startswith("linux") else
-                            "COMPARISON_FAILURE" if comparisons_failed else
+        report["status"] = ("COMPARISON_FAILURE" if comparisons_failed else
                             "INCOMPLETE" if not report["qualification_complete"] else "COMPARISONS_PASSED")
-        exitcode = 1 if comparisons_failed and not sys.platform.startswith("linux") else 0
+        # A skip reaching here is one the policy declares (python_allowed_skips: the full build without a
+        # WPS_GEOG tree, which no hosted runner carries); any other skip is an operational failure above.
+        # It leaves the record INCOMPLETE but is not a failed comparison. Breakage (2.9.12 R7a route Q):
+        # exiting 1 on it turned both "Static qualification" jobs, which gate publication, red on every
+        # hosted run.
+        exitcode = 1 if comparisons_failed else 0
     except (OSError, ValueError, RuntimeError) as error:
         report["operational_error"] = str(error)
         report["status"] = "operational_failure"
@@ -209,8 +215,6 @@ def main(argv=None) -> int:
         if os.environ.get("GITHUB_STEP_SUMMARY"):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
                 stream.write(summary)
-        if report["status"] == "UNQUALIFIED" and os.environ.get("GITHUB_ACTIONS") == "true":
-            print("::warning title=Linux static parity UNQUALIFIED::Exact comparisons remain visible in the qualification artifact; functional tests are still required.")
     return exitcode
 
 

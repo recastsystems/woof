@@ -5,7 +5,7 @@
 use std::{collections::{BTreeMap, BTreeSet}, io::{Read, Write}, path::PathBuf};
 use serde::{Deserialize, Serialize};
 use rw_store::error::RwStoreError;
-use rw_store::netcdf_classic::{NcAttr, NcAttrValue, NcClassicWriter, NcData, NcDim, NcFormat, NcOwned, NcSlab, NcType, NcVarDef};
+use rw_store::netcdf_classic::{NcAttr, NcAttrValue, NcClassicWriter, NcData, NcDim, NcFormat, NcOwned, NcCopy, NcSlab, NcType, NcVarDef};
 use crate::error::{MpasError, MpasResult};
 
 #[derive(Deserialize)]
@@ -185,12 +185,8 @@ pub(crate) fn materialize_selected(request: Request, selected: Option<&BTreeSet<
     let tmp=request.output.with_extension(format!("nc.tmp-{}",std::process::id()));
     let result=(|| {
         let mut writer=NcClassicWriter::create(&tmp,NcFormat::Data64,dims.clone(),attrs(&global_attributes,&request.attributes)?,definitions.clone(),if dims.iter().any(|d|d.unlimited) {1} else {0})?;
-        // Every slab is classified and checked in declaration order first, so the
-        // receipt and the computed-field refusals are the serial loop's. Then the
-        // slabs are read, encoded and written at their own offsets on the cores;
-        // the file holds the same bytes as writing them in turn. THE BREAKAGE IT
-        // FIXES: the copy ran on one core, 412 s for the 33 GB RRFS v2 conus3km
-        // boundary carrier while 127 cores waited (box V5090, 2026-10-28).
+        // Check slabs in declaration order, then copy or encode them at
+        // independent output offsets. Stored fields require no decoded buffer.
         enum Slab<'a> {Text(Vec<u8>),Floats(&'a [f32]),Zero(usize),Carried(usize,NcType,usize)}
         let mut slabs=Vec::with_capacity(definitions.len());
         let mut keys:Vec<(&str,Option<u64>)>=Vec::with_capacity(definitions.len());
@@ -222,17 +218,32 @@ pub(crate) fn materialize_selected(request: Request, selected: Option<&BTreeSet<
             if first.as_ref().map_or(true,|(j,_)|i<*j) {*first=Some((i,e));}
             RwStoreError::Format(format!("artifact field {} failed",keys[i].0))
         };
-        // Bounded: a worker holds one field twice over (decoded and encoded),
-        // about 1.1 GB on conus3km, so 32 workers stay near 36 GB of host memory.
-        let pool=rayon::ThreadPoolBuilder::new().num_threads(rayon::current_num_threads().clamp(1,32)).build()
+        let layouts:Vec<_>=paths.iter().map(|path|netcdf_reader::NcFile::open(path).ok()).collect();
+        let stored:Vec<_>=paths.iter().map(std::fs::File::open).collect::<std::io::Result<_>>()?;
+        let extents:Vec<_>=slabs.iter().zip(&keys).map(|(slab,key)|match slab {
+            Slab::Carried(owner,_,_)=>layouts[*owner].as_ref().and_then(|file|file.classic_extent(key.0)),
+            _=>None,
+        }).collect();
+        drop(layouts);
+        // The typed fallback holds a decoded and encoded field per worker.
+        // Stored classic copies allocate only a bounded fallback buffer.
+        let pool=rayon::ThreadPoolBuilder::new().stack_size(crate::execution::BRIDGE_STACK_BYTES).num_threads(rayon::current_num_threads().clamp(1,32)).build()
             .map_err(|e|refusal(format!("cannot start the artifact writers: {e}")))?;
         let written=pool.install(||writer.put_parallel(&keys,|i| {
             let name=keys[i].0;
             Ok(match &slabs[i] {
                 Slab::Text(bytes)=>NcSlab::Borrowed(NcData::Chars(bytes)),
                 Slab::Floats(values)=>NcSlab::Borrowed(NcData::Floats(values)),
-                Slab::Zero(size)=>NcSlab::Owned(NcOwned::Floats(vec![0f32;*size])),
+                Slab::Zero(size)=>NcSlab::Zero {ty:NcType::Float,len:*size},
                 Slab::Carried(owner,ty,size)=>{
+                    // Classic fields already have the destination encoding.
+                    // Copy directly, retaining the typed reader for other formats.
+                    if let Some(extent)=extents[i] {
+                        let record=keys[i].1.is_some();
+                        if extent.is_record==record && (!record || extent.numrecs==1) {
+                            return Ok(NcSlab::Copy(NcCopy {file:&stored[*owner],offset:extent.offset,ty:*ty,elems:*size as u64}));
+                        }
+                    }
                     // Stored-word reads preserve integer bits, signed zeros, NaN payloads,
                     // binary64 coordinates, and the complete character padding. Each worker
                     // opens its own (mapped) reader.

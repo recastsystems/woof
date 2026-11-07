@@ -444,10 +444,13 @@ def registry_sha256(registry: Mapping[str, object] | None = None) -> str:
 #: configuration resolves it to its off value (:func:`setting_off_value`,
 #: :func:`component_off_option`), and is refused, named, when it does not.
 #: What is outside the parts, by top-level block and why:
-REGISTRY_PHYSICS_IDENTITY_SCHEMA = "gpuwm-physics-registry-parts-v3"
+# v4 excludes WRF citation and refusal prose added to the v3 inventory.
+# Older receipt parts resolve through their retained registry document.
+REGISTRY_PHYSICS_IDENTITY_SCHEMA = "gpuwm-physics-registry-parts-v4"
 
 #: Top-level blocks no selection's physics identity binds.
 REGISTRY_BLOCKS_OUTSIDE_PHYSICS_IDENTITY: Mapping[str, str] = {
+    "analysis_nudging": "FDDA capability documentation; selected run controls, native input authority and compiled kernels bind execution",
     "diagnostic_packages": "passive package descriptions; selected parameters and compiled kernels bind the diagnostic identity",
     "diagnostic_state": "WRF diagnostic field metadata; checkpoint inventory binds the actual fields",
     "template_aliases": "historical profile spellings, not executable settings",
@@ -507,6 +510,8 @@ REGISTRY_EVIDENCE_RECORDS: Mapping[str, str] = {
 #: string, a list of strings, or null).  A field of the same name that
 #: holds an object is walked, not dropped.
 REGISTRY_DOCUMENTATION_FIELDS: Mapping[str, str] = {
+    "wrf_reference": "a WRF source citation",
+    "rte_rrtmgp_refusal": "the words explaining the bound cloud-optics coupling refusal",
     "implementation_origin": "implementation provenance for display; no numerical consumer reads it",
     # User-facing caveats.  They cite file:line and are re-pinned when the
     # cited code moves; both A153 cases were edits here.
@@ -553,6 +558,7 @@ REGISTRY_DOCUMENTATION_FIELDS: Mapping[str, str] = {
     "measured": "a measured result in words",
     "execution_model": "where a scheme runs, in words",
     "fixed_mode": "a mode described in words",
+    "droplet_activation": "prose citing the native activation and sedimentation routines",
     "default_lane": "a mode described in words",
     "activation": "the selectors that activate an extension, in words",
     "activation_bin_edge_policy": "a policy described in words",
@@ -596,6 +602,7 @@ REGISTRY_ADMISSION_CONSTRAINTS: Mapping[str, str] = {
     "requires_components": (
         "which options of another component this one runs beside"),
     "requires_components_reasons": "the words of requires_components",
+    "forbidden_setting_values_reasons": "the words of forbidden_setting_values",
     "required_settings": (
         "the single value a setting must hold; the option's own values are "
         "repeated in its parameters block, and the rest (moist, km_opt, "
@@ -611,6 +618,7 @@ REGISTRY_ADMISSION_CONSTRAINTS: Mapping[str, str] = {
 #: preflight's recomputation does not re-check it, so the identity is the
 #: only place a change to it reaches a prepared receipt.
 REGISTRY_CONSTRAINTS_KEPT_IN_PHYSICS_IDENTITY: Mapping[str, str] = {
+    "admitted_setting_ranges": "validate_physics_capabilities does not recheck these range bounds",
     "forbidden_setting_values": (
         "read by plan review (validate_physics_plan) only; "
         "validate_physics_capabilities does not evaluate it"),
@@ -644,7 +652,7 @@ def _admission_conditional_refusal(rule: object) -> bool:
 
     Bound per kind, a rule of this kind refused every 2.8.0 and 2.8.1
     preparation of the 1.5-order TKE closure on the 2.8.2 integration
-    line, once lane/282-namelist-tolerance moved the closure's PBL-off
+    line, once development branch moved the closure's PBL-off
     requirement out of ``required_settings`` into a ``diff_opt = 2``
     rule: the closure computes what it did, and the preflight still
     refuses every configuration the rule refuses.
@@ -739,6 +747,9 @@ def _run_config_defaults() -> Mapping[str, object]:
 def same_setting_value(left: object, right: object) -> bool:
     """Equal as setting values: a boolean never equals a number."""
 
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        return len(left) == len(right) and all(
+            same_setting_value(a, b) for a, b in zip(left, right))
     if isinstance(left, bool) != isinstance(right, bool):
         return False
     try:
@@ -839,7 +850,8 @@ def registry_knob_is_read(knob: str, settings: Mapping[str, object] | object,
 
     A knob's declaration may name the settings it is read under,
     ``read_when: {setting: value, ...}``, every one of which must hold (a
-    tile count read only with tiles on).  A setting the configuration
+    tile count read only with tiles on). ``read_when_any`` is an OR
+    of these condition rows, in addition to ``read_when``. A setting the configuration
     omits holds its :func:`setting_off_value`.  ``True`` when the
     declaration names no condition, when every condition holds, or when an
     omitted setting has no single off value (then it cannot be shown
@@ -851,22 +863,27 @@ def registry_knob_is_read(knob: str, settings: Mapping[str, object] | object,
     parameters = selected.get("parameters")
     spec = (parameters.get(knob) if isinstance(parameters, Mapping)
             else None)
-    condition = spec.get("read_when") if isinstance(spec, Mapping) else None
-    if not isinstance(condition, Mapping) or not condition:
+    if not isinstance(spec, Mapping):
         return True
     absent = object()
-    for name, wanted in condition.items():
-        if isinstance(settings, Mapping):
-            value = settings.get(name, absent)
-        else:
-            value = getattr(settings, name, absent)
-        if value is absent:
-            value = setting_off_value(str(name), selected)
-            if value is NO_OFF_VALUE:
-                return True
-        if not same_setting_value(value, wanted):
-            return False
-    return True
+
+    def holds(condition):
+        if not isinstance(condition, Mapping) or not condition:
+            return True
+        for name, wanted in condition.items():
+            value = (settings.get(name, absent) if isinstance(settings, Mapping)
+                     else getattr(settings, name, absent))
+            if value is absent:
+                value = setting_off_value(str(name), selected)
+                if value is NO_OFF_VALUE:
+                    continue  # Unknown cannot prove this reader inactive.
+            if not same_setting_value(value, wanted):
+                return False
+        return True
+
+    alternatives = spec.get("read_when_any")
+    return (holds(spec.get("read_when")) and
+            (not alternatives or any(holds(row) for row in alternatives)))
 
 
 def registry_off_template(template: object,
@@ -1104,8 +1121,11 @@ def registry_physics_history() -> dict[str, object]:
 
     global _registry_physics_history
     if _registry_physics_history is None:
+        from woof import packed_data
+        # (WOOF 1.1.6) a wheel carries it as physics_registry_history.json.xz
+        # (woof.packed_data, PyPI's per-file limit); same bytes either way.
         value = json.loads(
-            REGISTRY_PHYSICS_HISTORY_PATH.read_text(encoding="utf-8"),
+            packed_data.read_text(REGISTRY_PHYSICS_HISTORY_PATH),
             parse_constant=_reject_json_constant)
         if (not isinstance(value, dict)
                 or value.get("schema") != REGISTRY_PHYSICS_HISTORY_SCHEMA
@@ -1378,6 +1398,19 @@ def component_options(component_id: str, *,
         and (not implemented_only or option.get("implemented") is True)
     }
 
+
+
+def column_microphysics_binding(selector: int):
+    """Optional declarative bindings for the shared column-kernel launcher.
+
+    Older production routes keep their existing dispatch. New column ports
+    declare allocations, argument groups and history names in their option
+    row, rather than adding another scheme-specific adapter file.
+    """
+    for option in component_options('microphysics').values():
+        if int(option.get('selectors', {}).get('mp_physics', -1)) == int(selector):
+            return option.get('extensions', {}).get('column_kernel')
+    return None
 
 def component_selector_key(component_id: str) -> str:
     """The ONE selector key of a single-selector component.
@@ -3453,6 +3486,24 @@ def validate_physics_plan(
 
         # Use the run door's coupling law after parameter values resolve.
         from types import SimpleNamespace
+        from woof.config import validate_fog_kfeta_config
+        try:
+            validate_fog_kfeta_config(SimpleNamespace(
+                grav_settling=settings.get("grav_settling", 0),
+                kfeta_trigger=settings.get("kfeta_trigger", 1),
+                mp_physics=settings.get("mp_physics", 0),
+                cu_physics=settings.get("cu_physics", 0)))
+        except ValueError as exc:
+            errors.append(_issue("fog-kfeta-pairing", base_path, str(exc)))
+        from woof.core.madwrf_contract import MAD_DEFAULTS, validate_madwrf
+        try:
+            validate_madwrf(SimpleNamespace(
+                **{name: settings.get(name, default)
+                   for name, default in MAD_DEFAULTS.items()},
+                mp_physics=settings.get("mp_physics", 0),
+                use_mp_re=_effective_setting("use_mp_re", settings, parameter_specs)))
+        except ValueError as exc:
+            errors.append(_issue("madwrf-dependency", base_path, str(exc)))
         from woof.config import validate_noah_mosaic_config
         try:
             validate_noah_mosaic_config(SimpleNamespace(
@@ -3464,6 +3515,18 @@ def validate_physics_plan(
                                                  "dominant")))
         except ValueError as exc:
             errors.append(_issue("noah-mosaic-pairing", base_path, str(exc)))
+        from woof.config import validate_irrigation_config
+        irrigation_defaults = dict(sf_surf_irr_scheme=0, irr_daily_amount=0.0,
+            irr_start_hour=0, irr_num_hours=0, irr_start_julianday=0,
+            irr_end_julianday=0, irr_freq=1, irr_ph=0,
+            sf_surface_physics=0, sf_surface_mosaic=0, sf_urban_physics=0,
+            moist=False, mp_physics=0)
+        try:
+            validate_irrigation_config(SimpleNamespace(**{
+                key: settings.get(key, default)
+                for key, default in irrigation_defaults.items()}))
+        except ValueError as exc:
+            errors.append(_issue("irrigation-pairing", base_path, str(exc)))
         # The stochastic-pattern consumers, by the same law: spp_conv=1 and
         # spp_pbl=1 are offered on routes whose templates select no Grell-
         # Freitas or MYNN, and the run door refuses a pattern no scheme reads
@@ -3749,6 +3812,15 @@ def validate_physics_plan(
         # selected options during the run must have its row, and the
         # question is asked here -- the same function validate_run_config
         # asks it through -- so the two authorities cannot disagree about it.
+        for name, spec in parameter_specs.items():
+            if not isinstance(spec, Mapping) or not spec.get("requires_reader"):
+                continue
+            value = settings.get(name, spec.get("default"))
+            if (not same_setting_value(value, spec.get("default"))
+                    and not registry_knob_is_read(name, settings, registry)):
+                errors.append(_issue("parameter-reader", f"{base_path}.parameters.{name}",
+                                     str(spec.get("description", "the selected component has no reader for this setting"))))
+
         for component_id, option_id in sorted(resolved_components.items()):
             component = components.get(component_id)
             options = component.get("options", {}) if isinstance(component, dict) else {}
@@ -4267,7 +4339,11 @@ def resolve_asset_requirement(
         candidates.append(("$" + path_env, chosen.parent))
     root_env = ladder.get("root_environment_override")
     if isinstance(root_env, str) and os.environ.get(root_env):
-        candidates.append(("$" + root_env, Path(os.environ[root_env])))
+        chosen_root = Path(os.environ[root_env])
+        subdirectory = ladder.get("root_environment_subdirectory")
+        if subdirectory:
+            chosen_root = chosen_root / str(subdirectory)
+        candidates.append(("$" + root_env, chosen_root))
     relative = ladder.get("data_relative")
     if isinstance(relative, str) and relative:
         try:
@@ -4287,6 +4363,11 @@ def resolve_asset_requirement(
                 ("staged", Path(staged).expanduser()))
         except (RuntimeError, OSError):       # pragma: no cover - no home
             pass
+
+    if (isinstance(root_env, str) and os.environ.get(root_env)
+            and ladder.get("exclusive_root_environment_override")):
+        candidates = [(origin, root) for origin, root in candidates
+                      if origin == "$" + root_env]
 
     # WHICH ROOT'S MISSING LIST IS REPORTED.  The CLOSEST one -- the root
     # that holds the most of the set -- not the last one walked.  Reporting
@@ -4363,3 +4444,31 @@ __all__ = [
     "strip_registry_documentation",
     "validate_physics_plan",
 ]
+
+
+def column_surface_contract(selector):
+    """Resolve the record driver from the selected land-surface row."""
+    for option in registry_view()["components"]["land_surface"]["options"].values():
+        if option.get("selectors", {}).get("sf_surface_physics") == int(selector):
+            return option.get("column_contract")
+    return None
+
+
+def validate_column_surface_settings(settings):
+    """Check table-declared record couplings at both config and driver doors."""
+    selector = _selection(settings, "sf_surface_physics") or 0
+    contract = column_surface_contract(selector)
+    if contract is None:
+        return
+    from woof.config import radiation_scheme_ids
+    radiation = radiation_scheme_ids(settings)
+    for name, row in contract["admission"].items():
+        value = (radiation[0] if name == "ra_lw_physics" else
+                 radiation[1] if name == "ra_sw_physics" else _selection(settings, name))
+        if value not in row["values"]:
+            raise ValueError(f"{name}={value}: {row['reason']}")
+    if radiation[1] == 4 and _selection(settings, "ra_rrtmg_variant") != "rrtmg_legacy":
+        raise ValueError("the selected column surface consumes visible and near-infrared "
+                         "direct/diffuse radiation and returns four band albedos; "
+                         "the RTE+RRTMGP adapter lacks these spectral carriers and cannot supply them. "
+                         "Select ra_rrtmg_variant='rrtmg_legacy' or ra_sw_physics=1.")

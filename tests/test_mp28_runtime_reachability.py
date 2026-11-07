@@ -163,7 +163,9 @@ STALE_REFL_ADMISSION = frozenset({1, 6, 8, 10, 18})
 #: own 10 cm reflectivity (``native_reflectivity``), so the carrier is due on
 #: the same cadence.
 from woof.microphysics_schemes import NAMED_MP_IDS  # noqa: E402
-REFL_ADMISSION = frozenset({1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 50, 106} | set(NAMED_MP_IDS))
+# CAM MG (11) has a cited absent reflectivity rail; NTU (56) has
+# a native-distribution diagnostic. TEMPO (900) retains its rail.
+REFL_ADMISSION = frozenset({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 18, 24, 26, 28, 38, 40, 50, 51, 52, 53, 55, 56, 97, 106, 900})
 
 #: The deliberate exceptions -- NONE remain.  This ledger is the census of
 #: sites that are stale ON PURPOSE, so it is the last place that may itself
@@ -229,7 +231,7 @@ DELIBERATE_STALE_SITES: set[tuple[str, str]] = set()
 #:   namelist.rs STOCK_WRF_INVENTORIED_MP_PHYSICS).
 #: * ``woof/core/preflight.py`` and ``woof/core/rrtmg_legacy.py`` key
 #:   all ten accepted selectors -- complete, nothing to judge.
-ACCEPTED_MP_PHYSICS = frozenset({0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 50, 106})
+ACCEPTED_MP_PHYSICS = frozenset({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 900, 13, 14, 15, 16, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 97, 106})
 
 #: Scheme-KEYED DICTS that omit 28, and the judgement for each.  A dict is a
 #: third shape the same defect comes in and the AST membership scan cannot
@@ -264,6 +266,19 @@ KNOWN_SCHEME_KEYED_DICTS_WITHOUT_28 = {
     "woof/core/rrtmgp.py",
 }
 
+
+NON_MP_INTEGER_MAPS = {
+    # _ABSB_SHAPES, native RRTM absorption-band table dimensions.
+    ("woof/core/rrtm_tables.py", (1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 14)),
+    # _LCZ_CLASS_NAMES, URBPARM land-class labels.
+    ("woof/experiment.py", tuple(range(1, 12))),
+    # WRF_UNPORTED_SCHEME_REASONS['sf_surface_physics'], land selectors.
+    ("woof/config.py", (5, 6, 7, 8)),
+    # WMO code table 4.7, DERIVED_FORECAST_NAMES, ensemble statistics.
+    ("woof/member_prep.py", tuple(range(10))),
+    # REGIMES in the independent YSU oracle, column fixture identifiers.
+    ("woof/verify/ysu_wide_oracle.py", tuple(range(1, 10))),
+}
 
 # ---------------------------------------------------------------------------
 # 1. The census.
@@ -375,7 +390,8 @@ def test_no_new_scheme_keyed_dict_omits_28():
     census = scheme_keyed_dict_census()
     unexpected = sorted(
         (path, line, keys) for path, line, keys in census
-        if path not in KNOWN_SCHEME_KEYED_DICTS_WITHOUT_28)
+        if path not in KNOWN_SCHEME_KEYED_DICTS_WITHOUT_28
+        and (path, keys) not in NON_MP_INTEGER_MAPS)
     assert unexpected == [], (
         "a NEW mp_physics-keyed dict omits 28:\n  "
         + "\n  ".join(f"{p}:{n} keys={k}" for p, n, k in unexpected)
@@ -397,7 +413,7 @@ def test_no_new_scheme_keyed_dict_omits_28():
     assert (set(mt.UNVALIDATED_MIXED_EDGE_MOMENTS)
             == set(mt.UNVALIDATED_MIXED_EDGE_SELECTORS)
             == set(mt._UNVALIDATED_MIXED_EDGE_REASONS)
-            == {3, 5, 30} | set(NAMED_MP_IDS))
+            == {3, 5, 14, 15, 26, 30, 38, 40, 51, 52, 53, 55, 56, 97} | set(NAMED_MP_IDS))
     # WDM6 is double-moment in cloud AND rain and carries a CCN reservoir:
     # ncr(:,:,1)=nn, ncr(:,:,2)=nc, ncr(:,:,3)=nr (module_mp_wdm6.F:238-240),
     # all three prognostic scalars in the WRF Registry.  It has no ni/ns/ng.
@@ -478,15 +494,15 @@ def test_the_hrrr_route_admission_is_derived_not_respelled():
     # R-003 -- so the ported set is the stale admission plus 50 and 9.
     # 16 and 28 were APPENDED next, with their own entry closures, so the
     # ported set is the stale admission plus 50, 9, 16 and 28.
-    assert set(mt.PORTED_MP_PHYSICS) == STALE_REFL_ADMISSION | {50, 9, 16, 28, 2, 24}
+    assert set(mt.PORTED_MP_PHYSICS) == STALE_REFL_ADMISSION | {50, 9, 16, 28, 2, 24, 13}
     # WSM3 (3, phase split), Ferrier-Aligo (5, rime factor) and FAST_SBM (30) are refused for a
     # genuine missing closure (no
     # bulk-to-spectrum entry closure is validated for a mixed edge), and the
     # named schemes are refused by name; both are therefore outside
     # PORTED_MP_PHYSICS and this route's admission.  Any other refused
     # selector is a regression.
-    assert set(mt.UNVALIDATED_MIXED_EDGE_SELECTORS) == {3, 5, 30} | set(NAMED_MP_IDS), (
-        "a selector other than WSM3, Ferrier-Aligo, FAST_SBM or a named scheme is refused for a "
+    assert set(mt.UNVALIDATED_MIXED_EDGE_SELECTORS) == {3, 5, 14, 15, 26, 30, 38, 40, 51, 52, 53, 55, 56, 97} | set(NAMED_MP_IDS), (
+        "a selector other than WSM3, Ferrier-Aligo, FAST_SBM, GCE or a named scheme is refused for a "
         "missing closure again; every other mixed edge in this release runs "
         "with its mapping named")
 
@@ -791,7 +807,10 @@ def test_every_door_that_commits_to_a_forecast_asks_the_precondition():
     # rather than spelling the question again.  A door that grew its own
     # copy of the sentence is what this catches; that each one FIRES is
     # measured behaviourally, above and in test_mp28_runnable.py.
-    for door in (go_cli.plan_from_config, cli._dispatch, runplan.resolve_plan):
+    # _dispatch owns the output scope; its forecast preparation lives in
+    # _dispatch_with_outputs. The behavioural tests above drive that wrapper.
+    for door in (go_cli.plan_from_config, cli._dispatch_with_outputs,
+                 runplan.resolve_plan):
         source = inspect.getsource(door)
         assert ("experiment_preparation_refusals" in source
                 or "validate_experiment_preparation" in source), door
@@ -863,21 +882,21 @@ def test_every_refl_10cm_admission_constant_admits_28():
     # the table; the asymmetry arithmetic below is unchanged.
     from woof.core.refl import REFL_10CM_INPUT_SPECIES
     producer = frozenset(REFL_10CM_INPUT_SPECIES)
-    assert producer == frozenset({1, 2, 3, 4, 6, 8, 10, 16, 28, 106})
+    assert producer == frozenset({1, 2, 3, 4, 6, 8, 10, 13, 14, 16, 26, 28, 38, 40, 106})
     assert "cfg.mp_physics not in REFL_10CM_INPUT_SPECIES" in refl_source
     # The named schemes stash their own native reflectivity (TEMPO's,
     # ``native_reflectivity``), so they sit on 18's side as well.
     from woof.microphysics_schemes import SCHEMES_BY_ID
-    assert REFL_ADMISSION - producer == {5, 9, 18, 24, 50} | {
+    assert REFL_ADMISSION - producer == {5, 7, 9, 15, 18, 24, 50, 51, 52, 53, 55, 56, 97} | {
         mp for mp, scheme in SCHEMES_BY_ID.items() if scheme.native_reflectivity}
-    assert "elif cfg.mp_physics in (8, 28):" in refl_source, (
+    assert "elif cfg.mp_physics in (8, 28, 38):" in refl_source, (
         "mp=28 no longer shares mp=8's calc_refl10cm branch; WRF has ONE "
         "such routine with no aerosol-aware arm (module_mp_thompson.F:"
         "5710-6028), so a separate branch could only diverge from it")
     # WDM6 does NOT share it: refl10cm_wdm6 is its own Fortran routine
     # (module_mp_wdm6.F:2957-3131) taking a prognostic rain number, so it
     # gets its own branch and its own kernel.
-    assert "elif cfg.mp_physics == 16:" in refl_source
+    assert "elif cfg.mp_physics in (16, 26):" in refl_source
 
 
 def _code_without_comments_or_strings(path: pathlib.Path) -> str:
@@ -1203,7 +1222,7 @@ def test_the_restart_identity_names_the_scheme_and_its_provenance():
     # registered its own identity with the port, held to the same two
     # properties below.  The WRF-numbered rows are otherwise unchanged.
     assert set(restart.MICROPHYSICS_ALGORITHM_IDENTITIES) == {
-        0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106} | set(NAMED_MP_IDS)
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 97, 106} | set(NAMED_MP_IDS)
     fsbm_identity = restart.MICROPHYSICS_ALGORITHM_IDENTITIES[30]
     assert fsbm_identity not in {
         value for key, value in restart.MICROPHYSICS_ALGORITHM_IDENTITIES.items()
@@ -1855,7 +1874,7 @@ def test_the_offline_child_lane_converts_every_ported_edge():
     from woof.core import microphysics_transition as mt
 
     assert 28 in OFFLINE_CHILD_MP_PHYSICS
-    assert _CAPABILITIES["same_scheme_mp_physics"] == [0, 1, 2, 3, 4, 6, 8, 9, 10, 16, 18, 24, 28, 50, 106]
+    assert _CAPABILITIES["same_scheme_mp_physics"] == [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 13, 14, 15, 16, 18, 24, 26, 28, 40, 50, 51, 53, 55, 56, 97, 106]
     assert _CAPABILITIES["cross_scheme_transitions"]["mp_physics"] == sorted(
         PARENT_SCHEME_CONTRACT)
     assert PARENT_SCHEME_CONTRACT == (

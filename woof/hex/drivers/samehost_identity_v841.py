@@ -125,7 +125,13 @@ def collect_owned(layouts: Sequence[Any], rank: int, stack: Mapping[str, Any]) -
             native_padding=regional)
 
     arrays, scalars = {}, {}
-    _walk_leaves("", stack["backend"].restart_state(), arrays, scalars)
+    # The wave state is the run's one whole-mesh service on rank 0 (waves.attach_arwen), not a partitioned
+    # field: it has no owned slice to assemble. THE BREAKAGE THIS PREVENTS: with waves on and more than one
+    # rank, rank 0's restart state carried the spectrum and the others only a marker, and the boundary writer
+    # stopped the run ("boundary entry paths diverge: only on rank 0 ['__backend__/waves/forcing/psfc', ...]").
+    state = dict(stack["backend"].restart_state())
+    state.pop("waves", None)
+    _walk_leaves("", state, arrays, scalars)
     for path in sorted(arrays):
         host = _to_numpy(arrays[path])
         full_path = f"__backend__/{path}"
@@ -312,7 +318,9 @@ def reconstruct_boundary(layouts: Sequence[Any], collected_sequence: Sequence[Ma
         if struct.pack("!d", item["time"]) != struct.pack("!d", first["time"]):
             raise ExecutorError(f"rank {rank}: ranks disagree about model time at a boundary")
         if set(item["entries"]) != set(first["entries"]):
-            raise ExecutorError(f"rank {rank}: boundary entry paths diverge")
+            raise ExecutorError(f"rank {rank}: boundary entry paths diverge: only on rank 0 "
+                                f"{sorted(set(first['entries']) - set(item['entries']))}, only on this rank "
+                                f"{sorted(set(item['entries']) - set(first['entries']))}")
         if set(item["scalars"]) != set(first["scalars"]):
             raise ExecutorError(f"rank {rank}: backend scalar metadata paths diverge")
         for path in sorted(first["scalars"]):
@@ -384,7 +392,7 @@ def reconstruct_boundary(layouts: Sequence[Any], collected_sequence: Sequence[Ma
 
 
 def assemble_owned_arrays(layouts: Sequence[Any], mappings: Sequence[Mapping[str, Any]], *, kinds: Mapping[str, str] | None = None,
-                          native_pads: Sequence[str] = ()) -> dict[str, np.ndarray]:
+                          native_pads: Sequence[str] = (), consume: bool = False) -> dict[str, np.ndarray]:
     """Assemble trailing-axis history arrays from local or owned-only blocks.
 
     ``kinds`` maps field names to cell/edge/vertex, or none for constants.
@@ -407,7 +415,14 @@ def assemble_owned_arrays(layouts: Sequence[Any], mappings: Sequence[Mapping[str
     ordered = sorted(paths)
     # Each field is gathered independently; with the GIL disabled the numpy
     # scatters run in parallel.  Results are placed in the same sorted order.
-    results = _parallel_fields(lambda path: _assemble_one(path, layouts, mappings, kinds, native_pads), ordered)
+    def assemble(path):
+        result = _assemble_one(path, layouts, mappings, kinds, native_pads)
+        if consume:
+            # Each rank field dies after its scatter, before the next frame.
+            for mapping in mappings:
+                mapping.pop(path)
+        return result
+    results = _parallel_fields(assemble, ordered)
     return dict(zip(ordered, results))
 
 

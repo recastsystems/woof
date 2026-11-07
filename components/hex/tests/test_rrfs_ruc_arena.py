@@ -45,3 +45,27 @@ def test_one_shared_saturation_table():
 def test_conus3km_rank_fits_the_int32_arena_offsets():
     # Largest conus3km rank of 4 (hex K3 partition): 585,440 owned cells.  Before the shared table, 5,754 words.
     assert 585_440 * ruc.arena_words("land_ruc_land", dict(nsl=9, nlcat=50, nscat=30)) < 2**31
+
+
+def test_hip_tiles_cover_full_conus_once_and_keep_global_arguments(monkeypatch):
+    from woof import hip_backend
+    monkeypatch.setattr(hip_backend, 'active', lambda: True)
+    columns = 2_341_818
+    width = ruc.workspace_columns('land_ruc_land', columns)
+    assert width * ruc.WORK_WORDS < 2**31
+    assert ruc.workspace_columns('drivers_driver_forcing', columns) == columns
+    work = _Shape(623, width)
+    ptrs, tables, errors = object(), object(), object()
+    calls = []
+    def launch(grid, block, arguments, stream=None):
+        assert arguments[:4] == (ptrs, tables, work, errors)
+        assert int(arguments[4]) == columns
+        first, stride = map(int, arguments[5:])
+        count = min(stride, columns - first)
+        assert count <= grid[0] * block[0] < count + block[0]
+        calls.append((first, first + count))
+    ruc.launch_hip_tiles(launch, ptrs, tables, work, errors, columns, block=32)
+    assert calls[0][0] == 0 and calls[-1][1] == columns
+    assert all(left[1] == right[0] for left, right in zip(calls, calls[1:]))
+    monkeypatch.setattr(hip_backend, 'active', lambda: False)
+    assert ruc.workspace_columns('land_ruc_land', columns) == columns

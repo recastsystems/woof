@@ -35,6 +35,7 @@ __all__ = [
     "GLACIER_OUTPUT_SCALARS",
     "evaluate_glacier_columns",
     "evaluate_glacier_columns_on_host",
+    "evaluate_simple_glacier_slab",
     "pack_glacier_columns",
 ]
 
@@ -142,19 +143,20 @@ def _raise_on_errors(errors: np.ndarray) -> None:
 
 
 @lru_cache(maxsize=None)
-def _module(device: int, options: tuple[str, ...]):
+def _module(device: int, options: tuple[str, ...], selected_options: bool = False):
     """Compile (once per option set) the COMPOSED glacier translation
     unit -- noahmp_leaves.cu (the single glibc device transcription)
     followed by noahmp_glacier.cu, exactly as
     woof/core/noahmp_kernel_sources.py declares it.  ``get_kernel``
     loads single files and must not be handed a fragment."""
     return compile_runtime_unit(
-        "noahmp_glacier", module_key="woof.core.noahmp_glacier_gpu:glacier",
-        options=options)
+        "noahmp_glacier", module_key="woof.core.noahmp_glacier_gpu:glacier"
+        + ("(selected-options)" if selected_options else ""),
+        options=options, selected_options=selected_options)
 
 
 def glacier_module(options: tuple[str, ...] = DEFAULT_OPTIONS, *,
-                   noahmp_snow_age="wrf_470"):
+                   noahmp_snow_age="wrf_470", selected_options: bool = False):
     """The compiled composed glacier unit (cached per option set)."""
     from woof.noahmp_generation import snow_age_generation
     generation = snow_age_generation(noahmp_snow_age)
@@ -163,8 +165,83 @@ def glacier_module(options: tuple[str, ...] = DEFAULT_OPTIONS, *,
     # identity the frame recordings and the kernel manifest are keyed on --
     # and only the explicit wrf_461 reproduction adds a define.
     if generation == "wrf_470":
-        return _module(_current_device(), tuple(options))
-    return _module(_current_device(), tuple(options) + ("-DGPUWM_NOAHMP_NIGHT_AGE=0",))
+        return _module(_current_device(), tuple(options), selected_options)
+    return _module(_current_device(), tuple(options) + ("-DGPUWM_NOAHMP_NIGHT_AGE=0",),
+                   selected_options)
+
+
+def evaluate_simple_glacier_slab(fields, count: int, dt: float, *,
+                                  opt_alb=2, opt_stc=1, opt_tbot=2,
+                                  noahmp_snow_age="wrf_470"):
+    """Resident GLA=2 leaf candidate; returns device fields and error codes.
+
+    This implements the selected native branch, independently of full parent
+    option admission. Inputs follow GLACIER_INPUT_SCALARS/ARRAYS, all resident
+    f32 C(count[,width]); isnow is i32[count], shared zsoil f32[4]. Native
+    BATS glacier uses fixed constants rather than land's MPTABLE parameters.
+    All packing, output splitting and numerical work stay on the current
+    card/stream. Error codes remain resident for output/checkpoint handling.
+    """
+    import cupy as cp
+    import math
+    from woof.core.noahmp_slab_libm import copy_slab_slots, split_slab_slots
+
+    if type(count) is not int or count < 0:
+        raise ValueError("GLA=2 slab count must be a non-negative int")
+    if type(opt_alb) is not int or opt_alb not in (1, 2):
+        raise ValueError("GLA=2 opt_alb must be scalar int 1 or 2")
+    if type(opt_stc) is not int or opt_stc not in (1, 2, 3):
+        raise ValueError("GLA=2 opt_stc must be scalar int 1, 2 or 3")
+    if type(opt_tbot) is not int or opt_tbot not in (1, 2):
+        raise ValueError("GLA=2 opt_tbot must be scalar int 1 or 2")
+    if (not isinstance(dt, (int, float, np.floating)) or isinstance(dt, bool)
+            or not math.isfinite(dt) or dt <= 0):
+        raise ValueError("GLA=2 dt must be finite positive host cadence metadata")
+
+    device = cp.cuda.runtime.getDevice()
+
+    def resident(name, shape, dtype):
+        a = fields[name]
+        if (not isinstance(a, cp.ndarray) or a.shape != shape
+                or a.dtype != dtype or a.device.id != device):
+            raise ValueError(f"GLA=2 {name} needs resident {dtype} {shape} "
+                             "on the current CUDA device")
+        return cp.ascontiguousarray(a)
+
+    packed = cp.empty((count, N_INPUT), dtype=cp.float32)
+    blocks = []
+    slot = 0
+    for name, width in (tuple((name, 1) for name in GLACIER_INPUT_SCALARS)
+                        + GLACIER_INPUT_ARRAYS):
+        shape = (count,) if width == 1 else (count, width)
+        blocks.append((slot, resident(name, shape, cp.float32)))
+        slot += width
+    isnow = resident("isnow", (count,), cp.int32)
+    zsoil = resident("zsoil", (NSOIL,), cp.float32)
+    copy_slab_slots(packed, blocks)
+    out = cp.empty((count, N_OUTPUT), dtype=cp.float32)
+    io = cp.empty((count, 2), dtype=cp.int32)
+    if count:
+        name = ("noahmp_glacier_column_gla2_bats" if opt_alb == 1
+                else "noahmp_glacier_column_gla2")
+        selected_thermal = opt_stc == 2 or opt_tbot == 1
+        if selected_thermal:
+            name = "noahmp_glacier_column_options"
+        kernel = glacier_module(noahmp_snow_age=noahmp_snow_age,
+                                 selected_options=True).get_function(name)
+        kernel(((count + THREADS - 1) // THREADS,), (THREADS,),
+               (packed, isnow, zsoil, np.float32(dt), out, io, np.int32(count),
+                *((np.int32(opt_alb), np.int32(2), np.int32(opt_stc),
+                   np.int32(opt_tbot)) if selected_thermal else ())))
+    specs = {}
+    slot = 0
+    for name, width in (tuple((name, 1) for name in GLACIER_OUTPUT_SCALARS)
+                        + GLACIER_OUTPUT_ARRAYS):
+        specs[name] = (slot, width)
+        slot += width
+    result = split_slab_slots(out, specs)
+    result.update(split_slab_slots(io, {"isnow": (0, 1), "error_code": (1, 1)}))
+    return result
 
 
 def evaluate_glacier_columns(inputs: dict, count: int,

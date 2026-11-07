@@ -5,7 +5,7 @@ Every candidate global source for worldwide `woof hydro`, checked against its li
 with a SHA256 under `$HYDRO_WORLD_DATA/licences/<source>/` on the verifying node. That folder's
 `SOURCE.md` lists every file with its URL, fetch time and hash, and `SHA256SUMS` covers every file.
 
-The bar (the project's licence ruling, 2026-10-14): WOOF stays Apache-2.0, and no default path goes into data whose
+The bar (the licence ruling, 2026-10-14): WOOF stays Apache-2.0, and no default path goes into data whose
 licence limits sale or use. A source passes only if its licence, read at the source, allows commercial use and
 redistribution of derived products. Anything NonCommercial, NoDerivatives, available only after registration, or
 unclear is excluded, and the excluded sentence is quoted.
@@ -39,8 +39,8 @@ unclear is excluded, and the excluded sentence is quoted.
 | HydroSHEDS v1 (core DEM/DIR/ACC, HydroRIVERS, HydroBASINS) | WWF HydroSHEDS v1 License Agreement (custom) | RESEARCH-ONLY (coordinator ruling 2026-10-18T11:50Z): cross-check only, never a default input, never bundled, never fetched by default; four clauses below | yes (`data.hydrosheds.org`, HTTP 200) |
 | HydroSHEDS v2 | not released | NOT AVAILABLE: "Release of the data under a free license will begin in 2026." Re-check on release | no data yet |
 | ERA5-Land | CC BY 4.0 | ALLOWED (coordinator ruling 2026-10-18T09:05Z): fetched through the engine's existing CDS path and credential, no new account | through the engine's configured CDS credential (anonymous retrieve returns 401) |
-| GLDAS (NASA) | CC0 by NASA ESDIS default for NASA-led data | Licence ALLOWED; EXCLUDED pending the project owner because downloads need an Earthdata Login | no (GES DISC file returns 401 and redirects to `urs.earthdata.nasa.gov`) |
-| GloFAS data (CEMS) | CEMS-FLOODS datasets licence | Licence ALLOWED with attribution; EXCLUDED pending the project owner because downloads need an EWDS account | no (EWDS retrieve API returns 401) |
+| GLDAS (NASA) | CC0 by NASA ESDIS default for NASA-led data | Licence ALLOWED; EXCLUDED pending approval because downloads need an Earthdata Login | no (GES DISC file returns 401 and redirects to `urs.earthdata.nasa.gov`) |
+| GloFAS data (CEMS) | CEMS-FLOODS datasets licence | Licence ALLOWED with attribution; EXCLUDED pending approval because downloads need an EWDS account | no (EWDS retrieve API returns 401) |
 | LISFLOOD code | EUPL-1.2 (copyleft) | EXCLUDED from any code we ship (copyleft; Apache-2.0 is not on EUPL's compatible list) | n/a |
 | MERIT Hydro / MERIT DEM | dual CC BY-NC 4.0 or ODbL 1.0 | EXCLUDED: download needs registration on a Google Form; the ODbL branch would also make derived data share-alike | no (password sent after registration) |
 | ESA CCI Land Cover | ESA CCI LC licence plus VITO licence | EXCLUDED: educational/scientific use only; commercial promotion needs prior approval | n/a |
@@ -68,7 +68,7 @@ unclear is excluded, and the excluded sentence is quoted.
   (daily mean, daily instantaneous max and min) over the whole record; see the per-source sections.
 - **Forcing and land reanalysis:** ERA5 single levels through ARCO-ERA5 (no account) and ERA5-Land (through the
   engine's existing CDS credential, 09:05Z ruling) are ALLOWED. GLDAS and GloFAS still need an account
-  (Earthdata, EWDS) and stay EXCLUDED pending the project owner.
+  (Earthdata, EWDS) and stay EXCLUDED pending approval.
 - **Parameters:** NOAA NWM v3.1.6 parameter files are US government work in the public domain and may seed
   parameter priors. This covers the NOAA parameter data only, never WRF-Hydro code (UCAR) and never the NC-licensed
   NextGen v2.2 fabric.
@@ -231,9 +231,9 @@ The four clauses the ruling rests on (Appendix A of the technical documentation 
 > Licensee of the terms of this License; or (ii) in the sole discretion of WWF."
 
 In practice: an Apache-2.0 package that ships HydroSHEDS-derived layers would need an EULA flow and two years of
-end-user records, and WWF can withdraw it at will. That is a limited licence under the project ruling of 2026-10-14.
+end-user records, and WWF can withdraw it at will. That is a limited licence under the 2026-10-14 ruling.
 
-**Ruling (coordinator, 2026-10-18T11:50Z, applying the project's licence law): RESEARCH-ONLY.** HydroSHEDS v1
+**Ruling (coordinator, 2026-10-18T11:50Z, applying the licence policy): RESEARCH-ONLY.** HydroSHEDS v1
 (HydroRIVERS, HydroBASINS, the HydroSHEDS DEM) is a research and cross-check source only, exactly like the
 NextGen v2.2 fabric: never bundled, never fetched by default, never a default input or the default path. A fabric
 built from it (the Rhine proof fabric) is a research artifact: the proof stands as a proof of the pipeline, not of
@@ -264,7 +264,7 @@ in the environment; ERA5-Land is a CDS dataset under the same credential, so it 
 that path. No new registration or account. Attribution: `Contains modified Copernicus Climate Change Service
 information (ERA5-Land, Munoz Sabater 2019, doi:10.24381/cds.e2161bac), CC BY 4.0`.
 
-### GLDAS (licence ALLOWED; EXCLUDED pending the project owner: account needed)
+### GLDAS (licence ALLOWED; EXCLUDED pending approval: account needed)
 Saved: `gldas/policy.html` (sha256 0814d026...). The GES DISC dataset page is drawn by script and has no
 licence text.
 > "Unless the content is marked with a use restriction or license, data provided from a NASA-led mission are
@@ -273,7 +273,7 @@ licence text.
 Access check: a GLDAS_NOAH025_3H.2.1 file returns HTTP 401 and redirects to `urs.earthdata.nasa.gov` (Earthdata
 Login).
 
-### GloFAS data, CEMS (licence ALLOWED; EXCLUDED pending the project owner: account needed)
+### GloFAS data, CEMS (licence ALLOWED; EXCLUDED pending approval: account needed)
 Saved: `glofas/licence.pdf` (sha256 428a6e10..., the "CEMS-FLOODS datasets licence" linked from the EWDS
 catalogue record for `cems-glofas-historical`), `glofas/ewds.json`.
 > "users are granted free access to the data of CEMS EFAS & GloFAS for the following purposes ... (a)
@@ -339,7 +339,7 @@ archive and redistributed products.
 
 Every file named here is under `$HYDRO_WORLD_DATA/licences/<source>/` on the verifying node with its URL, fetch
 time and SHA256 in that folder's `SOURCE.md` and `SHA256SUMS`. Plain-text extractions (`*.txt`) are derived, not source.
-These rows replace the provisional "merged-provider" rows that reached `lane/nextgen-integrate` without saved bytes in
+These rows replace the provisional "merged-provider" rows that reached `development branch` without saved bytes in
 this folder; their content is kept and now carries evidence.
 
 ### Products derived from Copernicus DEM (ALLOWED with notices)
@@ -593,7 +593,7 @@ NOAA endorsement implied`.
 
 - HydroSHEDS v1: settled, RESEARCH-ONLY (11:50Z ruling). The init-source row is marked by hydro-lead (ruling item 5).
 - HydroSHEDS v2: check again when data is released ("Release of the data under a free license will begin in 2026").
-- GLDAS and GloFAS still need an account (Earthdata, EWDS) and stay EXCLUDED pending the project owner.
+- GLDAS and GloFAS still need an account (Earthdata, EWDS) and stay EXCLUDED pending approval.
 - BAFU historical series need a manual BAFU order (free, same open terms). The gauge door can use LINDAS for current
   values; a past-event verification over Switzerland needs the ordered file placed under the gauges data root.
 - NWM RouteLink 3.1.6: held by nwm-v4-config until its Lynker Reference Fabric 3.0 citation is resolved.

@@ -197,8 +197,14 @@ def test_dispatch_preserves_small_shape_and_strict_throughput(monkeypatch):
     cupy.cuda = cuda
     cuda.Device = lambda: SimpleNamespace(attributes={'MultiProcessorCount': 170})
     cuda.driver = SimpleNamespace(occupancyMaxActiveBlocksPerMultiprocessor=lambda *args: 8)
+    cuda.runtime = SimpleNamespace(is_hip=False)  # the backend selector reads it
     monkeypatch.setitem(sys.modules, 'cupy', cupy)
     monkeypatch.setitem(sys.modules, 'cupy.cuda', cuda)
+    import woof.backend as engine_backend
+    monkeypatch.setattr(engine_backend, "_selected", None)  # the selector memoizes the first cupy it served
+    # (Recast WOOF) a fake CuPy opens no device: the engine backend's local-GPU ban (GPUWM_NO_LOCAL_GPU,
+    # which the CPU suites set) guards real device contact, not this stub
+    monkeypatch.setattr("woof.local_gpu.no_local_gpu", lambda: False)
     monkeypatch.delenv('WOOF_HEX_MYNNEDMF_LANES', raising=False)
     kernels = {w: SimpleNamespace(ptr=w) for w in edmf.LANE_WIDTHS}
     for mode, large_width in [('fast', 4), ('strict', 1)]:

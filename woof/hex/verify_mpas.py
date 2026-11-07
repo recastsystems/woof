@@ -724,6 +724,16 @@ def proof_numerics(command: list[str]) -> tuple[list[str], dict[str, Any]]:
         "mode": PROOF_NUMERICS, "source": "verify_mpas default (the deck names no numerics)", "appended": True}
 
 
+def proof_no_products(command: list[str]) -> list[str]:
+    """``command`` with ``--no-products`` appended when the deck names neither ``--products`` nor ``--no-products``.
+    The forecast door starts its map products detached after the run, writing ``products/`` and
+    ``products.frame-cache-scratch/`` inside the forecast folder this verifier then inventories. Breakage it prevents:
+    on a host whose renderer resolves, deck f4-M0-mesoscale-march-small-rank1 compared 531,318,948 words with 0 differing
+    and still went RED on 125 "extra output stream in hex" files from the products' frame cache (4-card box, 2026-11-03).
+    Products are not part of the proof, so no deck file changes (as proof_numerics does for numerics)."""
+    if any(part in ("--products", "--no-products") or part.startswith("--products=") for part in command):
+        return list(command)
+    return [*command, "--no-products"]
 def validate_model_command(command: list[str]) -> None:
     """A placeholder mentioned as provenance is not a model input binding."""
     if len(command) < 2 or command[:2] != ["woof hex", "forecast"]:
@@ -808,6 +818,7 @@ def verify(args: argparse.Namespace) -> dict[str, Any]:
     run_command, physics_mode = proof_physics_mode(command, inputs["namelist"])
     run_command = proof_default_backend(run_command)
     run_command, numerics_record = proof_numerics(run_command)
+    run_command = proof_no_products(run_command)
     model_execution = args.hex_output is None
     reference_environment = (read_json(file_ref(deck['strict_environment'], deck_path.parent))
                              if deck.get('strict_environment') else None)

@@ -139,7 +139,7 @@ def test_a_rustup_install_off_PATH_is_still_found(monkeypatch, tmp_path):
     answers ``1.93.1``.  Every bridge build then refused with "no Rust
     toolchain is on PATH" and told its owner to install what was already
     installed; ten tests in tests/test_domain_wizard_forcing.py errored in
-    their module fixture on exactly that, measured on a development machine 2026-09-17.
+    their module fixture on exactly that, measured on test host 1 2026-09-17.
 
     The ladder is asserted in order, because the order is the contract: an
     explicit choice, then the shell's, then rustup's own home.

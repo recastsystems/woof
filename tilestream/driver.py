@@ -191,6 +191,7 @@ the solar clock, and ``cen_lat``
 from __future__ import annotations
 
 import time as _time
+import types as _types
 import warnings
 
 import numpy as np
@@ -503,13 +504,17 @@ def setup_window_mismatches(tile_state, parent_state, spec) -> dict[str, float]:
 #: as cupy DEVICE arrays, legacy RRTMG and Noah-MP as HOST numpy.
 _SCHEME_GEOGRAPHY: tuple[tuple[str, str], ...] = (
     ("radiation", "radiation_callable"),
+    # OSAS's counter draw follows domain column identity through tile reuse.
+    ("cumulus", "cumulus_callable"),
     ("noahmp", "noahmp_geometry"),
     ("cam_ozone", "cam_ozone"),
     # WRF's swint_opt = 1 carrier (woof.core.swint): its per-step zenith
     # cosine reads its own device latitude/longitude grids.
     ("swint", "swint"),
+    ("farms", "farms"),
 )
-_SCHEME_GEOGRAPHY_ATTRS: tuple[str, ...] = ("latitude_deg", "longitude_deg")
+_SCHEME_GEOGRAPHY_ATTRS: tuple[str, ...] = (
+    "latitude_deg", "longitude_deg", "column_indices")
 
 
 def _scheme_geography_owners(driver):
@@ -763,6 +768,14 @@ def assert_geography_gathered(state, driver=None, *, keys=None,
         if depth > 4 or id(obj) in seen:
             return
         seen.add(id(obj))
+        # A module bound on a scheme (legacy RRTMG keeps woof.ingest.wrf_ozone
+        # as self._ozone) is code, not per-domain state.  Walking into it
+        # reached ctypes.cdll, whose attribute lookup dlopen()s the name: on
+        # Python 3.11 that raised OSError "geography_cache_dependencies:
+        # cannot open shared object file" and failed every ranked build with
+        # legacy RRTMG and o3input on (3.12 turns it into AttributeError).
+        if isinstance(obj, _types.ModuleType):
+            return
         if isinstance(obj, (cp.ndarray, np.ndarray)):
             shape = tuple(int(s) for s in obj.shape)
             if ncol > 1 and shape and shape[0] == ncol:
@@ -1682,6 +1695,27 @@ class TiledRun:
             if check_geography:
                 assert_geography_gathered(tiles[0], keys=geography_names)
 
+        # Noah-MP's sparse land layout belongs to a footprint, not a reusable
+        # GPU buffer. Classify all footprints once before integration. Only
+        # pinned 2-D metadata survives here; parameter expansion stays on GPU.
+        noahmp_footprints = {}
+        for itile, tspec in enumerate(specs):
+            b = itile % nbuffers
+            physics = getattr(tiles[b], "physics", None)
+            params = getattr(physics, "noahmp_params", None)
+            if params is None or not getattr(params, "static_surface_identity", False):
+                continue
+            identity_names = ("xland", "xice", "ivgtyp", "isltyp")
+            source = {name: home["fields/" + name] for name in identity_names}
+            target = {name: physics.fields[name] for name in identity_names}
+            plan = _gather.make_plan(source, target, tspec, "gather",
+                                     allow_pageable=allow_pageable, nz=nz)
+            plan.execute(source, target)
+            if params.prepare_surface_footprint(
+                    itile, physics.fields, nsoil=physics.fields["tslb"].shape[0],
+                    sf_urban_physics=int(getattr(cfg, "sf_urban_physics", 0))):
+                noahmp_footprints[b] = params
+
         ring = None
         fire_shadow = None
         if write_mode == "inplace":
@@ -1733,7 +1767,7 @@ class TiledRun:
         # reason -- a shared status word is a cross-stream read-modify-write that
         # can only lose a fault flag.
         graph_steppers = None
-        if use_graph:
+        if use_graph and not cfg.diag_print:
             from tilestream import graphcap as _graphcap
             from tilestream import physics_inventory as _pi
 
@@ -2023,6 +2057,8 @@ class TiledRun:
                         # never early.
                         for k in sched.gather_seam_waits[itile]:
                             stream.wait_event(ev_scatter[k])
+                if b in noahmp_footprints:
+                    noahmp_footprints[b].bind_surface_footprint(itile)
                 # GEOGRAPHY FIRST, and only when this buffer changes tile. With
                 # nbuffers >= len(specs) each buffer serves one tile for the
                 # whole run and this fires exactly once per buffer -- the
@@ -2246,7 +2282,12 @@ class TiledRun:
                         elif "_iau_forcing" in vars(tiles[b]):
                             # a released lease's last window forcing
                             del tiles[b]._iau_forcing
+                        if cfg.diag_print:
+                            from woof.core.misc_diag_print import bind_window
+                            bind_window(tiles[b], tspec, cfg.nx)
                         set_wrf_cfl_tile_window(cfg.grid_id, tspec)
+                        if self.pre_step_hook is not None:
+                            self.pre_step_hook(tiles[b], tspec, itile, stream)
                         if timeline:
                             began = cp.cuda.Event()
                             began.record(stream)
@@ -2371,11 +2412,11 @@ class TiledRun:
                             # window's share of a post-step increment, ahead
                             # of the scatter (ev_stepped below orders it).
                             iau.after_window(tiles[b], tspec, itile, stream=stream)
-                        if post_step_hook is not None:
+                        if self.post_step_hook is not None:
                             # The WRITER at the same instant: it clears the
                             # tile's one-frame REFL_10CM handoff, after the
                             # readers above have folded the buffer.
-                            post_step_hook(tiles[b], tspec, itile, stream)
+                            self.post_step_hook(tiles[b], tspec, itile, stream)
                         if sched is not None and chained:
                             # Recorded BEHIND the observers and hooks, so
                             # anything they issued into this stream is
@@ -2669,6 +2710,8 @@ class TiledRun:
         self._closed = False
         self.scalars = scalars
         self.observer = observer
+        self.post_step_hook = post_step_hook
+        self.pre_step_hook = None
         self.nz = int(nz)
         # Recorded PER AXIS, because since feat-open-lateral-bc the two can
         # differ and a single ``periodic`` attribute would answer the wrong
@@ -2974,7 +3017,8 @@ def _advance_clock(clock, tiles, last_b, _physics, *, fire_records=()) -> dict:
     for got in per_buffer:
         fires += int(got.get("ysu_nan_guard_fires", 0)) \
             - int(clock.get("ysu_nan_guard_fires", 0))
-        for key in ("elapsed_seconds", "call_counts", "microphysics_updates", "fire_clocks"):
+        for key in ("elapsed_seconds", "call_counts", "microphysics_updates", "fire_clocks",
+                    "wrf_mass_carriers_cold", "radiation_owned", "lightning_clock"):
             if key in ref and got.get(key) != ref[key]:
                 raise TiledRunError(
                     f"tile buffers disagree on the scalar carrier {key!r} "

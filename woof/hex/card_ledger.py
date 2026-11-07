@@ -10,7 +10,7 @@ memory, subtracts the part of every live reservation its owner has not yet
 allocated, and records the new claim before the lock is released.  A second
 claim in the same instant sees the first one.
 
-The arithmetic is the box card queue's (pool-v3 ``run.sh``) shared admission:
+The arithmetic is the box card queue's shared admission:
 measured free (which already counts every process on the card, ours or not)
 minus, for each live reservation, its budget less what its processes already
 hold.  Reservations whose processes are all gone are dropped on the next
@@ -108,7 +108,7 @@ def pid_alive(pid: int) -> bool:
 
 def nvidia_free_bytes(device: int = 0) -> int | None:
     try:
-        out = subprocess.run(["nvidia-smi", f"--id={device}", "--query-gpu=memory.free",
+        out = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), f"--id={device}", "--query-gpu=memory.free",
                               "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=20)
         return int(float(out.stdout.strip().splitlines()[0])) * 2**20
     except Exception:  # noqa: BLE001 - no card visible: the caller records an unmeasured fit
@@ -122,7 +122,7 @@ def nvidia_used_bytes(pids: Iterable[int]) -> int:
     if not wanted:
         return 0
     try:
-        out = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory",
+        out = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-compute-apps=pid,used_memory",
                               "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=20)
     except Exception:  # noqa: BLE001 - unreadable: count nothing allocated (the conservative side)
         return 0

@@ -37,7 +37,8 @@ def _model(adaptive):
 
 @pytest.mark.parametrize("adaptive", [False, True])
 @pytest.mark.parametrize("fault", ["nan", "folded-layer"])
-def test_actual_failed_step_never_reaches_history_or_checkpoint(adaptive, fault):
+@pytest.mark.parametrize("health_debug", [False, True])
+def test_actual_failed_step_never_reaches_history_or_checkpoint(adaptive, fault, health_debug):
     import cupy as cp
     from woof.core import dycore
     from woof.core.model import execute_experiment
@@ -62,8 +63,12 @@ def test_actual_failed_step_never_reaches_history_or_checkpoint(adaptive, fault)
         execute_experiment(model, steppers={1: faulted_step}, experiment=exp,
             history_handler=lambda tree, node, ticks: history.append(node.clock.elapsed_seconds),
             restart_handler=lambda tree, ticks: checkpoints.append(tree.root.clock.elapsed_seconds),
-            pool_trim_per_period=False)
-    assert count == 4 and model.root.clock.elapsed_seconds == 3.
+            pool_trim_per_period=False, health_debug=health_debug)
+    assert count == 4
+    # Immediate debug checks precede clock commit. The asynchronous path
+    # may commit internal progress, but the mandatory publication drain
+    # must refuse before the fault's history or checkpoint is visible.
+    assert model.root.clock.elapsed_seconds == (3. if health_debug else 4.)
     assert history == [0., 1., 2., 3.]
     assert checkpoints == [1., 2., 3.]
 

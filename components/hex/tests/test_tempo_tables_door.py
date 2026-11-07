@@ -100,7 +100,7 @@ def test_an_unreadable_init_is_left_to_the_init_reader(monkeypatch, tmp_path):
 
 
 def test_an_init_without_aerosol_is_refused_before_any_table_download(monkeypatch, tmp_path):
-    # verify-hex-r2 M3: the door downloaded ~930 MB of TEMPO tables into a
+    # release review M3: the door downloaded ~930 MB of TEMPO tables into a
     # fresh home and only then refused the init.  The init is checked first.
     calls = []
     row = _tempo_row(monkeypatch, lambda *a, **k: calls.append((a, k)))

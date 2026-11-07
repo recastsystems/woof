@@ -14,7 +14,7 @@ def _same(cp, actual, expected):
     assert cp.asnumpy(actual).tobytes() == cp.asnumpy(expected).tobytes()
 
 
-def _fixture(members, *, ratio, mapped, smooth):
+def _fixture(members, *, ratio, mapped, smooth, mp_physics=8, feedback=1, terrain=False, mu_halo=False):
     import cupy as cp
     from woof.core.model import FeedbackScratch
     from woof.core.nest import NestCoupler
@@ -24,10 +24,10 @@ def _fixture(members, *, ratio, mapped, smooth):
     from test_ensemble_batch_acoustic_gpu import _pack_physical
     from test_nest_coupler import _clock
 
-    parent, parents, pcfg, _ = _pack_physical(members, moist=True, mp_physics=8,
-        mapped=mapped, boundary="specified", nz=6, ny=37, nx=39)
-    child, children, ccfg, _ = _pack_physical(members, moist=True, mp_physics=8,
-        mapped=mapped, boundary="nested", nz=6, ny=27, nx=30)
+    parent, parents, pcfg, _ = _pack_physical(members, moist=True, mp_physics=mp_physics,
+        mapped=mapped, terrain=terrain, mu_halo=mu_halo, boundary="specified", nz=6, ny=37, nx=39)
+    child, children, ccfg, _ = _pack_physical(members, moist=True, mp_physics=mp_physics,
+        mapped=mapped, terrain=terrain, mu_halo=mu_halo, boundary="nested", nz=6, ny=27, nx=30)
     pcfg = replace(pcfg, grid_id=1, dt=float(ratio * 3))
     ccfg = replace(ccfg, grid_id=2, dt=3.)
     parent.cfg, child.cfg = pcfg, ccfg
@@ -44,7 +44,7 @@ def _fixture(members, *, ratio, mapped, smooth):
         cclock = _clock(2, 1, step_ticks=3, dt=3)
         pnode = SimpleNamespace(cfg=pd, state=pstate, clock=pclock)
         cnode = SimpleNamespace(cfg=cd, state=cstate, clock=cclock, parent=pnode)
-        cnode.coupler = NestCoupler(cnode, feedback=1, smooth_option=smooth)
+        cnode.coupler = NestCoupler(cnode, feedback=feedback, smooth_option=smooth)
         nodes.append((pnode, cnode, FeedbackScratch()))
     regs = {stagger: register_nest(nri=ratio, nrj=ratio,
         i_parent_start=5, j_parent_start=5, child_nx=ccfg.nx, child_ny=ccfg.ny,
@@ -53,7 +53,7 @@ def _fixture(members, *, ratio, mapped, smooth):
     edge = PreparedMemberNestEdge(parent, child, registrations=regs,
         fields=nest_field_kinds(ccfg), parent_dt_fp32=np.float32(ratio * 3),
         parent_interval_ticks=ratio * 3, parent_tick_den=1, available_bytes=1 << 30,
-        feedback=1, smooth_option=smooth, array_module=cp,
+        feedback=feedback, smooth_option=smooth, array_module=cp,
         member_ids=tuple(100 + member for member in range(members)))
     return parent, child, nodes, edge
 

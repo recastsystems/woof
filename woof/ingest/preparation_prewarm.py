@@ -34,7 +34,7 @@ def synthetic_preparation(run=None, *, specific=True):
         # stages QNWFA_QNIFA_SIGMA_MONTHLY.dat (okc3-hrrr on G12,
         # 2026-10-20).  So the column carries the QNWFA/QNIFA pair
         # (_aerosol_number_profile) and selects the analysis source with no
-        # dataset behind it.  Breakage this prevents (V59 8x5090,
+        # dataset behind it.  Breakage this prevents (test host 8x5090,
         # 2026-10-21, the packaged hrrr_v4_gsd41 recipe, use_rap_aero_icbc =
         # true): every preparation job refused with "analyzed aerosol IC/BC
         # requires QNWFA and QNIFA on every initial and boundary frame".

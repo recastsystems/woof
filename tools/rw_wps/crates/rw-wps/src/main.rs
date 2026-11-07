@@ -67,6 +67,15 @@ struct AuthorMappedArgs {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Produce WRF auxiliary surface input in Rust.
+    Wrflowinp {
+        #[arg(long, required = true)]
+        input: Vec<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value_t = 2)]
+        sf_surface_physics: i32,
+    },
     /// Prepare refined fire-grid fuel and terrain using the Rust static builder.
     FireStatic {
         config: PathBuf,
@@ -149,6 +158,9 @@ fn real_main() -> Result<(), RwWpsError> {
         .or_else(|| std::env::var_os("RW_WPS_ENGINE"))
         .unwrap_or_else(|| OsString::from("woof-wrf-init"));
     match cli.command {
+        Commands::Wrflowinp { input, output, sf_surface_physics } => {
+            print_json(&rw_wps::wrflowinp::run(&input, &output, sf_surface_physics)?)
+        }
         Commands::FireStatic {config,output,receipt,static_engine} => {
             rw_wps::sfire::run(&config,&output,receipt.as_deref(),&static_engine)
         }

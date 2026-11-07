@@ -3,7 +3,7 @@
 
 The ruling record itself carries private context, so it is not in this tree: set
 RRFS_SOURCE_AUTHORITY_RULING to the reference store's copy (beside the init derivative build,
-native/derivatives/<derivative>/DREW-RULING.json). Its bytes stay bound by SHA-256 below.
+native/derivatives/<derivative>/REFERENCE-RULING.json). Its bytes stay bound by SHA-256 below.
 """
 import argparse
 import hashlib
@@ -227,14 +227,14 @@ def stage_build(build, source, stage, kind):
                        ('OBJECT-VERIFICATION.json',verification)]:
         (stage/name).write_text(json.dumps(value,indent=2)+'\n')
     shutil.copy2(patch,stage/'APPROVED.patch')
-    shutil.copy2(RULING,stage/'DREW-RULING.json')
+    shutil.copy2(RULING,stage/'REFERENCE-RULING.json')
     return manifest
 
 
 def publish_stage(stage, reference):
     manifest = json.loads((stage/'MANIFEST.json').read_text())
     approved = validate_authority(manifest['source_correction'],sha(stage/(manifest['core']+'_model')))
-    if sha(stage/'DREW-RULING.json') != approved['ruling_sha256'] or sha(stage/'APPROVED.patch') != approved['patch_sha256']:
+    if sha(stage/'REFERENCE-RULING.json') != approved['ruling_sha256'] or sha(stage/'APPROVED.patch') != approved['patch_sha256']:
         raise ValueError('transported ruling or approved patch differs')
     audit = json.loads((stage/'flag-audit.json').read_text())
     records = [json.loads(line) for line in (stage/'compile-commands.jsonl').read_text().splitlines()]
@@ -306,7 +306,7 @@ def authorize_existing_case(source, build, destination, ready, evidence):
         shutil.copy2(source/name,temporary/name)
     shutil.copy2(source/'MANIFEST.json',temporary/'ORIGINAL-MANIFEST.json')
     shutil.copy2(source/'PUBLICATION.json',temporary/'ORIGINAL-PUBLICATION.json')
-    shutil.copy2(RULING,temporary/'DREW-RULING.json')
+    shutil.copy2(RULING,temporary/'REFERENCE-RULING.json')
     shutil.copy2(HERE/'diagnostics'/PATCHES['init'],temporary/'APPROVED.patch')
     for path in evidence:
         shutil.copy2(path,temporary/Path(path).name)

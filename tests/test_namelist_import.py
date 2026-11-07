@@ -1,7 +1,6 @@
 """Namelist importer tests (Phase-5 Task 1, recon G10).
 
-The bundle gate retains the original namelist as a fail-loud fixture for
-unsupported ``nwp_diagnostics=1`` / default ``use_theta_m=1``, then imports
+The bundle gate retains the original namelist and imports
 an explicit effective copy (both set to 0) and reproduces the committed
 ``configs/real74_4dom.toml`` byte-for-byte modulo the enumerated
 importer-behaviour changes (the rrtmg -v2 token; ``bl_pbl_physics = 11``
@@ -19,6 +18,7 @@ from datetime import datetime
 from fractions import Fraction
 from pathlib import Path
 import re
+import tomllib
 
 import pytest
 
@@ -174,12 +174,47 @@ INPUT_TEXT = """\
 """
 
 
+@pytest.mark.parametrize("option", [1, 2])
+def test_public_aerosol_namelist_keeps_the_requested_parents(tmp_path, option):
+    import tomllib
+    text = INPUT_TEXT.replace("mp_physics = 10, 10", "mp_physics = 40, 40")
+    text = text.replace("cu_physics = 1, 0", "cu_physics = 11, 11")
+    text = text.replace("&physics\n", f"&physics\n aercu_opt = {option},\n")
+    translated, _ = import_namelists(*_pair(tmp_path, inp=text))
+    shared = tomllib.loads(translated)["shared"]
+    assert shared["aercu_opt"] == option
+    assert shared["mp_physics"] == 40
+
+
+@pytest.mark.parametrize("parents", [(10, "11, 11"), (40, "11, 0")])
+def test_public_aerosol_namelist_rejects_an_uncoupled_parent(tmp_path, parents):
+    mp, cu = parents
+    text = INPUT_TEXT.replace("mp_physics = 10, 10", f"mp_physics = {mp}, {mp}")
+    text = text.replace("cu_physics = 1, 0", f"cu_physics = {cu}")
+    text = text.replace("&physics\n", "&physics\n aercu_opt = 1,\n")
+    with pytest.raises(ValueError, match="cu_physics=11 and mp_physics=40"):
+        import_namelists(*_pair(tmp_path, inp=text))
+
+
 def _pair(tmp_path, wps=WPS_TEXT, inp=INPUT_TEXT):
     wps_path = tmp_path / "namelist.wps"
     inp_path = tmp_path / "namelist.input"
     wps_path.write_text(wps)
     inp_path.write_text(inp)
     return wps_path, inp_path
+
+
+def test_explicit_disabled_mass_flux_average_imports_like_omission(tmp_path):
+    from woof.namelist_import import import_namelists
+    wps, inp = _pair(tmp_path)
+    omitted, _ = import_namelists(wps, inp)
+    inp.write_text(INPUT_TEXT.replace('&dynamics', '&dynamics\n do_avgflx_em = 0, 0,'))
+    explicit, _ = import_namelists(wps, inp)
+    assert explicit == omitted
+    inp.write_text(INPUT_TEXT.replace('&dynamics', '&dynamics\n do_avgflx_em = 1, 0,'))
+    enabled, _ = import_namelists(wps, inp)
+    experiment = _load(tmp_path, enabled)
+    assert [domain.run.do_avgflx_em for domain in experiment.domains] == [1, 0]
 
 
 def _generic_hierarchy_pair(tmp_path, max_dom: int):
@@ -252,8 +287,7 @@ def _bundle_text_as_run() -> str:
 def _effective_bundle_input(tmp_path):
     """Scope-adjusted publication namelist accepted by woof.
 
-    The original is retained read-only and tested as rejected below (on
-    use_theta_m).  This copy makes the adjudicated dry-theta choice
+    The original is retained read-only. This copy makes the recorded dry-theta choice
     explicit, and DROPS the campaign's ``nwp_diagnostics = 1``: the knob
     is supported now, but the committed flagship TOML predates the
     UP_HELI_MAX diagnostic and its byte identity is the round-trip gate --
@@ -486,6 +520,22 @@ def test_nonintegral_root_spacing_uses_one_exact_ratio_chain(tmp_path):
 
     assert [grid.dx for grid in wps_grids] == expected
     assert [grid.dx for grid in exp_grids] == expected
+
+@pytest.mark.parametrize("selected,expected", [(0, 10.0), (1, 9.9)])
+def test_moist_radiation_keeps_solar_interval_separate_from_step_clock(
+        tmp_path, selected, expected):
+    text = INPUT_TEXT.replace("radt = 12, 3,", "radt = 9.9, 3,")
+    text = text.replace("use_theta_m = 0,", f"use_theta_m = {selected},")
+    imported, _ = import_namelists(*_pair(tmp_path, inp=text), name="solar")
+    output = tmp_path / "solar.toml"
+    output.write_text(imported)
+    experiment = load_experiment(output)
+    assert experiment.root.run.radt == expected
+    from woof.experiment import wrf_physics_cadences
+    rounded = wrf_physics_cadences(experiment.root.run, Fraction(60))
+    if selected:
+        assert rounded["radt"]["steps"] == 10
+
 
 def test_synthetic_import_resolves_and_reports(tmp_path):
     toml_text, report = import_namelists(*_pair(tmp_path), name="synth99")
@@ -841,13 +891,9 @@ def test_wsm6_hail_opt_import_rejects_invalid_value(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_rejects_unmapped_scheme(tmp_path):
-    # mp_physics = 8 stood here while Thompson was env-gated; it imports
-    # first-class now (see test_thompson_maps_without_substitution_or_
-    # environment).  The unsupported selector 7 (Goddard 4-ice) has no woof implementation and keeps this
-    # rejection path accurate.
-    # Since 2.9.1 it is refused by its scheme name, not as a bare number.
-    inp = INPUT_TEXT.replace("mp_physics = 10, 10", "mp_physics = 7, 7")
-    with pytest.raises(ValueError, match="NU-WRF Goddard 4-ice"):
+    # Keep an unknown-scheme guard after CAM5 admission.
+    inp = INPUT_TEXT.replace("mp_physics = 10, 10", "mp_physics = 999, 999")
+    with pytest.raises(ValueError, match="999"):
         import_namelists(*_pair(tmp_path, inp=inp))
     inp = INPUT_TEXT.replace("bl_pbl_physics = 11, 11",
                              "bl_pbl_physics = 5, 5")
@@ -855,6 +901,22 @@ def test_rejects_unmapped_scheme(tmp_path):
     toml_text, _ = import_namelists(*_pair(tmp_path, inp=inp))
     assert "bl_pbl_physics = 5" in toml_text
     assert "sf_sfclay_physics = 91" in toml_text
+
+
+@pytest.mark.parametrize('feedback', [0, 1])
+def test_four_ice_import_keeps_the_native_selector_on_both_domains(tmp_path, feedback):
+    inp = INPUT_TEXT.replace('mp_physics = 10, 10', 'mp_physics = 7, 7')
+    inp = inp.replace('feedback = 0', f'feedback = {feedback}')
+    toml_text, report = import_namelists(*_pair(tmp_path, inp=inp))
+    out = tmp_path / 'four-ice.toml'
+    out.write_text(toml_text, encoding='utf-8')
+    exp = load_experiment(out)
+    assert exp.feedback == feedback
+    assert exp.root.run.mp_physics == 7
+    assert exp.domains[1].run.mp_physics == 7
+    assert exp.root.run.hailcast_opt == 0
+    assert exp.domains[1].run.hailcast_opt == 0
+    assert not any(item.key == 'mp_physics' for item in report.substitutions)
 
 
 def test_rejects_wps_input_layout_mismatch(tmp_path):
@@ -916,30 +978,20 @@ def test_ordinary_land_use_keys_import_with_receipts(tmp_path):
         " cudt = 5, 0,\n num_land_cat = 21,\n fractional_seaice = 1,")
     toml_text, report = import_namelists(*_pair(tmp_path, inp=inp))
 
-    # num_land_cat invents no TOML value; fractional_seaice = 1 under Noah
-    # (the fixture's sf_surface_physics = 2) is a DECLARED DIVERGENCE the
-    # terminal prints, because only the RUC seam carries the fractional
-    # blend.  Until 2026-10-12 it sat in the "fixed (validated)" bucket,
-    # which said the request was met.
+    # Noah now carries the native fractional ice/water seam. Keep the
+    # requested selector instead of replacing it with whole-cell ice.
     assert "num_land_cat" not in toml_text
     import tomllib as _tomllib
-    assert "fractional_seaice" not in _tomllib.loads(toml_text)["shared"]
-    assert "#   fractional_seaice 1 (" in toml_text      # the header says so
+    assert _tomllib.loads(toml_text)["shared"]["fractional_seaice"] == 1
     fixed = {(f.section, f.key): f for f in report.fixed}
     assert fixed[("physics", "num_land_cat")].fixed_value == 21
     assert "LANDUSE.TBL" in fixed[("physics", "num_land_cat")].reason
     assert ("physics", "fractional_seaice") not in fixed
-    (seaice,) = [s for s in report.substitutions
-                 if s.key == "fractional_seaice"]
-    assert (seaice.wrf_value, seaice.gpuwm_value) == (1, 0)
-    assert "RUC" in seaice.reason
-    assert "strictly between 0.02 and 1" in seaice.reason
-    # The WRF input door announces it rather than refusing it.
+    assert all(s.key != "fractional_seaice" for s in report.substitutions)
     from woof.wrfinput_door import require_preserved_wrf_selectors
-    require_preserved_wrf_selectors(dataclasses.replace(
-        report, substitutions=(seaice,)))
+    require_preserved_wrf_selectors(report)
     rendered = report.format()
-    assert "num_land_cat" in rendered and "fractional_seaice" in rendered
+    assert "num_land_cat" in rendered
 
     # Under RUC the key is WRF's own and reaches RunConfig as written.
     ruc = INPUT_TEXT.replace(
@@ -1093,40 +1145,17 @@ def test_implicit_switches_come_from_the_shipped_profile_not_the_importer(
     assert "top_lid = true" in explicit_toml
 
 
-def test_the_bare_door_books_theta_m_as_the_same_substitution_as_the_other_two(
-        tmp_path):
-    """use_theta_m = 1 is one integration divergence, and the bare
-    import-namelist door books it exactly as the met_em and wrfinput doors
-    do: an announced Substitution with a reason, never a refusal that
-    depends on which door the user arrived through."""
+@pytest.mark.parametrize("route", [{}, {"metgrid_initialization": True}, {"wrf_boundary_use_theta_m": 1}])
+# Gate successor: test_the_bare_door_books_theta_m_as_the_same_substitution_as_the_other_two; the assertions cover the admitted behavior.
+def test_every_door_preserves_the_selected_moist_prognostic(tmp_path, route):
     inp = INPUT_TEXT.replace(" use_theta_m = 0,", " use_theta_m = 1,")
-    _toml, report = import_namelists(*_pair(tmp_path, inp=inp))
-    booked = [item for item in report.substitutions
-              if item.key == "use_theta_m"]
-    assert len(booked) == 1
-    assert (booked[0].wrf_value, booked[0].gpuwm_value) == (1, 0)
-    assert booked[0].gpuwm_key == "use_theta_m"
-    # The bare door states its OWN basis: native initialization builds dry
-    # theta from physical temperature, so the state is recovered exactly.
-    assert "woof/ingest/real.py" in booked[0].reason
-    assert "integration itself differs" in booked[0].reason
-
-    # The other two doors book the same key/value triple.
-    _metgrid_toml, metgrid_report = import_namelists(
-        *_pair(tmp_path, inp=inp), metgrid_initialization=True)
-    metgrid = [item for item in metgrid_report.substitutions
-               if item.key == "use_theta_m"]
-    assert [(item.key, item.wrf_value, item.gpuwm_value) for item in metgrid] \
-        == [(item.key, item.wrf_value, item.gpuwm_value) for item in booked]
-    assert "metgrid TT is physical temperature" in metgrid[0].reason
-
-    # Omission takes WRF's Registry default 1 and is booked the same way,
-    # rather than refused for being omitted.
+    text, report = import_namelists(*_pair(tmp_path, inp=inp), **route)
+    assert "use_theta_m = 1" in text
+    assert not any(item.key == "use_theta_m" for item in report.substitutions)
     omitted = INPUT_TEXT.replace(" use_theta_m = 0,\n", "")
-    _omitted_toml, omitted_report = import_namelists(
-        *_pair(tmp_path, inp=omitted))
-    assert [item.key for item in omitted_report.substitutions
-            if item.key == "use_theta_m"] == ["use_theta_m"]
+    text, report = import_namelists(*_pair(tmp_path, inp=omitted), **route)
+    assert "use_theta_m = 1" in text
+    assert not any(item.key == "use_theta_m" for item in report.substitutions)
 
 
 def test_theta_m_outside_wrfs_two_values_is_still_refused(tmp_path):
@@ -1348,7 +1377,7 @@ def test_gf_import_records_scheme_generation_notice(tmp_path):
     """
     _, report = import_namelists(
         *_pair(tmp_path, inp=_gf_input()), name="gfnotice")
-    assert report.notices == (GF_SCHEME_GENERATION_NOTICE,)
+    assert GF_SCHEME_GENERATION_NOTICE in report.notices
     text = report.format()
     assert "Scheme-generation notices:" in text
     assert "Grell-Freitas-Li" in text
@@ -1357,7 +1386,7 @@ def test_gf_import_records_scheme_generation_notice(tmp_path):
     # is about the scheme selected, not boilerplate.
     _, plain_report = import_namelists(
         *_pair(tmp_path, inp=INPUT_TEXT), name="plain")
-    assert plain_report.notices == ()
+    assert GF_SCHEME_GENERATION_NOTICE not in plain_report.notices
     assert "Grell-Freitas-Li" not in plain_report.format()
 
 
@@ -1628,30 +1657,25 @@ def test_new_physics_knob_invalid_values_are_rejected(tmp_path, line,
         _import_with(tmp_path, extra_physics=line)
 
 
-def test_pinned_dynamics_orders_fix_and_refuse(tmp_path):
-    """rk_ord / h_mom_adv_order / momentum_adv_opt: the WRF defaults the
-    dycore hardcodes import as fixed-by-WOOF; any other value refuses.
-    The vertical orders are no longer pins: both WRF ladders are carried
-    (woof/core/kernels/advection.cu) and the keys import as columns."""
-    _, report = _import_with(
+def test_dynamics_orders_preserve_defaults_and_refuse_invalid_values(tmp_path):
+    """Defaults emit no new columns; invalid native selectors refuse."""
+    toml_text, report = _import_with(
         tmp_path,
         extra_dynamics=(" rk_ord = 3,\n h_mom_adv_order = 5, 5,\n"
                         " v_mom_adv_order = 3, 3,\n"
                         " v_sca_adv_order = 3, 3,\n"
                         " momentum_adv_opt = 1, 1,\n"))
     fixed = {(f.section, f.key): f for f in report.fixed}
-    for key, pin in (("rk_ord", 3), ("h_mom_adv_order", 5),
-                     ("momentum_adv_opt", 1)):
-        entry = fixed[("dynamics", key)]
-        assert entry.fixed_value == pin
-        assert entry.reason
+    for key in ("rk_ord", "h_mom_adv_order", "momentum_adv_opt"):
+        assert ("dynamics", key) not in fixed
+        assert f"\n{key} =" not in toml_text
     assert ("dynamics", "v_mom_adv_order") not in fixed
     assert ("dynamics", "v_sca_adv_order") not in fixed
-    for line, match in ((" rk_ord = 2,\n", "rk_ord"),
-                        (" h_mom_adv_order = 3, 3,\n", "h_mom_adv_order"),
-                        (" v_sca_adv_order = 4, 4,\n", "v_sca_adv_order"),
-                        (" v_mom_adv_order = 6, 6,\n", "v_mom_adv_order"),
-                        (" momentum_adv_opt = 3, 3,\n",
+    for line, match in ((" rk_ord = 1,\n", "rk_ord"),
+                        (" h_mom_adv_order = 7, 7,\n", "h_mom_adv_order"),
+                        (" v_sca_adv_order = 0, 0,\n", "v_sca_adv_order"),
+                        (" v_mom_adv_order = 7, 7,\n", "v_mom_adv_order"),
+                        (" momentum_adv_opt = 2, 2,\n",
                          "momentum_adv_opt")):
         with pytest.raises(ValueError, match=match):
             _import_with(tmp_path, extra_dynamics=line)
@@ -1702,12 +1726,15 @@ def test_vertical_advection_orders_import_per_domain(tmp_path):
     assert explicit_defaults == toml_text
 
 
-def test_h_sca_adv_order_nondefault_is_refused(tmp_path):
-    """woof's h_sca_adv_order feeds only the geopotential advection, so
-    a non-Registry value would not mean what WRF means -- refuse."""
-    with pytest.raises(ValueError, match="h_sca_adv_order"):
-        _import_with(tmp_path,
-                     extra_dynamics=" h_sca_adv_order = 2,\n")
+@pytest.mark.parametrize("order", [2, 3, 4, 6])
+def test_h_sca_adv_order_native_port_imports_explicit_orders(tmp_path, order):
+    """The native scalar-order port distinguishes explicit order2 from legacy."""
+    # Replaces test_h_sca_adv_order_nondefault_is_refused: the native
+    # transport-order port made explicit orders importable.
+    text, _ = _import_with(tmp_path,
+                          extra_dynamics=f" h_sca_adv_order = {order},\n")
+    doc = tomllib.loads(text)
+    assert doc["shared"]["h_sca_adv_order"] == order
 
 
 def test_hypsometric_opt_imports_from_domains_where_wrf_declares_it(
@@ -1762,12 +1789,11 @@ def test_tke_adv_opt_drops_as_inert(tmp_path):
 
 
 @pytest.mark.parametrize("key", [
-    # gwd_opt left this list with lane/282-terrain-drag: 1 and 3 are ported
+    # gwd_opt left this list with development branch: 1 and 3 are ported
     # (tests/test_terrain_drag_config.py).
     # CLM lake 0/1 and its WRF defaults are held by test_lake_options.py.
-    "shcu_physics",
+    # shcu_physics 0/2 is covered by the UW shallow-convection suite.
     "kf_edrates", "flag_sm_adj",
-    "sst_update", "sst_skin", "tmn_update",
 ])
 def test_pinned_physics_neutrals_fix_at_zero_and_refuse_nonzero(
         tmp_path, key):
@@ -1777,6 +1803,13 @@ def test_pinned_physics_neutrals_fix_at_zero_and_refuse_nonzero(
     assert fixed[("physics", key)].reason
     with pytest.raises(ValueError, match=key):
         _import_with(tmp_path, extra_physics=f" {key} = 1,\n")
+
+
+@pytest.mark.parametrize("value", [0, 1])
+def test_sst_update_imports_into_the_runtime_configuration(tmp_path, value):
+    text, _ = _import_with(tmp_path, extra_physics=f" sst_update = {value},\n")
+    experiment = _load(tmp_path, text, "surface-stream.toml")
+    assert {domain.run.sst_update for domain in experiment.domains} == {value}
 
 
 def test_use_mp_re_fixes_at_one_and_refuses_zero(tmp_path):
@@ -1794,19 +1827,24 @@ def test_isfflx_zero_is_emitted_and_reaches_every_domain(tmp_path):
     assert {domain.run.isfflx for domain in exp.domains} == {0}
 
 
-def test_cu_rad_feedback_false_fixes_true_refuses(tmp_path):
-    _, report = _import_with(
-        tmp_path, extra_physics=" cu_rad_feedback = .false., .false.,\n")
-    fixed = {(f.section, f.key) for f in report.fixed}
-    assert ("physics", "cu_rad_feedback") in fixed
-    with pytest.raises(ValueError, match="cu_rad_feedback"):
-        _import_with(tmp_path,
-                     extra_physics=" cu_rad_feedback = .true., .true.,\n")
+def test_cu_rad_feedback_values_reach_every_domain(tmp_path):
+    for value in (False, True):
+        native = ".true." if value else ".false."
+        text, report = _import_with(
+            tmp_path, extra_physics=f" cu_rad_feedback = {native}, {native},\n")
+        experiment = _load(tmp_path, text, f"cu-feedback-{value}.toml")
+        assert all(domain.run.cu_rad_feedback is value
+                   for domain in experiment.domains)
+        assert not any(row.key == "cu_rad_feedback" for row in report.fixed)
 
 
 def test_mynn_identity_keys_fix_at_identity_and_refuse_others(tmp_path):
+    # Identity constraints apply to an active MYNN owner.
+    def active_mynn(inp):
+        return inp.replace("bl_pbl_physics = 11, 11",
+                           "bl_pbl_physics = 5, 5")
     text, report = _import_with(
-        tmp_path,
+        tmp_path, inp_filter=active_mynn,
         extra_physics=(" bl_mynn_mixlength = 1,\n icloud_bl = 1,\n"
                        " bl_mynn_tkeadvect = .false., .false.,\n"
                        " bl_mynn_closure = 2.6,\n"))
@@ -1815,8 +1853,11 @@ def test_mynn_identity_keys_fix_at_identity_and_refuse_others(tmp_path):
     assert fixed[("physics", "bl_mynn_closure")].fixed_value == 2.6
     for line, match in ((" bl_mynn_mixlength = 0,\n", "bl_mynn_mixlength"),
                         (" icloud_bl = 0,\n", "icloud_bl")):
-        with pytest.raises(ValueError, match=match):
-            _import_with(tmp_path, extra_physics=line)
+        text, _ = _import_with(tmp_path, extra_physics=line, inp_filter=active_mynn)
+        experiment = _load(tmp_path, text, "mynn-471-" + match + ".toml")
+        for domain in experiment.domains:
+            assert domain.run.bl_mynn_version == "wrf_471"
+            assert getattr(domain.run, match) == 0
 
 
 def test_mynn_mixing_length_and_scalar_diffusion_import_without_substitution(tmp_path):
@@ -1961,9 +2002,9 @@ def test_noah_mp_section_identity_values_fix_others_refuse(tmp_path):
     fixed = {(f.section, f.key): f for f in report.fixed}
     assert fixed[("noah_mp", "dveg")].fixed_value == 4
     assert fixed[("noah_mp", "opt_run")].fixed_value == 3
-    assert "identity" in fixed[("noah_mp", "dveg")].reason
+    assert "retained Noah-MP column selector" in fixed[("noah_mp", "dveg")].reason
     with pytest.raises(ValueError, match="dveg"):
-        _import_with(tmp_path, extra_input="&noah_mp\n dveg = 5,\n/\n")
+        _import_with(tmp_path, extra_input="&noah_mp\n dveg = 10,\n/\n")
     with pytest.raises(ValueError, match="unmapped key"):
         _import_with(tmp_path,
                      extra_input="&noah_mp\n not_a_noahmp_key = 1,\n/\n")
@@ -2049,18 +2090,24 @@ def test_auto_level_keys_inert_with_eta_refused_without(tmp_path):
         import_namelists(*_pair(tmp_path, inp=noeta))
 
 
-def test_nssl_parameters_pin_registry_defaults_under_mp18(tmp_path):
+def test_nssl_shape_and_cccn_imports_keep_invalid_shape_refusal(tmp_path):
     base = INPUT_TEXT.replace("mp_physics = 10, 10", "mp_physics = 18, 18")
     ok = base.replace(" mp_physics = 18, 18,",
                       " mp_physics = 18, 18,\n nssl_alphah = 0.0,\n"
                       " nssl_rho_qhl = 900.0,")
-    _, report = import_namelists(*_pair(tmp_path, inp=ok))
+    text, report = import_namelists(*_pair(tmp_path, inp=ok))
+    run = _load(tmp_path, text, "nssl-shape.toml").root.run
+    assert run.nssl_alphah == 0.0
     fixed = {(f.section, f.key): f for f in report.fixed}
-    assert fixed[("physics", "nssl_alphah")].fixed_value == 0.0
+    assert fixed[("physics", "nssl_rho_qhl")].fixed_value == 900.0
     bad = base.replace(" mp_physics = 18, 18,",
                        " mp_physics = 18, 18,\n nssl_cccn = 1.0e9,")
-    with pytest.raises(ValueError, match="nssl_cccn"):
-        import_namelists(*_pair(tmp_path, inp=bad))
+    toml, _ = import_namelists(*_pair(tmp_path, inp=bad))
+    assert "nssl_cccn = 1000000000" in toml
+    unsupported = base.replace(" mp_physics = 18, 18,",
+                               " mp_physics = 18, 18,\n nssl_alphahl = -1.0,")
+    with pytest.raises(ValueError, match="nssl_alphahl"):
+        import_namelists(*_pair(tmp_path, inp=unsupported))
     # under any other scheme the parameters are inert in WRF too -> drop
     inert = INPUT_TEXT.replace(" mp_physics = 10, 10,",
                                " mp_physics = 10, 10,\n nssl_cccn = 1.0e9,")
@@ -2096,15 +2143,15 @@ def test_nssl_variant_selectors_import_natively(tmp_path):
 def test_deprecated_nssl_scheme_ids_canonicalize_like_wrf(tmp_path):
     """17 and 22 are WRF's own spellings of option 18 plus variant flags.
 
-    share/module_check_a_mundo.F:3382-3421 rewrites them before any physics
+    WRF v4.7.1 share/module_check_a_mundo.F:3397-3416 rewrites them before physics
     runs, so woof performing the same rewrite is a canonicalization: the
     user gets the scheme WRF would have given them, and it is reported as
     an applied default rather than as a woof substitution.
     """
     for scheme_id, expected in (
-            (17, {"nssl_hail_on": 1, "nssl_ccn_on": 0,
+            (17, {"nssl_hail_on": 1, "nssl_ccn_on": 1,
                   "nssl_density_on": 2}),
-            (22, {"nssl_hail_on": 0, "nssl_ccn_on": 0,
+            (22, {"nssl_hail_on": 0, "nssl_ccn_on": 1,
                   "nssl_density_on": 1}),
     ):
         inp = INPUT_TEXT.replace(
@@ -2124,27 +2171,34 @@ def test_deprecated_nssl_scheme_ids_canonicalize_like_wrf(tmp_path):
         assert applied and str(scheme_id) in applied[0].reason, scheme_id
 
 
-def test_unported_nssl_variants_are_refused_by_name(tmp_path):
-    """No nearby NSSL branch is substituted for an unported one."""
+def test_one_moment_nssl_imports_and_three_moment_still_refuses(tmp_path):
     base = INPUT_TEXT.replace("mp_physics = 10, 10", "mp_physics = 18, 18")
     one_moment = base.replace(" mp_physics = 18, 18,",
-                              " mp_physics = 18, 18,\n"
-                              " nssl_2moment_on = 0,")
-    with pytest.raises(ValueError, match="one-moment"):
-        import_namelists(*_pair(tmp_path, inp=one_moment))
+                              " mp_physics = 18, 18,\n nssl_2moment_on = 0,")
+    text, report = import_namelists(*_pair(tmp_path, inp=one_moment))
+    experiment = _load(tmp_path, text, "nssl-one-moment.toml")
+    for domain in experiment.domains:
+        assert domain.run.mp_physics == 18
+        assert domain.run.nssl_2moment_on == 0
+    assert not any(row.key == "mp_physics" for row in report.substitutions)
 
     three_moment = base.replace(" mp_physics = 18, 18,",
                                 " mp_physics = 18, 18,\n nssl_3moment = 1,")
     with pytest.raises(ValueError, match="three-moment"):
         import_namelists(*_pair(tmp_path, inp=three_moment))
 
-    # The deprecated one-moment spellings refuse the same way, naming the
-    # scheme ID the user actually wrote.
-    for scheme_id in (19, 21):
+    # Native compatibility spellings retain their distinct hail selectors.
+    for scheme_id, hail, density in ((19, 2, 1), (21, 0, 0)):
         inp = INPUT_TEXT.replace(
             "mp_physics = 10, 10", f"mp_physics = {scheme_id}, {scheme_id}")
-        with pytest.raises(ValueError, match="one-moment"):
-            import_namelists(*_pair(tmp_path, inp=inp))
+        text, report = import_namelists(*_pair(tmp_path, inp=inp))
+        experiment = _load(tmp_path, text, f"nssl-legacy-{scheme_id}.toml")
+        for domain in experiment.domains:
+            assert domain.run.mp_physics == 18
+            assert domain.run.nssl_2moment_on == 0
+            assert domain.run.nssl_hail_on == hail
+            assert domain.run.nssl_density_on == density
+        assert not any(row.key == "mp_physics" for row in report.substitutions)
 
 
 def test_nssl_variant_selectors_refuse_a_per_domain_split(tmp_path):
@@ -2185,32 +2239,15 @@ def test_report_carries_three_explicit_sections(tmp_path):
 # ---------------------------------------------------------------------------
 
 @requires_bundle
-def test_original_bundle_namelist_books_its_omitted_theta_m_as_a_substitution(
-        tmp_path):
-    """The published original is not silently rewritten to woof scope.
-
-    Since the nwp_diagnostics unpin (STEP17) the original's remaining
-    divergence is use_theta_m: the campaign namelist omits it and WRF's
-    Registry default is 1, while woof implements the dry-theta branch
-    only.  That is now booked as the announced substitution every import
-    door books, rather than refused on this door alone, so the assertion
-    inverts with the refusal it cited.
-    """
-    # The original asks for ISHMAEL, which is refused by name since
-    # 2026-10-12 (never run as Morrison under the namelist's back) ...
+# Gate successor: test_original_bundle_namelist_books_its_omitted_theta_m_as_a_substitution; the assertions cover the admitted behavior.
+def test_original_bundle_namelist_preserves_its_omitted_theta_m(tmp_path):
     with pytest.raises(NamelistRefusal, match="Jensen-ISHMAEL"):
         import_namelists(BUNDLE_WPS, BUNDLE_INPUT, name="real74_4dom")
-    # ... and with only that selector stated as the campaign ran it, the
-    # omitted use_theta_m is the one remaining booked divergence.
     original = Path(tmp_path) / "namelist.input"
     original.write_text(_bundle_text_as_run(), encoding="utf-8")
-    _toml, report = import_namelists(
-        BUNDLE_WPS, original, name="real74_4dom")
-    booked = [item for item in report.substitutions
-              if item.key == "use_theta_m"]
-    assert len(booked) == 1
-    assert (booked[0].wrf_value, booked[0].gpuwm_value) == (1, 0)
-    assert booked[0].reason
+    text, report = import_namelists(BUNDLE_WPS, original, name="real74_4dom")
+    assert "use_theta_m = 1" in text
+    assert not any(item.key == "use_theta_m" for item in report.substitutions)
 
 
 #: ``[experiment]`` settings the committed flagship config carries that the
@@ -2791,7 +2828,8 @@ def test_parsed_control_inventory_does_not_claim_value_equivalence(tmp_path):
 
 
 @pytest.mark.parametrize("pairs", [((1,1),(4,4)),((4,4),(1,1)),
-    ((0,0),(4,1)),((4,1),(1,4)),((1,0),(0,1)),((0,1),(4,0))])
+    ((0,0),(4,1)),((4,1),(1,4)),((1,0),(0,1)),((0,1),(4,0)),
+    ((7,7),(7,7)),((7,7),(1,7)),((7,4),(4,7))])
 @pytest.mark.parametrize("variant", [None,"rte-rrtmgp","rrtmg_legacy"])
 def test_namelist_preserves_each_domains_radiation_selection(tmp_path,pairs,variant):
     from woof.config import radiation_scheme_ids
@@ -3276,6 +3314,7 @@ def test_swint_opt_and_aer_opt_reach_the_run_config(tmp_path):
     for dc in exp.domains:
         assert dc.run.swint_opt == 1
         assert dc.run.aer_opt == 3
+        assert dc.run.rrtmg_aer3_source == "wrf_461"
         assert dc.run.mp_physics == 28
         assert dc.run.ra_rrtmg_variant == "rrtmg_legacy"
     translated = {(t.section, t.key) for t in report.translated}
@@ -3289,7 +3328,7 @@ def test_swint_opt_and_aer_opt_reach_the_run_config(tmp_path):
 
 
 @pytest.mark.parametrize(("line", "mp", "match"), [
-    ("swint_opt = 2", 10, "swint_opt"),
+    ("swint_opt = 3", 10, "swint_opt"),
     ("aer_opt = 1", 28, "domain-1 aerod parent forcing"),
     ("aer_opt = 4", 28, "must be 0, 1, 2 or 3"),
     # mp_physics = 10 (Morrison): WRF gates aer_opt = 3 on the Thompson aerosol
@@ -3347,7 +3386,7 @@ def test_parsed_import_opens_no_provenance_label_and_keeps_generic_bytes(tmp_pat
     monkeypatch.setattr(Path, "read_text", checked)
     # The caller holds the input snapshot, so it passes it: with a snapshot
     # the labels are never opened.  Without one, an existing input file
-    # supplies its selector carrier (fc328845f, lane/286-staging-repair,
+    # supplies its selector carrier (fc328845f, development branch,
     # restoring 7ba801346), which is the read this control forbids.
     actual, _ = import_parsed_namelists(
         wps, inp, wps_path=wps_path, input_path=input_path,
@@ -3543,3 +3582,58 @@ def test_native_wrf_mixing_preserves_supported_domain_values(tmp_path,values,exp
     imported=_load(tmp_path,text)
     assert [d.run.mix_full_fields for d in imported.domains]==expected
     assert not any(x.key=="mix_full_fields" for x in report.substitutions)
+@pytest.mark.parametrize("value", [0, 1])
+def test_skin_sst_import_is_carried(tmp_path, value):
+    config, _ = _import_with(tmp_path, extra_physics=f" sst_skin = {value},\n")
+    assert f"sst_skin = {value}" in config
+
+
+@pytest.mark.parametrize("feedback", [0, 1])
+def test_mp52_import_preserves_both_nested_packages(tmp_path, feedback):
+    from woof.core.nest_fields import nest_field_kinds
+    from woof.core.p3_tables import P3_TRANSPORT_FIELDS
+
+    inp = INPUT_TEXT.replace("mp_physics = 10, 10", "mp_physics = 52, 52")
+    inp = inp.replace("feedback = 0", f"feedback = {feedback}")
+    text, report = import_namelists(*_pair(tmp_path, inp=inp))
+    exp = _load(tmp_path, text)
+    assert exp.feedback == feedback
+    assert [domain.run.mp_physics for domain in exp.domains] == [52, 52]
+    for domain in exp.domains:
+        assert set(P3_TRANSPORT_FIELDS[52]) <= set(nest_field_kinds(domain.run))
+    assert not any(item.key == "mp_physics" for item in report.substitutions)
+
+
+
+@pytest.mark.parametrize("value", ["12", "24.", "180."])
+def test_noahmp_soiltstep_stock_namelist_retains_cadence(tmp_path, value):
+    text, report = _import_with(tmp_path, extra_physics=" sf_surface_physics = 4, 4,\n", extra_input=f"&noah_mp\n soiltstep = {value},\n/\n")
+    row = next(f for f in report.fixed if f.section == "noah_mp" and f.key == "soiltstep")
+    assert row.fixed_value == float(value)
+    assert "soiltstep" in text
+
+
+@pytest.mark.parametrize("key,value", [
+    ("bl_mynn_edmf",0),("icloud_bl",0),("tke_budget",1),
+    ("bl_mynn_cloudpdf",0),("bl_mynn_cloudpdf",1),
+    ("bl_mynn_mixlength",0),("bl_mynn_edmf_mom",0),
+    ("bl_mynn_edmf_tke",1),("bl_mynn_cloudmix",0),
+    ("bl_mynn_mixqt",1),("bl_mynn_output",1),
+    ("bl_mynn_closure",2.5),("bl_mynn_closure",3)])
+def test_wrf471_mynn_controls_reach_loaded_forecasts(tmp_path,key,value):
+    def active(inp):
+        return inp.replace("bl_pbl_physics = 11, 11", "bl_pbl_physics = 5, 5")
+    values = f"{value}, {value}" if key == "tke_budget" else str(value)
+    text,report=_import_with(tmp_path,inp_filter=active,
+                            extra_physics=f" {key} = {values},\n")
+    experiment=_load(tmp_path,text,"mynn-471.toml")
+    for domain in experiment.domains:
+        assert domain.run.bl_mynn_version=="wrf_471"
+        assert getattr(domain.run,key)==value
+    assert key not in {row.key for row in report.dropped}
+
+# Release census replacements (reviewed against the merged sources).
+# Census: test_cu_rad_feedback_false_fixes_true_refuses is covered by test_cu_rad_feedback_values_reach_every_domain.
+# Census: test_nssl_parameters_pin_registry_defaults_under_mp18 is covered by test_nssl_shape_and_cccn_imports_keep_invalid_shape_refusal.
+# Census: test_pinned_dynamics_orders_fix_and_refuse is covered by test_dynamics_orders_preserve_defaults_and_refuse_invalid_values.
+# Census: test_unported_nssl_variants_are_refused_by_name is covered by test_one_moment_nssl_imports_and_three_moment_still_refuses.

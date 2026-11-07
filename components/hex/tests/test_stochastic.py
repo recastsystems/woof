@@ -13,7 +13,9 @@ from woof.hex.stochastic import StochasticConfig, SphericalPattern, ForcingPatte
 def test_source_member_defaults_and_explicit_options():
     assert not member_options(0)['sppt']
     assert member_options(0, ensemble_size=10, source_members=9)['sppt']
-    assert not member_options(0, ensemble_size=10, source_members=10)['skeb']
+    # On for ten source members too since the 2026-10-29 GEFS spread-skill run.
+    assert member_options(0, ensemble_size=10, source_members=10)['skeb']
+    assert not member_options(0, ensemble_size=10, source_members=10, skeb=False)['skeb']
     assert not member_options(0, ensemble_size=4, sppt=False)['sppt']
     assert member_options(0, ensemble_size=4, skeb=True)['skeb']
 
@@ -35,17 +37,18 @@ def test_spectral_normalization_stays_finite_at_extreme_lengths(monkeypatch, len
     import sys
     monkeypatch.setitem(sys.modules, 'cupy', np)
     ell = np.repeat(np.arange(1, 13, dtype=np.float64), 2*np.arange(1, 13)+1)
-    resource = SimpleNamespace(modes=len(ell), ell=ell, radius=6371220.,
-                               basis=np.empty((4, len(ell)), np.float32))
+    resource = SimpleNamespace(modes=len(ell), ell=ell, radius=6371220., lat=np.zeros(4),
+                               synthesize=lambda *args: None)
     with np.errstate(over='ignore', under='ignore', invalid='raise'):
-        process = SphericalPattern(resource, StochasticConfig(length_m=length))
+        process = SphericalPattern(resource, StochasticConfig(length_m=length), degree=12)
     weights = process.weights.astype(np.float64)
     assert np.isfinite(weights).all()
     # The real-harmonic addition theorem gives point variance independently
     # of a particular mesh quadrature, after counting all 2*l+1 modes.
     assert np.sum(weights**2)/(4*math.pi) == pytest.approx(1., rel=2e-7)
     if length == 500000.:
-        reference = np.exp(-ell*(ell+1)*(length/resource.radius)**2)
+        # Gaussian correlation exp(-r**2/(2 L**2)): spectrum exp(-l(l+1) L**2/(2 R**2)).
+        reference = np.exp(-ell*(ell+1)*(length/resource.radius)**2/2)
         reference = np.sqrt(reference*(4*math.pi)/np.sum(reference))
         np.testing.assert_allclose(weights, reference, rtol=6e-8)
     if length >= 1e9:
@@ -62,9 +65,9 @@ def test_ar1_innovation_uses_elapsed_time_without_cancellation(monkeypatch, time
     launches = []
     monkeypatch.setattr(stochastic, '_kernel',
                         lambda name: lambda grid, block, args: launches.append(args))
-    resource = SimpleNamespace(modes=3, ell=np.ones(3), radius=6371220.,
-                               basis=np.eye(3, dtype=np.float32))
-    process = SphericalPattern(resource, StochasticConfig(time_s=timescale))
+    resource = SimpleNamespace(modes=3, ell=np.ones(3), radius=6371220., lat=np.zeros(3),
+                               synthesize=lambda *args: None)
+    process = SphericalPattern(resource, StochasticConfig(time_s=timescale), degree=1)
     process.advance(0.)
     assert launches[-1][3:5] == (0., 1.)  # Stationary initial draw.
     process.advance(1.)
@@ -289,8 +292,12 @@ def test_actual_pattern_snapshot_resume_and_cadence_on_host(tmp_path, monkeypatc
     monkeypatch.setitem(sys.modules, 'cupy', SimpleNamespace(**{
         **np.__dict__, 'asnumpy': lambda a: a.copy()}))
     monkeypatch.setattr(stochastic, '_kernel', kernel)
-    resource = SimpleNamespace(modes=3, ell=np.ones(3), radius=6371220.,
-        basis=np.asarray([[1,0,0], [0,1,0], [0,0,1], [.5,-.5,.5]], np.float32))
+    basis = np.asarray([[1,0,0], [0,1,0], [0,0,1], [.5,-.5,.5]], np.float32)
+    def synthesize(coefficients, out, degree, points, channels):
+        # NumPy stands in for the harmonic_sum kernel: a test-only matrix sum.
+        out[:points, :channels] = (basis @ coefficients)[:points, :channels]
+    resource = SimpleNamespace(modes=3, ell=np.ones(3), radius=6371220., lat=np.zeros(4),
+                               cells=2, vertices=2, synthesize=synthesize)
     def words(values):
         return [array.view(np.uint32).tobytes() for array in values]
     rows = []
@@ -381,11 +388,13 @@ def test_stochastic_array_ledger_matches_independent_buffer_shapes(skeb, extra_s
         return np.empty(shape, dtype=dtype).nbytes
     processes = 1+extra_scales
     expected = dict(
-        harmonic_basis=size((32, 15)),
+        harmonic_recurrence_tables=size(15)*2,
+        mesh_coordinates=size(32, np.float64)*2,
         mesh_mode_degrees=size(15, np.float64),
         mesh_topology=size((30, 2), np.int32)*2+size((20, 3), np.int32),
         mesh_geometry=size(12)+size(30)*3,
         member_tapers=size((7, 12))+size((7, 20)),
+        member_moisture_metric=size((7, 12)),
         member_spectral_coefficients=size((15, 3))*processes,
         member_spectral_weights=size(15)*processes,
         member_pattern_outputs=size((32, 3))*processes,
@@ -428,11 +437,11 @@ def test_partition_refuses_and_one_card_multiclass_admits_global_forcing_before_
     lts._refuse_unsupported(host={'stochastic': config, 'config': SimpleNamespace()}, cycling=None,
                            park_physics_tier=False, local_timestep_classing_path=None)
     with pytest.raises(ValueError, match='degree'):
-        lts.require_stochastic_support({'sppt': True, 'degree': 0})
+        lts.require_stochastic_support({'sppt': True, 'degree': -1})
 
 
 @pytest.mark.parametrize('value', [dict(time_s=0), dict(length_m=float('nan')),
-    dict(clip=1.01), dict(member=-1), dict(seed=2**64), dict(degree=0),
+    dict(clip=1.01), dict(member=-1), dict(seed=2**64), dict(degree=-1), dict(degree=513),
     dict(sppt='false'),dict(top_start_m=26000),dict(skeb_fraction=2)])
 def test_invalid_options(value):
     with pytest.raises(ValueError):
@@ -479,16 +488,14 @@ def gpu():
 
 
 def basis_resource(cp, degree=12, n=2048):
-    from woof.hex.stochastic import _kernel
+    from woof.hex.stochastic import PointHarmonics
     # Equal-area Fibonacci points are an independent quadrature, not a weather field.
     lat = cp.arcsin(1-2*(cp.arange(n,dtype=cp.float64)+0.5)/n)
     lon = cp.arange(n,dtype=cp.float64)*(math.pi*(3-math.sqrt(5)))
-    modes=(degree+1)**2-1
-    b=cp.empty((n,modes),cp.float32)
-    count=n*(degree+1)
-    _kernel('harmonics')(((count+127)//128,),(128,),(lat,lon,b,np.int32(n),np.int32(degree)))
-    return SimpleNamespace(modes=modes,ell=cp.floor(cp.sqrt(cp.arange(1,modes+1,dtype=cp.float64))),
-                           radius=6371220.,basis=b)
+    resource = PointHarmonics(lat, lon, degree)
+    # Two points stand for vertices so the SKEB channels have a place to go.
+    resource.cells, resource.vertices = n-2, 2
+    return resource
 
 
 @pytest.mark.gpu
@@ -504,7 +511,7 @@ def test_gpu_harmonics_addition_theorem_and_orthogonality():
 @pytest.mark.gpu
 def test_gpu_words_variance_time_and_spatial_decorrelation():
     cp=gpu(); r=basis_resource(cp)
-    cfg=StochasticConfig(sppt=True,member=1,seed=42,length_m=1500000,time_s=600)
+    cfg=StochasticConfig(sppt=True,member=1,seed=42,length_m=1500000,time_s=600,degree=12)
     a,b,different=(SphericalPattern(r,c) for c in (cfg,cfg,StochasticConfig(**{**json.loads(cfg.json()),'seed':43})))
     for t in (0,60,120):
         x,y,z=(p.advance(t).copy() for p in (a,b,different))
@@ -528,7 +535,7 @@ def test_gpu_words_variance_time_and_spatial_decorrelation():
     # Same noise and spectrum family: longer length reduces gradient energy.
     rough=[]
     for length in (300000.,2500000.):
-        p=SphericalPattern(r,StochasticConfig(length_m=length,seed=111))
+        p=SphericalPattern(r,StochasticConfig(length_m=length,seed=111,degree=12))
         p.advance(0)
         rough.append(float(cp.sum(p.coefficients**2*r.ell[:,None]*(r.ell[:,None]+1))))
     assert rough[1] < rough[0]
@@ -537,7 +544,7 @@ def test_gpu_words_variance_time_and_spatial_decorrelation():
 @pytest.mark.gpu
 def test_gpu_restart_preserves_next_words():
     cp=gpu(); r=basis_resource(cp)
-    cfg=StochasticConfig(sppt=True)
+    cfg=StochasticConfig(sppt=True,degree=12)
     a=SphericalPattern(r,cfg); a.advance(0); a.advance(60)
     b=SphericalPattern(r,cfg); b.restore(a.snapshot())
     cp.testing.assert_array_equal(a.advance(120).view(cp.uint32),b.advance(120).view(cp.uint32))
@@ -546,7 +553,7 @@ def test_gpu_restart_preserves_next_words():
 @pytest.mark.gpu
 def test_gpu_scale_cadence_and_restart():
     cp=gpu(); r=basis_resource(cp)
-    cfg=StochasticConfig(sppt=True,skeb=True,interval_s=60,
+    cfg=StochasticConfig(sppt=True,skeb=True,interval_s=60,degree=12,
                          sppt_scales=((.4,500000.,600.,19),(.2,1500000.,3600.,21)))
     a=ForcingPatterns(r,cfg)
     x=a.advance(0)[0].copy()
@@ -647,6 +654,8 @@ def test_gpu_fused_forcing_matches_array_reference_with_padding_and_strides():
         forcing.taper, forcing.vertex_taper = taper, vertex_taper
         forcing.process = SimpleNamespace(advance=lambda seconds: (sppt,psi,temperature))
         forcing.calls, forcing.timing_events = 0, []
+        forcing.zz, forcing.guard_counts = None, []
+        forcing.skeb_norm = cp.asarray([.37], cp.float32)
         forcing.step_timing = StepTimings(cp)
         # Non-unit cell stride, padded columns, reversed levels and Fortran order.
         theta = cp.full((2,12),17,cp.float32)[:,::2][::-1]
@@ -663,19 +672,18 @@ def test_gpu_fused_forcing_matches_array_reference_with_padding_and_strides():
         expected_theta, expected_momentum, expected_qv = theta[:,:4].copy(),momentum[:,:6].copy(),scalars[0,:,:4].copy()
         if skeb_on:
             diss = cp.sum(cp.maximum(-wind*expected_momentum/edge_rho,0)*r.edge_weight[None,:],axis=1,keepdims=True)
-            clipped = cp.clip(psi[4:],-config.clip,config.clip)
-            curl = r.orientation*(clipped[r.voe[:,1]]-clipped[r.voe[:,0]])/r.dv
-            norm = cp.maximum(cp.sqrt(cp.sum(curl**2*r.edge_weight)),cp.float32(1e-30))
+            # Unclipped streamfunction, normalised by the pattern's expected curl RMS.
+            clipped = psi[4:]
+            norm = cp.float32(.37)
             tapered = vertex_taper*clipped[None,:]
             rotational = r.orientation[None,:]*(tapered[:,r.voe[:,1]]-tapered[:,r.voe[:,0]])/r.dv[None,:]/norm
             from woof.hex.stochastic import backscatter_rate_scale
             energy_scale = backscatter_rate_scale(60, config.time_s)
             kinetic = rotational*cp.sqrt(energy_scale*config.skeb_fraction*diss)
             thermal = temperature[:4]-cp.sum(temperature[:4]*r.area)
-            thermal /= cp.maximum(cp.sqrt(cp.sum(thermal**2*r.area)),cp.float32(1e-30))
             heat = taper*thermal[None,:]*cp.sqrt(energy_scale*config.thermal_fraction*diss*300/1004)
         if sppt_on:
-            factor = (cp.clip(-cp.tanh(sppt[None,:4]*taper*.5),-config.clip,config.clip)
+            factor = ((config.clip*cp.tanh(sppt[None,:4]/config.clip))*taper
                       if logit else cp.clip(sppt[:4],-config.clip,config.clip)[None,:]*taper)
             expected_theta *= 1+factor
             if has_qv:
@@ -827,3 +835,61 @@ def test_step_event_stream_mismatch_cannot_pass_cost_bar():
     assert result['samples'][0]['cold']
     assert all(not sample['same_stream'] for sample in result['samples'])
     assert result['warm_steps'] == 0 and result['pattern_cost_passed'] is None
+
+
+def test_actual_on_the_fly_synthesis_and_moisture_guard(tmp_path):
+    """Host oracle: harmonic_sum equals the stored-basis product; the SPPT moisture guard reverts."""
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+    compiler = shutil.which('g++')
+    if not sys.platform.startswith('linux') or compiler is None:
+        pytest.skip('host synthesis regression requires Linux and g++')
+    source = Path(__file__).with_name('stochastic_synthesis.cpp')
+    compiled = subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(tmp_path/'synthesis')],
+                              capture_output=True, text=True, timeout=60)
+    assert compiled.returncode == 0, compiled.stderr
+    result = subprocess.run([str(tmp_path/'synthesis')], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    row = json.loads(result.stdout)
+    assert row['degree_cases'] == 5 and row['guard_ok'] and row['guard_reverted'] == 1
+    # Float rounding of either path, relative to the sum of term magnitudes.
+    assert row['max_relative_synthesis_error'] < 2e-5
+
+
+def test_rrfs_v2_ensemble_settings_from_noaas_namelist_and_the_switch():
+    """NOAA's RRFS v2 hrrrv5 deck with do_sppt on, and the RRFS route's --sppt base, give the same scheme."""
+    from pathlib import Path
+    from woof.hex.stochastic import RRFS_V2_ENSEMBLE
+    text = (Path(__file__).parent.parent/'verification/source-namelists/rrfs-v2-hrrrv5-namelist.atmosphere').read_text()
+    # The deck is NOAA's workflow template; its &nam_stochy group is literal except do_sppt.
+    start = text.index('&nam_stochy')
+    deck = text[start:text.index(chr(10)+'/', start)+2]
+    on = resolve_options(namelist=deck.replace('${do_sppt}', '.true.'))
+    assert on.sppt and not on.skeb
+    assert on.sppt_scales == ((0.8, 450000, 21600, 2026010112001),)
+    assert on.logit and on.surface_limit and on.interval_s == 0
+    assert (on.top_start_m, on.top_end_m) == (15000, 27000)
+    # The switch on a deck that leaves SPPT off still takes the deck's own scale and taper.
+    switched = resolve_options('{"sppt": true}', namelist=deck.replace('${do_sppt}', '.false.'))
+    assert switched.sppt_scales == on.sppt_scales and switched.logit and switched.top_end_m == 27000
+    # A deck with no &nam_stochy on the RRFS route: the route's base is NOAA's settings.
+    base = resolve_options('{"sppt": true}', namelist='&physics config_physics_suite="hrrrv5" /',
+                           base=RRFS_V2_ENSEMBLE)
+    assert base.sppt and base.sppt_scales == ((0.8, 450000.0, 21600.0, 53),)
+    assert (base.logit, base.top_start_m, base.top_end_m, base.interval_s) == (True, 15000.0, 27000.0, 0.0)
+    # Without a switch or do_sppt the base enables nothing.
+    assert not resolve_options(None, namelist='&physics config_physics_suite="hrrrv5" /',
+                               base=RRFS_V2_ENSEMBLE).enabled
+
+
+def test_switches_fold_into_stochastic_json():
+    from types import SimpleNamespace
+    from woof.hex.cli import _fold_stochastic_switches
+    args = SimpleNamespace(stochastic='{"seed": 7, "sppt": false}', sppt=True, skeb=None)
+    _fold_stochastic_switches(args)
+    assert json.loads(args.stochastic) == {"seed": 7, "sppt": True}
+    untouched = SimpleNamespace(stochastic=None, sppt=None, skeb=None)
+    _fold_stochastic_switches(untouched)
+    assert untouched.stochastic is None

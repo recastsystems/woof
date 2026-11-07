@@ -424,7 +424,7 @@ def _posted_source(tmp_path, leads, decoded):
 def test_a_long_posted_window_is_decoded_a_bounded_batch_at_a_time(tmp_path):
     from woof.mapped_direct import POSTED_BATCH_LEADS
 
-    # A 48 h window whose every lead posted before the decode started (V59/V60
+    # A 48 h window whose every lead posted before the decode started (test host/test host
     # 2026-10-21): one lookup must not compose the whole window.
     source, advanced = _posted_source(tmp_path, range(49), decoded=2)
     source.through(2)

@@ -10,7 +10,7 @@ near-neutral, and 19 edge probes), each run at six grid spacings
 (100 m to 27 km, dt from 1 s to 150 s) with the TKE diagnostic on, and once
 more with it off.  The byte-unmodified WRF v4.6.1 ``module_bl_shinhong.F``
 (sha256 99f44dbe...) wrote every output word, called the way
-``module_pbl_driver.F`` calls it, on box W1 (gfortran 13.3.0, glibc 2.39).
+``module_pbl_driver.F`` calls it, on test host (gfortran 13.3.0, glibc 2.39).
 
 ``wrf-out.bin`` is THE reference: WRF's own phys/ flags (-O2
 -funroll-loops) with the vectoriser off, so every libm call is scalar.  The

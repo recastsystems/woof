@@ -107,6 +107,9 @@ pub struct DeviceInfo {
 impl DeviceInfo {
     /// One line for manifests and logs.
     pub fn describe(&self) -> String {
+        if cudarc::gpuwm_hip::requested() {
+            return format!("gpu {} ({})", self.name,self.kernel_artifact);
+        }
         format!(
             "gpu {} (sm_{}{}, {})",
             self.name, self.compute_capability.0, self.compute_capability.1, self.kernel_artifact
@@ -277,7 +280,24 @@ impl GpuPost {
         let total = ctx.total_mem().map_err(drv("device memory"))?;
         let mut refused: Vec<String> = Vec::new();
         let mut loaded = None;
-        if image == KernelImage::Auto {
+        if cudarc::gpuwm_hip::requested() {
+            let source=cudarc::gpuwm_hip::compose(include_str!("../kernels/woof_post.cu"), &[
+                ("woof_math.cuh",include_str!("../kernels/woof_math.cuh")),
+                ("post_common.cuh",include_str!("../kernels/post_common.cuh")),
+                ("post_group_a.cu",include_str!("../kernels/post_group_a.cu")),
+                ("severe_c.cu",include_str!("../kernels/severe_c.cu")),
+                ("group_e.cu",include_str!("../kernels/group_e.cu")),
+                ("group_d.cu",include_str!("../kernels/group_d.cu")),
+                ("group_b.cu",include_str!("../kernels/group_b.cu")),
+            ]);
+            let bytes=cudarc::gpuwm_hip::compile(&source,&[
+                "--std=c++17".into(),"--fmad=false".into(),"--ftz=false".into(),
+                "--prec-div=true".into(),"--prec-sqrt=true".into()]).map_err(drv("compile HIP post source"))?;
+            let module=ctx.load_module(Ptx::from_binary(bytes)).map_err(drv("load HIP post source"))?;
+            loaded=Some((format!("HIP {} source-bound image",cudarc::gpuwm_hip::architecture(ordinal).map_err(drv("HIP architecture"))?),module));
+        }
+
+        if image == KernelImage::Auto && !cudarc::gpuwm_hip::requested() {
             if let Some((label, cubin)) = cubin_for(major, minor) {
                 match ctx.load_module(cubin) {
                     Ok(module) => loaded = Some((label, module)),

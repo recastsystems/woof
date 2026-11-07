@@ -219,6 +219,8 @@ def project_payloads(layout: RegistryLayout, payload: Path, partitions, outputs,
             mapping, local, output = item
             projected = local.fields[index]
             record = {name: projected[name] for name in ('pool', 'name', 'kind', 'dimensions', 'shape')}
+            if row['pool'] == 'tend_iau':
+                record['unpartitioned_sha256'] = original.get('unpartitioned_sha256') or original.get('sha256')
             if 'origins' in original:
                 # Which input stream filled the words: SuiteIau admits an IAU run only
                 # when the iau stream read tend_iau, and a rank payload without origins
@@ -243,7 +245,7 @@ def project_payloads(layout: RegistryLayout, payload: Path, partitions, outputs,
         items = list(zip(maps, locals_, outputs))
         if buffer is not None and len(items) > 1 and buffer.nbytes >= _RANKS_PARALLEL_BYTES:
             # A large field's partitions are gathered, written and hashed on their own threads.  THE COST THIS
-            # REMOVES (conus3km 2.34 M cells on 4 same-host ranks, V4X6000, 2026-10-29): the scalars (~33 GB)
+            # REMOVES (conus3km 2.34 M cells on 4 same-host ranks, four-card system, 2026-10-29): the scalars (~33 GB)
             # were projected for one rank after another on one worker, the ~20 s tail of the payload projection
             # while every other field had finished.  Same bytes and records, in rank order.
             with ThreadPoolExecutor(max_workers=len(items), thread_name_prefix='hex-project-rank') as ranks:

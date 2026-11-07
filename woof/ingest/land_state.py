@@ -1,6 +1,6 @@
 """Soil moisture across land-surface models: index remap and same-model donors.
 
-The defect this module fixes (found 2026-10-26): a run
+The defect this module fixes (2026-10-26 cold-start study): a run
 started from ERA5 copied ERA5's HTESSEL volumetric soil moisture straight into
 RUC.  HTESSEL rates the Oklahoma soils of 2024-05-06 at field capacity (top
 level 0.36); HRRR's own cycled RUC analysis puts the same cells at 0.21.  With
@@ -180,6 +180,18 @@ def identify_source_soil(fields: Mapping[str, object], soil_layer_contract=None)
 
     rules = load_rules()
     if soil_layer_contract is not None and MAPPED_SOIL_MOISTURE in fields:
+        donor = soil_layer_contract.get("deep_donor_layers")
+        if donor is not None:
+            # A stacked column (woof/ingest/deep_soil_donor.py): the
+            # source's own layers above are kept as published; the donor's
+            # layers below are on the donor's soil model.
+            bounds = [(int(round(top * 100.0)), int(round(bottom * 100.0)))
+                      for top, bottom in soil_layer_bounds(soil_layer_contract, "source_layers")]
+            first = int(donor["first_index"])
+            return (str(donor["soil_model"]),
+                    f"layers {bounds[first:]} cm from deep donor {donor['source_id']} "
+                    f"under the source's own {bounds[:first]} cm",
+                    ((MAPPED_SOIL_MOISTURE, len(bounds)),))
         if "source_nodes" in soil_layer_contract:
             nodes = [int(round(depth * 100.0)) for depth in soil_node_depths(soil_layer_contract)]
             return (_model_for_ladder(rules, nodes=nodes), f"nodes {nodes} cm",
@@ -244,6 +256,55 @@ def _hydraulics(rules, model: str, soil_class: np.ndarray):
     return wp, fc, nan, nan
 
 
+def _index_remap(theta, cells, source, target):
+    """``theta_t = WP_t + SMI (FC_t - WP_t)``, bounded; the one formula."""
+
+    wp_s, fc_s = source
+    wp_t, fc_t, dry_t, sat_t = target
+    smi = (theta - wp_s) / np.where(cells, fc_s - wp_s, 1.0)
+    raw = wp_t + smi * (fc_t - wp_t)
+    bounded = np.clip(raw, dry_t, sat_t)
+    mask = np.broadcast_to(cells, theta.shape)
+    return np.where(mask, bounded, theta), int(np.count_nonzero(mask & (bounded != raw)))
+
+
+def soil_moisture_index_remap(theta, soil_class, *, source_model: str, target_model: str,
+                              land=None):
+    """The soil-moisture index remap on one array of levels, for any engine.
+
+    ``theta`` is ``(levels, *cells)`` volumetric moisture on ``source_model``'s
+    hydraulics; ``soil_class`` the cells' STAS class.  Returns
+    ``(converted float64, receipt)``.  hex calls this on the levels a
+    deep-soil donor supplied, so both engines move donor moisture with one
+    formula and one table.
+    """
+
+    rules = load_rules()
+    theta = np.asarray(theta, dtype=np.float64)
+    soil_class = np.rint(np.asarray(soil_class, dtype=np.float64)).astype(np.int64)
+    if source_model == target_model:
+        return theta.copy(), {"moisture": "copied: source and target share a soil model",
+                              "source_soil_model": source_model, "target_soil_model": target_model}
+    wp_s, fc_s, _, _ = _hydraulics(rules, source_model, soil_class)
+    wp_t, fc_t, dry_t, sat_t = _hydraulics(rules, target_model, soil_class)
+    usable = (np.isfinite(wp_s) & np.isfinite(fc_s) & (fc_s > wp_s)
+              & np.isfinite(wp_t) & np.isfinite(fc_t))
+    if land is not None:
+        usable &= np.asarray(land, dtype=bool)
+    cells = usable & np.isfinite(theta).all(axis=0)
+    converted, bounded = _index_remap(theta, cells, (wp_s, fc_s), (wp_t, fc_t, dry_t, sat_t))
+    return converted, {
+        "moisture": "soil-moisture index remap",
+        "source_soil_model": source_model, "target_soil_model": target_model,
+        "table": _TABLE.name,
+        "formula": "theta_t = WP_t + (theta_s - WP_s)/(FC_s - WP_s) * (FC_t - WP_t), bounded by the target air-dry/saturation",
+        "cells_converted": int(np.count_nonzero(cells)),
+        "level_mean_before": [round(float(theta[k][cells].mean()), 4) for k in range(theta.shape[0])] if cells.any() else [],
+        "level_mean_after": [round(float(converted[k][cells].mean()), 4) for k in range(theta.shape[0])] if cells.any() else [],
+        "values_bounded": bounded,
+    }
+
+
 def convert_source_soil_moisture(fields, *, sf_surface_physics, soil_type,
                                  landmask=None, lake_mask=None,
                                  soil_layer_contract=None):
@@ -298,24 +359,32 @@ def convert_source_soil_moisture(fields, *, sf_surface_physics, soil_type,
               & np.isfinite(wp_t) & np.isfinite(fc_t))
     out = dict(fields)
     before, after, clipped = [], [], 0
+    # A stacked deep-donor column converts only the donor's layers; the
+    # source's own layers above them are kept as published.
+    donor_layers = (soil_layer_contract or {}).get("deep_donor_layers")
+    first = 0 if donor_layers is None else int(donor_layers["first_index"])
     for name, _count in keys:
         values = _host(fields[name])
+        if first:
+            kept = values[:first]
+            values = values[first:]
         dtype = values.dtype if values.dtype.kind == "f" else np.float32
         theta = np.asarray(values, dtype=np.float64)
         cells = usable & np.isfinite(theta).all(axis=0) if theta.ndim == 3 else usable & np.isfinite(theta)
-        smi = (theta - wp_s) / np.where(cells, fc_s - wp_s, 1.0)
-        raw = wp_t + smi * (fc_t - wp_t)
-        bounded = np.clip(raw, dry_t, sat_t)
-        mask = np.broadcast_to(cells, theta.shape)
-        clipped += int(np.count_nonzero(mask & (bounded != raw)))
-        converted = np.where(mask, bounded, theta).astype(dtype)
+        converted, bounded_count = _index_remap(theta, cells, (wp_s, fc_s), (wp_t, fc_t, dry_t, sat_t))
+        clipped += bounded_count
+        converted = converted.astype(dtype)
         if theta.ndim == 3:
             before += [float(theta[k][cells].mean()) for k in range(theta.shape[0])] if cells.any() else []
             after += [float(converted[k][cells].mean()) for k in range(theta.shape[0])] if cells.any() else []
         elif cells.any():
             before.append(float(theta[cells].mean()))
             after.append(float(converted[cells].mean()))
+        if first:
+            converted = np.concatenate([np.asarray(kept, dtype=converted.dtype), converted], axis=0)
         out[name] = converted
+    if first:
+        receipt["layers_kept_as_published"] = first
     receipt.update({
         "moisture": "soil-moisture index remap",
         "formula": "theta_t = WP_t + (theta_s - WP_s)/(FC_s - WP_s) * (FC_t - WP_t), bounded by the target air-dry/saturation",
@@ -567,5 +636,6 @@ __all__ = [
     "identify_source_soil",
     "land_state_context",
     "load_rules",
+    "soil_moisture_index_remap",
     "target_soil_model",
 ]

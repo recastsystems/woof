@@ -43,7 +43,10 @@ for moments in (2,3):
     phased.lib.nssl_host_phase.argtypes=phased.lib.nssl_step_body.argtypes
     phased.lib.nssl_host_phase.restype=None
     phased.lib.nssl_step_body=phased.lib.nssl_host_phase
-    a=fixture(nc=4,nz=12,moments=moments)
+    # nz=20, not 12: the NSSL driver writes the 1 km diagnostic from level 17 (refl_diagnostic = dbz2d(ix,1,17),
+    # module_mp_nssl_2mom.F:2853/2875). With 12 levels that read is past the column, so the witness compared
+    # an undefined word (hex 0.4.12 gate: refl1km 2 of 4 words, 3.11 CI only) and never checked a real value.
+    a=fixture(nc=4,nz=20,moments=moments)
     b={n:x.copy() for n,x in a.items()}
     for nt,nmicro in ((1,1),(2,3),(3,2)):
         args=dict(nt=nt,nmicro=nmicro,diagnose=nt%2,dbz_due=1,reqc=1,reqi=1,reqs=1,dt=5.)

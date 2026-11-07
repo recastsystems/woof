@@ -473,12 +473,12 @@ def test_a_scheme_with_no_stock_wrf_contract_publishes_and_runs(
 
     assert 16 not in supported_stock_wrf_mp_physics()
     _bind_synthetic_geometry(monkeypatch)
-    # 4193eb0da, lane/286-fork-mynn, selects the coupled MP28 suite at
+    # 4193eb0da, development branch, selects the coupled MP28 suite at
     # the native default. This configured WDM6 export control starts from
     # the admitted uncoupled baseline, without MP28-only scalar or forks.
     bundle = _hrrr_bundle(tmp_path, physics_profile=None,
                           configuration_profile=THOMPSON_RTE_RRTMGP_PROFILE_ID,
-                          # 188ffdf41, lane/sw-excess, keeps the configured
+                          # 188ffdf41, development branch, keeps the configured
                           # WDM6 export control explicit about MP28-only
                           # scalar mixing and neutral Thompson selectors.
                           shared={"mp_physics": 16, "scalar_pblmix": 0,
@@ -517,7 +517,7 @@ def test_preflight_checks_the_preprocessing_digest_with_or_without_export(
     match its receipt."""
 
     _bind_synthetic_geometry(monkeypatch)
-    # 4193eb0da, lane/286-fork-mynn: the default now carries MP28-only
+    # 4193eb0da, development branch: the default now carries MP28-only
     # scalar mixing. Use the same configured WDM6 control as above so this
     # test reaches the preprocessing-digest refusal it is intended to test.
     kwargs = {} if shared is None else dict(
@@ -855,7 +855,7 @@ def _run_wrapper(tmp_path, monkeypatch, *, publish: bool):
     tables, exp = _hrrr_experiment(
         run_seconds=run_seconds,
         history_interval_seconds=history_seconds)
-    # 4193eb0da, lane/286-fork-mynn, changes the route default to MP28/GSD.
+    # 4193eb0da, development branch, changes the route default to MP28/GSD.
     # Generate the selected MP28 scheme's receipt with an explicitly authored
     # analyzed fixture through the real producer. This publication fixture
     # does not numerically qualify the full route's runtime configuration.

@@ -44,6 +44,38 @@ def _payload():
                 physics=dict(pools={('sfc', 'tsk', 1): base[1]}))
 
 
+def test_prepared_scratch_survives_door_and_driver_admission_only_for_its_owner(tmp_path):
+    from woof.hex import run_owner
+    path = tmp_path / 'next-scratch'
+    resident.claim_prepared_scratch(path)
+    pools = path / 'native-pools'
+    pools.mkdir()
+    (pools / 'words').write_bytes(b'prepared pool words')
+    with pytest.raises(FileExistsError):
+        run_owner.claim_directory(path)
+    assert resident.owns_prepared_scratch(path)
+    run_owner.reclaim_dead_directory(path, reuse_current=resident.owns_prepared_scratch(path))
+    run_owner.claim_directory(path, reuse_current=resident.owns_prepared_scratch(path))
+    assert (pools / 'words').read_bytes() == b'prepared pool words'
+    marker = path / run_owner.MARKER
+    owner = json.loads(marker.read_text())
+    owner['host'] = 'another-host'
+    marker.write_text(json.dumps(owner))
+    with pytest.raises(FileExistsError):
+        run_owner.reclaim_dead_directory(path, reuse_current=resident.owns_prepared_scratch(path))
+    assert (pools / 'words').read_bytes() == b'prepared pool words'
+
+
+def test_resident_preparation_preserves_unknown_scratch_and_does_not_claim_it(tmp_path):
+    path = tmp_path / 'unknown-scratch'
+    path.mkdir()
+    (path / 'keep').write_bytes(b'unknown owner')
+    with pytest.raises(FileExistsError):
+        resident.claim_prepared_scratch(path)
+    assert not resident.owns_prepared_scratch(path)
+    assert (path / 'keep').read_bytes() == b'unknown owner'
+
+
 def test_class_inputs_are_claimed_before_the_following_prefetch_replaces_them(tmp_path,monkeypatch):
     layout=object()
     loaded,classes=object(),[dict(rate=1,marker='current')]
@@ -333,7 +365,8 @@ def test_prepared_dycore_config_keeps_the_pre_hydration_namelist(monkeypatch):
 def test_device_geometry_receipt_keeps_all_prepared_inputs(tmp_path, monkeypatch, capsys):
     from woof.hex import physics_suites, moving_vertical_cuda
     from woof.hex.mpasphys import runtime_v842, pool_v842, moving_v842, moving_lts_prepare_v842
-    args = SimpleNamespace(scratch=tmp_path, out=tmp_path, grid=tmp_path/'grid', init=tmp_path/'init')
+    args = SimpleNamespace(scratch=tmp_path/'scratch', out=tmp_path/'fc',
+                           grid=tmp_path/'grid', init=tmp_path/'init')
     layout = SimpleNamespace(configs={})
     mesh = SimpleNamespace(arrays={'areaCell':np.ones(2)})
     vertical = SimpleNamespace(zgrid=np.ones((3, 2)))

@@ -7,7 +7,7 @@ fi
 scratch=$(realpath "$1")
 python=$2
 mutex=${3:-$HOME/card-lease}
-lane=sol-oracle-bigstep-coupling
+lane=oracle-bigstep-coupling
 exec 8>>"$mutex/OWNER.lock"
 flock 8
 printf '%s %s start pid %s bounded 2 min (9 compiled WRF coupling cases; shared)\n' "$lane" "$(date -u +%FT%TZ)" "$$" >>"$mutex/OWNER"

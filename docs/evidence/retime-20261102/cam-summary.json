@@ -1,0 +1,75 @@
+{
+  "row": "cam",
+  "scope": "radiation",
+  "baseline_scope": "radiation",
+  "commit": "6a3e6ea15e60594499f310894d9b1966f50884e6",
+  "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
+  "warm_policy": "first actual forecast step retained separately; steps 2 onward for stage ratios",
+  "stage_ratio": 1.8193152090675295,
+  "median_stage_ratio": 1.8869439388690705,
+  "amortized_stage_ratio": 1.8193152090675295,
+  "active_whole_forecast_wall_ratio": 1.0085089680535688,
+  "active_whole_forecast_seconds": {
+    "baseline": 10.956654902547598,
+    "candidate": 11.049884729087353
+  },
+  "whole_forecast_warm_step_ratio": 1.2256032804885146,
+  "arms": {
+    "baseline": {
+      "step": {
+        "calls": 59,
+        "median_ms": 19.157215118408203,
+        "mean_ms": 22.819238080816753,
+        "sum_ms": 1346.3350467681885,
+        "mean_host_ms": 19.888075479006364
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 30.299455642700195,
+        "mean_ms": 32.21860070662065,
+        "sum_ms": 354.40460777282715,
+        "mean_host_ms": 32.22026913003488
+      }
+    },
+    "candidate": {
+      "step": {
+        "calls": 59,
+        "median_ms": 20.450048446655273,
+        "mean_ms": 27.967333050097448,
+        "sum_ms": 1650.0726499557495,
+        "mean_host_ms": 17.43501109086861
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 57.17337417602539,
+        "mean_ms": 58.6157902804288,
+        "sum_ms": 644.7736930847168,
+        "mean_host_ms": 12.45204901153391
+      }
+    }
+  },
+  "nonfinite_heating": {
+    "baseline": 0,
+    "candidate": 0
+  },
+  "cold_first_step": {
+    "baseline": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 315.5028381347656,
+      "host_seconds": 0.3155038058757782
+    },
+    "candidate": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 432.58349609375,
+      "host_seconds": 0.4326675124466419
+    }
+  },
+  "forecasts": {
+    "baseline": "/workspace/runs/spd-retime-rad-cu/logs/cam-baseline.log",
+    "candidate": "/workspace/runs/spd-retime-rad-cu/logs/cam-candidate.log"
+  },
+  "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/spd-retime-rad-cu",
+  "retained_native_root": "~/weather/data/datasets/paper/wrf-ports/spd-retime-rad-cu"
+}

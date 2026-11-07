@@ -100,16 +100,39 @@ _WRF471 = "WRF v4.7.1, not vendored here"
 #: ``bl_ysu.F90`` is WRF's ``phys/physics_mmm/bl_ysu.F90`` (the refactored YSU
 #: body ``module_bl_ysu.F`` wraps), which is why both spellings appear.
 EXTERNAL: dict[str, str] = {
+    "module_cu_camzm_driver.F": _WRF,
+    "module_sf_pxlsm.F": _WRF,
+    "module_sf_gfs.F": _WRF,
+    "phys/module_sf_gfs.F": _WRF,
+    "module_bl_eepsilon.F": _WRF,
+    "module_mp_gsfcgce.F": _WRF,
+    "module_physics_init.F": _WRF,
+    "module_cu_sas.F": _WRF,
+
+    "module_bl_keps.F": _WRF471,
+    "phys/module_sf_idealscmsfclay.F": _WRF471,
+
+    # CU99's native pin includes the column and driver scalar/expiry gates.
+    # tools/kf_old_wrf461_oracle/PIN.json records both public-source digests.
+    "phys/module_cu_kf.F": _WRF471,
+    "phys/module_physics_addtendc.F": _WRF471,
     "module_cu_g3.F": "WRF v4.6.1 phys/module_cu_g3.F",
     "module_cu_nsas.F": _WRF,
+    "module_first_rk_step_part1.F": _WRF,
     'module_mp_fer_hires.F': _WRF,
 
     # Port authorities verified in the read-only WRF v4.6.1 source.
 
+    "module_bl_gbmpbl.F": _WRF,
+    "module_pbl_driver.F": _WRF,
     "bl_ysu.F90": _WRF,
     "module_bl_shinhong.F": _WRF,
+    "module_cu_bmj.F": _WRF,
     "module_bl_ysu.F": _WRF,
+    "module_bl_mrf.F": _WRF,
     "module_cumulus_driver.F": _WRF,
+    "module_cu_osas.F": _WRF,
+    "module_physics_addtendc.F": _WRF,
     # WRF's phys/physics_mmm/cu_ntiedtke.F90, the New Tiedtke body that
     # phys/module_cu_ntiedtke.F wraps; tools/ntiedtke_wrf461_oracle/README.md
     # pins its v4.6.1 digest.  The cited :566 is cumastrn's deep-to-shallow
@@ -125,6 +148,7 @@ EXTERNAL: dict[str, str] = {
     # builds the module from a WRF v4.7.1 tree.
     "dyn_em/module_ieva_em.F": _WRF471,
     "dyn_em/module_initialize_real.F": _WRF,
+    "phys/module_bl_acm.F": _WRF,
     "phys/module_bl_myjpbl.F": _WRF,
     "phys/module_bl_myjurb.F": _WRF,
     "phys/module_bl_mynn.F": _WRF,
@@ -139,14 +163,16 @@ EXTERNAL: dict[str, str] = {
     "module_mp_wdm6.F": _WRF,
     "module_mp_wsm3.F": _WRF,
     "phys/module_mp_wdm6.F": _WRF,
+    "phys/module_mp_wdm7.F": _WRF,
     "phys/module_pbl_driver.F": _WRF,
+    "module_pbl_driver.F": _WRF,
+    "module_microphysics_driver.F": _WRF,
     "phys/module_physics_init.F": _WRF,
-    "phys/module_radiation_driver.F": _WRF,
     "phys/module_sf_myjsfc.F": _WRF,
+    "phys/module_sf_pxsfclay.F": _WRF,
     "module_sf_mynn.F": _WRF,
     "module_sf_noahdrv.F": _WRF,
     "module_sf_noahlsm.F": _WRF,
-    "module_sf_noahmpdrv.F": _WRF,
     "phys/module_sf_noahmpdrv.F": _WRF,
     "module_sf_ruclsm.F": _WRF,
     # WRF v4.7.1's single-layer urban canopy model: the urban rows cite its
@@ -157,8 +183,14 @@ EXTERNAL: dict[str, str] = {
     "phys/module_surface_driver.F": _WRF,
     "share/module_soil_pre.F": _WRF,
     "share/module_check_a_mundo.F": _WRF,
-    "module_check_a_mundo.F": _WRF,
     "module_mp_nssl_2mom.F": _WRF,
+    "phys/module_bl_qnsepbl.F": _WRF,
+    "phys/module_bl_mfshconvpbl.F": _WRF,
+    "phys/module_sf_qnsesfc.F": _WRF,
+    # WRF 4.7.1 phys/ files the 3.0 ports cite bare: the MYNN-EDMF PBL
+    # (native undefined cold local) and UDM microphysics (mp_physics=27).
+    "module_bl_mynnedmf.F": _WRF,
+    "module_mp_udm.F": _WRF,
 }
 
 #: A bare filename that resolves to more than one file in this worktree, and
@@ -166,7 +198,12 @@ EXTERNAL: dict[str, str] = {
 #: currently cites no ambiguous bare filename.  The table is kept because the
 #: judgement it records ("which ``run_driver.F90`` did the MYNN warning
 #: mean?") is not one a scanner may make for itself.
-AMBIGUOUS: dict[str, str] = {}
+AMBIGUOUS: dict[str, str] = {
+    "module_sf_noahmpdrv.F":
+        "tools/diag_wrf471_oracle/upstream/noahmp/module_sf_noahmpdrv.F",
+    "phys/module_radiation_driver.F":
+        "tools/surface_diagnostics_wrf461_oracle/upstream/phys/module_radiation_driver.F",
+}
 
 #: citation -> (repo-relative path, anchor that must appear in the cited lines).
 #:
@@ -175,9 +212,32 @@ AMBIGUOUS: dict[str, str] = {}
 #: bless a drifted citation as correct, which is the failure this table exists
 #: to prevent.
 RESOLVED: dict[str, tuple[str, str]] = {
-    # lane/ptx-stencils (merge 779bad3acc) moved the guard from :437 to :482; anchor unchanged.
+    "module_sf_noahmpdrv.F:776-789": (
+        "tools/diag_wrf471_oracle/upstream/noahmp/module_sf_noahmpdrv.F",
+        "PRCPOTHR"),
+    "module_radiation_driver.F:1264-1345": (
+        "tools/surface_diagnostics_wrf461_oracle/upstream/phys/module_radiation_driver.F",
+        "qc_cu"),
+    "module_radiation_driver.F:4003-4473": (
+        "tools/surface_diagnostics_wrf461_oracle/upstream/phys/module_radiation_driver.F",
+        "SUBROUTINE cal_cldfra3"),
+    # The surface/cloud oracle now vendors the public driver. Its digest
+    # is identical at the two native pins; these citations mean that file.
+    "phys/module_radiation_driver.F:1403-1429": (
+        "tools/surface_diagnostics_wrf461_oracle/upstream/phys/module_radiation_driver.F",
+        "CLDFRA_BL"),
+    "phys/module_radiation_driver.F:1719-1722": (
+        "tools/surface_diagnostics_wrf461_oracle/upstream/phys/module_radiation_driver.F",
+        "GSW(I,J)=0."),
+    "phys/module_radiation_driver.F:1826": (
+        "tools/surface_diagnostics_wrf461_oracle/upstream/phys/module_radiation_driver.F",
+        "aer_opt .EQ. 1"),
+    # development branch (merge 779bad3acc) moved the guard from :437 to :482; anchor unchanged.
     "kernels/ysu_480.cu:482": ("woof/core/kernels/ysu_480.cu", "kpbl < nz"),
     "module_ra_sw.F:193-203": ("woof/data/wrf_radiation/module_ra_sw.F", "QI1D(K)=QC1D(K)"),
+    "module_bl_gfs.F:463-466": (
+        "tools/gfs_pbl_wrf461_oracle/upstream/module_bl_gfs.F",
+        "UST(i,j)=SQRT(STRESS(i))"),
     # YSU: the guard that skips the top-down block where WRF would read
     # thlix(i,k+2) one past an array declared kts:kte.  The anchor is the
     # guard condition the warning names.
@@ -192,8 +252,8 @@ RESOLVED: dict[str, tuple[str, str]] = {
     # the column arrays moved into a global workspace) moved the kernel's
     # guard 58 lines: :1371 is now the `if (pblflg && k < kpbl)` loop body
     # and the `if (pblflg && kpbl < kte)` guard is at :1429.  Anchor
-    # unchanged.  lane/verify-shinhong (the thx = tx/pi fix) moved it 8
-    # lines more, to :1437, and lane/verify-topo-wind (the topo_wind arm,
+    # unchanged.  development branch (the thx = tx/pi fix) moved it 8
+    # lines more, to :1437, and development branch (the topo_wind arm,
     # shinhong_column_body<TOPO>, and sh_tanhf above the body) 161 more,
     # to :1598.  Anchor unchanged.
     "kernels/shinhong.cu:1602": (
@@ -246,25 +306,25 @@ RESOLVED: dict[str, tuple[str, str]] = {
     # at :1308.  Anchors unchanged.
     #
     # RE-PINNED a fifth time: four 2.8.2 merges moved both, the km_opt=2
-    # header by 29 lines and the km_opt=3 header by 33 (lane/282-oracle-
-    # bigstep -1, lane/282-namelist-tolerance's diff_opt = 1 branch +8 and
-    # +12, lane/282-wrf-exact +11, lane/282-bw-glue +11).  The km_opt=2
+    # header by 29 lines and the km_opt=3 header by 33 (development branch
+    # -1, development branch's diff_opt = 1 branch +8 and
+    # +12, development branch +11, development branch +11).  The km_opt=2
     # header is now at :1247 (launch_wrf_tke_km, def at :1245) and the
     # km_opt=3 header at :1341 (launch_wrf_smag3d_km, def at :1339).
     # Anchors unchanged.
     #
     # RE-PINNED a sixth time: the vertical advection orders
-    # (lane/286-vadv5: the vertical_orders reads on both slow-tendency
+    # (development branch: the vertical_orders reads on both slow-tendency
     # paths and the rhs_ph order note) moved both 13 lines.  The km_opt=2
     # header is now at :1260 and the km_opt=3 header at :1354.  Anchors
     # unchanged.
-    # (lane/kernel-levers: the 32-bit Smagorinsky index dispatch moved both
+    # (development branch: the 32-bit Smagorinsky index dispatch moved both
     # one more line, to :1261 and :1355.  Anchors unchanged.)
-    # (lane/cut286-fu-diff6-price: the workspace-priced sixth-order edge form
+    # (development branch: the workspace-priced sixth-order edge form
     # moved both six lines, to :1267 and :1361.  Anchors unchanged.)
-    # (lane/ec-sfire: the open-boundary geopotential launcher moved both 17
+    # (development branch: the open-boundary geopotential launcher moved both 17
     # lines, to :1284 and :1378.  Anchors unchanged.)
-    # (lane/wrf-exact-start c501f4d34: the strict split big step's t - t0
+    # (development branch c501f4d34: the strict split big step's t - t0
     # transport moved both ten lines, to :1294 and :1388.  Anchors unchanged.)
     # The restored selected integration resolves these declarations at
     # :1424 and :1518. Keep the original semantic anchors checked there.
@@ -272,13 +332,15 @@ RESOLVED: dict[str, tuple[str, str]] = {
     # down; on the combined 2.9.0 line they sat at :1425 and :1519, and
     # after the 2.9.1 exact-chain intake at :1431 and :1525.
     # Anchors unchanged.)
-    # (lane/hrrr-v4-output-fold 514f72e8be, RK descriptors passed as by-value
+    # (development branch 514f72e8be, RK descriptors passed as by-value
     # host arrays and forecast-entry imports moved these anchors.  Anchors
     # unchanged.)
-    "woof/core/dycore.py:1438": (
+    # (3.0 port folds moved both launchers seven lines down; the registry
+    # now cites :1490 and :1588.  Anchors unchanged.)
+    "woof/core/dycore.py:1490": (
         "woof/core/dycore.py",
         "WRF v4.6.1 km_opt=2:"),
-    "woof/core/dycore.py:1536": (
+    "woof/core/dycore.py:1588": (
         "woof/core/dycore.py",
         "WRF v4.6.1 km_opt=3:"),
 }
@@ -477,8 +539,7 @@ def _tree_index() -> dict[str, tuple[str, ...]]:
         # clones contain Linux symlinks Windows cannot stat (WinError
         # 1920), which killed this walk in the one checkout the release
         # battery runs in.
-        if relative_parts and relative_parts[0] in (
-                ".worktrees", ".claude", ".git"):
+        if relative_parts and relative_parts[0].startswith("."):
             continue
         try:
             if not candidate.is_file():

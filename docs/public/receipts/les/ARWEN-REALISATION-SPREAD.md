@@ -81,7 +81,7 @@ all-endpoints version.*
 *One endpoint-provenance correction, found while reconciling the node state:
 the +0.00112 in `KM2-50M-REFINEMENT-VERDICT.md` conditions on a WOOF 100 m
 same-instrument endpoint of 0.889297, the pre-`eab04061` reduction against
-the superseded WOOF receipts. A development machine still holds that stale file, and the
+the superseded WOOF receipts. Test host 2 still holds that stale file, and the
 hand collection quoted it. Against WOOF's current 100 m receipt (0.891629,
 the value committed in `wrf_oracle_same_instrument_km2_100m.json`) the delta
 difference is **−0.00122**: 8.1% of the band, 0.30x measured noise. The
@@ -142,7 +142,7 @@ standard error, but a factor-of-two n=3 fluke is now excluded).
 `*_binaries.sha256` matches the lane's identity hashes, so all draws are the
 same bytes). WRF's ideal-case perturbation is unseeded and
 decomposition-dependent, so the draws are genuinely independent. Flux-arm
-ledger `match_km3_50m` (a development machine) / `_r2` (a development machine) / `_r3` (a development machine):
+ledger `match_km3_50m` (test host 2) / `_r2` (test host 1) / `_r3` (test host 1):
 
 | quantity | r1 | r2 | r3 | stdev (n=3) |
 |---|---|---|---|---|
@@ -153,7 +153,7 @@ ledger `match_km3_50m` (a development machine) / `_r2` (a development machine) /
 | entrainment_min_over_qs | −0.13228 | −0.13441 | −0.13291 | 0.0011 |
 
 The `km_opt=2` ledger (`match_km2_50m_node1` / `match_km2_50m` /
-`match_km2_50m_r3`, a development machine, a development machine, a development machine): resolved fraction (truncation)
+`match_km2_50m_r3`, test host 1, test host 2, test host 2): resolved fraction (truncation)
 0.927470 / 0.927673 / 0.929116, stdev **0.000898**, range 0.001646. The
 third draw corrects an n=2 artifact: `CONTROLS-MEASURED.md` reported the
 pair gap of 0.000203 and called the 50 m endpoint "five times tighter than

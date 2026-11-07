@@ -88,7 +88,7 @@ def test_background_frames_are_the_direct_bytes(tmp_path, small_mesh, monkeypatc
     assert writer.ready['io_priority'] == 'idle'
     import importlib.util
     if importlib.util.find_spec("woof") is None or importlib.util.find_spec("woof.timeline") is None:
-        return  # no engine ledger (woof 2.8.7 and earlier): the frames above are the test
+        return  # no engine ledger (gpuwm 2.8.7 and earlier): the frames above are the test
     events = [json.loads(line) for line in (tmp_path / "background" / "timeline.jsonl").read_text().splitlines()]
     assert len([e for e in events if e['stage'] == 'forecast.output.history.durable']) == 3
     events = [e for e in events if e['stage'] == 'forecast.output.history']

@@ -59,6 +59,16 @@ def resolve_zarr_bin() -> Path:
         if current:
             return accept_resolved(path.resolve())
         stale.append(f"{path} {evidence}")
+    if not stale and not override:
+        # On demand since WOOF 1.1.6 (PyPI per-file limit): pinned in this release's
+        # bundle and staged by the first use (never inside bridges.inspection_only()).
+        from woof.bridges import fetch_on_demand
+        staged = default_bridge_dir() / filename
+        if fetch_on_demand("rw_zarr") and staged.is_file():
+            current, evidence = bridge_abi_matches("rw_zarr", staged)
+            if current:
+                return accept_resolved(staged.resolve())
+            stale.append(f"{staged} {evidence}")
     if stale:
         raise DecoderContractError(
             "The native Zarr reader rw_zarr found here is older than this woof: "

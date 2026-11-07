@@ -1,0 +1,51 @@
+{
+  "native_version": "WRF v4.7.1",
+  "native_commit": "f52c197ed39d",
+  "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_cu_mskf.F",
+  "source_sha256": "4bca54b294def08ffc98ef69a30650c943e2c394f34802e75e50c7f1a2896fcb",
+  "v4.6.1_source_identical": true,
+  "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+  "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+  "license": "WRF public-domain statement; embedded aerosol routine permits use, copying and modification without fee; original notice retained",
+  "external_CESM_monthly_data": "not bundled; data licence not established",
+  "dependency_sources": [
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_cam_shr_kind_mod.F",
+      "file": "module_cam_shr_kind_mod.F",
+      "sha256": "369bad7e4b528953dc4047ad38bf0b0d88120190f75541667be635c55edf1783",
+      "bytes": 1734,
+      "license": "Distributed by WRF under its public-domain statement",
+      "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_cam_error_function.F",
+      "file": "module_cam_error_function.F",
+      "sha256": "49fa938132d5d49da279a387315bca8ff23c5de332b939a1065e95a063371bf0",
+      "bytes": 24312,
+      "license": "Distributed by WRF under its public-domain statement",
+      "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_cu_kfeta.F",
+      "file": "module_cu_kfeta.F",
+      "sha256": "e6376c2d85c45470f49d545b25d513b5ec111bf36b87beebc740bf42825c6e5f",
+      "bytes": 120219,
+      "license": "Distributed by WRF under its public-domain statement",
+      "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    }
+  ],
+  "lookup_table": {
+    "path": "woof/data/kf_lutab/kf_lutab.npz",
+    "sha256": "3248ad89f73084d615a55e319ee3a0151a3b6a07402143d745fe1afb11751f73",
+    "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_cu_kfeta.F",
+    "source_sha256": "e6376c2d85c45470f49d545b25d513b5ec111bf36b87beebc740bf42825c6e5f",
+    "source_lines": "3174-3301",
+    "license": "WRF public-domain statement",
+    "license_file": "woof/data/kf_lutab/LICENSE.txt",
+    "provenance_file": "woof/data/kf_lutab/PROVENANCE.md",
+    "new_table_added": false
+  }
+}

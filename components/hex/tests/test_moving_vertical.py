@@ -76,7 +76,7 @@ def test_parallel_subground_extension_keeps_previous_bottom_layer_words():
     centre=w.source_centres[0,c]
     ground=w.source_zgrid[0,c]
     def pressure(z):
-        return 1e5*(exner[c]+rate*(centre-z))**(1004.5/287.)
+        return 1e5*np.float_power(exner[c]+rate*(centre-z),1004.5/287.)
     expected=np.array([(pressure(np.minimum(height,ground))-pressure(ground))/(9.80616*loading[c])
                        for height in w.sample_height])
     extend_below_ground(w,old,[0,1,2])

@@ -248,13 +248,218 @@ def prepared_domain_config_identity(domain_config) -> dict[str, object]:
 #: the flag existed was prepared with, so "absent" and "default"
 #: describe the same prepared state provably rather than plausibly.
 DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
-    # 2.9.4 capability fields (lake state, mixed-layer ocean, sea-ice parameters; seaice_prognostic itself is
-    # PREPARATION_INERT_RUN_FIELDS).  Each is read by the
+    # These runtime controls did not affect the pre-field prepared state.
+    # Only their existing defaults may stand in for an absent old header key.
+    "run.waves",  # pre-wave path at 'off'
+    "run.waves_options",  # no wave options at ''
+    "run.wtddt",  # groundwater runtime cadence at 30.0 minutes
+    # Snow optics reads these on radiation steps, not during preparation.
+    "run.snicar_snowshape_opt",  # existing shape default at 3
+    "run.snicar_snowbc_intmix",  # existing mixing default at True
+    "run.snicar_snowdust_intmix",  # existing mixing default at False
+    "run.snicar_bc_ppb",  # no added black carbon at 0.0
+    "run.snicar_dust_ppm",  # no added dust at 0.0
+    "run.snicar_ice_density",  # existing density at 900.0
+    "run.snicar_bubble_radius_um",  # existing bubble radius at 1000.0
+    # WRF port defaults: no new feature is selected by an old cache.
+    "run.tracer_opt",  # pre-port path at 0
+    "run.tracer_adv_opt",  # pre-port path at 1
+    "run.tracer_mix2_off",  # pre-port path at False
+    "run.tracer_mix6_off",  # pre-port path at False
+    "run.tracer_pblmix",  # pre-port path at 1
+    "run.traj_opt",  # pre-port path at 0
+    "run.dm_has_traj",  # pre-port path at False
+    "run.num_traj",  # pre-port path at 1000
+    "run.trajectory_input",  # pre-port path at ''
+    "run.shcu_physics",  # pre-port path at 0
+    "run.accum_mode",  # pre-port path at 1000000000.0
+    "run.aitken_mode",  # pre-port path at 300000000.0
+    "run.coarse_mode",  # pre-port path at 200000.0
+    "run.ntu_ccnty",  # pre-port path at 2
+    "run.shalconv",  # pre-port path at 1
+    "run.force_read_thompson",  # pre-port path at False
+    "run.write_thompson_tables",  # pre-port path at True
+    "run.write_thompson_mp38table",  # pre-port path at False
+    "run.ghg_input",  # pre-port path at 0
+    "run.umove",  # pre-port path at 0.0
+    "run.vmove",  # pre-port path at 0.0
+    "run.windfarm_wake_model",  # pre-port path at 2
+    "run.windfarm_overlap_method",  # pre-port path at 4
+    "run.windfarm_induction",  # pre-port path at 0
+    "run.windfarm_deg",  # pre-port path at 0.0
+    "run.tslist",  # pre-port path at ''
+    "run.ts_buf_size",  # pre-port path at 200
+    "run.max_ts_locs",  # pre-port path at 5
+    "run.max_ts_level",  # pre-port path at 15
+    "run.tslist_unstagger_winds",  # pre-port path at False
+    "run.windturbines_spec",  # pre-port path at 'none'
+    "run.td_turbgridid",  # pre-port path at -1
+    "run.td_hubheight",  # pre-port path at 100.0
+    "run.td_diameter",  # pre-port path at 60.0
+    "run.td_stdthrcoef",  # pre-port path at 0.158
+    "run.td_cutinspeed",  # pre-port path at 4.0
+    "run.td_cutoutspeed",  # pre-port path at 27.0
+    "run.td_power",  # pre-port path at 2.0
+    "run.td_turbpercell",  # pre-port path at 1.0
+    "run.td_ewfx",  # pre-port path at 0
+    "run.td_ewfy",  # pre-port path at 0
+    "run.td_pwfx",  # pre-port path at 1
+    "run.td_pwfy",  # pre-port path at 1
+    "run.use_theta_m",  # pre-port path at 0
+    "run.do_avgflx_em",  # pre-port path at 0
+    "run.do_avgflx_cugd",  # pre-port path at 0
+    "run.numbins",  # pre-port path at 1
+    "run.thbinsize",  # pre-port path at 1.0
+    "run.rbinsize",  # pre-port path at 1.0
+    "run.mindeepfreq",  # pre-port path at 1.0
+    "run.minshallowfreq",  # pre-port path at 1.0
+    "run.shallowcu_forced_ra",  # pre-port path at False
+    "run.gsfcgce_hail",  # pre-port path at 0
+    "run.gsfcgce_2ice",  # pre-port path at 0
+    "run.sst_skin",  # pre-port path at 0
+    "run.sst_update",  # pre-port path at 0
+    "run.surface_analysis",  # pre-port path at ''
+    "run.tmn_update",  # pre-port path at 0
+    "run.lagday",  # pre-port path at 150
+    "run.co2tf",  # pre-port path at 1
+    "run.aercu_opt",  # pre-port path at 0
+    "run.bmj_rad_feedback",  # pre-port path at False
+    "run.cam_abs_freq_s",  # pre-port path at 21600.0
+    "run.mfshconv",  # pre-port path at 1
+    "run.afwa_bad_data_check",  # pre-port path at 0
+    "run.afwa_diag_opt",  # pre-port path at 0
+    "run.afwa_therm_opt",  # pre-port path at 0
+    "run.afwa_ptype_opt",  # pre-port path at 0
+    "run.afwa_vil_opt",  # pre-port path at 0
+    "run.afwa_radar_opt",  # pre-port path at 0
+    "run.afwa_vis_opt",  # pre-port path at 0
+    "run.afwa_icing_opt",  # pre-port path at 0
+    "run.afwa_buoy_opt",  # pre-port path at 0
+    "run.afwa_severe_opt",  # pre-port path at 0
+    "run.afwa_ptype_ccn_tmp",  # pre-port path at 264.15
+    "run.afwa_ptype_tot_melt",  # pre-port path at 50.0
+    "run.bucket_mm",  # pre-port path at -1.0
+    "run.bucket_j",  # pre-port path at -1.0
+    "run.acc_phy_tend",  # pre-port path at 0
+    "run.p_lev_diags",  # pre-port path at 0
+    "run.z_lev_diags",  # pre-port path at 0
+    "run.p_lev_diags_dfi",  # pre-port path at 0
+    "run.z_lev_diags_dfi",  # pre-port path at 0
+    "run.press_levels",  # pre-port path at ()
+    "run.z_levels",  # pre-port path at ()
+    "run.use_tot_or_hyd_p",  # pre-port path at 2
+    "run.extrap_below_grnd",  # pre-port path at 1
+    "run.p_lev_missing",  # pre-port path at -999.0
+    "run.z_lev_missing",  # pre-port path at -999.0
+    "run.auxhist22_interval_s",  # pre-port path at 0.0
+    "run.auxhist22_begin_s",  # pre-port path at 0.0
+    "run.auxhist22_end_s",  # pre-port path at 0.0
+    "run.auxhist22_outname",  # pre-port path at 'auxhist22_d<domain>_<date>'
+    "run.frames_per_auxhist22",  # pre-port path at 1
+    "run.auxhist23_interval_s",  # pre-port path at 0.0
+    "run.auxhist23_begin_s",  # pre-port path at 0.0
+    "run.auxhist23_end_s",  # pre-port path at 0.0
+    "run.auxhist23_outname",  # pre-port path at 'auxhist23_d<domain>_<date>'
+    "run.frames_per_auxhist23",  # pre-port path at 1
+    "run.p_lev_interval_s",  # pre-port path at 0.0
+    "run.z_lev_interval_s",  # pre-port path at 0.0
+    "run.dfi_opt",  # pre-port path at 0
+    "run.dfi_savehydmeteors",  # pre-port path at 0
+    "run.dfi_nfilter",  # pre-port path at 7
+    "run.dfi_cutoff_seconds",  # pre-port path at 3600
+    "run.dfi_bckstop_seconds",  # pre-port path at 0
+    "run.dfi_fwdstop_seconds",  # pre-port path at 0
+    "run.dfi_write_filtered_input",  # pre-port path at True
+    "run.dfi_write_dfi_history",  # pre-port path at False
+    "run.time_step_dfi",  # pre-port path at -1
+    "run.moist_adv_dfi_opt",  # pre-port path at 0
+    "run.dfi_constant_bc",  # pre-port path at False
+    "run.dfi_time_dim",  # pre-port path at 1000
+    "run.aercu_fct",  # pre-port path at 1.0
+    "run.kf_edrates",  # pre-port path at 0
+    "run.solar_diagnostics",  # pre-port path at 0
+    "run.mean_diag",  # pre-port path at 0
+    "run.diurnal_diag",  # pre-port path at 0
+    "run.mean_freq",  # pre-port path at 0
+    "run.mean_interval",  # pre-port path at 0
+    "run.obs_nudge_opt",  # pre-port path at 0
+    "run.max_obs",  # pre-port path at 0
+    "run.fdda_start",  # pre-port path at 0.0
+    "run.fdda_end",  # pre-port path at 0.0
+    "run.obs_nudge_wind",  # pre-port path at 0
+    "run.obs_coef_wind",  # pre-port path at 0.0
+    "run.obs_nudge_temp",  # pre-port path at 0
+    "run.obs_coef_temp",  # pre-port path at 0.0
+    "run.obs_nudge_mois",  # pre-port path at 0
+    "run.obs_coef_mois",  # pre-port path at 0.0
+    "run.obs_nudge_pstr",  # pre-port path at 0
+    "run.obs_coef_pstr",  # pre-port path at 0.0
+    "run.obs_no_pbl_nudge_uv",  # pre-port path at 0
+    "run.obs_no_pbl_nudge_t",  # pre-port path at 0
+    "run.obs_no_pbl_nudge_q",  # pre-port path at 0
+    "run.obs_sfc_scheme_horiz",  # pre-port path at 0
+    "run.obs_sfc_scheme_vert",  # pre-port path at 0
+    "run.obs_max_sndng_gap",  # pre-port path at 20.0
+    "run.obs_nudgezfullr1_uv",  # pre-port path at 50.0
+    "run.obs_nudgezrampr1_uv",  # pre-port path at 50.0
+    "run.obs_nudgezfullr2_uv",  # pre-port path at 50.0
+    "run.obs_nudgezrampr2_uv",  # pre-port path at 50.0
+    "run.obs_nudgezfullr4_uv",  # pre-port path at -5000.0
+    "run.obs_nudgezrampr4_uv",  # pre-port path at 50.0
+    "run.obs_nudgezfullr1_t",  # pre-port path at 50.0
+    "run.obs_nudgezrampr1_t",  # pre-port path at 50.0
+    "run.obs_nudgezfullr2_t",  # pre-port path at 50.0
+    "run.obs_nudgezrampr2_t",  # pre-port path at 50.0
+    "run.obs_nudgezfullr4_t",  # pre-port path at -5000.0
+    "run.obs_nudgezrampr4_t",  # pre-port path at 50.0
+    "run.obs_nudgezfullr1_q",  # pre-port path at 50.0
+    "run.obs_nudgezrampr1_q",  # pre-port path at 50.0
+    "run.obs_nudgezfullr2_q",  # pre-port path at 50.0
+    "run.obs_nudgezrampr2_q",  # pre-port path at 50.0
+    "run.obs_nudgezfullr4_q",  # pre-port path at -5000.0
+    "run.obs_nudgezrampr4_q",  # pre-port path at 50.0
+    "run.obs_nudgezfullmin",  # pre-port path at 50.0
+    "run.obs_nudgezrampmin",  # pre-port path at 50.0
+    "run.obs_nudgezmax",  # pre-port path at 3000.0
+    "run.obs_sfcfact",  # pre-port path at 1.0
+    "run.obs_sfcfacr",  # pre-port path at 1.0
+    "run.obs_dpsmx",  # pre-port path at 7.5
+    "run.obs_rinxy",  # pre-port path at 0.0
+    "run.obs_rinsig",  # pre-port path at 0.0
+    "run.obs_twindo",  # pre-port path at 0.0
+    "run.obs_npfi",  # pre-port path at 0
+    "run.obs_ionf",  # pre-port path at 1
+    "run.obs_idynin",  # pre-port path at 0
+    "run.obs_dtramp",  # pre-port path at 0.0
+    "run.obs_prt_max",  # pre-port path at 1000
+    "run.obs_prt_freq",  # pre-port path at 1000
+    "run.obs_ipf_in4dob",  # pre-port path at False
+    "run.obs_ipf_errob",  # pre-port path at False
+    "run.obs_ipf_nudob",  # pre-port path at False
+    "run.obs_ipf_init",  # pre-port path at True
+    "run.obs_scl_neg_qv_innov",  # pre-port path at 0
+    "run.obs_inputfile",  # pre-port path at ''
+    "run.obs_domain_id",  # pre-port path at 1
+    "run.obs_parent_grid_ratio",  # pre-port path at 1
+    "run.obs_levelidn",  # pre-port path at 0
+    "run.obs_truelat1",  # pre-port path at 0.0
+    "run.obs_truelat2",  # pre-port path at 0.0
+    "run.obs_stand_lon",  # pre-port path at 0.0
+    "run.pxlsm_smois_init",  # pre-port path at 1
+    "run.pxlsm_modis_veg",  # pre-port path at 0
+    "run.pxlsm_soil_nudge",  # pre-port path at 0
+    "run.sgfdda_interval_m",  # pre-port path at 180
+    "run.sgfdda_inname",  # pre-port path at 'sgfdda_d<domain>'
+    "run.io_form_sgfdda",  # pre-port path at 2
+    "run.polar",  # pre-port path at False
+    "run.fft_filter_lat",  # pre-port path at 45.0
+
+    # 2.9.4 lake and sea-ice capability fields. Ocean runtime controls and
+    # seaice_prognostic belong to PREPARATION_INERT_RUN_FIELDS below.
+    # Each remaining field is read by the
     # forecast, not by the preparation that wrote an older tree, and its default is what such a tree was
     # run with; a non-default value is refused against an older header, which re-prepares (the safe side).
     "run.lake_state_accept_licence", "run.lake_state_path", "run.lake_state_source",
-    "run.ocean_analysis", "run.ocean_analysis_source", "run.ocean_config", "run.ocean_levels",
-    "run.ocean_mld_climatology", "run.ocean_s", "run.ocean_t", "run.ocean_z", "run.omdt",
     "run.seaice_initial_thickness", "run.seaice_new_ice_thickness", "run.seaice_ocean_heat_flux",
     # The operational HRRR output controls (2.9.4): interval precipitation
     # buckets and the fork's gsd_diagnostics maxima (the history cadence
@@ -262,7 +467,7 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     # what every older tree was prepared and run with; a stated value
     # against an older header re-prepares (the safe side).
     "run.prec_acc_dt", "run.prec_acc_dt1", "run.gsd_diagnostics", "run.reset_interval1",
-    "run.output_diagnostics", "run.diag_int", "run.wind_int",
+    "run.output_diagnostics", "run.diag_print", "run.diag_int", "run.wind_int", "run.auxhist3_interval",
     # G3 controls are absent from older trees; only their declared defaults tolerate absence.
     "run.maxiens",
     "run.maxens",
@@ -271,6 +476,12 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     "run.ensdim",
     "run.cu_diag",
     "run.convtrans_avglen_m",
+    # An absent coefficient header seeded the original 0.5e9 concentration.
+    # Only that default is compatible; a changed seed changes prepared state.
+    "run.nssl_cccn",
+    # Native shape defaults are implicit in older prepared headers.
+    "run.nssl_alphah", "run.nssl_alphahl",
+    "run.nssl_icdx", "run.nssl_icdxhl",
     # 2.6.1's members: top-level DomainConfig declarations whose
     # off state is None.
     "start_time", "spawn", "tiles", "output", "retire", "rearm", "follow",
@@ -329,7 +540,7 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     # A tree that really did carries the value in its header and is
     # still compared strictly.
     "run.p3_backend",
-    # The urban canopy keys (lane/urban-infra).  Preparation reads them
+    # The urban canopy keys (development branch).  Preparation reads them
     # only when sf_urban_physics > 0 (the urban land-use legend and
     # FRC_URB2D, woof/static/highres*.py); at the default, 0, it
     # prepares the legend and tables every pre-urban tree was prepared
@@ -337,7 +548,7 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     # urban run against an older header carries a non-default value and
     # is still refused, as it must be: that tree has no urban legend.
     "run.sf_urban_physics", "run.use_wudapt_lcz", "run.num_urban_hi",
-    # WRF's topo_wind and gwd_opt (lane/282-terrain-drag), on the urban
+    # WRF's topo_wind and gwd_opt (development branch), on the urban
     # keys' argument: preparation reads them only to add the sub-grid
     # orographic statistics to the static build (woof.static.orographic);
     # at 0 it builds exactly the statics every older tree carries.  A
@@ -421,6 +632,10 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     "run.c_k", "run.mix_isotropic", "run.mix_upper_bound",
     "run.tke_heat_flux", "run.tke_drag_coefficient", "run.tke_upper_bound",
     "run.isfflx", "run.moist_mix6_off",
+    # SMS-3DTKE exposes existing runtime switches. Older preparations
+    # used these defaults and no preparation operator reads them.
+    "run.tke_adv_opt", "run.sfs_opt", "run.m_opt",
+    "run.tke_mix2_off", "run.tke_mix6_off",
     # SASE (604de61e3, e11e2eee2, 1a0e8a7f8); the closure selectors moved
     # to PREPARATION_INERT_RUN_FIELDS below:
     "run.km_opt_zero_acknowledgement",
@@ -503,7 +718,7 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     # that added them, so no tree prepared before them is refused.
     "run.relax_timescale_s", "run.relax_w",
     # WRF's horizontal diffusion form and its full-field logical
-    # (lane/282-namelist-tolerance, 679a5f5fe), on argument (c): only the
+    # (development branch, 679a5f5fe), on argument (c): only the
     # FORECAST reads them (woof/core/dycore.py's mixing branch, the
     # diff_opt = 1 thermal reference it captures at the first step, and
     # the restart that carries it); nothing under woof/ingest, the
@@ -780,10 +995,14 @@ SFIRE_PREPARATION_INERT_RUN_FIELDS = frozenset({
 RETIRED_INACTIVE_IDENTITY_FIELDS = {"run.fire_moisture_namelist": ""}
 
 PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
+    # The slab snow switch is read by forecast physics only; preparation
+    # writes the same initial snow fields under either value. It remains
+    # part of the slab checkpoint identity.
+    "run.ifsnow",
     # Turbine forcing attaches only in forecast initialize_physics; real
     # initialization and boundary preparation never read these controls.
     # Runtime overrides retain the original config bytes and record changes.
-    "run.wind_farm_scheme", "run.wind_farm_table", "run.wind_farm_max_dx_m", "run.wind_farms", "run.windfarm_tke_factor",
+    "run.wind_farm_scheme", "run.wind_farm_table", "run.wind_farm_max_dx_m", "run.wind_farms", "run.windfarm_tke_factor", "run.windfarm_ij",
     # The per-run smoke-off sentence (woof/smoke_execution.py): launch
     # metadata for the receipts; chem_sets carries the physics it
     # describes, so one prepared bundle serves either value.  It rides the
@@ -990,7 +1209,9 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     # town rule alike; they stay in the experiment fingerprint and the
     # restart identity when on.
     "run.sf_surface_mosaic", "run.mosaic_cat", "run.mosaic_urban_canopy",
-    # THE TERRAIN-CLOCK MODE (lane/286-fixed-step-grid), on the adaptive
+    # UA changes forecast physics only; both arms use the same input.
+    "run.ua_phys",
+    # THE TERRAIN-CLOCK MODE (development branch), on the adaptive
     # controller's argument.  Preparation never reads it: the terrain
     # clock and the substep rule run at the forecast door, after the cache
     # is read, and bind their derivation through the terrain_clock
@@ -1011,7 +1232,7 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     # the prepared initial state and boundary tables are the same under
     # every value.  They stay in the experiment fingerprint and the
     # restart identity when moved.
-    "run.swint_opt", "run.aer_opt",
+    "run.swint_opt", "run.aer_opt", "run.couple_farms", "run.cu_rad_feedback", "run.rrtmg_aer3_source",
     # The aer_opt = 2 user-aerosol controls (woof/config.py
     # AER_OPT2_RUN_KEYS), on the same argument: only the legacy RRTMG
     # shortwave's aerosol optics read them, on each radiation call, and
@@ -1037,6 +1258,12 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     # woof/ingest names it, so preparation writes the same state under
     # every value.  It stays in the experiment fingerprint and the restart
     # identity.
+    # Wave/PWP attachment and analysis load occur only after atmosphere restore.
+    # Ingest never reads these fields. Keep original config hashes bound, while
+    # recording runtime changes through the existing validated override API.
+    "run.ocean_config", "run.ocean_analysis", "run.ocean_analysis_source",
+    "run.ocean_levels", "run.ocean_mld_climatology", "run.omdt",
+    "run.ocean_z", "run.ocean_t", "run.ocean_s",
     "run.sf_ocean_physics", "run.oml_hml0", "run.oml_gamma",
     "run.oml_relaxation_time",
     # Sun-angle albedo reads live solar geometry on radiation steps; it
@@ -1065,6 +1292,12 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     # prepared prognostics nor parent boundary tables depend on its policy.
     # Forecast/restart identity still binds the policy and its archive.
     "run.nest_accumulation_archive",
+    # TC closures consume live forecast fields only. Initial conditions and
+    # lateral forcing are identical across arms; restart identities retain
+    # these selectors because their subsequent trajectories differ.
+    "run.tc_flux_curve", "run.tc_spray", "run.tc_wave_roughness",
+    "run.tc_wave_source", "run.tc_fetch_m", "run.tc_horizontal_length_m",
+    "run.tc_spray_partition",
 })
 
 
@@ -1634,7 +1867,7 @@ def verify_manifest_arrays(read, keys, specs) -> None:
     raised is the one the sorted serial walk would raise first.  Breakage
     this prevents: the end-of-run verify read and hashed a full HRRR cache
     one array at a time on one thread while the forecast's cards waited
-    (V59, 8 x RTX 5090, 2026-10-21: finalize 6.7 min on one core).
+    (test host, 8 x RTX 5090, 2026-10-21: finalize 6.7 min on one core).
     """
     from concurrent.futures import ThreadPoolExecutor
 
@@ -3131,6 +3364,7 @@ def restore_prepared_cache(path, *, expected_identity, cfg, static,
                            allow_nested_without_lbc: bool = False,
                            reader=None, boundary_source=None,
                            array_module=None,
+                           adopt_dynamics_carrier: bool = True,
                            scratch_arena=None, dycore_state_workspace=None,
                            ) -> RestoredPreparedCache:
     """Validate and restore an integration-ready GPU state.
@@ -3150,6 +3384,10 @@ def restore_prepared_cache(path, *, expected_identity, cfg, static,
     whatever the machine has, and a CUDA import there refused every
     HRRR domain tree on a CPU-only install although nothing in it needs
     a card.  A NumPy state is never a valid forecast input.
+
+    ``adopt_dynamics_carrier=False`` is for preparation receipts that must
+    preserve the published array words. Forecast restoration keeps the
+    default conversion to the strict dynamics theta carrier.
 
     Optional scratch and dycore workspaces are the original tree builder's
     owners. Passing them keeps restored member roots on that same ledger;
@@ -3178,7 +3416,8 @@ def restore_prepared_cache(path, *, expected_identity, cfg, static,
         attach_lateral_boundaries, record_built_end_frame,
     )
     from woof.state_serialization_contract import (
-        lateral_boundary_prefix_identity, serialized_state_attrs,
+        lateral_boundary_prefix_identity, legacy_derived_map_setup_fingerprint,
+        serialized_state_attrs,
         setup_core_fingerprint, setup_fingerprint,
     )
 
@@ -3250,7 +3489,17 @@ def restore_prepared_cache(path, *, expected_identity, cfg, static,
         target[...] = xp.asarray(host)
     # Strict mode reads theta as WRF's t = theta - 300; a no-op otherwise.
     from woof.core.state import adopt_wrf_theta_carrier
-    adopt_wrf_theta_carrier(state)
+    if adopt_dynamics_carrier:
+        adopt_wrf_theta_carrier(state)
+        from woof.wrf_exact import ENABLED as wrf_exact
+        if wrf_exact:
+            # A strict store captures this immutable reference while each
+            # cold slab is restored. Capture the resident peer at the same
+            # boundary, before initial feedback or the first FORCE moves
+            # theta. Lazy capture in coordinate diffusion observes a later
+            # field and makes storage selection change the trajectory.
+            from woof.core.streaming import prime_coordinate_reference
+            prime_coordinate_reference(state, cfg)
 
     lbc_meta = metadata["lbc"]
     streamed = boundary_source is not None
@@ -3293,6 +3542,7 @@ def restore_prepared_cache(path, *, expected_identity, cfg, static,
             tuple(intervals), int(lbc_meta["spec_bdy_width"]),
             int(lbc_meta["spec_zone"]), int(lbc_meta["relax_zone"]))
         attach_lateral_boundaries(state, boundaries)
+    setup_compatibility = None
     if streamed:
         # The whole setup fingerprint needs every interval; at the head it
         # is checked on its immutable core, and the full fingerprint is
@@ -3322,8 +3572,16 @@ def restore_prepared_cache(path, *, expected_identity, cfg, static,
     else:
         observed_setup = setup_fingerprint(state)
         if observed_setup != metadata["setup_fingerprint"]:
-            raise PreparedCacheMismatchError(
-                "prepared cache reconstructed a different setup fingerprint")
+            # A pre-inverse preparation carries no independent MF_VX_INV.
+            # Bind every old setup/forcing word and prove the new array is
+            # exactly derived before accepting the older digest layout.
+            if ("MF_VX_INV" not in static
+                    and legacy_derived_map_setup_fingerprint(state)
+                    == metadata["setup_fingerprint"]):
+                setup_compatibility = "derived-map-inverse-v1"
+            else:
+                raise PreparedCacheMismatchError(
+                    "prepared cache reconstructed a different setup fingerprint")
 
     met_fields = {
         name: reader.read_array(f"met/{name}")
@@ -3347,6 +3605,8 @@ def restore_prepared_cache(path, *, expected_identity, cfg, static,
         "payload_bytes": reader.payload_bytes,
         "setup_fingerprint": observed_setup,
     }
+    if setup_compatibility is not None:
+        receipt["setup_fingerprint_compatibility"] = setup_compatibility
     return RestoredPreparedCache(
         initial_result=result,
         met=SimpleNamespace(fields=MappingProxyType(met_fields)),

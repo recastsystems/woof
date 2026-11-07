@@ -225,7 +225,7 @@ def bind_port(port_root: str | Path, *,
             proof_module=str(root / PORT_PROOF_RELPATH),
             forecast_module=str(root / PORT_FORECAST_RELPATH),
             looked_in=looked_in,
-            remedy="this seam is written against lane/mesh-binding@12fe6a3; "
+            remedy="this seam is written against mesh binding at 12fe6a3; "
                    "a port tree that lacks these is a different vintage and "
                    "must not be bound silently")
 

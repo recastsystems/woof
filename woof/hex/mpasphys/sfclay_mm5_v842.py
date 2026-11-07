@@ -12,6 +12,8 @@ physics_wrf/module_sf_sfclay.F:1-968; module_sf_sfclayrev.F:1-281;
 sf_sfclayrev_pre.F:1-101; mpas_atmphys_driver_sfclayer.F:352-1088.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -1296,13 +1298,13 @@ def _kernels(device: int, corrections=()):
         artifact = os.environ.get('MPAS_MM5_CORRECT_CUDA_ARTIFACT' if corrections
                                   else 'MPAS_MM5_CUDA_ARTIFACT')
         if artifact:
-            cubin = _read_cuda_artifact(artifact, cp.cuda.Device(device).compute_capability, corrections)
+            cubin = _read_cuda_artifact(artifact, _compilation_target(device, xp=cp), corrections)
             module.load_file(str(cubin))
         else:
             from ..cuda_backend.aot import direct_image
             # RawModule's cache compiler appends -ftz=true after caller flags.
             # Compile directly, as the shared subnormal defect witness requires.
-            architecture = cp.cuda.Device(device).compute_capability
+            architecture = _compilation_target(device, xp=cp)
             module.load(direct_image(_shared_math_source() + _cuda_text(corrections),
                                     _hex_numerics.options(COMPILE_OPTIONS), architecture,
                                     filename='sfclay_mm5_v842.cu'))

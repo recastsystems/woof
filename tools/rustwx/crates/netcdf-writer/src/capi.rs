@@ -405,6 +405,33 @@ pub unsafe extern "C" fn gpuwm_ncwrite_create(
 }
 
 /// Write a whole fixed variable. `data` is native-endian, `nbytes` long.
+/// Resume a complete, identically described record prefix. Consumes schema.
+///
+/// # Safety
+/// Same pointer validity requirements as gpuwm_ncwrite_create.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_ncwrite_resume(
+    schema: *mut Schema, path: *const u8, path_len: usize, records: u64,
+) -> *mut NcWriter {
+    guard(std::ptr::null_mut(), || {
+        clear_error();
+        if schema.is_null() {
+            set_error("resume called with a null schema");
+            return std::ptr::null_mut();
+        }
+        let schema = *unsafe { Box::from_raw(schema) };
+        let Some(path) = (unsafe { utf8(path, path_len) }) else {
+            set_error("resume path is not valid UTF-8");
+            return std::ptr::null_mut();
+        };
+        match NcWriter::resume(PathBuf::from(path), schema, records) {
+            Ok(writer) => Box::into_raw(Box::new(writer)),
+            Err(err) => { fail(err); std::ptr::null_mut() }
+        }
+    })
+}
+
+/// Write a whole fixed variable. `data` is native-endian, `nbytes` long.
 ///
 /// # Safety
 /// `writer` live; `data` readable for `nbytes`.

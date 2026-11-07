@@ -294,18 +294,23 @@ def test_ozone_formatted_records_keep_rkind_and_native_loop_order(tmp_path, monk
     ('MODIFIED_IGBP_MODIS_NOAH', 2, [17, 1, 17, 21]),
     ('USGS', 0, [21, 1, 21, 21]),
 ])
-def test_lake_fold_uses_owned_pool_words_and_preserves_dummy(classification, folded, expected):
+@pytest.mark.parametrize('preserve_tc_mask', [False, True])
+def test_lake_fold_uses_owned_pool_words_and_preserves_dummy(classification, folded, expected, preserve_tc_mask):
     from woof.hex.mpasphys.runtime_v842 import fold_lake_class
     fields = [dict(pool='sfc_input', name=name, pool_name=storage)
               for name, storage in [('ivgtyp', 'ivgtyp'), ('lu_index', 'lu_index'),
                                     ('iswater_lu', 'iswater'), ('mminlu', 'mminlu')]]
-    layout = SimpleNamespace(fields=fields, dimensions={'nCells': 3})
+    layout = SimpleNamespace(fields=fields, dimensions={'nCells': 3, 'nCellsSolve': 3})
     with FrameworkPhysics() as framework:
         framework.put_text_field('sfc_input', 'mminlu', classification)
         framework.put_field('sfc_input', 'iswater', np.array(17, np.int32))
         for name, dtype in [('ivgtyp', np.int32), ('lu_index', np.float32)]:
             framework.put_field('sfc_input', name, np.array([21, 1, 21, 21], dtype))
-        assert fold_lake_class(framework, layout) == folded
+        assert fold_lake_class(framework, layout, preserve_tc_mask=preserve_tc_mask) == folded
+        if preserve_tc_mask and classification.startswith('MOD'):
+            assert framework.tc_lakemask.tolist() == [1., 0., 1.]
+        else:
+            assert not hasattr(framework, 'tc_lakemask')
         for name, dtype in [('ivgtyp', np.int32), ('lu_index', np.float32)]:
             assert framework.get_field('sfc_input', name).tobytes() == np.array(expected, dtype).tobytes()
 
@@ -368,7 +373,7 @@ def test_framework_ozone_dispatch_preserves_calendar_words_and_pool_authority(mo
             return np.array(self, copy=True, order=order)
 
     device = SimpleNamespace(ndarray=Device, float32=np.float32, int32=np.int32,
-        uint32=np.uint32, asarray=lambda value: np.array(value, copy=True).view(Device),
+        uint32=np.uint32, asarray=lambda value, order=None: np.array(value, copy=True, order=order).view(Device),
         ascontiguousarray=lambda value: np.ascontiguousarray(value).copy().view(Device))
     rows = [dict(pool=pool, name=name, pool_name=name, dimensions=dimensions)
             for pool, name, dimensions in (
@@ -399,7 +404,15 @@ def test_framework_ozone_dispatch_preserves_calendar_words_and_pool_authority(mo
             pools = call.pools
             seen.append((pools['julian'].tobytes(), pools['current_date']))
             assert pools['nCellsSolve'] == 2
-            assert pools['atm_input']['ozmixm'].tobytes() == monthly[..., :2].tobytes()
+            if resident:
+                # 26ebf4d3: under the default compact member-memory policy a resident
+                # session uploads only the two months this calendar interval reads.
+                assert 'atm_input' not in pools
+                months = ozone._ozone_month_pair(pools['julian'])
+                assert np.asarray(pools['ozone_month_pair']).tobytes() == \
+                    np.ascontiguousarray(monthly[list(months), :, :2]).tobytes()
+            else:
+                assert pools['atm_input']['ozmixm'].tobytes() == monthly[..., :2].tobytes()
             target = pools['diag_physics']['o3clim']
             target.view(np.uint32)[...] = results[len(seen)-1]
             return target
@@ -430,3 +443,23 @@ def test_framework_ozone_dispatch_preserves_calendar_words_and_pool_authority(mo
         assert seen[1][1].startswith('2024-02-29_00:00:30')
         assert seen[0][0] != seen[1][0]
         assert framework.lib is None
+
+
+@pytest.mark.parametrize('mask', [np.array([0,1,0]), np.zeros(3, dtype=np.int32)])
+def test_explicit_tc_lake_mask_overrides_folded_native_geography(mask):
+    from woof.hex.mpasphys.runtime_v842 import bind_tc_lake_mask
+    native = SimpleNamespace(tc_lakemask=np.ones(3))
+    mesh = SimpleNamespace(arrays={'tc_lakemask': mask})
+    receipt = bind_tc_lake_mask(native, mesh, SimpleNamespace(dimensions={'nCellsSolve':3}))
+    np.testing.assert_array_equal(native.tc_lakemask, mask)
+    assert receipt['source'] == 'tc_lakemask static field'
+    assert receipt['lake_cells'] == int(mask.sum())
+
+
+@pytest.mark.parametrize('mask', [None, np.array([0,1]), np.array([[0,1,0]]),
+                                  np.array([0,.5,0]), np.array([0,np.nan,0])])
+def test_native_tc_refuses_missing_or_invalid_lake_geography(mask):
+    from woof.hex.mpasphys.runtime_v842 import bind_tc_lake_mask
+    mesh = SimpleNamespace(arrays={} if mask is None else {'tc_lakemask':mask})
+    with pytest.raises(ValueError, match='tc_lakemask'):
+        bind_tc_lake_mask(SimpleNamespace(),mesh,SimpleNamespace(dimensions={'nCellsSolve':3}))

@@ -151,6 +151,8 @@ def _literal_divisors(source: str) -> list[str]:
 # The source guard.  No card, no compiler -- it runs in every battery.
 # ---------------------------------------------------------------------------
 def test_no_cuda_translation_unit_divides_by_a_float_literal() -> None:
+    # The census compiles with CuPy's bundled headers and captures CuPy RawModule requests (ddedd76d).
+    pytest.importorskip("cupy")
     audit = _load_audit()
     offenders: dict[str, list[str]] = {}
     units = 0
@@ -274,10 +276,23 @@ def test_no_translation_unit_is_rewritten_into_a_reciprocal_multiply() -> None:
             for _key, anchor, _source in audit.translation_units()
         }
     )
-    for module_key, _anchor, source in audit.translation_units():
-        record = audit.rewrite_sites(source)
-        if record["count"]:
-            offenders[module_key] = record["rewritten_sites"]
+    from concurrent.futures import ThreadPoolExecutor
+    # Contributor anchors can share one exact compile request. Keep every
+    # anchor in the coverage check above, but compile each source/options pair
+    # once. Concurrent lru_cache misses otherwise repeat large translation units.
+    units = {}
+    for unit in audit.translation_units():
+        source = unit[2]
+        identity = (str(source), tuple(getattr(source, "options", audit.SHIPPED_OPTIONS)))
+        units.setdefault(identity, unit)
+    def measure(unit):
+        module_key, _anchor, source = unit
+        return module_key, audit.rewrite_sites(source)
+    # The expanded inventory compiles independent requests on bounded workers.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for module_key, record in pool.map(measure, units.values()):
+            if record["count"]:
+                offenders[module_key] = record["rewritten_sites"]
     assert uncovered == [], (
         "a CUDA-bearing module is not in the census, so nobody is asking the "
         f"compiler what it does with that unit: {uncovered}"
@@ -357,3 +372,20 @@ def test_the_affected_kernels_still_divide_on_every_target(arch: str) -> None:
                 f"compute_{arch} {module_name}::{kernel} divides by an "
                 "immediate, which is the shape the rewrite consumes"
             )
+
+
+def test_census_does_not_pair_an_unchanged_division_with_an_unrelated_multiply():
+    """A rewrite must lose a division and gain its reciprocal in the same entry."""
+    import cupy  # noqa: F401
+    audit = _load_audit()
+    source = r'''
+extern "C" __global__ void unchanged(const float *x, float *out) {
+    float quotient;
+    asm("div.rn.f32 %0, %1, 0f41400000;" : "=f"(quotient) : "f"(x[0]));
+    out[0] = quotient;
+    out[1] = x[1] * 0.0833333358168602f;
+}
+'''
+    record = audit.rewrite_sites(source)
+    assert record['div_by_constant_below_boundary'] == 1
+    assert record['count'] == 0

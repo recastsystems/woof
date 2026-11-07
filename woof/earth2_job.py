@@ -30,12 +30,12 @@ def _gpu_sample(pids):
     """Charge only this command's processes, not another pool tenant."""
     try:
         sample = subprocess.run(
-            ["nvidia-smi", "--query-compute-apps=pid,used_gpu_memory", "--format=csv,noheader,nounits"],
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-compute-apps=pid,used_gpu_memory", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=3)
         memory = sum(float(cols[1]) for line in sample.stdout.splitlines()
                      if len(cols := line.split(",")) == 2 and int(cols[0]) in pids)
         util = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits",
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits",
              "--id=" + os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")[0]],
             capture_output=True, text=True, timeout=3)
         return memory, max(float(v) for v in util.stdout.splitlines())

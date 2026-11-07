@@ -17,8 +17,8 @@ class MemberOutputCapture:
     keep_member_files: bool = False
     counter_calendars: dict = field(default_factory=dict, compare=False, repr=False)
     initialize_callback: object = field(default=None, compare=False, repr=False)
-    provenance: dict | None = field(default=None, compare=False)
-
+    resuming: bool = field(default=False, kw_only=True)
+    restart_pending: bool = field(default=False, kw_only=True)
     provenance: dict | None = field(default=None, compare=False)
 
     def submit_hydro(self, *, valid_time, reach_ids, discharge, stream=None,

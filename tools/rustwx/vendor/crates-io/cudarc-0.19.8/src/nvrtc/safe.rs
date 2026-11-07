@@ -117,6 +117,11 @@ pub fn compile_ptx_with_opts<S: AsRef<str>>(
     src: S,
     opts: CompileOptions,
 ) -> Result<Ptx, CompileError> {
+    if crate::gpuwm_hip::requested() {
+        return crate::gpuwm_hip::compile(src.as_ref(), &opts.build())
+            .map(Ptx::from_binary)
+            .map_err(CompileError::HipError);
+    }
     let prog = Program::create(src, opts.name.as_deref())?;
     prog.compile(opts)
 }
@@ -177,6 +182,8 @@ impl Drop for Program {
 /// Represents an error that happens during nvrtc compilation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileError {
+    /// Local HIP compiler bridge diagnostics.
+    HipError(String),
     /// Error happened during [result::create_program()]
     CreationError(result::NvrtcError),
 

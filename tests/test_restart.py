@@ -445,6 +445,29 @@ def test_physicsdriver_attribute_classification_matches_source():
                         and isinstance(sub.value, ast.Name)
                         and sub.value.id == "self"):
                     assigned.add(sub.attr)
+    # PX initializes its parameter bank in initialize_physics rather
+    # than in a PhysicsDriver method. Keep that source assignment explicit.
+    initialize = next(node for node in tree.body
+                      if isinstance(node, ast.FunctionDef)
+                      and node.name == "initialize_physics")
+    assert any(isinstance(node, ast.Attribute) and node.attr == "pxlsm_params"
+               and isinstance(node.value, ast.Name) and node.value.id == "driver"
+               and isinstance(node.ctx, ast.Store) for node in ast.walk(initialize))
+    assigned.add("pxlsm_params")
+    # Final surface and shallow ports also attach setup/lazy state through
+    # named helpers. Collect actual writes; do not exempt a manifest list.
+    # The ocean door (8cd59d74c15) attaches driver.ocean from
+    # woof/ocean/door.py:attach_atmosphere, which initialize_physics calls.
+    ocean_door = Path(physics.__file__).parent.parent / "ocean" / "door.py"
+    for owner in (initialize, *ast.parse(Path(physics.__file__).with_name(
+            "shallow_runtime.py").read_text()).body,
+            *ast.parse(Path(physics.__file__).with_name("deng.py").read_text()).body,
+            *ast.parse(ocean_door.read_text()).body):
+        assigned |= {node.attr for node in ast.walk(owner)
+                     if isinstance(node, ast.Attribute)
+                     and isinstance(node.value, ast.Name)
+                     and node.value.id == "driver"
+                     and isinstance(node.ctx, ast.Store)}
     serialized = set(restart.DRIVER_SERIALIZED_ATTRS)
     rebuilt = set(restart.DRIVER_REBUILT_ATTRS)
     checkpoint_only = set(restart.DRIVER_CHECKPOINT_ONLY_ATTRS)
@@ -549,6 +572,16 @@ def test_every_source_scratch_slot_is_classified():
                 for species in precipitation_classes(selector):
                     for suffix in ("nc", "ncv"):
                         assert restart.classify_scratch_slot(f"mp_{species}{suffix}") == "serialize"
+            continue
+        if prefix == "udm_":
+            # These are the four bounded diagnostics allocated by udm.apply;
+            # thermodynamic scratch is classified separately by literal name.
+            for name in ("re_cloud", "re_ice", "re_snow", "refl_10cm"):
+                assert restart.classify_scratch_slot(prefix + name) == "rebuild"
+            continue
+        if prefix == "temf_":
+            for name in ("rublten", "rvblten", "rthblten", "rqvblten", "rqcblten", "workspace"):
+                assert restart.classify_scratch_slot(f"temf_{name}") == "rebuild"
             continue
         assert (prefix.startswith(tuple(restart.REBUILT_SCRATCH_PREFIXES))
                 or prefix in ("cu_", "ltng_")), prefix
@@ -665,6 +698,8 @@ def test_rrtmgp_table_containers_are_explicitly_classified():
     are in the container allowlist by name, not silently invisible."""
     assert restart.RADIATION_CALLABLE_CONTAINERS == frozenset(
         {"lw_tables", "sw_tables", "lw_cloud_tables", "sw_cloud_tables",
+         # FLG's immutable column/table object and overwritten input pack.
+         "column", "inputs",
          "chunk_workspace",
          # legacy-RRTMG adapter containers (all rebuild-on-load; see the
          # classification comments in woof/io/restart.py)
@@ -673,9 +708,13 @@ def test_rrtmgp_table_containers_are_explicitly_classified():
          # the RRTM+Dudhia (1/1) composition's rebuild-on-load
          # sub-adapters and the RRTM coefficient bundle (1.9.1 D3; see
          # woof/io/restart.py and tests/test_radiation_callable_manifest)
-         "longwave_adapter", "shortwave_adapter", "_tables"})
+         "longwave_adapter", "shortwave_adapter", "_tables",
+         # FLG coefficient inputs and reusable column workspace rebuild on load.
+         "column", "inputs",
+         # Climate inputs prepared for a finite startup graph, rebuilt.
+         "_graph_times"})
     assert restart.CUMULUS_CALLABLE_CONTAINERS == frozenset(
-        {"_history_state", "_driver"})
+        {"_history_state", "_driver", "_sas_workspace", "contract", "module"})
 
 
 def test_every_cumulus_adapter_attribute_is_classified():
@@ -1789,6 +1828,76 @@ def test_restore_rejects_setup_fingerprint_mismatch(monkeypatch, tmp_path):
     fresh.thb[0] += np.float32(0.5)          # a different base state
     with pytest.raises(restart.RestartMismatchError, match="setup"):
         restart.restore_restart(path, fresh, cfg)
+
+
+def test_strict_feedback_base_roundtrip_keeps_preparation_guard(monkeypatch, tmp_path):
+    import woof.wrf_exact as exact
+    from woof.state_serialization_contract import FEEDBACK_BASE_ATTRS, retain_feedback_setup
+    monkeypatch.setattr(exact, 'ENABLED', True)
+    cfg = _cfg(moist=True, mp_physics=1, terrain_opt=1)
+    source = _shim_state(cfg, monkeypatch)
+    _fill_setup(source)
+    original = restart.setup_fingerprint(source)
+    retain_feedback_setup(source)
+    for index, name in enumerate(FEEDBACK_BASE_ATTRS):
+        getattr(source, name)[...] += np.float32(index + 1)
+    source.set_base_geopotential(source.phb)
+    source._feedback_base_children = {'2': [2, 2]}
+    assert restart.setup_fingerprint(source) == original
+    path = restart.write_restart(tmp_path/'feedback.npz', source, cfg)
+    fresh = _shim_state(cfg, monkeypatch)
+    _fill_setup(fresh)
+    restart.restore_restart(path, fresh, cfg)
+    for name in FEEDBACK_BASE_ATTRS:
+        assert getattr(fresh, name).tobytes() == getattr(source, name).tobytes()
+    assert fresh._feedback_base_children == {'2': [2, 2]}
+    assert fresh.dphb_resid.tobytes() == source.dphb_resid.tobytes()
+    assert fresh._phb_host.tobytes() == source._phb_host.tobytes()
+    assert restart.setup_fingerprint(fresh) == original
+    changed = _shim_state(cfg, monkeypatch)
+    _fill_setup(changed)
+    changed.pb.flat[0] += np.float32(1)
+    with pytest.raises(restart.RestartMismatchError, match='setup'):
+        restart.restore_restart(path, changed, cfg)
+    broken = _rewrite_restart_archive(path, tmp_path/'partial.npz',
+                                     lambda payload, header: payload.pop('feedback_base/alb'))
+    with pytest.raises(restart.RestartMismatchError, match='complete strict feedback base'):
+        restart.restore_restart(broken, fresh, cfg)
+
+
+@pytest.mark.parametrize('strict', [False, True])
+def test_surface_feedback_geography_roundtrip_keeps_original_setup(monkeypatch, tmp_path, strict):
+    import woof.wrf_exact as exact
+    from woof.state_serialization_contract import FEEDBACK_GEOGRAPHY_ATTRS, retain_feedback_geography
+    monkeypatch.setattr(exact, 'ENABLED', strict)
+    cfg = _cfg(moist=True, mp_physics=1)
+    source = _shim_state(cfg, monkeypatch)
+    _fill_setup(source)
+    original = restart.setup_fingerprint(source)
+    retain_feedback_geography(source)
+    for index, name in enumerate(FEEDBACK_GEOGRAPHY_ATTRS):
+        getattr(source, name)[...] += np.float32((index+1)*.001)
+    source.has_msf = source.rotational = True
+    assert restart.setup_fingerprint(source) == original
+    path = restart.write_restart(tmp_path/'surface.npz', source, cfg)
+    fresh = _shim_state(cfg, monkeypatch)
+    _fill_setup(fresh)
+    restart.restore_restart(path, fresh, cfg)
+    for name in FEEDBACK_GEOGRAPHY_ATTRS:
+        assert getattr(fresh, name).tobytes() == getattr(source, name).tobytes()
+    assert fresh.has_msf and fresh.rotational
+    assert restart.setup_fingerprint(fresh) == original
+    changed = _shim_state(cfg, monkeypatch)
+    _fill_setup(changed)
+    changed.msft.flat[0] += np.float32(.01)
+    before = changed.u.tobytes()
+    with pytest.raises(restart.RestartMismatchError, match='setup'):
+        restart.restore_restart(path, changed, cfg)
+    assert changed.u.tobytes() == before
+    broken = _rewrite_restart_archive(path, tmp_path/'partial-surface.npz',
+        lambda payload, header: payload.pop('feedback_geography/msft'))
+    with pytest.raises(restart.RestartMismatchError, match='incomplete surface feedback geography'):
+        restart.restore_restart(broken, fresh, cfg)
 
 
 def test_thompson_restart_identity_binds_implementation_and_table_bytes(
@@ -3013,7 +3122,7 @@ def _member_names(path) -> list[str]:
 #: array.  A checkpoint-format change riding in behind a config addition
 #: would leave that reconstruction short and would fail there.
 #:
-#: RE-PINNED on lane/release-reds-266 for d0c23dad0 (2.6.4, the New
+#: RE-PINNED on development branch for d0c23dad0 (2.6.4, the New
 #: Tiedtke port), which appended ONE RunConfig field
 #: (`ntiedtke_tiedtke_closure`) and re-pinned nothing.  Same attribution,
 #: same gate: the key joined _WIF_CONFIG_KEYS below, and the
@@ -3021,7 +3130,7 @@ def _member_names(path) -> list[str]:
 #: Windows desktop and on the Linux node alike -- so the config echo is
 #: the whole diff once more.
 #:
-#: RE-PINNED AGAIN on lane/adaptive-timestep, which appended TWELVE
+#: RE-PINNED AGAIN on development branch, which appended TWELVE
 #: RunConfig fields (the adaptive time step's namelist surface,
 #: woof/core/adaptive_timestep.ADAPTIVE_TIMESTEP_RUN_FIELDS).  Same
 #: attribution and the same gate one link further along:
@@ -3069,7 +3178,7 @@ def _member_names(path) -> list[str]:
 #: fixed clock this fixture runs.
 #:
 #: RE-PINNED for THREE appended RunConfig fields (`sf_urban_physics`,
-#: `use_wudapt_lcz`, `num_urban_hi`, lane/urban-infra), from
+#: `use_wudapt_lcz`, `num_urban_hi`, development branch), from
 #: 0cd69d00f667 / db0cff6b5e09.  Same gate: the three keys joined
 #: _WIF_CONFIG_KEYS below and the reconstruction lands on the pre-WIF pair
 #: exactly, root and child, so the config ECHO is the whole diff.  The
@@ -3094,7 +3203,7 @@ def _member_names(path) -> list[str]:
 #: every older reconstruction unwinds the same name
 #: (_PRE_REAL_CLAMP_ALGORITHMS).
 #:
-#: RE-PINNED for HAILCAST (lane/cap-hail, 97e9a3ca061): hailcast_opt = -1
+#: RE-PINNED for HAILCAST (development branch, 97e9a3ca061): hailcast_opt = -1
 #: runs the diagnostic at dx <= 4 km with microphysics on
 #: (woof.core.hail.enabled), so this mp=1, 2 km fixture now carries the
 #: eleven persistent HAILCAST slots (_HAILCAST_PERSISTENT_MEMBERS: running
@@ -3114,9 +3223,23 @@ def _member_names(path) -> list[str]:
 #: dropping that key recovers the previous child digest
 #: (_PRE_NEST_ARCHIVE_CHILD_DIGEST), and every older reconstruction unwinds it
 #: (_digest_without_config_keys unwind_nest_archive).
+#:
+#: RE-PINNED for the HAILCAST generation header key (fix/hailcast-resume,
+#: 2.9.11): every checkpoint records header["hailcast_version"], the stone
+#: model that integrated it, so a resume keeps it (a header without the key
+#: is a 2.9.10 file, WRF 4.6.1's).  One header key and nothing else: the
+#: attribution is test_the_checkpoint_pins_moved_for_the_hailcast_version_
+#: key_and_nothing_else, dropping that key recovers the previous pair
+#: (_PRE_HAILCAST_VERSION_*), and every older reconstruction drops it
+#: (_digest_without_config_keys unwind_hailcast_version).
 _LIFECYCLE_FREE_ROOT_DIGEST = \
-    "72c1bf64128f7686fb82e04d6430d3140a899faa3c6aba319bfe73e1f01ef5e8"
+    "302d86acaf0d77d3d25e8f755de77ab95098c77e32cd58176626268020d330e8"
 _LIFECYCLE_FREE_CHILD_DIGEST = \
+    "43d111c85cd641c28611e414d07dfb955a81f4e52c5ebb11d95e62ad5190d989"
+#: The pair above before the hailcast_version header key.
+_PRE_HAILCAST_VERSION_ROOT_DIGEST = \
+    "72c1bf64128f7686fb82e04d6430d3140a899faa3c6aba319bfe73e1f01ef5e8"
+_PRE_HAILCAST_VERSION_CHILD_DIGEST = \
     "c63b17c9cb1bb4966f81f9f9ca15ca448629c483356ad828f3f824596d8c62d3"
 _PRE_NEST_ARCHIVE_CHILD_DIGEST = \
     "cce75c2551272396fa9cdbbb69701612922d73ce5e006054cb2a510546d05354"
@@ -3127,7 +3250,7 @@ _PRE_HAILCAST_ROOT_DIGEST = \
 _PRE_HAILCAST_CHILD_DIGEST = \
     "e03f5ad776fb76735fa796e555813e379e2d874d9641fe3f4f11574bbde690e0"
 
-#: lane/cap-hail's persistent slots at default (mp_physics = 1 has no PSD
+#: development branch's persistent slots at default (mp_physics = 1 has no PSD
 #: row, so the four hail_* PSD slots are absent).
 _HAILCAST_PERSISTENT_MEMBERS = (
     "scratch/hailcast_dhail1", "scratch/hailcast_dhail2",
@@ -3201,7 +3324,7 @@ _WIF_CONFIG_KEYS = ("mp28_aerosol_source", "wif_climatology_path",
                     "p3_backend", "ntiedtke_tiedtke_closure", "eta_levels",
                     "relax_timescale_s", "relax_w",
                     # The urban canopy selector and its two companions
-                    # (lane/urban-infra), appended last to RunConfig.
+                    # (development branch), appended last to RunConfig.
                     "sf_urban_physics", "use_wudapt_lcz", "num_urban_hi",
                     ) + ADAPTIVE_TIMESTEP_RUN_FIELDS
 
@@ -3210,7 +3333,8 @@ _WIF_CONFIG_KEYS = ("mp28_aerosol_source", "wif_climatology_path",
 def _digest_without_config_keys(path, keys, *, config_overrides=None,
                                 algorithm_overrides=None,
                                 unwind_hailcast=True,
-                                unwind_nest_archive=True) -> str:
+                                unwind_nest_archive=True,
+                                unwind_hailcast_version=True) -> str:
     """The canonical member digest as it would read WITHOUT ``keys``.
 
     Same construction as :func:`_canonical_member_digest`, with exactly
@@ -3229,13 +3353,17 @@ def _digest_without_config_keys(path, keys, *, config_overrides=None,
     every array byte remain bound.
 
     ``unwind_hailcast`` (default on: every digest this reconstructs
-    predates lane/cap-hail) drops the eleven HAILCAST persistent members and
+    predates development branch) drops the eleven HAILCAST persistent members and
     their manifest rows, and asserts each was there, so a missing or extra
     slot still leaves the reconstruction short.
 
     ``unwind_nest_archive`` (default on: every digest this reconstructs
     predates tc/nest) drops ``nest_accumulation_archive`` from the echo, which
     a nested domain writes at its default True.
+
+    ``unwind_hailcast_version`` (default on: every digest this reconstructs
+    predates fix/hailcast-resume) drops the ``hailcast_version`` header key,
+    and requires it to be there.
 
     ``algorithm_overrides`` reconstructs a declared scheme identity move
     (``physics_setup.algorithms``) the same way: the named components take
@@ -3256,6 +3384,8 @@ def _digest_without_config_keys(path, keys, *, config_overrides=None,
             header.pop(name, None)
         header["format_version"] = _HISTORICAL_FORMAT_VERSION
         _unwind_v7_inverse_binding(header)
+        if unwind_hailcast_version:
+            header.pop(restart.HAILCAST_VERSION_HEADER_KEY)
         for key in keys:
             header["config"].pop(key, None)
         if unwind_nest_archive:
@@ -3543,7 +3673,7 @@ def test_the_checkpoint_pins_moved_for_the_real_clamp_identity_and_nothing_else(
 
 def test_the_checkpoint_pins_moved_for_the_hailcast_slots_and_nothing_else(
         monkeypatch, tmp_path):
-    """lane/cap-hail added eleven persistent members, not a format change.
+    """development branch added eleven persistent members, not a format change.
 
     THE CONCRETE BREAKAGE THIS PREVENTS: a checkpoint-format change riding
     in under the HAILCAST re-pin.  Dropping exactly the eleven members and
@@ -3556,18 +3686,48 @@ def test_the_checkpoint_pins_moved_for_the_hailcast_slots_and_nothing_else(
     root_path = restart.write_tree_restart(
         tmp_path, source, start + timedelta(seconds=3600))
     child_path = next(p for p in tmp_path.glob("gpuwmrst_d02_*.npz"))
+    # The pair the slots moved to predates the hailcast_version header key
+    # (fix/hailcast-resume), which the reconstruction drops by default.
     for path, old_digest, current_digest in (
             (root_path, _PRE_HAILCAST_ROOT_DIGEST,
-             _LIFECYCLE_FREE_ROOT_DIGEST),
+             _PRE_HAILCAST_VERSION_ROOT_DIGEST),
             (child_path, _PRE_HAILCAST_CHILD_DIGEST,
-             _LIFECYCLE_FREE_CHILD_DIGEST)):
+             _PRE_HAILCAST_VERSION_CHILD_DIGEST)):
         assert set(_HAILCAST_PERSISTENT_MEMBERS) <= set(_member_names(path))
-        assert _canonical_member_digest(path) == current_digest
         assert _digest_without_config_keys(
             path, (), unwind_hailcast=False,
             unwind_nest_archive=False) == current_digest
         assert current_digest != old_digest
         assert _digest_without_config_keys(path, ()) == old_digest
+
+
+def test_the_checkpoint_pins_moved_for_the_hailcast_version_key_and_nothing_else(
+        monkeypatch, tmp_path):
+    """fix/hailcast-resume added one header key, not a format change.
+
+    THE CONCRETE BREAKAGE THIS PREVENTS: a checkpoint-format change riding
+    in under the hailcast_version re-pin.  Dropping exactly that key must
+    land on the previous pair; anything else that moved leaves the
+    reconstruction short.
+    """
+    source, start = _sealed_tree_fixture(
+        monkeypatch, forcing_count=2, run_seconds=3600.0, payload_seed=31,
+        run_overrides=_PINNED_UNDER_MEASURED_CLOCK)
+    root_path = restart.write_tree_restart(
+        tmp_path, source, start + timedelta(seconds=3600))
+    child_path = next(p for p in tmp_path.glob("gpuwmrst_d02_*.npz"))
+    for path, old_digest, current_digest in (
+            (root_path, _PRE_HAILCAST_VERSION_ROOT_DIGEST,
+             _LIFECYCLE_FREE_ROOT_DIGEST),
+            (child_path, _PRE_HAILCAST_VERSION_CHILD_DIGEST,
+             _LIFECYCLE_FREE_CHILD_DIGEST)):
+        assert restart.read_restart_header(path)[
+            restart.HAILCAST_VERSION_HEADER_KEY] == "wrf_39_noaa"
+        assert _canonical_member_digest(path) == current_digest
+        assert current_digest != old_digest
+        assert _digest_without_config_keys(
+            path, (), unwind_hailcast=False, unwind_nest_archive=False
+        ) == old_digest
 
 
 def test_the_live_format_stamp_is_the_declared_v7_and_v5_is_named(
@@ -3630,7 +3790,11 @@ def test_a_lifecycle_free_tree_checkpoint_names_no_lifecycle_key(
         "domain_ids", "domain_lifecycle", "domain_start_ticks",
         "domain_start_time", "driver", "dtbc_fp32_bits", "elapsed_seconds",
         "elapsed_ticks", "experiment_fingerprint", "format_version",
-        "grid_id", "nest_tables", "parent_id", "phase", "physics_setup",
+        "grid_id",
+        # The HAILCAST generation that integrated the checkpoint
+        # (fix/hailcast-resume, woof.io.restart.HAILCAST_VERSION_HEADER_KEY).
+        "hailcast_version",
+        "nest_tables", "parent_id", "phase", "physics_setup",
         "physics_setup_fingerprint", "placement", "producer",
         "root_external_lbc_clock",
         "run_trackers", "setup_fingerprint", "tick_den",
@@ -4038,7 +4202,7 @@ def test_a_tree_resumes_with_an_output_only_switch_changed(
     from woof.core.model import RESTART_TOLERATED_RUN_FIELDS
     written = restart.read_restart_header(root_path)["experiment_fingerprint"]
     if name in RESTART_TOLERATED_RUN_FIELDS:
-        # Tolerated outright (surface_energy_diag, lane/sf-landsurface): it
+        # Tolerated outright (surface_energy_diag, development branch): it
         # never enters the identity payload, so the fingerprints agree.
         assert resumed.experiment_fingerprint == written
     else:
@@ -5017,7 +5181,7 @@ def test_cli_run_passes_restart_through(monkeypatch, tmp_path, capsys):
 # GPU: live manifest coverage and the cheap bit-identity gate.
 # ---------------------------------------------------------------------------
 
-def _physics_state(cp, **cfg_overrides):
+def _physics_state(cp, *, cloud_water=4.e-4, cloud_number=0., **cfg_overrides):
     """Small full-physics state: Morrison + analytic radiation + KF +
     SFCLAY/Noah/YSU, mixed land/water, with a condensate layer so the
     microphysics accumulators and h_diabatic are non-trivial.
@@ -5046,7 +5210,9 @@ def _physics_state(cp, **cfg_overrides):
         lambda z: 0.011 * np.exp(-np.asarray(z, np.float64) / 2400.0))
     state.u[...] = cp.float32(6.0)
     state.v[...] = cp.float32(0.5)
-    state.qc[2:6] = cp.float32(4.0e-4)       # cloud layer -> rain/heating
+    state.qc[2:6] = cp.float32(cloud_water)       # cloud layer -> rain/heating
+    if cloud_number:
+        state.nc[2:6] = cp.float32(cloud_number)
 
     landmask = np.ones((cfg.ny, cfg.nx), np.float64)
     landmask[:, -1] = 0.0
@@ -5055,6 +5221,8 @@ def _physics_state(cp, **cfg_overrides):
     soil_t = np.stack([tsk - 0.5, tsk - 1.0, tsk - 1.5, tsk - 2.0])
     soil_m = np.full((4, cfg.ny, cfg.nx), 0.31)
     soil_m[:, landmask == 0.0] = 1.0
+    from woof.core.state import adopt_wrf_theta_carrier
+    adopt_wrf_theta_carrier(state)
     driver = initialize_physics(
         state, cfg, landmask=landmask, tsk=tsk,
         soil_temperature=soil_t, soil_moisture=soil_m,
@@ -5281,16 +5449,20 @@ def test_short_full_physics_restart_is_bit_identical(tmp_path):
 
     from woof.core.dycore import run_steps
 
-    state_a, cfg_a, _ = _physics_state(cp)
+    # A droplet-bearing cloud survives to the checkpoint and final step
+    # under strict microphysics too; the old dry fixture evaporated fully.
+    from functools import partial
+    make_state = partial(_physics_state, cp, cloud_water=4.e-3, cloud_number=1.e8)
+    state_a, cfg_a, _ = make_state()
     run_steps(state_a, cfg_a, 40)
     reference = restart.write_restart(tmp_path / "reference.npz",
                                       state_a, cfg_a)
 
-    state_b, cfg_b, _ = _physics_state(cp)
+    state_b, cfg_b, _ = make_state()
     run_steps(state_b, cfg_b, 20)
     mid = restart.write_restart(tmp_path / "mid.npz", state_b, cfg_b)
 
-    state_c, cfg_c, _ = _physics_state(cp)
+    state_c, cfg_c, _ = make_state()
     info = restart.restore_restart(mid, state_c, cfg_c)
     assert info.elapsed_seconds == 200.0
     run_steps(state_c, cfg_c, 20)
@@ -5304,6 +5476,39 @@ def test_short_full_physics_restart_is_bit_identical(tmp_path):
     assert bool(cp.any(state_c.h_diabatic != 0.0))
     assert state_c.physics.call_counts["radiation"] == 7   # 1, 7, ..., 37
     assert state_c.physics.call_counts["cumulus"] == 7     # 1, 6, ..., 36
+
+
+@requires_gpu
+@pytest.mark.gpu
+def test_mp40_native_carriers_restart_is_bit_identical(tmp_path):
+    """A live MP40 20+20 continuation retains every serialized FP32 word."""
+    import cupy as cp
+    from woof.core.dycore import run_steps
+
+    def build():
+        return _physics_state(cp, mp_physics=40, aercu_opt=0,
+                              cu_physics=0, hailcast_opt=0)
+
+    reference_state, cfg, _ = build()
+    run_steps(reference_state, cfg, 40)
+    reference = restart.write_restart(tmp_path / "reference.npz",
+                                      reference_state, cfg)
+    split, split_cfg, _ = build()
+    run_steps(split, split_cfg, 20)
+    mid = restart.write_restart(tmp_path / "mid.npz", split, split_cfg)
+    resumed, resumed_cfg, _ = build()
+    info = restart.restore_restart(mid, resumed, resumed_cfg)
+    assert info.elapsed_seconds == 200.0
+    run_steps(resumed, resumed_cfg, 20)
+    final = restart.write_restart(tmp_path / "resumed.npz", resumed, resumed_cfg)
+    _assert_restart_equal(final, reference)
+    manifest = restart.read_restart_header(final)["array_manifest"]
+    for field in ("nc", "efcg", "efig", "efsg", "wact",
+                  *(f"ccn{i}_gs" for i in range(1, 8))):
+        assert f"state/{field}" in manifest, field
+    assert resumed.physics.microphysics_updates == 40
+    np.testing.assert_array_equal(resumed.nc0.get(), reference_state.nc0.get())
+    assert bool(cp.any(resumed.h_diabatic != 0.0))
 
 
 def _milbrandt2_state(cp):

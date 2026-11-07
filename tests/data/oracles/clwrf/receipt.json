@@ -1,0 +1,25 @@
+{
+  "source_sha256": "2ec1e964a9ae94244d513fac38e0ce9a33212b21ca232fcc01de890afd152a54",
+  "authority": "WRF v4.6.1/v4.7.1 public-domain module_diag_cl.F",
+  "kind": "constructed inputs, not a real-run capture",
+  "command": [
+    "gfortran",
+    "-cpp",
+    "-DNMM_CORE=0",
+    "-ffree-form",
+    "-ffree-line-length-none",
+    "-O0",
+    "-ffp-contract=off",
+    "-fno-tree-vectorize",
+    "-fcheck=bounds",
+    "stubs.f90",
+    "module_diag_cl.F",
+    "main.f90",
+    "-o",
+    "oracle"
+  ],
+  "calls": 41,
+  "fields": 36,
+  "words": 8897,
+  "compiler": "GNU Fortran (Ubuntu 15.2.0-16ubuntu1) 15.2.0"
+}

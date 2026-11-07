@@ -784,7 +784,8 @@ class _BlockList:
         rt = _gather._runtime()
         parms = self._parms
         addr = self._addr
-        memcpy3d = rt.memcpy3DAsync
+        from woof.hip_runtime import memcpy3d_function
+        memcpy3d = memcpy3d_function(rt)
         stream_ptr = int(getattr(stream, "ptr", stream))
         pointer = _gather.array_pointer
         to_arena = self.direction == "save"

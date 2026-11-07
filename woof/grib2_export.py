@@ -42,6 +42,18 @@ class Binary(ml_export.Binary):
     env_var: str = BINARY_ENV
     subject: str = "the native GRIB2 exporter"
 
+    def find(self) -> Path | None:
+        """The ladder, then (on demand since WOOF 1.1.6, PyPI per-file limit) the
+        first-use stage from this release's bundle; never inside
+        bridges.inspection_only(), so doctor only reports."""
+
+        found = super().find()
+        if found is None and not os.environ.get(self.env_var):
+            from woof.bridges import fetch_on_demand
+            if fetch_on_demand(self.name):
+                found = super().find()
+        return found
+
     def probe(self, path: Path) -> tuple[bool, str]:
         try:
             result = subprocess.run([str(path), "--abi"], capture_output=True,

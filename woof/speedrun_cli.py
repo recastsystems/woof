@@ -27,6 +27,8 @@ compile included), render -- is on the clock.
 
 from __future__ import annotations
 
+from woof.backend import compilation_target as _compilation_target
+
 import json
 import os
 import platform
@@ -142,8 +144,11 @@ def _device_block() -> dict[str, Any]:
         free, total = cp.cuda.Device(0).mem_info
         block["total_memory_gib"] = round(total / (1 << 30), 3)
         block["free_memory_gib_at_start"] = round(free / (1 << 30), 3)
-        major, minor = cp.cuda.Device(0).compute_capability
-        block["compute_capability"] = f"{major}.{minor}"
+        target = str(_compilation_target(0, xp=cp))
+        if getattr(cp.cuda.runtime, "is_hip", False):
+            block.update(backend="hip", architecture=target)
+        else:
+            block["compute_capability"] = f"{target[:-1]}.{target[-1]}"
     except Exception as error:  # noqa: BLE001
         block["memory_probe"] = f"unavailable: {error}"
     return block

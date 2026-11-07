@@ -785,7 +785,7 @@ def helper_set_row(engine_tree: Path, commit: str, version: str) -> dict:
 
     THE BREAKAGE (verify-final-hex item 1, 2026-10-12): the repin rewrote the
     sixteen-file manifest and the dependency range but never this table, so on
-    the frozen woof 2.9.0 every default-physics forecast was refused at start
+    the frozen gpuwm 2.9.0 every default-physics forecast was refused at start
     with "unknown or mixed woof execution source set".  The row is part of
     the repin now, measured from the same clean commit as the manifest.
     """

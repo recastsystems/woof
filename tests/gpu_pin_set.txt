@@ -185,3 +185,20 @@ tests/test_ntiedtke_pipeline_boundaries.py::test_stage_ENTRY_is_bitwise
 tests/test_uwpbl_launcher_wrf471_parity.py::test_every_step_of_every_column_is_wrfs_words
 tests/test_uwpbl_launcher_wrf471_parity.py::test_a_chunked_launch_equals_a_single_one
 tests/test_uwpbl_ftz_wrf471_parity.py::test_product_equals_ftz_cpu_and_pins_every_oracle_mismatch
+# The MRF PBL (bl_pbl_physics=99): every tendency, UST, HOL, PBLH and KPBL
+# word of WRF v4.6.1's compiled module_bl_mrf.F on the packaged oracle
+# (tools/mrf_wrf461_oracle), a planted one-ulp constant caught, tiling
+# inert, and a 20+20 step restart equal to 40 steps word for word.
+tests/test_mrf_wrf461_parity.py::test_every_step_of_every_column_matches_wrf
+tests/test_mrf_wrf461_parity.py::test_a_planted_bit_in_one_constant_is_caught
+tests/test_mrf_wrf461_parity.py::test_a_tiled_launch_equals_a_single_one
+# The GFS nonlocal PBL (bl_pbl_physics=3): the production launcher's every
+# output word EQUAL to WRF v4.6.1's on the packaged oracle records, strict and
+# GPUWM_WRF_EXACT=1 arithmetic, a planted one-bit constant caught, and a
+# chunked launch equal to a single one.  Rounding-pinned binary64/binary32 and
+# WOOF's own pow/powf, so the result is not a property of the card.
+tests/test_gfs_pbl_wrf461_gpu.py::test_the_kernel_reproduces_every_oracle_word_strict_battery_arithmetic
+tests/test_gfs_pbl_wrf461_gpu.py::test_the_kernel_reproduces_every_oracle_word_strict_arithmetic
+tests/test_gfs_pbl_wrf461_gpu.py::test_a_one_bit_change_in_one_kernel_constant_is_caught
+tests/test_gfs_pbl_wrf461_gpu.py::test_a_chunked_launch_equals_a_single_one
+tests/test_gfs_pbl_wrf461_gpu.py::test_gfs_restart_continuation_preserves_every_word

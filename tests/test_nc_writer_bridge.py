@@ -393,7 +393,7 @@ def test_the_missing_library_refusal_spells_the_build_for_the_shell(
 
 
 def test_history_frames_are_lossless_compressed_netcdf4_by_default(tmp_path):
-    """Project ruling, 2026-10-28: "Lossless compression is the default."  A history
+    """Project ruling 2026-10-28: "Lossless compression is the default."  A history
     frame written by WrfoutWriter is a NetCDF-4 (classic model) file whose
     every dimension, attribute and word equals the uncompressed frame's;
     ``none`` still writes the classic CDF-2 frame."""
@@ -441,3 +441,45 @@ def test_history_frames_are_lossless_compressed_netcdf4_by_default(tmp_path):
         if b.variables["T"].filters() is not None:
             assert b.variables["T"].filters()["zlib"]
             assert b.variables["T"].filters()["shuffle"]
+
+
+def _trajectory_schema():
+    schema=_schema()
+    time=schema.def_dim('time',0,unlimited=True)
+    points=schema.def_dim('traj',3)
+    chars=schema.def_dim('DateStrLen',19)
+    times=schema.def_var('Times','S1',(time,chars))
+    coords=schema.def_var('traj_i',np.float32,(time,points))
+    schema.put_var_attr(coords,'units','dimensionless')
+    return schema,times,coords
+
+
+def test_rust_resume_preserves_prefix_bits_and_appends(tmp_path):
+    path=tmp_path/'trajectories.nc'
+    schema,times,coords=_trajectory_schema()
+    words=np.asarray([0x80000000,0x3f800001,0x7fc00123],np.uint32)
+    with schema.create(path) as writer:
+        writer.write_record(0,times,b'2019-09-04_12:03:00')
+        writer.write_record(0,coords,words.view(np.float32))
+    schema,times,coords=_trajectory_schema()
+    with schema.resume(path,1) as writer:
+        writer.write_record(1,times,b'2019-09-04_12:06:00')
+        writer.write_record(1,coords,np.asarray([2,3,4],np.float32))
+    with netCDF4.Dataset(path) as ds:
+        ds.set_auto_mask(False)
+        np.testing.assert_array_equal(ds['traj_i'][0].view(np.uint32),words)
+        assert b''.join(ds['Times'][1])==b'2019-09-04_12:06:00'
+        np.testing.assert_array_equal(ds['traj_i'][1],[2,3,4])
+
+
+@pytest.mark.parametrize('defect',['count','truncated','schema'])
+def test_rust_resume_rejects_invalid_prefix_without_writing(tmp_path,defect):
+    path=tmp_path/'prefix.nc';schema,times,coords=_trajectory_schema()
+    with schema.create(path) as writer:
+        writer.write_record(0,times,b'2019-09-04_12:03:00')
+        writer.write_record(0,coords,np.asarray([1,2,3],np.float32))
+    if defect=='truncated':path.write_bytes(path.read_bytes()[:-1])
+    before=path.read_bytes();schema,_,coords=_trajectory_schema()
+    if defect=='schema':schema.put_global_attr('foreign','schema')
+    with pytest.raises(bridge.NcWriteError):schema.resume(path,2 if defect=='count' else 1)
+    assert path.read_bytes()==before

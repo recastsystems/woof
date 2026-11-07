@@ -157,11 +157,22 @@ def capture_continuation(state, driver, *, store=None) -> dict[str, np.ndarray]:
         value = getattr(driver, name, None)
         if value is not None:
             captured[f"driver/{name}"] = capture(f"driver/{name}", value)
+    # ETARA accumulates cloud state between radiation calls. It belongs to
+    # the ground column and must survive the same overlap transplant.
+    from woof.gfdleta_contract import GFDLETA_FIELDS
+    for name in GFDLETA_FIELDS:
+        value = getattr(driver, 'fields', {}).get(name)
+        if value is not None:
+            captured[f"fields/{name}"] = capture(f"fields/{name}", value)
     adapter = getattr(driver, "cumulus_callable", None)
     for name in sorted(CUMULUS_CALLABLE_ARRAYS):
         value = getattr(adapter, name, None)
         if value is not None:
             captured[f"cumulus/{name}"] = capture(f"cumulus/{name}", value)
+    for name in ("nday", "nyear"):
+        value = getattr(driver, "fields", {}).get(name)
+        if value is not None:
+            captured[f"fields/{name}"] = capture(f"fields/{name}", value)
     return captured
 
 
@@ -278,11 +289,26 @@ def shift_continuation(captured: dict[str, np.ndarray],
     disjoint plan (nothing shared) yields all-cold arrays, which is
     exactly what a brand-new domain would carry.
     """
+    from woof.avgflx_contract import PERSISTENT as AVGFLX_PERSISTENT
+
     strip = strip or {}
     shifted: dict[str, np.ndarray] = {}
     for name, value in captured.items():
         xp = _array_module(value)
+        # WRF mediation_nest_move calls start_domain with restart=false;
+        # start_em clears the complete avgflx interval, including its count.
+        if name in AVGFLX_PERSISTENT:
+            shifted[name] = xp.zeros_like(value)
+            continue
+        if name in ("fields/nday", "fields/nyear"):
+            # Domain clocks are independent of the placement and cannot be
+            # shifted or donor-filled as horizontal fields.
+            shifted[name] = xp.array(value, copy=True)
+            continue
         cold = np.float32(PHYSICS_CONTINUATION_COLD_VALUES.get(name, 0.0))
+        if name == 'fields/hbot':
+            # WRF ETARA's empty-convection sentinel is KTE+1, not zero.
+            cold = np.float32(captured['driver/rthratenlw'].shape[0] + 1)
         staged = xp.full_like(value, cold)
         seed = strip.get(name)
         if seed is not None and tuple(seed.shape) != tuple(value.shape):
@@ -345,7 +371,7 @@ def restore_continuation(state, driver,
         staged = shifted.get(slot)
         if staged is None:
             continue
-        target = state.scratch(staged.shape, slot)
+        target = state.scratch(staged.shape, slot, dtype=staged.dtype)
         if hasattr(target, "__cuda_array_interface__"):
             import cupy as cp
 
@@ -375,6 +401,11 @@ def restore_continuation(state, driver,
     from woof.io.restart import pbl_raw_manifest, pbl_diagnostic_manifest
 
     raw_targets = {**pbl_raw_manifest(driver), **pbl_diagnostic_manifest(driver)}
+    from woof.gfdleta_contract import GFDLETA_FIELDS
+    for name in (*GFDLETA_FIELDS, "nday", "nyear"):
+        value = getattr(driver, "fields", {}).get(name)
+        if value is not None:
+            raw_targets[f"fields/{name}"] = value
     for name in ("rthratenlw", "rthratensw"):
         value = getattr(driver, name, None)
         if value is not None:
@@ -394,33 +425,29 @@ def restore_continuation(state, driver,
         moved.append(key)
         cold_flags.append((key, staged.any()))
     w0avg_moved = False
-    staged = shifted.get(W0AVG_KEY)
+    from woof.io.restart import CUMULUS_CALLABLE_ARRAYS
     adapter = getattr(driver, "cumulus_callable", None)
-    if staged is not None and adapter is not None:
-        current = getattr(adapter, "w0avg", None)
-        if (current is not None
-                and tuple(current.shape) == tuple(staged.shape)):
-            if hasattr(current, "__cuda_array_interface__"):
-                import cupy as cp
-
-                current[...] = cp.asarray(staged)
-            else:
-                current[...] = staged
+    for name in sorted(CUMULUS_CALLABLE_ARRAYS):
+        key = f"cumulus/{name}"
+        staged = shifted.get(key)
+        if staged is None or adapter is None:
+            continue
+        current = getattr(adapter, name, None)
+        if (current is not None and tuple(current.shape) == tuple(staged.shape)
+                and current.dtype == staged.dtype):
+            _array_module(current).copyto(current, _array_module(current).asarray(staged))
         else:
-            value = staged
-            sample = getattr(state, "w", None)
-            if sample is not None and hasattr(
-                    sample, "__cuda_array_interface__"):
-                import cupy as cp
-
-                value = cp.asarray(staged)
-            adapter.w0avg = value
+            sample = getattr(state, "w", staged)
+            setattr(adapter, name, _array_module(sample).array(staged, copy=True))
         adapter._history_state = state
-        # The next due call ADDS a sample rather than double-counting
-        # the pre-move one: the recorded time is the outgoing child's,
-        # which the rebuilt clock has already passed.
+        # The rebuilt clock has passed the outgoing sample. The next due
+        # call adds a new sample and preserves every retained cloud carrier.
         adapter._history_time = None
-        w0avg_moved = True
+        if name == "w0avg":
+            w0avg_moved = True
+        else:
+            moved.append(key)
+            cold_flags.append((key, staged.any()))
     if cold_flags:
         # One small diagnostic transfer, rather than a synchronization for
         # every carried physics array.

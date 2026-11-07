@@ -96,7 +96,7 @@ def retire_superseded_arrays(root, *, keep):
 
     THE BREAKAGE THIS PREVENTS: every save wrote a new digest-named arrays file
     and never retired the previous one, about 100 MB per checkpoint per domain.
-    The 30-member, 48 h ice-storm ensemble (V58, 2026-10-21) held 1,039 of them,
+    The 30-member, 48 h ice-storm ensemble (test host, 2026-10-21) held 1,039 of them,
     59.9 GB, while the live collector.json named one.  The current file, and
     any file the sealed restart roster names, are kept.  Each roster generation
     snapshot holds its own link, so a sealed roster still restores.

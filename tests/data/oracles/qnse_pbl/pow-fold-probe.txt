@@ -1,0 +1,2 @@
+-O0:       x**2. /= x*x at 1559 of 2000000 arguments; (1.-x)**2. /= (1.-x)*(1.-x) at 2632
+WRF flags: x**2. /= x*x at 0 of 2000000 arguments; (1.-x)**2. /= (1.-x)*(1.-x) at 0

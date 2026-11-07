@@ -60,15 +60,15 @@ def thermal_source() -> str:
 
 
 @lru_cache(maxsize=None)
-def _module(device: int, options: tuple[str, ...]):
+def _module(device: int, options: tuple[str, ...], log10_profile="glibc_2_39"):
     return compile_runtime_unit(
         "noahmp_thermal", module_key="woof.core.noahmp_thermal_gpu:thermal",
-        options=options)
+        options=options,log10_profile=log10_profile)
 
 
-def thermal_module(options: tuple[str, ...] = DEFAULT_OPTIONS):
+def thermal_module(options: tuple[str, ...] = DEFAULT_OPTIONS, *, log10_profile="glibc_2_39"):
     """Compile (once per option set) the composed thermal translation unit."""
-    return _module(_current_device(), tuple(options))
+    return _module(_current_device(), tuple(options),log10_profile)
 
 
 def evaluate_thermal(leaf: str, x, ix=None):
@@ -131,8 +131,8 @@ def evaluate_thermal(leaf: str, x, ix=None):
 # through the same composed translation unit, so there is still exactly one
 # device glibc libm on the path.
 
-def _thermoprop_kernel():
-    return thermal_module().get_function("noahmp_leaf_thermoprop")
+def _thermoprop_kernel(log10_profile="glibc_2_39"):
+    return thermal_module(log10_profile=log10_profile).get_function("noahmp_leaf_thermoprop")
 
 
 THERMOPROP_N_IN = 44

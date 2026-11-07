@@ -212,6 +212,7 @@ void health_final(const real* __restrict__ partial,
 #define VALIDATE_ADD_AUX     8u
 #define VALIDATE_AUX_LEVEL  16u
 #define VALIDATE_INT32      32u
+#define VALIDATE_INACTIVE_POSINF 64u
 
 static __device__ __forceinline__
 unsigned long long words_u64(const unsigned* words, int index)
@@ -261,7 +262,14 @@ void validate_full_state(
             unsigned long long aux_index = index;
             if (flags & VALIDATE_AUX_LEVEL)
                 aux_index = index / (unsigned long long)plane_sizes[field];
-            value += auxiliary[aux_index];
+            if (flags & VALIDATE_INACTIVE_POSINF) {
+                unsigned long long outgoing = index + plane_sizes[field];
+                real activity = outgoing < size ? auxiliary[outgoing] : 0.0f;
+                if (isinf(value) && value > 0.0f && activity == 0.0f)
+                    value = 0.0f;
+            } else {
+                value += auxiliary[aux_index];
+            }
         }
         bool bad = !isfinite(value);
         unsigned ny = rim_geometry[3 * field];

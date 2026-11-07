@@ -207,19 +207,20 @@ def test_the_slot_tables_on_both_sides_of_the_launch_agree():
             assert int(got[key]) == i, (prefix, name, got[key], i)
 
     defines("F_", [n.replace("th_old", "thold").replace("qv_old", "qvold")
-                   for n in PD.FIELD_SLOTS])
+                   for n in PD.field_slots(2)])
     defines("S_", [n.replace("inv_rho", "invrho").replace("qv_cld", "qvcld")
                    for n in PD.SCRATCH_SLOTS])
     defines("W_", [n.replace("v_q", "vq").replace("v_n", "vn")
                     .replace("flux_qir", "fqir").replace("flux_bir", "fbir")
                     .replace("flux_q", "fq").replace("flux_n", "fn")
-                   for n in PD.SEDW_SLOTS])
-    defines("D_", list(PD.DIAG_SLOTS))
+                    .replace("v_z", "vz").replace("flux_z", "fz")
+                   for n in PD.SEDW_SLOTS + PD.SEDW_SLOTS_3MOM])
+    defines("D_", list(PD.diag_slots(2)))
     defines("P_", [n.replace("prt_liq", "prtliq").replace("prt_sol", "prtsol")
                    for n in PD.SURF_SLOTS])
-    defines("T_", ["itab", "icoll", "vn", "vm", "revap"])
+    defines("T_", ["itab", "icoll", "vn", "vm", "revap", "itab3", "icoll3", "icolli1", "icolli2"])
     for name in PD.ARM_KERNELS["unfused"] + PD.ARM_KERNELS["fused"]:
-        assert ('__global__ void %s(' % name) in text, name
+        assert (('P3_BOTH_CATEGORY_COUNTS(' + name + ')') in text or ('__global__ void %s(' % name) in text), name
 
 
 def test_the_diagnostic_set_is_the_registry_package_and_is_closed():
@@ -272,7 +273,7 @@ def test_both_log_predictnc_paths_exist_in_the_kernel():
     text = P3_CU.read_text(encoding="utf-8")
     # the specified-Nc respecification and the prognostic tendency
     assert "if (!log_predictNc) AT(nc, k) = P3_NCCNST * inv_rho;" in text
-    assert "AT(nc, k) = AT(nc, k) + (-nccol - nchetc - ncheti) * dt;" in text
+    assert "AT(nc, k) = AT(nc, k) + (-nccol[c] - nchetc[c] - ncheti[c]) * dt;" in text
     assert ("AT(nc, k) = AT(nc, k) + (-ncacc - ncautc + ncslf + ncnuc) * dt;"
             in text)
     # and the two-moment cloud sedimentation branch
@@ -303,7 +304,7 @@ def test_p3_backend_is_scheme_scoped_with_an_off_scheme_refusal():
         validate_run_config(RunConfig(**base, moist=True, mp_physics=50,
                                       p3_backend="nope"))
     # off scheme, a non-default value is refused rather than dropped
-    with pytest.raises(ValueError, match="requires mp_physics=50"):
+    with pytest.raises(ValueError, match="requires mp_physics=50.*mp_physics=53"):
         validate_run_config(RunConfig(**base, moist=True, mp_physics=6,
                                       p3_backend="reference"))
     # the default is accepted under every scheme, which is what lets the
@@ -315,7 +316,7 @@ def test_the_scoped_field_leaves_a_non_p3_restart_identity_untouched():
     """The concrete breakage, exercised rather than described: an mp=6
     domain's restart identity must not gain a key because P3 gained a
     knob."""
-    from woof.core.model import SCHEME_SCOPED_RUN_FIELDS, restart_identity_payload
+    from woof.core.model import SCHEME_SCOPED_RUN_FIELDS, restart_identity_payload, scope_microphysics_run_fields
 
     class _Exp:
         pass
@@ -327,19 +328,15 @@ def test_the_scoped_field_leaves_a_non_p3_restart_identity_untouched():
 
     for domain in payload_like["domains"]:
         run = domain["run"]
-        selected = run.get("mp_physics")
-        for scheme, names in SCHEME_SCOPED_RUN_FIELDS.items():
-            if selected == scheme:
-                continue
-            for name in names:
-                run.pop(name, None)
+        from woof.core.model import _drop_off_scheme_run_fields
+        _drop_off_scheme_run_fields(run)
     assert "p3_backend" not in payload_like["domains"][0]["run"]
     assert payload_like["domains"][1]["run"]["p3_backend"] == "fused"
     assert callable(restart_identity_payload)
 
 
 def test_the_p3_translation_unit_is_priced_not_refused():
-    """``p3.cu`` cannot compile alone -- it borrows the tree's single glibc
+    """``p3.cu`` cannot compile alone -- it borrows WOOF's shared
     r_pow/r_exp/r_log from noahmp_leaves.cu rather than carrying a second
     copy that could drift.  Without a composite row the memory preflight
     would refuse every mp=50 run outright, which is what the Noah-MP
@@ -349,7 +346,8 @@ def test_the_p3_translation_unit_is_priced_not_refused():
     assert "p3" in pf.UNMEASURED_KERNEL_MODULES
     row = pf.CHAINED_TRANSLATION_UNIT_FRAMES["p3_composed"]
     assert row.covers == frozenset({"p3"})
-    assert row.max_local_size_bytes == 0
+    # e7d3e91b566: 72 B read on sm_120 with the multi-category kernels.
+    assert row.max_local_size_bytes == 72
     assert "p3_composed" in pf._MICROPHYSICS_KERNEL_MODULES[50]
     assert "p3" not in pf._MICROPHYSICS_KERNEL_MODULES[50]
 

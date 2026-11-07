@@ -1,6 +1,6 @@
 """woof/ingest/land_state.py: a foreign soil model's moisture is index-remapped, a donor is land-only.
 
-Named breakage (found 2026-10-26): an ERA5 start copied
+Named breakage (2026-10-26 cold-start study): an ERA5 start copied
 HTESSEL soil moisture into RUC as is (0.36 against HRRR's 0.21) and T2 ran
 1-2 C cold from the first hour.
 """

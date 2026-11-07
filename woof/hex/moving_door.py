@@ -188,6 +188,7 @@ def _fixed(arguments: argparse.Namespace) -> int:
     """The fixed-region control: one member, no moves, the same door flags as a moving segment."""
 
     from woof.output_formats import argument_values
+    from .wave_options import argument_values as wave_arguments
     from .moving_case import load_case
     from .moving_members import read_stage
     from .moving_run import RUN_STATE_VARIABLES, label_argv, segment_command
@@ -200,7 +201,8 @@ def _fixed(arguments: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=False)
     cmd = segment_command(case, member, out, arguments.hours, arguments.history_every_minutes, arguments.engine,
                           init_source=f"{stage['source']} analysis; fixed-region control on member {member['name']}",
-                          extra=[*arguments.forecast_arg, *label_argv(arguments), *argument_values(arguments)], cards=arguments.cards,
+                          extra=[*arguments.forecast_arg, *label_argv(arguments), *argument_values(arguments),
+                                 *wave_arguments(arguments)], cards=arguments.cards,
                           source_id=stage["source"])
     env = {k: v for k, v in os.environ.items() if k not in RUN_STATE_VARIABLES}
     # The shock series is recorded so a moving run can be compared against the same times.
@@ -236,6 +238,8 @@ def _summarize(arguments: argparse.Namespace) -> int:
 def _run_arguments(r: argparse.ArgumentParser) -> None:
     from woof.output_formats import add_arguments
     add_arguments(r)
+    from .wave_options import add_arguments as add_wave_arguments
+    add_wave_arguments(r)
     r.add_argument('--case', required=True, help='the case file (see docs/moving-nest.md)')
     r.add_argument('--casedir', required=True,
                    help='the staged and prepared case folder (woof hex moving stage, then prepare)')
@@ -247,9 +251,8 @@ def _run_arguments(r: argparse.ArgumentParser) -> None:
     r.add_argument('--check-minutes', type=float, default=None,
                    help='history and tracker interval; whole macro steps that divide the run (default: the case '
                         "tracker's placement.check_minutes, else 60)")
-    r.add_argument('--device', default=None, metavar='N',
-                   help="the card the segments run on: the Nth card this process can already see (a card queue's lease "
-                        'holds); default: as inherited')
+    r.add_argument('--device', default=None, metavar='N_OR_UUID',
+                   help='visible card index or UUID; default: as inherited')
     r.add_argument('--cards', type=int, default=1, metavar='K',
                    help='split the region across the first K visible cards of this host (default 1)')
     r.add_argument('--engine', default=None, metavar='DIR',
@@ -266,6 +269,9 @@ def _run_arguments(r: argparse.ArgumentParser) -> None:
     r.add_argument('--seal-every-hours', type=float, default=12.0)
     r.add_argument('--max-preparing', type=int, choices=(1, 2), default=2,
                    help='concurrent member preparations (default 2; at most 2)')
+    r.add_argument('--max-speculative-members', type=int, choices=(0, 1, 2, 3), default=0,
+                   help='bound preparing plus ready future members (0 keeps unlimited admission); '
+                        'a decided move may still prepare its required target')
     r.add_argument('--member-retirement-evidence', metavar='DIR',
                    help='opt-in: retire inactive owned grids/init after completed collector receipts in DIR; '
                         'retain statics for later surface rendering')
@@ -307,6 +313,9 @@ def _run_arguments(r: argparse.ArgumentParser) -> None:
                         "member's mesh) instead of generating their mesh; default: on for a concentric global "
                         'family, off for a corridor or --zone-carry (--rotate-template there is refused); '
                         '--no-rotate-template generates every member')
+    r.add_argument('--member-clean-script', type=Path,
+                   help='retire stale owned member static/init files through this cleanup script; '
+                        'requires --rotate-template --no-member-fallback --no-prelaunch')
 
 
 def _case_arguments(parser: argparse.ArgumentParser) -> None:
@@ -447,6 +456,8 @@ def add_moving_parser(commands) -> None:
     run.set_defaults(handler=_run)
 
     fixed = sub.add_parser("fixed", help="the fixed-region control: the same member and flags, no moves")
+    from .wave_options import add_arguments as add_wave_arguments
+    add_wave_arguments(fixed)
     _case_arguments(fixed)
     from woof.output_formats import add_arguments
     add_arguments(fixed)
@@ -454,7 +465,7 @@ def add_moving_parser(commands) -> None:
     fixed.add_argument("--hours", type=float, required=True)
     fixed.add_argument("--member", default="start")
     fixed.add_argument("--history-every-minutes", type=float, default=60.0)
-    fixed.add_argument("--device", default=None, metavar="N")
+    fixed.add_argument("--device", default=None, metavar="N_OR_UUID")
     fixed.add_argument("--cards", type=int, default=1, metavar="K",
                        help="split the region across the first K visible cards of this host (default 1)")
     fixed.add_argument("--engine", default=None, metavar="DIR")

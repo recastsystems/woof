@@ -15,6 +15,16 @@ from .model import SpectralGrid, WaveModel
 
 PACKAGE = Path(__file__).resolve().parent
 
+
+def register_ocean_cli(commands):
+    """The ordinary ocean door and python -m door share the same runner."""
+    parser=commands.add_parser("waves",help="spectral waves from prepared inputs")
+    sub=parser.add_subparsers(dest="waves_command",required=True)
+    run_parser=sub.add_parser("run",help="run a prepared spectral wave configuration")
+    run_parser.add_argument("config",type=Path)
+    run_parser.set_defaults(func=lambda args:run(args.config))
+    return sub
+
 def native_tools():
     root = Path(os.environ.get("WOOF_WAVES_IO_DIR", PACKAGE / "native" / "bin"))
     binary, library = root / "rw_waves_io", root / "libwaves_io.so"
@@ -43,6 +53,11 @@ def validate_config(config):
         raise ValueError("capture_cells needs unique ids and nonnegative integer i/j")
 
 def run(config_path):
+    candidate = Path(config_path)
+    document={} if candidate.suffix.lower()==".toml" else json.loads(candidate.read_text())
+    if candidate.suffix.lower() == ".toml" or "prepared" in document.get("waves",document):
+        from .prepared_run import run as run_prepared
+        return run_prepared(config_path)
     import cupy as cp
     config_path = Path(config_path).resolve()
     config = json.loads(config_path.read_text())

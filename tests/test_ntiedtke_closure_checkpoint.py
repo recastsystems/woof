@@ -105,7 +105,7 @@ _POST_NTIEDTKE_CHILD_DIGEST = \
 _KEYS_APPENDED_SINCE: tuple[str, ...] = (
     ADAPTIVE_TIMESTEP_RUN_FIELDS
     + ("eta_levels", "relax_timescale_s", "relax_w",
-       # the urban canopy keys (lane/urban-infra)
+       # the urban canopy keys (development branch)
        "sf_urban_physics", "use_wudapt_lcz", "num_urban_hi",
        # tc/nest's fixed-frame archive, echoed on a nested domain (2.9.7)
        "nest_accumulation_archive"))

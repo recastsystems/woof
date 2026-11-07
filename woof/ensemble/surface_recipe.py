@@ -182,6 +182,35 @@ def _advanced(state):
             float(getattr(state, "domain_start_offset", 0.0)))
 
 
+def _sst_offset_refusal_detail(xp, temperatures, land, lake, ice, parameters, *, domain_id):
+    """Name where an SST-offset refusal comes from: cells, field, domain, values.
+
+    Only built once the kernel has already refused, so the passing path
+    pays nothing.  THE BREAKAGE THIS NAMES (WOOF 2026-11-06, Pickens ERA5
+    WoFS ensemble): the refusal said only "outside 170..400 K"; the cause
+    was 44 of 210 open-water d01 cells whose initialized ``sst`` was 0 K
+    because the source had no SST there.
+    """
+    open_water = (land < 0.5) & (lake < 0.5) & (ice == 0)
+    water = int(open_water.sum())
+    offset = parameters[1:2].astype(xp.float32)
+    parts = []
+    for name, temperature in temperatures:
+        value = temperature + offset
+        bad = open_water & ~(xp.isfinite(value) & (value >= 170.0) & (value <= 400.0))
+        count = int(bad.sum())
+        if not count:
+            continue
+        before = temperature[bad]
+        low, high = float(before.min()), float(before.max())
+        cause = ("; the initialization left 0 K there, i.e. the init source has no "
+                 "SST on those water cells" if low == high == 0.0 else "")
+        parts.append(f"{name}: {count} of {water} open-water cells, initialized "
+                     f"{low:.6g}..{high:.6g} K before the {float(offset.get()[0]):+.3f} K offset{cause}")
+    where = "" if domain_id is None else f" on domain {domain_id}"
+    return f"{where} ({'; '.join(parts)})" if parts else where
+
+
 def apply_surface_recipe(state, *, value, member_id, seed, domain_id=None,
                          array_module=None, realization=None, at_checkpoint_branch=False):
     """Apply one member realization to one initialized physical domain."""
@@ -274,9 +303,11 @@ def apply_surface_recipe(state, *, value, member_id, seed, domain_id=None,
             raise ValueError("surface-state SST offset needs the initialized ocean surface temperature")
     failure = int(bad.get()[0])
     if failure:
+        sst_detail = (_sst_offset_refusal_detail(xp, temperatures, land, lake, ice, parameters,
+                                                 domain_id=domain_id) if failure & 2 else "")
         raise ValueError("surface-state input validation failed before mutation: " + "; ".join(
             message for bit, message in ((1, "soil water or phase partition is outside its valid range"),
-                (2, "offset ocean temperature is outside 170..400 K"),
+                (2, "offset ocean temperature is outside 170..400 K" + sst_detail),
                 (4, "RUC soil category or dry/reference moisture bounds are invalid")) if failure & bit))
     from woof.ensemble.state_sha import hash_state_arrays
     before = hash_state_arrays((name, fields[name]) for name in changed_names)

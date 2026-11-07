@@ -104,9 +104,9 @@ def test_the_fields_are_appended_last():
     # Appended right after adaptive_nest_lattice, so every earlier field keeps
     # its positional index.  The namelist-gaps merge appended slope_rad,
     # topo_shading and shadlen after them, the Noah mosaic trio followed,
-    # lane/282-namelist-tolerance appended diff_opt and mix_full_fields
-    # after the trio, lane/282-terrain-drag appended topo_wind and gwd_opt
-    # after those, and lane/sol-hrrr-zadvect (37a99fcd4, merged at
+    # development branch appended diff_opt and mix_full_fields
+    # after the trio, development branch appended topo_wind and gwd_opt
+    # after those, and development branch (37a99fcd4, merged at
     # dd5ded73f) appended zadvect_implicit_variant last, default "wrf_471";
     # tests/test_config_freeze.py pins the whole tail.
     names = [f.name for f in dataclasses.fields(RunConfig)]

@@ -135,8 +135,7 @@ Fortran oddities found (implemented as WRF defines them, reported):
 
 Fail-closed exclusions (paths WRF option 4 as configured cannot reach or
 that need inputs outside this contract): the HWRF-only Eta Ferrier
-package (mp_physics 85), the old Eta Ferrier F_ICE_PHY branch (qs
-carrying total ice, mp_physics 95, refused at admission), prognostic
+package (mp_physics 85), prognostic
 aerosol/cloud-drop paths (progn=1, F_QNDROP), WRF_CHEM aerosol feedback,
 CAMMGMP radii, the SSiB albedo split (sf_surface_physics == 8), and
 o3input values other than the two WRF defines (0-ish default and 2).
@@ -382,7 +381,7 @@ def lw_trace_gases(yr, overrides=None):
 
 def _moist_prep(kte, icloud, warm_rain, f_qc, f_qr, f_qi, f_qs, f_qg,
                 t1d, qv3d, qc3d, qr3d, qi3d, qs3d, qg3d, cldfra3d,
-                ferrier=False):
+                ferrier=False, eta_ferrier=False):
     """The moist-variable assembly common to both wrappers.
 
     Returns (qv1d, qc1d, qr1d, qi1d, qs1d, qg1d, cldfra1d), each float32
@@ -398,7 +397,7 @@ def _moist_prep(kte, icloud, warm_rain, f_qc, f_qr, f_qi, f_qs, f_qg,
     return _moist_prep_b(
         np, icloud, warm_rain, f_qc, f_qr, f_qi, f_qs, f_qg,
         *map(_f32, (t1d, qv3d, qc3d, qr3d, qi3d, qs3d, qg3d, cldfra3d)),
-        ferrier=ferrier)
+        ferrier=ferrier, eta_ferrier=eta_ferrier)
 
 
 def cloud_form_is_fork(form):
@@ -498,7 +497,7 @@ def _o3data(prlevh):
     return (acc / (pk - pk1).astype(np.float32)).astype(np.float32)
 
 
-def _mp_guard(mp_physics):
+def _mp_guard(mp_physics, allowed_extra=()):
     """Refuse the HWRF-only Eta Ferrier package.
 
     Breakage this prevents: ETAMP_HWRF (mp_physics 85) joins the wrappers'
@@ -508,7 +507,9 @@ def _mp_guard(mp_physics):
     set the run cannot have.  The ARW arm for mp_physics 5 and 15 is
     ported (``ferrier`` in :func:`_moist_prep`).
     """
-    if int(mp_physics) == 85:
+    # The historical keyword names additional refused packages.
+    # The device shortwave wrapper supplies (85,), never an admission.
+    if int(mp_physics) == 85 or int(mp_physics) in tuple(allowed_extra):
         raise NotImplementedError(
             "mp_physics=85 (ETAMP_HWRF) is an HWRF/NMM-only package; its "
             "RRTMG species remap exists only in HWRF builds")
@@ -600,7 +601,7 @@ def lwrad_prep(*, p3d, p8w, t3d, t8w, dz8w,
         zeros if qi3d is None else qi3d, zeros if qs3d is None else qs3d,
         zeros if qg3d is None else qg3d,
         zeros if cldfra3d is None else cldfra3d,
-        ferrier=_is_ferrier(mp_physics))
+        ferrier=_is_ferrier(mp_physics), eta_ferrier=(int(mp_physics)==95))
 
     ncol = 1
     nlay = nlayers
@@ -791,6 +792,15 @@ def lwrad_outputs(*, uflx, dflx, hr, uflxc, dflxc, hrc, pi3d,
 # Shortwave: RRTMG_SWRAD prep and the night contract.
 # ---------------------------------------------------------------------------
 
+def _require_spectral_albedo(selector, spectral_albedo):
+    # WRF module_ra_rrtmg_sw.F maps ALSWVISDIR/DIF and ALSWNIRDIR/DIF
+    # directly to these four engine inputs for SSIBSCHEME.
+    if int(selector) == 8 and (spectral_albedo is None or
+            set(spectral_albedo) != {"asdir", "asdif", "aldir", "aldif"}):
+        raise ValueError("sf_surface_physics=8 requires four spectral albedos: "
+                         "asdir, asdif, aldir, aldif")
+
+
 def swrad_prep(*, p3d, p8w, t3d, t8w, dz8w,
                qv3d, qc3d=None, qr3d=None, qi3d=None, qs3d=None, qg3d=None,
                cldfra3d=None, o33d=None,
@@ -801,7 +811,7 @@ def swrad_prep(*, p3d, p8w, t3d, t8w, dz8w,
                has_reqc, has_reqi, has_reqs,
                f_qc=True, f_qr=True, f_qi=True, f_qs=True, f_qg=True,
                yr, julian, mp_physics=0, g=9.81,
-               sf_surface_physics=2, trace_gas_overrides=None,
+               sf_surface_physics=2, spectral_albedo=None, trace_gas_overrides=None,
                      rrtmg_cloud_optics_form="wrf_461"):
     """RRTMG_SWRAD, from its WRF dummies to the exact rrtmg_sw arguments.
 
@@ -822,10 +832,7 @@ def swrad_prep(*, p3d, p8w, t3d, t8w, dz8w,
     _require_radii("swrad_prep", has_reqc, has_reqi, has_reqs,
                    re_cloud, re_ice, re_snow)
     _mp_guard(mp_physics)
-    if int(sf_surface_physics) == 8:
-        raise NotImplementedError(
-            "sf_surface_physics=8 selects the SSiB four-component albedo "
-            "split (ALSWVISDIR &c), which is outside this port's contract")
+    _require_spectral_albedo(sf_surface_physics, spectral_albedo)
 
     coszr = F(xcoszen)
     coszrs = F(xcoszen)
@@ -861,7 +868,7 @@ def swrad_prep(*, p3d, p8w, t3d, t8w, dz8w,
         zeros if qi3d is None else qi3d, zeros if qs3d is None else qs3d,
         zeros if qg3d is None else qg3d,
         zeros if cldfra3d is None else cldfra3d,
-        ferrier=_is_ferrier(mp_physics))
+        ferrier=_is_ferrier(mp_physics), eta_ferrier=(int(mp_physics)==95))
 
     ncol = 1
     nlay = kte + 1
@@ -932,10 +939,10 @@ def swrad_prep(*, p3d, p8w, t3d, t8w, dz8w,
         o31d = o3vmr[:kte].copy()
 
     # Albedo split (non-SSiB branch): all four components identical.
-    asdir = F(albedo)
-    asdif = F(albedo)
-    aldir = F(albedo)
-    aldif = F(albedo)
+    asdir = F(albedo if spectral_albedo is None else spectral_albedo["asdir"])
+    asdif = F(albedo if spectral_albedo is None else spectral_albedo["asdif"])
+    aldir = F(albedo if spectral_albedo is None else spectral_albedo["aldir"])
+    aldif = F(albedo if spectral_albedo is None else spectral_albedo["aldif"])
 
     # ---- cloud properties on model layers (inflgsw > 0 always here) ----
     cldfrac = np.zeros(nlay, np.float32)
@@ -1104,7 +1111,7 @@ def _surf_b(xp, v, ncol, name):
 
 def _moist_prep_b(xp, icloud, warm_rain, f_qc, f_qr, f_qi, f_qs, f_qg,
                   t1d, qv3d, qc3d, qr3d, qi3d, qs3d, qg3d, cldfra3d,
-                  ferrier=False):
+                  ferrier=False, eta_ferrier=False):
     """Batch twin of :func:`_moist_prep` on (ncol, kte) float32 arrays."""
     f32 = np.float32
     shape = t1d.shape
@@ -1135,6 +1142,10 @@ def _moist_prep_b(xp, icloud, warm_rain, f_qc, f_qr, f_qi, f_qs, f_qg,
             qs1d = xp.maximum(_ZERO, qs3d).astype(f32)
         if f_qg:
             qg1d = xp.maximum(_ZERO, qg3d).astype(f32)
+        if eta_ferrier:
+            qi1d = xp.maximum(_ZERO, F("0.1") * qs3d).astype(f32)
+            qs1d = (F("0.9") * qs3d).astype(f32)
+            qc1d = xp.maximum(_ZERO, qc3d).astype(f32)
 
     if ferrier:                      # see _moist_prep
         qi1d = xp.maximum(_ZERO, qi3d).astype(f32)
@@ -1603,7 +1614,7 @@ def lwrad_prep_batch(*, p3d, p8w, t3d, t8w, dz8w,
     qv1d, qc1d, qr1d, qi1d, qs1d, qg1d, cldfra1d = _moist_prep_b(
         np, icloud, warm_rain, f_qc, f_qr, f_qi, f_qs, f_qg, hb(t1d),
         hb(qv3d), hb(qc3d), hb(qr3d), hb(qi3d), hb(qs3d), hb(qg3d),
-        cldfra_h, ferrier=_is_ferrier(mp_physics))
+        cldfra_h, ferrier=_is_ferrier(mp_physics), eta_ferrier=(int(mp_physics)==95))
 
     icld = int(cldovrlp)
     juldat = int(F(julian))          # Fortran INT() on the REAL julian
@@ -1825,7 +1836,7 @@ def swrad_prep_batch(*, p3d, p8w, t3d, t8w, dz8w,
                      has_reqc, has_reqi, has_reqs,
                      f_qc=True, f_qr=True, f_qi=True, f_qs=True, f_qg=True,
                      yr, julian, mp_physics=0, g=9.81,
-                     sf_surface_physics=2, subcolumn_generator=None, trace_gas_overrides=None,
+                     sf_surface_physics=2, spectral_albedo=None, subcolumn_generator=None, trace_gas_overrides=None,
                      rrtmg_cloud_optics_form="wrf_461"):
     """Column-vectorized twin of :func:`swrad_prep` (bitwise per column).
 
@@ -1845,10 +1856,7 @@ def swrad_prep_batch(*, p3d, p8w, t3d, t8w, dz8w,
     _require_radii("swrad_prep_batch", has_reqc, has_reqi, has_reqs,
                    re_cloud, re_ice, re_snow)
     _mp_guard(mp_physics)
-    if int(sf_surface_physics) == 8:
-        raise NotImplementedError(
-            "sf_surface_physics=8 selects the SSiB four-component albedo "
-            "split (ALSWVISDIR &c), which is outside this port's contract")
+    _require_spectral_albedo(sf_surface_physics, spectral_albedo)
 
     xp = _get_xp(p3d, p8w, t3d, t8w, dz8w, qv3d)
     f32 = np.float32
@@ -1917,7 +1925,7 @@ def swrad_prep_batch(*, p3d, p8w, t3d, t8w, dz8w,
     qv1d, qc1d, qr1d, qi1d, qs1d, qg1d, cldfra1d = _moist_prep_b(
         np, icloud, warm_rain, f_qc, f_qr, f_qi, f_qs, f_qg, hb(t1d),
         hb(qv3d), hb(qc3d), hb(qr3d), hb(qi3d), hb(qs3d), hb(qg3d),
-        cldfra_h, ferrier=_is_ferrier(mp_physics))
+        cldfra_h, ferrier=_is_ferrier(mp_physics), eta_ferrier=(int(mp_physics)==95))
 
     nlay = kte + 1
     icld = int(cldovrlp)
@@ -1983,10 +1991,14 @@ def swrad_prep_batch(*, p3d, p8w, t3d, t8w, dz8w,
         o31d = o3vmr[:, :kte].copy()
 
     # Albedo split (non-SSiB branch): all four components identical.
-    asdir = albedo.astype(f32)
-    asdif = albedo.astype(f32)
-    aldir = albedo.astype(f32)
-    aldif = albedo.astype(f32)
+    asdir = (albedo.astype(f32) if spectral_albedo is None else
+             _surf_b(xp, spectral_albedo["asdir"], ncol, "asdir").astype(f32))
+    asdif = (albedo.astype(f32) if spectral_albedo is None else
+             _surf_b(xp, spectral_albedo["asdif"], ncol, "asdif").astype(f32))
+    aldir = (albedo.astype(f32) if spectral_albedo is None else
+             _surf_b(xp, spectral_albedo["aldir"], ncol, "aldir").astype(f32))
+    aldif = (albedo.astype(f32) if spectral_albedo is None else
+             _surf_b(xp, spectral_albedo["aldif"], ncol, "aldif").astype(f32))
 
     # ---- cloud properties on model layers (inflgsw > 0 always here);
     # host block (see above), the mcica_inputs record keeps xp arrays ----

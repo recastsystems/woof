@@ -1,0 +1,130 @@
+{
+    "date": "2026-11-02",
+    "source_revision": "90a120b3b09346a9e1522b2d99bd3623379b77ce",
+    "card": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "numerics": "GPUWM_NUMERICS=strict (GPUWM_WRF_EXACT unset), the strict pin-set leg",
+    "why": "The 3.0.0 sealing strict leg compiles with NVRTC 13.2.51, one of the four builds the kernel packs ship (12.9.86, 13.2.51, 13.4.59, 13.4.92), which these three tables had never measured. Every measurement below equals the row already recorded for the other Blackwell builds: the added rows name the compiler and change no number.",
+    "readings": [
+        {
+            "compiler": {
+                "nvrtc_build": "13.4.92",
+                "nvrtc_build_id": "CL-38855100",
+                "nvrtc_library_sha256": "d8f82e7019fe990bcd9efe4c5c444c036ddf2d5df95090d3965ae62be2009a2c",
+                "cuda_driver_version": "13000",
+                "device_compute_capability": "120",
+                "cupy_version": "14.2.0",
+                "numpy_version": "2.5.4"
+            },
+            "test": "tests/test_shinhong_runtime.py bl=1 off-path run-state hash",
+            "off_path_sha256": "887cf16540a769794ff9dc94fe0bbfe27e93ca72a073419539d19d4d488490ec",
+            "e_sgs_present": false,
+            "processes": 1,
+            "note": "A recorded compiler on this card reproduces the RTX 5090 13.4.59/13.4.92 pin: no off-path leak at this source."
+        },
+        {
+            "compiler": {
+                "nvrtc_build": "13.2.51",
+                "nvrtc_build_id": "UNKNOWN",
+                "nvrtc_library_sha256": "0b7d690ff633bbf2fe56422fc5d606e5552f89cbddd6eb6f96eaa6237622d747",
+                "cuda_driver_version": "13000",
+                "device_compute_capability": "120",
+                "cupy_version": "14.2.0",
+                "numpy_version": "2.5.4"
+            },
+            "test": "tests/test_shinhong_runtime.py bl=1 off-path run-state hash",
+            "off_path_sha256": "887cf16540a769794ff9dc94fe0bbfe27e93ca72a073419539d19d4d488490ec",
+            "e_sgs_present": false,
+            "processes": 2,
+            "fresh_cupy_cache_per_process": true
+        },
+        {
+            "compiler": {
+                "nvrtc_build": "13.2.51",
+                "nvrtc_build_id": "UNKNOWN",
+                "nvrtc_library_sha256": "0b7d690ff633bbf2fe56422fc5d606e5552f89cbddd6eb6f96eaa6237622d747",
+                "cuda_driver_version": "13000",
+                "device_compute_capability": "120",
+                "cupy_version": "14.2.0",
+                "numpy_version": "2.5.4"
+            },
+            "test": "tests/test_shinhong_wrf461_parity.py column ULP row",
+            "measured": {
+                "du": 0,
+                "dv": 0,
+                "dtheta": 0,
+                "dqv": 15069,
+                "dqc": 155602,
+                "dqi": 3055548,
+                "exch_h": 0,
+                "tke": 0,
+                "el": 0,
+                "hpbl": 0,
+                "wstar": 0,
+                "delta": 0
+            },
+            "equals": "_GPU_ROW_GLIBC"
+        },
+        {
+            "compiler": {
+                "nvrtc_build": "13.4.92",
+                "nvrtc_build_id": "CL-38855100",
+                "nvrtc_library_sha256": "d8f82e7019fe990bcd9efe4c5c444c036ddf2d5df95090d3965ae62be2009a2c",
+                "cuda_driver_version": "13000",
+                "device_compute_capability": "120",
+                "cupy_version": "14.2.0",
+                "numpy_version": "2.5.4"
+            },
+            "test": "tests/test_shinhong_wrf461_parity.py column ULP row",
+            "measured": {
+                "du": 0,
+                "dv": 0,
+                "dtheta": 0,
+                "dqv": 15069,
+                "dqc": 155602,
+                "dqi": 3055548,
+                "exch_h": 0,
+                "tke": 0,
+                "el": 0,
+                "hpbl": 0,
+                "wstar": 0,
+                "delta": 0
+            },
+            "equals": "_GPU_ROW_GLIBC"
+        },
+        {
+            "compiler": {
+                "nvrtc_build": "13.2.51",
+                "nvrtc_build_id": "UNKNOWN",
+                "nvrtc_library_sha256": "0b7d690ff633bbf2fe56422fc5d606e5552f89cbddd6eb6f96eaa6237622d747",
+                "cuda_driver_version": "13000",
+                "device_compute_capability": "120",
+                "cupy_version": "14.2.0",
+                "numpy_version": "2.5.4"
+            },
+            "test": "tests/test_noah_wrf461_parity.py default-arithmetic row (sm_120)",
+            "fields": 34,
+            "nonzero": {},
+            "equals": "BASELINE_MAX_ULP (zero in every field)"
+        },
+        {
+            "compiler": {
+                "nvrtc_build": "13.4.92",
+                "nvrtc_build_id": "CL-38855100",
+                "nvrtc_library_sha256": "d8f82e7019fe990bcd9efe4c5c444c036ddf2d5df95090d3965ae62be2009a2c",
+                "cuda_driver_version": "13000",
+                "device_compute_capability": "120",
+                "cupy_version": "14.2.0",
+                "numpy_version": "2.5.4"
+            },
+            "test": "tests/test_noah_wrf461_parity.py default-arithmetic row (sm_120)",
+            "fields": 34,
+            "nonzero": {},
+            "equals": "BASELINE_MAX_ULP (zero in every field)"
+        }
+    ],
+    "commands": [
+        "GPUWM_NUMERICS=strict CUDA_VISIBLE_DEVICES=0 CUPY_CACHE_DIR=<fresh> python sh_digest.py (tests/test_shinhong_runtime.bl1_micro_run_digest)",
+        "GPUWM_NUMERICS=strict python sh_ulp.py (body of test_shinhong_cuda_column_holds_its_measured_distance_from_wrf)",
+        "GPUWM_NUMERICS=strict python noah_ulp.py (body of test_noah_cuda_column_holds_its_measured_distance_from_wrf)"
+    ]
+}

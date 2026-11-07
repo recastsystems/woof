@@ -333,14 +333,23 @@ impl LinearWeights {
     pub fn gather(&self, values: &[f32], levels: usize) -> Vec<f32> {
         let points = self.cells.len();
         let mut out = vec![0.0f32; levels * points];
-        out.par_chunks_mut(points).enumerate().for_each(|(level, target)| {
-            for (slot, (cells, w)) in self.cells.iter().zip(self.weights.iter()).enumerate() {
+        if points == 0 { return out; }
+        out.par_chunks_mut(points).enumerate().for_each(|(level, plane)| {
+          // A surface field has one level. Split its points too, keeping
+          // each point's three-term sum in exactly the original order.
+          plane.par_chunks_mut(4096).enumerate().for_each(|(band, target)| {
+            let first = band * 4096;
+            for (local, value) in target.iter_mut().enumerate() {
+                let slot = first + local;
+                let cells = &self.cells[slot];
+                let w = &self.weights[slot];
                 let mut acc = 0.0f64;
                 for k in 0..3 {
                     acc += f64::from(w[k]) * f64::from(values[cells[k] as usize * levels + level]);
                 }
-                target[slot] = acc as f32;
+                *value = acc as f32;
             }
+          });
         });
         out
     }
@@ -521,20 +530,24 @@ impl ConservativeWeights {
     pub fn gather(&self, values: &[f32], levels: usize) -> Vec<f32> {
         let points = self.pixel_area.len();
         let mut out = vec![0.0f32; levels * points];
-        out.par_chunks_mut(points).enumerate().for_each(|(level, target)| {
-            for slot in 0..points {
+        if points == 0 { return out; }
+        out.par_chunks_mut(points).enumerate().for_each(|(level, plane)| {
+          plane.par_chunks_mut(4096).enumerate().for_each(|(band, target)| {
+            for (local, value) in target.iter_mut().enumerate() {
+                let slot = band * 4096 + local;
                 let lo = self.offsets[slot] as usize;
                 let hi = self.offsets[slot + 1] as usize;
                 if hi == lo || !(self.pixel_area[slot] > 0.0) {
-                    target[slot] = OFF_MESH_FILL;
+                    *value = OFF_MESH_FILL;
                     continue;
                 }
                 let mut acc = 0.0f64;
                 for e in lo..hi {
                     acc += self.overlap[e] * f64::from(values[self.cells[e] as usize * levels + level]);
                 }
-                target[slot] = (acc / self.pixel_area[slot]) as f32;
+                *value = (acc / self.pixel_area[slot]) as f32;
             }
+          });
         });
         out
     }

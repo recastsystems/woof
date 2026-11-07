@@ -116,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         acoustic_substeps=int(_extract(rest, "--acoustic-substeps")
                               or mpas_defaults.DEFAULT_ACOUSTIC_SUBSTEPS),
         radiation_seconds=radiation,
+        convection=_extract(rest, "--convection") or "auto",
         max_wind_m_s=args.max_wind,
     )
     receipt["repo"] = str(repo)

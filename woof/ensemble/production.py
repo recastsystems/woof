@@ -231,8 +231,17 @@ class PreparedEnsembleSession:
                              "run one prepared land column under its variant's name. "
                              "Next: woof ensemble CONFIG --recipe member-roster")
         from woof.ensemble.initial_perturbation import is_initial_perturbation
+        # The WoFS ladder is exempt, as for member_variants above: on the
+        # config-driven route (ERA5 and every [case_data] source) its member
+        # provider is bound by run_experiment (wofs_recipe.runtime_member_provider),
+        # after this session opens, and _require_member_inputs still refuses
+        # a ladder that reaches a member with no provider.  Breakage the
+        # exemption fixes: every WoFS ensemble from ERA5 (WOOF, 2026-11-06,
+        # 21 members from era5 2007-05-04T12Z) was refused here in 14 s as
+        # "this door binds none of them", although the door binds them.
         if ((self.request.sources or (self.request.perturbation is not None
                                     and not is_initial_perturbation(self.request.perturbation)))
+                and self.request.recipe != "wofs"
                 and input_provider is None and member_roster is None and source_execution is None):
             # Breakage it prevents: the request names a source (or a
             # perturbation) per member, and this session would run every
@@ -1052,6 +1061,8 @@ class PreparedEnsembleSession:
                     capture = MemberOutputCapture(self.collector.submit, member,
                         member_history_required(member_inputs, self.request.keep_member_files),
                         initialize_callback=initialize,
+                        resuming=self.restart_roster is not None,
+                        restart_pending=resume.get("status") == "pending",
                         provenance=(self.request.provenance[member] if self.request.provenance else None))
                     options = dict(runner_options)
                     options["first_products"] = None

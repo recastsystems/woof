@@ -1,0 +1,450 @@
+{
+  "schema": "gpuwm-hex.compact-memory/v1",
+  "peak_convention": "100 ms sampled whole-device peak with filler subtracted, or forecast-process NVML peak where stated by the profile evidence",
+  "notes": [
+    "Profiles contain measured card, suite, vertical shape and allocator policy, not case-path exceptions.",
+    "One-point regional rows apply only to their measured column count.",
+    "Interpolation is derived; configurations outside the measured column range use the conservative model.",
+    "Peak knots are an explicit monotone upper envelope; each raw observed peak is retained.",
+    "Fit intercepts do not establish mesh-independent overhead."
+  ],
+  "profiles": [
+    {
+      "route": "mpas",
+      "suite": "convection_permitting",
+      "levels": 55,
+      "configuration": "global",
+      "numerics": "fast",
+      "card_sm": 70,
+      "card_threads_per_sm": 1536,
+      "card_name_contains": "5070 Ti",
+      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with hex 0.4.12 candidate; fast numerics; public forecast entry point with separate allocation censuses",
+      "samples": [
+        {
+          "cells": 40962,
+          "peak_bytes": 5892997120,
+          "evidence": [
+            {
+              "receipt": "u120-mpas-pressure2-24h-0fill.json",
+              "receipt_sha256": "64ca84383ad1e39278f8c04c8022bee5a0ba0dbfe2c6032b281095b082f9a732",
+              "hours": 24.0,
+              "peak_bytes": 5892997120,
+              "source_capsule": "c21ffdbec30365eaa16f",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact",
+                "GPUWM_HEX_POOL_RELEASE_MIN_BYTES": "2147483648"
+              }
+            }
+          ],
+          "observed_peak_bytes": 5892997120,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 67137,
+          "peak_bytes": 8414822400,
+          "evidence": [
+            {
+              "receipt": "z3mpas12-mpas-pressure-census.json",
+              "receipt_sha256": "af8cc4fb0c11d80b61b714ab8dcf8a98fb83ca3819688b20a23c94b7838021e0",
+              "hours": 1.0,
+              "peak_bytes": 8414822400,
+              "source_capsule": "25d1d341c73fcf03bd04",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 8414822400,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 78572,
+          "peak_bytes": 9334423552,
+          "evidence": [
+            {
+              "receipt": "z1mpas12-mpas-pressure-census.json",
+              "receipt_sha256": "6682d941d13a3a06f49e9cad1013c92fafb558c8206efea8b699b0aa16d32ad0",
+              "hours": 1.0,
+              "peak_bytes": 9334423552,
+              "source_capsule": "25d1d341c73fcf03bd04",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 9334423552,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 96837,
+          "peak_bytes": 10854858752,
+          "evidence": [
+            {
+              "receipt": "z3-mpas-pressure-census.json",
+              "receipt_sha256": "c43b5d5c62befb82389430ba3e94fff4e98b9c08ae1f9e4bf0d3d18b3d14d2dc",
+              "hours": 1.0,
+              "peak_bytes": 10854858752,
+              "source_capsule": "25d1d341c73fcf03bd04",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 10854858752,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 126842,
+          "peak_bytes": 12773752832,
+          "evidence": [
+            {
+              "receipt": "z1-mpas-pressure-census.json",
+              "receipt_sha256": "a739bf8590bff1352555d1c62fb5d877f5cf18f40f8207144b904a7a559eb714",
+              "hours": 1.0,
+              "peak_bytes": 12773752832,
+              "source_capsule": "5d7816908c5c79c188b1",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 12773752832,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 163842,
+          "peak_bytes": 15355346944,
+          "evidence": [
+            {
+              "receipt": "u60-mpas-pressure2-24h-0fill.json",
+              "receipt_sha256": "a7663ff646f45eec48bf8536cb92926c02eea9e6321e838c09ee56fe6c72d6f7",
+              "hours": 24.0,
+              "peak_bytes": 15355346944,
+              "source_capsule": "5d7816908c5c79c188b1",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact",
+                "GPUWM_HEX_POOL_RELEASE_MIN_BYTES": "2147483648"
+              }
+            }
+          ],
+          "observed_peak_bytes": 15355346944,
+          "envelope_adjustment_fraction": 0.0
+        }
+      ]
+    },
+    {
+      "route": "arwen",
+      "suite": "arwen_mpas_column",
+      "levels": 55,
+      "configuration": "global",
+      "numerics": "fast",
+      "card_sm": 70,
+      "card_threads_per_sm": 1536,
+      "card_name_contains": "5070 Ti",
+      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with hex 0.4.12 candidate; fast numerics; public forecast entry point with separate allocation censuses",
+      "samples": [
+        {
+          "cells": 40962,
+          "peak_bytes": 6573522944,
+          "evidence": [
+            {
+              "receipt": "u120-arwen-bounded-24h-4fill.json",
+              "receipt_sha256": "049ae9c6cd6785bb3f11839ec8e9c2cb0a71d9d970a11dfb4a9bca39161c53ac",
+              "hours": 24.0,
+              "peak_bytes": 6573522944,
+              "source_capsule": "c21ffdbec30365eaa16f",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 6573522944,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 96837,
+          "peak_bytes": 9528410112,
+          "evidence": [
+            {
+              "receipt": "z3-arwen-pressure-census.json",
+              "receipt_sha256": "756c5434ef8028424272a8c515a36010126a5dbf9cf6a537996f4322fd3f3c8e",
+              "hours": 1.0,
+              "peak_bytes": 9528410112,
+              "source_capsule": "25d1d341c73fcf03bd04",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 9528410112,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 126842,
+          "peak_bytes": 10649337856,
+          "evidence": [
+            {
+              "receipt": "z1-arwen-pressure-census.json",
+              "receipt_sha256": "bfa0cc7534f1e83abccc7385f1349462808e1d5968bfed2b62190b2f73415e38",
+              "hours": 1.0,
+              "peak_bytes": 10649337856,
+              "source_capsule": "25d1d341c73fcf03bd04",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 10649337856,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 143527,
+          "peak_bytes": 13222543360,
+          "evidence": [
+            {
+              "receipt": "z3arwen16-arwen-authority-census.json",
+              "receipt_sha256": "a0a7273e040539baf869711213062aecac59da5add74c76d39976ba9d1d8ba3f",
+              "hours": 1.0,
+              "peak_bytes": 13222543360,
+              "source_capsule": "5d7816908c5c79c188b1",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 13222543360,
+          "envelope_adjustment_fraction": 0.0
+        },
+        {
+          "cells": 163842,
+          "peak_bytes": 13222543360,
+          "evidence": [
+            {
+              "receipt": "u60-arwen-bounded-24h-0fill.json",
+              "receipt_sha256": "4bd0b381fc158d77598bd3ec0f40936c33f34eefeeffa4aad4955e0d5b9b3de8",
+              "hours": 24.0,
+              "peak_bytes": 12836667392,
+              "source_capsule": "5d7816908c5c79c188b1",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 12836667392,
+          "envelope_adjustment_fraction": 0.030060447639274734
+        },
+        {
+          "cells": 192256,
+          "peak_bytes": 13589544960,
+          "evidence": [
+            {
+              "receipt": "z1arwen16-arwen-authority-census.json",
+              "receipt_sha256": "55bf4fde96467e130247463ec4010f29b4d01d38300d3a516a4217e47d285baa",
+              "hours": 1.0,
+              "peak_bytes": 13589544960,
+              "source_capsule": "25d1d341c73fcf03bd04",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 13589544960,
+          "envelope_adjustment_fraction": 0.0
+        }
+      ]
+    },
+    {
+      "route": "mpas",
+      "suite": "hrrrv5",
+      "levels": 59,
+      "configuration": "limited-area",
+      "numerics": "fast",
+      "card_sm": 70,
+      "card_threads_per_sm": 1536,
+      "card_name_contains": "5070 Ti",
+      "provenance": "2026-11-02 RTX 5070 Ti; installed gpuwm-hex 0.5.0 with gpuwm/data 3.0.0; fast numerics; forecast PID and descendants sampled at 100 ms; completed 1h output byte-identical to same-card base",
+      "samples": [
+        {
+          "cells": 4499,
+          "peak_bytes": 4104126464,
+          "evidence": [
+            {
+              "receipt": "region-mpas-storage-1h-0fill.json",
+              "receipt_sha256": "ba73e12b20328ce8ca9cc68269dd8a99ab57d809b380b48d2a4420f0212aede2",
+              "hours": 1.0,
+              "peak_bytes": 3066036224,
+              "source_capsule": "c21ffdbec30365eaa16f",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            },
+            {
+              "receipt": "wheel-final-region-1h.json",
+              "receipt_sha256": "4f2168fc6b2c4b5996160792c97e90df30cbf8745876da042335f61669807247",
+              "hours": 1.0,
+              "peak_bytes": 4104126464,
+              "peak_convention": "forecast PID plus descendants; excludes 256 MiB foreign process",
+              "installed_versions": {
+                "gpuwm": "3.0.0",
+                "gpuwm-data": "3.0.0",
+                "gpuwm-hex": "0.5.0",
+                "cupy": "14.2.0",
+                "cupy-cuda12x": "14.2.0"
+              },
+              "source_capsule": "a562cb70719b6dbcfe8e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              },
+              "whole_files_equal_to_base": true,
+              "all_field_words_equal_to_base": true
+            }
+          ],
+          "observed_peak_bytes": 4104126464,
+          "envelope_adjustment_fraction": 0.0
+        }
+      ],
+      "only_cells": 4499
+    },
+    {
+      "route": "mpas",
+      "suite": "convection_permitting",
+      "levels": 55,
+      "configuration": "global",
+      "numerics": "strict",
+      "card_sm": 70,
+      "card_threads_per_sm": 1536,
+      "card_name_contains": "5070 Ti",
+      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with hex 0.4.12 candidate; strict numerics; public forecast entry point with separate allocation censuses",
+      "samples": [
+        {
+          "cells": 40962,
+          "peak_bytes": 6058672128,
+          "evidence": [
+            {
+              "receipt": "u120-mpas-storage-1h-0fill-strict.json",
+              "receipt_sha256": "1022fafed0e381b18788c74b0e93dbdbd4b9ffe1d5c49407711f6d387eac747d",
+              "hours": 1.0,
+              "peak_bytes": 6058672128,
+              "source_capsule": "c21ffdbec30365eaa16f",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ],
+          "observed_peak_bytes": 6058672128,
+          "envelope_adjustment_fraction": 0.0
+        }
+      ],
+      "only_cells": 40962
+    },
+    {
+      "route": "mpas",
+      "suite": "convection_permitting",
+      "levels": 55,
+      "configuration": "global",
+      "numerics": "fast",
+      "card_sm": 170,
+      "card_threads_per_sm": 1536,
+      "card_name_contains": "5090",
+      "provenance": "RTX 5090, fast numerics, compact allocation: 40,962 cells 2026-11-02 (hex 0.5.0 fold, 24 h); 149,322-cell 96 -> 3 km zoom globe 2026-11-04 (hex 0.4.12 candidate, GFS and IFS starts); 163,842 cells 2026-11-01 (low-VRAM candidate, three 24 h pairs)",
+      "samples": [
+        {
+          "cells": 40962,
+          "peak_bytes": 9019850752,
+          "observed_peak_bytes": 9019850752,
+          "envelope_adjustment_fraction": 0.0,
+          "evidence": [
+            {
+              "receipt": "u120-mpas-cut-24h.json",
+              "receipt_sha256": "dda69229355c8c01578e2f42e44f4f9caf6a96cd0fbd87486ca51181d45589d6",
+              "hours": 24.0,
+              "peak_bytes": 9019850752,
+              "peak_convention": "forecast PID plus descendants; separate GPU users excluded",
+              "source_capsule": "c76e5a46ab629629d898",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ]
+        },
+        {
+          "cells": 149322,
+          "peak_bytes": 18488492032,
+          "observed_peak_bytes": 18488492032,
+          "envelope_adjustment_fraction": 0.0,
+          "evidence": [
+            {
+              "receipt": "IFS-9KM-DEFAULT-2026-11-04 hex legs (pool history ifs9-hex-gfs-leg1)",
+              "hours": 9.0,
+              "peak_bytes": 18488492032,
+              "peak_convention": "pool lease NVML process peak, 5 s samples; the IFS-start leg 1 peaked 17,284 MiB and the restarted legs 16,534-16,674 MiB",
+              "mesh": "96 -> 3 km zoom globe, 400 km core, 149,322 cells, dt 18 s",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ]
+        },
+        {
+          "cells": 163842,
+          "peak_bytes": 19467862016,
+          "observed_peak_bytes": 19467862016,
+          "envelope_adjustment_fraction": 0.0,
+          "evidence": [
+            {
+              "receipt": "u60-mpas-seeded-fast-cublas13-compact-24h.json",
+              "receipt_sha256": "93e2a025abf1dfbc7d1d6015cd084dbd2063960aec71a2efe5bd2d6c13369f99",
+              "hours": 24.0,
+              "peak_bytes": 19442696192,
+              "peak_convention": "forecast-process NVML peak; shared-card whole-device values retained in receipt",
+              "source_capsule": "7a7f038ecbd189763357",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            },
+            {
+              "receipt": "u60-mpas-seeded-fast-reverse-compact-24h.json",
+              "receipt_sha256": "76cda53cf192ce23b08eee611440972f537e0641442b9c0db2a7d7f796af668d",
+              "hours": 24.0,
+              "peak_bytes": 17863540736,
+              "peak_convention": "forecast-process NVML peak; shared-card whole-device values retained in receipt",
+              "source_capsule": "7a7f038ecbd189763357",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            },
+            {
+              "receipt": "u60-mpas-seeded-fast-warm-repeat-compact-24h.json",
+              "receipt_sha256": "7e99b6151e009f37c5be6ac4e705c72895be5f66bb5b34efce9904de461ce6e9",
+              "hours": 24.0,
+              "peak_bytes": 19467862016,
+              "peak_convention": "forecast-process NVML peak; shared-card whole-device values retained in receipt",
+              "source_capsule": "7a7f038ecbd189763357",
+              "transport_source_sha256": "685b48eb058d3a4456a3bec03e3e8256f3b1f9114c68242ce0276c1e26ad251e",
+              "allocator_settings": {
+                "GPUWM_HEX_MEMBER_MEMORY": "compact"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

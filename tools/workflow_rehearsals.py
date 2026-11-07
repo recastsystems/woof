@@ -35,6 +35,7 @@ ENTRIES = {
         "prepare": ("R", "packet, distribution and native proof fixtures"),
         "qualify": ("R", "platform installation smoke fixtures"),
         "assets": ("R", "promotion order, refusal and retry fixtures"),
+        "publish_startup": ("R", "startup companion staging, index, retry and upload-path fixtures"),
         "publish": ("R", "staging, index, retry and upload-path fixtures"),
         "release": ("R", "final release and index fixtures"),
     },

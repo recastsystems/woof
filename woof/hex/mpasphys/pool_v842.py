@@ -29,6 +29,22 @@ _VERIFIED_LOCK = __import__("threading").Lock()
 _PREFETCH_BYTES = 8 << 30
 
 
+def payload_manifest(payload) -> dict:
+    """A native pool payload's manifest: the in-process one of a resident moving projection, else the file's.
+
+    THE BREAKAGE THIS PREVENTS (test setup G03, 2026-11-02): a storm-following region move with resident pools
+    (moving_pool_payload_v842.project writes no manifest.json; its fields live in this process) failed on the
+    hrrrv5 route with "pool.class0/manifest.json" missing, because the RRFS orographic-statistics check read the
+    file directly, so moving DA ran on the logged disk fallback WOOF_HEX_MOVING_RESIDENT_POOLS=0.
+    """
+    import sys
+    resident = sys.modules.get("woof.hex.mpasphys.moving_pool_payload_v842")
+    memory = None if resident is None else resident.lookup(payload)
+    if memory is not None:
+        return memory.manifest
+    return json.loads((Path(payload) / "manifest.json").read_text())
+
+
 def remember_payload_digest(path, value: str) -> None:
     """Record the SHA-256 this process computed from the exact bytes it just wrote to ``path``, under the file's
     stat identity, as NativePoolHydration's own digest() records what it hashes (partition_v842.project_payloads:
@@ -298,6 +314,7 @@ class NativePoolHydration:
         self.resident_payload = None if resident is None else resident.lookup(payload)
         manifest = (self.resident_payload.manifest if self.resident_payload is not None
                     else json.loads((payload / "manifest.json").read_text()))
+        self.manifest = manifest
         if manifest.get("schema") != "mpas-native-pool-payload-v1":
             raise ValueError("unsupported native pool transport")
         expected = {(r["pool"], r["name"]): r for r in layout.fields}
@@ -562,7 +579,7 @@ def pool_reader_processes(workers: int, fields: int) -> int:
 def run_pool_reader(reader: Path, request: Path, output: Path, workers: int) -> None:
     """Run rw_mpas_physics_pool on ``request``, split over several reader processes.
 
-    THE COST THIS REMOVES (V5090 box, 2026-10-27, x1.163842 GEFS init, 117 payload fields, 1.5 GB):
+    THE COST THIS REMOVES (reference system box, 2026-10-27, x1.163842 GEFS init, 117 payload fields, 1.5 GB):
     the reader serialises every netCDF-C call inside one process behind a mutex (netCDF-C is not
     thread safe), so the decode took 7.4 s at 16 threads and 8.6 s at 1: the reads ran on one core.
     At 30 km (6 GB of payload) it was 39-52 s of every member start while the cards waited.

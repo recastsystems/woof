@@ -1,0 +1,42 @@
+--- a/phys/module_bl_keps.F
++++ b/phys/module_bl_keps.F
+@@ -360,7 +360,7 @@
+   
+          wt(ix,kts,iy)=hfx(ix,iy)/rho1D(kts)/cp-rho1D(kts)*(th1D(kts)-th_phy(ix,kts,iy))/dt*dz1D(kts)
+          wu(ix,kts,iy)=-ustar(ix,iy)*ustar(ix,iy)-rho1D(kts)*(u1D(kts)-u_phy(ix,kts,iy))/dt*dz1D(kts)
+-         wv(ix,kts,iy)=-ustar(ix,iy)*ustar(ix,iy)-rho1D(kts)*(u1D(kts)-u_phy(ix,kts,iy))/dt*dz1D(kts)
++         wv(ix,kts,iy)=-ustar(ix,iy)*ustar(ix,iy)-rho1D(kts)*(v1D(kts)-v_phy(ix,kts,iy))/dt*dz1D(kts)
+          do iz=kts+1,kte
+           wt(ix,iz,iy)=wt(ix,iz-1,iy)-rho1D(iz)*(th1D(iz)-th_phy(ix,iz,iy))/dt*dz1D(iz)
+           wu(ix,iz,iy)=wu(ix,iz-1,iy)-rho1D(iz)*(u1D(iz)-u_phy(ix,iz,iy))/dt*dz1D(iz)
+@@ -819,8 +819,8 @@
+ 
+       DO WHILE (zw1D(k) .LE. 500.)
+         tke  =MAX(tke1D(k),0.)   ! maximum QKE
+-         IF (maxtke < ttke) then
+-            maxtke = ttke
++         IF (maxtke < tke) then
++            maxtke = tke
+             ktke = k
+          ENDIF
+          IF (minthv > thetav1D(k)) then
+@@ -1041,6 +1041,7 @@
+     logical sfcflg
+      Ri=1.
+      Pra=4.   
++     radsum=0.
+     
+     do iz=kts,kte
+     if(iz.eq.kts)then
+@@ -1071,7 +1072,11 @@
+     if(b_ric.ge.0)sfcflg=.false.
+      zl1=dz(1)/2.
+      zz=(zl1+z0)/zl1
++     if(psih.ne.0.)then
+      zol1 = max(b_ric*psim*psim/psih,rimin)
++     else
++     zol1 = max(0.,rimin)
++     endif
+     if(sfcflg)then
+      zol1 = min(zol1,-zfmin)
+     else

@@ -155,7 +155,7 @@ def test_fixture_pins_the_option_identity():
 def test_dead_branches_are_refused_not_guessed():
     row = PHEN_ROWS[0]
     with pytest.raises(ValueError):
-        vp.phenology(**_phen_kwargs(row, dveg=7))
+        vp.phenology(**_phen_kwargs(row, dveg=2))
     with pytest.raises(ValueError):
         vp.phenology(**_phen_kwargs(row, croptype=1))
 

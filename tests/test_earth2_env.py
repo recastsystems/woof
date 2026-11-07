@@ -21,7 +21,7 @@ def _built_argv(monkeypatch, tmp_path, recipe):
 
 
 def test_setup_builds_the_default_models_extra(monkeypatch, tmp_path):
-    # Defect (2.9.4 landing, V58 2026-10-20): `woof setup --with-earth2` built
+    # Defect (2.9.4 landing, test host 2026-10-20): `woof setup --with-earth2` built
     # earth2studio[cyclone,windgust-afno,precip-afno] only, so the environment had no
     # torch_harmonics or makani and every FCN3 run (the table's default model) died at import.
     from woof.earth2_run import model_table
@@ -49,7 +49,7 @@ def test_setup_builds_the_default_models_extra(monkeypatch, tmp_path):
 
 
 def test_cu13_builds_fcn3_extensions_against_its_private_compiler(monkeypatch, tmp_path):
-    # Defect (V58 2026-10-21, the first real setup of this branch): torch-harmonics built against
+    # Defect (test host 2026-10-21, the first real setup of this branch): torch-harmonics built against
     # the box's /usr/local/cuda 12.8 under the cu13 torch and refused (CUDA 12.8 vs 13.0).
     from woof.earth2_env import runtime
     recipe = runtime()["install_recipes"]["cu13"]

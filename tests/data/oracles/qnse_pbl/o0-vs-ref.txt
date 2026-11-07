@@ -1,0 +1,8 @@
+mf1 s1/detr_edkf: 2 words, max ulp 1, columns [63, 64]
+mf1 s1/entr_edkf: 2 words, max ulp 1, columns [63, 64]
+mf1 s2/detr_edkf: 1 words, max ulp 1, columns [64]
+mf1 s2/entr_edkf: 1 words, max ulp 1, columns [64]
+mf1 s3/entr_edkf: 1 words, max ulp 1, columns [40]
+mf1 s3/frac_up: 1 words, max ulp 1, columns [40]
+mf1 s3/rc_mf: 1 words, max ulp 3, columns [40]
+mf1 s4/in_rc_mf: 1 words, max ulp 3, columns [40]

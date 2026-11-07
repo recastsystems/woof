@@ -13,8 +13,8 @@ twelve switch variants: on URBPARM.TBL the table defaults, CH_SCHEME 1
 without IRI_SCHEME 1; on URBPARM_LCZ.TBL the defaults, IMP_SCHEME 2 with
 AHOPTION+ALHOPTION, and GROPTION 1.  3,240 column steps in all (commit
 ce7b5f970's message says 4,584, a miscount; 3,240 is the fixture's row
-count).  Measured bitwise on the a development machine RTX 4090
-(sm_89) and the a development machine RTX 5090 (sm_120), NVRTC 13.4.92 both.
+count).  Measured bitwise on the test host 1 RTX 4090
+(sm_89) and the test host 2 RTX 5090 (sm_120), NVRTC 13.4.92 both.
 
 This fixture explicitly selects the older ``wrf_471`` water balance. The
 production default is the scoped WRF 4.8 store correction. The shared
@@ -114,7 +114,7 @@ def test_fixture_reaches_the_branches_it_claims():
 def test_every_row_is_bitwise_wrf(name):
     """Each row replayed from its recorded state.
 
-    Made to fire before commit, on the a development machine RTX 4090: respelling
+    Made to fire before commit, on the test host 1 RTX 4090: respelling
     ``QS0R=0.622*ES/(PS-0.378*ES)`` in the kernel's roof Newton iteration as
     the algebraically identical ``0.622*(ES/(PS-0.378*ES))`` fails 10 of the
     12 variants -- every one whose roof takes that iteration; the two

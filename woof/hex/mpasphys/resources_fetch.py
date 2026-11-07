@@ -6,6 +6,8 @@ parallel into a private directory before an atomic publication.
 """
 from __future__ import annotations
 
+from woof.backend import compilation_target as _compilation_target, image_target as _image_target
+
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import hashlib
@@ -280,9 +282,16 @@ def packet_path(cache=None, *, landuse=None):
     where = rb.installed_record_path(cache)
     if variants:
         import cupy
-        arch = 'sm_' + cupy.cuda.Device().compute_capability
+        arch = _image_target(xp=cupy)
         try:
-            chosen = variants[numerics.mode()][arch]
+            choices=variants[numerics.mode()]
+            if arch.startswith('gfx') and arch not in choices:
+                # Table/data payloads are host-generated and ISA independent.
+                # MYNN's embedded CUDA images are authenticated then rebuilt
+                # from their canonical source by load_cuda_packet on HIP.
+                chosen=choices[sorted(choices)[0]]
+            else:
+                chosen = choices[arch]
         except KeyError as error:
             raise rb.PhysicsResourceError(f'no prebuilt physics packet for {numerics.mode()}/{arch}') from error
         path = rb._rebased(Path(chosen['path']), rb._recorded_root(rb.read_installed(cache)), where.parent.resolve())

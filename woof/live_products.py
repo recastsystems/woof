@@ -990,6 +990,11 @@ class LiveProducts:
         self._concurrency = (self._slot.width
                              if isinstance(self._slot, _LiveRenderSlots) else 1)
         self._active = 0
+        # Frames taken off the queue and not yet finished, drawing or
+        # waiting for a slot: the last-frame (finishing) budget needs none
+        # but its own, or a frame still waiting for its slot would start
+        # beside a render that took every processor.
+        self._claimed = 0
         self._runner = (partial(_run_render, width=self._concurrency)
                         if runner is None else runner)
         self._default_runner = self._runner if runner is None else None
@@ -1324,6 +1329,7 @@ class LiveProducts:
                 if not self._queue:
                     return
                 item = self._queue.popleft()
+                self._claimed += 1
                 # The admission order is the queue's order: the place is
                 # taken here, under the queue's lock, not when this thread
                 # happens to reach the slots.
@@ -1333,6 +1339,8 @@ class LiveProducts:
                 if not self._draw_one(item, turn):
                     return
             finally:
+                with self._cond:
+                    self._claimed -= 1
                 if turn is not None:
                     self._slot.cancel(turn)
 
@@ -1535,7 +1543,8 @@ class LiveProducts:
         kwargs = {"own_group": True} if self._own_group else {}
         with self._cond:
             drawing = self._active
-            finishing = self._closed and not self._queue and drawing == 1
+            finishing = (self._closed and not self._queue and drawing == 1
+                         and self._claimed <= 1)
         if self._runner is self._default_runner:
             if finishing:
                 return _run_render(command, width=1, finishing=True, **kwargs)

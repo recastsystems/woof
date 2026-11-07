@@ -1,0 +1,13 @@
+{
+  "identity": "pwp-hycom-column-f64-v1",
+  "defaults": {
+    "levels": 40, "layer_m": 5.0, "density": 1025.0,
+    "heat_capacity": 3990.0, "thermal_expansion": 0.0002,
+    "haline_contraction": 0.00076, "bulk_ri": 0.65,
+    "gradient_ri": 0.25, "relaxed_ri": 0.30,
+    "density_jump": 0.03, "shortwave_efold_m": 17.0,
+    "max_mixing_iterations": 4096, "reference_kelvin": 283.15,
+    "reference_salinity": 35.0,
+    "initial_mixed_depth_m": 30.0, "initial_gradient_k_m": 0.05
+  }
+}

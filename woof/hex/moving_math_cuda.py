@@ -2,6 +2,8 @@
 
 Use the shared port of the pinned glibc algorithm, never CUDA's approximate
 pow. Explicit rounded operators preserve the host expressions' grouping.
+The host references call ``np.float_power`` (the platform libm pow on every
+CPU), never ``**``, which takes numpy's AVX-512 SIMD pow where present.
 """
 from functools import lru_cache
 import numpy as np

@@ -54,7 +54,8 @@ import numpy as np
 #: source tree.
 SRC = Path(__file__).resolve().parents[2]
 ROOT = SRC.parent
-if str(SRC) not in sys.path:
+if not any(isinstance(entry, str) and Path(entry or ".").resolve() == SRC.resolve()
+                     for entry in sys.path):
     sys.path.insert(0, str(SRC))
 
 # Imported after the path insert, and deliberately: this resolves the frozen
@@ -242,7 +243,7 @@ NONCLAIMS = (
 # are the union of the parked misc and speed sides (batched complete export, atomic
 # writes and history-ready recovery); these two rows are the merged files' digests.
 # No card run for this merge.
-# Re-frozen 2026-10-20 (capabilities campaign landing, lane/hexcap-base) with
+# Re-frozen 2026-10-20 (capabilities campaign landing, development branch) with
 # tools/repin_source_tables.py: diagnostic_export.py also exports engine-held
 # diag/ fields such as TOA OLR (c858be11), and cuda_arwen_physics_v841.py reads
 # those diag/ keys and carries the optional mixed-layer ocean state into the
@@ -255,7 +256,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     "src/hexcore/history_writer.py": "570c9124745a8d8325a35c11da17e58036bfcf2e3117a5be502dec196a9905f0",
     "src/hexcore/cuda_arwen_helper_scope_v2.py": "641e8b77427a7c2f8eff374daa37e09a034fc45271d1dac67c3e39d03e3814e9",
     "src/hexcore/radiation_source_sets.json": "4fdb41a8102a0c4891771ed476d2eb7cf870e89a66c1a2dd4a92b8cd42dac802",
-    "src/hexcore/data/profiles/engine-helper-sets.v1.json": "5baf11c81a168c7a8644dc857e57099d9e4ce79ef6d80bacba6196e626f2b43a",
+    "src/hexcore/data/profiles/engine-helper-sets.v1.json": "2e7e727e78357bcd847100dea32450467e08359a01d374eb1a6619e851a61ca6",
     # Native upper damping: Rust and CUDA match compiled source blocks.
     "src/hexcore/native/upper_damping.rs": "5483b2c1e7da45317ffe4213c5879b583070d9e28d591ec52a9c697a052e81f1",
     "src/hexcore/upper_damping_v841.py": "947f477d5f56b41d95fb5a0b92adb21d68be95b5fac19ba524181cb373710860",
@@ -279,7 +280,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # 2026-10-18: consumer-specific post-RK preparation. H60 owner replay
     # and separate device timeline are in the hex-diagnostics lane receipt.
     "src/hexcore/cuda_physics_prep_v841.py": (
-        "fffb12b21f67e51e045c50dc739e2259b962ad28cf99d829211beb92c72b8ef3"
+        "a0ae4d9b3e639bfe02a8de57458fac4407c6e48f1bc12e2e698626e9a9069d2c"
     ),
     "src/hexcore/cuda_gwdo_v841.py": (
         "8dc6e9a3d8e88c231bc8d738f80a1655839aed2478b56ccc5038ab4daba7cfb5"
@@ -308,9 +309,9 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # Re-derived 2026-10-27 (fix/hex-host-bound): the kernel-cache contract check reads the
     # compile-platform binding alone (compile_contract.kernel_cache_platform) instead of a full
     # manifest JSON round trip at every coupling launch.  No kernel, launch or operand changed;
-    # 2 h Milton LTS forecast 0 of 1,167,818,735 words differ (HEX-HOST-BOUND-2026-10-27).
+    # 2 h the storm LTS forecast 0 of 1,167,818,735 words differ (HEX-HOST-BOUND-2026-10-27).
     "src/hexcore/cuda_physics_v841.py": (
-        "18ac060a3adf6884eef7b853cb4b8fab76b37a6ec561c545372515d7f7e71672"
+        "8140553c0bec161af26c5c4f66ff8a54f1f18762810d36460cf447996ee64b44"
     ),
     # Re-frozen during the 12 GiB capacity work: the dynamics subcycle stopped
     # copying a scalar block nothing writes, stopped taking a private image of
@@ -463,7 +464,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # person).  No code line differs from the copy the H1 identities above
     # ran on.  No card run for this merge.
     "src/hexcore/cuda_driver.py": (
-        "e8d3c8484928c85f126dfce6bacb35ba215cf59dc7005ded780b96aa639f0f42"
+        "f453eee1152aa33392b09ecfde1d16ee33ec53cf17d754ecd076736088630fea"
     ),
     # THE BREAKAGE THIS PREVENTS: cuda_driver.py now executes host
     # preparation through woof.hex.prep_cache.  Unpinned, an edit to the key
@@ -486,7 +487,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # functions of the code object and package, so every key is the same; no
     # array computation moved.  Re-ran: tests/test_prep_cache.py.
     "src/hexcore/prep_cache.py": (
-        "9a02aded2bf3f708589aa1006c2ac042cffa145d48e58841b062f1f253280bcf"
+        "9e2014bee45c4e42e16b7afe5e8c7f6df5ef1ebf2f62a6269c01692aa6cc095e"
     ),
     # THE BREAKAGE THIS PREVENTS: the same lane that re-froze cuda_driver.py
     # also changed ``recover_state`` -- it gained ``include_pressure`` and
@@ -496,7 +497,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # freely, so a later edit to the pressure-diagnostic path could change
     # forecast bytes with every proof still reporting frozen sources.
     "src/hexcore/cuda_backend/recovery.py": (
-        "e3a65ff8b255077e2055ae0665e88a4dad0103ca895f4b694deb089a30299624"
+        "1a5a85585ebc72867904f852ee54c541ace5fc2ac26f0ef89dabd179096cc041"
     ),
     # Re-frozen for the regional CPU authority lane: the v8.4.1
     # config admits config_apply_lbcs and config_moist_physics behind the
@@ -722,7 +723,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # TABLE WAS THE STALE SIDE, and it was stale for one commit: 77f831b
     # rewrote ARWEN_SOURCE_MANIFEST and ARWEN_BUILD_COMMIT inside this very
     # module (four digest rows plus the build commit, to the engine PyPI
-    # publishes as woof 2.5.8), which moves the module's own bytes, and did
+    # publishes as gpuwm 2.5.8), which moves the module's own bytes, and did
     # not carry the new digest here.  The concrete breakage that left behind:
     # `require_frozen_execution_sources` refused BEFORE any CUDA probe with
     # "frozen execution source changed for src/hexcore/cuda_arwen_physics_v841.py",
@@ -767,7 +768,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # pin or an admitted row every recorded value is what it was;
     # _ADAPTER_AUTHORITY and every contract digest are unchanged.  Re-run
     # against this digest: the CPU battery and the forecast named in the
-    # report beside the bundle (woof 2.8.9 against the 2.8.7 pin, no local
+    # report beside the bundle (gpuwm 2.8.9 against the 2.8.7 pin, no local
     # edits).  The x4 full-physics proof did not re-run.
     # Re-frozen 2026-10-13 for physics.mode (correct mode, findings WB4/WB5,
     # branch correct/mpas-water-budget): the sealed constructor admits the
@@ -796,15 +797,18 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # 2026-10-18: phase two requests only the columns its seam consumes.
     # Re-derived 2026-10-18 (parked-merge hex-speed): that file plus the
     # parked asynchronous history-ready seam; digest of the merged file.
+    # Re-frozen 2026-11-06 (hex 0.4.14, ArWen-route waves on several ranks): the backend keeps the
+    # lowest level's moist air density beside the LES winds only when a wave binding is attached
+    # (wave_rho_air); with waves off (this proof) it stores None and nothing else moved. No card run.
     "src/hexcore/cuda_arwen_physics_v841.py": (
-        "58f169eb8841f81e693bfa5297e67ee309dd61a552413e8b4da234325a50ea99"
+        "23de7db623fba0fae2c9ad92d26b99b47475edd28f8b72bfa6e3e317503aa2c0"
     ),
     # New pin 2026-10-05: the New Tiedtke row's seam (the frozen column-batch
     # class subclassed, driver built at cu_physics=16, raw cumulus momentum
     # added to du/dv as native todynamics does).  Executes only when the
     # constructor selects ntiedtke.
     "src/hexcore/cuda_ntiedtke_column_v841.py": (
-        "5b2016c35060ba14b17bbc7356e6cf2f8b9c59cd5fc5517f1c99ebe4620d531c"
+        "6be7219b39c2e0f9732342631c0ab27c438ea6126ea9faf97b45c6c22080c2ea"
     ),
     "src/hexcore/cuda_seam_snapshot_v841.py": (
         "a05fdda5ef82b0d77b1af63d4354953660f3d5b80470d7915bb647f41d191019"
@@ -849,13 +853,13 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # are current-tree evidence. The archived x4 and regional mints did not
     # re-run and retain their original scope.
     "src/hexcore/mixing_v841.py": (
-        "023df21823186b0820c21a1e15f8a9ceb662bd7c77fc4e86e469202c4ec7c749"
+        "e6bad617c0a1e8dc3672eab985ac80d0c9885dc5381e38497d070f7714d985b7"
     ),
     "src/hexcore/cuda_horizontal.py": (
         "f94137176db65d24df0d9ff1d491c278d6c835bb08cd76dc43c5cfcbf323a345"
     ),
     "src/hexcore/cuda_horizontal_v841.py": (
-        "37714ab89935af5b02d79eeea4c06cfad038de457502116c9dad27a8bdd55465"
+        "1a5fae3d6055a710de7d7ce216dddb9bee7c2e4ee72cf4e6a959e2401dfe0cb7"
     ),
     # The two-rank (multi-GPU) execution boundary: the scalar-transport module
     # (which gained the guarded FCT halo-exchange hook and executes in every
@@ -878,7 +882,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # This is the current execution identity, not a re-mint of archived x4
     # or regional forecast evidence. Device requalification remains pending.
     "src/hexcore/cuda_transport_v841.py": (
-        "178246f5032b512717edf764edaa6d1ddec6f04241f329e6cb6acffe9112acb6"
+        "5bf88077aeb7f63f66c83d997ec9a1e4af8f1d9e64ce19741efa63cfd1addb87"
     ),
     # THE BREAKAGE THESE TWO PREVENT, found by the NVRTC reciprocal-rewrite
     # lane (the NVRTC reciprocal-rewrite defect): a pinned translation unit does not compile its own file.
@@ -914,7 +918,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # Every affected frozen proof re-runs against this digest (named
     # follow-up: the partition-invariance gate needs the two-node pair).
     "src/hexcore/partition_device_scheduler_v841.py": (
-        "0ad0d541335ffaef95d385c81fdc01c9eaa2d65dff0b3a6d8b442f2812fdfeeb"
+        "451b24391600448317c87ea3757491282bf6ae188079cb5f652c29e966ebdbff"
     ),
     "src/hexcore/partition_executor_v841.py": (
         "9821e7e3b7c7238d48e40edadbc2c99afbf7e157d08b078649b51cef2c445009"
@@ -3435,6 +3439,7 @@ def capture_snapshot(
     solve_cells: int | None = None,
     scalar_names: Sequence[str] = SCALAR_NAMES,
     surface_accumulators: Sequence[str] = ("rainnc", "snownc", "graupelnc"),
+    tc_sampler: Any = None,
 ) -> dict[str, Any]:
     """Download one committed diagnostic boundary outside step receipts.
 
@@ -3507,6 +3512,10 @@ def capture_snapshot(
             backend_snapshot, cp, download
         )
         arrays.update(diagnostics)
+        if tc_sampler is not None:
+            for name, value in tc_sampler(prepared, backend_snapshot, driver.atmosphere,
+                                          step * DT_SECONDS / 3600.).items():
+                arrays[name] = download(value, cp)
         if expect_refl10cm:
             staged_refl = backend.take_history_refl10cm()
             if staged_refl is None and step == 0 and hasattr(backend, "initial_refl10cm"):
@@ -3624,9 +3633,11 @@ def physical_snapshot_gate(
     surface_accumulator_declarations: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     arrays = snapshot["arrays"]
+    from woof.hex.ocean_tc import validate_snapshot_diagnostics
+    masked_diagnostics = validate_snapshot_diagnostics(arrays)
     for name, value in arrays.items():
         array = np.asarray(value)
-        if array.dtype.kind == "f" and not np.all(np.isfinite(array)):
+        if name not in masked_diagnostics and array.dtype.kind == "f" and not np.all(np.isfinite(array)):
             raise FloatingPointError(f"snapshot {name} is non-finite")
     if np.min(arrays["rho"]) <= 0.0 or np.min(arrays["theta"]) <= 0.0:
         raise FloatingPointError("snapshot rho/theta must be strictly positive")
@@ -4034,6 +4045,10 @@ def write_snapshot_netcdf(path: Path, snapshot: Mapping[str, Any], static: Mappi
     if path.exists():
         raise FileExistsError(path)
     arrays = snapshot["arrays"]
+    if "cuprec" in arrays and "refl10cm" in arrays:
+        # What rw_mpas_convert adds the cumulus scheme's rain to (woof.hex.cuda_arwen_physics_v841
+        # .history_cumulus_rain_rate says why); a frame with no scheme is written as it was.
+        arrays = {**arrays, "refl10cm_max": np.max(np.asarray(arrays["refl10cm"]), axis=0)}
     valid_time = snapshot.get("valid_time")
     if valid_time is not None:
         # Public forecasts carry their schedule clock through both writer
@@ -4050,6 +4065,8 @@ def write_snapshot_netcdf(path: Path, snapshot: Mapping[str, Any], static: Mappi
         dataset.createDimension("nVertLevels", N_LEVELS)
         dataset.createDimension("nEdges", N_EDGES)
         dataset.createDimension("nVertLevelsP1", N_INTERFACES)
+        if "ocean_temperature" in arrays:
+            dataset.createDimension("nOceanLevels", arrays["ocean_temperature"].shape[0])
         if N_SOIL_LEVELS:
             # netCDF reads a zero-length dimension as UNLIMITED; a land-
             # surface-off frame has no soil column and declares no soil axis.
@@ -4113,10 +4130,19 @@ def write_snapshot_netcdf(path: Path, snapshot: Mapping[str, Any], static: Mappi
             "theta": "K",
             "pressure": "Pa",
             "surface_pressure": "Pa",
+            "tc_mslp": "Pa",
+            "tc_gpi": "1",
+            "tc_potential_intensity": "m s^{-1}",
+            "tc_pi_status": "1",
             "w": "m s^{-1}",
             "tsk": "K",
             "sst": "K",
             "sstsk": "K",
+            "ocean_pwp_mixing_failures": "1",
+            "ocean_ohc26": "kJ cm-2", "ocean_d26": "m", "ocean_ild": "m",
+            "ocean_mld": "m", "ocean_barrier_layer": "m", "ocean_d26_censored": "1",
+            "ocean_pwp_active": "1", "ocean_temperature": "K",
+            "ocean_salinity": "psu", "ocean_layer_bottom": "m",
             "ocean_depth": "m", "ocean_volume": "m", "ocean_area": "1",
             "ocean_ice_temp": "K", "ocean_snow_water": "m", "ocean_melt": "kg m^{-2}",
             "ocean_basal": "W m^{-2}", "ocean_net_flux": "W m^{-2}",
@@ -4124,8 +4150,11 @@ def write_snapshot_netcdf(path: Path, snapshot: Mapping[str, Any], static: Mappi
             "ocean_residual": "J m^{-2}", "ocean_initial_sst": "K", "ocean_initial_ice": "1",
             "tmn": "K",
             "t2": "K",
+            "pblh": "m",
             "q2": "kg kg^{-1}",
             "refl10cm": "dBZ",
+            "refl10cm_max": "dBZ",
+            "cuprec": "mm s^{-1}",
             "swdown": "W m^{-2}",
             "hfx": "W m^{-2}",
             "qfx": "kg m^{-2} s^{-1}",
@@ -4150,10 +4179,18 @@ def write_snapshot_netcdf(path: Path, snapshot: Mapping[str, Any], static: Mappi
             "xice": "1",
             "snow": "kg m^{-2}",
             "snowh": "m",
+            # woof.hex.uh_layers running maxima (written only when the run asks for them).
+            "updraft_helicity_max": "m2 s-2",
+            "updraft_helicity_max_01": "m2 s-2",
+            "updraft_helicity_max_02": "m2 s-2",
+            "updraft_helicity_max_03": "m2 s-2",
         }
         for name, value in sorted(arrays.items()):
             array = np.asarray(value, dtype=np.float32)
-            if array.shape == (N_LEVELS, N_CELLS):
+            if name in ("ocean_temperature", "ocean_salinity", "ocean_layer_bottom"):
+                dims = ("Time", "nCells", "nOceanLevels")
+                payload = array.T[None]
+            elif array.shape == (N_LEVELS, N_CELLS):
                 dims = ("Time", "nCells", "nVertLevels")
                 payload = array.T[None]
             elif array.shape == (N_LEVELS, N_EDGES):
@@ -4171,6 +4208,11 @@ def write_snapshot_netcdf(path: Path, snapshot: Mapping[str, Any], static: Mappi
             else:
                 continue
             variable = dataset.createVariable(name, "f4", dims, zlib=True, complevel=1)
+            if name in ("tc_gpi", "tc_potential_intensity", "tc_mslp"):
+                variable.setncattr("missing_value", np.float32(-9999))
+            if name == "tc_pi_status":
+                variable.setncattr("flag_values", np.asarray([0, 1, 2], dtype=np.float32))
+                variable.setncattr("flag_meanings", "invalid_or_land valid nonconverged")
             from woof.hex.chem_transport import history_units
             variable.setncattr("units", units.get(name, history_units(name) or ""))
             write_variable(variable, payload)
@@ -4474,11 +4516,19 @@ def _construct_device_stack(
             raise ValueError("stochastic restart is absent from this checkpoint")
     elif stochastic_restart is not None:
         raise ValueError("checkpoint stochastic physics must remain enabled on resume")
+    from woof.hex.cuda_held_suarez import attach as attach_held_suarez
+    attach_held_suarez(backend, driver)
     api = require_staged_backend_api(backend)
     if backend_restart is not None:
         backend.restore_restart_state(backend_restart)
     if backend_initializer is not None:
         backend_initializer(backend)
+    # Bind after restart/remap from this target mesh. This common constructor
+    # also builds each full-step rate class and each same-host rank, whose
+    # prepared mesh already carries its local cell ordering and halo slice.
+    from woof.hex.tc_flux import attach_lake_mask
+    tc_lake_receipt = attach_lake_mask(backend, prepared.mesh,
+        local_timestep=bool(getattr(driver.config, 'config_local_timestep', False)))
     diagnostic = backend_diagnostic_mapping(backend.diagnostic_snapshot())
     if float(driver.atmosphere.state.time_seconds) != float(diagnostic["metadata"]["time_seconds"]):
         raise RuntimeError("driver and public backend diagnostic clocks differ")
@@ -4518,6 +4568,8 @@ def _construct_device_stack(
             )
         ),
     }
+    if tc_lake_receipt is not None:
+        stack['tc_lake_mask'] = tc_lake_receipt
     if gf_dynamics_tendencies is not None:
         # Restore side of the step-16 restart divergence: re-seed the driver-owned GF advective-forcing
         # carrier the checkpoint step's dynamics formed, so the FIRST resumed
@@ -5428,7 +5480,11 @@ def verify_arwen_checkout_git(
         # Installed wheels carry RECORD provenance even when git is absent.
         probe = None
     installed: dict[str, Any] | None = None
-    if probe is None or probe.returncode != 0:
+    # An installed wheel can live inside an unrelated repository (including
+    # an unborn one). Its parent's Git identity cannot name the engine.
+    is_checkout = (probe is not None and probe.returncode == 0
+                   and Path(probe.stdout.strip()).resolve() == root)
+    if not is_checkout:
         installed = installed_engine_provenance(root)
         if installed is None:
             raise RuntimeError(

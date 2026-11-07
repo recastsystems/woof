@@ -60,6 +60,8 @@ class CPUArrays:
     ndarray = np.ndarray
     array = staticmethod(np.array)
     asnumpy = staticmethod(np.asarray)
+    # Stands in for cupy: the backend selector reads cupy.cuda.runtime.is_hip.
+    cuda = SimpleNamespace(runtime=SimpleNamespace(is_hip=False))
 
 
 def exercise_two_boundaries(cp):

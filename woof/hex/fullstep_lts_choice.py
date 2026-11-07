@@ -6,7 +6,7 @@ route (``data/fullstep-lts-step-cost.v1.json``, one row per route: table work). 
 
 The rows were fit on hex 67a20a51, before the host-bound step fix (fix/hex-host-bound) that cuts the per-step part:
 a tree that lowers the per-step host floor re-measures its rows; the rule does not change.  Re-measured on 67a20a51
-with the corrected class clock (V5090, one RTX 5090, 3 h each, warm hours 2-3, box load 60-200): MPAS route active
+with the corrected class clock (reference system, one RTX 5090, 3 h each, warm hours 2-3, box load 60-200): MPAS route active
 LTS at 15 s 116.1 s per forecast hour, fixed 18 s 85.75; a 1 h run with LTS requested and this choice taking the
 fixed step matched the plain fixed run in 0 of 726,897,938 history and diag words.
 """

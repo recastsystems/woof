@@ -64,7 +64,8 @@ def scripts(job):
 
 def test_public_mutation_waits_for_exact_assets_and_both_platforms(workflow):
     jobs = workflow["jobs"]
-    ordered = ["controller", "release_authority", "prepare", "test", "qualify", "assets", "publish", "release"]
+    ordered = ["controller", "release_authority", "prepare", "test", "qualify", "assets", "publish_startup", "publish",
+               "release"]
     for predecessor, successor in zip(ordered, ordered[1:]):
         assert predecessor in ancestors(jobs, successor), (predecessor, successor)
     matrix = jobs["qualify"]["strategy"]["matrix"]["include"]
@@ -90,20 +91,38 @@ def test_release_events_and_dispatch_share_a_serialized_authority(workflow):
 def test_oidc_and_github_write_are_in_separate_jobs(workflow):
     assert workflow["permissions"] == {"contents": "read"}
     jobs = workflow["jobs"]
-    assert jobs["publish"]["permissions"] == {"id-token": "write"}
-    assert jobs["publish"]["environment"] == "pypi"
+    # One trusted-publisher environment per job: PyPI refuses two identical pending
+    # publishers, so gpuwm-kernels-startup is bound to pypi-startup in its own job.
+    publishers = {"publish": "pypi", "publish_startup": "pypi-startup"}
+    for name, environment in publishers.items():
+        assert jobs[name]["permissions"] == {"id-token": "write"}
+        assert jobs[name]["environment"] == environment
     for name, job in jobs.items():
         permissions = job.get("permissions", workflow["permissions"])
-        if name != "publish":
+        if name not in publishers:
             assert permissions.get("id-token") != "write"
         if permissions.get("contents") == "write":
             assert name in {"release_authority", "assets"}
-    publisher = jobs["publish"]
-    assert "GH_TOKEN" not in json.dumps(publisher)
-    assert not any(step.get("uses", "").startswith("actions/checkout@") for step in publisher["steps"])
-    for step in publisher["steps"]:
-        if step.get("uses", "").startswith("pypa/gh-action-pypi-publish@"):
-            assert not {"password", "user", "skip-existing"} & set(step.get("with", {}))
+    for name in publishers:
+        publisher = jobs[name]
+        assert "GH_TOKEN" not in json.dumps(publisher)
+        assert not any(step.get("uses", "").startswith("actions/checkout@") for step in publisher["steps"])
+        for step in publisher["steps"]:
+            if step.get("uses", "").startswith("pypa/gh-action-pypi-publish@"):
+                assert not {"password", "user", "skip-existing"} & set(step.get("with", {}))
+
+
+def test_startup_companion_uploads_only_under_its_own_environment(workflow):
+    jobs = workflow["jobs"]
+    startup = scripts(jobs["publish_startup"])
+    assert "--project gpuwm-kernels-startup" in startup
+    assert re.findall(r"--project\s+(\S+)", startup) == ["gpuwm-kernels-startup", "gpuwm-kernels-startup"]
+    assert "gpuwm-kernels-startup" not in scripts(jobs["publish"])
+    assert "publish_startup" in needs(jobs["publish"])
+    assert "publish_startup" in needs(jobs["release"])
+    uploads = [step for step in jobs["publish_startup"]["steps"]
+               if step.get("uses", "").startswith("pypa/gh-action-pypi-publish@")]
+    assert len(uploads) == 1 and uploads[0]["if"] == "steps.startup.outputs.upload_required == 'true'"
 
 
 def test_release_jobs_execute_the_tested_controller_after_hash_verification(workflow):
@@ -229,8 +248,10 @@ def test_publish_selection_has_no_unbuilt_stage1_native_dependencies(workflow):
 
 
 def test_docker_publisher_upload_paths_are_workspace_relative(workflow):
-    steps = workflow["jobs"]["publish"]["steps"]
-    for phase in ("data", "native", "pure"):
+    placed = {"data": "publish", "kernels": "publish", "startup": "publish_startup", "native": "publish",
+              "pure": "publish"}
+    for phase, job in placed.items():
+        steps = workflow["jobs"][job]["steps"]
         stage = next(step for step in steps if step.get("id") == phase)
         upload = next(step for step in steps if step.get("if") == f"steps.{phase}.outputs.upload_required == 'true'")
         directory = upload["with"]["packages-dir"].rstrip("/")
@@ -253,7 +274,7 @@ def test_packet_smoke_consumes_upload_bytes_before_any_public_mutation(workflow)
     # The shared _chain_static_staging_kept_off_the_network fixture imports
     # numpy before every selected metadata contract, even on a bare venv.
     assert "python -m pip install pytest pyyaml 'setuptools>=77' wheel 'numpy>=2'" in scripts(job)
-    for name in ("qualify", "assets", "publish", "release"):
+    for name in ("qualify", "assets", "publish_startup", "publish", "release"):
         assert "test" in ancestors(jobs, name)
     uploads = [step for step in jobs["controller"]["steps"] if step.get("uses", "").startswith("actions/upload-artifact@")]
     assert len(uploads) == 1 and uploads[0]["with"]["name"] == "publication-controller"
@@ -264,6 +285,9 @@ def test_packet_smoke_consumes_upload_bytes_before_any_public_mutation(workflow)
 def controller_case(publication, monkeypatch, tmp_path):
     filenames = {
         "recast-woof-data": [f"woof_data-{VERSION}-py3-none-any.whl", f"woof_data-{VERSION}.tar.gz"],
+        "gpuwm-kernels": [f"gpuwm_kernels-{VERSION}-py3-none-any.whl", f"gpuwm_kernels-{VERSION}.tar.gz"],
+        "gpuwm-kernels-startup": [f"gpuwm_kernels_startup-{VERSION}-py3-none-any.whl",
+                                  f"gpuwm_kernels_startup-{VERSION}.tar.gz"],
         "woof": [f"gpuwm-{VERSION}-py3-none-any.whl", f"gpuwm-{VERSION}-py3-none-manylinux_2_28_x86_64.whl",
                   f"gpuwm-{VERSION}-py3-none-win_amd64.whl", f"gpuwm-{VERSION}.tar.gz"],
     }
@@ -325,7 +349,8 @@ def payload(project, rows):
 def test_draft_promotion_checks_both_indexes_before_the_only_write(publication, controller_case):
     case = controller_case
     publication.promote(case.args)
-    assert case.events == [("index", "recast-woof-data"), ("index", "woof"), ("remote", False),
+    assert case.events == [("index", "recast-woof-data"), ("index", "gpuwm-kernels"),
+                           ("index", "gpuwm-kernels-startup"), ("index", "woof"), ("remote", False),
                            ("patch", "/releases/42"), ("remote", True)]
     assert publication.read_json(case.args.out)["public_before_pypi"] is True
 
@@ -338,7 +363,7 @@ def test_an_already_public_retry_makes_no_github_write(publication, controller_c
     assert publication.read_json(case.args.out)["status"] == "PASS"
 
 
-@pytest.mark.parametrize("project", ["recast-woof-data", "woof"])
+@pytest.mark.parametrize("project", ["recast-woof-data", "gpuwm-kernels", "gpuwm-kernels-startup", "woof"])
 def test_a_pypi_collision_prevents_github_promotion(publication, controller_case, project):
     case = controller_case
     collision = payload(project, case.proven["plan"]["pypi"][project])
@@ -560,7 +585,7 @@ def test_the_ci_gate_refuses_a_failed_run_and_gives_up_on_one_that_never_ends(pu
 
 
 def test_ci_is_judged_on_its_fast_gate_jobs_and_the_long_batteries_do_not_gate(publication, monkeypatch, tmp_path):
-    """Project ruling, 2026-10-20: the release must not wait ~2 h for the hosted cpu batteries that already ran locally."""
+    """Project ruling 2026-10-20: the release must not wait ~2 h for the hosted cpu batteries that already ran locally."""
     judge = publication.judge_ci_runs
     running = dict(_run(COMMIT, "in_progress", None), jobs=_jobs())
     assert judge([running], COMMIT)[0] == "passed"

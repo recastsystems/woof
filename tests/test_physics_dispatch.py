@@ -47,10 +47,16 @@ def test_dispatch_table_routes_only_values_with_a_real_runner():
         # layers' MOL/ZOL/PSIM/PSIH, which is why it is admitted only
         # beside bl_pbl_physics=2.
         "sf_sfclay_physics": {0: None, 1: "_run_sfclay",
-                              2: "_run_myj_sfclay", 5: "_run_sfclay",
+                              2: "_run_myj_sfclay", 3: "_run_gfs_sfclay",
+                              4: "_run_myj_sfclay", 5: "_run_sfclay",
+                              7: "_run_px_sfclay",
+                              10: "_run_temf_sfclay",
+                              # 89 is WRF 4.7.1's prescribed SCM surface
+                              # layer (af5ca0c3d59), its own runner.
+                              89: "_run_ideal_scm_sfclay",
                               91: "_run_sfclay"},
-        "sf_surface_physics": {0: None, 2: "_run_noah", 3: "_run_ruc",
-                               4: "_run_noahmp"},
+        "sf_surface_physics": {0: None, 1: "_run_slab", 2: "_run_noah", 3: "_run_ruc",
+                               4: "_run_noahmp", 7: "_run_pxlsm", 8: "_run_column_land_surface"},
         # 2 is MYJ, routed by the MYJ port (implemented-unverified: a
         # transcription of the byte-frozen module_bl_myjpbl.F with no
         # oracle comparison run yet); 11 is Shin-Hong, routed to its own
@@ -60,13 +66,19 @@ def test_dispatch_table_routes_only_values_with_a_real_runner():
         # this table can route it without ever shadowing a WRF selector.
         # 9 is the UW moist-turbulence PBL (WRF v4.7.1 CAMUWPBL), routed
         # to its own runner and graded against tools/uwpbl_wrf471_oracle.
+        # 3 is the GFS nonlocal PBL (WRF v4.6.1 module_bl_gfs.F), routed
+        # to its own runner and graded against tools/gfs_pbl_wrf461_oracle.
         "bl_pbl_physics": {0: None, 1: "_run_ysu", 2: "_run_myj_pbl",
-                           5: "_run_mynn_pbl", 9: "_run_uwpbl",
-                           11: "_run_shinhong", 900: "_run_sase",
+                           3: "_run_gfs_pbl", 4: "_run_qnse_pbl", 8: "_run_boulac",
+                           5: "_run_mynn_pbl", 7: "_run_acm2", 9: "_run_uwpbl",
+                           10: "_run_temf_pbl", 11: "_run_shinhong",
+                           12: "_run_gbmpbl", 16: "_run_eeps",
+                           99: "_run_mrf", 900: "_run_sase",
+                           17: "_run_keps",
                            901: "_run_satmedmf"},
         # 1 is WRF's one-dimensional ocean mixed layer (OML1D), graded
         # against WRF's own column module.
-        # 2 is WRF's 3-D PWP ocean (lane/cap-slab-ocean, aa6bdeed308), run by
+        # 2 is WRF's 3-D PWP ocean (development branch, aa6bdeed308), run by
         # the same surface-ocean owner as the Pollard mixed layer.
         "sf_ocean_physics": {0: None, 1: "_run_surface_ocean",
                              2: "_run_surface_ocean"},
@@ -77,15 +89,14 @@ def test_dispatch_table_routes_only_values_with_a_real_runner():
     # RUC's 3 used to be the only row here and is now routed to _run_ruc, so
     # the gate moves to WRF selector values woof still has no runner for
     # rather than being deleted with the scheme it was written for.  These are
-    # all real WRF v4.6.1 options: 1 is the 5-layer thermal diffusion slab, 7
-    # is PX LSM, 8 is SSiB and 6 is MYNN3.  bl_pbl_physics=2 (MYJ) left
+    # all real WRF v4.6.1 options: 7 is PX LSM, 8 is SSiB and 6 is MYNN3.
+    # The five-layer slab left this list with its native CUDA port.
+    # bl_pbl_physics=2 (MYJ) left
     # this list with the MYJ port: it now has a runner, so keeping it here
     # would pin the absence of a scheme that is present.
-    ("sf_surface_physics", 1),
-    ("sf_surface_physics", 7),
-    ("sf_surface_physics", 8),
+    ("sf_surface_physics", 5),
     ("bl_pbl_physics", 6),
-    ("sf_sfclay_physics", 7),
+    ("sf_sfclay_physics", 6),
 ])
 def test_unrouted_selector_never_resolves_to_another_scheme(selector, value):
     from woof.core.physics import (UnroutedPhysicsSelectorError,
@@ -108,6 +119,7 @@ def test_routed_values_resolve_to_their_own_runner():
     assert resolve_physics_slot("sf_sfclay_physics", 1) == "_run_sfclay"
     assert resolve_physics_slot("sf_sfclay_physics", 5) == "_run_sfclay"
     assert resolve_physics_slot("sf_sfclay_physics", 91) == "_run_sfclay"
+    assert resolve_physics_slot("sf_surface_physics", 1) == "_run_slab"
     assert resolve_physics_slot("sf_surface_physics", 2) == "_run_noah"
     assert resolve_physics_slot("sf_surface_physics", 3) == "_run_ruc"
     assert resolve_physics_slot("sf_surface_physics", 4) == "_run_noahmp"
@@ -129,7 +141,7 @@ def _cpu_driver(monkeypatch, *, sf_sfclay_physics, sf_surface_physics,
     monkeypatch.setattr(physics, "cp", np)
     # The lowest-level vapour and the land mask feed WRF's final land Q2
     # cap (module_surface_driver.F:4443-4457), which compute() applies
-    # after every surface layer since lane/282-wrf-exact (f6eb30981);
+    # after every surface layer since development branch (f6eb30981);
     # production's _prepare_atmosphere and fields always carry both.
     atmosphere = {
         "pressure": np.full((1, 1, 2), 95000.0, np.float32),
@@ -142,8 +154,10 @@ def _cpu_driver(monkeypatch, *, sf_sfclay_physics, sf_surface_physics,
     state = SimpleNamespace(elapsed_seconds=0.0, c1h=np.ones(1, np.float32),
                             c2h=np.zeros(1, np.float32),
                             total_mu=lambda: np.ones((1, 2), np.float32))
-    cfg = SimpleNamespace(
+    cfg = RunConfig(nx=2, ny=1, nz=1, dx=1000., dy=1000.,
+                    ztop=10000., run_seconds=0.,
         dt=60.0, bldt=0.0, ra_physics=0, ra_rrtmg_variant="rte-rrtmgp",
+        sst_update=0, sst_skin=0, tmn_update=0,
         sf_sfclay_physics=sf_sfclay_physics,
         sf_surface_physics=sf_surface_physics,
         bl_pbl_physics=bl_pbl_physics, cu_physics=0,
@@ -151,6 +165,12 @@ def _cpu_driver(monkeypatch, *, sf_sfclay_physics, sf_surface_physics,
         # since 614632b77.
         ruc_2m_diagnostic="flux")
     driver = object.__new__(physics.PhysicsDriver)
+    driver.farms = None
+    # The TC high-wind surface exchange (TC fold): off unless a TC run asks.
+    driver.tc_surface = None
+    driver.fog_settling = None
+    driver.ruc_params = None
+    driver.pxlsm_params = None
     driver._wrf_rthraten = None
     driver._wrf_rthraten_coupled = True
     driver.swint = None
@@ -323,12 +343,13 @@ def test_run_sfclay_refuses_an_unknown_surface_layer_value(monkeypatch):
         driver._run_sfclay({}, cfg)
 
 
-def test_noah_sfcdiags_is_scheme_specific():
+# Gate successor: test_noah_sfcdiags_is_scheme_specific; the assertions cover the admitted behavior.
+def test_noah_and_slab_sfcdiags_are_scheme_specific():
     from woof.core.physics import LAND_SURFACE_SFCDIAGS_SCHEMES
 
-    # WRF calls SFCDIAGS after Noah.  MYNN's surface layer diagnoses
+    # WRF calls SFCDIAGS after Noah and slab. MYNN's surface layer diagnoses
     # T2/Q2/TH2 itself, so a new LSM must opt in rather than inherit this.
-    assert LAND_SURFACE_SFCDIAGS_SCHEMES == frozenset({2})
+    assert LAND_SURFACE_SFCDIAGS_SCHEMES == frozenset({1, 2})
 
 
 # ---------------------------------------------------------------------------
@@ -359,18 +380,19 @@ def test_noah_sfcdiags_is_scheme_specific():
     #
     # What remains here is a coherent WRF request woof refuses through the
     # suite check, which is what this test is actually for: the RECEIPT.
-    (dict(sf_sfclay_physics=5, bl_pbl_physics=1),
+    (dict(sf_sfclay_physics=2, bl_pbl_physics=1),
      "WRF v4.6.1 PBL/surface-layer compatibility"),
-    (dict(sf_sfclay_physics=0, bl_pbl_physics=5),
+    (dict(sf_sfclay_physics=5, bl_pbl_physics=2),
      "WRF v4.6.1 PBL/surface-layer compatibility"),
 ])
 def test_in_port_schemes_fail_closed_with_a_port_receipt(overrides, component):
-    with pytest.raises(UnsupportedPhysicsSuiteError) as caught:
+    from woof.config import ConfigurationRefused
+    with pytest.raises(ConfigurationRefused) as caught:
         validate_run_config(_cfg(**overrides))
-    components = [item.component for item in caught.value.blockers]
-    assert component in components
     text = str(caught.value)
-    assert "no substitutions were applied" in text
+    assert component == "WRF v4.6.1 PBL/surface-layer compatibility"
+    assert "sf_sfclay_physics=" in text and "bl_pbl_physics=" in text
+    assert "requires" in text or "is admitted with" in text
     # The receipt naming the DRIVER gate rather than only the science used to
     # be asserted here, because RUC's own blocker text cited
     # PHYSICS_SLOT_DISPATCH as one of its missing pieces.  It has that row
@@ -381,7 +403,7 @@ def test_in_port_schemes_fail_closed_with_a_port_receipt(overrides, component):
     from woof.core.physics import (UnroutedPhysicsSelectorError,
                                     resolve_physics_slot)
     with pytest.raises(UnroutedPhysicsSelectorError) as unrouted:
-        resolve_physics_slot("sf_surface_physics", 7)
+        resolve_physics_slot("sf_surface_physics", 5)
     assert "PHYSICS_SLOT_DISPATCH" in str(unrouted.value)
     assert "refusing to substitute" in str(unrouted.value)
 
@@ -491,8 +513,9 @@ def test_schema_tables_and_soil_geometry():
     # 2 (Eta similarity) joined with the MYJ port, together with
     # bl_pbl_physics=2 below: the two are admitted as a PAIR and
     # validate_myj_pairing refuses either half alone.
-    assert SURFACE_LAYER_SCHEMES == (0, 1, 2, 5, 91)
-    assert LAND_SURFACE_SCHEMES == (0, 2, 3, 4)
+    # 89 joined with the ideal single-column surface layer (idealscmsfclay).
+    assert SURFACE_LAYER_SCHEMES == (0, 1, 2, 3, 4, 5, 7, 10, 89, 91)
+    assert LAND_SURFACE_SCHEMES == (0, 1, 2, 3, 4, 7, 8)
     # Pin moved (0, 1, 5, 900) -> (0, 1, 5, 11, 900) by the Phase-D
     # Shin-Hong runtime wiring: 11 is WRF's own bl_pbl_physics number for
     # module_bl_shinhong.F, admitted with a routed runner, restart
@@ -504,7 +527,7 @@ def test_schema_tables_and_soil_geometry():
     # module_bl_camuwpbl_driver.F): a routed runner, a restart identity,
     # a registry option and a namelist-import row in the same change.
     # 901 is the non-WRF CCPP closure, with its own runner and asset identity.
-    assert PBL_SCHEMES == (0, 1, 2, 5, 9, 11, 900, 901)
+    assert PBL_SCHEMES == (0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 16, 17, 99, 900, 901)
     assert LAND_SURFACE_SOIL_LAYERS[2] == (4,)
     assert LAND_SURFACE_SOIL_LAYERS[3] == (6, 9)
     assert LAND_SURFACE_SOIL_LAYERS[4] == (4,)
@@ -519,11 +542,11 @@ def test_schema_tables_and_soil_geometry():
         validate_run_config(_cfg(sf_surface_physics=3, num_soil_layers=4))
     # A value in no scheme's schema is still a hard error.
     with pytest.raises(ValueError, match="sf_surface_physics must be"):
-        validate_run_config(_cfg(sf_surface_physics=7))
+        validate_run_config(_cfg(sf_surface_physics=5))
     with pytest.raises(ValueError, match="bl_pbl_physics must be"):
         validate_run_config(_cfg(bl_pbl_physics=6))
     with pytest.raises(ValueError, match="sf_sfclay_physics must be"):
-        validate_run_config(_cfg(sf_sfclay_physics=7))
+        validate_run_config(_cfg(sf_sfclay_physics=6))
     # 2/2 is now IN the schema, so what refuses a half-suite is the
     # pairing law rather than the schema tables.  Pinned here so the two
     # refusals cannot be confused for each other.
@@ -564,7 +587,7 @@ def test_restart_identities_exist_for_every_schema_selector():
     assert set(restart.PBL_ALGORITHM_IDENTITIES) == set(PBL_SCHEMES)
     # An active LSM without a parameter-bundle row cannot checkpoint: the
     # file would otherwise claim Noah's tables for a run that never used them.
-    assert set(restart.LAND_SURFACE_PARAMETER_SOURCES) == {2, 3, 4}
+    assert set(restart.LAND_SURFACE_PARAMETER_SOURCES) == {1, 2, 3, 4, 7, 8}
     assert restart.LAND_SURFACE_PARAMETER_SOURCES[2][0] == "noah_params"
     assert restart.LAND_SURFACE_PARAMETER_SOURCES[3][0] == "ruc_params"
     assert restart.LAND_SURFACE_PARAMETER_SOURCES[4][0] == "noahmp_params"
@@ -590,7 +613,7 @@ def test_land_surface_parameters_never_fall_through_to_noahs_bundle():
 
     driver = SimpleNamespace(noah_params=_Params())
     noah = restart._land_surface_parameters_identity(
-        SimpleNamespace(sf_surface_physics=2), driver)
+        SimpleNamespace(ua_phys=False, sf_surface_physics=2), driver)
     assert noah["values"] == {"a": 1.5, "b": 3}
     assert set(noah) == {"class", "arrays", "values", "sha256"}
 
@@ -600,7 +623,7 @@ def test_land_surface_parameters_never_fall_through_to_noahs_bundle():
     with pytest.raises(restart.RestartManifestError,
                        match="LAND_SURFACE_PARAMETER_SOURCES"):
         restart._land_surface_parameters_identity(
-            SimpleNamespace(sf_surface_physics=7), driver)
+            SimpleNamespace(ua_phys=False, sf_surface_physics=5), driver)
 
     # And RUC, which HAS a row, still refuses when the driver carries no RUC
     # bundle -- a checkpoint must not fall through to the Noah params that
@@ -608,7 +631,7 @@ def test_land_surface_parameters_never_fall_through_to_noahs_bundle():
     with pytest.raises(restart.RestartManifestError,
                        match="PhysicsDriver.ruc_params"):
         restart._land_surface_parameters_identity(
-            SimpleNamespace(sf_surface_physics=3, ruc_params=None), driver)
+            SimpleNamespace(ua_phys=False, sf_surface_physics=3, ruc_params=None), driver)
 
 
 def test_asset_identity_binds_only_the_active_lsm_tables():
@@ -626,10 +649,10 @@ def test_asset_identity_binds_only_the_active_lsm_tables():
     # SOILPARM plus GENPARM.  LANDUSE.TBL is Noah-only.
     assert sorted(restart._active_asset_identity(_cfg_for(3), None)) == [
         "noah_genparm", "noah_soilparm", "noah_vegparm"]
-    # A scheme with no row still cannot bind assets.  7 is PX LSM.
+    # CLM (5) has no admitted parameter-source row.
     with pytest.raises(restart.RestartManifestError,
                        match="LAND_SURFACE_PARAMETER_SOURCES"):
-        restart._active_asset_identity(_cfg_for(7), None)
+        restart._active_asset_identity(_cfg_for(5), None)
 
 
 def test_vram_inventory_counts_the_mynn_surface_allocations():

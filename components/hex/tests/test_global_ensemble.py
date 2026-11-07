@@ -167,7 +167,8 @@ def test_stochastic_member_defaults_are_decided_before_card_grouping(tmp_path):
     assert all(m['stochastic']['sppt'] and m['stochastic']['skeb'] for m in small['members'])
     assert [m['stochastic']['member'] for m in small['members']] == [1,2,3]
     assert all(m['stochastic']['seed'] == 71 for m in small['members'])
-    assert all(not m['stochastic']['sppt'] for m in large['members'])
+    # On for ten GEFS members too (2026-10-29 spread-skill run, stochastic.member_options).
+    assert all(m['stochastic']['sppt'] and m['stochastic']['skeb'] for m in large['members'])
     single, _ = _plan(tmp_path, source='gefs', member=1, stochastic='{"sppt":true,"seed":71}')
     command = single['commands']['forecast']
     assert json.loads(command[command.index('--stochastic')+1]) == {'sppt':True,'seed':71}
@@ -326,9 +327,15 @@ def test_planner_prices_members_like_the_roster_admission(monkeypatch):
     """2026-10-20: 60 km GEFS members 1-2 on an RTX 5090 planned 3 per group, the roster refused 2 and split.
 
     The planner now charges the roster's own sum (solo floor + stochastic arrays) and plans 1; the refusal it
-    used to hit reports the true memory limit, 1, not the solo-floor-only 2."""
+    used to hit reports the true memory limit, 1, not the solo-floor-only 2.
+
+    The roster half charges what the roster charges for the route the member runs (the MPAS route, the hex
+    default; ``multi_member.admit_suite_group``), not the ArWen-route floor: with the stored harmonic basis gone
+    (feat/stochastic-physics, 2026-10-29) two members fit at the WOOF floor, so that price no longer described
+    the roster the planner matches."""
     from types import SimpleNamespace
     from woof.hex import forecast_door
+    from woof.hex.multi_member import argv_physics_route
     from woof.hex.stochastic import member_options
 
     monkeypatch.setattr(global_door, "_visible_cards", lambda: [32607 * 1024**2])
@@ -342,7 +349,8 @@ def test_planner_prices_members_like_the_roster_admission(monkeypatch):
     assert global_ensemble.group_limit(value, SimpleNamespace(members_per_card="auto", devices=None)) == 1
     model = device_admission.model_for_card(device_admission.card_profile_from_attributes(
         card["name"], {"MultiProcessorCount": 170, "MaxThreadsPerMultiProcessor": 1536}), "global")
-    solo = forecast_door.required_free_bytes(cells, model)
+    solo = device_admission.route_required_free_bytes(
+        cells, model, route=argv_physics_route(value["commands"]["forecast"]))
     extra = tuple(forecast_door.stochastic_array_bytes(cells, m["stochastic"]) for m in members)
     with pytest.raises(MemoryError, match="memory limit 1 "):
         device_admission.admit_co_tenancy(mesh_kind="global", cells=cells, levels=55, members=2,
@@ -448,8 +456,9 @@ def test_mpas_suite_roster_refuses_a_group_the_card_cannot_hold(tmp_path, monkey
         655_362, device_admission.model_for_card(device_admission.card_profile_from_attributes(
             _PRO_6000["name"], {"MultiProcessorCount": 188, "MaxThreadsPerMultiProcessor": 1536}), "global"),
         route="mpas")
-    # Never below the measured single-member peak, plus the curve's 10 %; and one member still fits the card.
-    assert 75_069 * 1024**2 * 1.10 < admitted < _PRO_6000["free"]
+    # Never below the measured single-member peak (re-measured at 30 km on the 0.4.14 tree), plus the curve's 10 %;
+    # and one member still fits the card.
+    assert round(60_372 * 1024**2 * 1.10) <= admitted < _PRO_6000["free"]
 
 
 _RTX_5090 = {"name": "NVIDIA GeForce RTX 5090", "free": 32_100 * 1024**2, "total": 32_607 * 1024**2,
@@ -458,7 +467,7 @@ _RTX_5090 = {"name": "NVIDIA GeForce RTX 5090", "free": 32_100 * 1024**2, "total
 
 def test_a_30km_mpas_member_runs_over_several_32gb_cards(tmp_path, monkeypatch):
     """8x RTX 5090 fit (2026-10-27): a 30 km MPAS-route member peaks 75,069 MiB on one card and the ensemble door put
-    every member on ONE card, so a 30 km global ensemble (the synthetic-radar DA cycle's members) could not run on a
+    every member on ONE card, so a 30 km global ensemble could not run on a
     32 GB card at all.  Auto now spreads one member over the fewest cards whose per-rank price fits, as the forecast
     door's same-host ranks, with the member's own init, start, label and stochastic identity; a member that fits one
     card keeps one card and its roster."""

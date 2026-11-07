@@ -144,7 +144,7 @@ def test_stage_records_failure_and_preserves_log(tmp_path, monkeypatch):
 
 
 def test_a_multicard_stage_is_compared_per_card(tmp_path, monkeypatch):
-    """THE BREAKAGE (V8X6000 2026-10-29): a 2-card run's receipt compared its 28,722 MiB per-card prediction with
+    """THE BREAKAGE (eight-card system 2026-10-29): a 2-card run's receipt compared its 28,722 MiB per-card prediction with
     both cards' sum, 60,722 MiB, and said the plan was 52.7 % under; the largest card held 30,813."""
     monkeypatch.setattr(card_fit, "_gpu_memory_by_card", lambda pids: {"GPU-a": 29924.0, "GPU-b": 30798.0})
     result = card_fit.run_stage([sys.executable, "-c", "pass"], name="two-cards", directory=tmp_path)
@@ -391,14 +391,87 @@ def test_a_failed_door_stops_the_decode_beside_it(tmp_path, monkeypatch):
     assert [c[0] for c in calls] == ["init-source-decode", "mesh-template", "init-source-decode.cancel"]
 
 
+def test_a_products_failure_after_a_finished_forecast_lets_the_live_export_finish(tmp_path, monkeypatch):
+    """both-routes matrix, woof hex 0.4.14 candidate (2026-11-06): one products view refused after a finished
+    forecast and the failure path told the live export the forecast had failed, so it was stopped within 30 s
+    instead of exporting the frames it still had to close. The door still fails (a map the user asked for is
+    missing); the export is not taken with it."""
+    from types import SimpleNamespace
+    from woof.hex import export_door, init_sources
+    from woof.hex.swath import sizing
+    request = args(tmp_path, "--generate", "--run", "--source", "gfs", "--cycle", "2023-03-31T12")
+    binary = tmp_path / "engine"
+    binary.write_bytes(b"binary")
+    monkeypatch.setattr("woof.hex.engines.resolve", lambda *a: binary)
+    monkeypatch.setattr(init_sources, "resolve_writer", lambda *a: binary)
+    monkeypatch.setattr(init_sources, "resolve_vtable", lambda *a: binary)
+    monkeypatch.setattr(sizing, "dry_run", lambda *a, **k: {"predicted_cells": 216000})
+    monkeypatch.setattr(mesh_point, "resolve_geog", lambda *a: tmp_path)
+    monkeypatch.setattr(mesh_point, "static_coordinate_errors", lambda *a: [])
+    monkeypatch.setattr(mesh_point, "admit_pair", lambda *a, **k:
+                        {"n_cells": 215000, "timestep_choice": {"dt_seconds": 90}, "regional": False})
+    row = SimpleNamespace(name="generated-row", n_cells=215000, as_dict=lambda: {"name": "generated-row"})
+    monkeypatch.setattr(mesh_rows, "describe_resolution_spec", lambda **kwargs: row)
+    monkeypatch.setattr(mesh_rows, "write_rows", lambda path, rows: path.write_text("runtime rows"))
+    finished = []
+
+    class Export:
+        def __init__(self, *a, **k):
+            pass
+
+        def start(self):
+            return self
+
+        def finish(self, *, forecast_ok, timeout=900.0):
+            finished.append(forecast_ok)
+            return {"status": "done" if forecast_ok else "stopped"}
+
+    monkeypatch.setattr(export_door, "LiveExport", Export)
+    calls = []
+
+    def run(argv, *, name, directory, env):
+        calls.append((name, argv, dict(env)))
+        if name == "mesh-template":
+            Path(argv[argv.index("--out") + 1]).write_bytes(b"template grid")
+        if name == "init-source":
+            out = tmp_path / "init"
+            out.mkdir()
+            (out / "init-source-receipt.json").write_text(json.dumps({"source": "gfs", "cycle": "2023-03-31_12:00:00"}))
+        return {"returncode": 1 if name == "products" else 0, "wall_seconds": 10, "peak_process_vram_mib": 16000,
+                "log": "products.log"}
+
+    monkeypatch.setattr(card_fit, "run_stage", run)
+    monkeypatch.setattr(card_fit, "start_stage", fake_background(calls))
+    monkeypatch.setattr("woof.hex.moving_mesh.rotate_grid", fake_rotation)
+    with pytest.raises(MpasPortError, match="products exited 1"):
+        mesh_plan_door.run_global_mesh(request)
+    assert finished == [True]
+    receipt = json.loads((tmp_path / "global-vr-receipt.json").read_text())
+    assert receipt["status"] == "failed" and receipt["live_export"]["status"] == "done"
+
+
 def test_background_stage_reports_its_own_wall_and_cpu(tmp_path):
-    handle = card_fit.start_stage([sys.executable, "-c", "import time; sum(range(10**6)); time.sleep(0.3)"],
-                                  name="beside", directory=tmp_path)
+    import os
     import time
-    time.sleep(1.0)  # the door is busy with the foreground stage
+    stamp = tmp_path / "beside.exit"
+    before = time.monotonic()
+    handle = card_fit.start_stage([sys.executable, "-c", "import sys, time; sum(range(10**6)); time.sleep(0.3); "
+                                   "open(sys.argv[1], 'w').write(repr(time.monotonic()))", str(stamp)],
+                                  name="beside", directory=tmp_path)
+    launched = time.monotonic()
+    # The door is busy with the foreground stage until well after the child has exited (seen without reaping it).
+    # The child's own run time is the host's (1.38 s at load ~55 in the hex 0.5.0 sealing pass), so the stage's
+    # wall is checked against the child's exit and the join, never against a fixed run time.
+    os.waitid(os.P_PID, handle.process.pid, os.WEXITED | os.WNOWAIT)
+    time.sleep(0.5)
+    joined = time.monotonic()
     row = handle.finish()
     assert row["returncode"] == 0 and row["background"]
-    assert 0.3 <= row["wall_seconds"] < 0.95  # its own exit, not the join
+    exited = float(stamp.read_text())
+    assert row["wall_seconds"] >= 0.3
+    assert row["wall_seconds"] >= round(exited - launched, 3)  # it ends at the child's exit or later ...
+    assert row["wall_seconds"] < joined - launched  # ... and before the join: its own exit, not the join
+    assert row["wall_seconds"] <= round(time.monotonic() - before, 3)
     assert row["cpu_seconds"] > 0
     failing = card_fit.start_stage([sys.executable, "-c", "raise SystemExit(5)"], name="bad", directory=tmp_path)
     assert failing.finish()["returncode"] == 5
@@ -550,7 +623,7 @@ def test_a_suite_with_no_multicard_run_is_priced_as_a_rank_not_as_one_cards_loop
     two = card_fit.predict(163842, card=card, levels=59, dt_seconds=300, hours=1, suite="hrrrv5", cards=2)
     one = card_fit.predict(81921, card=card, levels=59, dt_seconds=300, hours=1, suite="hrrrv5")
     excess = two["whole_run_floor"]["rank_excess"]
-    assert excess["ratio"] > 1.2  # the 2-card r700 rank against the one-card curve at its columns
+    assert excess["ratio"] > 1.1  # the 2-card r700 rank against the one-card curve at its columns (1.18 on the 0.4.14 curve)
     assert two["predicted_peak_mib"] == pytest.approx(one["predicted_peak_mib"] * excess["ratio"], rel=1e-4)
     # hrrrv5 is never priced from the lighter convection_permitting rows while it has runs of its own.
     assert two["whole_run_floor"]["physics"]["suite"] == "hrrrv5"
@@ -612,7 +685,7 @@ def test_the_run_goes_on_the_cards_the_plan_priced(tmp_path, monkeypatch, route)
 
 
 #: hex 0.4.10's regional GFS cold-start default, convection_permitting + hrrr-like-aerosol (physics-default
-#: recipe_rules), measured on the r700 96 -> 3 km zoom globe (286,530 cells, 55 levels) on RTX PRO 6000s, box V8X6000
+#: recipe_rules), measured on the r700 96 -> 3 km zoom globe (286,530 cells, 55 levels) on RTX PRO 6000s, box eight-card system
 #: 2026-10-29, the HB9 tip ed2dd96b, one process per card: (cards, the largest card's peak MiB).
 MEASURED_AEROSOL_2026_10_29 = [(1, 44989.0), (2, 30813.0), (4, 19929.0)]
 AEROSOL = {"route": "mpas", "suite": "convection_permitting", "profile": "hrrr-like-aerosol"}
@@ -677,7 +750,7 @@ def test_door_prices_the_gfs_zoom_globe_on_the_aerosol_profile_it_runs(tmp_path,
     plan = json.loads(out.read_text())["prediction_before_generation"]
     assert plan["physics"] == AEROSOL
     # zoom_plan prices 2 x RTX 5090: the run held to a 5090's 32,607 MiB per card (27,998 MiB), not the 96 GB card's
-    # 30,813 MiB, which refused this shape on 2 x 5090 (V8X6000 2026-10-29).
+    # 30,813 MiB, which refused this shape on 2 x 5090 (eight-card system 2026-10-29).
     assert plan["predicted_peak_mib"] == pytest.approx(27998.0 * (1 + card_fit.WHOLE_RUN_MARGIN), abs=.01)
     assert plan["fits"]
     assert "convection_permitting + hrrr-like-aerosol (mpas route) on 2 cards" in capsys.readouterr().out
@@ -690,7 +763,7 @@ def test_door_prices_the_gfs_zoom_globe_on_the_aerosol_profile_it_runs(tmp_path,
 
 
 def test_a_plan_takes_the_runs_measured_with_its_own_card_memory():
-    """THE BREAKAGE (hex 0.4.10 review, V8X6000 2026-10-29): the 2-card aerosol row was a 96 GB card's peak (30,813
+    """THE BREAKAGE (hex 0.4.10 review, eight-card system 2026-10-29): the 2-card aerosol row was a 96 GB card's peak (30,813
     MiB: idle pool sets kept while the card had room, free-sized tiles), so 2 x RTX 5090 was priced 33,894 MiB per card
     and refused, a shape the same run held to a 5090's 32,607 MiB completes.  At each size a plan takes the runs
     measured with the card memory nearest its own card's from above, else the most below."""

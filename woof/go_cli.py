@@ -372,7 +372,8 @@ def managed_download_dir(case_root: Path, fetch_table: dict) -> Path:
                             and fetch_routes.has_recovery_request(candidate)):
                         fetch_routes.check_prior_request(
                             candidate, source=source, cycle=cycle,
-                            host=request.get("transport"), member=request.get("member"))
+                            host=request.get("transport"), member=request.get("member"),
+                            source_parameters=request.get("source_parameters"))
                         return candidate
                     manifest = candidate / fetch.FETCH_MANIFEST_NAME
                     if manifest.is_file():
@@ -394,7 +395,8 @@ def managed_download_dir(case_root: Path, fetch_table: dict) -> Path:
                                 raise ValueError("The cache has no recorded request")
                             fetch_routes.check_prior_request(
                                 candidate, source=source, cycle=cycle,
-                                host=request.get("transport"), member=request.get("member"))
+                                host=request.get("transport"), member=request.get("member"),
+                            source_parameters=request.get("source_parameters"))
                         else:
                             fetch.check_prior_request(candidate, source=source,
                                                       cycle=cycle, area=area)
@@ -862,6 +864,7 @@ def plan_from_config(config: Path, *, outdir: Path | None = None,
         "era5_provider": fetch_table.get("era5_provider"),
         "era5_product": fetch_table.get("era5_product"),
         "member": fetch_table.get("member"),
+        "source_parameters": fetch_table.get("source_parameters"),
         "reuse_fetch": fetch_table.get("reuse_fetch"),
         "retrieve": fetch_table.get("retrieve", False),
         # Essential too: the model top the download must reach, from
@@ -1172,7 +1175,7 @@ def fetch_command(plan: dict) -> list[str]:
     if plan.get("forecast_start_hour"):
         command.extend(
             ("--forecast-start-hour", str(plan["forecast_start_hour"])))
-    for key in ("era5_provider", "era5_product", "member", "fetch_max_connections", "reuse_fetch"):
+    for key in ("era5_provider", "era5_product", "member", "fetch_max_connections", "reuse_fetch", "source_parameters"):
         if plan.get(key) is not None:
             command.extend(("--" + key.replace("_", "-"), str(plan[key])))
     if plan.get("retrieve"):
@@ -4550,7 +4553,8 @@ def _prepare_only_needs_no_card(args) -> bool:
     (woof.ingest.preprocess_backend.admit_preparation).
     """
 
-    return bool(getattr(args, "prepare_only", False))
+    return (bool(getattr(args, "prepare_only", False))
+            and getattr(args, "vortex_init", "off") == "off")
 
 
 def _require_forecast_device() -> None:
@@ -4713,8 +4717,8 @@ def _prepared_run_bindings(args, config: Path) -> Path | None:
     config normalised: tables re-keyed, the resolved physics profile
     written in), so the second step, handed the user's own config, was
     refused "supplied experiment_config differs from the portable source
-    manifest".  Breakage this closes: every 12 km GFS parent the ml-probs
-    T1 queue prepared (10 dates, Vast V8X, 2026-10-27) was refused at its
+    manifest".  Breakage this closes: every 12 km GFS parent the forecast
+    queue prepared (10 dates, shared host, 2026-10-27) was refused at its
     forecast launch, some after a 13 minute wait for a card, and only
     passing the generated config by hand ran them.
 
@@ -4900,6 +4904,12 @@ def _registered_launch(args, *, config: Path, payload: dict,
                                    else DEFAULT_RENDER_PRODUCTS)}
     if getattr(args, "initial_inputs", None) is not None:
         options["initial_inputs"] = str(Path(args.initial_inputs).resolve())
+    from woof.storm_merge import command_arguments as merge_arguments
+    if getattr(args, "storm_merge", None):
+        options["storm_merge_arguments"] = merge_arguments(args)
+    from woof.tc.mapped_vortex import command_arguments as vortex_arguments
+    if getattr(args, "vortex_init", "off") != "off":
+        options["vortex_arguments"] = vortex_arguments(args)
     if getattr(args, "grib2", False):
         options["grib2"] = True
     if os.environ.get("WOOF_VERIFY_VISUALS", "1").lower() in ("0", "false", "off"):
@@ -4908,7 +4918,7 @@ def _registered_launch(args, *, config: Path, payload: dict,
         # run-plan opens its own verification_scope from run_options, whose
         # default is on.  Breakage it prevents: the flag was overridden inside
         # the run, so the post-run verification worker still ran and held the
-        # forecast's card lease ~2 min after every forecast (Vast V8X
+        # forecast's card lease ~2 min after every forecast (shared host
         # 2026-10-27, `woof go ... --prepared-root ... --no-verify-visuals`).
         options["verify_visuals"] = False
     from woof.ensemble.runtime_context import current_session
@@ -5106,7 +5116,7 @@ def _registered_launch(args, *, config: Path, payload: dict,
                 # Registered sources bypass _go_prepared_main. Acceptance has
                 # checked the empty output and bound its ledger; warm before fetch.
                 #
-                # Not on an existing prepared root (cold-compile, V50
+                # Not on an existing prepared root (cold-compile, test host
                 # 2026-10-18): no fetch or preparation runs before its
                 # forecast, so the spawned pre-warm only made the forecast
                 # wait for it (A3 HRRR shape, cold cache: 34 s, then the
@@ -5695,7 +5705,7 @@ _KERNEL_PREWARM: dict = {}
 #: A healthy child is done by then (2-29 s from its spawn on cold RTX PRO 6000
 #: boxes, and it starts before the fetch); the forecast compiles its own plan
 #: on every core anyway (kernel_prewarm.start_plan in each prepared runner).
-#: THE BREAKAGE (WOOF customer-shape gates 2026-10-26, woof 2.9.7 image
+#: THE BREAKAGE (WOOF customer-shape gates 2026-10-26, gpuwm 2.9.7 image
 #: b9f2d801): a child that printed nothing after its first line held the
 #: forecast for the old 300 s bound on two cold boxes (gfs-regional-3km
 #: run_7598e0f80ef30547, ecmwf-regional-12-3 run_9b996f4a5cad6e89); the
@@ -5973,10 +5983,30 @@ def _at_flag_storm_nests(args) -> None:
           f"(grids {receipt['slot_grid_ids']}); config re-stated as {out}")
     args.config = out
 
+def _go_wrfinput(args) -> int:
+    """Compatibility entry for the shared stock-directory forecast door."""
+    from woof.wrfinput_go import launch
+    return launch(args)
+
+
 @_ledger_main
+def go_main(args, *, observer=None) -> int:
+    """Choose native WRF handoff or the existing CONFIG preparation chain."""
+    from woof.wrfinput_go import refuse_unrouted_go_controls
+    if getattr(args, "wrfinput", None) is not None:
+        from woof.wrfinput_go import launch
+        return launch(args, observer=observer)
+    if not (getattr(args, "config", None) is not None and Path(args.config).is_dir()):
+        try:
+            refuse_unrouted_go_controls(args)
+        except ValueError as error:
+            raise GoRefusal(str(error)) from error
+    return _go_config_main(args, observer=observer)
+
+
 @_cyclone_go_scope
 @_hydro_go_scope(beside=True)
-def go_main(args, *, observer=None) -> int:
+def _go_config_main(args, *, observer=None) -> int:
     """Launch through the source's existing native preparation chain.
 
     ``--no-memory-gate`` is held for the whole chain, so the forecast
@@ -5984,8 +6014,67 @@ def go_main(args, *, observer=None) -> int:
     go's own gate skipped.  It used to stop at go's gate, and the runner
     then refused that envelope again after the fetch and the preparation.
     """
+    from woof.go_wrfinput import launch_if_global_directory
+    native_status = launch_if_global_directory(args, observer=observer)
+    if native_status is not None:
+        return native_status
+    if getattr(args, "wrfinput", None) is not None:
+        from woof.wrfinput_go import launch
+        return launch(args)
+    # A met_em directory uses the existing run preparation owner.
+    # Keep preparation, checkpoints, ensembles and rendering in that owner.
+    config = getattr(args, "config", None)
+    native = Path(config) if config is not None else None
+    if native is not None and native.name == "namelist.input":
+        native = native.parent
+    if native is not None and native.is_dir() and (native/"namelist.input").is_file():
+        if (native/"wrfinput_d01").is_file():
+            from woof.wrfinput_go import launch
+            args.config = native
+            return launch(args, observer=observer)
+        from woof.wrfinput_go import validate_controls
+        validate_controls(args, metem=True)
+        if observer is not None:
+            raise GoRefusal("The met_em forecast reports native progress; this "
+                            "launch observer cannot account for its stages")
+        from woof.cli import main as cli_main
+        command = ["run", "--met-em", str(native), "--outdir", str(
+            getattr(args, "outdir", None) or native/"gpuwm-go")]
+        for key, flag in (("restart", "--restart"), ("render_products", "--products"),
+                          ("members", "--members"), ("run_seconds", "--run-seconds")):
+            value = getattr(args, key, None)
+            if value is not None:
+                command.extend((flag, str(value)))
+        if getattr(args, "allow_shared_gpu", False):
+            command.append("--allow-shared-gpu")
+        for key, flag in (("no_memory_gate", "--no-memory-gate"),
+                          ("no_supervise", "--no-supervise"),
+                          ("keep_member_files", "--keep-member-files")):
+            if getattr(args, key, False) and flag not in command:
+                command.append(flag)
+        if getattr(args, "explain", False):
+            command.append("--explain")
+        # run has no visual-verification parser flag. Preserve go's
+        # explicit setting in the existing finish-hook environment.
+        from contextlib import nullcontext
+        from woof.verification_visuals import verification_scope
+        visuals = getattr(args, "verify_visuals", None)
+        with (nullcontext() if visuals is None else verification_scope(visuals)):
+            return cli_main(command)
     from woof.earth2_licensing import check_namespace
     check_namespace(args)
+    if getattr(args, "config", None) is not None and Path(args.config).is_dir():
+        from woof.wrfinput_go import launch
+        return launch(args, observer=observer)
+    if getattr(args, "no_supervise", False):
+        raise GoRefusal("--no-supervise applies to a WRF input directory; "
+                        "configuration launches retain their stage workers")
+    if getattr(args, "allow_shared_gpu", False):
+        raise GoRefusal("--allow-shared-gpu currently requires WRF inputs")
+    if getattr(args, "benchmark", False):
+        raise GoRefusal("--benchmark requires WRF inputs")
+    if getattr(args, "run_seconds", None) is not None:
+        raise GoRefusal("--run-seconds requires WRF inputs")
     _at_flag_storm_nests(args)
     if getattr(args, "branch_from", None) is not None:
         from woof.ensemble.mass_launcher import run as run_branches
@@ -6048,10 +6137,12 @@ def go_main(args, *, observer=None) -> int:
     inherited = current_session()
     from woof.ensemble import recipe_door
     try:
+        from woof.ensemble.door import stochastic_switches
         request = (request_for_config(args.config,
                                      override=None if inherited is None else inherited.request.receipt(),
                                      members=getattr(args, "members", None),
                                      keep_member_files=getattr(args, "keep_member_files", None),
+                                     stochastic=stochastic_switches(args),
                                      **recipe_door.flag_overrides(args))
                    if Path(args.config).is_file() else None)
     except recipe_door.RecipeRefusal as refusal:
@@ -6387,6 +6478,9 @@ def _go_launch(args, *, observer=None) -> int:
                 else "does not exist")
         raise GoRefusal(f"{config} {what}. Next: woof domain --help")
     payload = tomllib.loads(config.read_text(encoding="utf-8"))
+    if getattr(args, "storm_merge", None) or getattr(args, "vortex_init", "off") != "off":
+        from woof.storm_merge_launch import prepare_launch
+        config, payload = prepare_launch(args, config, payload)
     SpeedHooks.readiness_fold(args, payload)
     cycle = _flag_cycle(args, payload)
     if getattr(args, "readiness", False) or getattr(args, "no_probe", False):
@@ -6560,6 +6654,12 @@ def _prepare_only_launch(args, *, config, payload, observer=None):
                                       enabled=stamp, create=False)
     options = {key: str(Path(getattr(args, key)).resolve()) for key in
                ("data_dir", "geog_root", "initial_inputs") if getattr(args, key, None) is not None}
+    if getattr(args, "storm_merge", None):
+        from woof.storm_merge import command_arguments as merge_arguments
+        options["storm_merge_arguments"] = merge_arguments(args)
+    from woof.tc.mapped_vortex import command_arguments as vortex_arguments
+    if getattr(args, "vortex_init", "off") != "off":
+        options["vortex_arguments"] = vortex_arguments(args)
     if getattr(args, "transport", None) is not None:
         options["transport"] = args.transport
     if getattr(args, "whole_cycle", False):
@@ -7123,6 +7223,10 @@ def _go_prepared_main(args, *, observer=None) -> int:
             # mapped route and refuses it on any other.
             prepare_stage_command = [*prepare_stage_command, "--initial-inputs",
                                      str(Path(args.initial_inputs).resolve())]
+        from woof.storm_merge import command_arguments as merge_arguments
+        prepare_stage_command += merge_arguments(args)
+        from woof.tc.mapped_vortex import command_arguments as vortex_arguments
+        prepare_stage_command += vortex_arguments(args)
         announce_policy_backend(prepare_stage_command)
 
         # Whether the fetch beside the chain had failed (or said it was
@@ -7464,7 +7568,10 @@ def _checkpoint_sets(text: str) -> int:
 
 def register_cli(subparsers) -> None:
     parser = subparsers.add_parser(
-        "go", help="prepare, run and render a forecast, fetching inputs when needed")
+        "go", help="prepare, run and render a forecast, fetching inputs when needed",
+        epilog="A stock WRF run directory containing namelist.input may "
+               "replace CONFIG. That route uses woof run's WRF-input "
+               "options, including --run-seconds and --rrtmg-variant.")
     _add_go_arguments(parser)
     # `woof ensemble` is `go` by another name.  It gets its own parser
     # built from the same arguments, not an argparse alias: an alias
@@ -7483,12 +7590,34 @@ def _add_go_arguments(parser) -> None:
     """Every argument of ``woof go``, spelled once for ``go`` and ``ensemble``."""
     from woof.output_formats import add_arguments
     add_arguments(parser)
+    from woof.ocean.settings import add_arguments as add_wave_arguments
+    add_wave_arguments(parser)
     import argparse
+    parser.add_argument("--rrtmg-variant", choices=("rte-rrtmgp", "rrtmg_legacy"), default=None)
+    parser.add_argument("--allow-shared-gpu", action="store_true",
+                        help="admit shared-card WRF-input execution through the existing memory gate")
+    parser.add_argument("--checkpoint-at", default=None, metavar="WRF_TIME[,WRF_TIME...]",
+                        help="keep selected scheduled WRF-input checkpoints (WRF valid times or end)")
     parser.add_argument("--nudging", choices=("off", "spectral", "grid"),
                         help="relax toward prepared source analyses; spectral keeps only the configured large-scale modes")
+    parser.add_argument("--wrfinput", type=Path, default=None, metavar="DIR",
+                        help="run a stock real.exe directory containing namelist.input, "
+                             "wrfinput_d0N and wrfbdy_d01 through the shared WRF forecast route")
     parser.add_argument("config", type=Path, nargs="?", metavar="CONFIG",
-                        help="an experiment TOML from woof domain; its source and "
+                        help="an experiment TOML or stock WRF directory; the source and "
                              "domain tree choose the preparation route")
+    parser.add_argument("--no-supervise", action="store_true",
+                        help="WRF input directories only: integrate in this process "
+                             "under an existing device reservation")
+    parser.add_argument("--benchmark", action="store_true",
+                        help="with --wrfinput: record forecast timing without products "
+                             "or postforecast verification")
+    parser.add_argument("--run-seconds", type=float, default=None,
+                        help="shorten a --wrfinput forecast inside its boundary coverage")
+    parser.add_argument("--native-shared-gpu", action="store_true",
+                        help="with --wrfinput: proceed on a shared GPU")
+    from woof.wrfinput_go import add_go_input_arguments
+    add_go_input_arguments(parser)
     parser.add_argument("--wind-farms", default=None, metavar="uswtdb|TABLE|off",
                         help="opt-in Fitch turbine drag and TKE from USWTDB or a WRF/JSON turbine table")
     parser.add_argument("--hydro", nargs="?", const="", default=None,
@@ -7545,8 +7674,9 @@ def _add_go_arguments(parser) -> None:
     add_publish_arguments(parser)
     parser.add_argument("--live-products-width", type=int, default=None,
                         help=argparse.SUPPRESS)
-    from woof.ensemble.door import add_arguments, add_recipe_arguments
+    from woof.ensemble.door import add_arguments, add_recipe_arguments, add_stochastic_arguments
     add_arguments(parser)
+    add_stochastic_arguments(parser)
     add_recipe_arguments(parser)
     parser.add_argument("--branch-from", type=Path, default=None, metavar="PARENTS",
                         help="branch members from saved checkpoints in a parent-list JSON")
@@ -7614,6 +7744,10 @@ def _add_go_arguments(parser) -> None:
                         help="spawn a storm-following nest at this point (at TIME, "
                              "an ISO time or seconds into the run; default the "
                              "first step); repeatable")
+    from woof.storm_merge import add_arguments
+    add_arguments(parser)
+    from woof.tc.mapped_vortex import add_arguments as add_vortex_arguments
+    add_vortex_arguments(parser)
     parser.add_argument("--initial-inputs", type=Path, default=None, metavar="JSON",
                         help="a separate packaged analysis for the initial state "
                              "(woof prep --initial-inputs); the fetched source "
@@ -7724,6 +7858,8 @@ def _add_go_arguments(parser) -> None:
                              "envelope; a model state too big to build at "
                              "all is still refused")
     parser.set_defaults(func=go_main)
+    from woof.wrf_go import add_arguments as add_wrf_arguments
+    add_wrf_arguments(parser)
 
 
 __all__ = [

@@ -200,7 +200,7 @@ def test_fabric_absent_noahmp_conus_names_every_provider_gap(tmp_path):
     text = json.dumps(decision["gaps"])
     assert "data licence pending" not in text and "no admitted coupled realization" not in text
     assert "rw_hydro_world" in text
-    assert {gap["owner"] for gap in decision["gaps"]} == {"lane-c-hydro-data", "hydro-world-fabric"}
+    assert {gap["owner"] for gap in decision["gaps"]} == {"hydro-data", "hydro-world-fabric"}
 
 
 def test_global_tile_root_is_acquired_not_a_gap(monkeypatch, tmp_path):
@@ -268,7 +268,7 @@ def test_bare_hydro_flag_without_fabric_refuses_with_gaps(tmp_path):
     with pytest.raises(door.HydroDoorRefusal, match="no hydrofabric covers") as error:
         door.resolve_launch({"enabled": True, "activation_reason": "cli_enabled"},
                             requested="", config_path=conus_copy(tmp_path, 4))
-    assert "lane-c-hydro-data" in str(error.value)
+    assert "hydro-data" in str(error.value)
 
 
 def test_unreadable_domain_is_a_named_gap(tmp_path):

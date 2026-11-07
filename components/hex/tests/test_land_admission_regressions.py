@@ -24,7 +24,7 @@ def test_native_effective_surface_humidity_is_not_a_water_reservoir():
 
 
 def test_ruc_soil_column_is_bounded_by_ruc_porosity_not_noah():
-    # hrrrv5 (RUC, 9 levels) histories, V8X6000 2026-10-29: smois 0.3398 on sand (Noah .339, RUC .395),
+    # hrrrv5 (RUC, 9 levels) histories, eight-card system 2026-10-29: smois 0.3398 on sand (Noah .339, RUC .395),
     # 0.4387 on sandy loam (RUC mixes soil fractions) and 0.451 on urban (Noah .45) were refused by the Noah bound.
     ctx = dict(isltyp=np.array([1, 3, 6, 14, 1], 'f4'), ivgtyp=np.array([10, 10, 13, 10, 17], 'f4'),
                xland=np.array([1, 1, 1, 1, 2], 'f4'), xice=np.zeros(5, 'f4'), isice=np.array(15),

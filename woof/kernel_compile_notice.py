@@ -54,6 +54,8 @@ returns ``None`` rather than raising when there is no card to ask.
 
 from __future__ import annotations
 
+from woof.backend import compilation_target as _compilation_target
+
 import contextlib
 import dataclasses
 import os
@@ -140,7 +142,7 @@ def current_compute_capability() -> str | None:
     try:
         import cupy
 
-        return str(cupy.cuda.Device().compute_capability)
+        return str(_compilation_target(xp=cupy))
     except Exception:  # noqa: BLE001 - telemetry never fails a run
         return None
 

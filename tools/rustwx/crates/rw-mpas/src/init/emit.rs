@@ -34,7 +34,7 @@ use std::path::Path;
 use rayon::prelude::*;
 use rw_store::error::RwStoreError;
 use rw_store::netcdf_classic::{
-    NcAttr, NcAttrValue, NcClassicWriter, NcData, NcDim, NcFormat, NcOwned, NcSlab, NcType,
+    NcAttr, NcAttrValue, NcClassicWriter, NcCopy, NcData, NcDim, NcFormat, NcOwned, NcSlab, NcType,
     NcVarDef,
 };
 
@@ -140,6 +140,11 @@ pub fn write_init(
     lineage: &crate::init::Lineage,
 ) -> MpasResult<EmitLedger> {
     let capsule = netcrust::File::open(capsule_path)?;
+    // The capsule's own classic layout and a plain handle on it: a carried variable is copied as
+    // the bytes the capsule stores (NcSlab::Copy), not decoded and re-encoded.  A capsule that is
+    // not classic NetCDF keeps the decode path.
+    let capsule_layout = netcdf_reader::NcFile::open(capsule_path).ok();
+    let capsule_bytes = std::fs::File::open(capsule_path)?;
 
     // Dimensions, in the capsule's own order, so dimids line up.
     let cap_dims = capsule.dimensions()?;
@@ -341,6 +346,10 @@ pub fn write_init(
         CarriedInt,
         CarriedFloat,
         CarriedDouble,
+        /// A carried variable whose stored bytes are copied whole: the capsule offset of the
+        /// slab, its type and its value count (the writer refuses a count or type that is not
+        /// the init's own).
+        CarriedBytes(u64, NcType, u64),
     }
     let mut jobs: Vec<(String, Option<u64>, Source)> = Vec::with_capacity(cap_vars.len());
     for v in &cap_vars {
@@ -396,9 +405,28 @@ pub fn write_init(
                      file to the capsule's cycle"
                 )));
             }
-            NcType::Int => Source::CarriedInt,
-            NcType::Float => Source::CarriedFloat,
-            NcType::Double if COORDINATE_ARRAYS.contains(&name.as_str()) => Source::CarriedDouble,
+            NcType::Int | NcType::Float
+            | NcType::Double if ty != NcType::Double || COORDINATE_ARRAYS.contains(&name.as_str()) =>
+            {
+                // The whole of a fixed variable, or the one record of a record variable; any other
+                // record count keeps the decode path and the slab-length refusal it meets.
+                let elems: u64 = v
+                    .dimensions()
+                    .iter()
+                    .skip(usize::from(is_record))
+                    .map(|d| d.len() as u64)
+                    .product();
+                match capsule_layout.as_ref().and_then(|file| file.classic_extent(&name)) {
+                    Some(extent) if extent.is_record == is_record && (!is_record || extent.numrecs == 1) => {
+                        Source::CarriedBytes(extent.offset, ty, elems)
+                    }
+                    _ => match ty {
+                        NcType::Int => Source::CarriedInt,
+                        NcType::Float => Source::CarriedFloat,
+                        _ => Source::CarriedDouble,
+                    },
+                }
+            }
             other => {
                 return Err(MpasError::Refusal(format!(
                     "carried variable {name} is {other:?}, which this emitter does not copy. \
@@ -416,33 +444,63 @@ pub fn write_init(
         let failure: std::sync::Mutex<Option<MpasError>> = std::sync::Mutex::new(None);
         let keys: Vec<(&str, Option<u64>)> =
             jobs.iter().map(|(name, record, _)| (name.as_str(), *record)).collect();
-        let written = writer.put_parallel(&keys, |i| {
-            let (name, _, source) = &jobs[i];
-            let carried = || -> Result<Vec<f64>, RwStoreError> {
-                match super::capsule::read_f64_par(&capsule, name) {
-                    Ok(values) => Ok(values),
-                    Err(e) => {
-                        failure.lock().unwrap().get_or_insert(MpasError::from(e));
-                        Err(RwStoreError::Format(format!("cannot read {name} from the capsule")))
-                    }
-                }
-            };
-            Ok(match source {
-                Source::Computed => match &computed[name] {
-                    Computed::Floats(f) => NcSlab::Borrowed(NcData::Floats(f)),
-                    Computed::Ints(v) => NcSlab::Borrowed(NcData::Ints(v)),
-                    Computed::Text(_) => unreachable!("text is carried as Source::Text"),
-                },
-                Source::Text(bytes) => NcSlab::Borrowed(NcData::Chars(bytes)),
-                Source::CarriedInt => NcSlab::Owned(NcOwned::Ints(
-                    carried()?.into_par_iter().map(|v| v.round() as i32).collect(),
-                )),
-                Source::CarriedFloat => NcSlab::Owned(NcOwned::Floats(
-                    carried()?.into_par_iter().map(|v| v as f32).collect(),
-                )),
-                Source::CarriedDouble => NcSlab::Owned(NcOwned::Doubles(carried()?)),
-            })
-        });
+        // A wave owns at most 512 MiB of estimated carried/encoded scratch,
+        // except a single larger field. That field still decodes/encodes on
+        // Rayon workers. Previously all large fields could allocate together.
+        // A copied slab holds no scratch: the kernel moves its bytes.
+        let mut batches = Vec::new();
+        let mut start = 0;
+        let mut bytes = 0usize;
+        for (i, variable) in cap_vars.iter().enumerate() {
+            let words = variable.dimensions().iter().map(|d| d.len().max(1)).product::<usize>();
+            let cost = if matches!(jobs[i].2, Source::CarriedBytes(..)) { 0 } else { words.saturating_mul(32) };
+            if i > start && bytes.saturating_add(cost) > (512 << 20) {
+                batches.push(start..i);
+                start = i;
+                bytes = 0;
+            }
+            bytes = bytes.saturating_add(cost);
+        }
+        if start < jobs.len() { batches.push(start..jobs.len()); }
+        let written = (|| -> Result<(), RwStoreError> {
+            for batch in batches {
+                let first = batch.start;
+                writer.put_parallel(&keys[batch], |offset| {
+                    let (name, _, source) = &jobs[first + offset];
+                    let carried = || -> Result<Vec<f64>, RwStoreError> {
+                        match super::capsule::read_f64_par(&capsule, name) {
+                            Ok(values) => Ok(values),
+                            Err(e) => {
+                                failure.lock().unwrap().get_or_insert(MpasError::from(e));
+                                Err(RwStoreError::Format(format!("cannot read {name} from the capsule")))
+                            }
+                        }
+                    };
+                    Ok(match source {
+                        Source::Computed => match &computed[name] {
+                            Computed::Floats(f) => NcSlab::Borrowed(NcData::Floats(f)),
+                            Computed::Ints(v) => NcSlab::Borrowed(NcData::Ints(v)),
+                            Computed::Text(_) => unreachable!("text is carried as Source::Text"),
+                        },
+                        Source::Text(bytes) => NcSlab::Borrowed(NcData::Chars(bytes)),
+                        Source::CarriedInt => NcSlab::Owned(NcOwned::Ints(
+                            carried()?.into_par_iter().map(|v| v.round() as i32).collect(),
+                        )),
+                        Source::CarriedFloat => NcSlab::Owned(NcOwned::Floats(
+                            carried()?.into_par_iter().map(|v| v as f32).collect(),
+                        )),
+                        Source::CarriedDouble => NcSlab::Owned(NcOwned::Doubles(carried()?)),
+                        Source::CarriedBytes(offset, ty, elems) => NcSlab::Copy(NcCopy {
+                            file: &capsule_bytes,
+                            offset: *offset,
+                            ty: *ty,
+                            elems: *elems,
+                        }),
+                    })
+                })?;
+            }
+            Ok(())
+        })();
         if let Some(e) = failure.into_inner().unwrap() {
             return Err(e);
         }
@@ -467,9 +525,8 @@ pub fn write_init(
         ledger.computed.push(name);
     }
     ledger.bytes = writer.file_len();
-    writer
-        .finish()
-        .map_err(|e| MpasError::Refusal(format!("cannot finish {}: {e}", out_path.display())))?;
+    writer.finish()
+    .map_err(|e| MpasError::Refusal(format!("cannot finish {}: {e}", out_path.display())))?;
     Ok(ledger)
 }
 

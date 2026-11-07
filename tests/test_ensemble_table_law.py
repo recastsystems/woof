@@ -728,7 +728,7 @@ GOLDEN = {
         "de7f6542d82cbec219d3ef0c5b5665fa86cfa33a24a84afb06117482389ce6d4",
         "2bcf3fa4c75907d5a43e7f321bbfca571bec01b58379b05c3180bef34d587bdf"),
     "hrrr-f00-f12-physical-fields-v1": (
-        # lane/hrrr-statics commit 6a69b356f, merged by b3462fb33:
+        # development branch commit 6a69b356f, merged by b3462fb33:
         # retain analyzed surface VEGFRA (GRIB2 2/0/4) in percent on the
         # mass grid, rather than replacing it with monthly climatology.
         "153e9ae308606d21e33ae7d3c2fbc7ae33a52447bae11d9731cb2455d9a412fa",

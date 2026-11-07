@@ -22,6 +22,7 @@ suites that run a step.
 from __future__ import annotations
 
 import pytest
+from woof.config import RunConfig
 
 from woof.core.radiation_carriers import (
     CARRIER_SOURCE_ANALYTIC_GEOMETRY,
@@ -59,14 +60,17 @@ def _check(contract, scheme, fields, *, model_time=0.0, radt=900.0, dt=20.0):
 # The matrix itself
 # --------------------------------------------------------------------
 
-def test_the_consumer_matrix_is_exactly_the_four_schemes():
+def test_the_consumer_matrix_covers_all_five_schemes():
     """Pin the matrix.  A row that moves without a thought is a new hole."""
 
     assert CONSUMER_CARRIERS == {
         0: (),
+        1: ("glw", "gsw"),
         2: ("glw", "swdown"),
         3: ("glw", "gsw"),
         4: ("glw", "swdown", "coszen"),
+        7: ("glw", "gsw"),
+        8: ("glw", "swdown", "coszen"),
     }
 
 
@@ -80,9 +84,9 @@ def test_a_new_lsm_scheme_refuses_rather_than_consuming_defaults():
     """
 
     with pytest.raises(CarrierContractError) as caught:
-        consumer_carriers(7)
+        consumer_carriers(5)
     message = str(caught.value)
-    assert "sf_surface_physics=7" in message
+    assert "sf_surface_physics=5" in message
     assert "consumer matrix" in message
     assert "CONSUMER_CARRIERS" in message
 
@@ -92,7 +96,7 @@ def test_the_check_refuses_an_unmatrixed_scheme_at_the_consumer_seam():
 
     contract = CarrierContract()
     with pytest.raises(CarrierContractError):
-        _check(contract, 7, _fields(glw=350.0))
+        _check(contract, 5, _fields(glw=350.0))
 
 
 def test_no_lsm_requires_no_carrier():
@@ -722,13 +726,18 @@ def _hand_built_compute_driver(monkeypatch, *, carriers):
     monkeypatch.setattr(
         physics, "_prepare_atmosphere", lambda state: atmosphere)
     state = SimpleNamespace(elapsed_seconds=0.0)
-    cfg = SimpleNamespace(
+    cfg = RunConfig(nx=2, ny=1, nz=1, dx=1000., dy=1000.,
+        ztop=10000., run_seconds=0.,
         dt=60.0, bldt=0.0, ra_physics=0, sf_sfclay_physics=91,
         sf_surface_physics=2, bl_pbl_physics=1, cu_physics=0,
         # The 2.9.1 radiation boundary-flux accumulator reads the variant
         # (radiation off: no fluxes either way).
-        ra_rrtmg_variant=RRTMG_VARIANT_LEGACY)
+        ra_rrtmg_variant=RRTMG_VARIANT_LEGACY,
+        sst_update=0, tmn_update=0)
     driver = object.__new__(physics.PhysicsDriver)
+    driver.farms = None
+    driver.ruc_params = None
+    driver.pxlsm_params = None
     driver.swint = None
     driver.state = state
     driver.fields = {
@@ -802,11 +811,11 @@ def test_a_leg_that_begins_off_the_radiation_cadence_runs_its_producer(
     physics, state, cfg, driver, reached = _hand_built_compute_driver(
         monkeypatch, carriers=CarrierContract())
     state.elapsed_seconds = 900.0
-    cfg.ra_lw_physics = 4
-    cfg.ra_sw_physics = 4
+    from dataclasses import replace
+    cfg = replace(cfg, ra_lw_physics=4, ra_sw_physics=4)
     driver.carriers.declare("glw", source=CARRIER_SOURCE_UNWRITTEN)
     driver.carriers.declare("swdown", source=CARRIER_SOURCE_UNWRITTEN)
-    driver._refresh_surface_diagnostics = lambda atmosphere: None
+    driver._refresh_surface_diagnostics = lambda atmosphere, **kwargs: None
 
     def _radiation(atmosphere, state, cfg):
         reached.append("radiation")
@@ -842,9 +851,9 @@ def test_the_same_leg_meets_the_refusal_when_nothing_asks_for_a_producer(
     physics, state, cfg, driver, reached = _hand_built_compute_driver(
         monkeypatch, carriers=CarrierContract())
     state.elapsed_seconds = 900.0
-    cfg.ra_lw_physics = 4
-    cfg.ra_sw_physics = 4
-    driver._refresh_surface_diagnostics = lambda atmosphere: None
+    from dataclasses import replace
+    cfg = replace(cfg, ra_lw_physics=4, ra_sw_physics=4)
+    driver._refresh_surface_diagnostics = lambda atmosphere, **kwargs: None
     driver._run_radiation = lambda *_: reached.append("radiation")
     monkeypatch.setattr(CarrierContract, "unsourced_consumed",
                         lambda self, sf_surface_physics: ())
@@ -941,12 +950,14 @@ def test_the_per_domain_submit_stamps_carrier_provenance_per_frame():
         def __init__(self):
             self.calls = []
             self.completed_observers = []
+            self.history_selections = []
 
         def submit(self, path, valid_time, state, *, extra_fields=None,
                    refl_field=None, global_attrs=None,
-                   completed_observer=None):
+                   completed_observer=None, history_selection=None):
             self.calls.append(global_attrs)
             self.completed_observers.append(completed_observer)
+            self.history_selections.append(history_selection)
 
     contract = CarrierContract()
     contract.declare("glw", source=CARRIER_SOURCE_RADIATION_SCHEME,
@@ -965,7 +976,9 @@ def test_the_per_domain_submit_stamps_carrier_provenance_per_frame():
     # published; empty is the state at first submit.
     writers._published_paths = set()
     node = SimpleNamespace(
-        cfg=SimpleNamespace(grid_id=1),
+        cfg=SimpleNamespace(grid_id=1, run=RunConfig(
+            nx=2, ny=1, nz=1, dx=1000., dy=1000., ztop=10000.,
+            dt=60., run_seconds=0.)),
         clock=SimpleNamespace(tick_den=1),
         state=SimpleNamespace(physics=SimpleNamespace(carriers=contract)))
 
@@ -975,17 +988,21 @@ def test_the_per_domain_submit_stamps_carrier_provenance_per_frame():
     assert attrs["GPUWM_CARRIER_GLW_SOURCE"] == \
         CARRIER_SOURCE_RADIATION_SCHEME
     assert fake.completed_observers == [None]
+    assert fake.history_selections == [None]
     assert writers._writers[1] is fake
 
     # A state without a driver stamps nothing: the ticket rides with the
     # writer's standing attribute set.
     bare = SimpleNamespace(
-        cfg=SimpleNamespace(grid_id=1),
+        cfg=SimpleNamespace(grid_id=1, run=RunConfig(
+            nx=2, ny=1, nz=1, dx=1000., dy=1000., ztop=10000.,
+            dt=60., run_seconds=0.)),
         clock=SimpleNamespace(tick_den=1),
         state=SimpleNamespace())
     writers.submit(bare, 1)
     assert fake.calls[-1] is None
     assert fake.completed_observers == [None, None]
+    assert fake.history_selections == [None, None]
     assert writers._writers[1] is fake
 
 

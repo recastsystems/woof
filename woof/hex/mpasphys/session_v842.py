@@ -61,6 +61,8 @@ class NativePhysicsSession:
             clock = now
         self.native, self.layout = native, layout
         self.config = config
+        self.start_time, self.dynamics_dt = start, dt
+        self.ocean_pwp = None
         prepare = getattr(config, 'native_layout_prepare', None)
         if prepare is not None:
             from importlib import import_module

@@ -787,6 +787,35 @@ fn three_code_scale() -> ColorScale {
     })
 }
 
+#[test]
+fn geographic_viewport_keeps_context_outside_sparse_weather() {
+    let (mut request, lat, lon, options) =
+        regional_lambert_request((-110.0, -85.0, 30.0, 45.0));
+    request.inverse_raster_projection = Some(InverseRasterProjection {
+        projection: ProjectionSpec::LambertConformal {
+            standard_parallel_1_deg: 33., standard_parallel_2_deg: 45.,
+            central_meridian_deg: -96.,
+        },
+        reference_latitude_deg: Some(39.), reference_longitude_deg: None,
+        clip_bounds: None,
+    });
+    request.scale = three_code_scale();
+    request.field.values.fill(f32::NAN);
+    for row in 0..5 {
+        for col in 0..5 { request.field.values[row * 26 + col] = 1.; }
+    }
+    let position = project_geographic_points_with_options(
+        &lat, &lon, &options, &[(40., -90.)]).unwrap()[0];
+    request.projected_points.push(ProjectedPointOverlay {
+        x: position.0, y: position.1, color: Color::rgba(255, 0, 255, 255),
+        radius_px: 5, width_px: 3, shape: ProjectedMarkerShape::Plus,
+    });
+    request.domain_frame = Some(DomainFrame::map_viewport_default());
+    let image = render_image(&request).unwrap();
+    let marker_pixels = image.pixels().filter(|p| p[0] > 200 && p[1] < 50 && p[2] > 200).count();
+    assert!(marker_pixels > 10, "geographic context was clipped to the finite weather swath");
+}
+
 fn category_legend() -> LegendControls {
     LegendControls {
         density: LevelDensity::default(),
@@ -893,4 +922,30 @@ fn a_dark_theme_turns_a_near_black_label_to_its_ink_and_a_light_theme_keeps_it()
     let inked = themed_label_ink(dark, label);
     assert!(inked.r.min(inked.g).min(inked.b) > 150, "{inked:?}");
     assert_eq!(themed_label_ink(PresentationTheme::default(), label), label);
+}
+
+#[test]
+fn render_scratch_survives_nested_rayon_render_and_unwind() {
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+    pool.install(|| {
+        let request = MapRenderRequest::for_weather_product(
+            sample_field("sbecape"), WeatherProduct::Sbecape);
+        let expected = RustRenderer.render_png(&request).unwrap();
+        let actual = with_render_state(&request, |data, ny, nx, opts| {
+            // A worker waiting for raster rows may execute another complete
+            // product before resuming this callback. Force that schedule.
+            let (nested, ()) = rayon::join(
+                || RustRenderer.render_png(&request).unwrap(), || ());
+            assert_eq!(nested, expected);
+            Ok(render_to_png(data, ny, nx, opts))
+        }).unwrap();
+        assert_eq!(actual, expected);
+        let panic = std::panic::catch_unwind(|| {
+            with_render_scratch(|_| panic!("interrupted render"));
+        });
+        assert!(panic.is_err());
+        with_render_scratch(|scratch| {
+            assert_eq!(scratch.fill_f64_constant(3, 7.0), vec![7.0; 3]);
+        });
+    });
 }

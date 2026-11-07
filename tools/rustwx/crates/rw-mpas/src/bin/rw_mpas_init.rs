@@ -59,7 +59,10 @@ fn usage() -> String {
          --first-guess-hydrometeors yes | no (optional, default no): yes reads the first\n\
         \x20                    guess's QC QR QI QS QG and QNC QNI QNR into qc qr qi qs qg nc ni nr\n\
         \x20                    (numbers it lacks are made from the mass); no is MPAS-A v8.4.2\n\
-        \x20                    case 7, which starts every hydrometeor at zero\n\n\
+        \x20                    case 7, which starts every hydrometeor at zero\n\
+         --masked-skintemp yes | no (optional, default no): yes interpolates SKINTEMP to water\n\
+        \x20                    cells from water source points and to land cells from land points\n\
+        \x20                    (the WPS METGRID.TBL rule); no is MPAS-A v8.4.2 case 7 (unmasked)\n\n\
          Physics completion of an existing init (each mode stands alone):\n\
         \x20 --augment-init INIT.nc --scalar-names a,b [--aerosol-fields DIR]\n\
         \x20                    [--land-surface noah|noahmp|ruc]\n\
@@ -241,6 +244,12 @@ fn run() -> Result<String, String> {
         first_guess_hydrometeors: match args.get_optional("first-guess-hydrometeors") {
             None => false,
             Some(value) => yes_no("first-guess-hydrometeors", &value)?,
+        },
+        // Optional, and native (no) when absent: every native-identity caller keeps MPAS-A v8.4.2 case 7's
+        // unmasked SKINTEMP.  The hex init door passes yes unless asked for the native rule.
+        masked_skintemp: match args.get_optional("masked-skintemp") {
+            None => false,
+            Some(value) => yes_no("masked-skintemp", &value)?,
         },
         lineage: Lineage {
             // Optional, and defaulted to this engine's own identity, so a

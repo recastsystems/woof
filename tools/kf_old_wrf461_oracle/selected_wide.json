@@ -1,0 +1,29 @@
+{
+ "seed_note": "gen_cases.wide_candidate(seed, index)",
+ "candidates_scanned": 30000,
+ "rejected_ill_posed": [
+  90,
+  8416,
+  10285,
+  12095,
+  15649
+ ],
+ "candidates": [
+  8,
+  18,
+  138,
+  180,
+  193,
+  228,
+  257,
+  326,
+  331,
+  479,
+  503,
+  990,
+  5915,
+  8196,
+  13989,
+  15874
+ ]
+}

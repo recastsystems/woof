@@ -52,6 +52,16 @@
       "grid_bytes": 3586135972,
       "cells": 2621442,
       "nominal_dx_m": 15000.0
+    },
+    "x1.5898242": {
+      "url": "https://www2.mmm.ucar.edu/projects/mpas/atmosphere_meshes/x1.5898242.tar.gz",
+      "archive_sha256": "b0e8ce6ac831e7b2aed385c887f5e4090e7db58a2985154266600baa7bf0a3ba",
+      "archive_bytes": 3915686766,
+      "grid_member": "x1.5898242.grid.nc",
+      "grid_sha256": "51d43f68cee8a2789886d13efee3a56a35faec6561182ab5c0121183e80bd650",
+      "grid_bytes": 6086989636,
+      "cells": 5898242,
+      "nominal_dx_m": 10000.0
     }
   },
   "physics": {
@@ -104,6 +114,8 @@
      "about": "30 km globe on the gpuwm-global suite (Morrison)"},
     {"id": "global-15km-morrison", "mesh": "x1.2621442", "physics": "morrison", "hours": 24, "history_every_minutes": 180,
      "about": "15 km globe on the gpuwm-global suite (Morrison)"},
+    {"id": "global-10km", "mesh": "x1.5898242", "physics": "mpas", "hours": 24, "history_every_minutes": 180, "about": "10 km quasi-uniform globe"},
+    {"id": "global-10km-morrison", "mesh": "x1.5898242", "physics": "morrison", "hours": 24, "history_every_minutes": 180, "about": "10 km quasi-uniform globe on the gpuwm-global suite (Morrison)"},
     {"id": "global-120km-high-top", "mesh": "x1.40962", "physics": "arwen", "hours": 720, "history_every_minutes": 1440,
      "vertical_spec": "countries/s2s80-v1.json", "s2s": true,
      "about": "80 layers to 50 km (approximately 1 hPa), 750 m stratospheric spacing above 20 km, sponge above 40 km, RRTMG with monthly climatological ozone; one-member 30-day warming/reversal and measured card fit: docs/s2s/receipts/high-top-20180205.json; independent observed skill and multi-member fit are unqualified"}

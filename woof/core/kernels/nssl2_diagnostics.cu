@@ -25,6 +25,13 @@ namespace {
 // box's libm on 3e5 arguments (probes/log10_check.py).  x > 0 only.
 __device__ __forceinline__ float nssl2_log10f(float x)
 {
+#ifdef NSSL2_ROUNDED_LOG10
+    // Evaluate the mathematical logarithm in binary64 before the single
+    // binary32 rounding used by the newer native log10f. CUDA's binary32
+    // log10f has different words. This uses the device math primitive;
+    // no host-library source or tables are incorporated.
+    return __double2float_rn(log10((double)x));
+#else
     const float log10_2hi = __int_as_float(0x3e9a2080);
     const float log10_2lo = __int_as_float(0x355427db);
     const float log10_e = __int_as_float(0x3ede5bd9);
@@ -42,6 +49,7 @@ __device__ __forceinline__ float nssl2_log10f(float x)
     const float m = __int_as_float(hx);
     const float z = __fadd_rn(__fmul_rn(y, log10_2lo), __fmul_rn(log10_e, gfk_log(m)));
     return __fadd_rn(z, __fmul_rn(y, log10_2hi));
+#endif
 }
 
 __device__ __forceinline__ float nssl2_max(float a, float b) { return (b > a) ? b : a; }

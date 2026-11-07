@@ -8,6 +8,7 @@ inline uint4 make_uint4(unsigned int x, unsigned int y, unsigned int z, unsigned
     return {x, y, z, w};
 }
 struct { unsigned int x; } blockDim, blockIdx, threadIdx;
+inline unsigned int atomicAdd(unsigned int *a, unsigned int v) { unsigned int o=*a; *a+=v; return o; }
 #include "../../../woof/hex/stochastic.cu"
 
 extern "C" void test_ar1(float *coefficients, const float *weights, int count,

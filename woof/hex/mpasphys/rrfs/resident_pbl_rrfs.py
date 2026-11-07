@@ -31,7 +31,7 @@ from .glue_plan import CopyPlan
 # Module-level, not only inside ResidentMynnEdmfSlot: the AOT kernel inventory (cuda_backend/aot_build.inventory) evaluates
 # each raw_kernel declaration in this module namespace.  THE BREAKAGE THIS PREVENTS: with the names imported only inside
 # the method, the inventory raised "unresolved kernel declaration: name CUDA_NATIVE_POWF is not defined" and no kernel
-# pack (make-pack, the wheel kernel set) could be built for any tree carrying this module (V5090, 2026-10-28).
+# pack (make-pack, the wheel kernel set) could be built for any tree carrying this module (reference system, 2026-10-28).
 from . import driver_rrfs as driver
 from ...native_powf import CUDA_NATIVE_POWF
 

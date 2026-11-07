@@ -52,7 +52,7 @@
         "woof/core/kernels/rrtmg_sw.cu": "43134d6d6d2be4b3e668c7ab92d5850f1f992a09812dd09c9536fce5d9ab791e",
         "woof/ingest/wrf_ozone.py": "8594158cb44e65a2bbd25fa861c3ede4ff379f45251a4e45cb03ac2d9ebcd69c"
       },
-      "description": "gpuwm 2.9.2 with the memory cuts (lane/292-mem-cuts): rrtmg_sw_batched_device frees its SW scratch when each call returns. The other five helper sources are the 2.9.0 bytes. Admission establishes source identity only; the before/after forecast comparison is a separate measurement."
+      "description": "gpuwm 2.9.2 with the memory cuts (development branch): rrtmg_sw_batched_device frees its SW scratch when each call returns. The other five helper sources are the 2.9.0 bytes. Admission establishes source identity only; the before/after forecast comparison is a separate measurement."
     },
     {
       "id": "jax-hex-shape-a7c38f9c-source",
@@ -140,17 +140,43 @@
       }
     },
     {
-      "id": "recast-woof-1.1.5",
-      "engine_commit": "34951539d986683d7a23108553fad619903d8131",
+      "id": "engine-2.9.12-558d110548f8-source",
+      "engine_commit": "558d110548f8171c43286159264c8aa9518a7f57",
+      "description": "Exact gpuwm 2.9.12 candidate radiation helpers, measured by the engine repin at 558d11054. Admission establishes source identity only; it does not claim unchanged forecast numerics.",
       "sources": {
         "woof/core/kernels/rrtmg_sw.cu": "43134d6d6d2be4b3e668c7ab92d5850f1f992a09812dd09c9536fce5d9ab791e",
-        "woof/core/rrtmg_legacy_prep.py": "d69c57793df87eb7fa384cafeedee9a298fc86102a9658e0a0d7c005590100a6",
+        "woof/core/rrtmg_legacy_prep.py": "b28fd410a67547b9e0e4113a3150cb6df22dc2937d5c40fbb05ea8dedc0ad86c",
+        "woof/core/rrtmg_lw.py": "ab2a44d4735a760789e1624b3a0d1182a0041423be5efd78864439ca0e2d1c21",
+        "woof/core/rrtmg_mcica.py": "82b183eca3f89e2b32b4053900347a5e36b664c1a4f4e3694a1c5c10e9ca0833",
+        "woof/core/rrtmg_sw.py": "b80bfbb7708d5bc560bd1d74329833f21e127d7ebbec63d588718eababdba92f",
+        "woof/ingest/wrf_ozone.py": "420d91b5603acc6eb96ec72e22b0a328fc4c0934460cee7b4f1e1b1792932350"
+      }
+    },
+    {
+      "id": "engine-2.9.12-source",
+      "engine_commit": "45cf4898d1e042ac83b9486c66e919ca6d2f952b",
+      "description": "Exact gpuwm 2.9.12 candidate radiation helpers, measured by the engine repin at 45cf4898d. Admission establishes source identity only; it does not claim unchanged forecast numerics.",
+      "sources": {
+        "woof/core/kernels/rrtmg_sw.cu": "43134d6d6d2be4b3e668c7ab92d5850f1f992a09812dd09c9536fce5d9ab791e",
+        "woof/core/rrtmg_legacy_prep.py": "2ab3c53361dcde4947a2a4bd1f181b0f26a6b6174a5223e23272971c3c135c92",
+        "woof/core/rrtmg_lw.py": "ab2a44d4735a760789e1624b3a0d1182a0041423be5efd78864439ca0e2d1c21",
+        "woof/core/rrtmg_mcica.py": "268e230c930a5b98ee88263e648eab71209a3b0cf1e0f105ada2b98cfa84c46f",
+        "woof/core/rrtmg_sw.py": "b80bfbb7708d5bc560bd1d74329833f21e127d7ebbec63d588718eababdba92f",
+        "woof/ingest/wrf_ozone.py": "420d91b5603acc6eb96ec72e22b0a328fc4c0934460cee7b4f1e1b1792932350"
+      }
+    },
+    {
+      "id": "recast-woof-1.1.6",
+      "engine_commit": "dc3753350b907007cefa558b69095efde070d3c7",
+      "sources": {
+        "woof/core/kernels/rrtmg_sw.cu": "43134d6d6d2be4b3e668c7ab92d5850f1f992a09812dd09c9536fce5d9ab791e",
+        "woof/core/rrtmg_legacy_prep.py": "708df127ad31fb63f34b0f3b3fa9380a1ce7df16531b72fc8af4780c450ac19c",
         "woof/core/rrtmg_lw.py": "c34d527bbc0ba0b0443bea18342e2b374768e8e9b15ac7ad540fcc143011e14b",
-        "woof/core/rrtmg_mcica.py": "e1cdee16f2929ec3722882b953314316ba16160bd71a1974ee097ba06a861800",
+        "woof/core/rrtmg_mcica.py": "d4b74af4a8b05e2807a806c78ef1c3270c43aa58c1afd0e7b2247f232b2bd54e",
         "woof/core/rrtmg_sw.py": "bb28d6433b24b74bd1bb49f690ebbf87373314c19bb938dcaa98cc9f40b8c048",
         "woof/ingest/wrf_ozone.py": "6eebfaa389801460885a66844cd020ad8847c69a9af42d4c1b07f3e294fc8b2c"
       },
-      "description": "Recast WOOF 1.1.5: the radiation helpers of the engine this distribution was assembled from (34951539d986) as it ships them (moved to woof/ and their comments and messages reworded by the assembly; no code token differs); byte-equal in source to the hex row engine-2.9.11-source. Admission establishes source identity only."
+      "description": "Recast WOOF 1.1.6: the radiation helpers of the engine this distribution was assembled from (dc3753350b90) as it ships them (moved to woof/ and their comments and messages reworded by the assembly; no code token differs); byte-equal in source to the hex row engine-2.9.12-source. Admission establishes source identity only."
     }
   ]
 }

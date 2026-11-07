@@ -325,6 +325,9 @@ def test_the_species_rows_are_pinned_per_scheme():
     assert mcb._SPECIES_BY_SCHEME == {
         "wsm6": ("qv", "qc", "qr", "qi", "qs", "qg"),
         "p3": ("qv", "qc", "qr", "qi", "ni", "nr", "qir", "qib"),
+        # mp=51 (P3 with predicted droplet number): the mp=50 call shape
+        # plus QNCLOUD (package p3_1category_nc, Registry.EM_COMMON:3039).
+        "p3_nc": ("qv", "qc", "qr", "qi", "nc", "ni", "nr", "qir", "qib"),
         "thompson_aero": ("qv", "qc", "qr", "qi", "qs", "qg",
                           "ni", "nr", "nc", "nwfa", "nifa"),
         # TEMPO (NCAR/TEMPO 9adf9ef): Thompson-aero's set plus graupel
@@ -334,7 +337,7 @@ def test_the_species_rows_are_pinned_per_scheme():
     }
     assert mcb._SPECIES == mcb._SPECIES_BY_SCHEME["wsm6"]
     assert mcb._MP_PHYSICS_BY_SCHEME == {
-        "wsm6": 6, "p3": 50, "thompson_aero": 28, "tempo": 900}
+        "wsm6": 6, "p3": 50, "p3_nc": 51, "thompson_aero": 28, "tempo": 900}
     assert set(mcb._MP_PHYSICS_BY_SCHEME) == set(mcb._SPECIES_BY_SCHEME)
 
 
@@ -373,6 +376,9 @@ def test_the_restart_state_rows_are_pinned_per_scheme():
     assert mcb._STATE_RESTART_FIELDS_BY_SCHEME == {
         "wsm6": ("effc", "effi", "effs", "h_diabatic"),
         "p3": ("effc", "effi", "h_diabatic", "th_old", "qv_old"),
+        # mp=51 shares P3's radii and supersaturation carriers; its droplet
+        # number rides the transported species row, not this one.
+        "p3_nc": ("effc", "effi", "h_diabatic", "th_old", "qv_old"),
         "thompson_aero": ("effc", "effi", "effs", "h_diabatic",
                           "nwfa2d", "nifa2d"),
         "tempo": ("effc", "effi", "effs", "h_diabatic", "nwfa2d", "nifa2d"),

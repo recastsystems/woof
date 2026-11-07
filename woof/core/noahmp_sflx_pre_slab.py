@@ -16,11 +16,12 @@ essentially the whole cost of the scheme.
 arrays and returns whole-slab CuPy arrays.  Nothing in it is per-column: there
 is no loop over ``n`` anywhere in this file.
 
-**Zero new arithmetic.**  The four kernels are the ones that are already
+The default four kernels are the ones that are already
 oracle-matched -- ``noahmp_leaf_atm`` (``noahmp_leaves.cu``), ``k_sflx_marshal``
 (``noahmp_sflx.cu``), ``noahmp_phenology`` and ``noahmp_precip_heat``
 (``noahmp_vegprecip.cu``) -- launched unchanged, in the same order, with the
-same slot tables.  The slot tables are read off
+same slot tables. Selected DVEG2/5/6 retain the native evolving LAI/SAI; DVEG7/8/9
+use the complete native input-LAI phenology branch in a separate CUDA image. The slot tables are read off
 :mod:`woof.core.noahmp_sflx_pre_gpu` at call time rather than copied here, so
 the two packers cannot drift apart and a table that is transposed in one is
 transposed in both.  The only expression this module evaluates is the ``FVEG``
@@ -60,7 +61,8 @@ carries to CuPy arrays, layer axis **last**:
 * the per-column values the batch reads off the ``SflxParameters`` handle:
   ``nroot iswater isbarren isice urban_flag hvt hvb tmin laim saim ch2op``.
 
-``lai``, ``sai`` and ``pgs`` may be present and are ignored, exactly as they are
+``lai`` is required for DVEG7/8/9. Under table DVEG1/3/4 it and
+``sai`` and ``pgs`` are ignored, exactly as they are
 by the existing batch: under ``DVEG = 4`` PHENOLOGY overwrites LAI and SAI from
 the monthly tables before reading them, and ``pgs`` is crop state that
 ``opt_crop = 0`` kills.
@@ -107,7 +109,7 @@ _NFULL = NSNOW_DEFAULT + NSOIL_DEFAULT
 _ZERO = np.float32(0.0)
 
 #: The irrigation amounts whose being zero is what makes 878-936 dead code.
-_IRRIGATION = ("irrfra", "iramtsi", "iramtmi", "iramtfi")
+_IRRIGATION = ("iramtsi", "iramtmi", "iramtfi")
 
 #: ``(n,)`` float32 inputs that are not already named by a slot table.
 _SCALAR_FIELDS = (
@@ -179,7 +181,7 @@ def _launch(kernel, n, args) -> None:
         kernel((_batch._blocks(n),), (_batch._THREADS,), args)
 
 
-def evaluate_sflx_pre_slab(fields: dict, n: int) -> dict:
+def evaluate_sflx_pre_slab(fields: dict, n: int, *, opt_snf=1, dveg=4, opt_crop=0, opt_irr=0, opt_irrm=0, calculate_soil=True) -> dict:
     """Answer ``sflx_pre`` for ``n`` land columns from whole-slab arrays.
 
     See the module docstring for the input and output contracts.  Returns a
@@ -207,16 +209,33 @@ def evaluate_sflx_pre_slab(fields: dict, n: int) -> dict:
         x[name] = _column(cp, fields, name, n, cp.float32)
 
     # ---- the guards sflx_pre itself applies, over the whole slab ----------
-    # They are what makes the dead irrigation and crop regions dead.  One
+    # Inactive crop identities and outstanding irrigation amounts remain
+    # invalid; nonzero IRRFRA geography is accepted with irrigation off. One
     # device-to-host transfer answers all five, so the slab pays one
     # synchronisation for the batch rather than one per column.
-    probes = [("croptype", x["croptype"] != 0)]
-    for name in _IRRIGATION:
+    probes = [] if opt_crop else [("croptype", x["croptype"] != 0)]
+    for name in (() if opt_irr else _IRRIGATION):
         value = fields.get(name)
         if value is not None:
             probes.append((name, _column(cp, fields, name, n, cp.float32)
                            != _ZERO))
-    tripped = cp.asnumpy(cp.stack([flag.any() for _name, flag in probes]))
+    from woof.core import health_ledger
+    ledger = health_ledger.active()
+    if ledger is not None:
+        names = tuple(name for name, _flag in probes)
+        def refuse(flags):
+            bad = ", ".join(name for i, name in enumerate(names) if flags & (1 << i))
+            raise ValueError(
+                f"{bad} must be zero under opt_crop=0/opt_irr=0; "
+                "the inactive crop/irrigation branches cannot consume them"
+                + health_ledger.deferred_note())
+        flags = cp.zeros(1, dtype=cp.uint32)
+        for i, (_name, flag) in enumerate(probes):
+            flags |= flag.any().astype(cp.uint32) << i
+        ledger.record("noahmp.pre.inactive_branches", flags, refuse)
+        tripped = (False,) * len(probes)
+    else:
+        tripped = cp.asnumpy(cp.stack([flag.any() for _name, flag in probes])) if probes else ()
     for (name, _flag), bad in zip(probes, tripped):
         if not bad:
             continue
@@ -234,8 +253,16 @@ def evaluate_sflx_pre_slab(fields: dict, n: int) -> dict:
         _slots_atm_x.append((slot, x[name]))
     atm_y = cp.zeros((n, len(_batch._ATM_OUT)), dtype=cp.float32)
     copy_slab_slots(atm_x, _slots_atm_x)
-    _launch(get_kernel("noahmp_leaves", "noahmp_leaf_atm"), n,
-            (atm_x, cp.zeros((n, 1), dtype=cp.int32), atm_y, np.int32(n)))
+    atm_args = (atm_x, cp.zeros((n, 1), dtype=cp.int32), atm_y, np.int32(n))
+    if opt_snf == 1:
+        kernel = get_kernel("noahmp_leaves", "noahmp_leaf_atm")
+    else:
+        if type(opt_snf) is not int or opt_snf not in (2, 3, 4, 5):
+            raise ValueError("Noah-MP opt_snf must be scalar int in 1..5")
+        kernel = _snow_partition_module(cp.cuda.runtime.getDevice()).get_function(
+            "noahmp_leaf_atm_selected")
+        atm_args += (np.int32(opt_snf),)
+    _launch(kernel, n, atm_args)
     # Contiguous, not the strided column view; see the module docstring.
     atm = split_slab_slots(atm_y, {name: (slot, 1)
                                   for slot, name in enumerate(_batch._ATM_OUT)})
@@ -251,19 +278,31 @@ def evaluate_sflx_pre_slab(fields: dict, n: int) -> dict:
              dzsnso, troot, beg_wb, np.int32(n)))
 
     # ---- PHENOLOGY, 853-854 -----------------------------------------------
-    # DVEG is not a kernel argument: noahmp_phenology transcribes the
-    # DVEG in {1,3,4} arm only, which is the arm this identity takes.
-    if int(DVEG) not in (1, 3, 4):                # pragma: no cover - pinned
-        raise ValueError(f"the phenology kernel is not written for dveg={DVEG}")
+    if type(dveg) is not int or dveg not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
+        raise ValueError("selected phenology requires scalar dveg=1,2,3,4,5,6,7,8,9")
     urban = cp.ascontiguousarray((x["urban_flag"] != 0).astype(cp.int32))
     phen = {name: cp.zeros(n, dtype=cp.float32) for name in _batch._PHEN_OUT}
-    _launch(get_kernel("noahmp_vegprecip", "noahmp_phenology"), n,
-            (np.int32(n), x["vegtyp"], x["yearlen"], x["iswater"],
+    phen_args = (np.int32(n), x["vegtyp"], x["yearlen"], x["iswater"],
              x["isbarren"], x["isice"], urban,
              x["snowh"], x["tv"], x["lat"], x["julian"],
              x["hvt"], x["hvb"], x["tmin"],
              x["laim"].ravel(), x["saim"].ravel(),
-             *(phen[name] for name in _batch._PHEN_OUT)))
+             *(phen[name] for name in _batch._PHEN_OUT))
+    if dveg in (2, 5, 6, 7, 8, 9):
+        from woof.core.noahmp_kernel_sources import selected_kernel
+        kernel = selected_kernel("noahmp_vegprecip", "noahmp_phenology_input_lai")
+        phen_args = (phen_args[0], _column(cp, fields, "lai", n, cp.float32),
+                     _column(cp, fields, "sai", n, cp.float32) if dveg in (2,5,6) else phen["sai"],
+                     np.int32(dveg in (2,5,6)), *phen_args[1:])
+    else:
+        kernel = get_kernel("noahmp_vegprecip", "noahmp_phenology")
+    _launch(kernel, n, phen_args)
+    if opt_crop:
+        from woof.core.noahmp_kernel_sources import selected_kernel
+        args=(np.int32(n),_column(cp,fields,"lai",n,cp.float32),_column(cp,fields,"sai",n,cp.float32),np.int32(1),x["croptype"],_column(cp,fields,"pgs",n,cp.int32),*phen_args[1:])
+        # phen_args is the default ABI here, or the input-LAI extension.
+        if dveg in (2,5,6,7,8,9):args=args[:6]+phen_args[4:]
+        _launch(selected_kernel("noahmp_vegprecip","noahmp_phenology_crop"),n,args)
     elai, esai = phen["elai"], phen["esai"]
 
     # ---- FVEG, 857-875 ----------------------------------------------------
@@ -272,12 +311,33 @@ def evaluate_sflx_pre_slab(fields: dict, n: int) -> dict:
     # and the source order is what a reader will check this against.  No loop:
     # each line is one comparison over the column axis.
     floor = _batch._FVEG_FLOOR
-    fveg = x["shdmax"]                                              # :863
+    if dveg in (1, 6, 7):
+        if "shdfac" not in fields:
+            raise ValueError("dveg=1/7 requires actual SHDFAC, not SHDMAX")
+        shdfac = cp.asarray(fields["shdfac"], dtype=cp.float32)
+        if shdfac.shape != (n,): raise ValueError("SHDFAC must match the slab")
+        fveg = shdfac
+    elif dveg in (2, 3, 8):
+        from woof.core.noahmp_slab_libm import slab_expf
+        fveg = np.float32(1.) - slab_expf(np.float32(-.52) * (phen["lai"] + phen["sai"]))
+    elif dveg in (4, 5, 9):
+        fveg = x["shdmax"]
+    else:
+        raise ValueError("selected phenology requires dveg=1,2,3,4,5,6,7,8,9")
+    if opt_crop:fveg=cp.where(x["croptype"]>0,x["shdmax"],fveg)
     fveg = cp.where(fveg <= floor, floor, fveg)                     # :864
     fveg = cp.where((urban != 0) | (x["vegtyp"] == x["isbarren"]),
                     _ZERO, fveg)                                    # :874
     fveg = cp.where((elai + esai) == _ZERO, _ZERO, fveg)            # :875
     fveg = cp.ascontiguousarray(fveg, dtype=cp.float32)
+
+    irrigation = {}
+    if opt_irr:
+        from woof.core.noahmp_irrigation_slab import evaluate_prefix
+        irrigation=evaluate_prefix({**fields,"fveg":fveg,"lai":phen["lai"],
+            "eair":atm["eair"],"rain":atm["rain"]},n,opt_irr=opt_irr,
+            opt_irrm=opt_irrm,calculate_soil=calculate_soil)
+        atm["rain"]=irrigation["rain"]
 
     # ---- PRECIP_HEAT, 940-946 ---------------------------------------------
     prcp = {name: cp.zeros(n, dtype=cp.float32) for name in _batch._PRCP_OUT}
@@ -353,10 +413,12 @@ def evaluate_sflx_pre_slab(fields: dict, n: int) -> dict:
         "swdown": atm["swdown"], "prcp": atm["prcp"], "fb": phen["fb"],
     }
     out.update({f"call.{name}": value for name, value in call.items()})
+    out.update(irrigation)
 
     # A field added to either record must fail here, not vanish from the slab.
     want = {f.name for f in dc_fields(PreEnergy) if f.name != "call"}
     want |= {f"call.{f.name}" for f in dc_fields(EnergyCall)}
+    want.update(irrigation)
     if set(out) != want:
         raise AssertionError(
             "the sflx_pre slab and the PreEnergy/EnergyCall records disagree: "
@@ -365,3 +427,11 @@ def evaluate_sflx_pre_slab(fields: dict, n: int) -> dict:
 
 
 __all__ = ["evaluate_sflx_pre_slab"]
+
+
+from functools import lru_cache as _lru_cache
+@_lru_cache(maxsize=None)
+def _snow_partition_module(device):
+    from woof.core.noahmp_kernel_sources import compile_runtime_unit
+    return compile_runtime_unit("noahmp_leaves", selected_options=True,
+        module_key="woof.core.noahmp_sflx_pre_slab:snow-partition")

@@ -28,6 +28,22 @@ class _Lock:
         return False
 
 
+def _admission(monkeypatch, calls):
+    """Record the plan-review product admission instead of probing a renderer.
+
+    ``run_wrf_forecast`` admits ``--products`` against the renderer's
+    catalog first (woof.go_cli.admit_render_products; its own tests hold
+    the catalog check).  These tests replace ``subprocess.run`` and
+    ``Popen`` with recorders, so the real catalog probe would read a fake
+    process.  The door only has to ask, with the spec it was given.
+    """
+
+    from woof import go_cli
+
+    monkeypatch.setattr(go_cli, 'admit_render_products',
+                        lambda spec, **kwargs: calls.setdefault('admitted', []).append(spec))
+
+
 def _supervised(monkeypatch, calls):
     """Recorders for everything the supervised parent branch touches."""
 
@@ -36,6 +52,7 @@ def _supervised(monkeypatch, calls):
     from woof import go_cli, supervisor, wrfinput_door
 
     monkeypatch.setattr(go_cli, 'render_extra_missing', lambda: None)
+    _admission(monkeypatch, calls)
     monkeypatch.setattr(wrfinput_door, 'resolve_wrfinput_run', lambda *args, **kwargs: SimpleNamespace(experiment=None))
     monkeypatch.setattr(supervisor, 'select_gpu',
                         lambda uuid=None: calls.setdefault('gpu', []).append(uuid)
@@ -66,6 +83,7 @@ def test_the_supervised_wrfinput_worker_carries_the_product_flags(tmp_path, monk
     outdir = tmp_path / 'out'
     assert run_wrf_forecast(tmp_path / 'wrf', outdir, render_products='refl',
                             render_dir=outdir / 'pics') == 0
+    assert calls['admitted'] == ['refl']
     argv = calls['argv']
     assert _pair(argv, '--products') == ['--products', 'refl']
     assert _pair(argv, '--render-dir') == ['--render-dir', str((outdir / 'pics').resolve())]
@@ -120,11 +138,13 @@ def _worker_door(monkeypatch, tmp_path, *, frames=True):
 
     recorded = {'kwargs': None}
     monkeypatch.setattr(go_cli, 'render_extra_missing', lambda: None)
+    _admission(monkeypatch, recorded)
     monkeypatch.setattr(subprocess, 'Popen', _FakePopen)
     _FakePopen.calls = []
     monkeypatch.setattr(
         wrfinput_door, 'resolve_wrfinput_run',
         lambda directory, **kwargs: SimpleNamespace(
+            experiment=None,
             substitution_report=SimpleNamespace(substitutions=())))
     import datetime
 

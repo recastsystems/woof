@@ -933,15 +933,27 @@ def render_namelist_input(exp, *, stock: bool = False,
            f" history_interval_change             = {_column(int(r.history_interval_change_s / 60) for r in runs)}"]
           if any(r.history_interval2_s for r in runs) else []),
         f" frames_per_outfile                  = {_repeated(1, count)}",
-        *([f" output_diagnostics                  = {root.run.output_diagnostics},",
-           f" diag_int                            = {root.run.diag_int},",
-           f" wind_int                            = {root.run.wind_int},"]
+        *([f" output_diagnostics                  = {root.run.output_diagnostics},"]
           if root.run.output_diagnostics or root.run.diag_int != 15 or root.run.wind_int != 5 else []),
+        *([f" diag_int                            = {root.run.diag_int},",
+           f" wind_int                            = {root.run.wind_int},"]
+          if not root.run.auxhist3_interval and (root.run.output_diagnostics or root.run.diag_int != 15 or root.run.wind_int != 5) else []),
+        *([f" auxhist3_interval                   = {_column(r.auxhist3_interval for r in runs)}"]
+          if any(r.auxhist3_interval for r in runs) else []),
+        # WRF's diag_print (&time_control); the importer reads it, so the
+        # emitted pair must carry it or the round trip refuses the set.
+        *([f" diag_print                          = {root.run.diag_print},"]
+          if root.run.diag_print else []),
         *([f" gsd_diagnostics                     = {root.run.gsd_diagnostics},",
            f" reset_interval1                     = {_column(r.reset_interval1 for r in runs)}"]
           if root.run.gsd_diagnostics else []),
         *([" cycling                             = .true.,"]
           if cycling else []),
+        *([f" mean_diag                           = {root.run.mean_diag},",
+           f" mean_freq                           = {root.run.mean_freq},",
+           f" mean_interval                       = {_column(r.mean_interval for r in runs)}"]
+          if root.run.mean_diag else []),
+        *([f" diurnal_diag                        = {root.run.diurnal_diag},"] if root.run.diurnal_diag else []),
         " restart                             = .false.,",
         " io_form_history                     = 2,",
         " io_form_restart                     = 2,",
@@ -1094,6 +1106,10 @@ def render_namelist_input(exp, *, stock: bool = False,
             f" hail_opt                            = {root.run.wdm6_hail_opt},",
             f" ccn_conc                            = {_f(root.run.wdm6_ccn_conc)},",
         ])
+    elif root.run.mp_physics in (14, 26):
+        # WDM7 reads ccn_conc and no hail_opt (module_physics_init.F:4586).
+        lines.append(
+            f" ccn_conc                            = {_f(root.run.wdm6_ccn_conc)},")
     grell = _grell_family_scalars(domains)
     if grell is not None:
         # Written wherever a domain runs Grell-Freitas, defaults included:
@@ -1293,6 +1309,8 @@ def render_namelist_input(exp, *, stock: bool = False,
         "/",
         "",
     ])
+    if root.run.solar_diagnostics:
+        lines.extend(["&diags",f" solar_diagnostics = {root.run.solar_diagnostics},","/",""])
     text = "\n".join(lines)
     from woof.physics_source_defaults import (
         PHYSICS_SELECTOR_VALUES, with_physics_selector_comment)
@@ -1546,6 +1564,15 @@ ROUTE_FORECAST_TOML_FIELDS: Mapping[str, str] = MappingProxyType({
     "cellcount_method": "woof/core/lightning.py, the lightning driver",
     "cldtop_adjustment": "woof/core/lightning.py, the lightning driver",
     "do_radar_ref": "woof/core/refl.py, the reflectivity diagnostic",
+    # The wind-farm turbine table and its resolution limit: loaded with the
+    # forecast's wind-farm scheme from the bound TOML; the pair spells no
+    # turbine table.
+    "wind_farm_table": "woof/wind_table.py read_table, the wind-farm turbine table",
+    "wind_farm_max_dx_m": "woof/wind_table.py, the wind-farm resolution limit",
+    # Whether a nest archives its accumulations for the parent: read by the
+    # nest coupling at run time; WRF has no key for it.
+    "nest_accumulation_archive": (
+        "woof/core/nest_accumulation.py, the nest accumulation archive"),
     # The Thompson fork table directory: read by the Thompson column at
     # load, never by preparation.
     "thompson_table_dir": "woof/core/thompson_column.py, the Thompson table loader",

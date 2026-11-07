@@ -133,7 +133,7 @@ def process_share() -> int:
 
     Sized from the slots free now, less a fifth of the box cap left for the other woof processes on the
     box.  Sizing from the whole cap let one ``woof fetch`` take all 30 slots for the life of its slowest
-    transfer (V56, 2026-10-20: three 10-socket AWS files at ~35 KB/s held them 19-28 min) while every
+    transfer (test host, 2026-10-20: three 10-socket AWS files at ~35 KB/s held them 19-28 min) while every
     other woof process on the box waited.  At least 1.
     """
     cap = max_connections()
@@ -187,7 +187,7 @@ def lease(count=1, *, minimum=1):
     The grant is whatever is free, up to ``count`` and at least ``minimum``, so a waiter no longer sits
     behind a bundle sized against the whole box cap while slots are free.  A waiter that finds fewer than
     ``minimum`` free says so on stderr after a few seconds, naming the processes that hold the slots, and
-    refuses after ``WOOF_FETCH_SLOT_WAIT_S`` (default 1800 s) instead of hanging silently (V56
+    refuses after ``WOOF_FETCH_SLOT_WAIT_S`` (default 1800 s) instead of hanging silently (test host
     2026-10-20: ``woof setup --with-geog`` sat with no output for over 10 minutes behind another woof
     process's slots).
     """

@@ -10,7 +10,7 @@ WRF's comments recommend there) could not run.
 ``tests/data/w_damp_wrf471.npz`` is a 16 x 12 column, 10-level set whose
 vertical Courant numbers run from 0 to 3.5 on every interior w level
 (``tools/w_damp_wrf_oracle/synth.py``, seed 165), and its ``wrf_rw_t_*``
-arrays are what WRF 4.7.1's own compiled ``w_damp`` (a development machine's
+arrays are what WRF 4.7.1's own compiled ``w_damp`` (test host 4's
 ``main/libwrflib.a``, gfortran 15.2, WRF's -O2 build, driven by
 ``tools/w_damp_wrf_oracle/w_damp_oracle.F90``) wrote for w_crit_cfl 1.0
 and 2.0, each with zadvect_implicit 0 and 1.

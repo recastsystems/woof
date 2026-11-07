@@ -1,0 +1,96 @@
+{
+  "row": "farms-fused",
+  "scope": "farms_hook",
+  "baseline_scope": "dudhia_hook",
+  "commit": "5dc452ffcd9dd871cd47f83ca66b4152866323d5",
+  "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
+  "warm_policy": "first actual forecast step retained separately; steps 2 onward for stage ratios",
+  "stage_ratio": 1.1943901876666383,
+  "median_stage_ratio": 0.7539137976399187,
+  "amortized_stage_ratio": 6.406274642939241,
+  "active_whole_forecast_wall_ratio": 1.0089974293411004,
+  "active_whole_forecast_seconds": {
+    "baseline": 16.329419784247875,
+    "candidate": 16.47634258493781
+  },
+  "whole_forecast_warm_step_ratio": 0.9705576100273465,
+  "arms": {
+    "baseline": {
+      "step": {
+        "calls": 59,
+        "median_ms": 22.068992614746094,
+        "mean_ms": 49.15786870859437,
+        "sum_ms": 2900.314253807068,
+        "mean_host_ms": 46.44169336405851
+      },
+      "dudhia_hook": {
+        "calls": 11,
+        "median_ms": 0.8809919953346252,
+        "mean_ms": 0.904337465763092,
+        "sum_ms": 9.947712123394012,
+        "mean_host_ms": 0.8372718637639827
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 142.02041625976562,
+        "mean_ms": 151.20599573308772,
+        "sum_ms": 1663.2659530639648,
+        "mean_host_ms": 151.19863064451653
+      }
+    },
+    "candidate": {
+      "farms_hook": {
+        "calls": 59,
+        "median_ms": 0.6641920208930969,
+        "mean_ms": 1.0801317954467515,
+        "sum_ms": 63.72777593135834,
+        "mean_host_ms": 1.0798230640969035
+      },
+      "step": {
+        "calls": 59,
+        "median_ms": 22.609439849853516,
+        "mean_ms": 47.71054356785144,
+        "sum_ms": 2814.922070503235,
+        "mean_host_ms": 44.901310892428384
+      },
+      "dudhia_hook": {
+        "calls": 11,
+        "median_ms": 0.891264021396637,
+        "mean_ms": 1.4924567504362627,
+        "sum_ms": 16.41702425479889,
+        "mean_host_ms": 1.4426782727241516
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 139.50828552246094,
+        "mean_ms": 146.99352611194956,
+        "sum_ms": 1616.9287872314453,
+        "mean_host_ms": 146.9921852377328
+      }
+    }
+  },
+  "nonfinite_heating": {
+    "baseline": 0,
+    "candidate": 0
+  },
+  "cold_first_step": {
+    "baseline": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 587.889404296875,
+      "host_seconds": 0.5879669561982155
+    },
+    "candidate": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 522.0738525390625,
+      "host_seconds": 0.5221609622240067
+    }
+  },
+  "forecasts": {
+    "baseline": "/workspace/runs/spd-retime-rad-cu/logs/farms-fused-baseline.log",
+    "candidate": "/workspace/runs/spd-retime-rad-cu/logs/farms-fused-candidate.log"
+  },
+  "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/spd-retime-rad-cu",
+  "retained_native_root": "~/weather/data/datasets/paper/wrf-ports/spd-retime-rad-cu"
+}

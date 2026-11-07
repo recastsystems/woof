@@ -166,12 +166,12 @@ def test_the_chem_block_is_appended_after_every_older_field():
     names = [f.name for f in dataclasses.fields(RunConfig)]
     # Appended last after the campaign, keyword-only: sea ice's real.exe
     # threshold (4c82704f8f) and the HRRR v4 output controls
-    # (lane/hrrr-v4-output: e55b68accb, bd4a1c2090, f80ac46aeb).
+    # (development branch: e55b68accb, bd4a1c2090, f80ac46aeb).
     later = ["seaice_threshold", "prec_acc_dt", "prec_acc_dt1",
              "gsd_diagnostics", "reset_interval1", "history_interval2_s",
              "history_interval_change_s", "smoke_off_reason",
              # 2.9.7, keyword-only: the HRRR v4 climate statistics
-             # (lane/hrrr-v4-clwrf) and tc/nest's fixed-frame archive.
+             # (development branch) and tc/nest's fixed-frame archive.
              "output_diagnostics", "diag_int", "wind_int",
              "nest_accumulation_archive",
              # 2.9.10, keyword-only: WRF's ghg_input (fix/wrf461-2dom-exact,
@@ -183,22 +183,38 @@ def test_the_chem_block_is_appended_after_every_older_field():
              "windfarm_tke_factor", "wind_farm_max_dx_m",
              # fix/hailcast, keyword-only: the HAILCAST generation.
              "hailcast_version"]
-    assert names[-len(later):] == later
+    # Since 3.0 the port lanes append their own keyword-only fields after
+    # and among this block (observation nudging, DFI, AFWA, time series,
+    # wind-farm details, ...).  What the block protects is unchanged: every
+    # field from seaice_threshold on is keyword-only, so positional
+    # construction keeps its order, and the fields listed keep theirs.
+    tail = names[names.index(later[0]):]
+    keyword_only = {f.name: f.kw_only for f in dataclasses.fields(RunConfig)}
+    assert all(keyword_only[name] for name in tail)
+    assert [name for name in tail if name in later] == later
     for field in dataclasses.fields(RunConfig):
         if field.name in ("umove", "vmove"):
             assert field.kw_only and field.default == 0.0
-    names = names[:-len(later)]
+    names = names[:names.index(later[0])]
     # The 2.9.4 capabilities campaign's keyword-only keys follow the fire
-    # block: lane/cap-waves-couple, cap-hail, cap-seaice, cap-eclipse and
+    # block: development branch, cap-hail, cap-seaice, cap-eclipse and
     # cap-lake, in merge order.
-    campaign = ["ocean_config", "hailcast_opt", "haildt",
+    # The keyword-only ocean-wave pair rides beside ocean_config
+    # (6cd9d58b72, waves: run options and device exchange).
+    campaign = ["ocean_config", "waves", "waves_options", "hailcast_opt", "haildt",
                 "seaice_prognostic", "seaice_initial_thickness",
                 "seaice_new_ice_thickness", "seaice_ocean_heat_flux",
                 "ra_sw_eclipse", "lake_state_source", "lake_state_path",
                 "lake_state_accept_licence"]
     assert names[-len(campaign):] == campaign
     names = names[:-len(campaign)]
-    # The keyword-only fire block follows the chem block.
+    # The keyword-only fire block follows the chem block.  3.0 port lanes put
+    # their own keyword-only fields beside it (the TC surface, fog settling,
+    # the KF trigger); keyword-only, they move no positional argument.
+    interlopers = [name for name in names[names.index(CHEM_RUN_FIELDS[-1]) + 1:]
+                   if name not in FIRE_RUN_FIELDS]
+    assert all(keyword_only[name] for name in interlopers), interlopers
+    names = [name for name in names if name not in interlopers]
     names = names[:-len(FIRE_RUN_FIELDS)]
     assert names[-len(CHEM_RUN_FIELDS):] == list(CHEM_RUN_FIELDS)
 

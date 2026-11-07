@@ -1,0 +1,17 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+arm A object: /work/wrf/build/scalar/WRF-4.6.1/phys/module_sf_temfsfclay.o
+# arm A undefined symbols:
+U _gfortran_st_write
+U _gfortran_st_write_done
+U _gfortran_transfer_character_write
+U _gfortran_transfer_real_write
+U atan2f
+U expf
+U free
+U log10f
+U logf
+U malloc
+U memset
+U powf
+U wrf_debug_

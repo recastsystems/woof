@@ -35,9 +35,17 @@ ph_tend array. Its prior order-2 boundary implementation retained the interior
 half-face contribution where WRF skips the complete normal-direction term.
 The correction applies to the production and supplied-face launchers and to
 the old float64 mirror. The exact base kernel fails the corner regression.
-The remaining measured maximum is 4608 ULP in the near-zero case, with
-absolute difference at most 6.47e-27 there. Real-state maximum absolute
-difference is 0.0703125; the steep terrain maximum is 9. WRF subtracts PH and PHB separately before summing; the kernel
+Order 2 is now exact: since 2582c065c99 (port/dyn-options, folded into
+rel/3.0.0 at 6a79a9fb05; h_sca_adv_order 2 qualified at 63d5c6b7136 with
+strict native replays 0/3321496) h_sca_adv_order 2 runs the open-boundary
+geopotential kernel, and all six
+order-2 cases (real periodic and specified, steep terrain, map extremes,
+zero and near-zero motion) match every ph_tend word of compiled WRF
+(0 of 6000 differing each, prep_measure.py, RTX PRO 6000 Blackwell,
+NVRTC 13.2.51, strict, 2026-11-02). Before it the order-2 maximum was 4608
+ULP (near-zero, absolute at most 6.47e-27; real state 0.0703125, steep
+terrain 9). Order 5 is unchanged: 1024 ULP, real-state maximum absolute
+difference 0.0703125. WRF subtracts PH and PHB separately before summing; the kernel
 subtracts their rounded totals, groups mass*g*w differently and subtracts x
 before y rather than y before x. The unchanged-routine total-geopotential
 decomposition control is saved separately and is not the accepted reference.

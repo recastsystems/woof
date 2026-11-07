@@ -76,7 +76,8 @@
 //! unnamed products unchanged. Use it for a common range across a sequence.
 //!
 //! `colormaps.products` keys are the field product names the renderer sees
-//! (the recipe slug for direct and derived products); `sequential` replaces
+//! (canonical field keys for direct products, recipe slugs for derived ones);
+//! `sequential` replaces
 //! the auto-ranged ramp the generic `var:` plane lane invents; `diverging`
 //! is reserved for zero-centred difference products and is read by the lane
 //! that draws them.  The operational weather ladders (reflectivity, QPF,

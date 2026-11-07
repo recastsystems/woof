@@ -142,6 +142,32 @@ def test_configuration_inventory_does_not_construct_bank_backings(fixture, monke
     assert result.eligible, result.ordinary_reason
 
 
+@pytest.mark.parametrize("edrates", [0, 1])
+def test_cu99_declares_every_gather_return_and_native_call_before_threads(fixture, monkeypatch, edrates):
+    inputs, args = fixture
+    exp = inputs[10].experiment
+    domains = tuple(replace(domain, run=replace(domain.run, cu_physics=99,
+                    kf_edrates=edrates)) for domain in exp.domains)
+    for value in inputs.values():
+        value.experiment = SimpleNamespace(**{**vars(exp), "domains": domains})
+    import cupy as cp
+    def forbidden(*unused, **kwargs):
+        raise AssertionError("configuration-only CU99 sizing initialized CUDA")
+    monkeypatch.setattr(cp.cuda, "Device", forbidden)
+    result = plan_prepared_component_reservation(inputs, **args)
+    assert result.eligible, result.ordinary_reason
+    from woof.ensemble.batch_kf import kf_old_column_layout, kf_old_call_reservation
+    for domain in domains:
+        cfg = domain.run
+        plan = result.reservation.native_plans[f"physics:{domain.grid_id}"]
+        names = {spec.name for spec in plan.arrays}
+        gathered, returned = kf_old_column_layout(cfg.nz, cfg.ny, cfg.nx, edrates=edrates)
+        assert {f"cumulus:('cumulus', 0):inputs:{name}" for name in gathered} <= names
+        assert {f"cumulus:('cumulus', 0):returned:{name}" for name in returned} <= names
+        assert plan.reserved_bytes >= kf_old_call_reservation(cfg.nz, cfg.ny, cfg.nx,
+            members=2, edrates=edrates)
+
+
 @pytest.mark.parametrize("chem_sets", ["smoke", "gocart_primary,smoke", "cams_aq"])
 @pytest.mark.parametrize("active_grid", [1, 2])
 def test_active_chemistry_keeps_original_owners_before_component_inventory(

@@ -96,7 +96,7 @@ source = "hrrr"
 cycle = "2023-01-31T12"
 hours = 48
 area = "25.01,-104.54,35.53,-90.88"
-out = "/workspace/shared-prepared/lane-cap-fzra/downloads"
+out = "downloads"
 
 [static]
 geog_root = "/work/WPS_GEOG"

@@ -92,6 +92,7 @@ _REAL_CLAMP = (
     "gfix/288-mp-clamp): the shared microphysics finish clamps the heating "
     "at WRF's REAL product mp_tend_lim*dt, as classic Thompson already did")
 PHYSICS_CHANGES_SINCE_280 = {
+    "components.radiation.options.gsfc-shortwave": "Original GSFC shortwave adds its own coefficients, state, and callable.",
     "parameters.icloud": (
         "icloud2-binary-cldfra (golden/ports-rad): icloud gains WRF's binary "
         "cloud fraction (2); every earlier value keeps its meaning"),
@@ -145,8 +146,27 @@ PHYSICS_CHANGES_SINCE_280 = {
     **{f"parameters.{key}": "new passive lightning diagnostic control, off by default" for key in ("cellcount_method", "cldtop_adjustment", "do_radar_ref", "flashrate_factor", "iccg_method", "iccg_prescribed_den", "iccg_prescribed_num", "lightning_dt", "lightning_option", "lightning_start_seconds")},
     "components.pbl.options.ccpp-tke-edmf": (
         "the pinned upstream CCPP closure is a new non-WRF selector"),
+    "components.pbl.options.keps": (
+        "KEPS adds its own CUDA closure and transported restart carriers"),
     "templates.ccpp-tke-edmf-thompson-mm5-noah-gf-rte-v1": (
         "a new unverified composition makes the CCPP closure reachable by name"),
+    'components.pbl.options.temf': 'The paired TEMF port adds this selector, coupling or carried-state declaration.',
+    'components.surface_layer.options.temf': 'The paired TEMF port adds this selector, coupling or carried-state declaration.',
+    'components.pbl.options.gbm': 'The GBM port adds this selector, coupling or carried-state declaration.',
+    "parameters.tmn_update": (
+        "WRF deep-soil daily and annual state updating is admitted, off by default"),
+    "parameters.lagday": (
+        "the admitted TMN history has the required 150-day length"),
+    "parameters.sst_skin": (
+        "WRF skin SST evolution is admitted, off by default"),
+    "parameters.sst_update": (
+        "prescribed surface-source cycling is admitted, off by default"),
+    "parameters.surface_analysis": (
+        "an active prescribed surface source binds its prepared manifest"),
+
+    'components.cumulus.options.kain-fritsch-cu99': 'cu=99 column port and selector admission',
+    'parameters.kf_edrates': 'cu=99 rate diagnostics and convective timescale',
+
     "templates.thompson-mp8-mynn-mynn-ruc-monthly-rrtmg-legacy-v1": (
         "a new named configuration selects the prescribed monthly surface "
         "fields and fractional sea ice; earlier templates keep their settings"),
@@ -200,6 +220,9 @@ PHYSICS_CHANGES_SINCE_280 = {
         "KF_eta_PARA, graded at 0 ULP by tools/kf_wrf461_oracle; its restart "
         "algorithm identity moved to kain-fritsch-wrf461-kfeta-port-v1, so a "
         "2.8.0 receipt that selected Kain-Fritsch is refused for it"),
+    "components.microphysics.options.thompson-graupel-hail-mp38": (
+        "new prognostic graupel number and volume option, distinct from "
+        "the earlier Thompson aerosol option"),
     "components.microphysics.options.off": (
         "passive vapor retains WRF's moisture pressure correction; dry "
         "states bypass the enabled policy"),
@@ -470,6 +493,12 @@ EXPECTED_280_REFUSALS: dict[tuple[str, str], list[str]] = {
         "registry physics of parameters.moist_cq (changed)",
         # golden/ports-rad: icloud gains WRF's binary cloud fraction (2).
         "registry physics of parameters.icloud (changed)",
+        # port/dyn-options (3.0.0): h_sca_adv_order gains WRF's orders 2, 3,
+        # 4 and 6 beside the default 5, each with a native replay.
+        "registry physics of parameters.h_sca_adv_order (changed)",
+        # port/mynn-subopts ff798ff3 (3.0.0): icloud_bl=0 is a qualified
+        # WRF 4.7.1 MYNN suboption; the default 1 is unchanged.
+        "registry physics of parameters.icloud_bl (changed)",
         *([f"registry physics of components.microphysics.options.{option} "
            "(changed)"] if (option := {
                1: "kessler-mp1", 6: "wsm6-mp6", 8: "thompson-mp8",
@@ -555,8 +584,13 @@ def _woof_renamed_parts(row, spelling) -> set[str]:
         selection = _expected_for(row, spelling)
     except ValueError:
         return set()
+    # (WOOF 1.1.6) only parts 2.8.0's document had: a part added since (engine
+    # 2.9.12's aercu_opt, icloud and the rest) resolves at its off value, never as changed.
+    history = registry_physics_history()
+    parts_280 = history["physics"][history["documents"][DOCUMENT_280]["physics_sha256"]]
     renamed = {name for name, source in registry_physics_part_sources().items()
-               if _WOOF_PACKAGE.search(json.dumps(strip_registry_documentation(source)))}
+               if name in parts_280
+               and _WOOF_PACKAGE.search(json.dumps(strip_registry_documentation(source)))}
     return {f"registry physics of {name} (changed)"
             for name in selection["registry_physics"]["parts"] if name in renamed}
 
@@ -985,7 +1019,7 @@ def _tke_refusal_rule(registry):
 
 
 def test_a_conditional_refusal_the_preflight_evaluates_is_admission():
-    """lane/282-namelist-tolerance moved the 1.5-order TKE closure's PBL-off
+    """development branch moved the 1.5-order TKE closure's PBL-off
     requirement out of ``required_settings`` (admission) into a
     ``refused_when`` rule on ``diff_opt = 2``.  Bound by its kind, that
     rule refused every 2.8.0 and 2.8.1 preparation of the closure as
@@ -1360,12 +1394,18 @@ def test_a_read_condition_holds_only_at_its_value(settings, read):
 @pytest.mark.parametrize("knob,old_value,new_value", [
     ("aer_init_opt", 0, 2),
     ("mp28_aerosol_source", "auto", "analysis"),
+    ("num_soil_layers", 4, 5),
+    ("num_soil_layers", 4, 3),
+    ("num_soil_layers", 6, 3),
+    ("num_soil_layers", 9, 3),
 ])
 def test_enum_extension_reuses_only_previously_admitted_values(knob, old_value, new_value):
     from woof.physics_registry import canonical_sha256, REGISTRY_PHYSICS_IDENTITY_SCHEMA
     spec = physics_registry()["parameters"][knob]
     part = "parameters." + knob
-    prior = {**spec, "enum": spec["compatible_previous_enums"][0]}
+    historical_enum = next(values for values in spec["compatible_previous_enums"]
+                           if old_value in values and new_value not in values)
+    prior = {**spec, "enum": historical_enum}
 
     def receipt(declaration):
         return {"registry_physics": {
@@ -1407,25 +1447,52 @@ def test_added_aerosol_refusals_preserve_only_admitted_prior_options():
 def test_without_the_configuration_an_added_knob_is_named(monkeypatch):
     """Unknown values cannot be shown off: name every knob added or
     implemented since 2.8.0, including A179's registered IEVA knob,
-    lane/282-namelist-tolerance's diff_opt and mix_full_fields, terrain
+    development branch's diff_opt and mix_full_fields, terrain
     drag, WRF's three advection orders, and the radiation-driver options
     swint_opt, aer_opt, alb_sol and source cloud/smoke controls,
     WRF's cycling (the gsd_41 MYNN cycled start), and the 2.9.4
-    capabilities campaign's registered parameters: lane/cap-hail's
-    HAILCAST selectors, lane/cap-slab-ocean's PWP controls and
-    lane/cap-seaice's prognostic sea ice."""
+    capabilities campaign's registered parameters: development branch's
+    HAILCAST selectors, development branch's PWP controls and
+    development branch's prognostic sea ice, and the native modern/legacy
+    wind farm controls."""
     row = next(row for row in _receipts_2492999cd()
                if row["profile"] == PROFILE)
     _added_knobs(monkeypatch)
+    history = registry_physics_history()
+    legacy = history["physics"][history["documents"][DOCUMENT_280]["physics_sha256"]]
+    added = sorted(name for name, spec in physics_registry()["parameters"].items()
+                   if "parameters." + name not in legacy
+                   and spec.get("implemented", True))
+    # These declarations belong only to options this fixture does not select.
+    # Keep the list explicit so a newly dropped active part still fails.
+    unread = {
+        "aercu_fct", "bmj_rad_feedback", "cam_abs_freq_s", "co2tf",
+        "convtrans_avglen_m", "cu_diag", "cugd_avedx", "ensdim",
+        "fractional_seaice", "ifsnow", "maxens", "maxens2", "maxens3",
+        "maxiens", "mfshconv", "mynn_sfclay_variant", "nsas_dx_factor",
+        "num_urban_hi", "ocean_mld_climatology", "ruc_2m_diagnostic",
+        "ruc_irrigation", "ruc_qvg_cold_start", "ruc_snow", "ruc_soilprop",
+        "sas_pgcon", "scalar_pblmix", "sf_lake_physics",
+        "thompson_fork_snow_fall", "thompson_version", "urban_fvg",
+        "urban_treeoption", "urban_ttscheme", "urban_ucm_generation", "use_wudapt_lcz",
+        # 3.0.0: the paper SNICAR controls (Noah-MP opt_alb=3 only) and the
+        # WRF 4.7.1 MYNN tke_budget suboption (MYNN only).
+        "snicar_snowbc_intmix", "snicar_snowdust_intmix", "snicar_snowshape_opt",
+        "tke_budget",
+    }
+    assert unread <= set(added)
+    added = sorted(set(added) - unread)
+    assert {"mosaic_cat", "use_rap_aero_icbc", "tracer_opt", "acc_phy_tend"} <= set(added)
     assert physics_selection_differences(
         row["named"], _expected_for(row, "named")) == _legacy_expected(row, "named",
         "registry physics of components.microphysics.options.thompson-mp8 (changed)",
         "registry physics of parameters.aer_init_opt (changed)",
         "registry physics of parameters.mp28_aerosol_source (changed)",
-        "registry physics of parameters.use_rap_aero_icbc (absent from the prepared registry)", *[
-        f"registry physics of parameters.{knob} (absent from the prepared "
-        "registry)"
-        for knob in ('aer_angexp_opt', 'aer_angexp_val', 'aer_aod550_opt', 'aer_aod550_val', 'aer_asy_opt', 'aer_asy_val', 'aer_auxinput15', 'aer_auxinput15_interval', 'aer_opt', 'aer_ssa_opt', 'aer_ssa_val', 'aer_type', 'alb_sol', 'bl_mynn_cloud_tendency_form', 'bl_mynn_gsd41_unsquared_qtke', 'bl_mynn_version', 'cellcount_method', 'cldtop_adjustment', 'cycling', 'diff_6th_factor2', 'diff_6th_form', 'diff_opt', 'do_radar_ref', 'flashrate_factor', 'fractional_seaice', 'gwd_opt', 'h_mom_adv_order', 'hailcast_opt', 'hailcast_version', 'haildt', 'iccg_method', 'iccg_prescribed_den', 'iccg_prescribed_num', 'lake_min_elev', 'lakedepth_default', 'lightning_dt', 'lightning_option', 'lightning_start_seconds', 'mix_full_fields', 'mosaic_cat', 'mosaic_urban_canopy', 'mp_zero_out', 'mp_zero_out_all', 'mp_zero_out_thresh', 'noahmp_snow_age', 'ocean_analysis', 'ocean_analysis_source', 'ocean_levels', 'ocean_s', 'ocean_t', 'ocean_z', 'omdt', 'oml_gamma', 'oml_hml0', 'oml_relaxation_time', 'rrtmg_aer3_type_source', 'rrtmg_cloud_optics_form', 'rrtmg_smoke_manifest', 'scalar_adv_opt', 'seaice_initial_thickness', 'seaice_new_ice_thickness', 'seaice_ocean_heat_flux', 'seaice_prognostic', 'sf_lake_physics', 'sf_ocean_physics', 'sf_surface_mosaic', 'slope_rad', 'solar_generation', 'spp_conv', 'spp_pbl', 'swint_opt', 'thompson_fork_snow_fall', 'thompson_version', 'topo_shading', 'topo_wind', 'upper_wind_limiter_form', 'urban_table_dir', 'urban_water_balance', 'use_lakedepth', 'v_mom_adv_order', 'v_sca_adv_order', 'ysu_version', 'zadvect_implicit', 'zadvect_implicit_variant')])
+        "registry physics of parameters.num_soil_layers (changed)",
+        *[f"registry physics of parameters.{knob} (changed)"
+          for knob in ("nssl_2moment_on", "nssl_density_on", "nssl_hail_on")],
+        *[f"registry physics of parameters.{knob} (absent from the prepared registry)"
+          for knob in added])
 
 
 def test_a_new_receipt_resolves_to_its_own_parts():
@@ -1457,16 +1524,18 @@ def test_changed_mynn_parameter_only_binds_a_configuration_that_reads_it(pbl):
         assert differences == [f"registry physics of {key} (changed)"]
 
 
-def test_parts_in_another_identity_schema_resolve_through_the_document():
+@pytest.mark.parametrize("schema", ["gpuwm-physics-registry-parts-v1",
+                                    "gpuwm-physics-registry-parts-v3"])
+def test_parts_in_another_identity_schema_resolve_through_the_document(schema):
     """A receipt whose parts this build cannot read falls back to history."""
     row = next(row for row in _receipts_2492999cd()
                if row["profile"] == PROFILE)
     config = _loaded_config(row["switches"])
     expected = validate_single_domain_physics_profile(PROFILE, config=config)
     recorded = deepcopy(row["named"])
-    # v1's spelling: the parameters block as one part.
+    # Deliberately unusable old parts must resolve through the real document.
     recorded["registry_physics"] = {
-        "schema": "gpuwm-physics-registry-parts-v1",
+        "schema": schema,
         "parts": {"parameters": "0" * 64}}
     assert physics_selection_differences(
         recorded, expected, settings=config) \

@@ -1,0 +1,14 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# libm symbols the fixture-of-record objects call (fixed, scalar flags):
+module_cam_gffgch.o: exp
+module_cam_gffgch.o: log
+module_cam_gffgch.o: log10
+module_cam_gffgch.o: pow
+module_cam_wv_saturation.o: log10
+module_cam_wv_saturation.o: pow
+module_cu_camzm.o: exp
+module_cu_camzm.o: log
+module_cu_camzm.o: pow
+module_cu_camzm_driver.o: expf
+module_cu_camzm_driver.o: powf

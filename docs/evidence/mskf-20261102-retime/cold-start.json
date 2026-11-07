@@ -1,0 +1,81 @@
+{
+  "commit": "b7462a62a42a345813ce54ac6c9b250ff54576b9",
+  "run": "/workspace/runs/spd-retime-rad-cu/public-delivery/cu11/run-20261102-103820Z_i200001241200Z",
+  "command": "bash scripts/check-delivery.sh",
+  "private_empty_cache_paths": [
+    "/workspace/runs/spd-retime-rad-cu/delivery-cold-mskf-kernels",
+    "/workspace/runs/spd-retime-rad-cu/delivery-cold-mskf-cupy",
+    "/workspace/runs/spd-retime-rad-cu/delivery-cold-mskf-driver"
+  ],
+  "first_step": {
+    "schema": "gpuwm.step-log/v3",
+    "sequence": 4,
+    "emitted_unix_ms": 1793615964810,
+    "event": "step",
+    "text": "Timing for main: time 2000-01-24_12:03:00 on domain   1:    19.13816 elapsed seconds  step 1",
+    "domain": 1,
+    "step": 1,
+    "valid_time": "2000-01-24_12:03:00",
+    "model_seconds": 180.0,
+    "step_wall_seconds": 19.13816488161683,
+    "fraction": 0.016667
+  },
+  "mskf_images": {
+    "gpuwm.core.kernels:mskf[GPUWM_MSKF_NO_AEROSOL=1]": {
+      "compiled_image": {
+        "kind": "cubin",
+        "sha256": "bfbd396c8602d47a52a87bd86cb9e8eb1668b3b255043ba7c9902fc6660caa9b",
+        "status": "resolved"
+      },
+      "options": [
+        "-std=c++17",
+        "--ftz=false"
+      ],
+      "source_sha256": "3c6cc66547763dc6b25429c52556aa6dc8dddc8a7562a3161bd6104e9253971e"
+    },
+    "gpuwm.core.kernels:mskf[]": {
+      "compiled_image": {
+        "kind": "cubin",
+        "sha256": "3c858c173ace8d6ff469f76f924154690c7320f1a500ceb45b63fb2e2e412b74",
+        "status": "resolved"
+      },
+      "options": [
+        "-std=c++17",
+        "--fmad=false",
+        "--ftz=false",
+        "-DGPUWM_MSKF_OPERATION_ORDER=1"
+      ],
+      "source_sha256": "e94b0236462b829921bc799b1b855f2f7fec10f3711a10469a01f3fc1b9c821a"
+    }
+  },
+  "images_match_shipped_pack": true,
+  "compiler": {
+    "cupy": "14.2.0",
+    "nvrtc": [
+      13,
+      4
+    ],
+    "cupy_package": "cupy-cuda13x==14.2.0",
+    "nvrtc_package": "nvidia-cuda-nvrtc==13.4.59",
+    "nvrtc_library_sha256": "5fc18c75a772c5fe0684d2a1bf3fa6ea964b6a71d0caaa828e5e1785dc16daba",
+    "cache_key": "87417f5ddafec4c853dab1863f8bb308dafc152c",
+    "use_ptx": false,
+    "use_pch": false,
+    "debug": "0"
+  },
+  "observed_compiler_worker_pids": [
+    2982124,
+    2982127,
+    2982128,
+    2982129
+  ],
+  "active_process_count_histogram": {
+    "1": 18,
+    "5": 22,
+    "4": 17,
+    "3": 1,
+    "2": 15
+  },
+  "longest_observed_zero_or_one_active_process_seconds": 8,
+  "cpu_scope": "All process-tree samples across the complete cold public forecast; active means CPU above 5 percent. GPU waiting is not inferred from CPU alone."
+}

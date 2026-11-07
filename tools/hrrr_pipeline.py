@@ -203,7 +203,7 @@ _WORKER_RANGE_TEXT = (
 
 
 #: Operator override for the decoder's worker count, for a shared host.
-#: Breakage it prevents: on a shared 8-card box (Vast V8X, 2026-10-27) the
+#: Breakage it prevents: on a shared 8-card box (shared host, 2026-10-27) the
 #: HRRR decoder ran 8 workers at ~19-24 GB resident because ``woof go``
 #: passes 8 explicitly; the kernel OOM killer took it 20+ times while other
 #: jobs held the memory, and every kill threw away a 4-10 min preparation.
@@ -219,7 +219,7 @@ def resolve_workers(value: str) -> tuple[int, dict[str, object]]:
     # validator (prepare_hrrr_wrf._validated_worker_receipts) checks it against
     # the count it passed, so an override that rewrote it failed every
     # preparation after ~10 min with "HRRR decoder worker receipt is malformed"
-    # (Vast V8X 2026-10-27); the override is recorded beside it.
+    # (shared host 2026-10-27); the override is recorded beside it.
     requested = str(value).strip().lower()
     if override:
         value = override

@@ -1,0 +1,438 @@
+{
+  "schema": "mrf-one-real-case-v1",
+  "scope": "One overnight cold-front forecast. Module conformance and integration evidence; not general forecast skill.",
+  "source": "WRF public domain, MRF v4.6.1 and v4.7.1 byte-identical",
+  "case": "2026-10-16 09-12 UTC, north Texas and Oklahoma, 3 km, 49 levels, MRF99/MM5-91/Noah2/WSM6/RRTMG",
+  "native": {
+    "schema": "native-mrf-forecast-v1",
+    "success": true,
+    "steps": 720,
+    "last_model_time": "2026-10-16_12:00:00",
+    "mean_step_seconds": 6.611164694444445,
+    "median_step_seconds": 3.424995,
+    "mpi_ranks": 4,
+    "strict_flags": [
+      "-O2",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-fno-tree-vectorize"
+    ],
+    "native_source": "WRF v4.7.1; MRF byte-identical to v4.6.1",
+    "files": {
+      "main/wrf.exe": {
+        "bytes": 37984488,
+        "sha256": "b40cd96fa81efd83d8e5f57218c30278b3f3c8b25720c5713bc4bf17967130ce"
+      },
+      "phys/module_bl_mrf.o": {
+        "bytes": 43088,
+        "sha256": "773d281e2c9d5c505b6824cee4794de8d692a95ed3dd4c9ff79a2ec50ed52820"
+      },
+      "phys/module_bl_mrf.F": {
+        "bytes": 82021,
+        "sha256": "a1306d0063043d001fa4a53b9219031b931999c7d7daea172fd97518bc9b19eb"
+      },
+      "phys/module_bl_mrf.capture.F90": {
+        "bytes": 84492,
+        "sha256": "33f2c80e10829c30c40bddf81a9278767e6dc293d76ba3882133e8c40bbbb3cc"
+      },
+      "configure.wrf": {
+        "bytes": 20934,
+        "sha256": "167a213cc1f19c5663493afb45a9d74aa5cdcff9d580510684ec43ab4afe2f61"
+      },
+      "run/namelist.input": {
+        "bytes": 2460,
+        "sha256": "0076f55df3da361cd6cccaf1651270fdf5d82fcaa84a3aeb5ec4ae3ba7d4d5c4"
+      }
+    },
+    "load_supervision": "Own ranks paused at node load >=47 and resumed below45; native-load.log. Rank timings include shared contention.",
+    "maps": [
+      "native-h10-receipt.json",
+      "native-h11-receipt.json",
+      "native-h12-receipt.json"
+    ]
+  },
+  "gpu_forecast": {
+    "command": "python -m gpuwm go ../native/run --outdir ../forecast-go --no-supervise --allow-shared-gpu --checkpoint-at end --benchmark --output-format netcdf",
+    "tested_commit": "ba3783d3e6b32f3c92d3a3a8fd9b69694aeb1a7b",
+    "numerics": "default fast",
+    "steps": 720,
+    "last_valid_time": "2026-10-16_12:00:00",
+    "timing": {
+      "excluded": [
+        "render",
+        "observation verification"
+      ],
+      "first_step": 1,
+      "first_valid_time": "2026-10-16_09:00:15",
+      "kernel_prewarm": {
+        "errors": {},
+        "modules": [
+          "smag2d",
+          "diff_opt1",
+          "diff6"
+        ],
+        "seconds": {
+          "diff6": 0.004,
+          "diff_opt1": 0.004,
+          "smag2d": 0.361
+        },
+        "wall_seconds": 0.376
+      },
+      "last_step": 720,
+      "last_valid_time": "2026-10-16_12:00:00",
+      "max_step_seconds": 0.247052,
+      "mean_step_seconds": 0.038614,
+      "median_step_seconds": 0.033901,
+      "phases_seconds": {
+        "finish": 0.769,
+        "first_step": 0.816,
+        "forecast": 85.303,
+        "init": 5.76,
+        "read": 11.117,
+        "startup": 0.731,
+        "steps": 53.586,
+        "total": 86.803,
+        "write": 14.024
+      },
+      "restart": null,
+      "schema": "gpuwm.benchmark-timing.v1",
+      "startup_split_seconds": {
+        "init_to_first_step": 5.76,
+        "input_read": 8.575,
+        "worker_imports": 0.73,
+        "worker_plan_review": 2.542
+      },
+      "status": "SUCCESS",
+      "steps": 720,
+      "steps_after_first": 719
+    }
+  },
+  "strict_replay": {
+    "calls": 4,
+    "levels": 49,
+    "compared_words": 1192,
+    "differing_words": 0,
+    "capture_sha256": "1583b9a386a21b192cfbe18c4896a7b6a4dc5c55a42e4ac1850105ae5a550e44"
+  },
+  "native_restart": {
+    "schema": "native-mrf-warm-start-v1",
+    "success": true,
+    "native_restart": "wrfrst_d01_2026-10-16_10_30_00",
+    "native_step": 360,
+    "continued_steps": 2,
+    "last_step": 362,
+    "last_valid_time": "2026-10-16_10:30:30",
+    "tested_commit": "0bdbb7eae1b5f2eaabf5a7a5528dc09210b040a6",
+    "log": "native-warm-start-shared.log",
+    "paper": "evidence/forecast-native-warm-paper",
+    "note": "HOL rebuilt as native scratch; KPBL converted from native top-down. Missing extra hail output diagnostics count from handoff; inactive native HAILCAST activity fields restored. Active native HAILCAST remains refused."
+  },
+  "performance": {
+    "full_pbl_stage": {
+      "mrf_ms": 2.2810399532318115,
+      "ysu_ms": 3.3127360343933105,
+      "ratio": 0.6885667706541423,
+      "method": "CUDA events around _prepare_atmosphere and the full production _run_mrf/_run_ysu slot, including validation, field publication and mass coupling. Identically initialized idealized full-size mixed land/water atmospheres; one surface/Noah initialization; UST restored per call. Three warm calls and twenty timed calls. Shared GPU, no exclusive lease."
+    },
+    "column_stage": {
+      "mrf_ms": 1.6358720064163208,
+      "ysu_ms": 2.5472320318222046,
+      "ratio": 0.6422155445517355,
+      "method": "CUDA events around the production column launcher, including output/workspace allocations and UST restoration. Three warm calls and twenty timed calls, one native center-column input tiled over the real domain shape. YSU version wrf_461. Shared GPU, no exclusive lease."
+    }
+  },
+  "default_off_state": {
+    "candidate": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+    "array_count": 185,
+    "steps": 20,
+    "all_array_bytes_identical": true
+  },
+  "default_off_history": {
+    "candidate": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+    "steps": 20,
+    "bl_pbl_physics": 1,
+    "fields": 101,
+    "bytes": 427080,
+    "sha256": "bcaf30a1915815b0a73e651a11c93e39f5cca0685f624b39182b908a2ce6bed1",
+    "whole_default_compressed_history_file_byte_identical": true
+  },
+  "comparison": [
+    {
+      "hour": 10,
+      "gpu_minus_native": {
+        "T2C": {
+          "words": 90000,
+          "differing_words": 89660,
+          "bias": 1.7859564887152779e-06,
+          "rmse": 0.021911684155056125,
+          "max_abs": 0.68231201171875,
+          "abs_percentiles": {
+            "50": 0.004913330078125,
+            "90": 0.0279541015625,
+            "95": 0.045196533203125,
+            "99": 0.09100402832031218,
+            "99.9": 0.16696179199218797
+          },
+          "maximum_location": {
+            "j": 231,
+            "i": 233,
+            "lat": 34.74272155761719,
+            "lon": -94.56275939941406,
+            "native": 11.189605712890625,
+            "gpu": 11.871917724609375
+          }
+        },
+        "wind10": {
+          "words": 90000,
+          "differing_words": 89997,
+          "bias": -0.0004302816660867797,
+          "rmse": 0.11591049953653082,
+          "max_abs": 2.343015670776367,
+          "abs_percentiles": {
+            "50": 0.016522884368896484,
+            "90": 0.11915235519409181,
+            "95": 0.2235206604003907,
+            "99": 0.5413824558258054,
+            "99.9": 1.0037042655945014
+          },
+          "maximum_location": {
+            "j": 291,
+            "i": 291,
+            "lat": 36.30381393432617,
+            "lon": -92.57388305664062,
+            "native": 7.525890350341797,
+            "gpu": 9.868906021118164
+          }
+        },
+        "PBLH": {
+          "words": 90000,
+          "differing_words": 88029,
+          "bias": 0.08516573945151434,
+          "rmse": 9.393233279663006,
+          "max_abs": 640.3070983886719,
+          "abs_percentiles": {
+            "50": 0.00079345703125,
+            "90": 2.5844421386718768,
+            "95": 7.030019378662112,
+            "99": 26.43363143920898,
+            "99.9": 121.6895388565102
+          },
+          "maximum_location": {
+            "j": 153,
+            "i": 159,
+            "lat": 32.667083740234375,
+            "lon": -96.99848937988281,
+            "native": 17.978240966796875,
+            "gpu": 658.2853393554688
+          },
+          "count_abs_over_100m": 112
+        }
+      }
+    },
+    {
+      "hour": 11,
+      "gpu_minus_native": {
+        "T2C": {
+          "words": 90000,
+          "differing_words": 89734,
+          "bias": -0.00021599595811631943,
+          "rmse": 0.02776714226705301,
+          "max_abs": 1.189910888671875,
+          "abs_percentiles": {
+            "50": 0.005584716796875,
+            "90": 0.035491943359375,
+            "95": 0.0557861328125,
+            "99": 0.11236602783203109,
+            "99.9": 0.2241519775390639
+          },
+          "maximum_location": {
+            "j": 230,
+            "i": 223,
+            "lat": 34.72228240966797,
+            "lon": -94.89156341552734,
+            "native": 12.553466796875,
+            "gpu": 11.363555908203125
+          }
+        },
+        "wind10": {
+          "words": 90000,
+          "differing_words": 90000,
+          "bias": 0.002517925682498349,
+          "rmse": 0.1427037396185703,
+          "max_abs": 4.774481773376465,
+          "abs_percentiles": {
+            "50": 0.021337509155273438,
+            "90": 0.1674769401550293,
+            "95": 0.29390203952789323,
+            "99": 0.6197741127014159,
+            "99.9": 1.1996917448044115
+          },
+          "maximum_location": {
+            "j": 44,
+            "i": 90,
+            "lat": 29.713403701782227,
+            "lon": -99.14933013916016,
+            "native": 6.188103675842285,
+            "gpu": 10.96258544921875
+          }
+        },
+        "PBLH": {
+          "words": 90000,
+          "differing_words": 87953,
+          "bias": 0.12416458026038275,
+          "rmse": 15.162349207218211,
+          "max_abs": 547.2534027099609,
+          "abs_percentiles": {
+            "50": 0.00084686279296875,
+            "90": 2.585633087158203,
+            "95": 7.52207489013672,
+            "99": 35.729745521545276,
+            "99.9": 263.4389706420904
+          },
+          "maximum_location": {
+            "j": 100,
+            "i": 155,
+            "lat": 31.237300872802734,
+            "lon": -97.12942504882812,
+            "native": 18.091934204101562,
+            "gpu": 565.3453369140625
+          },
+          "count_abs_over_100m": 253
+        }
+      }
+    },
+    {
+      "hour": 12,
+      "gpu_minus_native": {
+        "T2C": {
+          "words": 90000,
+          "differing_words": 89752,
+          "bias": -0.0005662757025824653,
+          "rmse": 0.03091541712428474,
+          "max_abs": 1.19573974609375,
+          "abs_percentiles": {
+            "50": 0.0064697265625,
+            "90": 0.041900634765625,
+            "95": 0.0638427734375,
+            "99": 0.118865966796875,
+            "99.9": 0.25952172851562594
+          },
+          "maximum_location": {
+            "j": 240,
+            "i": 261,
+            "lat": 34.96256637573242,
+            "lon": -93.63431549072266,
+            "native": 10.67486572265625,
+            "gpu": 11.87060546875
+          }
+        },
+        "wind10": {
+          "words": 90000,
+          "differing_words": 89998,
+          "bias": 0.001957348656323221,
+          "rmse": 0.15983675915687126,
+          "max_abs": 4.637137413024902,
+          "abs_percentiles": {
+            "50": 0.02573108673095703,
+            "90": 0.20757141113281252,
+            "95": 0.34011821746826176,
+            "99": 0.6674084854125963,
+            "99.9": 1.2391000661850033
+          },
+          "maximum_location": {
+            "j": 219,
+            "i": 286,
+            "lat": 34.370975494384766,
+            "lon": -92.8415298461914,
+            "native": 9.571276664733887,
+            "gpu": 14.208414077758789
+          }
+        },
+        "PBLH": {
+          "words": 90000,
+          "differing_words": 87957,
+          "bias": 0.30465365862316557,
+          "rmse": 15.85845832078453,
+          "max_abs": 575.2344970703125,
+          "abs_percentiles": {
+            "50": 0.00091552734375,
+            "90": 2.784845733642584,
+            "95": 7.847507095336915,
+            "99": 42.396009674071834,
+            "99.9": 256.71247319794776
+          },
+          "maximum_location": {
+            "j": 100,
+            "i": 161,
+            "lat": 31.236896514892578,
+            "lon": -96.94012451171875,
+            "native": 18.07537841796875,
+            "gpu": 593.3098754882812
+          },
+          "count_abs_over_100m": 331
+        }
+      }
+    }
+  ],
+  "observations": {
+    "gpu": {
+      "T2C": {
+        "station_hours": 15,
+        "bias": 0.6248121473524305,
+        "mae": 0.8170037163628472,
+        "rmse": 0.9235243900733705,
+        "max_abs": 1.8460252549913196
+      },
+      "wind10": {
+        "station_hours": 15,
+        "bias": -2.329557991027832,
+        "mae": 4.148909060160319,
+        "rmse": 4.985856260719849,
+        "max_abs": 10.487606048583984
+      }
+    },
+    "native": {
+      "T2C": {
+        "station_hours": 15,
+        "bias": 0.6216220431857639,
+        "mae": 0.8142530653211805,
+        "rmse": 0.9214279550910263,
+        "max_abs": 1.8513047960069446
+      },
+      "wind10": {
+        "station_hours": 15,
+        "bias": -2.325405756632487,
+        "mae": 4.163696797688802,
+        "rmse": 4.994887625609576,
+        "max_abs": 10.475397109985352
+      }
+    }
+  },
+  "limits": [
+    "No PBL-height observations.",
+    "Largest local PBL-height difference is retained in the hourly comparisons; its coupled-forecast cause has not been isolated.",
+    "Fast nests exercised both feedback modes. Strict periodic-root nest tests skip because that boundary is unsupported.",
+    "Native HAILCAST trajectories are outside this MRF port and remain refused. Additional automatic hail diagnostics begin at native handoff."
+  ],
+  "native_object_witness": {
+    "command": "bash evidence/prove-native-object.sh",
+    "log": "native-object-proof-final.log",
+    "sha256": "773d281e2c9d5c505b6824cee4794de8d692a95ed3dd4c9ff79a2ec50ed52820",
+    "rebuilt_object_byte_identical": true,
+    "archive_command": "ar p native/main/libwrflib.a module_bl_mrf.o",
+    "linked_archive_member_byte_identical": true
+  },
+  "packaging_cleanup": {
+    "change": "Removed one surplus trailing newline only; every coefficient and CUDA statement is unchanged.",
+    "previous_sha256": "3ed0de496099ecb2150f0d67ca396af2b231d120692389e91196a85f390f0975",
+    "final_sha256": "c15be2603047c7eb2c9831afc3cd5b1b83e7bd5e5cb212823bb6cee3e72ddd1e",
+    "previous_bytes": 1440,
+    "final_bytes": 1439,
+    "strict_real_replay_after_cleanup": {
+      "compared_words": 1192,
+      "differing_words": 0,
+      "log": "eof-real-gpu-tests.log",
+      "tests_passed": 4
+    }
+  }
+}

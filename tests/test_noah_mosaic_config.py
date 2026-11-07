@@ -45,13 +45,33 @@ def test_ucm_pairing_admitted():
     validate_noah_mosaic_config(_cfg(sf_surface_mosaic=1, sf_surface_physics=2, sf_urban_physics=1))
 
 
+#: RunConfig fields the 3.0 port inserted ahead of min_time_step_sound (the
+#: tracer, trajectory, UW shallow-cumulus, aerosol-mode, SNICAR and groundwater-step
+#: selectors).  They
+#: did not exist when this anchor was recorded, so the anchor's field set
+#: leaves them out; every preexisting default is still pinned word for word
+#: (measured against 2.9.12: all 175 earlier fields unchanged).
+_FIELDS_ADDED_BEFORE_THE_ANCHOR = frozenset((
+    "tracer_opt", "tracer_adv_opt", "tracer_mix2_off", "tracer_mix6_off",
+    "tracer_pblmix", "traj_opt", "dm_has_traj", "num_traj",
+    "trajectory_input", "shcu_physics", "accum_mode", "aitken_mode",
+    "coarse_mode", "ntu_ccnty",
+    # Noah-MP SNICAR snow optics and the groundwater step (fix batch folds).
+    "snicar_snowshape_opt", "snicar_snowbc_intmix", "snicar_snowdust_intmix",
+    "snicar_bc_ppb", "snicar_dust_ppm", "snicar_ice_density",
+    "snicar_bubble_radius_um", "wtddt",
+    # Derived marker (2582c065c99): whether h_sca_adv_order was left unset.
+    "_legacy_h_sca"))
+
+
 def test_off_does_not_read_count_or_change_checkpoint_identity():
     cfg = _cfg()
     validate_run_config(cfg)
     # Pin every preexisting default through the baseline's last field.
     legacy = {}
     for field in fields(cfg):
-        legacy[field.name] = getattr(cfg, field.name)
+        if field.name not in _FIELDS_ADDED_BEFORE_THE_ANCHOR:
+            legacy[field.name] = getattr(cfg, field.name)
         if field.name == "min_time_step_sound":
             break
     # e13fa45c0 / 59f7e280f enable moist_cq by default. The pre-mosaic
@@ -78,7 +98,7 @@ def test_off_does_not_read_count_or_change_checkpoint_identity():
     before.pop("mosaic_cat")
     before.pop("mosaic_urban_canopy")
     # A checkpoint written before the mosaic trio also predates the two
-    # diffusion selectors appended after it (lane/282-namelist-tolerance),
+    # diffusion selectors appended after it (development branch),
     # whose defaults the same echo drops for the same reason.
     before.pop("diff_opt")
     before.pop("mix_full_fields")
@@ -88,7 +108,7 @@ def test_off_does_not_read_count_or_change_checkpoint_identity():
     # So is the ocean mixed layer's quartet (2.9.1) when off.
     for name in ("sf_ocean_physics", "oml_hml0", "oml_gamma", "oml_relaxation_time"):
         before.pop(name)
-    # lane/cap-slab-ocean's 3-D PWP controls drop with the ocean off too.
+    # development branch's 3-D PWP controls drop with the ocean off too.
     for name in ("ocean_levels", "ocean_analysis", "ocean_analysis_source",
                  "ocean_mld_climatology", "omdt", "ocean_z", "ocean_t",
                  "ocean_s"):
@@ -100,6 +120,22 @@ def test_off_does_not_read_count_or_change_checkpoint_identity():
     # physics off (woof.wind_table.drop_inert_config).
     for name in ("wind_farm_scheme", "wind_farms", "wind_farm_table",
                  "windfarm_tke_factor", "wind_farm_max_dx_m"):
+        before.pop(name)
+    # 3.0 port controls the same echo drops while their scheme is off: the
+    # remaining wind-farm and turbine-description fields, the 3-D TKE / SFS
+    # selectors and the Goddard (mp7) hail and two-ice switches.
+    for name in ("windfarm_ij", "windfarm_wake_model", "windfarm_overlap_method",
+                 "windfarm_induction", "windfarm_deg", "windturbines_spec",
+                 "td_turbgridid", "td_hubheight", "td_diameter", "td_stdthrcoef",
+                 "td_cutinspeed", "td_cutoutspeed", "td_power", "td_turbpercell",
+                 "td_ewfx", "td_ewfy", "td_pwfx", "td_pwfy",
+                 "tke_adv_opt", "sfs_opt", "m_opt", "tke_mix2_off", "tke_mix6_off",
+                 "gsfcgce_hail", "gsfcgce_2ice",
+                 # The TC surface (spray, wave roughness, flux curve) while off
+                 # (woof.tc.config.drop_inert_tc).
+                 "tc_flux_curve", "tc_spray", "tc_spray_partition",
+                 "tc_wave_roughness", "tc_wave_source", "tc_fetch_m",
+                 "tc_horizontal_length_m"):
         before.pop(name)
     assert _configuration_digest_values(asdict(cfg)) == _configuration_digest_values(before)
     assert _mosaic_checkpoint_config(asdict(cfg)) == before

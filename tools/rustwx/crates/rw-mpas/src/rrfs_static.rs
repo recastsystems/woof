@@ -1244,41 +1244,273 @@ fn tile_map(
     ds: &GeogDataset,
     tile: &TileRef,
     factor: usize,
+    parallel_rows: bool,
 ) -> MpasResult<Vec<i32>> {
     validate_supersample(factor)?;
     let pixels = (ds.index.tile_x as usize)
         .checked_mul(ds.index.tile_y as usize)
         .and_then(|v| v.checked_mul(factor * factor))
         .ok_or_else(|| MpasError::Refusal("tile-map element count overflow".to_string()))?;
-    let mut out = Vec::new();
+    let mut out: Vec<i32> = Vec::new();
     out.try_reserve_exact(pixels).map_err(|e| {
         MpasError::Refusal(format!(
             "host memory allocation failed for tile destination map: {pixels} i32 values: {e}"
         ))
     })?;
-    for j in 0..ds.index.tile_y as usize {
+    if tile_reaches_no_cell(mesh, tree, max_distance2, ds, tile, factor) {
+        out.resize(pixels, -1);
+        return Ok(out);
+    }
+    out.resize(pixels, -1);
+    let row = ds.index.tile_x as usize * factor * factor;
+    if row == 0 {
+        return Ok(out);
+    }
+    if !mesh.is_regional() && std::env::var_os(KD_ONLY_ENV).is_none() {
+        let walk = GlobalWalk::new(mesh, tree, max_distance2, ds, tile, factor);
+        if parallel_rows {
+            out.par_chunks_mut(row).enumerate().for_each(|(j, dst)| walk.fill_row(j, dst));
+        } else {
+            for (j, dst) in out.chunks_mut(row).enumerate() {
+                walk.fill_row(j, dst);
+            }
+        }
+        return Ok(out);
+    }
+    let fill = |j: usize, dst: &mut [i32]| {
+        let mut k = 0usize;
         for i in 0..ds.index.tile_x as usize {
             for sj in 0..factor {
                 for si in 0..factor {
                     let (lat, lon) = ds.tile_to_latlon(tile, i * factor + si, j * factor + sj, factor);
                     let p = crate::static_native::xyz(mesh.sphere_radius as f32, lat, lon).map(f64::from);
-                    let Some((cell, d2)) = tree.nearest_bounded(p,max_distance2) else {
-                        out.push(-1); continue;
+                    dst[k] = match tree.nearest_bounded(p, max_distance2) {
+                        None => -1,
+                        Some((cell, d2)) => {
+                            // The native regional rule (init_atm_static, nBdyLayers=7):
+                            // a pixel is accepted unconditionally at mask < 7, and on
+                            // an outermost-ring cell only when it is geometrically
+                            // INSIDE that cell -- otherwise its true owner was culled
+                            // and the pixel belongs to nobody in this mesh.
+                            let accepted = d2 < max_distance2
+                                && (mesh.bdy_mask_cell[cell] != REGIONAL_OUTERMOST_MASK
+                                    || point_in_cell(mesh, cell, p));
+                            if accepted { cell as i32 } else { -1 }
+                        }
                     };
-                    // The native regional rule (init_atm_static, nBdyLayers=7):
-                    // a pixel is accepted unconditionally at mask < 7, and on
-                    // an outermost-ring cell only when it is geometrically
-                    // INSIDE that cell -- otherwise its true owner was culled
-                    // and the pixel belongs to nobody in this mesh.
-                    let accepted = d2 < max_distance2
-                        && (mesh.bdy_mask_cell[cell] != REGIONAL_OUTERMOST_MASK
-                            || point_in_cell(mesh, cell, p));
-                    out.push(if accepted { cell as i32 } else { -1 });
+                    k += 1;
+                }
+            }
+        }
+    };
+    if parallel_rows {
+        out.par_chunks_mut(row).enumerate().for_each(|(j, dst)| fill(j, dst));
+    } else {
+        for (j, dst) in out.chunks_mut(row).enumerate() {
+            fill(j, dst);
+        }
+    }
+    Ok(out)
+}
+
+/// Set to any value to map every pixel through the kd search alone (the
+/// reference the walk below is checked against; same bytes, slower).
+const KD_ONLY_ENV: &str = "RW_MPAS_STATIC_KD_ONLY";
+
+/// The destination map of a GLOBAL mesh's tile by walking the cell graph from
+/// the previous pixel's cell, with the kd search kept as the authority.
+///
+/// Carried from static_builder.rs (2026-10-31): this RRFS module is a fork of
+/// that file and never got the walk or the tile skip, so a 110,094-cell
+/// hrrrv5 zoom globe's RRFS static took 453 s on 8 cores while the same box
+/// built the default static in 60 s (terrain 69 s against 4.9 s, the same
+/// dataset and tile count), and the first map came about 20 minutes after the
+/// click.
+///
+/// THE BREAKAGE THIS PREVENTS (moving start member, 2026-10-25): on a
+/// 16-core box the static of a 98,073-cell storm-following mesh took 66 s, and
+/// 38 s of it was three tile-map passes, each a full kd search (about 220 ns)
+/// for each of the 933 million 30-arc-second pixels; the static is the long
+/// pole of "Preparing the start member" once the mesh is premade.
+///
+/// Why the bytes cannot change. Neighbouring pixels almost always share a
+/// cell, so the walk starts at the previous pixel's cell and steps to the
+/// neighbour (cellsOnCell) with the smallest distance until none is smaller:
+/// on a global Voronoi mesh a cell no Delaunay neighbour beats is the nearest
+/// generator. The kd search ranks the f32-rounded cell centres with f32
+/// distances, so the walk's answer is taken only when every neighbour is at
+/// least WALK_MARGIN_M farther than the cell found: that margin exceeds twice
+/// the f32 rounding of a centre (0.43 m at the earth's radius) plus the f32
+/// distance error, so no other cell can rank level with or ahead of it in the
+/// kd search's own arithmetic. Anything closer than the margin (a pixel on a
+/// Voronoi edge, a lexicographic tie) is answered by the kd search itself.
+/// Regional meshes keep the kd path: a culled neighbour ends a walk early.
+/// The pixel's position is the native `xyz` of the native `tile_latlon`
+/// (latitude from the row, longitude from the column), its cosines and sines
+/// computed once per row and column with the same f32 operations in the same
+/// order.
+const WALK_MARGIN_M: f64 = 3.0;
+
+struct GlobalWalk<'a> {
+    mesh: &'a Mesh,
+    tree: &'a KdTree,
+    max_distance2: f64,
+    factor: usize,
+    nx: usize,
+    /// Per column: radius * cos(lon), radius * sin(lon) (f32, native order).
+    rcos_lon: Vec<f32>,
+    rsin_lon: Vec<f32>,
+    /// Per row: cos(lat), radius * sin(lat) (f32).
+    cos_lat: Vec<f32>,
+    rsin_lat: Vec<f32>,
+    cells: Vec<[f32; 3]>,
+}
+
+impl<'a> GlobalWalk<'a> {
+    fn new(mesh: &'a Mesh, tree: &'a KdTree, max_distance2: f64, ds: &GeogDataset, tile: &TileRef,
+           factor: usize) -> Self {
+        let nx = ds.index.tile_x as usize * factor;
+        let ny = ds.index.tile_y as usize * factor;
+        let radius = mesh.sphere_radius as f32;
+        let mut rcos_lon = Vec::with_capacity(nx);
+        let mut rsin_lon = Vec::with_capacity(nx);
+        for ix in 0..nx {
+            let (_, lon) = ds.tile_to_latlon(tile, ix, 0, factor);
+            rcos_lon.push(radius * lon.cos());
+            rsin_lon.push(radius * lon.sin());
+        }
+        let mut cos_lat = Vec::with_capacity(ny);
+        let mut rsin_lat = Vec::with_capacity(ny);
+        for iy in 0..ny {
+            let (lat, _) = ds.tile_to_latlon(tile, 0, iy, factor);
+            cos_lat.push(lat.cos());
+            rsin_lat.push(radius * lat.sin());
+        }
+        let cells = (0..mesh.n_cells)
+            .map(|c| [mesh.x_cell[c] as f32, mesh.y_cell[c] as f32, mesh.z_cell[c] as f32])
+            .collect();
+        Self { mesh, tree, max_distance2, factor, nx, rcos_lon, rsin_lon, cos_lat, rsin_lat, cells }
+    }
+
+    #[inline]
+    fn d2(&self, cell: usize, t: [f32; 3]) -> f32 {
+        crate::static_native::distance2(self.cells[cell], t)
+    }
+
+    /// The kd search's answer for `t`, when the walk from `seed` proves it; None to ask the kd search.
+    #[inline]
+    fn walk(&self, seed: usize, t: [f32; 3]) -> Option<(usize, f32)> {
+        let mesh = self.mesh;
+        let mut cell = seed;
+        let mut best = self.d2(cell, t);
+        loop {
+            let mut next = usize::MAX;
+            let mut next_d = best;
+            let mut runner_up = f32::INFINITY;
+            let base = cell * mesh.max_edges;
+            for k in 0..mesh.n_edges_on_cell[cell] {
+                let n = mesh.cells_on_cell[base + k];
+                if n >= mesh.n_cells {
+                    return None;
+                }
+                let d = self.d2(n, t);
+                if d < next_d {
+                    next_d = d;
+                    next = n;
+                }
+                runner_up = runner_up.min(d);
+            }
+            if next == usize::MAX {
+                // A local minimum: accepted only with every neighbour clearly farther.
+                let gap = (runner_up as f64).sqrt() - (best as f64).sqrt();
+                return (gap > WALK_MARGIN_M).then_some((cell, best));
+            }
+            cell = next;
+            best = next_d;
+        }
+    }
+
+    fn fill_row(&self, j: usize, dst: &mut [i32]) {
+        let factor = self.factor;
+        let mut seed: Option<usize> = None;
+        let mut k = 0usize;
+        for i in 0..self.nx / factor {
+            for sj in 0..factor {
+                let iy = j * factor + sj;
+                let (clat, z) = (self.cos_lat[iy], self.rsin_lat[iy]);
+                for si in 0..factor {
+                    let ix = i * factor + si;
+                    let t32 = [self.rcos_lon[ix] * clat, self.rsin_lon[ix] * clat, z];
+                    let found = match seed.and_then(|c| self.walk(c, t32)) {
+                        Some((cell, d)) => ((d as f64) < self.max_distance2).then_some((cell, d as f64)),
+                        None => self.tree.nearest_bounded(t32.map(f64::from), self.max_distance2),
+                    };
+                    dst[k] = match found {
+                        // Global mesh: every bdyMaskCell is 0, so the native regional rule accepts any
+                        // pixel the bounded search returned (tile_map's d2 < max_distance2).
+                        Some((cell, d2)) if d2 < self.max_distance2 => {
+                            seed = Some(cell);
+                            cell as i32
+                        }
+                        _ => -1,
+                    };
+                    k += 1;
                 }
             }
         }
     }
-    Ok(out)
+}
+
+/// True when no pixel of `tile` can lie within `sqrt(max_distance2)` of any
+/// cell (see [`tile_map`]). Decided from the tile's centre and corners and one
+/// bounded kd search; `false` whenever the bound is not finite.
+fn tile_reaches_no_cell(
+    mesh: &Mesh,
+    tree: &KdTree,
+    max_distance2: f64,
+    ds: &GeogDataset,
+    tile: &TileRef,
+    factor: usize,
+) -> bool {
+    if !max_distance2.is_finite() || max_distance2 <= 0.0 {
+        return false;
+    }
+    let nx = ds.index.tile_x as usize * factor;
+    let ny = ds.index.tile_y as usize * factor;
+    if nx == 0 || ny == 0 {
+        return false;
+    }
+    // The corner bound below holds only while the tile spans at most 180
+    // degrees of longitude (beyond that the farthest point can be an edge
+    // midpoint or the antipode, e.g. (0, 180) of a one-tile global grid
+    // centred at (0, 0), 2 R away against the corners' 1.41 R). Release
+    // review 14 (2.9.7): such a tile was skipped and a CONUS region got no
+    // samples. Tiles wider than 90 degrees either way take the full lookup.
+    if ds.index.tile_x as f64 * ds.index.dx.abs() > 90.0
+        || ds.index.tile_y as f64 * ds.index.dy.abs() > 90.0
+    {
+        return false;
+    }
+    let at = |i: usize, j: usize| -> [f64; 3] {
+        let (lat, lon) = ds.tile_to_latlon(tile, i, j, factor);
+        crate::static_native::xyz(mesh.sphere_radius as f32, lat, lon).map(f64::from)
+    };
+    let d = |a: [f64; 3], b: [f64; 3]| {
+        ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+    };
+    let centre = at(nx / 2, ny / 2);
+    // On a latitude-longitude box the farthest point from an interior point
+    // is a corner; the 1 % and the one-pixel pad cover the corner pixels'
+    // own extent and the sampling offsets.
+    let corners = [at(0, 0), at(nx - 1, 0), at(0, ny - 1), at(nx - 1, ny - 1)];
+    let reach = corners.iter().map(|&c| d(centre, c)).fold(0.0f64, f64::max);
+    let pixel = d(at(0, 0), at(1.min(nx - 1), 1.min(ny - 1))).max(1.0);
+    const SLACK_M: f64 = 1000.0;
+    let bound = max_distance2.sqrt() + reach * 1.01 + pixel + SLACK_M;
+    if !bound.is_finite() {
+        return false;
+    }
+    tree.nearest_bounded(centre, bound * bound).is_none()
 }
 
 // ---------------------------------------------------------------------------
@@ -1488,7 +1720,15 @@ impl GeogContext<'_> {
         if let Some(hit) = self.cache.get(&key, len)? {
             return Ok(hit);
         }
-        let map = tile_map(self.mesh, self.tree, self.max_d2, ds, tile, factor)?;
+        // The rows of one tile go to the admitted pool (the same threads the
+        // tiles run on), so the few tiles under a regional mesh's fine core
+        // no longer finish on one thread each while the rest wait.
+        let map = match self.pool {
+            Some(pool) if self.workers > 1 => pool.install(|| {
+                tile_map(self.mesh, self.tree, self.max_d2, ds, tile, factor, true)
+            })?,
+            _ => tile_map(self.mesh, self.tree, self.max_d2, ds, tile, factor, false)?,
+        };
         self.cache.insert(key, &map)?;
         Ok(map)
     }

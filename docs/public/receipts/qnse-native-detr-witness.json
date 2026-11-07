@@ -1,0 +1,169 @@
+{
+  "source_sha256": "cb678bb818adda9906ab6479cf04e665285042e5bfe9f39c7ddef2e9221c7a34",
+  "native_detr_failed_point": "inf",
+  "native_flux_failed_point": 0.0,
+  "rows": {
+    "massflux_edkf": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 6.397068500518799e-05
+    },
+    "entr_edkf": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 7.888302206993103e-06
+    },
+    "detr_edkf": {
+      "native_nonfinite": 1,
+      "gpu_nonfinite": 1,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 0.00045230984687805176
+    },
+    "thl_up": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 9.1552734375e-05
+    },
+    "thv_up": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 9.1552734375e-05
+    },
+    "rt_up": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 8.381903171539307e-08
+    },
+    "rv_up": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 8.381903171539307e-08
+    },
+    "rc_up": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 1.6763806343078613e-08
+    },
+    "u_up": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 0.0
+    },
+    "v_up": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 0.0
+    },
+    "frac_up": {
+      "native_nonfinite": 0,
+      "gpu_nonfinite": 0,
+      "nonfinite_locations_match": true,
+      "max_abs_finite": 7.698405534029007e-05
+    }
+  },
+  "terminal_level_witness": {
+    "step": 480,
+    "native_detr": "inf",
+    "native_flux": [
+      0.0038848761469125748,
+      0.0
+    ],
+    "gpu_detr": "inf",
+    "gpu_flux": [
+      0.003885020036250353,
+      0.0
+    ]
+  },
+  "provenance": {
+    "detr-probe": {
+      "selection": {
+        "model_step": 112,
+        "global_tile_top": 17,
+        "selected_flat_columns": [
+          2322,
+          5106
+        ],
+        "failing_location": [
+          11,
+          7,
+          222
+        ],
+        "gpu_detr": [
+          "inf",
+          0.0
+        ],
+        "gpu_flux": [
+          0.0,
+          3.004560767294606e-06
+        ]
+      },
+      "artifacts": {
+        "inputs.bin": {
+          "bytes": 3956,
+          "sha256": "499fea39ad5b0a895738c6aa61c1a8b272930ae4e5f658dd6793a715da1e83dc"
+        },
+        "native.bin": {
+          "bytes": 7448,
+          "sha256": "359c9b068983963700e15958b83482ab06e14128702736fb1e90f63b4c0abacb"
+        }
+      }
+    },
+    "detr-probe-hour2": {
+      "selection": {
+        "model_step": 480,
+        "global_tile_top": 21,
+        "selected_flat_columns": [
+          8750,
+          1408
+        ],
+        "failing_location": [
+          9,
+          29,
+          50
+        ],
+        "gpu_detr": [
+          "inf",
+          0.0528465211391449
+        ],
+        "gpu_flux": [
+          [
+            0.003885020036250353,
+            0.05482122674584389
+          ],
+          [
+            0.0,
+            0.0006140265613794327
+          ]
+        ]
+      },
+      "artifacts": {
+        "inputs.bin": {
+          "bytes": 3956,
+          "sha256": "650e61c180f61c0414f0bf245e5e9a2b4f52ea76774d7e9a68b9ee2c3816e66c"
+        },
+        "native.bin": {
+          "bytes": 7448,
+          "sha256": "9589f1c50e906a5fc3072d81c586006774b1af849d85bc883fa48e29c8c75817"
+        }
+      }
+    },
+    "wrapper": {
+      "path": "scripts/detr-native.F90",
+      "sha256": "cf9b9e27a4c2f1e73355388f7c7cea8a6cbb7bf0149531fb4cd149777c7e6863"
+    },
+    "compile_flags": "-cpp -DEM_CORE=1 -ffree-form -ffree-line-length-none -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+    "compiler": "GNU Fortran (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+    "purpose": "Unmodified native MF module replay of GPU trajectory inputs, separately from the strict native-run input replay",
+    "native_command": "cd <scratch>/port-qnse-pbl-sfc/detr-probe; gfortran -c -cpp -DEM_CORE=1 -ffree-form -ffree-line-length-none -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize ../native/share/module_model_constants.F -o module_model_constants.o; gfortran -c -cpp -DEM_CORE=1 -ffree-form -ffree-line-length-none -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize module_bl_mfshconvpbl.F -o module_bl_mfshconvpbl.o; gfortran -c -ffree-form -ffree-line-length-none -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize ../scripts/detr-native.F90 -o detr-native.o; gfortran -o detr-native detr-native.o module_bl_mfshconvpbl.o module_model_constants.o; ./detr-native; cd ../detr-probe-hour2; ../detr-probe/detr-native"
+  },
+  "native_cause": "phys/module_bl_mfshconvpbl.F:970-971: zero PLUP minus interface-midpoint denominator after the plume stops; raw diagnostic is preserved"
+}

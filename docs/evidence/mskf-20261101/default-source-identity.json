@@ -1,0 +1,16 @@
+{
+  "prior_forecast_source_sha256": "8a034d6776c5c5a48b77f979ff8a9c0c9b9047a0cc5d2937e701aa7ad13615ab",
+  "modes": [
+    {
+      "mode": "fast",
+      "sha256": "8a034d6776c5c5a48b77f979ff8a9c0c9b9047a0cc5d2937e701aa7ad13615ab",
+      "fast_macro": true
+    },
+    {
+      "mode": "strict",
+      "sha256": "986abb334e08036c804bcf6a195aba7a281f4178ca94f7b7cf07db9631692200",
+      "fast_macro": false
+    }
+  ],
+  "default_identical": true
+}

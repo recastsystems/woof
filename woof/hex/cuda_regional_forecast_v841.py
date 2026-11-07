@@ -47,6 +47,7 @@ other consumer takes the remapped one.
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -1416,37 +1417,199 @@ def advance_acoustic_step_regional_cuda_v841(
             out.ww_avg,
         ),
     )
-    rs = cp.zeros((nlev, ncells), dtype=cp.float32)
-    ts = cp.zeros_like(rs)
+    # acoustic_rs_ts_regional_v841 writes every (level, cell) of rs and ts,
+    # the specified zone included (zero there), so the scratch needs no
+    # memset of its own.
+    rs = cp.empty((nlev, ncells), dtype=cp.float32)
+    ts = cp.empty_like(rs)
+    split = regional_acoustic_split_enabled()
+
+    def rs_ts(slot_major: bool, rs_out: Any, ts_out: Any) -> None:
+        def arguments(edges_on_cell: Any, edge_sign_on_cell: Any) -> tuple:
+            return (
+                np.int32(nlev), np.int32(ncells), np.int32(nedges),
+                np.int32(max_edges), np.float32(dts), mesh.n_edges_on_cell,
+                edges_on_cell, mesh.cells_on_edge, edge_sign_on_cell,
+                mesh.dv_edge, context.inv_area_cell, runtime.spec_zone_mask_cell,
+                forcing.theta_m, rdzw, coefficients.cofrz, coefficients.coftz,
+                context.ewm, out.ru_p, out.rw_p, out.rho_pp, out.rtheta_pp,
+                forcing.tend_rho, forcing.tend_rt, rs_out, ts_out,
+            )
+
+        if slot_major:
+            kernels.launch(
+                "acoustic_rs_ts_slot_regional_v841",
+                nlev * ncells,
+                arguments(*slot_major_cell_tables(runtime, mesh, ncells, max_edges)),
+            )
+        else:
+            kernels.launch(
+                "acoustic_rs_ts_regional_v841",
+                nlev * ncells,
+                arguments(mesh.edges_on_cell, mesh.edge_sign_on_cell),
+            )
+
+    rs_ts(split, rs, ts)
+
+    def column_solve(rw_p: Any, rho_pp: Any, rtheta_pp: Any, ww_avg: Any) -> None:
+        kernels.launch(
+            "acoustic_column_solve_regional_v841",
+            ncells,
+            (
+                np.int32(nlev), np.int32(ncells), np.float32(dts), forcing.zz,
+                forcing.rho_zz, fzm, fzp, rdzw, forcing.dss, forcing.w,
+                forcing.rw, forcing.rw_save, forcing.tend_rw, forcing.tend_rho,
+                forcing.tend_rt, rs, ts, runtime.spec_zone_mask_cell,
+                coefficients.cofwr, coefficients.cofwz, coefficients.coftz,
+                coefficients.cofwt, coefficients.cofrz, coefficients.a_tri,
+                coefficients.alpha_tri, coefficients.gamma_tri, context.etp,
+                context.etm, context.ewp, context.ewm, rw_p, rho_pp,
+                rtheta_pp, ww_avg,
+            ),
+        )
+
+    if not split:
+        column_solve(out.rw_p, out.rho_pp, out.rtheta_pp, out.ww_avg)
+        return out
+
+    def same_words(label: str, fast: Any, reference: Any) -> None:
+        new_words = cp.ascontiguousarray(fast).view(cp.uint32)
+        old_words = cp.ascontiguousarray(reference).view(cp.uint32)
+        differing = int(cp.count_nonzero(new_words != old_words))
+        if differing:
+            raise RuntimeError(
+                f"{label}: differs from the one-kernel form in {differing} of "
+                f"{new_words.size} words; WOOF_HEX_REGIONAL_ACOUSTIC_SPLIT=0 "
+                "runs the one-kernel forms")
+
+    check = _split_check_wanted()
+    if check:
+        rs_cell, ts_cell = cp.empty_like(rs), cp.empty_like(ts)
+        rs_ts(False, rs_cell, ts_cell)
+        same_words("acoustic_rs_ts_slot_regional_v841 rs", rs, rs_cell)
+        same_words("acoustic_rs_ts_slot_regional_v841 ts", ts, ts_cell)
+        # The split updates the state in place; keep the entry state so the
+        # one-kernel solve can run from the same inputs and be compared.
+        entry = {name: cp.array(getattr(out, name), copy=True)
+                 for name in ("rw_p", "rho_pp", "rtheta_pp", "ww_avg")}
+    advance_column_split_regional_v841(
+        kernels, nlev=nlev, ncells=ncells, dts=dts, forcing=forcing,
+        coefficients=coefficients, context=context,
+        spec_zone_mask_cell=runtime.spec_zone_mask_cell, fzm=fzm, fzp=fzp,
+        rdzw=rdzw, rs=rs, ts=ts, rw_p=out.rw_p, rho_pp=out.rho_pp,
+        rtheta_pp=out.rtheta_pp, ww_avg=out.ww_avg,
+    )
+    if check:
+        column_solve(entry["rw_p"], entry["rho_pp"], entry["rtheta_pp"], entry["ww_avg"])
+        for name in ("rw_p", "rho_pp", "rtheta_pp", "ww_avg"):
+            same_words(f"acoustic_column_split_regional_v841 {name}",
+                       getattr(out, name), entry[name])
+    return out
+
+
+def slot_major_cell_tables(runtime: Any, mesh: Any, ncells: int,
+                           max_edges: int) -> tuple[Any, Any]:
+    """``edgesOnCell`` and ``edgesOnCell_sign`` as ``[slot][cell]`` for
+    ``acoustic_rs_ts_slot_regional_v841``, cut once per mesh table and held
+    with the very arrays they came from (a reused address never matches)."""
+
+    cached = getattr(runtime, "_slot_major_cell_tables", None)
+    if (cached is None or cached[0] is not mesh.edges_on_cell
+            or cached[1] is not mesh.edge_sign_on_cell or cached[2] != ncells):
+        import cupy as cp
+
+        edges = cp.asarray(mesh.edges_on_cell).reshape(-1, int(max_edges))
+        signs = cp.asarray(mesh.edge_sign_on_cell).reshape(-1, int(max_edges))
+        if edges.shape[0] < ncells or signs.shape[0] < ncells:
+            raise RuntimeError(
+                f"edgesOnCell holds {edges.shape[0]} rows for {ncells} cells; "
+                "the slot-major acoustic stencil would read past it")
+        cached = (
+            mesh.edges_on_cell, mesh.edge_sign_on_cell, int(ncells),
+            cp.ascontiguousarray(edges[:ncells].T),
+            cp.ascontiguousarray(signs[:ncells].T),
+        )
+        runtime._slot_major_cell_tables = cached
+    return cached[3], cached[4]
+
+
+_SPLIT_CHECKS: dict[int, int] = {}
+
+
+def _split_check_wanted() -> bool:
+    """``WOOF_HEX_REGIONAL_ACOUSTIC_SPLIT_CHECK=N``: the first N substeps on
+    each card also run the one-kernel solve from the same entry state and
+    compare every word (a proof arm, not a production setting)."""
+
+    limit = int(os.environ.get("WOOF_HEX_REGIONAL_ACOUSTIC_SPLIT_CHECK", "0") or 0)
+    if limit <= 0:
+        return False
+    import cupy as cp
+
+    device = int(cp.cuda.Device().id)
+    calls = _SPLIT_CHECKS.get(device, 0)
+    if calls >= limit:
+        return False
+    _SPLIT_CHECKS[device] = calls + 1
+    return True
+
+
+def regional_acoustic_split_enabled() -> bool:
+    """The regional column solve runs as four kernels unless
+    ``WOOF_HEX_REGIONAL_ACOUSTIC_SPLIT=0`` selects the one-kernel form (same
+    bits, kept as the A/B arm)."""
+
+    return os.environ.get("WOOF_HEX_REGIONAL_ACOUSTIC_SPLIT", "1") != "0"
+
+
+def advance_column_split_regional_v841(
+    kernels: Any, *, nlev: int, ncells: int, dts: float, forcing: Any,
+    coefficients: Any, context: Any, spec_zone_mask_cell: Any, fzm: Any,
+    fzp: Any, rdzw: Any, rs: Any, ts: Any, rw_p: Any, rho_pp: Any,
+    rtheta_pp: Any, ww_avg: Any,
+) -> None:
+    """``acoustic_column_solve_regional_v841`` as its four split kernels:
+    level-parallel pre, per-column sweep, level-parallel damping and
+    rho/theta update (see the kernel comment for why the bits are equal)."""
+
     kernels.launch(
-        "acoustic_rs_ts_regional_v841",
+        "acoustic_column_pre_regional_v841",
         nlev * ncells,
         (
-            np.int32(nlev), np.int32(ncells), np.int32(nedges),
-            np.int32(max_edges), np.float32(dts), mesh.n_edges_on_cell,
-            mesh.edges_on_cell, mesh.cells_on_edge, mesh.edge_sign_on_cell,
-            mesh.dv_edge, context.inv_area_cell, runtime.spec_zone_mask_cell,
-            forcing.theta_m, rdzw, coefficients.cofrz, coefficients.coftz,
-            context.ewm, out.ru_p, out.rw_p, out.rho_pp, out.rtheta_pp,
-            forcing.tend_rho, forcing.tend_rt, rs, ts,
+            np.int32(nlev), np.int32(ncells), np.float32(dts), forcing.zz,
+            forcing.tend_rw, forcing.tend_rho, forcing.tend_rt, rs, ts,
+            spec_zone_mask_cell, coefficients.cofwr, coefficients.cofwz,
+            coefficients.cofwt, context.etp, context.etm, context.ewp,
+            context.ewm, rw_p, rho_pp, rtheta_pp, ww_avg,
         ),
     )
     kernels.launch(
-        "acoustic_column_solve_regional_v841",
+        "acoustic_column_sweep_regional_v841",
         ncells,
         (
-            np.int32(nlev), np.int32(ncells), np.float32(dts), forcing.zz,
-            forcing.rho_zz, fzm, fzp, rdzw, forcing.dss, forcing.w,
-            forcing.rw, forcing.rw_save, forcing.tend_rw, forcing.tend_rho,
-            forcing.tend_rt, rs, ts, runtime.spec_zone_mask_cell,
-            coefficients.cofwr, coefficients.cofwz, coefficients.coftz,
-            coefficients.cofwt, coefficients.cofrz, coefficients.a_tri,
-            coefficients.alpha_tri, coefficients.gamma_tri, context.etp,
-            context.etm, context.ewp, context.ewm, out.rw_p, out.rho_pp,
-            out.rtheta_pp, out.ww_avg,
+            np.int32(nlev), np.int32(ncells), np.float32(dts),
+            spec_zone_mask_cell, coefficients.a_tri, coefficients.alpha_tri,
+            coefficients.gamma_tri, rw_p,
         ),
     )
-    return out
+    kernels.launch(
+        "acoustic_column_post_w_regional_v841",
+        (nlev - 1) * ncells,
+        (
+            np.int32(nlev), np.int32(ncells), np.float32(dts), forcing.zz,
+            forcing.rho_zz, fzm, fzp, forcing.dss, forcing.w, forcing.rw,
+            forcing.rw_save, spec_zone_mask_cell, context.ewp, rw_p, ww_avg,
+        ),
+    )
+    kernels.launch(
+        "acoustic_column_post_rt_regional_v841",
+        nlev * ncells,
+        (
+            np.int32(nlev), np.int32(ncells), np.float32(dts), rdzw, rs, ts,
+            spec_zone_mask_cell, coefficients.coftz, coefficients.cofrz,
+            context.ewp, rw_p, rho_pp, rtheta_pp,
+        ),
+    )
 
 
 def advance_scalars_regional_cuda_v841(
@@ -1561,7 +1724,7 @@ def advance_scalars_regional_cuda_v841(
     return output, target
 
 
-# THE BREAKAGE THIS PREVENTS (V8X6000 2026-10-29 06:46-07:54Z): NOAA conus3km hrrrv5 on 4 x RTX PRO 6000 (44c0849 row,
+# THE BREAKAGE THIS PREVENTS (eight-card system 2026-10-29 06:46-07:54Z): NOAA conus3km hrrrv5 on 4 x RTX PRO 6000 (44c0849 row,
 # hex 0.4.10 tree 236be507) died in step 1 with CUDA_ERROR_ILLEGAL_ADDRESS on every route (peer and process), named by
 # CUDA_LAUNCH_BLOCKING=1 as transport_edge_values_regional_v841.  The regional scalar transport launched all ~20 TEMPO
 # tracers at once: ntracers x nlev x nedges = ~2.1e9 elements per rank, past 2^30, so the kernels' int grid-stride
@@ -2125,7 +2288,7 @@ class CudaRegionalRuntimeV841:
             ),
         )
 
-    # THE BREAKAGE THIS PREVENTS (conus3km hrrrv5 4 x RTX PRO 6000, V8X6000 2026-10-29 05:30Z, lease c4p-c3km2 arm
+    # THE BREAKAGE THIS PREVENTS (conus3km hrrrv5 4 x RTX PRO 6000, eight-card system 2026-10-29 05:30Z, lease c4p-c3km2 arm
     # B): rank 2 ran out of memory at step 30 inside bdy_adjust_scalars, allocating cp.zeros_like(scalars) (1.81 GB)
     # at 98.8 GB held, right after driving.state_at('scalars') had scattered the compact driving pool back to a
     # second full-extent 1.81 GB array.  Both arrays spanned every cell of the rank although only the seven boundary
@@ -2374,7 +2537,7 @@ class CudaRegionalRuntimeV841:
         cqu = cp.ascontiguousarray(one / (one + edge_total))
         return _CudaV841MoistDynamicsCoefficients(qtot=qtot, cqw=cqw, cqu=cqu)
 
-    def validate_recovered(self, state: Any, saved: Any, flag: Any) -> None:
+    def validate_recovered(self, state: Any, saved: Any, flag: Any, *, extents: tuple[int, int] | None = None) -> None:
         """``validate_recovered_v841_f32``'s contract, over the SOLVE region.
 
         The shared kernel is launched over the padded extent and demands
@@ -2395,10 +2558,12 @@ class CudaRegionalRuntimeV841:
         It used to be eleven ``cp.all(cp.isfinite(x) & (x > 0))`` reductions
         on strided views, each with its own temporaries and its own drain of
         the stream, per RK stage.
+
+        ``extents`` is ``(owned cells, owned edges)`` on a rank of a split mesh: its outermost halo
+        ring is garbage until the owner's words arrive (cuda_driver._column_flag_v841).
         """
 
-        cells = self.n_cells_solve
-        edges = self.n_edges_solve
+        cells, edges = (self.n_cells_solve, self.n_edges_solve) if extents is None else extents
         self.solve_region.validate(
             flag,
             positive=(

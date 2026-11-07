@@ -6,6 +6,9 @@ argument order; numerical state stays on the device. Driver registration
 belongs to the MPAS physics seam. WOOF's default backend is untouched.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
+from woof.hip_backend import runtime_limit as _runtime_limit
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -3144,10 +3147,11 @@ def _compile_module(source, reserve_stack=True):
     # The production module in shared-tables mode has no recursion, so ptxas
     # sizes its whole chain and the driver reserves it (see _module_for).
     limit = cp.cuda.runtime.cudaLimitStackSize
-    if reserve_stack and cp.cuda.runtime.deviceGetLimit(limit) < 8192:
-        cp.cuda.runtime.deviceSetLimit(limit, 8192)
-    arch = compiler._get_arch()
-    identity = repr((_hex_numerics.options(CUDA_OPTIONS, keep_ftz=True), arch, nvrtc.getVersion(), cp.__version__)) + source
+    if reserve_stack and _runtime_limit(limit) < 8192:
+        _runtime_limit(limit, 8192)
+    arch = _compilation_target(xp=cp)
+    from ..cuda_backend.aot import compiler_identity
+    identity = repr((_hex_numerics.options(CUDA_OPTIONS, keep_ftz=True), arch, compiler_identity())) + source
     key = hashlib.sha256(identity.encode()).hexdigest()
     directory = Path(os.environ.get('CUPY_CACHE_DIR', Path.home() / '.cupy/kernel_cache')) / 'hex-noah'
     directory.mkdir(parents=True, exist_ok=True)

@@ -18,13 +18,14 @@ imports at module scope has to be staged by
 """
 
 from __future__ import annotations
+from pathlib import Path
 
 import json
 import sys
 
 
 def pool_lease_budget_bytes(device: int = 0) -> int | None:
-    """This process's per-card pool-v3 reservation, never another owner's.
+    """This process's per-card reservation, never another owner's.
 
     The helper exports GPU_MUTEX_CARDS (physical indices in CUDA order),
     and records the budget in OWNER-N.json. Match a live ancestor's PID
@@ -37,8 +38,11 @@ def pool_lease_budget_bytes(device: int = 0) -> int | None:
     cards = os.environ.get("GPU_MUTEX_CARDS", "").split(",")
     if device < 0 or device >= len(cards) or not cards[device].isdigit():
         return None
+    ledger_root = os.environ.get("GPU_MUTEX_DIR")
+    if not ledger_root:
+        return None
     try:
-        ledger = json.loads((Path(os.environ["GPU_MUTEX_DIR"])
+        ledger = json.loads((Path(ledger_root)
                              / f"OWNER-{cards[device]}.json").read_text())
         if ledger.get("schema") != "gpu-mutex.owner.v1":
             return None
@@ -131,6 +135,13 @@ import sys
 # turned the "no CuPy here" exit code into an ImportError traceback,
 # which is the exact confusion PROBE_EXIT_NO_RUNTIME exists to end.
 
+def _smi_command():
+    import runpy
+    from pathlib import Path
+    _leaf = Path(__GPU_SMI_LEAF__)
+    return runpy.run_path(str(_leaf))["command"]()
+
+
 def _nvml_load():
     # (readings by bus ID, how many cards nvidia-smi listed).  The count is
     # every row printed, parsed or not: a card whose memory.used reads
@@ -140,7 +151,7 @@ def _nvml_load():
         return {}, 0
     try:
         out = subprocess.run(
-            ["nvidia-smi",
+            [*_smi_command(),
              "--query-gpu=pci.bus_id,memory.used,utilization.gpu,memory.total",
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=60)
@@ -236,7 +247,8 @@ try:
     free, total = cp.cuda.runtime.memGetInfo()
     props = cp.cuda.runtime.getDeviceProperties(_device)
     name = props["name"]
-    _stack = int(cp.cuda.runtime.deviceGetLimit(0))
+    _hip = bool(cp.cuda.runtime.is_hip)
+    _stack = 0 if _hip else int(cp.cuda.runtime.deviceGetLimit(0))
     # THE SMALLER OF THE TWO INSTRUMENTS, always.  On WDDM the display
     # driver can evict other processes' allocations, so cudaMemGetInfo
     # answers "free if everything else were paged out" -- measured
@@ -259,6 +271,7 @@ try:
     # on this card as unread rather than on a guessed platform.
     _platform = None
     try:
+        if cp.cuda.runtime.is_hip: raise RuntimeError("HIP has no CUDA compile platform")
         import re as _re
         from cupy_backends.cuda.libs import nvrtc as _nvrtc
         _ptx = None
@@ -307,7 +320,8 @@ try:
             "max_threads_per_multiprocessor": int(
                 props["maxThreadsPerMultiProcessor"]),
             "default_stack_limit_bytes": _stack,
-            "compile_platform": _platform,
+            "compile_platform": None if _hip else _platform,
+            "backend": "hip" if _hip else "cuda",
         },
     }
 except Exception as error:
@@ -335,7 +349,7 @@ except Exception as error:
     }))
     sys.exit(3)
 print(json.dumps(payload))
-"""
+""".replace("__GPU_SMI_LEAF__", repr(str(Path(__file__).resolve().parents[1] / "gpu_smi.py")))
 
 #: Long enough for a cold CuPy import plus context creation on a busy
 #: box; a probe that cannot answer inside it reads as "no device", which

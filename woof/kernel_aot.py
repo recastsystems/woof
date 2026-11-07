@@ -4,6 +4,8 @@ Only CUDA driver orchestration lives here. Cache misses keep the ordinary compil
 """
 from __future__ import annotations
 
+from woof.backend import compilation_target as _compilation_target
+
 import base64
 from contextlib import contextmanager
 import hashlib
@@ -17,7 +19,18 @@ import tempfile
 import threading
 import time
 
-DEFAULT_PACK = Path(__file__).resolve().parent / "data" / "kernel-pack.json"
+def _default_pack_path() -> Path:
+    try:
+        from gpuwm_kernels import data_path
+    except ModuleNotFoundError as error:
+        if error.name != "gpuwm_kernels":
+            raise
+        # Source checkout; installed distributions require the matching companion.
+        root = Path(__file__).resolve().parents[1]
+        return root / "gpuwm-kernels" / "gpuwm_kernels" / "data" / "kernel-pack.json"
+    return data_path() / "kernel-pack.json"
+
+DEFAULT_PACK = _default_pack_path()
 #: Ada (sm_89: RTX 4090, L40S), Hopper (sm_90: H100, H200), Blackwell
 #: datacenter (sm_100: B200) and Blackwell RTX (sm_120: RTX 5090, RTX PRO 6000).
 ARCHITECTURES = ("sm_89", "sm_90", "sm_100", "sm_120")
@@ -25,6 +38,52 @@ _BRIDGE_LOCK = threading.RLock()
 _SITE_TOKEN = "@SITE@"
 _PACKS: dict = {}
 _WARNED: set = set()
+
+
+#: Compiler-bound unit families shipped beside the general pack as
+#: ``kernel-packs/<family>-<compiler digest>.json.xz`` (tools/build_gfdleta_pack.py
+#: --family). A scheme whose large unit would otherwise compile on one core
+#: during the first forecast step is added here as data, not a new route:
+#: gfdleta (ra_physics 99, a 377 s cold step) and mskf (cu_physics 11, a
+#: 306 s cold step).
+UNIT_PACK_FAMILIES = ("gfdleta", "mskf")
+
+
+def unit_pack_path(family, identity):
+    """A build-specific extension; never substitute a different compiler's image."""
+    if family not in UNIT_PACK_FAMILIES:
+        raise ValueError(f"unknown kernel unit pack family {family!r}")
+    from woof.kernel_pack import digest
+    return DEFAULT_PACK.parent / "kernel-packs" / (family + "-" + digest(identity) + ".json.xz")
+
+
+def gfdleta_pack_path(identity):
+    return unit_pack_path("gfdleta", identity)
+
+
+def compiler_pack_path(identity):
+    """Exact compiler patch images alongside the existing family baseline."""
+    from woof.kernel_pack import digest
+    filename = "compiler-" + digest(identity) + ".json.xz"
+    local = DEFAULT_PACK.parent / "kernel-packs" / filename
+    # Explicit/custom packs retain their own extensions. The release split
+    # moves bytes only; compiler and source identities are unchanged.
+    if DEFAULT_PACK != _default_pack_path() or local.is_file():
+        return local
+    try:
+        from gpuwm_kernels_startup import data_path
+    except ModuleNotFoundError as error:
+        if error.name != "gpuwm_kernels_startup":
+            raise
+        root = Path(__file__).resolve().parents[1]
+        return root / "gpuwm-kernels-startup" / "gpuwm_kernels_startup" / "data" / "kernel-packs" / filename
+    return data_path() / "kernel-packs" / filename
+
+
+def mskf_pack_path(identity):
+    """Source-bound MSKF images for this exact compiler build."""
+    from woof.kernel_pack import digest
+    return DEFAULT_PACK.parent / "kernel-packs" / ("mskf-" + digest(identity) + ".json.xz")
 
 
 def effective_options(options):
@@ -111,6 +170,8 @@ def _distribution(names):
 
 
 def compiler_identity():
+    from woof.hip_backend import active,compiler_binding
+    if active():return compiler_binding()
     import cupy
     from cupy.cuda import compiler
     from woof.certify.compile_platform import nvrtc_library
@@ -218,6 +279,12 @@ class Pack:
         self.rows = []
         self.compiler = None
         self.reason = None
+        from woof.hip_backend import active
+        if active():
+            self.reason = "hip_source_bound_images"
+            self._by_key = {}
+            self._architectures = set()
+            return
         self._by_key = {}
         self._architectures = set()
         self._header_snapshots = {}
@@ -235,7 +302,24 @@ class Pack:
             _warn_once(("identity",), "the CUDA compiler identity could not be measured "
                        f"({self.detail}); the prebuilt kernel pack is not used and modules compile on first use")
             return
+        extension = None
         if not requested:
+            for family in UNIT_PACK_FAMILIES:
+                extra_path = unit_pack_path(family, measured)
+                if not extra_path.is_file():
+                    continue
+                extra = Pack(extra_path, identity=measured)
+                if extra.reason:
+                    continue
+                if extension is None:
+                    extension = extra
+                else:
+                    extension.rows = [*extension.rows, *extra.rows]
+                    extension._index()
+        profile = compiler_pack_path(measured)
+        if not requested and profile.is_file():
+            path = profile
+        elif not requested:
             # The default GPU extra uses CUDA 12, while CUDA 13 remains
             # supported. Ship a compiler-family sidecar without replacing
             # the other family's pack. The exact identity and every entry
@@ -246,6 +330,13 @@ class Pack:
                 candidate = path.with_name(f"kernel-pack-cuda{int(version[0])}.json")
                 if candidate.is_file():
                     path = candidate
+        # Ports may add a compiler-bound pack without replacing the shared
+        # family's existing images. This also covers a newer NVRTC patch on
+        # a cold machine: the GFDL unit must not become a serial first-step
+        # compilation merely because the older general pack cannot load.
+        if extension is not None and not path.is_file():
+            self.__dict__.update(extension.__dict__)
+            return
         if not path.is_file():
             self.reason = "pack_missing"
             _warn_once(("missing", str(path)),
@@ -266,8 +357,13 @@ class Pack:
                 rows = read(path, measured)
                 _PACKS[memo] = rows
             self.rows = rows
+            if extension is not None:
+                self.rows = [*rows, *extension.rows]
             self.compiler = measured
         except (OSError, ValueError, TypeError, KeyError, lzma.LZMAError) as error:
+            if extension is not None:
+                self.__dict__.update(extension.__dict__)
+                return
             self.reason = "pack_invalid_or_compiler_mismatch"
             self.detail = str(error)
             built = compiler_of(path)
@@ -286,6 +382,10 @@ class Pack:
                         + (f". To start from the pack: pip install {wanted}" if wanted else ""))
             _warn_once(("mismatch", str(path)), text)
             return
+        self._index()
+
+    def _index(self):
+        self._by_key, self._architectures = {}, set()
         for row in self.rows:
             self._by_key.setdefault(row.get("module_key"), []).append(row)
             self._architectures.add(row.get("arch"))
@@ -329,6 +429,12 @@ class Pack:
                             raise ValueError("header dependency may escape the include roots")
                         with _BRIDGE_LOCK:
                             actual = include_tree_dependencies(options, self._header_snapshots)
+                            # Images built where the toolkit folder held only
+                            # compiler headers stay valid beside CUDA library
+                            # headers this source never names (cupy[ctk]).
+                            if actual != row["include_trees"]:
+                                actual = include_tree_dependencies(
+                                    options, self._header_snapshots, source=source)
                         if actual != row["include_trees"]:
                             return None, "header_tree_mismatch"
                     else:
@@ -441,11 +547,16 @@ def install(cp, pack=None):
     source-bearing arguments the unchanged prewarm recorder already writes.
     It never changes CUDA source, launch operands or the step loop.
     """
+    from woof.hip_backend import active, install as install_hip
+    if active():
+        install_hip()
+        return
     with _BRIDGE_LOCK:
         try:
             selected = pack if pack is not None else Pack()
             _bridge(cp, selected)
             _raw_bridge(cp, selected)
+            return selected
         finally:
             _install_recorder()
 
@@ -480,7 +591,7 @@ def _bridge(cp, pack):
         options = effective_options(bound.get("options") or ())
         metadata = request_metadata(bound)
         key = "cupy.cache." + source_hash(source)
-        arch = bound.get("arch") or cp.cuda.Device().compute_capability
+        arch = bound.get("arch") or _compilation_target(xp=cp)
         sm = str(arch) if str(arch).startswith("sm_") else "sm_" + str(arch)
         started = time.perf_counter()
         module = None

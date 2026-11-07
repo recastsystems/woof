@@ -208,6 +208,7 @@ struct FileState {
     waiting: BTreeMap<u64, Option<Finished>>,
     error: Option<String>,
     pending_jobs: usize,
+    appending: bool,
     inflight: usize,
     /// Raw and stored bytes, for the receipt.
     raw_bytes: u64,
@@ -357,15 +358,30 @@ fn write_at(file: &mut File, offset: u64, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// Append every waiting chunk whose turn has come, in handing-over order.
-fn append_in_order(state: &mut FileState) {
-    while let Some(entry) = state.waiting.remove(&state.next_append) {
+fn append_in_order<'a>(shared: &'a Shared, mut state: std::sync::MutexGuard<'a, FileState>) {
+    if state.appending {
+        return;
+    }
+    state.appending = true;
+    loop {
+        let next = state.next_append;
+        let Some(entry) = state.waiting.remove(&next) else {
+            state.appending = false;
+            return;
+        };
         state.next_append += 1;
         let Some(chunk) = entry else { continue };
         if state.error.is_some() {
             continue;
         }
         let address = state.end;
-        match write_at(&mut state.file, address, &chunk.bytes) {
+        // Only this drainer appends. Keep disk I/O outside the queue lock so
+        // compression workers and the producer can continue on a slow disk.
+        let file = state.file.try_clone();
+        drop(state);
+        let result = file.and_then(|mut file| write_at(&mut file, address, &chunk.bytes));
+        state = shared.lock();
+        match result {
             Ok(()) => {
                 state.end += chunk.bytes.len() as u64;
                 state.raw_bytes += chunk.raw_len;
@@ -419,6 +435,7 @@ impl Nc4Writer {
                 waiting: BTreeMap::new(),
                 error: None,
                 pending_jobs: 0,
+                appending: false,
                 inflight: 0,
                 raw_bytes: 0,
                 stored_bytes: 0,
@@ -604,9 +621,8 @@ impl Nc4Writer {
                     }
                 };
                 state.waiting.insert(seq, finished);
-                append_in_order(&mut state);
                 state.pending_jobs -= 1;
-                drop(state);
+                append_in_order(&shared, state);
                 shared.done.notify_all();
             }));
             for axis in (0..rank).rev() {
@@ -622,7 +638,7 @@ impl Nc4Writer {
 
     fn wait_idle(&self) -> Result<()> {
         let mut state = self.shared.lock();
-        while state.pending_jobs > 0 {
+        while state.pending_jobs > 0 || state.appending {
             state = self.shared.done.wait(state).unwrap_or_else(|e| e.into_inner());
         }
         if let Some(error) = &state.error {

@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def forecast_projection(exp, *, restart=None, io_mode="history",
-                        render_products="none") -> dict:
+                        render_products="none", stop_seconds=None) -> dict:
     """Price forecast output using configured writer variables and clocks.
 
     Prepared inputs and source downloads already exist when this review is
@@ -33,7 +33,8 @@ def forecast_projection(exp, *, restart=None, io_mode="history",
     projection = disk_budget.projected_run_bytes(
         exp, keep_checkpoints=checkpoint_retention(), fetch=None, chain=None,
         render=io_mode == "history" and render_products not in {"", "none", None},
-        render_products=render_products or "none", resume_seconds=elapsed)
+        render_products=render_products or "none", resume_seconds=elapsed,
+        **({} if stop_seconds is None else {"stop_seconds": stop_seconds}))
     if io_mode == "none":
         projection["history_bytes"] = 0
         projection["picture_bytes"] = 0
@@ -53,12 +54,13 @@ def renderer_products(first_products=None, observer=None) -> str:
 
 
 def require_output_space(exp, directory, *, restart=None, io_mode="history",
-                         render_products="none") -> dict:
+                         render_products="none", stop_seconds=None) -> dict:
     """Refuse output that would stop partway when its filesystem fills."""
     from woof import disk_budget
 
     projection = forecast_projection(
-        exp, restart=restart, io_mode=io_mode, render_products=render_products)
+        exp, restart=restart, io_mode=io_mode, render_products=render_products,
+        stop_seconds=stop_seconds)
     available = disk_budget.free_bytes(Path(directory))
     refusal = disk_budget.disk_refusal(projection, available)
     if refusal is not None:

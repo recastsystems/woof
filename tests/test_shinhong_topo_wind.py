@@ -3,7 +3,7 @@
 module_pbl_driver.F hands Shin-Hong CTOPO/CTOPO2 (:1318) exactly as it hands
 YSU, and module_bl_shinhong.F reads both: CTOPO scales the surface-drag
 diagonal (:1387) and CTOPO2 blends the 10 m wind toward the first-level
-wind (:1472-1473).  Until lane/verify-topo-wind WOOF refused this
+wind (:1472-1473).  Until development branch WOOF refused this
 combination on the claim that only YSU reads the coefficients.
 
 These are the CPU wiring checks: the run door admits it, and the physics
@@ -141,10 +141,10 @@ def test_without_topo_wind_the_call_is_arm_a(monkeypatch, drag):
 @requires_gpu
 def test_shinhong_tanhf_is_the_reference_platforms_tanhf():
     """csfac's tanh (module_bl_shinhong.F:847), against stored words of the
-    reference platform's tanhf (glibc 2.39, box W1), the YSU wide oracle's
+    reference platform's tanhf (glibc 2.39, test host), the YSU wide oracle's
     sample: every argument of a W1 sweep where that tanhf is not the
     correctly rounded tanh, which this unit computed before
-    lane/verify-topo-wind, plus a spread.  tanhf is odd, so the negated
+    development branch, plus a spread.  tanhf is odd, so the negated
     arguments take the negated words.  tools/topo_wind_wrf461_oracle/
     sh_tanhf_sweep.py checks every float in [-10, 10] on W1."""
     import cupy as cp

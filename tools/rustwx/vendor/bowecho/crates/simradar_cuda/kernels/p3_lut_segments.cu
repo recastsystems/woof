@@ -9,8 +9,10 @@
 // Keep the source NVRTC-self-contained: normal application builds do not ship
 // a Toolkit include directory, and these are the CUDA ABI widths on every
 // supported 64-bit host/device target.
+#if !defined(__HIPCC__)
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
+#endif
 
 #define BOWECHO_COMPONENTS 9u
 #define BOWECHO_MAX_ACTIVE_AXES 8u

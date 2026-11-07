@@ -612,7 +612,7 @@ def _assert_runner_accepts_printed_outdir(text, *, prepared_root,
 
     ``_assert_pasteable`` is lexical: it rejects placeholders but never
     asks whether the command would be REFUSED.  That is exactly how the
-    a development machine finding shipped green -- the front door suggested
+    test host 8 finding shipped green -- the front door suggested
     ``<prepared_root>/forecast`` while both runners declare
     ``--prepared-root`` a protected input and refuse any --outdir that
     overlaps it, so the suggestion produced a traceback.
@@ -870,10 +870,11 @@ def test_the_shipped_two_domain_proof_config_still_passes_the_front_door():
             split_receipt["domains"][grid_id]["governance"])
 
     # A selector the registry has no option for is recorded as a blocker,
-    # not raised.  The loader refuses mp_physics = 7 before any door sees
-    # it (the registry now resolves every selector the loader admits), so
-    # it is handed to the door directly here.
-    blocked = front_door_physics_selection(_respelled(mp_physics=7))
+    # not raised.  The loader refuses mp_physics = 32 (the full HUJI
+    # spectral bin scheme, no woof package; 95 and 7 joined with their
+    # ports) before any door sees it (the registry resolves every selector
+    # the loader admits), so it is handed to the door directly here.
+    blocked = front_door_physics_selection(_respelled(mp_physics=32))
     assert blocked["domains"]["1"]["components"] is None
     assert "mp_physics" in blocked["domains"]["1"]["registry_blocker"]
 
@@ -1065,7 +1066,7 @@ def test_an_explicit_profile_is_still_enforced_on_a_domain_tree(tmp_path):
     """A gate the caller ASKED for is never dropped by the scoping fix.
 
     `--physics-profile` on a multi-domain run is how a user says "bind
-    this tree to a shipped suite"; a development machine verified that route works on
+    this tree to a shipped suite"; test host 8 verified that route works on
     1.1.0 and it must keep working.  It binds the ROOT -- children carry
     their own cumulus and radiation cadence by design, so demanding the
     profile of every domain would refuse the wizard's own nested

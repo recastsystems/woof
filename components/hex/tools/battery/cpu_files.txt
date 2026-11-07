@@ -55,6 +55,7 @@ tests/test_first_maps.py
 # doctor and the doors agree about a staged bridge that is present and not
 # executable: a gap with its chmod, never a find the door then refuses
 tests/test_doctor_bridge_mode.py
+tests/test_doctor_kernel_pack.py
 tests/test_obs_scorer_optional.py
 tests/test_land_surface_off_publication.py
 tests/test_tempo_tables_door.py
@@ -1010,7 +1011,7 @@ tests/test_kernel_warm_venv.py
 tests/test_aot_multicard_catalog.py
 tests/test_vertical_array_receipts.py
 
-# Capabilities campaign landing (lane/hexcap-base, 2026-10-20): test files the 16 hex
+# Capabilities campaign landing (development branch, 2026-10-20): test files the 16 hex
 # capability lanes added without a tier row. All run with no card, assets or network
 # (measured: 220 pass on a CPU-only host; the ocean device member skips here and is
 # tier 3). Breakage it prevents: an untiered file runs on no leg at all.
@@ -1115,6 +1116,7 @@ tests/test_mpas_samehost_parallel_assembly.py
 # MPAS LTS moving segments: admission of carrier resumes and plain moving routes, the one-real-cell edge geometry,
 # the one-collective moving frame gather (CPU).
 tests/test_mpas_lts_moving_and_assembly.py
+tests/test_lts_extra_history.py
 # MPAS LTS timeline: every class step in native-runtime-timings.json, the loop's measured rate (HEX-SHAPES-1CARD).
 tests/test_mpas_lts_timeline.py
 tests/test_mpas_frame_async_capture.py
@@ -1188,6 +1190,8 @@ tests/test_moving_device_lease.py
 # A profile priced below its one run on its plain suite; the held 24 GB aerosol run prices only cards with no more
 # memory (mesh-gen-fast first-step card-fit); pricing arithmetic only, host-only.
 tests/test_mg_first_step_card_fit.py
+# Shared v841 scalar transport slot-major stencil cache: extent, stream, thread and lifetime (rrfs/s6-scalar-default).
+tests/test_scalar_default_layout.py
 
 # Native Icechunk output, exact field readback and atomic snapshots.
 tests/test_output_formats.py
@@ -1291,6 +1295,9 @@ tests/test_hrrr_intermediate_fetch_requests.py
 # The TEMPO lookup read-ahead resolves the suite row's bound pin set and is never held unused
 # (fix/rrfs-rank-rss, same-host rank host memory); host-only, stubbed reads.
 tests/test_tempo_lookup_prefetch_pin.py
+# Strict numerics refuses TEMPO lookup files that are not the strict packet's (a run read the NOAA copies where
+# native read the strict-rebuilt tables, 2026-11-06); host-only, temporary files.
+tests/test_strict_tempo_table_hashes.py
 # WOOF_HEX_EXCHANGE_TIMING reaches every same-host transport on the MPAS-physics route, threads and processes
 # (rrfs/mc-scale2 23103f7, the same-host halo timer); host-only, source checks and the summary.
 tests/test_exchange_timing_v841.py
@@ -1324,6 +1331,7 @@ tests/test_lbc_rank_rows.py
 # (the public CI packaging job installs the wheel --no-deps); host-only, the engine import is blocked.
 tests/test_cli_without_engine.py
 tests/test_moving_resident.py
+tests/test_moving_resident_pool_manifest.py
 # The resident moving step's host members (feat/hex-moving-resident 78111207, woof hex 0.4.11): pool restore,
 # prep maintenance, table and rate batches, the upload cache's host bookkeeping and the zero-pool transport plan;
 # their device members are tier 3.
@@ -1341,3 +1349,103 @@ tests/test_wind_farm.py
 tests/test_woof_radar_stream.py
 # hrrrv5 on the 96 -> 3 km zoom globe and GF-Li on the GPU-resident route (fix/hrrrv5-zoomglobe); host-only.
 tests/test_hrrrv5_zoomglobe.py
+# hrrrv5 + storm scheme on the lane layout, and a new region's source beside its mesh (fix/hrrrv5-followup-engine); host-only.
+tests/test_gfl_lanes.py
+tests/test_regional_source_prefetch.py
+# A frame whose REFC holds the cumulus rain draws REFC, on the real renderer (fix/hex-refc-composite)
+tests/test_refc_composite_renderer.py
+# A column-suite run on rank processes: its configuration crosses the link, RUC has no Noah-MP census, every rank holds the sea-ice carriers (fix/rrfs-dev-cards)
+tests/test_suite_config_rank_link.py
+
+# Release regression: deterministic metadata or CPU fixture checks.
+tests/test_boundary_recipe.py
+
+# Release regression: deterministic metadata or CPU fixture checks.
+tests/test_doctor_geography.py
+tests/test_readme_facts.py
+
+# Release regression: deterministic metadata or CPU fixture checks.
+tests/test_mesh_refused_turned.py
+
+# Release regression: deterministic metadata or CPU fixture checks.
+tests/test_rank_owned_checks.py
+
+# Authenticated mapped export uses local fixture meshes and a built engine, with no card or download.
+tests/test_packaged_target_support.py
+
+# Release 0.5.0 front-door plans and configuration contracts.
+tests/test_blend_globe_admission.py
+tests/test_blend_vertical_template.py
+tests/test_held_suarez.py
+tests/test_packaged_state_start.py
+tests/test_start_boundary_clocks.py
+
+# Release 0.5.0 allocation and continuation checks.
+tests/test_10km_startup.py
+tests/test_compact_memory_admission.py
+tests/test_history_device_authority.py
+tests/test_ozone_streamed_months.py
+tests/test_public_continuation_defects.py
+
+# Opt-in waves: source, coordinate, restart and installed-helper contracts.
+tests/test_wave_coordinate_identity.py
+tests/test_wave_moving_restart_contract.py
+tests/test_wave_station_helper_packaged.py
+
+# Release 0.5.0 folds (moving regions, PWP ocean, TC surface/climate, history hashing, stack watch):
+# measured tier-1 members, run with -m "not gpu and not bigcard and not assets".
+tests/test_history_hash_comparison.py
+tests/test_moving_durable_recovery.py
+tests/test_moving_host_publication.py
+tests/test_moving_member_retirement.py
+tests/test_moving_pwp_snapshot.py
+tests/test_moving_startup_member.py
+tests/test_mpas_longwave_memory_budget.py
+tests/test_ocean_snapshot_contract.py
+tests/test_stack_watch.py
+tests/test_surface_restart_rejection.py
+tests/test_tc_field_intensity.py
+tests/test_tc_flux_cost.py
+tests/test_tc_flux_selection.py
+tests/test_tc_lakemask.py
+tests/test_tc_ocean_verification.py
+tests/test_moving_ocean_gpu.py
+tests/test_ocean_pwp.py
+tests/test_tc_climate.py
+# AMD (ROCm/HIP) backend fold into 0.5.0: CPU-only checks carried by the AMD branch.
+tests/test_forecast_hip_admission.py
+tests/test_gf_residency.py
+tests/test_hip_cache_cuda_identity.py
+tests/test_hip_doctor.py
+tests/test_hip_process_driver.py
+tests/test_hip_process_transport.py
+tests/test_multihost_transport.py
+tests/test_mynn_backend_cache.py
+tests/test_mynn_source_identity.py
+tests/test_native_forecast_measurement.py
+# Resume after a cut lease sets aside frames past the checkpoint; maps keep the run init (fix/hex-restart-ifs9 c6fd0bd966ad).
+tests/test_restart_frames_and_init_v842.py
+# A refused, out-of-memory or killed forecast never exits 0, at the console door or as a composing door stage (fix0414/tooling), host-only.
+tests/test_door_exit_status.py
+tests/test_restart_warm_start.py
+
+# hex 0.4.14 fixes, host-only (CPU stand-ins for CuPy where a kernel is involved; GPU-marked cases are deselected here):
+# same-host ranks share radiation budgets and one TEMPO blob per card; MPAS admission rows for members and ranks.
+tests/test_device_share_radiation_budget.py
+tests/test_mpas_member_and_rank_rows.py
+# a named --native-physics-tables folder must hold every TEMPO lookup file.
+tests/test_named_tempo_tables.py
+# same-host halo descriptor bindings retire after two idle active steps.
+tests/test_samehost_halo_binding_retire_v841.py
+# waves on same-host ranks and cards: owner map, one rank-0 service, checkpoints, ordered reductions, shared bathymetry.
+tests/test_samehost_wave_owner_map_v842.py
+tests/test_wave_arwen_rank_coupling.py
+tests/test_wave_checkpoint_ranks_and_cards_v842.py
+tests/test_wave_coordinate_float64_mesh.py
+tests/test_wave_ordered_reductions.py
+tests/test_wave_prepare_one_at_a_time.py
+tests/test_wave_rank_coupling.py
+tests/test_wave_shared_bathymetry.py
+# updraft-helicity layers on the ArWen route: default 2-5 km band, LTS classes and same-host ranks.
+tests/test_uh_layers_arwen_default.py
+tests/test_uh_layers_partitions.py

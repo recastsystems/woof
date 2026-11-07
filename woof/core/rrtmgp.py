@@ -290,9 +290,38 @@ def effective_radius_bands(scheme: str) -> dict[str, tuple[float, float]]:
 
     if scheme == "milbrandt2":
         return dict(MILBRANDT2_EFFECTIVE_RADIUS_BANDS_UM)
-    if scheme != "p3":
+    if scheme == "morrison_aero":
+        # mp40's native ice PSD is bounded by LAMMINI=1250 m-1,
+        # not the generic 600 um ice band. Reproduce its staged FP32
+        # EFFI=(3/LAMI)/2*1e6 expression at that endpoint.
+        from woof.core.morrison_aero import constant_value
+        f = np.float32
+        maximum = f(f(f(3) / f(constant_value("LAMMINI"))) / f(2)) * f(1e6)
+        bands = dict(EFFECTIVE_RADIUS_PLAUSIBLE_UM)
+        bands["effi"] = (bands["effi"][0], float(maximum))
+        return bands
+    if scheme not in ("p3", "p3_2cat"):
         return dict(EFFECTIVE_RADIUS_PLAUSIBLE_UM)
     lower, upper = p3_ice_radius_band_um()
+    if scheme == "p3_2cat":
+        # WRF's two-category wrapper returns fl(fl(a+b) /
+        # fl(fl(a/r1)+fl(b/r2))), then the adapter converts m to um.
+        # A table endpoint is not a bound on that rounded expression:
+        # even a/(a/rmax) can exceed rmax (the real GFS failure is 1 ULP).
+        # For nonnegative masses and ri <= R, its exact upper bound is
+        # R*(1+u)^3/(1-u)^2, including the unit conversion. Evaluate from
+        # the table's METRE endpoint, avoiding an extra rounded endpoint
+        # conversion in the proof. Never alter the native returned radius.
+        from fractions import Fraction
+        from woof.core.p3_tables import load_lookup_table_1, p3_table_root
+        table, _ = load_lookup_table_1(p3_table_root())
+        endpoint = float(table[:, :, :, P3_ICE_RADIUS_TABLE_COLUMN - 1].max())
+        u = Fraction(1, 1 << 24)
+        bound = Fraction(endpoint) * 1000000 * (1+u)**3 / (1-u)**2
+        rounded = np.float32(float(bound))
+        if Fraction(float(rounded)) < bound:
+            rounded = np.nextafter(rounded, np.float32(np.inf))
+        upper = float(rounded)
     bands = dict(EFFECTIVE_RADIUS_PLAUSIBLE_UM)
     generic_i = EFFECTIVE_RADIUS_PLAUSIBLE_UM["effi"]
     generic_s = EFFECTIVE_RADIUS_PLAUSIBLE_UM["effs"]
@@ -387,7 +416,7 @@ def snow_treatment_for_compatibility(token: str) -> str:
 #     (``phys/module_radiation_driver.F:3926-3937``); mp=8 and mp=28 both
 #     take the ``F_QI .and. F_QC .and. F_QS`` arm at :3870-3877.
 #
-# woof's own side of the contract is already in place: ``mp_physics == 28``
+# woof's own side of the contract is already in place: ``mp_physics in THOMPSON_AEROSOL_FAMILY``
 # allocates effc/effi/effs and background-fills them with the same
 # RE_QC_BG/RE_QI_BG/RE_QS_BG values mp=8 uses
 # (``woof/core/state.py``), and the mp=28 adapter writes them every step
@@ -436,6 +465,8 @@ _MP_CLOUD_OPTICS_SCHEME = {
     # these same Registry flags.
     3: "wsm3",       # Registry.EM_COMMON:3017, wsm3scheme
     4: "wsm6",       # Same cloud/ice/snow radii contract, no graupel.
+    7: "wsm6",  # NU-WRF provides cloud/ice/snow radii in microns.
+    15: "ferrier",
     6: "wsm6",       # Registry.EM_COMMON:3021, wsm6scheme
     # WSM6R.  Registry.EM_COMMON:3022 declares wsm6rscheme as
     # moist:qv,qc,qr,qi,qs,qg (WSM6's inventory, so F_QI/F_QS are true).
@@ -473,6 +504,7 @@ _MP_CLOUD_OPTICS_SCHEME = {
     # retired the way P3's was, because with the default variant being
     # RTE+RRTMGP the exclusion refused mp=9 outright on every bare run.
     9: "milbrandt2",  # Registry.EM_COMMON:3025, milbrandt2mom
+    40: "wsm6",  # fixed-droplet arm supplies effective radii
     10: "morrison",  # Registry.EM_COMMON:3026, morr_two_moment
     # WDM6.  The VALUE names a COUPLING, not a scheme -- 28 resolves to
     # "thompson" on the same principle -- and WDM6's coupling is WSM6's,
@@ -490,13 +522,22 @@ _MP_CLOUD_OPTICS_SCHEME = {
     # nc rather than a fixed number -- is inside the radii the scheme
     # supplies, not in how radiation consumes them, so it changes the
     # values on this path and not the path.
+    14: "wsm6",      # Registry.EM_COMMON:3030, qi and qs, no graupel
     16: "wsm6",      # Registry.EM_COMMON:3031, wdm6scheme
     # WSM7: WSM6's coupling on both counts -- F_QI/F_QS true
     # (Registry.EM_COMMON:3034 moist:qv,qc,qr,qi,qs,qg,qh) and explicit
     # radii (WSM7SCHEME in the use_mp_re list, module_physics_init.F:1011)
     # -- and, as in WRF, hail is not a radiating species.
     24: "wsm6",      # Registry.EM_COMMON:3034, wsm7scheme
+    # WDM7, for WDM6's two reasons: module_physics_init.F:1014 lists
+    # WDM7SCHEME in the has_req* disjunction and effectRad_wdm7 is
+    # effectRad_wdm6, so the scheme's own three radii reach cloud optics;
+    # its extra hail mass reaches none (WRF's RRTMG drivers take qg3d and
+    # no hail, module_ra_rrtmg_lw.F:11586), so the coupling is WSM6's.
+    26: "wsm6",      # Registry.EM_COMMON:3035, wdm7scheme
     18: "nssl",      # Registry.EM_COMMON:3033, nssl_2mom
+    38: "thompson",
+    29: "thompson",  # RCON supplies its own cloud/ice/snow radii.
     28: "thompson",  # Registry.EM_COMMON:3036, thompsonaero
     # P3 one-category.  The VALUE is its own coupling name and not a
     # borrowed one, because P3 is the only scheme in this table whose
@@ -547,6 +588,29 @@ _MP_CLOUD_OPTICS_SCHEME = {
     #    transcribes that remap; no snow radius is invented, and none is
     #    accepted.
     50: "p3",
+    # Goddard GCE (Registry.EM_COMMON:3046, gsfcgcescheme,
+    # moist:qv,qc,qr,qi,qs,qg).  Its own coupling name because no other row
+    # is right for it: F_QI and F_QS are true, so cal_cldfra1 takes the
+    # QCLD = QI + QC + QS arm (module_radiation_driver.F:3870-3877) -- which
+    # "kessler" would switch off -- and the scheme supplies NO radii
+    # (GSFCGCESCHEME is absent from the use_mp_re disjunction,
+    # module_physics_init.F:1004-1023), so none of the explicit-radius
+    # rows can read one.  The coupling radiates cloud water at 10 um and
+    # the merged ice+snow path at a 50 um diameter, the constant pair the
+    # "kessler" row already uses; WRF's own answer for has_req*=0 is the
+    # legacy RRTMG arm, which computes its own radii.
+    97: "gsfcgce",
+    # mp=51: the identical coupling (has_reqc/has_reqi/has_reqs listed
+    # together for P3_1CATEGORY and P3_1CATEGORY_NC, module_physics_init.F
+    # :1017-1033; the same wrapper remap, which tests the triple, not the
+    # selector).
+    51: "p3",
+    52: "p3",
+    # P3 three-moment ice: the same has_reqc=1, has_reqi=1, has_reqs=0
+    # coupling (module_physics_init.F:1020, :1030) and the same species
+    # remap, so the same row.
+    53: "p3",
+    55: "p3",  # Same WRF has_req triple, after registry-owned ice summation.
 }
 
 from woof.microphysics_schemes import NAMED_SCHEMES as _NAMED_MP_SCHEMES
@@ -571,6 +635,19 @@ _MP_CLOUD_OPTICS_SCHEME.update({
 # was true and was the argument for a row of the scheme's own, not for
 # refusing the pairing.  P3's entry went the same way before it.
 _NO_CLOUD_OPTICS_COUPLING: dict[int, str] = {2: "Lin supplies no effective radii to this adapter; borrowing another scheme would change its cloud distribution", 30: "the spectral effective-radius integration has not been qualified; reusing bulk radii would replace the size-distribution optics"}
+_NO_CLOUD_OPTICS_COUPLING[96] = "MAD-WRF declares no effective radii or particle moments; use native legacy RRTMG calculated radii"
+_NO_CLOUD_OPTICS_COUPLING[13] = "SBU-YLin supplies no effective radii or number moments; use native legacy RRTMG"
+_NO_CLOUD_OPTICS_COUPLING.update({
+    56: (
+        "NTU multi-moment hands radiation no radii (NTU is absent from "
+        "the use_mp_re disjunction, module_physics_init.F:1004-1023), "
+        "and no existing row is the scheme's own: its ice categories "
+        "carry a predicted shape parameter, habit and density that no "
+        "borrowed gamma or exponential radius formula represents."),
+})
+
+_NO_CLOUD_OPTICS_COUPLING[95] = "Eta Ferrier has no qualified RRTMGP optics; use native legacy RRTMG"
+_NO_CLOUD_OPTICS_COUPLING[27] = "UDM's optional native radius routine receives uninitialized den1d (WRF 4.7.1 module_mp_udm.F:289,411); use native legacy RRTMG"
 
 #: The two adapters that DO serve these selectors, named by every refusal
 #: so none of them is a dead end.  One copy: a user told different things
@@ -609,8 +686,8 @@ _require_agreement_with_the_registry()
 #: true and :func:`cal_cldfra1` takes its QCLD = QI + QC + QS arm
 #: (module_radiation_driver.F:3870-3877).  Derived from the table above so
 #: the two can never disagree; Kessler's package has neither species.
-_ICE_ACTIVE_SCHEMES = ("wsm6", "thompson", "milbrandt2", "morrison", "nssl",
-                       "p3", "ferrier")
+_ICE_ACTIVE_SCHEMES = ("wsm6", "thompson", "milbrandt2", "morrison", "nssl", "nssl1",
+                       "p3", "ferrier", "gsfcgce", "cam-mg")
 
 #: The subset of the above whose Registry package ALSO carries ``qs`` in
 #: ``moist``, i.e. the ones for which the driver's ``F_QS`` is true.  P3 is
@@ -619,10 +696,11 @@ _ICE_ACTIVE_SCHEMES = ("wsm6", "thompson", "milbrandt2", "morrison", "nssl",
 #: which is what selects cal_cldfra1's own P3 arm
 #: (module_radiation_driver.F:3879-3887) instead of the :3870-3877 arm.
 #: Kessler's package has neither species and is in neither tuple.
-_SNOW_SPECIES_SCHEMES = ("wsm6", "thompson", "milbrandt2", "morrison", "nssl")
+_SNOW_SPECIES_SCHEMES = ("wsm6", "thompson", "milbrandt2", "morrison", "nssl", "nssl1",
+                         "gsfcgce", "cam-mg")
 
 
-def cloud_optics_scheme(mp_physics) -> str:
+def cloud_optics_scheme(mp_physics, *, nssl_2moment_on=1) -> str:
     """Resolve an ``mp_physics`` selector to its cloud-optics coupling.
 
     See :data:`_MP_CLOUD_OPTICS_SCHEME`.  Raises rather than defaulting:
@@ -630,6 +708,8 @@ def cloud_optics_scheme(mp_physics) -> str:
     radii and ice-free cloud fraction.
     """
     selector = int(mp_physics)
+    if selector == 18 and int(nssl_2moment_on) == 0:
+        return "nssl1"
     try:
         return _MP_CLOUD_OPTICS_SCHEME[selector]
     except KeyError:
@@ -2278,10 +2358,37 @@ def hydrometeor_paths(plev, qc, qr=None, qi=None, qs=None, *,
     clwp = cp.ascontiguousarray(clwp)
     ciwp = cp.ascontiguousarray(ciwp)
     scheme = str(microphysics).lower()
-    if scheme in ("kessler", "ferrier"):
+    if scheme == "cam-mg":
+        # CAM's LRADIUS/IRADIUS are already microns. WRF's option-4
+        # wrappers retain both ice and snow, then override Fu's radius:
+        # module_ra_rrtmg_lw.F:12607-12625 (v4.7.1).
+        if effc is None or effi is None:
+            raise ValueError("CAM radiation requires LRADIUS and IRADIUS")
+        re_c, re_i = field(effc, "lradius"), field(effi, "iradius")
+        if validate:
+            _require_finite_nonnegative(lradius=re_c, iradius=re_i)
+        reliq = cp.clip(cp.where(qc > DTYPE(1.e-20), re_c, DTYPE(10.)),
+                       DTYPE(2.5), DTYPE(60.))
+        reice = cp.clip(cp.where((qi > DTYPE(1.e-20)) | (qs > DTYPE(1.e-20)),
+                                re_i, DTYPE(25.)), DTYPE(5.), DTYPE(140.))
+        # RRTMGP's shipped table covers 2.5..21.5 um liquid radii and
+        # 10..180 um ice diameters, as for the other native-MP adapters.
+        return HydrometeorPaths(clwp, ciwp,
+            cp.ascontiguousarray(cp.clip(reliq, DTYPE(2.5), DTYPE(21.5))),
+            cp.ascontiguousarray(cp.clip(DTYPE(2.) * reice, DTYPE(10.), DTYPE(180.))))
+    if scheme in ("kessler", "ferrier", "gsfcgce"):
         return HydrometeorPaths(
             clwp, ciwp, cp.full_like(qc, DTYPE(10.0)),
             cp.full_like(qc, DTYPE(50.0)))
+    if scheme == "nssl1":
+        # WRF has_req*=0: relcalc/reicalc size cloud and merged ice/snow.
+        # These radii come from the radiation wrapper, never state.eff*.
+        if effc is None or effi is None:
+            raise ValueError("one-moment NSSL requires radiation-derived liquid/ice radii")
+        return HydrometeorPaths(
+            clwp, ciwp,
+            cp.ascontiguousarray(cp.clip(field(effc,"effc"),DTYPE(2.5),DTYPE(21.5))),
+            cp.ascontiguousarray(cp.clip(DTYPE(2)*field(effi,"effi"),DTYPE(10),DTYPE(180))))
     if scheme in ("wsm3", "wsm6", "thompson", "nssl"):
         if any(x is None for x in (effc, effi, effs)):
             raise ValueError(
@@ -2601,7 +2708,7 @@ def _host_powf(x, y):
 
 
 def cal_cldfra1(qv, qc, qi, qs, tlay, play, *, f_qc=True, f_qi=True,
-                f_qs=True, mp_physics=None):
+                f_qs=True, mp_physics=None, f_ice_phy=None, return_flags=False):
     """WRF icloud=1 Xu-Randall cloud fraction on device (FP32).
 
     Exact transcription of WRF v4.6.1 ``module_radiation_driver.F``
@@ -2639,26 +2746,32 @@ def cal_cldfra1(qv, qc, qi, qs, tlay, play, *, f_qc=True, f_qi=True,
     qs = _device_profile(qs, qv.shape, "qs")
     tlay = _device_profile(tlay, qv.shape, "tlay")
     play = _device_profile(play, qv.shape, "play")
-    if not f_qc or (f_qs and not f_qi):
-        # Breakage this prevents: f_qs without f_qi is WRF's arm for the
-        # OLD Eta Ferrier package (etampnew, mp_physics=95, whose qs holds
-        # the total ice) at module_radiation_driver.F:3902-3922, weighted
-        # by F_ICE_PHY.  woof admits no package with that species set
-        # (95 is refused at admission), so a caller reaching it has built
-        # flags no accepted scheme has; any other arm would weight the
-        # saturation blend with the wrong ice fraction.  The current
-        # Ferrier-Aligo (mp_physics=5) is f_qi without f_qs and is ported
-        # below.
-        raise NotImplementedError(
-            "cal_cldfra1 port carries WRF's three F_QC arms: qc+qi+qs "
-            "(module_radiation_driver.F:3870-3877), qc+qi with no snow "
-            "species (the P3 arm, :3879-3887, and the Ferrier-Aligo arm "
-            ":3926-3937 after it) and qc alone (:3891-3899). "
-            f"f_qc={bool(f_qc)}/f_qi={bool(f_qi)}/f_qs={bool(f_qs)} is "
-            "WRF's arm for the old Eta Ferrier package (mp_physics=95, "
-            "qs carrying total ice) at :3902-3922, whose weight is the "
-            "F_ICE_PHY ice fraction; no accepted scheme has that species "
-            "set")
+    if not f_qc:
+        raise NotImplementedError("cal_cldfra1 requires cloud-water species")
+    if f_qs and not f_qi:
+        if f_ice_phy is None:
+            raise ValueError("Eta cloud fraction requires carried F_ICE_PHY")
+        f_ice_phy = _device_profile(f_ice_phy, qv.shape, "F_ICE_PHY")
+        from woof.core.etanew import _kernel
+        cloud = cp.empty_like(qv)
+        _kernel("etanew_cloud_fraction")(
+            ((qv.size + 127) // 128,), (128,),
+            (np.int32(qv.size), qv, qc, qs, tlay, play, f_ice_phy, cloud))
+        if return_flags:
+            # CuP needs the native branch index, before the 0.01 clamp.
+            # Eta uses F_ICE_PHY directly as its saturation blend weight.
+            from woof.core.noahmp_slab_libm import slab_expf
+            esw = DTYPE(1000.0) * DTYPE(.61078) * slab_expf(
+                DTYPE(17.2693882) * (tlay-DTYPE(273.15)) / (tlay-DTYPE(35.86)))
+            esi = DTYPE(1000.0) * DTYPE(.61078) * slab_expf(
+                DTYPE(21.8745584) * (tlay-DTYPE(273.15)) / (tlay-DTYPE(7.66)))
+            ep2 = DTYPE(287.0)/DTYPE(461.6)
+            qvs = ((DTYPE(1.0)-f_ice_phy) * (ep2*esw/(play-esw))
+                   + f_ice_phy * (ep2*esi/(play-esi)))
+            flags = cp.ascontiguousarray(cp.where(qc+qs < DTYPE(1.e-12), 1,
+                cp.where(qv/qvs >= DTYPE(1.0), 2, 3)), dtype=cp.int32)
+            return cloud, flags
+        return cloud
     # EXP and ** on REAL(4) are WOOF's own float32 expf and powf
     # (woof.core.noahmp_slab_libm), not CuPy's CUDA builtins: cp.exp and
     # cp.power round differently and moved CLDFRA by up to 2,113 ULP on the
@@ -2710,9 +2823,14 @@ def cal_cldfra1(qv, qc, qi, qs, tlay, play, *, f_qc=True, f_qi=True,
     fraction = slab_powf(cp.maximum(DTYPE(1.0e-10), rhum), DTYPE(0.25)) \
         * (DTYPE(1.0) - slab_expf(arg))
     fraction = cp.where(fraction < DTYPE(0.01), DTYPE(0.0), fraction)
-    return cp.ascontiguousarray(
+    result = cp.ascontiguousarray(
         cp.where(qcld < qcldmin, DTYPE(0.0),
                  cp.where(rhum >= DTYPE(1.0), DTYPE(1.0), fraction)))
+    if return_flags:
+        flags = cp.ascontiguousarray(cp.where(qcld < qcldmin, 1,
+            cp.where(rhum >= DTYPE(1.0), 2, 3)), dtype=cp.int32)
+        return result, flags
+    return result
 
 
 #: The schemes that hand radiation their own radii (WRF's has_reqc/has_reqi
@@ -2756,6 +2874,19 @@ def _supplied_mask(mask, shape, name):
             f"{name} must be a boolean {shape} array, got {mask.dtype} "
             f"{mask.shape}")
     return mask
+
+
+@cuda_cache(maxsize=None, ready=True)
+def _cloud_ice_radius_table():
+    """Upload the immutable WRF radius table once per device.
+
+    A repeated host upload prevented capture of real-input model steps.
+    The common cache records upload readiness for other ensemble streams.
+    """
+    import cupy as cp
+    from woof.core.rrtmg_legacy_prep import _RETAB
+
+    return cp.asarray(_RETAB, dtype=DTYPE)
 
 
 def cloudy_background_radii(effc, effi, cldfra, tlay, xland, *, scheme,
@@ -2806,7 +2937,6 @@ def cloudy_background_radii(effc, effi, cldfra, tlay, xland, *, scheme,
     ``(effc, effi)`` arrays; ``effi`` is returned as given for P3.
     """
     import cupy as cp
-    from woof.core.rrtmg_legacy_prep import _RETAB
 
     if scheme not in SCHEME_RADII_COUPLINGS:
         raise ValueError(
@@ -2843,7 +2973,7 @@ def cloudy_background_radii(effc, effi, cldfra, tlay, xland, *, scheme,
     whole = cp.trunc(tlay)
     index = cp.clip(cp.trunc(tlay - DTYPE(179.0)).astype(cp.int32), 1, 75)
     corr = tlay - whole
-    table = cp.asarray(_RETAB, dtype=DTYPE)
+    table = _cloud_ice_radius_table()
     tabulated = (table[index - 1] * (DTYPE(1.0) - corr)
                  + table[index] * corr)
     effi = cp.where(redo, cp.maximum(tabulated, DTYPE(5.0)), effi)
@@ -3502,6 +3632,54 @@ class RRTMGPRadiation:
         self._ozone_logp = cp.asarray(np.log(pressure[order]), dtype=DTYPE)
         self._ozone_vmr = cp.asarray(ozone[order], dtype=DTYPE)
 
+    def prepare_graph_times(self, cfg, elapsed_seconds, *, model_levels, p_top):
+        """Prepare immutable inputs for a finite, time-unrolled CUDA pass.
+
+        Every key names its own clock and radiation period. Only solar
+        geometry and table metadata are prepared here; pressure, cloud,
+        temperature and gas optics continue to read the live model state.
+        Call before stream capture. The daylight compaction readbacks are
+        setup work, never part of the submitted integration graph.
+        """
+        import cupy as cp
+        from woof.core.physics import _physics_period_seconds
+        from woof.core.solar import solar_period_seconds
+
+        if cp.cuda.get_current_stream().is_capturing():
+            raise RuntimeError("radiation graph times must be prepared before capture")
+        _cloud_ice_radius_table()
+        _lw_climatology(cp)
+        if self.shortwave:
+            _solar_source_device(self.sw_tables)
+        upper = rrtmgp_above_model_layer_counts(float(p_top))
+        for active, table, clouds, extra in (
+                (self.longwave, self.lw_tables, self.lw_cloud_tables, upper[0]),
+                (self.shortwave, self.sw_tables, self.sw_cloud_tables, upper[1])):
+            if not active:
+                continue
+            table.to_device()
+            clouds.to_device()
+            trace = tuple((int(table.gas_index[gas]), float(value))
+                          for gas, value in self.trace_vmr.items()
+                          if table.gas_index.get(gas) is not None)
+            _trace_vmr_device(trace, xp=cp)
+            _mcica_jump_tables(int(model_levels) + extra, table.ngpt)
+        minutes = cfg.radt if cfg.radt > 0.0 else cfg.radt_minutes
+        period = solar_period_seconds(cfg, _physics_period_seconds(minutes, cfg))
+        generation = getattr(cfg, "solar_generation", "wrf_480")
+        frames = dict(getattr(self, "_graph_daylight", {}))
+        for elapsed in elapsed_seconds:
+            elapsed = float(elapsed)
+            valid = self.start_time + timedelta(seconds=elapsed)
+            mu = self._cosine_zenith(valid, hour_offset_seconds=0.5 * period,
+                                     generation=generation)
+            day = mu > DTYPE(0.0)
+            count = int(cp.count_nonzero(day))
+            columns = (cp.flatnonzero(day.reshape(-1))
+                       if 0 < count < day.size else None)
+            frames[(elapsed, float(period), generation)] = (count, columns)
+        self._graph_daylight = frames
+
     @staticmethod
     def _columns(array):
         """Pack ``(nz,ny,nx)`` into bottom-to-top ``(ncol,nlay)``."""
@@ -3790,7 +3968,10 @@ class RRTMGPRadiation:
 
         qc3 = self._field_from_state(state, ("qc",), atmosphere["qc"])
         qr3 = self._field_from_state(state, ("qr",), cp.zeros_like(qc3))
-        qi3 = self._field_from_state(state, ("qi",), atmosphere["qi"])
+        from woof.core.physics_inventory import registered_ice_mass_for_radiation
+        total_ice = registered_ice_mass_for_radiation(state)
+        qi3 = (total_ice if total_ice is not None else
+               self._field_from_state(state, ("qi",), atmosphere["qi"]))
         qs3 = self._field_from_state(state, ("qs",), cp.zeros_like(qi3))
         mp_physics = int(getattr(cfg, "mp_physics", 1))
         # Fail-closed table with its WRF citations; see
@@ -3801,7 +3982,10 @@ class RRTMGPRadiation:
         # default and mp=28 silently landed on Kessler: no scheme radii,
         # and f_qi = f_qs = False into cal_cldfra1, so an overcast ice
         # cloud radiated as clear sky.
-        scheme = cloud_optics_scheme(mp_physics)
+        scheme = cloud_optics_scheme(mp_physics,
+            nssl_2moment_on=getattr(cfg,"nssl_2moment_on",1))
+        radius_scheme = ("morrison_aero" if mp_physics == 40 else
+                         "p3_2cat" if mp_physics == 52 else scheme)
         # The snow radiative treatment is bound to the compatibility
         # receipt token (fail closed on unknown values): -v2 selects the
         # WRF option-4 snow discount, -v1 and native 'none' keep the
@@ -3810,7 +3994,11 @@ class RRTMGPRadiation:
             str(getattr(cfg, "wrf_rrtmg_compatibility", "none")))}
         numbers = {}
         effective_fields = {}
-        if scheme == "morrison":
+        if scheme == "cam-mg":
+            kwargs.update(effc=self._columns(state.lradius),
+                          effi=self._columns(state.iradius))
+            effective_fields = {name: kwargs[name] for name in ("effc", "effi")}
+        elif scheme == "morrison":
             for category, names in {
                     "nc": ("nc", "qnc"), "nr": ("nr", "qnr"),
                     "ni": ("ni", "qni"), "ns": ("ns", "qns")}.items():
@@ -3895,6 +4083,15 @@ class RRTMGPRadiation:
             # fails the micron band every time.
             effective_fields = {name: kwargs[name] for name in effective}
             effective_fields["effs"] = kwargs["effi"]
+        elif scheme == "nssl1":
+            from woof.core.rrtmg_legacy_prep import _relcalc_b, _reicalc_b
+            land=DTYPE(2)-cp.asarray(fields["xland"],dtype=DTYPE).reshape(-1)
+            ice=cp.asarray(fields["xice"],dtype=DTYPE).reshape(-1)
+            snowh=DTYPE(.001)*cp.asarray(fields["snow"],dtype=DTYPE).reshape(-1)
+            kwargs.update(effc=_relcalc_b(cp,tlay,land,land,ice,snowh),
+                          effi=_reicalc_b(cp,tlay))
+            effective_fields={"effc":kwargs["effc"],"effi":kwargs["effi"],
+                              "effs":kwargs["effi"]}
         elif scheme in ("wsm3", "wsm6", "thompson", "nssl"):
             effective = {
                 name: self._field_from_state(state, (name,), None)
@@ -3928,13 +4125,25 @@ class RRTMGPRadiation:
         ice_active = scheme_is_ice_active(scheme)
         snow_species = scheme_has_snow_species(scheme)
         icloud = int(getattr(cfg, "icloud", 1))
-        if icloud == 2:
+        cup_active = int(getattr(cfg, "cu_physics", 0)) == 10
+        flags = None
+        if "radiation_cldfra3" in fields:
+            cldfra = self._columns(fields["radiation_cldfra3"])
+        elif icloud == 2:
             cldfra = cal_cldfra2(qc_cols, qi_cols,
                 f_qc=int(getattr(cfg, "mp_physics", 0)) != 0, f_qi=ice_active)
+        elif cup_active and icloud == 1:
+            cldfra, flags = cal_cldfra1(qv, qc_cols, qi_cols, qs_cols, tlay, play,
+                f_qc=True, f_qi=ice_active, f_qs=snow_species,
+                mp_physics=int(cfg.mp_physics), return_flags=True)
         else:
             cldfra = cal_cldfra1(qv, qc_cols, qi_cols, qs_cols, tlay, play,
                                  f_qc=True, f_qi=ice_active, f_qs=snow_species,
                                  mp_physics=int(getattr(cfg, "mp_physics", 0)))
+        if cup_active:
+            # CuP needs the branch flag, including fractions truncated to zero.
+            from woof.core.kfcup_radiation import merge_kfcup_clouds
+            qc_cols, cldfra = merge_kfcup_clouds(qc_cols, cldfra, flags, fields, cfg)
         if scheme == "wsm3":
             # WSM3 stores cloud ice in qc and snow in qr. WRF splits
             # these carriers below freezing in module_ra_sw.F:193-203
@@ -3968,6 +4177,26 @@ class RRTMGPRadiation:
             bl_mynn_version=getattr(cfg, "bl_mynn_version", "wrf_461"),
             temperature=tlay if active_bl else None,
         )
+        from woof.core.column_cumulus import merge_column_cumulus_clouds
+        qc_cols, qi_cols, cldfra = merge_column_cumulus_clouds(
+            qc_cols, qi_cols, cldfra, fields=fields, cfg=cfg,
+            columns=self._columns)
+
+        if scheme == "cam-mg" and wrf_itimestep(state.elapsed_seconds, cfg.dt) != 1:
+            cldfra = self._columns(state.cldfra_mp_all)
+            cldfra = cp.where(cldfra < DTYPE(0.01), DTYPE(0.), cldfra)
+
+        feedback=atmosphere.get("cumulus_feedback")
+        if feedback is not None:
+            from woof.core.cumulus_feedback import merge_cumulus_feedback
+            packed={key:self._columns(value) for key,value in feedback.items()}
+            background={target:self._columns(getattr(state,source)) for target,source in (("effc","efcg"),("effi","efig"),("effs","efsg"))} if cfg.aercu_opt>0 else None
+            qc_cols,qi_cols,qs_cols,cldfra,blended=merge_cumulus_feedback(
+                qc_cols,qi_cols,qs_cols,cldfra,packed,aerosol=cfg.aercu_opt>0,
+                radii=background if cfg.aercu_opt>0 else None)
+            if cfg.aercu_opt>0:
+                kwargs.update(blended)
+                effective_fields.update(blended)
         if scheme in SCHEME_RADII_COUPLINGS:
             # After the MYNN merge, so its subgrid cloud and fraction are
             # the cloud being sized: see cloudy_background_radii.
@@ -4032,7 +4261,7 @@ class RRTMGPRadiation:
                 effective=effective_fields, tables_lw=self.lw_tables,
                 tables_sw=self.sw_tables,
                 column_chunk=self.column_chunk,
-                radii_bands=effective_radius_bands(scheme))
+                radii_bands=effective_radius_bands(radius_scheme))
             paths = hydrometeor_paths(
                 plev, qc_cols, qr_cols, qi_cols, qs_cols,
                 microphysics=scheme, cldfra=cldfra, validate=False,
@@ -4046,7 +4275,7 @@ class RRTMGPRadiation:
                 qs=qs_cols, cldfra=cldfra, emiss=emiss_bands,
                 numbers=numbers, effective=effective_fields,
                 tables_lw=self.lw_tables, tables_sw=self.sw_tables,
-                radii_bands=effective_radius_bands(scheme),
+                radii_bands=effective_radius_bands(radius_scheme),
                 diagnose=lambda: _raise_full_call_validation_error(
                     play=play, plev=plev, tlay=tlay, tlev=tlev,
                     tsfc=tsfc, exner=exner, qv=qv, qc=qc_cols,
@@ -4055,7 +4284,7 @@ class RRTMGPRadiation:
                     effective=effective_fields, tables_lw=self.lw_tables,
                     tables_sw=self.sw_tables,
                     column_chunk=self.column_chunk,
-                    radii_bands=effective_radius_bands(scheme)))
+                    radii_bands=effective_radius_bands(radius_scheme)))
             # Invalid hydrometeors are rejected above, before these path/radius
             # allocations and arithmetic.
             paths = hydrometeor_paths(
@@ -4308,7 +4537,11 @@ class RRTMGPRadiation:
         # path runs as before.
         sw_ncol = ncol if self.shortwave else 0
         sw_columns = None
-        if self.shortwave and not _stream_is_capturing(cp):
+        frame = getattr(self, "_graph_daylight", {}).get(
+            (float(state.elapsed_seconds), float(radt_seconds), generation))
+        if self.shortwave and _stream_is_capturing(cp) and frame is not None:
+            sw_ncol, sw_columns = frame
+        elif self.shortwave and not _stream_is_capturing(cp):
             sw_ncol = int(cp.count_nonzero(daylight))
             if 0 < sw_ncol < ncol:
                 # Ascending column order, so chunks stay in model order.
@@ -5667,3 +5900,5 @@ __all__ = ["CloudOpticsResult", "CloudTables", "DATA_DIR", "FluxResult",
            "lw_rte", "mcica_cloud_masks", "planck_sources",
            "rfmip_clear_sky", "rrtmgp_above_model_layer_counts",
            "sw_rte", "trace_gases"]
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

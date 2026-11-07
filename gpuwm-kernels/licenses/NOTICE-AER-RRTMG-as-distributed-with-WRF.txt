@@ -1,0 +1,56 @@
+AER RRTMG -- the copyright notice as WRF v4.6.1 distributes it
+
+WOOF's legacy-RRTMG longwave and shortwave schemes are transcriptions of
+WRF v4.6.1's phys/module_ra_rrtmg_lw.F and phys/module_ra_rrtmg_sw.F, and
+its packaged RRTMG_LW_DATA and RRTMG_SW_DATA are byte copies of the files
+WRF ships in its run/ directory.  That code is AER's, not UCAR's: UCAR's
+public-domain declaration disclaims UCAR's own claims and cannot dispose of
+anyone else's, and WRF itself says so by preserving AER's notice -- seven
+times in module_ra_rrtmg_lw.F and nine times in module_ra_rrtmg_sw.F.
+
+The notice AER attaches in WRF's copy is reproduced verbatim below, in each
+of the three copyright-year spans in which it appears.  Reproducing it is
+the condition AER's grant in that copy imposes.
+
+WOOF takes this material under AER's own current BSD-3-Clause grant --
+LICENSE-AER-RRTMG-BSD-3-Clause.txt in this directory, published by AER at
+https://github.com/AER-RC/RRTMG_LW and https://github.com/AER-RC/RRTMG_SW --
+and not under the older non-commercial terms in WRF's copy, because a
+copyright holder may licence its own work on any terms it chooses and AER's
+BSD-3-Clause offer is public, current and unconditional.  See NOTICE.
+
+Twelve occurrences across the two files read:
+
+!  --------------------------------------------------------------------------
+! |                                                                          |
+! |  Copyright 2002-2008, Atmospheric & Environmental Research, Inc. (AER).  |
+! |  This software may be used, copied, or redistributed as long as it is    |
+! |  not sold and this copyright notice is reproduced on each copy made.     |
+! |  This model is provided as is without any express or implied warranties. |
+! |                       (http://www.rtweb.aer.com/)                        |
+! |                                                                          |
+!  --------------------------------------------------------------------------
+
+Two occurrences read:
+
+!  --------------------------------------------------------------------------
+! |                                                                          |
+! |  Copyright 2002-2009, Atmospheric & Environmental Research, Inc. (AER).  |
+! |  This software may be used, copied, or redistributed as long as it is    |
+! |  not sold and this copyright notice is reproduced on each copy made.     |
+! |  This model is provided as is without any express or implied warranties. |
+! |                       (http://www.rtweb.aer.com/)                        |
+! |                                                                          |
+!  --------------------------------------------------------------------------
+
+Two occurrences read:
+
+!  --------------------------------------------------------------------------
+! |                                                                          |
+! |  Copyright 2006-2008, Atmospheric & Environmental Research, Inc. (AER).  |
+! |  This software may be used, copied, or redistributed as long as it is    |
+! |  not sold and this copyright notice is reproduced on each copy made.     |
+! |  This model is provided as is without any express or implied warranties. |
+! |                       (http://www.rtweb.aer.com/)                        |
+! |                                                                          |
+!  --------------------------------------------------------------------------

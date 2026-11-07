@@ -30,7 +30,7 @@ cached grid and static.
 | `global-60km` | x1.163842 | 163,842 | MPAS: convection_permitting |
 | `global-30km` | x1.655362 | 655,362 | MPAS: convection_permitting |
 | `global-15km` | x1.2621442 | 2,621,442 | MPAS: convection_permitting |
-| `global-*-morrison` | as above | | the woof global suite: Morrison, Grell-Freitas, YSU, revised MM5, Noah, RRTMGP |
+| `global-*-morrison` | as above | | the Morrison suite: Morrison, Grell-Freitas, YSU, revised MM5, Noah, RRTMGP |
 
 The `mpas` arm is the hex default (0.4.6): MPAS-A's own suite for the mesh, from
 `src/hexcore/data/profiles/physics-default.v1.json`, at the forecast door's own
@@ -49,7 +49,7 @@ YSU and carry a 300 s cap (`max_dt_seconds` in the table, with the measured
 reason in `max_dt_why`). The cap binds only on an engine that lacks the fix
 for its defect: `max_dt_retired_by_engine` names the engine algorithm
 identities that carry it, and when the installed engine has all of them the
-row runs the mesh's own step. On woof 2.9.0, which has neither bound, the
+row runs the mesh's own step. On gpuwm 2.9.0, which has neither bound, the
 120 km and 60 km rows run at 300 s. The plan records the step, whether the cap
 bound, and either the identities that retired it (`cap_retired`) or the ones
 the engine lacks (`engine_lacks`), under `step` in `global-plan.json`;
@@ -57,7 +57,7 @@ the engine lacks (`engine_lacks`), under `step` in `global-plan.json`;
 
 The forecast door applies the same cap to its own default step whenever a run
 selects YSU (`woof.hex.global_door.default_step_cap`), so a bare
-`woof hex forecast` on these meshes takes 300 s on woof 2.9.0 and says so on
+`woof hex forecast` on these meshes takes 300 s on gpuwm 2.9.0 and says so on
 start; an explicit `--dt` or a namelist `config_dt` runs as given.
 
 Why: at long steps YSU puts single layers at the boundary-layer top that are

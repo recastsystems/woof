@@ -218,7 +218,7 @@ member then completed its own sequential 24-hour GPU forecast: 288 steps, two
 history frames, and finite health checks throughout. Integration took
 71.918869545, 72.952658760, 72.253815379 and 73.523855980 seconds. These are
 sequential single-card runs from the manifest, with CUDA graphs disabled and
-the default fast numerics, using woof 2.9.0 and CuPy 14.2.0.
+the default fast numerics, using gpuwm 2.9.0 and CuPy 14.2.0.
 
 The lane retains exact commands, source-cycle/lead provenance, per-field hashes,
 CPU/GPU samples and complete forecast receipts in `n1out/series-source-proofs.json`,

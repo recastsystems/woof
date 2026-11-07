@@ -17,10 +17,10 @@
     },
     {
       "architecture": "compute_60 PTX fallback",
-      "bytes": 1241225,
+      "bytes": 1241223,
       "file": "woof_post.ptx",
       "generator": "NVIDIA NVRTC 12.0",
-      "sha256": "e93942d56591982bd1242a52759f725ef6aa8378fee17d852ea15670d47088a9"
+      "sha256": "3c1cf72e82fe2b2c872ed06cd74a76ef3a2228611b9e2857529552fdf4491142"
     }
   ],
   "kernel_set": "woof_post",
@@ -62,7 +62,7 @@
     },
     {
       "file": "woof_math.cuh",
-      "sha256": "fa8b5dc3779271b9fca059eae589a5272cd89866eba676acc387acb481ebec3b"
+      "sha256": "9baf385ffe543a28d34b252092a28eef45ac029b21b3805a38f3af256bb4fc55"
     },
     {
       "file": "post_group_a.cu",
@@ -89,5 +89,5 @@
       "sha256": "00b46819077a7f887c7ee40d5c28e4801f9ff675c64aca9ebd0bed2c26677678"
     }
   ],
-  "translation_unit_sha256": "dc42c56783bf91aa8091e89d3e754dba0597aa6fabc885016e4615553803b591"
+  "translation_unit_sha256": "25ff5d26b2d6f6716857269e838e1d7be8f70bf1bc78245f7904f920b75010a2"
 }

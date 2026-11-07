@@ -62,7 +62,7 @@
 //
 // The contraction pins travel WITH the block because the block uses all
 // nine of them 294 times and they are what makes its rounding reproducible
-// (__fmaf_rn/__fmul_rn/__fadd_rn are NVIDIA-guaranteed never
+// (the __fmaf_rn/__fmul_rn/__fadd_rn intrinsics are NVIDIA-guaranteed never
 // merged, so pinning to the fused form is free).  gf.cu KEEPS its own
 // copies at 235-238; identical redefinition of an object-like or
 // function-like macro is legal C++ and nothing else in gf.cu moves.
@@ -225,7 +225,7 @@ __device__ float gfk_exp(float x)
     // algorithm, and in that build the product InvLn2N*x, used only by the
     // add that forms kd and the subtract that forms r, is fused into both:
     // r keeps the product's rounding error.  Spelled here with __fma_rn, and
-    // the three polynomial multiply-adds likewise.  MEASURED on box W1 (Xeon
+    // the three polynomial multiply-adds likewise.  MEASURED on the reference host (Xeon
     // Platinum 8559C, glibc 2.39) over all 2^32 inputs
     // (tools/noah_wrf461_oracle/expf_variant_probe.c): this form equals the
     // host expf on every input; the separately rounded form it replaces

@@ -2784,7 +2784,7 @@
         "minutes": 0.3812166666666667,
         "receipt_sha256": "ff5dc88688bc23ead8a66cd7244e08c74bd33f147dadf284b4433d50a1ac3f47",
         "basis": "Measured model load plus synchronized inference for one member, 6 forecast hours; flat per-model display estimate, not scaled by requested horizon. Excludes initial-data fetch and output tail.",
-        "receipt": "SOL-POOL-20261019/lane-e2c-releases-woof-e2image/code/proof/v55/proof-summary.json"
+        "receipt": "proof-summary.json"
       }
     },
     "sfno": {
@@ -3957,7 +3957,7 @@
         "minutes": 0.9169166666666667,
         "receipt_sha256": "73ff70efe55aa9fdcb62e9a0320d500ea4ecd2bbb3ff281e41301faf118aa740",
         "basis": "Measured load plus legacy run_seconds workflow (includes I/O) for 24 forecast hours; flat per-model display estimate, not scaled by requested horizon. Loading may include checkpoint acquisition.",
-        "receipt": "SOL-POOL-20261019/lane-e2c-ingest-rows/evidence/proof-outputs/atlas/earth2-run.json"
+        "receipt": "earth2-run.json"
       }
     },
     "atlas-si": {
@@ -6439,7 +6439,7 @@
         "minutes": 5.802700000000001,
         "receipt_sha256": "c64929780a2175be343046c2378ee008052dad892ce14c6ea3bcc869a1a297cd",
         "basis": "Measured load plus legacy run_seconds workflow (includes I/O) for 12 forecast hours; flat per-model display estimate, not scaled by requested horizon. Loading may include checkpoint acquisition.",
-        "receipt": "SOL-POOL-20261019/lane-e2c-ingest-surfacefill/code/evidence/earth2-run.json"
+        "receipt": "earth2-run.json"
       }
     },
     "graphcast-operational": {
@@ -7085,7 +7085,7 @@
         "minutes": 3.3921833333333336,
         "receipt_sha256": "02fe42c0730a85da211eb865d7c81d83c7e92cd15cee1ef50a9da55d1736df08",
         "basis": "Measured model load plus synchronized inference for one member, 6 forecast hours; flat per-model display estimate, not scaled by requested horizon. Excludes initial-data fetch and output tail.",
-        "receipt": "lane-e2c-ingest-stormcast/evidence/completed-fetch-earth2-run.json"
+        "receipt": "completed-fetch-earth2-run.json"
       }
     },
     "atlas-crps": {

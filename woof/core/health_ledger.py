@@ -49,23 +49,24 @@ instantaneous when it is not is worse than a late one.  This is the same
 trade-off the codebase already accepted when it replaced per-substep mass-flux
 readbacks with :class:`~woof.core.dycore.MassFluxAccumulator`.
 
-OPT-IN, AND WHY
+EXECUTOR POLICY
 ---------------
-With no ledger installed, every site behaves EXACTLY as before: it reads its
-status word and raises immediately.  The deferral only happens inside
-:func:`deferring`, which the tiled driver enters around a step and leaves at
-the sweep's synchronisation point.  A production run that has not asked for it
-keeps instantaneous detection, and the diff to each scheme is one call that is
-a no-op unless a ledger is active.
+The resident forecast executor installs one ledger per domain and polls a
+bounded pinned snapshot after each step. Polling only queries completed
+CUDA events. History, checkpoint and final-return boundaries drain every
+ledger before publishing or accepting a run. A failure can therefore advance
+through internal nest work before it is reported. ``health_debug`` retains
+immediate attribution. Other callers choose their own deferring scopes.
+With no ledger installed, sites retain their immediate read and refusal.
 
 DRAIN OR IT DID NOT HAPPEN
 --------------------------
 A ledger that is recorded into and never drained silently converts a fatal
-error into no error at all.  :meth:`HealthLedger.close` therefore drains, and
-:func:`deferring` closes on the way out, including on an exception path.  The
-one API that can lose a failure is calling :meth:`record` outside any drain,
-which is why ``record`` is not public API and the sites reach it through
-:func:`read_status`.
+error into no error at all. :meth:`HealthLedger.close` therefore drains.
+The owner of a :func:`deferring` scope must drain or close its ledger on
+all exit paths; that scope only routes records and restores the context.
+The forecast executor drains in its finalizer as well as before publication.
+Sites reach the ledger through :func:`read_status`.
 """
 
 from __future__ import annotations
@@ -116,6 +117,58 @@ class HealthLedger:
         self._label = label
         self.records = 0
         self.drains = 0
+        self._device = int(cp.cuda.runtime.getDevice())
+        self._pending = None
+        self._poll_stream = None
+        self.polls = 0
+
+    def poll(self) -> None:
+        """Queue one pinned status copy and inspect completed copies only.
+
+        The event is queried, never waited on. While a copy is pending,
+        subsequent records accumulate in the device slots. At most one
+        snapshot and its diagnostic closures are retained per ledger.
+        Output/checkpoint/final boundaries still call drain().
+        """
+        import cupy as cp
+        import numpy as np
+
+        with cp.cuda.Device(self._device):
+            self._poll_stream = cp.cuda.get_current_stream()
+            self.polls += 1
+            self._finish_pending(wait=False)
+            if self._pending is not None or not self._describe:
+                return
+            memory = cp.cuda.alloc_pinned_memory(self._slots.nbytes)
+            host = np.frombuffer(memory, dtype=np.uint32,
+                                 count=self._slots.size)
+            self._slots.get(out=host, blocking=False)
+            event = cp.cuda.Event(disable_timing=True)
+            event.record()
+            # Copy, clear and the next record use the same ordered stream.
+            self._slots.fill(cp.uint32(0))
+            self._pending = (event, host, self._describe.copy())
+            self._describe.clear()
+
+    def _finish_pending(self, *, wait: bool) -> None:
+        if self._pending is None:
+            return
+        event, host, descriptions = self._pending
+        if wait:
+            event.synchronize()
+        elif not event.done:
+            return
+        self._pending = None
+        self._raise_flags(host, descriptions)
+
+    def _raise_flags(self, host, descriptions) -> None:
+        for site, describe in descriptions.items():
+            flags = int(host[self._index[site]])
+            if flags:
+                describe(flags)
+                raise FloatingPointError(
+                    f"{site} reported health flags {flags:#x} but its "
+                    "description did not raise; a health site must refuse")
 
     @property
     def slots(self):
@@ -165,23 +218,15 @@ class HealthLedger:
         """
         import cupy as cp
 
-        if not self._index:
-            return
-        self.drains += 1
-        host = cp.asnumpy(self._slots)
-        self._slots.fill(cp.uint32(0))
-        for site, i in self._index.items():
-            flags = int(host[i])
-            if flags:
-                describe = self._describe.get(site)
-                if describe is None:                       # pragma: no cover
-                    raise FloatingPointError(
-                        f"{site} reported health flags {flags:#x} and no "
-                        "description was recorded for it")
-                describe(flags)
-                raise FloatingPointError(                  # pragma: no cover
-                    f"{site} reported health flags {flags:#x} but its "
-                    "description did not raise; a health site must refuse")
+        with cp.cuda.Device(self._device), (
+                self._poll_stream or cp.cuda.get_current_stream()):
+            self._finish_pending(wait=True)
+            if not self._describe:
+                return
+            self.drains += 1
+            host = cp.asnumpy(self._slots)
+            self._slots.fill(cp.uint32(0))
+            self._raise_flags(host, self._describe)
         # The synchronized read found every site healthy. Its diagnostic
         # closures are no longer needed and may own full atmospheric input
         # generations (YSU's producer-forensics mapping, for example).

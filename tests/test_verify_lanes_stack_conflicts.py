@@ -65,7 +65,17 @@ def test_boundary_preprocessing_uses_shared_carried_mass_key():
     boundary = (ROOT / "woof/ingest/lateral_bc.py").read_text()
     dycore = (ROOT / "woof/core/dycore.py").read_text()
     shared = "from woof.state_serialization_contract import WRF_MUTS_SLOT"
-    assert shared in boundary and shared in dycore
+    assert shared in dycore
+    # The boundary reads the carried mass through the contract's own
+    # accessor (cold-carrier aware), which keys on WRF_MUTS_SLOT; it spells
+    # neither the slot literal nor a dycore-local key.
+    assert ("from woof.state_serialization_contract import carried_wrf_muts"
+            in boundary)
+    import inspect
+    from woof import state_serialization_contract as contract
+    assert "existing_scratch(WRF_MUTS_SLOT)" in inspect.getsource(
+        contract.carried_wrf_muts)
+    assert '"wrf_exact_muts"' not in boundary and "'wrf_exact_muts'" not in boundary
     assert "from woof.core.dycore import WRF_MUTS_SLOT" not in boundary
 
 

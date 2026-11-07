@@ -50,13 +50,15 @@ pub const BOUND_GRID_ALIGNMENTS: [&str; 4] = [
     "exact_coordinate_subset", "exact_coordinate_strided_subset", "nearest_coordinate", crate::regrid::ALIGNMENT,
 ];
 
-const COMPOSITION_KEYS: [&str; 6] = [
+const COMPOSITION_KEYS: [&str; 7] = [
     "schema",
     "name",
     "mapping_binding",
     "soil_layers",
     "supplements",
     "field_sources",
+    // Read by gpuwm.ingest.upper_air_donor after the WPS export; compose ignores it.
+    "upper_air_donor",
 ];
 const COMPOSITION_REQUIRED: [&str; 5] = [
     "schema",
@@ -897,6 +899,12 @@ pub fn partition_contributing(
     let mut pending = field_names.to_vec();
     while let Some(name) = pending.pop() {
         let field = donor.field(&name)?;
+        // Missing-value policies also have dependencies. Decode the mask
+        // without binding it over the primary source's own land fraction.
+        if matches!(field.missing_kind()?, "landmask_water" | "landmask_zero_water")
+            && needed.insert("land_fraction".to_owned()) {
+            pending.push("land_fraction".to_owned());
+        }
         if let Some(operation_name) = field.derivation() {
             let operation = donor.derivation(operation_name).ok_or_else(|| mapping_invalid(format!(
                 "contributing source binding {quoted} has unknown derivation {operation_name}")))?;
@@ -1442,7 +1450,12 @@ pub fn run_compose(invocation: &Invocation, progress: &mut dyn FnMut(Value)) -> 
             }
         }
         let donor_files = &supplements[&binding.data_role];
-        let donor_partition = partition_contributing(&donor, &binding.donor_fields(), &binding.name)?;
+        let mut decode_fields = binding.donor_fields();
+        if binding.grid_alignment == crate::regrid::ALIGNMENT
+            && !decode_fields.iter().any(|name| name == "land_fraction") {
+            decode_fields.push("land_fraction".to_owned());
+        }
+        let donor_partition = partition_contributing(&donor, &decode_fields, &binding.name)?;
         let donor_collection = match crate::engine::decode_collection_or_unmatched(
             &donor_partition,
             donor_files,
@@ -1483,13 +1496,14 @@ pub fn run_compose(invocation: &Invocation, progress: &mut dyn FnMut(Value)) -> 
                 continue;
             }
         };
-        let mut donor_collection = complete_binding_donor(&donor_partition, donor_collection, binding)?;
+        let mut donor_collection = complete_donor_fields(&donor_partition, donor_collection, &decode_fields)?;
         crate::join::register_projected_subset(&mapping, &donor, &mut donor_collection)?;
-        let (donor_collection, regrid) = if binding.grid_alignment == crate::regrid::ALIGNMENT {
+        let (mut donor_collection, regrid) = if binding.grid_alignment == crate::regrid::ALIGNMENT {
             let (donor, receipt) = crate::regrid::align(donor_collection, stream.latitude(), stream.longitude())?;
             progress(json!({"event": "horizontal_regrid", "binding": binding.name, "regrid": receipt}));
             (donor, Some(receipt))
         } else { (donor_collection, None) };
+        donor_collection.direct.retain(|(_, _, name), _| binding.fields.contains(name));
         let (plan, mut receipt) = crate::join::plan_bound_fields(
             &crate::join::PrimaryHeader {
                 latitude: stream.latitude(),
@@ -1750,7 +1764,7 @@ mod tests {
     fn write(name: &str, body: &str) -> String {
         // One folder per test process: a fixed name let two test binaries
         // running at once on one machine overwrite each other's documents
-        // mid-read ("c5.json is not JSON: EOF", a development machine, 2026-10-09).
+        // mid-read ("c5.json is not JSON: EOF", test-host-1, 2026-10-09).
         let directory = std::env::temp_dir()
             .join(format!("gpuwm-mapped-engine-compose-test-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();

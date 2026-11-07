@@ -594,7 +594,7 @@ real fcx_value(int face, int j, int k, size_t st, int ny, int nx,
                const real* __restrict__ c1f,
                const real* __restrict__ c2f,
                const real* __restrict__ msfu, int has_msf,
-               int top, real cfn, real cfn1)
+               int top, real cfn, real cfn1, int physical_edge = 0)
 {
 #if GPUWM_WRF_EXACT || GPUWM_WRF_EXACT_C_BIGSTEP || GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_WRF_EXACT_C_DIFFUSION || GPUWM_WRF_EXACT_D_DIAGNOSTICS
 #if GPUWM_WRF_EXACT || GPUWM_WRF_EXACT_C_BIGSTEP || GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_WRF_EXACT_C_DIFFUSION || GPUWM_WRF_EXACT_D_DIAGNOSTICS
@@ -603,9 +603,11 @@ real fcx_value(int face, int j, int k, size_t st, int ny, int nx,
     int fidx = periodic_face(face, nx);
 #endif
     int ia = fidx, ib = (fidx - 1 + nx) % nx;
+    if (physical_edge && face == nx) fidx = nx;
 #else
     int fidx = periodic_face(face, nx);
     int ia = fidx, ib = periodic_previous(fidx, nx);
+    if (physical_edge && face == nx) { ia = 0; ib = nx - 1; fidx = nx; }
 #endif
     size_t ca = (size_t)j * nx + ia, cb = (size_t)j * nx + ib;
     real mass = rn_add(rn_mul(c1f[k], avg_mut(mup, mub2d, ca, cb)), c2f[k]);
@@ -672,13 +674,14 @@ real supplied_fcx_value(int face, int j, int k, int ny, int nx,
                         const real* __restrict__ c1f,
                         const real* __restrict__ c2f,
                         const real* __restrict__ msfu, int has_msf,
-                        int top, real cfn, real cfn1)
+                        int top, real cfn, real cfn1, int physical_edge = 0)
 {
 #if GPUWM_WRF_EXACT || GPUWM_WRF_EXACT_C_BIGSTEP || GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_WRF_EXACT_C_DIFFUSION || GPUWM_WRF_EXACT_D_DIAGNOSTICS
     int fidx = face % nx;
 #else
     int fidx = periodic_face(face, nx);
 #endif
+    if (physical_edge && face == nx) fidx = nx;
     real mass = rn_add(rn_mul(c1f[k], mux[(size_t)j * (nx + 1) + fidx]),
                        c2f[k]);
     size_t f = I3S(k - 1, j, fidx, ny, nx + 1);
@@ -869,7 +872,7 @@ void slow_geopotential_open(real* rph_t,const real* ww,const real* w,
     const real* c1f,const real* c2f,real cfn,real cfn1,
     const real* msft,const real* msfu,const real* msfv,
     const real* mux,const real* muy,real quarter_rdx,real quarter_rdy,
-    int mapped,int open_x,int open_y,int supplied,int add_vertical,int order,int base3d,
+    int mapped,int open_x,int open_y,int specified,int supplied,int add_vertical,int order,int base3d,
     int nz,int ny,int nx)
 {
     size_t tid=(size_t)blockIdx.x*blockDim.x+threadIdx.x,st=(size_t)ny*nx;
@@ -889,18 +892,26 @@ void slow_geopotential_open(real* rph_t,const real* ww,const real* w,
         real gw=rn_mul(rn_mul(mass,G),w[ix]);
         tendency=rn_add(tendency,mapped?rn_div(gw,msft[c]):gw);
     }
-    for(int axis=0;axis<2;++axis) {
+    for(int pass=0;pass<3;++pass) {
+        int axis=pass==0?0:1;
         int pos=axis?i:j,length=axis?nx:ny,boundary=axis?open_x:open_y;
-        if(boundary&&(pos==0||pos==length-1))continue;
-        int stencil=(order==2||(boundary&&(pos==1||pos==length-2)))?2:
-                    ((boundary&&(pos==2||pos==length-3))?4:6);
+        bool specified_x4=specified && axis && (order==3 || order==4);
+        // rhs_ph's <=4 x loop checks open_x, but not specified; its
+        // specified edge pickup is a second contribution at i=ids+1/ide-2.
+        if(pass==2 && !(specified_x4 && (pos==1 || pos==length-2)))continue;
+        if(boundary&&(pos==0||pos==length-1) && !specified_x4)continue;
+        // Native sixth-order x pickup tests open_x, without specified.
+        if (specified && axis && order >= 5 && (pos == 2 || pos == length-3)) continue;
+        int stencil=(order<=2 || pass==2 ||
+                     (boundary&&!specified_x4&&(pos==1||pos==length-2)))?2:
+                    ((order<=4 || (boundary&&(pos==2||pos==length-3)))?4:6);
         real rd=axis?quarter_rdx:quarter_rdy;
         if(top)rd=rn_mul(2.0f,rd);
         real coefficient=mapped?rn_div(rd,msft[c]):rd;
         real f0,f1;
         if(axis) {
-            f0=supplied?supplied_fcx_value(i,j,k,ny,nx,u,mux,c1f,c2f,msfu,mapped,top,cfn,cfn1):fcx_value(i,j,k,st,ny,nx,u,mup,mub,c1f,c2f,msfu,mapped,top,cfn,cfn1);
-            f1=supplied?supplied_fcx_value(i+1,j,k,ny,nx,u,mux,c1f,c2f,msfu,mapped,top,cfn,cfn1):fcx_value(i+1,j,k,st,ny,nx,u,mup,mub,c1f,c2f,msfu,mapped,top,cfn,cfn1);
+            f0=supplied?supplied_fcx_value(i,j,k,ny,nx,u,mux,c1f,c2f,msfu,mapped,top,cfn,cfn1,specified_x4):fcx_value(i,j,k,st,ny,nx,u,mup,mub,c1f,c2f,msfu,mapped,top,cfn,cfn1,specified_x4);
+            f1=supplied?supplied_fcx_value(i+1,j,k,ny,nx,u,mux,c1f,c2f,msfu,mapped,top,cfn,cfn1,specified_x4):fcx_value(i+1,j,k,st,ny,nx,u,mup,mub,c1f,c2f,msfu,mapped,top,cfn,cfn1,specified_x4);
         } else {
             f0=supplied?supplied_fcy_value(j,i,k,ny,nx,v,muy,c1f,c2f,msfv,mapped,top,cfn,cfn1):fcy_value(j,i,k,st,ny,nx,v,mup,mub,c1f,c2f,msfv,mapped,top,cfn,cfn1);
             f1=supplied?supplied_fcy_value(j+1,i,k,ny,nx,v,muy,c1f,c2f,msfv,mapped,top,cfn,cfn1):fcy_value(j+1,i,k,st,ny,nx,v,mup,mub,c1f,c2f,msfv,mapped,top,cfn,cfn1);
@@ -935,7 +946,7 @@ void slow_geopotential_open(real* rph_t,const real* ww,const real* w,
     // The native routine applies outer y, then outer x after interior terms.
     for(int axis=0;axis<2;++axis) {
         int pos=axis?i:j,length=axis?nx:ny,boundary=axis?open_x:open_y;
-        if(!boundary||(pos!=0&&pos!=length-1))continue;
+        if(specified||!boundary||(pos!=0&&pos!=length-1))continue;
         int west_top=axis&&pos==0&&top;
         int kz=west_top?k:min(k,nz-1);
         real wl,wh,hm=west_top?0.0f:fnm[kz],hp=west_top?0.0f:fnp[kz];

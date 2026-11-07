@@ -22,7 +22,7 @@
 //! rw_ensbatch --store-root DIR --out-dir DIR
 //!             (--manifest FILE.json | --member N=WRFOUT_OR_MEMBER_DIR ...)
 //!             [--field refl|uh|precip|t2|wspd10|visibility|fog_prob]
-//!             [--products mean,spread,prob,pmm,paintball]
+//!             [--products mean,spread,prob,pmm,paintball,max]
 //!             [--threshold V] [--neighborhood-km V] [--frames all|N]
 //!             [--nan-policy mask|refuse] [--pmm-tie-rule flat-index|average]
 //!             [--accept-status LIST] [--width N] [--height N]
@@ -36,7 +36,8 @@ use std::process::ExitCode;
 
 use rustwx_core::{CanonicalField, FieldSelector};
 use rustwx_ensemble::{
-    MemberStack, NanPolicy, PmmTieRule, ensemble_mean, ensemble_spread, exceedance_probability,
+    MemberStack, NanPolicy, PmmTieRule, ensemble_max, ensemble_mean, ensemble_spread,
+    exceedance_probability,
     member_color, missingness_report, pmm_tie_report, probability_matched_mean,
 };
 use rustwx_render::{
@@ -92,6 +93,12 @@ fn field_specs() -> Vec<FieldSpec> {
             unit_slug: "m2s2",
             default_threshold: 75.0,
         },
+        // The low-level interval-max layers (UP_HELI_MAX01/02/03; WOOF
+        // uh-layers, 2026-11-02): 0-1 km thresholded at 10 by default (it runs
+        // an order weaker than 2-5 km), 0-2 and 0-3 km at 50.
+        FieldSpec { name: "uh01", title: "0-1 km updraft helicity", units: "m2 s-2", unit_slug: "m2s2", default_threshold: 10.0 },
+        FieldSpec { name: "uh02", title: "0-2 km updraft helicity", units: "m2 s-2", unit_slug: "m2s2", default_threshold: 50.0 },
+        FieldSpec { name: "uh03", title: "0-3 km updraft helicity", units: "m2 s-2", unit_slug: "m2s2", default_threshold: 50.0 },
         FieldSpec {
             name: "precip",
             title: "accumulated precipitation",
@@ -167,6 +174,9 @@ fn field_selector(field: &str) -> Option<FieldSelector> {
             2000,
             5000,
         )),
+        "uh01" => Some(FieldSelector::height_layer_agl(CanonicalField::UpdraftHelicity, 0, 1000)),
+        "uh02" => Some(FieldSelector::height_layer_agl(CanonicalField::UpdraftHelicity, 0, 2000)),
+        "uh03" => Some(FieldSelector::height_layer_agl(CanonicalField::UpdraftHelicity, 0, 3000)),
         "precip" => Some(FieldSelector::surface(CanonicalField::TotalPrecipitation)),
         "t2" => Some(FieldSelector::height_agl(CanonicalField::Temperature, 2)),
         "wspd10" => Some(FieldSelector::height_agl(CanonicalField::WindSpeed, 10)),
@@ -177,6 +187,40 @@ fn field_selector(field: &str) -> Option<FieldSelector> {
         "snow_depth" => Some(FieldSelector::surface(CanonicalField::SnowDepth)),
         _ => None,
     }
+}
+
+/// The store planes an ensemble member import keeps: the plane each field
+/// reads, for the field this call draws and every field named in
+/// `RUSTWX_ENS_IMPORT_FIELDS` (comma list), so several calls that share one
+/// member store (one import, many fields) agree on one scoped run.
+///
+/// WHAT BREAKAGE THIS PREVENTS (gate law): every member import ran the WHOLE
+/// WRF science plan (13 parcel diagnostics, the isobaric and sounding
+/// volumes, simulated IR, every raw plane) to read ONE 2-D plane per field:
+/// 82-282 s per member, 474-795 s per 18-member, 5-time OK-WoFS cycle on a
+/// 64-core box (2026-11-03), most of the cycle's map budget.
+///
+/// `None` (the whole plan, as before) for a field this table does not
+/// scope: the snow windows read a baseline frame and the snow level a named
+/// variable, so they keep the import they were proven on.
+fn import_scope(field: &str) -> Option<Vec<String>> {
+    let mut fields = vec![field.to_string()];
+    if let Ok(extra) = std::env::var("RUSTWX_ENS_IMPORT_FIELDS") {
+        fields.extend(extra.split(',').map(str::trim).filter(|f| !f.is_empty()).map(str::to_string));
+    }
+    let mut names = Vec::new();
+    for field in &fields {
+        match field.as_str() {
+            "refl" | "uh" | "uh01" | "uh02" | "uh03" | "precip" | "t2" | "wspd10" | "gust"
+            | "visibility" | "fog_prob" => names.push(
+                rw_wrfbatch::wrf_process::store_name_for_selector(field_selector(field)?),
+            ),
+            _ => return None,
+        }
+    }
+    names.sort();
+    names.dedup();
+    Some(names)
 }
 
 fn field_variable(field: &str) -> Option<&'static str> {
@@ -212,7 +256,7 @@ struct Args {
 fn usage() -> &'static str {
     "usage: rw_ensbatch --store-root DIR --out-dir DIR \
 (--manifest FILE.json | --member N=WRFOUT_OR_MEMBER_DIR ...) [--field refl|uh|precip|t2|wspd10|visibility|fog_prob] \
-[--products mean,spread,prob,pmm,paintball] [--threshold V] [--neighborhood-km V] \
+[--products mean,spread,prob,pmm,paintball,max] [--threshold V] [--neighborhood-km V] \
 [--frames all|N] [--nan-policy mask|refuse] [--pmm-tie-rule flat-index|average] \
 [--accept-status LIST] [--domain dNN] [--width N] [--height N] [--source-label TEXT] \
 [--overlays FILE.json] [--annotate FILE.json]\n       \
@@ -236,7 +280,7 @@ fn parse_args() -> Result<Invocation, String> {
     // may arrive after the --member it selects within.
     let mut domain: Option<String> = None;
     let mut field = "refl".to_string();
-    let mut products = "mean,spread,prob,pmm,paintball".to_string();
+    let mut products = "mean,spread,prob,pmm,paintball,max".to_string();
     let mut threshold: Option<f64> = None;
     let mut thresholds: Vec<f64> = Vec::new();
     let mut neighborhood_km = 0.0f64;
@@ -389,10 +433,10 @@ fn parse_args() -> Result<Invocation, String> {
     for product in &products {
         if !matches!(
             product.as_str(),
-            "mean" | "spread" | "prob" | "pmm" | "paintball"
+            "mean" | "spread" | "prob" | "pmm" | "paintball" | "max"
         ) {
             return Err(format!(
-                "unknown product {product:?}; choose from mean, spread, prob, pmm, paintball"
+                "unknown product {product:?}; choose from mean, spread, prob, pmm, paintball, max"
             ));
         }
     }
@@ -718,7 +762,7 @@ pub(crate) fn main() -> ExitCode {
                     } else { spec.default_threshold.to_string() }
                 );
             }
-            println!("PRODUCTS\tmean\tspread\tprob\tpmm\tpaintball");
+            println!("PRODUCTS\tmean\tspread\tprob\tpmm\tpaintball\tmax");
             ExitCode::SUCCESS
         }
         Ok(Invocation::Run(args)) => match run(*args) {
@@ -755,6 +799,8 @@ fn run(args: Args) -> Result<(), String> {
     let mut style: Option<rustwx_products::viewer::StoreVariableStyle> = None;
     let mut member_stores: Vec<(u32, PathBuf, String, String, u16)> = Vec::new();
 
+    // The import keeps only the planes the drawn fields read (import_scope).
+    let import_scope = import_scope(&args.field);
     // Every member imports at once (each on its own worker; their frames
     // share the importer's memory budget) and is collected in member order.
     let mut tasks = Vec::with_capacity(args.members.len());
@@ -771,6 +817,8 @@ fn run(args: Args) -> Result<(), String> {
             store_root.clone(),
             WrfProcessOptions {
                 snow_since: std::env::var("GPUWM_SNOW_SINCE").ok().filter(|s| !s.trim().is_empty()),
+                named_products_only: import_scope.is_some(),
+                required_fields: import_scope.clone(),
                 ..Default::default()
             },
         );
@@ -1040,6 +1088,23 @@ fn render_product(
                 true,
             )
         }
+        "max" => {
+            // The member maximum on the field's own ladder: the strongest
+            // value any member reached, under the mean's NaN policy and
+            // with the mean's coverage stamp.
+            let max = ensemble_max(stack, args.nan_policy).map_err(|e| e.to_string())?;
+            let (values, scale, units) = field_panel(&max, style, spec, threshold);
+            (
+                values,
+                format!("Ensemble max {} ({members} members)", spec.title),
+                units,
+                scale,
+                coverage_line(coverage, args, members),
+                Vec::new(),
+                format!("ens_max_{}", spec.name),
+                true,
+            )
+        }
         "spread" => {
             let spread = ensemble_spread(stack, 1, args.nan_policy).map_err(|e| e.to_string())?;
             let upper = finite_max(&spread).unwrap_or(1.0);
@@ -1282,7 +1347,7 @@ fn to_f32(values: &[f64]) -> Vec<f32> {
     values.iter().map(|value| *value as f32).collect()
 }
 
-/// A panel that shows the field itself (mean, PMM): its values, colour
+/// A panel that shows the field itself (mean, PMM, max): its values, colour
 /// scale and units.
 ///
 /// The field's operational ladder is calibrated in the units its own
@@ -1650,6 +1715,72 @@ mod tests {
     }
 
     #[test]
+    fn the_max_panel_is_the_member_maximum_with_a_nan_member_masked() {
+        // Member 2 is missing at two cells.  The max panel must be the
+        // panel of the finite members' maximum (here member 1's grid
+        // where member 2 is NaN), named ens_max_<field>, and differ from
+        // the mean panel of the same stack.
+        let scratch = Scratch::new("max-panel");
+        let (ny, nx) = (3usize, 4usize);
+        let low: Vec<f64> = (0..ny * nx).map(|cell| 5.0 + 4.0 * cell as f64).collect();
+        let mut high: Vec<f64> = low.iter().map(|value| value + 10.0).collect();
+        high[0] = f64::NAN;
+        high[5] = f64::NAN;
+        let stack = MemberStack::new(ny, nx, vec![(1, low.clone()), (2, high.clone())])
+            .expect("stack");
+        let max = ensemble_max(&stack, NanPolicy::Mask).expect("max");
+        let expected: Vec<f64> = low
+            .iter()
+            .zip(&high)
+            .map(|(a, b)| if b.is_nan() { *a } else { a.max(*b) })
+            .collect();
+        assert_eq!(max, expected);
+
+        let spec = field_specs()
+            .into_iter()
+            .find(|spec| spec.name == "refl")
+            .expect("refl spec");
+        let lat: Vec<f32> = (0..ny * nx).map(|cell| 35.0 + (cell / nx) as f32).collect();
+        let lon: Vec<f32> = (0..ny * nx).map(|cell| -100.0 + (cell % nx) as f32).collect();
+        let args = Args {
+            store_root: scratch.0.join("stores"),
+            out_dir: scratch.0.clone(),
+            members: Vec::new(),
+            field: "refl".to_string(),
+            products: vec!["max".to_string(), "mean".to_string()],
+            threshold: None,
+            thresholds: Vec::new(),
+            neighborhood_km: 0.0,
+            frames: None,
+            nan_policy: NanPolicy::Mask,
+            tie_rule: PmmTieRule::FlatIndex,
+            width: 480,
+            height: 360,
+            source_label: "test".to_string(),
+            overlays: None,
+            annotations: None,
+        };
+        let coverage = missingness_report(&stack, NanPolicy::Mask).expect("coverage");
+        let draw = |product: &str| {
+            render_product(
+                product, &args, &spec, &stack, &coverage, spec.default_threshold, 0.0,
+                &lat, &lon, None, None, "ens02", "ensemble",
+            )
+            .expect("render")
+            .expect("panel drawn")
+        };
+        let max_path = draw("max");
+        let mean_path = draw("mean");
+        let name = max_path.file_name().unwrap().to_string_lossy().to_string();
+        assert!(name.contains("ens_max_refl"), "{name}");
+        assert_ne!(
+            std::fs::read(&max_path).expect("max png"),
+            std::fs::read(&mean_path).expect("mean png"),
+            "the max panel is not the mean panel"
+        );
+    }
+
+    #[test]
     fn a_field_panel_draws_stored_values_in_the_units_of_its_ladder() {
         // A member store holds 2 m temperature in K, 10 m wind in m/s and
         // precipitation in mm; each field's operational ladder is drawn in
@@ -1682,7 +1813,7 @@ mod tests {
                 .collect();
             let mut settled = style.clone();
             settled.convert = rustwx_products::viewer::UnitConvert::None;
-            for product in ["mean", "pmm"] {
+            for product in ["mean", "pmm", "max"] {
                 let root = scratch.0.join(format!("{field}-{product}"));
                 let drawn = field_panel_png(&root.join("stored"), field, product, &stored, &style);
                 let expected = field_panel_png(

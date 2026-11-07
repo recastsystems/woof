@@ -55,10 +55,16 @@ const ABI: &str = concat!(
     "\tbind_published_invariants_v1",
     "\tcompose_source_v1 storm_diagnostics_v1 composition_stack_v1 aeronet_aod_v1",
     "\tstored_words_v1",
+    "\tsurface_analysis_v1",
+    "\tsurface_analysis_v2",
+    "\tsurface_analysis_v3",
+    "\tsurface_analysis_v4 wrflowinp_v1",
+    "\tstored_words_record_v1",
 );
 
 const INVENTORY_SCHEMA: &str = "gpuwm-rw-netcdf-inventory-v1";
 const DUMP_SCHEMA: &str = "gpuwm-rw-netcdf-dump-v1";
+mod surface;
 
 /// `GPUWM_BRIDGE_SOURCE_REV=<40-hex commit>`: the source revision this
 /// binary was built from, embedded as a literal so the release cut can
@@ -71,6 +77,7 @@ pub static GPUWM_BRIDGE_SOURCE_REV_STAMP: &str =
 const USAGE: &str = "\
 usage: rw_netcdf inventory FILE
        rw_netcdf stored-words FILE OUTPUT_DIR VARIABLE [VARIABLE...]
+       rw_netcdf stored-words-record RECORD FILE OUTPUT_DIR VARIABLE [VARIABLE...]
        rw_netcdf dump [--raw|--no-mask] [--unit-scale=N] [--unit-offset=N] [--water-layer-thickness=VARIABLE] [--window=I0:NI,J0:NJ] [--sample-window=X0:NI,Y0:NJ --sample-method=nearest|bilinear|bilinear-masked [--sample-mask=VARIABLE]] FILE OUTPUT_DIR VARIABLE [VARIABLE...]
        rw_netcdf recover-wrf-soil WRFINPUT MET_EM AUTHORITY_JSON OUTPUT_DIR
        rw_netcdf bind-invariants HEIGHT_FILE HEIGHT_VAR LAND_FILE LAND_VAR OUTPUT_FILE TIME_FILE [TIME_FILE...]
@@ -550,6 +557,13 @@ fn main() {
         "--help" | "-h" => {
             print!("{USAGE}");
         }
+        "stored-words-record" => {
+            if args.len() < 5 { fail("stored-words-record takes RECORD FILE OUTPUT_DIR VARIABLE [VARIABLE...]"); }
+            let record = args[1].parse::<usize>().unwrap_or_else(|_| fail("RECORD must be a nonnegative integer"));
+            if let Err(error) = stored_words::run_record(Path::new(&args[2]), Path::new(&args[3]), &args[4..], record) {
+                fail(&error);
+            }
+        }
         "stored-words" => {
             if args.len() < 4 { fail("stored-words takes FILE OUTPUT_DIR VARIABLE [VARIABLE...]"); }
             if let Err(error) = stored_words::run(Path::new(&args[1]), Path::new(&args[2]), &args[3..]) {
@@ -563,6 +577,22 @@ fn main() {
             if let Err(error) = inventory(Path::new(&args[1])) {
                 fail(&error);
             }
+        }
+        "wrflowinp" => {
+            let (offset, surface_physics) = if args.get(1).map(String::as_str) == Some("--sf-surface-physics") {
+                if args.len() < 5 {fail("wrflowinp --sf-surface-physics N OUTPUT INPUT [INPUT ...]");}
+                (3, args[2].parse::<i32>().unwrap_or_else(|_|fail("invalid surface physics")))
+            } else { (1, 2) };
+            if args.len()<offset+2 {fail("wrflowinp OUTPUT INPUT [INPUT ...]");}
+            let inputs:Vec<_>=args[offset+1..].iter().map(std::path::PathBuf::from).collect();
+            match wrf_surface::run_with_surface_physics(&inputs,Path::new(&args[offset]),surface_physics) {
+                Ok(receipt)=>println!("{}",serde_json::to_string_pretty(&receipt).unwrap()),
+                Err(error)=>fail(&error),
+            }
+        }
+        "surface" => {
+            if args.len() != 3 { fail("surface takes SPEC.json OUTPUT_DIR"); }
+            if let Err(error) = surface::run(Path::new(&args[1]), Path::new(&args[2])) { fail(&error); }
         }
         "dump" => {
             // Two switches, because netCDF4-python has two.  `--raw` is

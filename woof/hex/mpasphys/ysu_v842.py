@@ -7,6 +7,8 @@ Shared device mathematics is injected by the MPAS physics seam, never replaced
 by a scheme-local implementation. No forecast acceptance is claimed here.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -2705,7 +2707,7 @@ def _kernels(device_math_header: str, device_id: int):
         artifact = os.environ.get('HEX_MPAS_YSU_CUDA_ARTIFACT')
         if artifact:
             binary = validated_cuda_binary(Path(artifact), device_math_header,
-                                           cp.cuda.Device(device_id).compute_capability)
+                                           _compilation_target(device_id, xp=cp))
         else:
             binary, _ = compiler.compile_using_nvrtc(
                 cuda_source(device_math_header), options=_hex_numerics.options(COMPILER_OPTIONS),
@@ -2736,7 +2738,7 @@ def workspace_tile(nz: int, ncol: int) -> int:
     THE BREAKAGE THIS ENDS: a fixed 128-column tile launched YSU as 4 blocks of 32 threads per launch, so a
     149,322-cell 96 -> 3 km zoom globe ran 1,167 launches per step one after another (about 1.8 ms each)
     with the card nearly idle, and mesoscale_reference stepped 4.1x slower than convection_permitting there
-    (V8X6000 nsys, 2026-10-29). Each column's arithmetic is the same at any tile: the tile only sets the
+    (eight-card system nsys, 2026-10-29). Each column's arithmetic is the same at any tile: the tile only sets the
     workspace stride (bl_ysu_run(p, workspace + lane, count, ...)). WOOF_HEX_YSU_WORKSPACE_MIB overrides.
     """
     import os

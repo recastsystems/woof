@@ -20,9 +20,9 @@ THE BREAKAGES THESE PREVENT
    renamed, or a tier list names a held test that the export then drops,
    leaving tests/test_tier_membership.py red only on the export.
 5. THIRD-PARTY-NOTICES.txt lists a withheld port as if it shipped.
-6. The UGWP ports ship again (owner ruling 2026-10-14: UGWP and the RRFS fork's NOAA GSL physics are treated as
-   US Government code) while NOTICE or THIRD-PARTY-NOTICES.txt still call them withheld, or a hold still keeps
-   them home: the reader is told the opposite of what the distribution carries.
+6. The UGWP ports ship (NOAA GSL's UGWP is Apache-2.0 since 2026-11-04) while NOTICE or THIRD-PARTY-NOTICES.txt
+   still call them withheld or unlicensed, or a hold still keeps them home, or the upstream licence text or a
+   port's licence header is missing: the reader is told the opposite of what the distribution carries.
 
 Pure file reads; no device, no network, no port imports.
 """
@@ -141,7 +141,7 @@ def test_the_helper_crate_notice_follows_the_bridge_pin() -> None:
                        row.get('cargo_lock_sha256', pins['cargo_lock_sha256']))
                       for row in pins['bridges'].values())
     # A source prebuilt built from its own engine commit (rw_sfc_series keeps its aaec6b4 build after the
-    # bridges moved to woof 2.9.7) is the notice's resolving engine when it names its own commit and lock.
+    # bridges moved to gpuwm 2.9.7) is the notice's resolving engine when it names its own commit and lock.
     identities.update((row['gpuwm_source_rev'], row['cargo_lock_sha256'])
                       for row in pins['source_prebuilts']['files'].values()
                       if 'gpuwm_source_rev' in row and 'cargo_lock_sha256' in row)
@@ -207,7 +207,7 @@ def test_the_export_tool_drops_exactly_the_tier_rows_of_held_tests() -> None:
         assert rows == set(), f"the export still names held tests: {sorted(rows)}"
 
 
-def test_the_ugwp_ports_ship_as_us_government_code() -> None:
+def test_the_ugwp_ports_ship_under_apache_2() -> None:
     held = {p for hold in _holds() for p in hold["paths"]}
     ports = ("src/hexcore/mpasphys/ugwp_oro_v842.py", "src/hexcore/mpasphys/ugwp_ngw_v842.py",
              "tests/test_mpas_ugwp_oro_v842.py", "tests/test_ugwp_ngw_v842.py",
@@ -216,7 +216,12 @@ def test_the_ugwp_ports_ship_as_us_government_code() -> None:
     assert all(hold["id"] not in ("ugwp", "noaa-gsl-ugwp") for hold in _holds())
     assert all((ROOT / port.rstrip("/")).exists() for port in ports), "a UGWP port or its tests are missing"
     notice = re.sub(r"\s+", " ", _text(NOTICE))
-    assert "8. NOAA GSL Unified Gravity Wave Physics (UGWP) -- US Government code" in notice
+    assert "8. NOAA GSL Unified Gravity Wave Physics (UGWP) -- Apache-2.0" in notice
+    assert "4108d491470c2576a7c1e97cc6a38bf454590193" in notice, "NOTICE lost the commit that added UGWP's LICENSE"
+    assert "Copyright 2026, NOAA, UCAR/NCAR CU/CIRES" in _text(LICENSES / "LICENSE-UGWP-Apache-2.0.txt")
+    for port in ("src/hexcore/mpasphys/ugwp_oro_v842.py", "src/hexcore/mpasphys/ugwp_ngw_v842.py"):
+        head = _text(ROOT / port)[:1500]
+        assert "Apache License, Version 2.0" in head and "NOAA-GSL/UGWP" in head, f"{port} lost its UGWP licence header"
     assert "c1c893edcf171af5639af60e3a3a528816f6cc2b" in notice, "NOTICE lost UGWP's upstream commit"
     assert "noaa-gsl-unlicensed" not in notice and "ugwp-held" not in notice, "NOTICE names a retired opt-in"
     assert "UGWP ports are withheld" not in notice and "excludes the held UGWP" not in notice

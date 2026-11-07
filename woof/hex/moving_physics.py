@@ -312,7 +312,7 @@ def settle_ocean_roles(fields, wet, threshold, isice, iswater, xp=np):
     the land-ice class classifies as GLACIER (or ordinary land), so Noah-MP runs
     a glacier column on ocean state. MPAS's own conversion cannot repair it,
     because it fires only on a threshold crossing against the carried xicem.
-    Breakage it fixes: Milton hex storm-following, box M 2026-10-27, every move
+    Breakage it fixes: the storm hex storm-following, box M 2026-10-27, every move
     flipped polar columns water/sea ice/glacier, the history census refused, the
     Noah-MP glacier water budget failed and the next move's sea-ice remap
     refused. Returns the number of wet columns whose role changed.
@@ -485,6 +485,8 @@ def restore_remapped_backend(backend, payload, weights, layout, *, base_dt, rate
         for name, value in roles.items():
             fresh_arrays['fields/'+name] = value
     land_donors,land_receipt=land_state_donors(payload,weights,layout,fresh['seam']['arrays'],target_mesh,mapped_cache)
+    if any((b.get('surface_updates') or {}).get('ocean') is not None for b in sources):
+        mapped_cache.setdefault('ocean_surface_donors', {})[id(layout)] = land_donors
     prefetch_owner_fields(payload,weights,[key for key in sorted(keys)
                                            if not (ice_fields is not None and key in ice_fields)
                                            and key not in LAND_STATE],
@@ -560,6 +562,13 @@ def restore_remapped_backend(backend, payload, weights, layout, *, base_dt, rate
     fresh['seam']=dict(identity=fresh['seam']['identity'],arrays=result,scalars=scalars)
     fresh['adapter']=deepcopy(sources[0]['adapter'])
     backend.restore_restart_state(fresh)
+    wave_states = [source.get('waves') for source in sources]
+    if any(value is not None for value in wave_states):
+        if any(value is None for value in wave_states):
+            raise ValueError('moving physics owners disagree on wave mode')
+        if any(value['clock'] != wave_states[0]['clock'] for value in wave_states):
+            raise ValueError('moving physics owners carry different wave clocks')
+        backend._wave_move_restart = (wave_states[0], payload['mesh'], weights)
     return dict(fields=receipt,land_state=land_receipt,sea_ice=mapped_cache.get('ocean_ice_receipt'),
                 ocean_role_columns_settled=mapped_cache.get('settled_ocean_roles', 0),step_index=int(step),time_seconds=payload['time_seconds'],
                 metadata_note='backend call counters retained from coarsest owner class; cadence index rebuilt')

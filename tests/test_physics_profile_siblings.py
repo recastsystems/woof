@@ -34,7 +34,8 @@ def test_new_offers_preserve_every_previous_source_order_and_default():
         # The port line adds named suites; every earlier offer keeps its order.
         added = tuple(p for p in current if p not in old)
         assert set(added) <= {
-            "lin-mp2-ysu-mm5-noah-rrtmg-legacy-implemented-unverified-v1"}, (source, added)
+            "lin-mp2-ysu-mm5-noah-rrtmg-legacy-implemented-unverified-v1",
+            "morrison-mp10-ysu-mm5-slab-kf-rte-rrtmgp-v1"}, (source, added)
         assert tuple(p for p in current if p not in added) == old, source
         if old:
             assert current[0] == old[0], source
@@ -45,6 +46,17 @@ def test_published_single_domain_offers_match_every_live_source_menu():
     for source, offered in _SOURCE_PHYSICS_PROFILES.items():
         normal = list(route['source_template_ids'].get(source, ()))
         assert normal + expert_template_ids_for_source(route, source) == list(offered), source
+
+
+def test_slab_sibling_resolves_five_layers_without_claiming_a_native_benchmark():
+    from woof.physics_compat import single_domain_runtime_switches
+    from woof.prepared_single_domain_forecast import SLAB_PHYSICS_PROFILE
+
+    switches = single_domain_runtime_switches(SLAB_PHYSICS_PROFILE)
+    assert (switches['sf_surface_physics'], switches['num_soil_layers']) == (1, 5)
+    route = physics_registry()['runner_routes']['tools.hrrr_single_domain_benchmark']
+    assert all(SLAB_PHYSICS_PROFILE not in offered
+               for offered in route['source_template_ids'].values())
 
 
 def test_native_siblings_keep_their_existing_namelist_contracts():

@@ -1,0 +1,246 @@
+{
+  "release": "6.4.3",
+  "scope": "External user-prefix build/runtime dependencies; no ROCm source or binary vendored in either model package. NVIDIA compiler/runtime and Ubuntu compatibility libraries remain test-only external dependencies.",
+  "licenses": [
+    {
+      "component": "ROCm-Device-Libs",
+      "path": "share/doc/ROCm-Device-Libs/LICENSE.TXT",
+      "sha256": "a4e8e3ba6e9255928a29d3085f929de402e61413cb0c49276e16b558effa8a2a",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "amd_comgr",
+      "path": "share/doc/amd_comgr/LICENSE.txt",
+      "sha256": "fa6831fc9e8068c98271e055941a6767c9c7edbc9869454167edc2eb39ef82d0",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hip",
+      "path": "share/doc/hip/LICENSE.txt",
+      "sha256": "afa634b4148223196c59fb4761c95226b93d306864b0926eab08a77a9dcd2147",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipblas",
+      "path": "share/doc/hipblas/LICENSE.md",
+      "sha256": "7c15933ecb4339a8dd287cf0a4be938baa9e492d770000434891700bd66aee67",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipblas-common",
+      "path": "share/doc/hipblas-common/LICENSE.md",
+      "sha256": "0a644db1c39522b0e8d6eac35b129d18ac0b2b9246641914fdbf83aacd47dc43",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipcc",
+      "path": "share/doc/hipcc/LICENSE.txt",
+      "sha256": "b2bd41fb5d58a5d1db42ebfc7bc7c37cc924386726fd36286127e0392ceed8dd",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipcub",
+      "path": "share/doc/hipcub/LICENSE.txt",
+      "sha256": "6cb45bb9b9a787b5eb1b7e82a49ab2de578a0cfd527e09c1038378899f701331",
+      "licenses": [
+        "BSD family"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipfft",
+      "path": "share/doc/hipfft/LICENSE.md",
+      "sha256": "7a3deb09858a099baa7543e9dca1aaaef45a4aad0de21f28b77b5031d68ef06e",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipify-clang",
+      "path": "share/doc/hipify-clang/LICENSE.txt",
+      "sha256": "b58df09f5bc9378a9e0f9ca10089330f5754fe70309d3f37887233d4c8c28345",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hiprand",
+      "path": "share/doc/hiprand/LICENSE.txt",
+      "sha256": "4631cece9a1550f8649740854ffae7ea370750d65d0448eba414fecbd3fb5c5a",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipsolver",
+      "path": "share/doc/hipsolver/LICENSE.md",
+      "sha256": "67db69484a5bb6ec5a2d6e7738f036eb76d2d611fde7b763bab4ff1edfcd5e13",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipsparse",
+      "path": "share/doc/hipsparse/LICENSE.md",
+      "sha256": "7a904e8c3e0e67607d15b5e4c7e5aa37c7e33fcfc1c4a0b353ed664abf6e3efc",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hsa-runtime64",
+      "path": "share/doc/hsa-runtime64/LICENSE.md",
+      "sha256": "dac0a5360f50972cceaed16767bc9e94642aa497d558a74471e842f7192c7403",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocblas",
+      "path": "share/doc/rocblas/LICENSE.md",
+      "sha256": "7570e8cf76821185da5aca3a5166483c6274f7299028fe10bd4b3ccd200df844",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocfft",
+      "path": "share/doc/rocfft/LICENSE.md",
+      "sha256": "a4355aa2b543e1c4468283351080f185a67014bbd4f3dfebe2019f2688c8a1a4",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocm-core",
+      "path": "share/doc/rocm-core/copyright",
+      "sha256": "aa84e508c15e6ef02bfd7473e47b1c2e3d45b83581eab50af1a463e2acb6c266",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocm-llvm",
+      "path": "share/doc/rocm-llvm/LICENSE.TXT",
+      "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee",
+      "licenses": [
+        "Apache-2.0 with LLVM exception",
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocm_smi",
+      "path": "share/doc/rocm_smi/LICENSE.txt",
+      "sha256": "97b49e201d262788eb38124033482a4be45486357f42773ed8d09fcc07a5633f",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocprim",
+      "path": "share/doc/rocprim/LICENSE.txt",
+      "sha256": "ea3f54c58ad5da78a3e4f27c44291a761c2c98e976808f51fed0d1d105390a54",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocprofiler-register",
+      "path": "share/doc/rocprofiler-register/LICENSE",
+      "sha256": "aa5d391eec9afbfceb43617ddcbe3fbaad2717c838876852900c7bc241c02e10",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocrand",
+      "path": "share/doc/rocrand/LICENSE.txt",
+      "sha256": "7efac748c89b4bc369803c8ae26692e9d5952a0305c955ec363255e89ee71fec",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocsolver",
+      "path": "share/doc/rocsolver/LICENSE.md",
+      "sha256": "a037bdde286c83bb33b905fbabe2aa4187553b7abe41ae281aa1b2dab89ef95a",
+      "licenses": [
+        "BSD family"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocsparse",
+      "path": "share/doc/rocsparse/LICENSE.md",
+      "sha256": "4ad6768f137c9314a8cb6afbf839d723a0cb82a33a4625839cfe4edbb9ec2b7f",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "rocthrust",
+      "path": "share/doc/rocthrust/LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "roctracer",
+      "path": "share/doc/roctracer/LICENSE",
+      "sha256": "d194bca543b4d4c5ca47c041a27bb9343b3392b94730ae02dceccf01c5ee8ed1",
+      "licenses": [
+        "MIT"
+      ],
+      "vendored": false
+    },
+    {
+      "component": "hipblaslt",
+      "path": "share/doc/hipblaslt/LICENSE.md",
+      "sha256": "2cfa0cb287e783e2360e66cb6e3ef8930932eb2c12b4d4f0d0ba55e499767219",
+      "licenses": [
+        "MIT",
+        "BSD family"
+      ],
+      "vendored": false
+    }
+  ]
+}

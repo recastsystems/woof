@@ -1,0 +1,104 @@
+{
+  "wrf_commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "source_sha256": "da257cf060c385c3aa4d6c3a737ec8c10773bd52034786d954bab0a0dc290766",
+  "bytes": 9896,
+  "sha256": "a23e21798425039a82cf799f81c638a9f6bb7b0562c586829f05bdff10abc533",
+  "tables": [
+    {
+      "name": "pres",
+      "offset": 0,
+      "count": 375
+    },
+    {
+      "name": "ozone",
+      "offset": 375,
+      "count": 375
+    },
+    {
+      "name": "hk",
+      "offset": 750,
+      "count": 8
+    },
+    {
+      "name": "xk",
+      "offset": 758,
+      "count": 8
+    },
+    {
+      "name": "ry",
+      "offset": 766,
+      "count": 8
+    },
+    {
+      "name": "aig",
+      "offset": 774,
+      "count": 3
+    },
+    {
+      "name": "awg",
+      "offset": 777,
+      "count": 3
+    },
+    {
+      "name": "xk",
+      "offset": 780,
+      "count": 10
+    },
+    {
+      "name": "hk",
+      "offset": 790,
+      "count": 30
+    },
+    {
+      "name": "aib",
+      "offset": 820,
+      "count": 6
+    },
+    {
+      "name": "awb",
+      "offset": 826,
+      "count": 6
+    },
+    {
+      "name": "aia",
+      "offset": 832,
+      "count": 9
+    },
+    {
+      "name": "awa",
+      "offset": 841,
+      "count": 9
+    },
+    {
+      "name": "aig",
+      "offset": 850,
+      "count": 9
+    },
+    {
+      "name": "awg",
+      "offset": 859,
+      "count": 9
+    },
+    {
+      "name": "caib",
+      "offset": 868,
+      "count": 1089
+    },
+    {
+      "name": "caif",
+      "offset": 1957,
+      "count": 99
+    },
+    {
+      "name": "cah",
+      "offset": 2056,
+      "count": 418
+    }
+  ],
+  "wrf_version": "4.7.1",
+  "license": "WRF public domain",
+  "license_source": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+  "source_file": "phys/module_ra_gsfcsw.F",
+  "previous_identical_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "workspace_words_per_column": 32677
+}

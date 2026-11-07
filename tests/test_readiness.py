@@ -220,7 +220,8 @@ def test_start_needs_name_the_donor_of_a_donor_gated_route():
     assert donors, "the table declares at least one same-cycle donor"
     source = donors[0]
     window = readiness.resolve_window(source, datetime(2026, 9, 29, 0), 12,
-                                      cadence=6)
+                                      cadence=6, source_parameters=("STORM=01l"
+                                      if "STORM" in (fetch_routes.route_for(source).parameters or {}) else None))
     roles = [need.role for need in readiness.start_needs(window)]
     assert roles[:1] == ["analysis"]
     assert any(role.startswith("donor:") for role in roles)

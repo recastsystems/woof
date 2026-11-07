@@ -1940,3 +1940,54 @@ serde default empty) puts a note on ONE product's title, ahead of any
 frame's `GPUWM_REFC_NOTE` for the composite reflectivity recipes. A caller
 without notes (every `--annotate` file so far) renders exactly as before.
 No third-party source was introduced.
+## Historical AHI whole-disk archive discovery (2026-10-24, tc/allsky)
+
+The H08 archive includes whole-disk S0101 files as well as ten-segment Sxx10 scans. The source globs admit either layout; AHI completeness validates a consistent filename total and exactly the sequence numbers 1 through that total. Empty, missing, duplicate and mixed-layout sets remain incomplete. Non-AHI listing and newest-reprocessing selection are unchanged. The existing HSD decoder still validates the file headers and contiguous rows.
+
+Per-file SHA-256 delta from4694b9cc1:
+
+    crates/rw-sat/src/geo_imager.rs 291ad595add10c57 -> 381b89189eb6cabb
+    crates/rw-sat/src/geo_imagers.json e6b161bfce754751 -> 057cd3740c897fe1
+
+## Local HIP backend adapter (2026-11-01)
+
+The crates.io cudarc 0.19.8 snapshot retains its MIT OR Apache-2.0 license.
+The workspace patch uses that same snapshot by path, so the registry mirror's
+original checksum is not represented as a checksum of modified source.
+`src/gpuwm_hip.rs` adds the process boundary to woof's canonical HIP compiler;
+`driver/sys/mod.rs` selects a namespaced driver adapter when HIP is selected,
+`nvrtc/safe.rs` accepts source-bound HIP images, and `src/lib.rs` exposes the
+bridge. The upstream safe ownership and event-tracking layer is unchanged.
+The local adapter is Apache-2.0. No ROCm source or binary is vendored.
+`gpuwm-hip-delta.json` records the per-file local hashes and upstream hashes.
+
+The radar kernel's self-contained CUDA integer typedefs are guarded under
+HIP, whose public runtime header already defines the standard integer widths.
+Its manifest records the canonical source hash; the CUDA preprocessor keeps
+the original declarations and arithmetic.
+
+## Native WRF deep group index counts (2026-11-01)
+
+The public native WRF Grell–Freitas restart contains a depth-two HDF5 v2
+B-tree. `vendor/netcrust/vendor/hdf5-reader/src/btree_v2.rs` now derives
+child subtree count widths from node capacity. It formerly read the
+superblock length width (eight bytes), consuming the next pointer and
+rejecting this valid file with a checksum mismatch. Both buffered and
+random-access readers share the corrected capacity calculation. Immediate
+counts use leaf capacity at every depth; cumulative counts use the child
+subtree capacity; integer widths admit three-byte encodings. Checksums
+remain mandatory. The depth-two wire fixture covers both readers and
+corruption refusal. Upstream licence remains MIT OR Apache-2.0.
+
+File SHA-256 before: `193212076be223908e6768a1c077159ec3853472bfec42aa1c0663aa2ca2f46a`.
+File SHA-256 after: `cd1e2faada0d5ca46ee5332725987712b3b9ac578691eba27804ff94c6ec5dce`.
+
+## Whole-object range probes (10 km mesh fetch, 2026-11-02)
+
+`vendor/wx-core/src/download/client.rs` accepts Content-Length as the
+object length when a range probe receives a whole HTTP 200 response. A
+range transfer accepts that response only for an exact whole-object
+request starting at zero. Partial ranges and resumes still require a
+matching HTTP 206 Content-Range. The existing byte-count and resume
+checks remain in place. This is an original change under this tree's
+MIT licence; no third-party source was added.

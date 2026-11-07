@@ -1,5 +1,5 @@
 == local node (WOOF + gate evaluation) ==
-a development machine
+the test desktop
 NVIDIA GeForce RTX 5090, 610.74, 12.0
 Python 3.13.7
 numpy 2.2.6 netCDF4 1.7.4 cupy 14.0.1

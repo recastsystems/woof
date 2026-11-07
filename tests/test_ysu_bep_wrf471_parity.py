@@ -81,12 +81,12 @@ BRANCH_DIVERGENCE_CASES = (7, 13)
 #: transcription error, kept here as its record.
 #:
 #: RE-MEASURED 2026-09-30 against the fixed build (ysu_bep_fix, the declared
-#: rural-drag divergence): du 8738 -> 1821 on a development machine (RTX 5090, sm_120,
+#: rural-drag divergence): du 8738 -> 1821 on test host 2 (RTX 5090, sm_120,
 #: NVRTC 13.4.92), every other field unchanged.  The 8738 was the stock
 #: build's u row; both builds share every non-momentum word, and the port
 #: carries the fix, so it now sits closer to the build it transcribes.
 #:
-#: RE-MEASURED 2026-10-05 (lane/parity-286, sweep rows 9 and 10): the BEP
+#: RE-MEASURED 2026-10-05 (development branch, sweep rows 9 and 10): the BEP
 #: entry point now takes WRF's ctopo drag arm with ctopo = 1, as WRF's driver
 #: does, and the unit compiles with --fmad=false and glibc's powf/expf, so the
 #: arm is WRF's word everywhere except the flushed subnormal lanes (dqv, dqc,

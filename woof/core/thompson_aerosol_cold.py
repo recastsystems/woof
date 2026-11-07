@@ -51,6 +51,7 @@ import numpy as np
 
 from woof.core.thompson_aerosol_launch import aerosol_kernel
 from woof.core.thompson_aerosol_launch import (
+    hail_graupel_arguments,
     COLD_MODULE,
     launch_grid,
     add_optional_fields,
@@ -99,6 +100,9 @@ RAIN_GRAUPEL_TABLE_SHAPE = (37, 37, 1, 37, 37)
 #: woof.core.thompson_contract.FORK_GENERATED_TABLE_FILES).
 WRF39_RAIN_SNOW_TABLE_SHAPE = (28, 9, 37, 37)
 WRF39_RAIN_GRAUPEL_TABLE_SHAPE = (28, 28, 37, 37)
+#: The hail-aware scheme's nine-slab shape (mp_physics=38,
+#: qr_acr_qg_mp38V1.dat, module_mp_thompson.F:4117-4125, :4192-4273).
+HAIL_RAIN_GRAUPEL_TABLE_SHAPE = (37, 37, 9, 37, 37)
 
 
 def _rain_snow_shape():
@@ -109,7 +113,10 @@ def _rain_snow_shape():
 
 
 def _rain_graupel_shape():
-    from woof.core.thompson_aerosol_launch import active_thompson_version
+    from woof.core.thompson_aerosol_launch import (
+        active_hail_aware, active_thompson_version)
+    if active_hail_aware():
+        return HAIL_RAIN_GRAUPEL_TABLE_SHAPE
     return (WRF39_RAIN_GRAUPEL_TABLE_SHAPE
             if active_thompson_version() == "wrf_39_noaa"
             else RAIN_GRAUPEL_TABLE_SHAPE)
@@ -134,7 +141,7 @@ def launch_aa_cold_network(
         rain_cloud_efficiency, cloud_freezing_tables,
         dt: float, *, qcten=None, qrten=None, nrten=None, qiten=None,
         niten=None, snow_cloud_efficiency=None, qvten=None,
-        tten=None, qsten=None, qgten=None, ngten=None) -> None:
+        tten=None, qsten=None, qgten=None, ngten=None, graupel_volume=None, qbten=None) -> None:
     """Apply the complete aerosol-aware sub-freezing source group.
 
     Every array is float32, C-contiguous and of one common shape.  The
@@ -156,6 +163,28 @@ def launch_aa_cold_network(
     stage's cloud tendency is ADDED to ``qcten``, to be applied once with
     every other cloud tendency (:3975); the production adapter passes it.
     Left ``None``, the tendency is applied to ``qc`` in place.
+
+    ``snow_cloud_efficiency`` (keyword) is WRF's ``t_Efsw`` (100, 100), the
+    snow-collects-cloud-water efficiency table (:2407).  The v4.6.1
+    generation reads it and refuses to run without it: the breakage it
+    prevents is snow riming computed from no table at all.  The WRF 3.9
+    fork generation does not read it.
+
+    ``qvten``/``tten`` (keywords, both or neither) are WRF's vapour and
+    temperature accumulators.  Given, the sources are added to them in
+    WRF's form (:2982, :3164-3172), ``qv`` stays the entry vapour and
+    ``temperature`` becomes ``t1d + DT*tten``.
+
+    ``qsten``/``qgten``/``ngten`` (keywords, all three or none) are WRF's
+    snow, graupel and graupel-number accumulators.  Given, the sources are
+    added to them and ``qs``, ``qg`` and the graupel number stay the entry
+    state; the snow and graupel fallout add their own tendencies and apply
+    the sums once (:4054-4059).
+    Under :func:`woof.core.thompson_aerosol_launch.hail_aware_scope`
+    (mp_physics=38) ``graupel_number_shadow`` is WRF's prognostic ng1d,
+    ``graupel_volume`` the entry-rewritten qb1d, both read-only, and the
+    graupel sources go to ``qgten``/``ngten``/``qbten`` (all four keywords
+    required, with the rain/ice accumulators).
 
     ``snow_cloud_efficiency`` (keyword) is WRF's ``t_Efsw`` (100, 100), the
     snow-collects-cloud-water efficiency table (:2407).  The v4.6.1
@@ -208,6 +237,9 @@ def launch_aa_cold_network(
                         qiten=qiten, niten=niten)
     add_optional_fields(fields, qvten=qvten, tten=tten)
     add_optional_fields(fields, qsten=qsten, qgten=qgten, ngten=ngten)
+    hail_arguments = hail_graupel_arguments(
+        fields, graupel_volume=graupel_volume, qgten=qgten, ngten=ngten,
+        qbten=qbten)
     shape, size = validate_fields(fields)
     del shape
 
@@ -269,6 +301,7 @@ def launch_aa_cold_network(
          snow_cloud_efficiency,
          qcten, qrten, nrten, qiten, niten, qvten, tten,
          qsten, qgten, ngten,
+         graupel_volume, qbten,
          np.float32(dt), np.int32(size)))
 
 
@@ -279,7 +312,7 @@ def launch_aa_cold_network_from_owner(
         graupel_number_shadow, snow_velocity_boost,
         classic_table_owner, dt: float, *, qcten=None, qrten=None,
         nrten=None, qiten=None, niten=None, qvten=None, tten=None,
-        qsten=None, qgten=None, ngten=None) -> None:
+        qsten=None, qgten=None, ngten=None, graupel_volume=None, qbten=None) -> None:
     """Launch the cold network from one verified classic table owner.
 
     Every coefficient this kernel needs already exists in the mp=8 table
@@ -317,6 +350,7 @@ def launch_aa_cold_network_from_owner(
         qcten=qcten, qrten=qrten, nrten=nrten, qiten=qiten, niten=niten,
         snow_cloud_efficiency=classic_table_owner.t_Efsw,
         qvten=qvten, tten=tten, qsten=qsten, qgten=qgten, ngten=ngten,
+        graupel_volume=graupel_volume, qbten=qbten,
     )
 
 

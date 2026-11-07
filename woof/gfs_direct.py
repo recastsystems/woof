@@ -1898,6 +1898,8 @@ def prepare_gfs_wrf(
     physical_output_store: Path | None = None,
     physical_input_provider=None,
     physical_member_index: int | None = None,
+    vortex_init: str = "off",
+    vortex_inputs: Path | None = None,
 ) -> dict[str, object]:
     """Build native GFS initial/boundary files and return the proof receipt.
 
@@ -1938,6 +1940,16 @@ def prepare_gfs_wrf(
     (the default) leaves every published byte exactly as before.
     """
 
+    if vortex_init not in {"off", "relocate", "vitals-da"}:
+        raise ValueError("vortex-init must be off, relocate or vitals-da")
+    if vortex_init == "vitals-da":
+        raise ValueError("vitals-da requires the private data-assimilation analysis handoff; it is not a GFS source-frame transform")
+    if (vortex_init == "off") != (vortex_inputs is None):
+        raise ValueError("relocate requires --vortex-inputs; off requires no TC transform")
+    if vortex_init != "off" and any(value is not None for value in
+            (as_posted, physical_input_store, physical_output_store, physical_input_provider)):
+        raise ValueError("TC source relocation requires the complete ordinary GFS source window")
+    vortex_binding = None
     cycle_time = datetime.strptime(cycle, "%Y-%m-%d_%H:%M:%S")
     if (cycle_time.hour not in {0, 6, 12, 18}
             or cycle_time.minute != 0 or cycle_time.second != 0):
@@ -2419,6 +2431,11 @@ def prepare_gfs_wrf(
                 decoded_snapshots[initial_index:], water_overlay,
                 binding=water_overlay_binding,
                 workers=host_step_workers(preprocess))
+        if vortex_init == "relocate":
+            from woof.tc.native_source import apply as apply_tc_initial
+            snapshots, vortex_binding = apply_tc_initial(
+                snapshots, vortex_inputs, valid_time=exp.start_time.isoformat(),
+                source_sha256=expected_source_sha256[records[initial_index][0]])
         decode_seconds = time.perf_counter() - decode_started
         # The land-use table's own ISLAKE, never a hard-coded 21: the
         # category number is a property of the selected table, and a table
@@ -2549,6 +2566,7 @@ def prepare_gfs_wrf(
 
         native_source_identity = {
             "adapter": "gfs-pgrb2-0p25-direct-v1",
+            **({"vortex_initialization": vortex_binding} if vortex_binding is not None else {}),
             **({"static_highres": static_highres_identity(static_highres)}
                if static_highres is not None else {}),
             "preparation_case_policy": case_policy,
@@ -4014,6 +4032,10 @@ def _parser() -> argparse.ArgumentParser:
                         help="sealed native physical snapshots for the complete forcing window")
     parser.add_argument("--physical-output-store", type=Path,
                         help="capture mapped native physical snapshots before real initialization")
+    parser.add_argument("--vortex-init", choices=("off", "relocate", "vitals-da"), default="off",
+                        help="TC initialization route; vitals-da belongs to the private native analysis handoff")
+    parser.add_argument("--vortex-inputs", type=Path,
+                        help="sealed before/after canonical TC source declaration for relocate")
     parser.add_argument("--physical-input-provider", type=Path,
                         help="posted native physical member provider directory")
     parser.add_argument("--physical-member-index", type=int,
@@ -4102,6 +4124,8 @@ def main(argv: list[str] | None = None) -> int:
             physical_output_store=args.physical_output_store,
             physical_input_provider=args.physical_input_provider,
             physical_member_index=args.physical_member_index,
+            vortex_init=args.vortex_init,
+            vortex_inputs=args.vortex_inputs,
         )
     except PreparationRefusal:
         # The decorator on this main owns the whole refusal family: two

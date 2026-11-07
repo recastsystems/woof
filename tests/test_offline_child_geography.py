@@ -48,7 +48,7 @@ from test_offline_child import _history
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests/data/ndown_wrf471.npz"
 #: sha256 of the fixture of record (tools/ndown_wrf471_oracle: make_cases.py
-#: write, build.sh, make_cases.py collect; a development machine, 2026-10-01).  A
+#: write, build.sh, make_cases.py collect; test host 2, 2026-10-01).  A
 #: regenerated fixture changes this on purpose.
 FIXTURE_SHA256 = "27a7a0187a90068b022189fca8e3b2cc7460c77d12c3a5e4c0cd2fa2255fc28d"
 EPS32 = float(np.finfo(np.float32).eps)

@@ -268,6 +268,10 @@ def compile_using_nvrtc(source, options=(), arch=None, filename="kern.cu",
     if no_local_gpu():
         raise RuntimeError(
             f"{NO_LOCAL_GPU_ENV} forbids local NVRTC compilation")
+    from woof.hip_backend import active, compile_source
+    if active():
+        return compile_source(source, options, arch, filename, name_expressions,
+                              log_stream, cache_in_memory, jitify, method)
     cupy, compiler = _compiler_runtime()
     # Include every final arithmetic control before lookup, including WRF
     # exact controls otherwise injected only at the NVRTC program boundary.

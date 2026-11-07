@@ -233,7 +233,7 @@ and are what forced the one-ULP straddles listed above.
 ### Device negative controls
 
 `test_device_negative_controls` proves the GPU gate can fail on both of its
-load-bearing parts: CUDA's native `expf` must be seen to disagree with glibc's
+required parts: CUDA's native `expf` must be seen to disagree with glibc's
 over the same sweep, and associating the `SNEQV` accumulation as
 `SNEQV + (SNICE + SNLIQ)` instead of Fortran's `(SNEQV + SNICE) + SNLIQ` must
 produce a different float32. The second is not hypothetical: it is the

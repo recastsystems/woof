@@ -1,7 +1,7 @@
 {
   "schema": "measured-legacy-source-extension-v1",
   "baseline": "cd336e62d6e6b6312c9636e0fdfff84801909b6a",
-  "measured_tip": "5428796cb07a5ae063b25a06baa4e4db1867a677",
+  "measured_tip": "d67185fb551b20583d3eb2a586a532cbb8e11bbe",
   "sources": {
     "woof/core/acoustic.py": {
       "before": {
@@ -9,8 +9,8 @@
         "sha256": "2552a40bdf24715e611f5500786a4636a7fb77daac45a6e2bc4b04d6f6ca3384"
       },
       "after": {
-        "bytes": 43548,
-        "sha256": "1cd7142e8eb7490bddb9f761d5d8487ce103b31f373415edd617c0376d39f04a"
+        "bytes": 45975,
+        "sha256": "479e19bc9dfc821dbc0ad5abb4825aa320774b3a7da65ae620faaf026ddec06a"
       }
     },
     "woof/core/constants.py": {
@@ -29,8 +29,8 @@
         "sha256": "d4cc20c6a23c94f169228d19937724bb678b51b4e597495af09a1672ce8c263b"
       },
       "after": {
-        "bytes": 256481,
-        "sha256": "c91bac69332941a1f979490a07c2228dacd4b46cba7b0d3c8c3b0b747760bb9e"
+        "bytes": 280252,
+        "sha256": "2f2353222250b4f9916a4101238b1aea7b814599976bc7877fc391c62195c5bd"
       }
     },
     "woof/core/kernels/__init__.py": {
@@ -39,8 +39,8 @@
         "sha256": "e44a76e72880e6cbacee4a3cf299ab7e1a0b418e737355b3b64bfd60358b67cc"
       },
       "after": {
-        "bytes": 56255,
-        "sha256": "9db2f8d40bbad8fde2d4707051842f3ae94ebcee0b79153d04c1d1c2891a5183"
+        "bytes": 93921,
+        "sha256": "ba29e1bfbb473f654a32181c399ba13f689e359271a2d59350b61acb29629024"
       }
     },
     "woof/wrf_exact.py": {
@@ -59,8 +59,8 @@
         "sha256": "78c42865a01763a13d0349321699913de51ba2465508900bbfc4c64794e61134"
       },
       "after": {
-        "bytes": 14060,
-        "sha256": "6070bc5dae66835f55d7017708d685cae9acdab4c24e5c7130f4d506b968470f"
+        "bytes": 14289,
+        "sha256": "1a4c12c807669f593e43c541d1f0c4c3adf9873d51ab06a7d26b827c145a1797"
       }
     },
     "woof/verify/smallstep_vertical_oracle.py": {
@@ -81,6 +81,16 @@
       "after": {
         "bytes": 107767,
         "sha256": "14f8d637ecfa54b7b8c19d80fc2bbf5ad5566f6fdc57b9671d0cfa8566f4331b"
+      }
+    },
+    "woof/core/kernels/smag2d.cu": {
+      "before": {
+        "bytes": 140826,
+        "sha256": "731d7f64e86af2d17344be7328fda2a3ecfd4f2e22371f6093128ca2f3192500"
+      },
+      "after": {
+        "bytes": 142041,
+        "sha256": "db91a5f9f8dd5def67cd7ae2fb1c8f8e887c20c1deb470cd8ab394ca4d01ede9"
       }
     }
   },
@@ -142,13 +152,18 @@
   },
   "loader_slimming_replay": {
     "receipt": "slimming-loader-source-replay.json",
-    "sha256": "fd9158e239390160e764081df3e8470f5c1e17b7cf0c6d9f6913aab9d6ab5c60"
+    "sha256": "c564f7946ec8dcebe9151aa081e0f04e6b4afb397c50260eaac517423b986265"
   },
   "module_sources": {
     "acoustic": {
       "before": "22704608360351a64d84bbf90ed1574e8e62edb5b06f5deea85376d93fca5cf8",
       "after": "5c7205005dfa7457f8e27bc1f636a751a297f78710b03bfd5920256de3d2d57c",
       "source": "woof/core/kernels/acoustic.cu"
+    },
+    "smag2d": {
+      "before": "e0ddc6075c1da84434eea66c55f39340e40a273c1080ae32578540a706b8e270",
+      "after": "7dec200c373ce4a01684df3dca4d3797b511bba4c50c0c71465f979a2fb380a2",
+      "source": "woof/core/kernels/smag2d.cu"
     }
   }
 }

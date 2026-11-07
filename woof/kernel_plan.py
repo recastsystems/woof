@@ -140,7 +140,8 @@ def default_tag_text(argv: Iterable[str] | None = None) -> str:
 def _device_arch() -> str:
     arch = _state["device_arch"]
     if arch is None:
-        arch = str(_compiler()._get_arch())
+        from woof.hip_backend import active,architecture
+        arch = architecture() if active() else str(_compiler()._get_arch())
         _state["device_arch"] = arch
     return arch
 
@@ -293,6 +294,8 @@ def _cupy_entry(arguments: dict[str, Any], arch: str, extra_source: Any = None) 
     compiles ahead as before instead of being skipped.
     """
 
+    from woof.hip_backend import active
+    if active():raise ValueError("HIP source-bound caches have their own identity")
     compiler = _compiler()
     options = tuple(arguments["options"])
     env = ((str(arch), options, compiler._get_nvrtc_version(), "nvrtc")
@@ -415,8 +418,10 @@ def _install(plan_dir: str | Path | None, tag_text: str | None) -> bool:
         from woof import kernel_aot
 
         from woof.kernel_warm_pack import install_metadata, cache_root
-        _state["compiler_metadata"] = install_metadata(compiler, cache_root(), identity)
-        kernel_aot.install(cupy)
+        from woof.hip_backend import active
+        if not active():
+            _state["compiler_metadata"] = install_metadata(compiler, cache_root(), identity)
+        _state["aot_pack"] = kernel_aot.install(cupy)
         # The pack's final-NVRTC bridge/recorder must sit inside this funnel:
         # static capture exits below before it can load or compile anything.
         original = compiler._compile_using_nvrtc_no_warning
@@ -501,7 +506,27 @@ def _install(plan_dir: str | Path | None, tag_text: str | None) -> bool:
         process_compile = (_state.get("compiler_pool") is not None
                            and _state.get("closer") is None and arguments.get("method") is None)
         try:
-            if process_compile:
+            # A process-pool miss used to bypass the final-request AOT bridge.
+            # Validate a shipped image before sending any compiler work, under
+            # the same single-flight owner as misses and retained images.
+            shipped = None
+            pack = _state.get("aot_pack")
+            if (process_compile and pack is not None and not cache_in_memory
+                    and not getattr(compiler, "_use_ptx", False)
+                    and os.environ.get("WOOF_AOT", "").lower() not in ("off", "0", "false", "no")):
+                from woof.kernel_aot import raw_metadata, source_hash, mark
+                target = _device_arch() if arguments["arch"] == "device" else arguments["arch"]
+                row, _ = pack.select("nvrtc.raw." + source_hash(source), source, options,
+                                     "sm_" + str(target).removeprefix("sm_"),
+                                     metadata=raw_metadata(arguments))
+                blob = None if row is None else pack.image(row)
+                if blob is not None:
+                    mark("aot", row["module_key"], time.perf_counter() - started)
+                    mapping = row.get("name_mapping")
+                    shipped = (blob, dict(mapping) if isinstance(mapping, dict) else mapping)
+            if shipped is not None:
+                result = shipped
+            elif process_compile:
                 target = _device_arch() if arguments["arch"] == "device" else arguments["arch"]
                 result = _submit_and_wait(arguments, target, _state["replay"])
             else:
@@ -516,8 +541,8 @@ def _install(plan_dir: str | Path | None, tag_text: str | None) -> bool:
         if images is not None:
             images.put(arguments, result)
         with _lock:
-            prefix = "dynamic_pool" if process_compile else "inline"
-            _count(prefix + "_compiles")
+            prefix = "aot" if shipped is not None else "dynamic_pool" if process_compile else "inline"
+            _count(prefix + ("_hits" if shipped is not None else "_compiles"))
             _count(prefix + "_seconds", seconds)
             if key in _requested:
                 _requested[key]["seconds"] = round(seconds, 3)
@@ -643,6 +668,8 @@ class _ProcessCompileFuture(concurrent.futures.Future):
 def _process_compiler_identity(arch):
     """Use the CPU-only cubin worker where CuPy supports the explicit target."""
     try:
+        from woof.hip_backend import active,compiler_binding
+        if active():return compiler_binding()
         compiler = _compiler()
         if getattr(compiler, "__name__", None) != "cupy.cuda.compiler" or compiler._use_ptx:
             return None

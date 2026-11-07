@@ -41,9 +41,9 @@ def resolved_run_settings(cfg):
     resolved["radiation_scheme_ids"] = list(radiation_scheme_ids(cfg))
     # Wire form: tuples as JSON arrays.  The preparation report is JSON, so a
     # tuple field (the ocean profiles became tuples to keep RunConfig hashable,
-    # lane/cap-fix-a 1e5d77fbd3e) came back as a list and () != [] refused every
+    # development branch 1e5d77fbd3e) came back as a list and () != [] refused every
     # HRRR preparation with "resolved physics differs from the request"
-    # (V58 whole HRRR gate run on lane/cap-base, 2026-10-21).
+    # (test host whole HRRR gate run on development branch, 2026-10-21).
     def wire(value):
         if isinstance(value, (tuple, list)):
             return [wire(item) for item in value]

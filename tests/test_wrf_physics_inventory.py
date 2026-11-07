@@ -109,25 +109,15 @@ def test_nssl2_default_inventory_pins_exact_registry_packages_and_units():
 
 
 def test_unknown_package_fails_closed_with_actionable_message():
-    # 38 is thompsongh (Registry.EM_COMMON:3037), a real WRF v4.6.1 scheme
-    # with a real package that this module deliberately does not inventory.
-    # It replaces 28, which now HAS a row -- the refusal is still the
-    # subject, only the uninventoried example moved.
-    #
-    # The pattern followed the refusal when audit R-014 reworded it: the
-    # message names its EXPORT-ONLY scope now, and says "Registry.EM_COMMON
-    # package contract" where it used to say "Registry package".  What this
-    # asserts is unchanged -- the scheme id and the missing contract -- and
-    # the scope clause is asserted below, because a refusal that reads as
-    # "ArWen cannot run mp=38" is the thing R-014 was opened about.
+    # Selector 37 has no recorded stock package contract. Selector 38 does.
     with pytest.raises(
             ValueError,
-            match=r"mp_physics=38.*Registry\.EM_COMMON package contract"):
-        stock_wrf_physics_inventory(38)
+            match=r"mp_physics=37.*Registry\.EM_COMMON package contract"):
+        stock_wrf_physics_inventory(37)
     with pytest.raises(TypeError, match="WRF integer"):
         stock_wrf_physics_inventory(True)
     message = str(
-        pytest.raises(ValueError, stock_wrf_physics_inventory, 38).value)
+        pytest.raises(ValueError, stock_wrf_physics_inventory, 37).value)
     assert "28" in message, (
         "the refusal must list mp_physics=28 among the evidenced schemes")
     assert "says NOTHING about running the scheme in WOOF" in message, (
@@ -361,7 +351,7 @@ def test_mp28_is_reachable_through_every_inventory_front_door():
     # 50 joined this tuple with the P3 front-door landing on top of the
     # mp=50 CUDA merge `b47a400a5`; the pin is extended rather than relaxed,
     # and the P3 row has its own exact-content gates below.
-    assert supported_stock_wrf_mp_physics() == (2, 4, 5, 6, 8, 10, 18, 24, 28, 30, 50, 106)
+    assert supported_stock_wrf_mp_physics() == (2, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 97, 106)
 
     report = stock_wrf_physics_inventory(28).as_report()
     assert report["schema"] == "rw-wps.stock-wrf-physics-inventory.v1"
@@ -545,3 +535,21 @@ def test_every_exported_member_names_a_carrier_the_prepared_cache_writes(
         assert key in STATE_SERIALIZED_ATTRS, (field.netcdf_name, key)
         assert getattr(state, key, None) is not None, (
             field.netcdf_name, key)
+
+
+def test_ishmael_inventory_preserves_all_three_habit_packages():
+    # WRF-v4.6.1 Registry.EM_COMMON:3043 and :497-498/:523-576/:1600-1614.
+    row = stock_wrf_physics_inventory(55)
+    assert row.registry_package == "jensen_ishmael"
+    assert tuple(f.netcdf_name for f in row.wrfinput_fields) == (
+        "QVAPOR", "QCLOUD", "QRAIN", "QICE", "QICE2", "QICE3",
+        "QNRAIN", "QNICE", "QVOLI", "QAOLI", "QNICE2", "QVOLI2", "QAOLI2",
+        "QNICE3", "QVOLI3", "QAOLI3")
+    assert tuple(f.state_key for f in row.wrfinput_fields) == (
+        "qv", "qc", "qr", "qi", "qi2", "qi3", "nr", "ni", "qvoli", "qaoli",
+        "ni2", "qvoli2", "qaoli2", "ni3", "qvoli3", "qaoli3")
+    assert tuple(f.netcdf_name for f in row.runtime_state_not_wrfinput) == (
+        "RE_CLOUD", "RE_ICE", "v_ice", "rho_ice", "d_ice", "phi_ice", "ice_type",
+        "v_ice2", "rho_ice2", "d_ice2", "phi_ice2", "ice_type2",
+        "v_ice3", "rho_ice3", "d_ice3", "phi_ice3", "ice_type3", "refl_10cm")
+    assert all("#" not in f.units for f in row.wrfinput_fields)

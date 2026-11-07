@@ -1,0 +1,13 @@
+{
+  "schema": "gpuwm-cross-source-hybrid-provenance-v1",
+  "source": "NOAA GDAS same-cycle f000 physical surface analysis",
+  "fields": [
+    "soil_temperature",
+    "volumetric_soil_moisture",
+    "sea_ice_fraction",
+    "snow_water_equivalent"
+  ],
+  "front_door": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/",
+  "licence": "US government output, public domain; https://registry.opendata.aws/noaa-gfs-bdp-pds/",
+  "alignment": "Source-cycle analysis broadcast, generic bilinear mask-aware remapping; native HAFS atmosphere and terrain are not replaced."
+}

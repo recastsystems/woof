@@ -151,28 +151,56 @@ def require_table_stream_inputs(config, bindings):
                                     f"install the fork tables or bind --stream-input {name}=FILE")
 
 
+def _logical(value):
+    if isinstance(value, str):
+        return value.strip().casefold() in ('.true.', 'true', 't', '.t.')
+    return bool(value)
+
+
+def initial_state_control(config, text):
+    """The row's restart control: which initial stream the core reads and whether it couples a cold start.
+
+    One place for every suite row: the row's stream contract (``route_table.stream_contract``; MPAS-A v8.4.2's
+    ``restart_v842`` for a row that names none, the fork's ``restart_rrfs`` for the RRFS rows) carries
+    ``RestartControl``, the transcription of the core's own choice (MPAS-A mpas_atm_core.F:129-133,522-530;
+    MPAS-Model-rrfs mpas_atm_core.F:134-150,542). THE BREAKAGE THIS PREVENTS: the choice was a per-row
+    ``initial_state_selector`` key that b0b9a31 added to ``mpasphys_rrfs`` only; the 44c0849 re-pin row (hrrrv5)
+    and the MPAS-A row lacked it, so ``config_do_restart = true`` read the restart into the physics pools while
+    the dynamics cold-started from init.nc, a day-old state, and said nothing (hex-bitwise-long restart-check,
+    x1.163842 hrrrv5, 2026-11-06: 25.3 M of 36.4 M diag words differed at +25 h).
+    """
+    from .route_table import stream_contract
+    # A door with no namelist text (a deck-less run) has no group to parse; its controls are the defaults
+    # and the execution options, as before this table-driven choice.
+    groups = parse_fortran_namelist(text) if '&' in (text or '') else {}
+    configs = {key: value for group in groups.values() for key, value in group.items()}
+    configs.update(getattr(config, 'execution_options', None) or {})
+    values = {key.casefold(): value for key, value in configs.items()}
+    control = stream_contract(config).writer.RestartControl(_logical(values.get('config_do_restart', False)),
+                                                           _logical(values.get('config_do_dacycling', False)))
+    return control, configs
+
+
 def initial_state_input(arguments, config, text, streams_path, bindings):
     """Resolve the row's initial stream once for pool hydration and dycore input.
 
     RRFS mpas_atm_core.F:120-166 reads invariant, then exactly one of input,
-    da_state or restart. Explicit stream bindings take precedence over a deck
-    filename. Without a streams deck, --init names the selected state file.
+    da_state or restart; MPAS-A reads input or restart. Explicit stream bindings take
+    precedence over a deck filename. Without a streams deck, --init names the selected state file.
     """
     row = load_table()[getattr(config, 'table_key', 'mpasphys_v842')]
-    selector = row.get('initial_state_selector')
-    if selector is None:
-        return 'input', Path(arguments.init).resolve()
-    configs = {key: value for group in parse_fortran_namelist(text).values()
-               for key, value in group.items()}
-    configs.update(config.execution_options)
-    module, operation = selector.split(':', 1)
-    name = getattr(import_module(module), operation)(configs)
+    control, configs = initial_state_control(config, text)
+    name = control.initial_stream
     if name in bindings:
         return name, bindings[name]
     if name != 'input' and streams_path is not None:
         from .runtime_v842 import expand_input_filename
-        parser_module, parser_call = row['streams_parser'].split(':', 1)
-        tree = getattr(import_module(parser_module), parser_call)(streams_path)
+        parser = row.get('streams_parser')
+        if parser is None:
+            tree = ET.parse(streams_path).getroot()
+        else:
+            parser_module, parser_call = parser.split(':', 1)
+            tree = getattr(import_module(parser_module), parser_call)(streams_path)
         element = next((e for e in tree if e.get('name') == name), None)
         if element is None or 'input' not in element.get('type', '').split(';'):
             raise ValueError(f'initial state stream {name} is not an input stream in {streams_path}')
@@ -249,9 +277,9 @@ INIT_PROVENANCE_RRFS = 'gpuwm-hex.init-provenance/rrfs-v1'
 def init_pin_refusal(init: Any, route_key: str, route: Mapping[str, Any], suite: str | None) -> None:
     """Refuse an init the RRFS producer made for another fork pin than the selected suite route's.
 
-    THE BREAKAGE THIS PREVENTS (hrrrv5da, V8X6000 2026-10-29): the HRRR start deck and 15 lagged-HRRR
+    THE BREAKAGE THIS PREVENTS (forecast initialization, eight-card system 2026-10-29): the HRRR start deck and 15 lagged-HRRR
     member inits were built by the rrfs-mpas-1d6e370e producer (an older venv), then queued under the
-    44c0849 LAM-DA forecast, and nothing said so. Measured on that case (ne3km hrrrv5, 2023-07-10 09Z,
+    44c0849 LAM-state analysis forecast, and nothing said so. Measured on that case (ne3km hrrrv5, 2023-07-10 09Z,
     same met and recipe, only the pin changed): the 44c0849 init writes tke and the 1d6e370e init does
     not, w differs in 93,554 of 9,763,380 words, and the start deck's q2/u10/v10 differ in every cell
     (zgrid, theta, qv and u are identical: the L60 hybrid transition sits above the model top). So the
@@ -296,6 +324,28 @@ def init_pin_refusal(init: Any, route_key: str, route: Mapping[str, Any], suite:
 
 
 def native_route(arguments: Any, *, default_mode: str = 'exact'):
+    """Table-selected explicit suite (_native_route), plus --ocean-mode pwp in the OML slot."""
+    config, text = _native_route(arguments, default_mode=default_mode)
+    if config is None or os.environ.get('WOOF_HEX_OCEAN_MODE') != 'pwp':
+        return config, text
+    named = [item.partition('=')[0].strip().casefold() for item in (getattr(arguments, 'physics', None) or ())]
+    path = getattr(arguments, 'physics_namelist', None)
+    supplied = parse_fortran_namelist(path.read_text()) if path else {}
+    if 'config_oml1d' in named or any('config_oml1d' in {key.casefold() for key in group}
+                                      for group in supplied.values()):
+        # THE BREAKAGE THIS PREVENTS: OML1D and PWP are two mixed-layer oceans for one slot; the run
+        # would silently get only one of them.
+        raise ValueError('--ocean-mode pwp runs the PWP columns in the OML1D slot; drop config_oml1d '
+                         '(the run names two ocean mixed layers)')
+    from copy import copy
+    with_slot = copy(arguments)
+    with_slot.physics = [*(getattr(arguments, 'physics', None) or ()), 'config_oml1d=true']
+    config, text = _native_route(with_slot, default_mode=default_mode)
+    from .ocean_pwp_v842 import configure
+    return configure(config), text
+
+
+def _native_route(arguments: Any, *, default_mode: str = 'exact'):
     """Table-selected explicit suite; mpas_atmphys_control.F:92-332.
 
     ``default_mode`` is the mode a resolved MPAS suite route takes when the run names none.  The library
@@ -387,6 +437,7 @@ def native_route(arguments: Any, *, default_mode: str = 'exact'):
         # Reconstruct one native physics group so parse_fortran_namelist never
         # discards a repeated group. WOOF-only selectors have no Registry row.
         groups = {name:dict(options) for name,options in parse_fortran_namelist(text).items()}
+        tc_surface = {}
         for override in overrides:
             key, separator, value = override.partition('=')
             if not separator:
@@ -395,6 +446,9 @@ def native_route(arguments: Any, *, default_mode: str = 'exact'):
             backend_options = {row['backend_selector'] for row in spec['slots'].values()}
             backend_options.update(row['backend_selector'] for row in spec.get('services', {}).values())
             option = key.strip().casefold()
+            if option in ('tc_flux_curve', 'tc_spray'):
+                tc_surface[option] = value.strip().strip("\"'")
+                continue
             registry_groups = spec.get('registry_groups',{})
             owners = [name for name,keys in registry_groups.items() if option in keys]
             group = (spec['backend_namelist_group'] if option in backend_options
@@ -410,6 +464,9 @@ def native_route(arguments: Any, *, default_mode: str = 'exact'):
         config, text = _workflow_namelist(config, text, matches[0][1], route_namelist, mode)
     if profile:
         config = finish_profile(profile_name, profile, config, getattr(arguments, 'init', None))
+    if config is not None and overrides and tc_surface:
+        from .tc_surface import configure
+        config = configure(config, tc_surface)
     return config, text
 
 
@@ -672,8 +729,9 @@ def bind_limited_area(arguments: Any, text: str) -> str:
     if iau and getattr(arguments, 'samehost_devices', None):
         gaps.append("IAU on more than one card (the regional IAU wrapper runs on one card; a same-host "
                     "rank's regional dycore does not carry it yet)")
-    if getattr(arguments, 'stochastic', None):
-        gaps.append('stochastic physics (its pattern is built on the unpadded mesh)')
+    # Retired 2026-10-29 (feat/stochastic-physics): stochastic physics on a limited-area mesh.  The pattern is
+    # synthesised on the fly at the region's own cells and vertices (no global basis), boundary edges carry no
+    # SKEB curl, and the lateral-boundary zone (bdyMaskCell > 0) takes no forcing (woof.hex.stochastic).
     if getattr(arguments, 'chemistry_config', None):
         gaps.append('chemistry transport (its tracer rows are not driven by the lateral-boundary series)')
     if gaps:
@@ -892,12 +950,35 @@ def read_streams(path: Path, layout: Any, list_directory: Path | None = None, *,
         streams.append(Stream(name,tuple(element.get('type').split(';')),
                               element.get('filename_template'),element.get('input_interval','none'),
                               element.get('output_interval','none'),tuple(dict.fromkeys(fields)),
-                              {'input_interval':element.get('input_interval','none'),
-                               'output_interval':element.get('output_interval','none')}.get(
-                                   element.get('filename_interval','none'),
-                                   element.get('filename_interval','none')),
+                              native_filename_interval(element),
                               options=dict(element.attrib)))
     return tuple(streams)
+
+
+def native_filename_interval(element: Any) -> str:
+    """The file bucket native MPAS resolves for a deck stream: xml_stream_parser.c:1137-1194 (immutable) and
+    1446-1503 (mutable).
+
+    An unset ``filename_interval`` is the stream's own recurring interval (input first for an input;output
+    stream), so native writes one file per output time; ``input_interval``/``output_interval`` name that
+    interval, and either becomes none when it is initial_only, final_only or none. THE BREAKAGE THIS FIXES: hex
+    read an unset filename_interval as none and wrote every output time into one file where native wrote one
+    file per time (paper B-1 rerun on 0.4.11, a deck stream with no filename_interval).
+    """
+    def recurring(knob):
+        value = element.get(knob)
+        return value if value and not any(x in value for x in ('initial_only', 'final_only', 'none')) else None
+    raw = element.get('filename_interval')
+    if raw is None:
+        direction = element.get('type', '')
+        raw = recurring('input_interval') if 'input' in direction else None
+        if raw is None and 'output' in direction:
+            raw = recurring('output_interval')
+    elif 'input_interval' in raw:
+        raw = recurring('input_interval')
+    elif 'output_interval' in raw:
+        raw = recurring('output_interval')
+    return raw or 'none'
 
 
 def _marked_durable(frame: Path, marker: Path) -> bool:
@@ -941,7 +1022,7 @@ def native_table_source(config: Any, named_source: Any, source: Any, ported_fram
     tables; the row's ``framework.table_source`` names where its tables live.  THE BREAKAGE THIS PREVENTS: the
     ported route took the wheel's Registry-only tree as its table root, so hrrrv5 on a plain install with no
     --mpas-source refused at start ("No such file or directory: .../hexcore/data/mpasphys-framework-rrfs/src/
-    core_atmosphere/physics/physics_wrf/files"; V5090 RRFS env, woof hex c2efafcf, 2026-10-28).
+    core_atmosphere/physics/physics_wrf/files"; reference system RRFS env, woof hex c2efafcf, 2026-10-28).
     """
     if named_source or not ported_framework:
         return source
@@ -1032,6 +1113,23 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
     bindings = {**deck_inputs, **bindings}
     require_table_stream_inputs(config, {**table_bindings, **bindings})
     initial_stream, initial_file = initial_state_input(arguments, config, text, streams_path, bindings)
+    from .checkpoint_v842 import native_restart_continuation
+    continuation = native_restart_continuation(arguments, config, initial_stream, initial_file)
+    if continuation is not None:
+        # Correct mode: a native restart written by a correct-mode run continues that run exactly, through the
+        # checkpoint route (checkpoint_v842.resolve_route); its static inputs come from the run's init.
+        from copy import copy
+        arguments = copy(arguments)
+        arguments.restart_from = continuation
+        arguments._native_restart_continuation = initial_file
+        text = set_namelist_options(text, {'restart': {'config_do_restart': False}})
+        bindings = {name: path for name, path in bindings.items() if name != 'restart'}
+        initial_stream, initial_file = initial_state_input(arguments, config, text, streams_path, bindings)
+    # Checkpoint preparation may later change config_do_restart. Preserve the kind of the file actually selected
+    # for native hydration: a warm start (a restart, not a DA cycle) skips atm_init_coupled_diagnostics and keeps
+    # the restart's coupled words (mpas_atm_core.F:542).
+    arguments._initial_state_cold_start = (initial_stream == 'input'
+                                           or initial_state_control(config, text)[0].initialize_coupled_diagnostics)
     if initial_stream != 'input':
         # Do not hydrate a warm start from the cold input or the unselected restart/DA file.
         from copy import copy
@@ -1042,6 +1140,10 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
         bindings = {name: path for name, path in bindings.items()
                     if name not in ('input', 'restart', 'da_state') or name == initial_stream}
         bindings[initial_stream] = initial_file
+        # The dycore loaders take the vertical grid and the initialized mesh from the invariant stream when the
+        # selected state file does not carry them (an RRFS restart or mpasout holds no zgrid; MPAS-Model-rrfs
+        # mpas_atm_core.F:120-133 reads invariant first). runtime_v842.native_state_sources.
+        arguments._initial_state_invariant = bindings.get('invariant')
     # Timed surface input is first read in the forecast loop, after startup
     # output; mpas_atm_core.F:198-210,655-724,779-806. Preserve init SST/xice
     # during pool hydration and install timed records only on their alarms.
@@ -1053,7 +1155,11 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
     text = apply_start_time(text, getattr(arguments, 'start_time', None))
     text = bind_limited_area(arguments, text)
     from .checkpoint_v842 import resolve_route
-    moving, text = resolve_route(arguments, text)
+    moving, text = resolve_route(arguments, text, config=config)
+    if (getattr(moving, 'cli_restart', False) and moving.carrier is not None
+            and not getattr(arguments, 'preflight', False)):
+        from .checkpoint_v842 import set_aside_frames_after
+        set_aside_frames_after(out, moving.carrier['valid_time'])
     if (moving is not None and not getattr(moving, 'fixed_mesh', False)
             and getattr(arguments, 'lbc_dir', None) is not None):
         # THE BREAKAGE THIS PREVENTS: a moving region carries its own boundary (its parent's frames through the move
@@ -1066,6 +1172,10 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
     from ..stage_timing import stage
     timings = []
     out.mkdir(parents=True, exist_ok=True)
+    from ..run_owner import claim_directory
+    from .moving_resident_v842 import owns_prepared_scratch
+    if not getattr(arguments, 'preflight', False):
+        claim_directory(scratch, reuse_current=owns_prepared_scratch(scratch))
     def save_timings():
         (out/'stage-timings.json').write_text(json.dumps({'stages':timings},indent=2)+'\n')
     beside_transport = None
@@ -1104,6 +1214,15 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
         save_timings()
     if moving is not None:
         moving.mark_restart(layout)
+    dynamics = getattr(arguments, '_native_dynamics_overrides', None) or {}
+    unheld = sorted(key for key, value in dynamics.items()
+                    if key not in layout.configs or layout.configs[key] != value)
+    if unheld:
+        # THE BREAKAGE THIS PREVENTS (2026-11-04): a --dynamics option the door accepted and the run
+        # then did not hold (dropped, or a Registry that carries no such option) ran the default silently.
+        held = {key: layout.configs.get(key) for key in unheld}
+        raise ValueError(f'--dynamics {unheld}: the decoded configuration holds {held}, not the value asked '
+                         'for, so it would be recorded and not run')
     if streams_path is None:
         timed = ({'surface_interval': surface_series_interval(bindings['surface'], layout.dimensions['nCells'])}
                  if config.options['config_sst_update'] and 'surface' in bindings else {})
@@ -1147,6 +1266,9 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
     from .. import numerics as _numerics
     plan=dict(schema='mpas-native-door-v1',physics=config.receipt(),numerics=_numerics.receipt_block(),
               start=start,stop=stop,dt=str(dt),
+              # The run's init, which a resumed segment's start is not (map titles and leads count from it).
+              initial_time=(getattr(moving, 'origin_time', None) if getattr(moving, 'carrier', None) is not None
+                            else None) or start,
               grid=None if getattr(arguments,'grid',None) is None else str(Path(arguments.grid).resolve()),
               init=str(Path(arguments.init).resolve()),
               steps=int(duration/dt),streams=[s.__dict__ for s in streams],
@@ -1154,6 +1276,8 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
               framework='python' if library is None else 'native-referee',
               rust_pool_reader=str(Path(reader).resolve()),
               pool_manifest=str(scratch/'native-pools/manifest.json'),identity_checked=False)
+    if dynamics:
+        plan['dynamics_overrides'] = dict(dynamics)
     (out/'native-physics-request.json').write_text(json.dumps(plan,indent=2)+'\n')
     if getattr(arguments,'preflight',False):
         print(json.dumps(dict(status='native-pool-preflight',identity_checked=False,request=plan)))

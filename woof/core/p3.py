@@ -1,4 +1,4 @@
-"""P3 (Predicted Particle Properties) microphysics, WRF ``mp_physics=50``.
+"""P3 microphysics: CUDA WRF ``mp_physics=50/52`` and mp=50 CPU reference.
 
 Transcription authority: byte-frozen WRF v4.6.1 ``phys/module_mp_p3.F``
 (P3 v4.5.2, Morrison & Milbrandt 2015): ``p3_init`` constants :177-316,
@@ -10,21 +10,27 @@ subprograms ``access_lookup_table`` :5205-5243, ``access_lookup_table_coll``
 :6833-6855, ``qv_sat`` :6859-6889.  Every citation ``:NNNN`` below is a
 line in that file.
 
-SCOPE, exactly the ``mp_physics = 50`` (``p3_1category``) configuration,
-which is how WRF's driver calls the scheme (module_microphysics_driver.F:
-1557-1602 passes no ``nc_3d`` and no ``qzi1_3d``; module_physics_init.F:4569
-calls ``p3_init('.', 1, .false., 'WRF', ...)``):
+SCOPE: the ``mp_physics = 50`` (``p3_1category``) and ``mp_physics = 51``
+(``p3_1category_nc``) configurations, which are how WRF's driver calls the
+scheme (module_microphysics_driver.F:1557-1602 passes no ``nc_3d`` for 50;
+:1607-1647 passes ``nc_3d = qnc_curr`` for 51; neither passes ``qzi1_3d``;
+module_physics_init.F:4568-4571 calls ``p3_init('.', 1, .false., 'WRF',
+...)`` for both):
 
 * ``nCat = 1``: the multi-category blocks (``iceice_interaction1``
   :2754-2829, ``icecat_destination``, the category-merge section
   :4615-4697, lookup table 2) are structurally unreachable and NOT ported;
-  ``mp_physics = 52`` is refused by name in woof/config.py.
+  the CUDA adapter below carries those blocks for ``mp_physics = 52``.
 * 2-moment ice: the ``log_3momentIce`` branches (``zitot``, the 3-moment
-  lookup tables, ``compute_mu_3moment``/``G_of_mu``) are NOT ported;
-  ``mp_physics = 53`` is refused by name.
-* ``log_predictNc = .false.``: droplet number is the diagnostic
-  ``nccnst/rho`` (:2350, :3875); the CCN-activation path and its ``derf``
-  are NOT ported; ``mp_physics = 51`` is refused by name.
+  lookup tables, ``compute_mu_3moment``/``G_of_mu``) are absent from this
+  CPU reference; the CUDA kernels carry them for ``mp_physics=53``.
+  A reference-backend request is refused by name.
+* ``log_predictNc`` follows the wrapper's ``present(nc_3d)`` (:819-820):
+  ``.false.`` (mp = 50) makes droplet number the diagnostic ``nccnst/rho``
+  (:2350, :3875); ``.true.`` (mp = 51) carries it as a prognostic with the
+  CCN activation of :3313-3339 (and P3's own ``DERF``, :6090-6204), the
+  droplet-number sinks of :3770 and :3872-3873 and the two-moment cloud
+  sedimentation of :4009-4066.
 * ``scpf_on = .false.`` (the wrapper hardcodes it, :815): ``compute_SCPF``'s
   off-branch is transcribed (SCF = iSCF = SPF = iSPF = 1, SPF_clr = 0,
   Qv_cld = qv, :1889-1899); the Sundqvist cloud-fraction branch is NOT
@@ -54,26 +60,33 @@ PRECISION MODEL, float32 throughout (NumPy scalars under NEP 50 weak
 promotion), with the authority's explicit double-precision excursions kept
 in float64: the ``dexp(dble(...))`` saturation-relaxation factor (:3202,
 :3204, :3231) and the rain-freezing log-space products (:3025-3029).
-Transcendentals (exp/log/pow/gamma) come from NumPy/libm rather than
-gfortran's libm: the same accepted difference class as every other port
-here; the WRF-Fortran oracle campaign is the declared next stage and NO
-ULP claim is made in this module.
+The predicted-Nc CPU reference uses the shared host twins of the device
+transcendentals and the native multiplication order for integer powers.
+The specified-Nc reference retains the candidate's NumPy arithmetic so
+adding selector 51 does not change selector 50. A context-local mode keeps
+concurrent reference calls independent. These routines are proof/debug
+code; production column physics runs in the CUDA translation unit.
 
 EXECUTION MODEL: this is the CPU float32 authority (scalar per-cell
-loops, matching the Fortran's statement order exactly).  There is NO CUDA
-mirror yet: the DomainState adapter (:func:`apply`) round-trips device
-state through the host, which is correct but slow, suitable for column
-smokes and small-domain verification, not production-domain throughput.
-The CUDA port is declared future work alongside the oracle campaign.
+loops, matching the Fortran's statement order exactly), reachable as
+``run.p3_backend = "reference"`` (:func:`apply_reference`).  The
+production path is the device port (woof/core/p3_device.py,
+woof/core/kernels/p3.cu), which :func:`apply` dispatches to.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
+from functools import wraps
 
 import numpy as np
 
+from woof.core.noahmp_libm import expf as _native_expf
+from woof.core.noahmp_libm import logf as _native_logf
+from woof.core.noahmp_libm import powf as _native_powf
+from woof.core.noahmp_libm import powf_array as _native_powf_array
 from woof.core.p3_tables import (
     DENSIZE,
     ISIZE,
@@ -81,6 +94,7 @@ from woof.core.p3_tables import (
     RIMSIZE,
     generate_rain_tables,
     load_lookup_table_1,
+    load_lookup_table_2,
     p3_table_root,
 )
 
@@ -173,6 +187,74 @@ CONS3 = f32(1.0) / (CONS2 * f32(25.0e-6) ** f32(3.0))      # :261
 CONS5 = PIOV6 * BIMM                                       # :263
 CONS6 = PIOV6 ** f32(2.0) * RHOW * BIMM                    # :264
 CONS7 = f32(4.0) * PIOV3 * RHOW * f32(1.0e-6) ** f32(3.0)  # :265
+# aerosol/droplet activation parameters (:268-294), mp = 51.  bact is
+# evaluated as p3_init evaluates it, left to right in float32.
+MW = f32(0.018)                           # :269
+OSM = f32(1.0)                            # :270
+VI = f32(3.0)                             # :271
+EPSM = f32(0.9)                           # :272
+RHOA = f32(1777.0)                        # :273
+MAP = f32(0.132)                          # :274
+RR = f32(8.3187)                          # :276
+BACT = VI * OSM * EPSM * MW * RHOA / (MAP * RHOW)   # :277
+INV_RM1 = f32(2.0e7)                      # :281 mode 1
+SIG1 = f32(2.0)                           # :282
+NANEW1 = f32(300.0e6)                     # :283
+INV_RM2 = f32(7.6923076e5)                # :290 mode 2
+SIG2 = f32(2.5)                           # :291
+NANEW2 = f32(0.0)                         # :292
+
+# CPU reference arithmetic is scheme-scoped. The MP51 restoration must not
+# change the established MP50 reference trajectory when MP51 is off.
+_PREDICTED_NC_MATH = ContextVar("p3_predicted_nc_math", default=False)
+
+
+def _nc_reference_math(function):
+    @wraps(function)
+    def call(*args, **kwargs):
+        token = _PREDICTED_NC_MATH.set(bool(kwargs.get("log_predictNc", False)))
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _PREDICTED_NC_MATH.reset(token)
+    return call
+
+
+def _expf(x):
+    return _native_expf(x) if _PREDICTED_NC_MATH.get() else np.exp(x)
+
+
+def _logf(x):
+    return _native_logf(x) if _PREDICTED_NC_MATH.get() else np.log(x)
+
+
+def _powf(x, y):
+    return _native_powf(x, y) if _PREDICTED_NC_MATH.get() else x ** y
+
+
+def _powf_array(x, y):
+    return _native_powf_array(x, y) if _PREDICTED_NC_MATH.get() else x ** y
+
+
+def _square(x):
+    return x * x if _PREDICTED_NC_MATH.get() else x ** f32(2.0)
+
+
+def _sixth(x):
+    if not _PREDICTED_NC_MATH.get():
+        return x ** f32(6.0)
+    x2 = x * x
+    return (x2 * x2) * x2
+
+
+def _log10f(x):
+    if not _PREDICTED_NC_MATH.get():
+        return np.log10(x)
+    return f32(math.log10(float(x)))
+
+
+def _dexp(x):
+    return math.exp(float(x)) if _PREDICTED_NC_MATH.get() else np.exp(f64(x))
 
 
 def polysvp1(t: np.float32, i_type: int) -> np.float32:
@@ -191,10 +273,10 @@ def polysvp1(t: np.float32, i_type: int) -> np.float32:
             out = a0i + dt * (a1i + dt * (a2i + dt * (a3i + dt * (a4i + dt * (
                 a5i + dt * (a6i + dt * (a7i + a8i * dt)))))))
             return out * f32(100.0)
-        return f32(10.0) ** (f32(-9.09718) * (f32(273.16) / t - f32(1.0))
-                             - f32(3.56654) * np.log10(f32(273.16) / t)
-                             + f32(0.876793) * (f32(1.0) - t / f32(273.16))
-                             + np.log10(f32(6.1071))) * f32(100.0)
+        return _powf(f32(10.0), f32(-9.09718) * (f32(273.16) / t - f32(1.0))
+                     - f32(3.56654) * _log10f(f32(273.16) / t)
+                     + f32(0.876793) * (f32(1.0) - t / f32(273.16))
+                     + _log10f(f32(6.1071))) * f32(100.0)
     # liquid branch (i_type == 0 .or. t >= 273.15)
     if t >= f32(202.0):
         dt = t - f32(273.15)
@@ -204,13 +286,13 @@ def polysvp1(t: np.float32, i_type: int) -> np.float32:
         out = a0 + dt * (a1 + dt * (a2 + dt * (a3 + dt * (a4 + dt * (
             a5 + dt * (a6 + dt * (a7 + a8 * dt)))))))
         return out * f32(100.0)
-    return f32(10.0) ** (f32(-7.90298) * (f32(373.16) / t - f32(1.0))
-                         + f32(5.02808) * np.log10(f32(373.16) / t)
-                         - f32(1.3816e-7) * (f32(10.0) ** (f32(11.344) * (
-                             f32(1.0) - t / f32(373.16))) - f32(1.0))
-                         + f32(8.1328e-3) * (f32(10.0) ** (f32(-3.49149) * (
-                             f32(373.16) / t - f32(1.0))) - f32(1.0))
-                         + np.log10(f32(1013.246))) * f32(100.0)
+    return _powf(f32(10.0), f32(-7.90298) * (f32(373.16) / t - f32(1.0))
+                 + f32(5.02808) * _log10f(f32(373.16) / t)
+                 - f32(1.3816e-7) * (_powf(f32(10.0), f32(11.344) * (
+                     f32(1.0) - t / f32(373.16))) - f32(1.0))
+                 + f32(8.1328e-3) * (_powf(f32(10.0), f32(-3.49149) * (
+                     f32(373.16) / t - f32(1.0))) - f32(1.0))
+                 + _log10f(f32(1013.246))) * f32(100.0)
 
 
 #: Saturation pressure at T = 0 C (:257) -- depends on polysvp1, so defined
@@ -225,37 +307,187 @@ def qv_sat(t_atm: np.float32, p_atm: np.float32, i_wrt: int) -> np.float32:
 
 
 def _gammaf(x) -> np.float32:
-    """Fortran REAL ``gamma`` intrinsic: float32 result via libm gamma."""
+    """Fortran REAL ``gamma``: gamma in double, rounded once to float32
+    (p3.cu ``p3_gam``; the oracle's correctly rounded ``tgammaf``)."""
     return f32(math.gamma(float(x)))
+
+
+#: DERF's two coefficient tables (:6098-6173), REAL(4) as gfortran makes
+#: them from the DATA statements' decimal text -- checked bit for bit
+#: against gfortran 13.3.0's own conversion of those statements, and held
+#: to p3.cu's P3_DERF_A/P3_DERF_B by tests/test_p3_cuda.py.
+DERF_A = np.asarray([
+    0.00000000005958930743, -0.00000000113739022964,
+    0.00000001466005199839, -0.00000016350354461960,
+    0.00000164610044809620, -0.00001492559551950604,
+    0.00012055331122299265, -0.00085483269811296660,
+    0.00522397762482322257, -0.02686617064507733420,
+    0.11283791670954881569, -0.37612638903183748117,
+    1.12837916709551257377,
+    0.00000000002372510631, -0.00000000045493253732,
+    0.00000000590362766598, -0.00000006642090827576,
+    0.00000067595634268133, -0.00000621188515924000,
+    0.00005103883009709690, -0.00037015410692956173,
+    0.00233307631218880978, -0.01254988477182192210,
+    0.05657061146827041994, -0.21379664776456006580,
+    0.84270079294971486929,
+    0.00000000000949905026, -0.00000000018310229805,
+    0.00000000239463074000, -0.00000002721444369609,
+    0.00000028045522331686, -0.00000261830022482897,
+    0.00002195455056768781, -0.00016358986921372656,
+    0.00107052153564110318, -0.00608284718113590151,
+    0.02986978465246258244, -0.13055593046562267625,
+    0.67493323603965504676,
+    0.00000000000382722073, -0.00000000007421598602,
+    0.00000000097930574080, -0.00000001126008898854,
+    0.00000011775134830784, -0.00000111992758382650,
+    0.00000962023443095201, -0.00007404402135070773,
+    0.00050689993654144881, -0.00307553051439272889,
+    0.01668977892553165586, -0.08548534594781312114,
+    0.56909076642393639985,
+    0.00000000000155296588, -0.00000000003032205868,
+    0.00000000040424830707, -0.00000000471135111493,
+    0.00000005011915876293, -0.00000048722516178974,
+    0.00000430683284629395, -0.00003445026145385764,
+    0.00024879276133931664, -0.00162940941748079288,
+    0.00988786373932350462, -0.05962426839442303805,
+    0.49766113250947636708], dtype=np.float32)
+DERF_B = np.asarray([
+    -0.00000000029734388465, 0.00000000269776334046,
+    -0.00000000640788827665, -0.00000001667820132100,
+    -0.00000021854388148686, 0.00000266246030457984,
+    0.00001612722157047886, -0.00025616361025506629,
+    0.00015380842432375365, 0.00815533022524927908,
+    -0.01402283663896319337, -0.19746892495383021487,
+    0.71511720328842845913,
+    -0.00000000001951073787, -0.00000000032302692214,
+    0.00000000522461866919, 0.00000000342940918551,
+    -0.00000035772874310272, 0.00000019999935792654,
+    0.00002687044575042908, -0.00011843240273775776,
+    -0.00080991728956032271, 0.00661062970502241174,
+    0.00909530922354827295, -0.20160072778491013140,
+    0.51169696718727644908,
+    0.00000000003147682272, -0.00000000048465972408,
+    0.00000000063675740242, 0.00000003377623323271,
+    -0.00000015451139637086, -0.00000203340624738438,
+    0.00001947204525295057, 0.00002854147231653228,
+    -0.00101565063152200272, 0.00271187003520095655,
+    0.02328095035422810727, -0.16725021123116877197,
+    0.32490054966649436974,
+    0.00000000002319363370, -0.00000000006303206648,
+    -0.00000000264888267434, 0.00000002050708040581,
+    0.00000011371857327578, -0.00000211211337219663,
+    0.00000368797328322935, 0.00009823686253424796,
+    -0.00065860243990455368, -0.00075285814895230877,
+    0.02585434424202960464, -0.11637092784486193258,
+    0.18267336775296612024,
+    -0.00000000000367789363, 0.00000000020876046746,
+    -0.00000000193319027226, -0.00000000435953392472,
+    0.00000018006992266137, -0.00000078441223763969,
+    -0.00000675407647949153, 0.00008428418334440096,
+    -0.00017604388937031815, -0.00239729611435071610,
+    0.02064129023876022970, -0.06905562880005864105,
+    0.09084526782065478489], dtype=np.float32)
+
+
+def derf(x) -> np.float32:
+    """P3's own REAL error function (:6090-6204), which the activation's
+    ``derf`` calls (the module procedure shadows the intrinsic).  Statement
+    order and mixed-kind details as written: ``W`` is compared with the
+    DOUBLE literals 2.2D0/6.9D0, ``INT`` truncates, ``T - K`` converts
+    ``K`` to REAL first."""
+    x = f32(x)
+    w = abs(x)
+    if float(w) < 2.2:                                   # :6175, 2.2D0
+        t = w * w
+        k = int(t)
+        t = t - f32(k)
+        k = k * 13
+        A = DERF_A
+        y = ((((((((((((A[k] * t + A[k + 1]) * t + A[k + 2]) * t
+                       + A[k + 3]) * t + A[k + 4]) * t + A[k + 5]) * t
+                    + A[k + 6]) * t + A[k + 7]) * t + A[k + 8]) * t
+                 + A[k + 9]) * t + A[k + 10]) * t + A[k + 11]) * t
+             + A[k + 12]) * w
+    elif float(w) < 6.9:                                 # :6185, 6.9D0
+        k = int(w)
+        t = w - f32(k)
+        k = 13 * (k - 2)
+        B = DERF_B
+        y = (((((((((((B[k] * t + B[k + 1]) * t + B[k + 2]) * t
+                      + B[k + 3]) * t + B[k + 4]) * t + B[k + 5]) * t
+                   + B[k + 6]) * t + B[k + 7]) * t + B[k + 8]) * t
+                + B[k + 9]) * t + B[k + 10]) * t + B[k + 11]) * t + B[k + 12]
+        y = y * y
+        y = y * y
+        y = y * y
+        y = f32(1.0) - y * y
+    else:
+        y = f32(1.0)
+    if x < f32(0.0):                                     # :6201
+        y = -y
+    return f32(y)
 
 
 @dataclass(frozen=True)
 class P3Runtime:
     """The p3_init products the solver reads (tables; constants are module
     level).  ``itab``/``itabcoll`` come from the SHA-256-validated packaged
-    table; ``vn/vm/revap`` are the generated rain tables."""
-    itab: np.ndarray        # (densize, rimsize, isize, tabsize)
-    itabcoll: np.ndarray    # (densize, rimsize, isize, rcollsize, 2)
+    table; ``vn/vm/revap`` are the generated rain tables.  A three-moment
+    p3_init (``trplMomI=.true.``, mp_physics=53) reads the 3momI table
+    INSTEAD of the 2momI one (module_mp_p3.F:343-472), so exactly one of
+    the two table pairs is filled."""
+    itab: np.ndarray | None        # (densize, rimsize, isize, tabsize)
+    itabcoll: np.ndarray | None    # (densize, rimsize, isize, rcollsize, 2)
     vn_table: np.ndarray    # (300, 10)
     vm_table: np.ndarray    # (300, 10)
     revap_table: np.ndarray  # (300, 10)
+    itab_3mom: np.ndarray | None = None      # (zsize, densize, rimsize, isize, 15)
+    itabcoll_3mom: np.ndarray | None = None  # (zsize, densize, rimsize, isize, rcollsize, 2)
+
+    itabcolli1: np.ndarray | None = None
+    itabcolli2: np.ndarray | None = None
+    n_cat: int = 1
+
+    @property
+    def three_moment(self) -> bool:
+        return self.itab_3mom is not None
 
 
-_RUNTIME_CACHE: dict[str, P3Runtime] = {}
+_RUNTIME_CACHE: dict[tuple[str, int, bool], P3Runtime] = {}
 
 
-def p3_init() -> P3Runtime:
+def p3_init(n_cat: int = 1, *, three_moment: bool = False) -> P3Runtime:
     """The WRF ``CASE (P3_1CATEGORY): CALL p3_init('.',1,.false.,'WRF',...)``
     equivalent (module_physics_init.F:4568-4569): read table 1 (2momI) and
-    generate the rain tables, once per process per table root."""
+    generate the rain tables, once per process per table root.
+    ``three_moment=True`` is ``CASE (P3_1CAT_3MOM): CALL
+    p3_init('.',1,.true.,'WRF',...)`` (:4574-4575), which reads the 3momI
+    table instead."""
+    n_cat = int(n_cat)
+    if n_cat not in (1, 2) or (n_cat > 1 and three_moment):
+        raise ValueError("P3 supports one-category two/three-moment ice or two-category two-moment ice")
     root = p3_table_root()
-    runtime = _RUNTIME_CACHE.get(root)
+    key = (root, n_cat, bool(three_moment))
+    runtime = _RUNTIME_CACHE.get(key)
     if runtime is None:
-        itab, itabcoll = load_lookup_table_1(root)
-        vn, vm, revap = generate_rain_tables()
-        runtime = P3Runtime(itab=itab, itabcoll=itabcoll, vn_table=vn,
-                            vm_table=vm, revap_table=revap)
-        _RUNTIME_CACHE[root] = runtime
+        if three_moment:
+            from woof.core.p3_rust import init_three_moment
+            itab, itabcoll, vn, vm, revap = init_three_moment(root)
+            runtime = P3Runtime(itab=None, itabcoll=None, vn_table=vn,
+                                vm_table=vm, revap_table=revap,
+                                itab_3mom=itab, itabcoll_3mom=itabcoll)
+        else:
+            itab, itabcoll = load_lookup_table_1(root)
+            vn, vm, revap = generate_rain_tables()
+            runtime = P3Runtime(itab=itab, itabcoll=itabcoll, vn_table=vn,
+                                vm_table=vm, revap_table=revap)
+        extra = {"n_cat": n_cat}
+        if n_cat > 1:
+            from woof.core.p3_rust import init_table2
+            extra["itabcolli1"], extra["itabcolli2"] = init_table2(root)
+        runtime = replace(runtime, **extra)
+        _RUNTIME_CACHE[key] = runtime
     return runtime
 
 
@@ -304,7 +536,7 @@ def access_lookup_table_coll(itabcoll, dumjj, dumii, dumj, dumi, index,
 def find_lookupTable_indices_1a(qitot, nitot, qirim, rhop):
     """Main ice-table indices (:6316-6370): returns
     (dumi, dumjj, dumii, dum1, dum4, dum5)."""
-    dum1 = (np.log10(qitot / nitot) + f32(18.0)) * f32(3.444606) - f32(10.0)
+    dum1 = (_log10f(qitot / nitot) + f32(18.0)) * f32(3.444606) - f32(10.0)
     dumi = int(dum1)
     dum1 = min(dum1, f32(ISIZE))
     dum1 = max(dum1, f32(1.0))
@@ -333,8 +565,8 @@ def find_lookupTable_indices_1a(qitot, nitot, qirim, rhop):
 def find_lookupTable_indices_1b(qr, nr):
     """Rain index for ice-rain collection (:6374-6410): (dumj, dum3)."""
     if qr >= QSMALL and nr > f32(0.0):
-        dumlr = (qr / (PI * RHOW * nr)) ** THRD
-        dum3 = (np.log10(f32(1.0) * dumlr) + f32(5.0)) * f32(10.70415)
+        dumlr = _powf(qr / (PI * RHOW * nr), THRD)
+        dum3 = (_log10f(f32(1.0) * dumlr) + f32(5.0)) * f32(10.70415)
         dumj = int(dum3)
         dum3 = min(dum3, f32(RCOLLSIZE))
         dum3 = max(dum3, f32(1.0))
@@ -390,9 +622,9 @@ def get_cloud_dsd2(qc_grd, nc_grd, rho, iscf):
         mu_c = f32(1.0) / (mu_c * mu_c) - f32(1.0)  # 1./(mu_c**2)-1.
         mu_c = max(mu_c, f32(2.0))
         mu_c = min(mu_c, f32(15.0))
-        nu = f32(0.0)
-        lamc = (CONS1 * nc * (mu_c + f32(3.0)) * (mu_c + f32(2.0))
-                * (mu_c + f32(1.0)) / qc) ** THRD
+        nu = f32(0.0)  # WRF p3_init pins iparam=3 (:193).
+        lamc = _powf(CONS1 * nc * (mu_c + f32(3.0)) * (mu_c + f32(2.0))
+                     * (mu_c + f32(1.0)) / qc, THRD)
         lammin = (mu_c + f32(1.0)) * f32(2.5e4)
         lammax = (mu_c + f32(1.0)) * f32(1.0e6)
         if lamc < lammin:
@@ -426,24 +658,24 @@ def get_rain_dsd2(qr_grd, nr_grd, ispf):
         nr = max(nr, NSMALL)
         # inv_dum feeds only the commented-out variable-mu_r path; computed
         # for parity with the authority's statement order (:6734).
-        _ = (qr / (CONS1 * nr * f32(6.0))) ** THRD
+        _ = _powf(qr / (CONS1 * nr * f32(6.0)), THRD)
         mu_r = MU_R_CONSTANT
-        lamr = (CONS1 * nr * (mu_r + f32(3.0)) * (mu_r + f32(2.0))
-                * (mu_r + f32(1.0)) / qr) ** THRD
+        lamr = _powf(CONS1 * nr * (mu_r + f32(3.0)) * (mu_r + f32(2.0))
+                     * (mu_r + f32(1.0)) / qr, THRD)
         lammax = (mu_r + f32(1.0)) * f32(1.0e5)
         lammin = (mu_r + f32(1.0)) * INV_DRMAX
         if lamr < lammin:
             lamr = lammin
-            nr = np.exp(f32(3.0) * np.log(lamr) + np.log(qr)
-                        + np.log(_gammaf(mu_r + f32(1.0)))
-                        - np.log(_gammaf(mu_r + f32(4.0)))) / CONS1
+            nr = _expf(f32(3.0) * _logf(lamr) + _logf(qr)
+                       + _logf(_gammaf(mu_r + f32(1.0)))
+                       - _logf(_gammaf(mu_r + f32(4.0)))) / CONS1
         elif lamr > lammax:
             lamr = lammax
-            nr = np.exp(f32(3.0) * np.log(lamr) + np.log(qr)
-                        + np.log(_gammaf(mu_r + f32(1.0)))
-                        - np.log(_gammaf(mu_r + f32(4.0)))) / CONS1
-        logn0r = np.log10(nr) + (mu_r + f32(1.0)) * np.log10(lamr) \
-            - np.log10(_gammaf(mu_r + f32(1.0)))
+            nr = _expf(f32(3.0) * _logf(lamr) + _logf(qr)
+                       + _logf(_gammaf(mu_r + f32(1.0)))
+                       - _logf(_gammaf(mu_r + f32(4.0)))) / CONS1
+        logn0r = _log10f(nr) + (mu_r + f32(1.0)) * _log10f(lamr) \
+            - _log10f(_gammaf(mu_r + f32(1.0)))
         cdistr = nr / _gammaf(mu_r + f32(1.0))
         nr_grd = nr / ispf
         return nr_grd, mu_r, lamr, cdistr, logn0r
@@ -539,6 +771,7 @@ def _sediment_column(moments, fraction, dt, rho, inv_rho, inv_dz, speeds_at):
     return prt_accum
 
 
+@_nc_reference_math
 def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
             birim, ssat, pres, dzq, it, prt_liq, prt_sol,
             diag_ze, diag_effc, diag_effi, diag_vmi, diag_di, diag_rhoi,
@@ -556,12 +789,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
     """
     if n_cat != 1:
         raise NotImplementedError(
-            "woof's P3 port is the 1-category configuration (mp_physics="
-            "50); nCat>1 (mp_physics=52) is not ported.")
-    if log_predictNc:
-        raise NotImplementedError(
-            "woof's P3 port specifies droplet number (mp_physics=50); the "
-            "prognostic-Nc path (mp_physics=51) is not ported.")
+            "woof's P3 CPU reference carries one ice category (mp_physics="
+            "50 or 51); mp_physics=52 requires the two-category CUDA kernels.")
     if model != "WRF":
         raise NotImplementedError("only the WRF orientation is ported")
     rt = runtime if runtime is not None else p3_init()
@@ -593,7 +822,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
     rhorime_c = f32(400.0)              # :2290 (assigned once, outside loops)
 
     # :2293-2297 -- slab-wide diagnostics at entry.
-    tmparr1 = ((pres * f32(1.0e-5)) ** (RD * INV_CP)).astype(np.float32)
+    tmparr1 = _powf_array((pres * f32(1.0e-5)).astype(np.float32),
+                          RD * INV_CP).astype(np.float32)
     invexn = (f32(1.0) / tmparr1).astype(np.float32)
     t = (th * tmparr1).astype(np.float32)
     t_old = (th_old * tmparr1).astype(np.float32)
@@ -668,12 +898,15 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
             ssat[i, k] = qv_old[i, k] - qvs[k]
             sup[k] = qv_old[i, k] / qvs[k] - f32(1.0)
             supi[k] = qv_old[i, k] / qvi[k] - f32(1.0)
-            rhofacr[k] = (RHOSUR * inv_rho[k]) ** f32(0.54)
-            rhofaci[k] = (RHOSUI * inv_rho[k]) ** f32(0.54)
-            dum = f32(1.496e-6) * t[i, k] ** f32(1.5) / (t[i, k] + f32(120.0))
+            rhofacr[k] = _powf(RHOSUR * inv_rho[k], f32(0.54))
+            rhofaci[k] = _powf(RHOSUI * inv_rho[k], f32(0.54))
+            dum = f32(1.496e-6) * _powf(t[i, k], f32(1.5)) / (t[i, k]
+                                                              + f32(120.0))
             acn[k] = G * RHOW / (f32(18.0) * dum)
-            # specified droplet number (1-moment cloud, :2349-2351)
-            nc[i, k] = NCCNST * inv_rho[k]
+            # specified droplet number (1-moment cloud, :2349-2351); the
+            # prognostic one (mp = 51) is the wrapper's nc_3d, untouched
+            if not log_predictNc:
+                nc[i, k] = NCCNST * inv_rho[k]
 
             # Fortran precedence quirk preserved: A .or. (B .and. .not.SCPF)
             # (:2358-2360; scpf_on is hardwired false in the WRF wrapper)
@@ -781,10 +1014,11 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
 
             if not log_exitlevel:
                 # time/space varying physical variables (:2531-2554)
-                mu = f32(1.496e-6) * t[i, k] ** f32(1.5) / (t[i, k] + f32(120.0))
-                dv = f32(8.794e-5) * t[i, k] ** f32(1.81) / pres[i, k]
+                mu = f32(1.496e-6) * _powf(t[i, k], f32(1.5)) / (
+                    t[i, k] + f32(120.0))
+                dv = f32(8.794e-5) * _powf(t[i, k], f32(1.81)) / pres[i, k]
                 sc = mu / (rho[k] * dv)
-                dum = f32(1.0) / (RV * t[i, k] ** f32(2.0))
+                dum = f32(1.0) / (RV * _square(t[i, k]))   # int **2
                 dqsdT = xxlv * qvs[k] * dum
                 dqsidT = xxls * qvi[k] * dum
                 ab = f32(1.0) + dqsdT * xxlv * INV_CP
@@ -878,15 +1112,15 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                 # -- collection of rain (:2725-2748); SPF-SPF_clr = 1 here
                 if (qitot[i, k] >= QSMALL and qr[i, k] >= QSMALL
                         and t[i, k] <= f32(273.15)):
-                    qrcol = f32(10.0) ** (f1pr08 + logn0r) * rho[k] \
+                    qrcol = _powf(f32(10.0), f1pr08 + logn0r) * rho[k] \
                         * rhofaci[k] * ERI * nitot[i, k] * iscf \
                         * (spf - spf_clr)
-                    nrcol = f32(10.0) ** (f1pr07 + logn0r) * rho[k] \
+                    nrcol = _powf(f32(10.0), f1pr07 + logn0r) * rho[k] \
                         * rhofaci[k] * ERI * nitot[i, k] * iscf \
                         * (spf - spf_clr)
                 if (qitot[i, k] >= QSMALL and qr[i, k] >= QSMALL
                         and t[i, k] > f32(273.15)):
-                    nrcol = f32(10.0) ** (f1pr07 + logn0r) * rho[k] \
+                    nrcol = _powf(f32(10.0), f1pr07 + logn0r) * rho[k] \
                         * rhofaci[k] * ERI * nitot[i, k] * iscf \
                         * (spf - spf_clr)
                     # collected rain mass (:2743) feeds only the
@@ -904,8 +1138,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                 if qitot[i, k] >= QSMALL and t[i, k] > f32(273.15):
                     qsat0 = f32(0.622) * E0 / (pres[i, k] - E0)
                     dum = f32(0.0)
-                    qimlt = ((f1pr05 + f1pr14 * sc ** THRD
-                              * (rhofaci[k] * rho[k] / mu) ** f32(0.5))
+                    qimlt = ((f1pr05 + f1pr14 * _powf(sc, THRD)
+                              * _powf(rhofaci[k] * rho[k] / mu, f32(0.5)))
                              * ((t[i, k] - f32(273.15)) * kap
                                 - rho[k] * xxlv * dv * (qsat0 - qv_cld[k]))
                              * f32(2.0) * PI / xlf + dum) * nitot[i, k]
@@ -917,8 +1151,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                         and (qc[i, k] + qr[i, k]) >= f32(1.0e-6)
                         and t[i, k] < f32(273.15)):
                     qsat0 = f32(0.622) * E0 / (pres[i, k] - E0)
-                    qwgrth = ((f1pr05 + f1pr14 * sc ** THRD
-                               * (rhofaci[k] * rho[k] / mu) ** f32(0.5))
+                    qwgrth = ((f1pr05 + f1pr14 * _powf(sc, THRD)
+                               * _powf(rhofaci[k] * rho[k] / mu, f32(0.5)))
                               * f32(2.0) * PI
                               * (rho[k] * xxlv * dv * (qsat0 - qv_cld[k])
                                  - (t[i, k] - f32(273.15)) * kap)
@@ -937,8 +1171,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
 
                 # -- inverse supersaturation relaxation timescale (:2900-2906)
                 if qitot[i, k] >= QSMALL and t[i, k] < f32(273.15):
-                    epsi = ((f1pr05 + f1pr14 * sc ** THRD
-                             * (rhofaci[k] * rho[k] / mu) ** f32(0.5))
+                    epsi = ((f1pr05 + f1pr14 * _powf(sc, THRD)
+                             * _powf(rhofaci[k] * rho[k] / mu, f32(0.5)))
                             * f32(2.0) * PI * rho[k] * dv) * nitot[i, k]
                     epsi_tot = epsi_tot + epsi
                 else:
@@ -950,14 +1184,14 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                     iTc = f32(1.0) / min(f32(-0.001), t[i, k] - f32(273.15))
                     if qc[i, k] >= QSMALL:
                         Vt_qc = acn[k] * _gammaf(f32(4.0) + BCN + mu_c) / (
-                            lamc ** BCN * _gammaf(mu_c + f32(4.0)))
+                            _powf(lamc, BCN) * _gammaf(mu_c + f32(4.0)))
                         D_c = (mu_c + f32(4.0)) / lamc
                         V_impact = abs(vtrmi1 - Vt_qc)
                         Ri = -(f32(0.5e6) * D_c) * V_impact * iTc
                         Ri = max(f32(1.0), min(Ri, f32(12.0)))
                         if Ri <= f32(8.0):
                             rhorime_c = (f32(0.051) + f32(0.114) * Ri
-                                         - f32(0.0055) * Ri ** f32(2.0)) \
+                                         - f32(0.0055) * _square(Ri)) \
                                 * f32(1000.0)
                         else:
                             rhorime_c = f32(611.0) + f32(72.25) * (Ri - f32(8.0))
@@ -973,16 +1207,16 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                     # bit.  The rescue below is reached only when it cannot
                     # -- see _rescue_overflowed_product.
                     with np.errstate(over="ignore", invalid="ignore"):
-                        tmp1 = cdist1 * np.exp(AIMM * (f32(273.15) - t[i, k]))
+                        tmp1 = cdist1 * _expf(AIMM * (f32(273.15) - t[i, k]))
                         gam_q = _gammaf(f32(7.0) + mu_c)
                         gam_n = _gammaf(mu_c + f32(4.0))
-                        Q_nuc = CONS6 * gam_q * tmp1 * dum ** f32(2.0)
+                        Q_nuc = CONS6 * gam_q * tmp1 * _square(dum)  # int **2
                         N_nuc = CONS5 * gam_n * tmp1 * dum
                     if not np.isfinite(Q_nuc) or not np.isfinite(N_nuc):
                         # Argument in float32, exp in double: the authority's
                         # own commented-out form, dexp(dble(aimm*(273.15-t)))
                         # at :2999, and what the rain branch below does.
-                        exp_aimm = np.exp(f64(AIMM * (f32(273.15) - t[i, k])))
+                        exp_aimm = _dexp(AIMM * (f32(273.15) - t[i, k]))
                         if not np.isfinite(Q_nuc):
                             Q_nuc = _rescue_overflowed_product(
                                 CONS6, gam_q, cdist1, exp_aimm, dum, dum)
@@ -994,13 +1228,13 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
 
                 # -- immersion freezing of rain (:3021-3043)
                 if qr[i, k] * ispf >= QSMALL and t[i, k] <= f32(269.15):
-                    tmpdbl1 = np.exp(f64(np.log(cdistr)
-                                         + np.log(_gammaf(f32(7.0) + mu_r))
-                                         - f32(6.0) * np.log(lamr)))
-                    tmpdbl2 = np.exp(f64(np.log(cdistr)
-                                         + np.log(_gammaf(mu_r + f32(4.0)))
-                                         - f32(3.0) * np.log(lamr)))
-                    tmpdbl3 = np.exp(f64(AIMM * (f32(273.15) - t[i, k])))
+                    tmpdbl1 = _dexp(_logf(cdistr)
+                                    + _logf(_gammaf(f32(7.0) + mu_r))
+                                    - f32(6.0) * _logf(lamr))
+                    tmpdbl2 = _dexp(_logf(cdistr)
+                                    + _logf(_gammaf(mu_r + f32(4.0)))
+                                    - f32(3.0) * _logf(lamr))
+                    tmpdbl3 = _dexp(AIMM * (f32(273.15) - t[i, k]))
                     # Same class, same rescue.  WRF's ``sngl(tmpdbl1*tmpdbl3)``
                     # (:3037-3038) rounds a double to float32 and can land on
                     # +Inf for the same cold-cloud reason, reaching the same
@@ -1026,7 +1260,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                     dum = _rain_table_value(revap_table, dumii_r, dumjj_r, rdumii, rdumjj)
                     epsr = f32(2.0) * PI * cdistr * rho[k] * dv * (
                         F1R * _gammaf(mu_r + f32(2.0)) / lamr
-                        + F2R * (rho[k] / mu) ** f32(0.5) * sc ** THRD * dum)
+                        + F2R * _powf(rho[k] / mu, f32(0.5))
+                        * _powf(sc, THRD) * dum)
                 else:
                     epsr = f32(0.0)
 
@@ -1069,12 +1304,12 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                 if qc[i, k] >= QSMALL:   # :3201-3202
                     qccon = (aaa * epsc * oxx
                              + (ssat_cld * scf - aaa * oxx) * odt * epsc
-                             * oxx * (f32(1.0) - f32(np.exp(-f64(xx * dt))))
+                             * oxx * (f32(1.0) - f32(_dexp(-f64(xx * dt))))
                              ) / ab
                 if qr[i, k] >= QSMALL:   # :3203-3204
                     qrcon = (aaa * epsr * oxx
                              + (ssat_r * spf - aaa * oxx) * odt * epsr
-                             * oxx * (f32(1.0) - f32(np.exp(-f64(xx * dt))))
+                             * oxx * (f32(1.0) - f32(_dexp(-f64(xx * dt))))
                              ) / ab
 
                 if sup_cld < f32(-0.001) and qc[i, k] < f32(1.0e-12):
@@ -1099,7 +1334,7 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                 if qitot[i, k] >= QSMALL and t[i, k] < f32(273.15):
                     qidep = (aaa * epsi * oxx
                              + (ssat_cld * scf - aaa * oxx) * odt * epsi
-                             * oxx * (f32(1.0) - f32(np.exp(-f64(xx * dt))))
+                             * oxx * (f32(1.0) - f32(_dexp(-f64(xx * dt))))
                              ) * oabi + (qvs[k] - dumqvi) * epsi * oabi
                 if supi_cld < f32(-0.001) and qitot[i, k] < f32(1.0e-12):
                     qidep = -qitot[i, k] * odt
@@ -1119,7 +1354,7 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
             sup_cld = sup[k]
             supi_cld = supi[k]
             if t[i, k] < f32(258.15) and supi_cld >= f32(0.05):
-                dum = f32(0.005) * np.exp(f32(0.304) * (f32(273.15) - t[i, k])) \
+                dum = f32(0.005) * _expf(f32(0.304) * (f32(273.15) - t[i, k])) \
                     * f32(1000.0) * inv_rho[k]                # Cooper (1986)
                 dum = min(dum, f32(100.0e3) * inv_rho[k] * scf)
                 N_nuc = max(f32(0.0), (dum - nitot[i, k]) * odt)
@@ -1129,7 +1364,7 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                     ninuc = N_nuc
 
             # -- droplet activation, specified-Nc branch (:3303-3311)
-            if sup_cld > f32(1.0e-6) and it > 1:
+            if not log_predictNc and sup_cld > f32(1.0e-6) and it > 1:
                 dum = NCCNST * inv_rho[k] * CONS7 - qc[i, k]
                 dum = max(f32(0.0), dum * iscf)
                 dumqvs = qv_sat(t[i, k], pres[i, k], 0)
@@ -1137,16 +1372,39 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                 ab_l = f32(1.0) + dqsdT_l * xxlv * INV_CP
                 dum = max(f32(0.0), min(dum, (qv_cld[k] - dumqvs) / ab_l))
                 qcnuc = dum * odt * scf
-            # (:3313-3339 is the log_predictNc activation path -- not ported)
+            # -- droplet activation, predicted-Nc branch (:3313-3339): two
+            # prescribed lognormal aerosol modes; also applied at it = 1,
+            # where only the number is activated (the mass comes from the
+            # first-step saturation adjustment below).
+            if log_predictNc and sup_cld > f32(1.0e-6):
+                dum1 = f32(1.0) / _powf(BACT, f32(0.5))
+                sigvl = f32(0.0761) - f32(1.55e-4) * (t[i, k] - f32(273.15))
+                aact = f32(2.0) * MW / (RHOW * RR * t[i, k]) * sigvl
+                sm1 = f32(2.0) * dum1 * _powf(aact * THRD * INV_RM1, f32(1.5))
+                sm2 = f32(2.0) * dum1 * _powf(aact * THRD * INV_RM2, f32(1.5))
+                uu1 = f32(2.0) * _logf(sm1 / sup_cld) / (f32(4.242)
+                                                         * _logf(SIG1))
+                uu2 = f32(2.0) * _logf(sm2 / sup_cld) / (f32(4.242)
+                                                         * _logf(SIG2))
+                dum1 = NANEW1 * f32(0.5) * (f32(1.0) - derf(uu1))
+                dum2 = NANEW2 * f32(0.5) * (f32(1.0) - derf(uu2))
+                dum2 = min(NANEW1 + NANEW2, dum1 + dum2)
+                dum2 = (dum2 - nc[i, k] * iscf) * odt * scf
+                dum2 = max(f32(0.0), dum2)
+                ncnuc = dum2
+                if it <= 1:
+                    qcnuc = f32(0.0)
+                else:
+                    qcnuc = ncnuc * CONS7
 
             # -- first-step saturation adjustment (:3348-3356)
             if it <= 1:
-                dumt = th[i, k] * (pres[i, k] * f32(1.0e-5)) ** (RD * INV_CP)
+                dumt = th[i, k] * _powf(pres[i, k] * f32(1.0e-5), RD * INV_CP)
                 dumqv = qv_cld[k]
                 dumqvs = qv_sat(dumt, pres[i, k], 0)
                 dums = dumqv - dumqvs
-                qccon = dums / (f32(1.0) + xxlv ** f32(2.0) * dumqvs
-                                / (CP * RV * dumt ** f32(2.0))) * odt * scf
+                qccon = dums / (f32(1.0) + _square(xxlv) * dumqvs
+                                / (CP * RV * _square(dumt))) * odt * scf
                 qccon = max(f32(0.0), qccon)
                 if qccon <= f32(1.0e-7):
                     qccon = f32(0.0)
@@ -1154,8 +1412,9 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
             # -- autoconversion, iparam = 3 (KK2000) (:3362-3416)
             if qc[i, k] * iscf >= f32(1.0e-8):
                 dum = qc[i, k] * iscf
-                qcaut = f32(1350.0) * dum ** f32(2.47) \
-                    * (nc[i, k] * iscf * f32(1.0e-6) * rho[k]) ** f32(-1.79) \
+                qcaut = f32(1350.0) * _powf(dum, f32(2.47)) \
+                    * _powf(nc[i, k] * iscf * f32(1.0e-6) * rho[k],
+                            f32(-1.79)) \
                     * scf
                 ncautr = qcaut * CONS3
                 ncautc = qcaut * nc[i, k] / qc[i, k]
@@ -1171,8 +1430,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
             # -- accretion, iparam = 3 (:3440-3472)
             if qr[i, k] >= QSMALL and qc[i, k] >= QSMALL:
                 dum2 = spf - spf_clr
-                qcacc = f32(67.0) * (qc[i, k] * iscf * qr[i, k] * ispf) \
-                    ** f32(1.15) * dum2
+                qcacc = f32(67.0) * _powf(qc[i, k] * iscf * qr[i, k] * ispf,
+                                          f32(1.15)) * dum2
                 ncacc = qcacc * nc[i, k] / qc[i, k]
                 if qcacc == f32(0.0):
                     ncacc = f32(0.0)
@@ -1183,19 +1442,19 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
             if qr[i, k] >= QSMALL:
                 dum1 = f32(280.0e-6)
                 nr[i, k] = max(nr[i, k], NSMALL)
-                dum2 = (qr[i, k] / (PI * RHOW * nr[i, k])) ** THRD
+                dum2 = _powf(qr[i, k] / (PI * RHOW * nr[i, k]), THRD)
                 if dum2 < dum1:
                     dum = f32(1.0)
                 else:
-                    dum = f32(2.0) - np.exp(f32(2300.0) * (dum2 - dum1))
+                    dum = f32(2.0) - _expf(f32(2300.0) * (dum2 - dum1))
                 nrslf = dum * f32(5.78) * nr[i, k] * ispf * qr[i, k] * ispf \
                     * rho[k] * spf
 
             # -- conservation of mass (:3515-3644)
             dumqvs = qv_sat(t[i, k], pres[i, k], 0)
             qcon_satadj = (qv_cld[k] - dumqvs) / (
-                f32(1.0) + xxlv ** f32(2.0) * dumqvs
-                / (CP * RV * t[i, k] ** f32(2.0))) * odt * scf
+                f32(1.0) + _square(xxlv) * dumqvs
+                / (CP * RV * _square(t[i, k]))) * odt * scf
             tmp1 = qccon + qrcon + qcnuc
             if tmp1 > f32(0.0) and qcon_satadj < f32(0.0):
                 qccon = f32(0.0)
@@ -1222,8 +1481,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                 * xxlv * INV_CP * dt
             dumqvi = qv_sat(t_tmp, pres[i, k], 1)
             qdep_satadj = (qv_tmp - dumqvi) / (
-                f32(1.0) + xxls ** f32(2.0) * dumqvi
-                / (CP * RV * t_tmp ** f32(2.0))) * odt * scf
+                f32(1.0) + _square(xxls) * dumqvi
+                / (CP * RV * _square(t_tmp))) * odt * scf
             tmp1 = qidep + qinuc
             if tmp1 > f32(0.0) and qdep_satadj < f32(0.0):
                 qidep = f32(0.0)
@@ -1307,6 +1566,8 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
 
             # iice_loop3 (:3767-3865)
             qc[i, k] = qc[i, k] + (-qchetc - qcheti - qccol - qcshd) * dt
+            if log_predictNc:                                       # :3770
+                nc[i, k] = nc[i, k] + (-nccol - nchetc - ncheti) * dt
             qr[i, k] = qr[i, k] + (-qrcol + qimlt - qrhetc - qrheti + qcshd
                                    - qrmul) * dt
             nr[i, k] = nr[i, k] + (-nrcol - nrhetc - nrheti
@@ -1354,7 +1615,10 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
             # warm-phase updates (:3869-3885)
             qc[i, k] = qc[i, k] + (-qcacc - qcaut + qcnuc + qccon - qcevp) * dt
             qr[i, k] = qr[i, k] + (qcacc + qcaut + qrcon - qrevp) * dt
-            nc[i, k] = NCCNST * inv_rho[k]    # not predictNc (:3875)
+            if log_predictNc:                                       # :3872
+                nc[i, k] = nc[i, k] + (-ncacc - ncautc + ncslf + ncnuc) * dt
+            else:
+                nc[i, k] = NCCNST * inv_rho[k]                       # :3875
             nr[i, k] = nr[i, k] + (ncautr - nrslf - nrevp) * dt  # iparam=3
             qv[i, k] = qv[i, k] + (-qcnuc - qccon - qrcon + qcevp + qrevp) * dt
             th[i, k] = th[i, k] + invexn[i, k] * (
@@ -1401,18 +1665,24 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
         # Sedimentation (:3984-4495), adaptive substepping.
         # ==================================================================
 
+        # Cloud mass and, under MP51, droplet number use the same adaptive
+        # column flux operator (WRF :4009-4066 / :4068-4119).
         def cloud_speeds(k):
             V_qc = f32(0.0)
+            V_nc = f32(0.0)
             if qc[i, k] * iscf > QSMALL:
                 nc[i, k], mu_c, nu, lamc, _t1, _t2 = get_cloud_dsd2(
                     qc[i, k], nc[i, k], rho[k], iscf)
-                dum = f32(1.0) / lamc ** BCN
+                dum = f32(1.0) / _powf(lamc, BCN)
                 V_qc = acn[k] * _gammaf(f32(4.0) + BCN + mu_c) \
                     * dum / _gammaf(mu_c + f32(4.0))
-            return (V_qc,)
+                if log_predictNc:
+                    V_nc = acn[k] * _gammaf(f32(1.0) + BCN + mu_c) \
+                        * dum / _gammaf(mu_c + f32(1.0))
+            return (V_qc, V_nc) if log_predictNc else (V_qc,)
 
         prt_accum = _sediment_column(
-            (qc[i],), iscf, dt,
+            (qc[i], nc[i]) if log_predictNc else (qc[i],), iscf, dt,
             rho, inv_rho, inv_dzq[i], cloud_speeds)
         if prt_accum is not None:
             prt_liq[i] = prt_accum * INV_RHOW * odt
@@ -1503,10 +1773,11 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
             if qr[i, k] >= QSMALL:
                 nr[i, k], mu_r, lamr, _t1, _t2 = get_rain_dsd2(
                     qr[i, k], nr[i, k], f32(1.0))   # iSPF literal 1. (:4739)
+                lam6 = _sixth(lamr)                  # :4756, int **6
                 ze_rain[i, k] = rho[k] * nr[i, k] * (mu_r + f32(6.0)) \
                     * (mu_r + f32(5.0)) * (mu_r + f32(4.0)) \
                     * (mu_r + f32(3.0)) * (mu_r + f32(2.0)) \
-                    * (mu_r + f32(1.0)) / lamr ** f32(6.0)
+                    * (mu_r + f32(1.0)) / lam6
                 ze_rain[i, k] = max(ze_rain[i, k], f32(1.0e-22))
             else:
                 qv[i, k] = qv[i, k] + qr[i, k]
@@ -1561,7 +1832,7 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
                 birim[i, k] = f32(0.0)
                 diag_di[i, k] = f32(0.0)
 
-            diag_ze[i, k] = f32(10.0) * np.log10(
+            diag_ze[i, k] = f32(10.0) * _log10f(
                 (ze_rain[i, k] + ze_ice[i, k]) * f32(1.0e18))
 
             if qr[i, k] < QSMALL:
@@ -1581,10 +1852,14 @@ def p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qitot, qirim, nitot,
 def mp_p3_wrapper_wrf(th, qv, qc, qr, nr, qi, qir, ni, qib, th_old, qv_old,
                       pres, dz, dt, itimestep, rainnc, rainncv, sr, snownc,
                       snowncv, refl_10cm, re_cloud, re_ice, vmi3d, di3d,
-                      rhopo3d, *, runtime: P3Runtime | None = None) -> None:
-    """``mp_p3_wrapper_wrf`` for the mp=50 call shape
-    (module_microphysics_driver.F:1569-1602: no ``nc_3d``, no ``qzi1_3d``,
-    ``n_iceCat = 1``).
+                      rhopo3d, *, nc_3d: np.ndarray | None = None,
+                      runtime: P3Runtime | None = None) -> None:
+    """``mp_p3_wrapper_wrf`` for the mp=50 and mp=51 call shapes
+    (module_microphysics_driver.F:1569-1602 passes no ``nc_3d``; :1619-1647
+    passes ``nc_3d = qnc_curr``; neither passes ``qzi1_3d``; ``n_iceCat =
+    1``).  ``log_predictNc`` is ``nc_3d is not None``, the wrapper's own
+    ``present(nc_3d)`` (:819-820); a prognostic ``nc_3d`` is updated in
+    place (:844, :901-903).
 
     All arrays are float32; 3-D fields are (ni, nk) column slabs with k=0
     at the surface (the WRF j-loop over independent (i, k) slabs and a
@@ -1595,7 +1870,11 @@ def mp_p3_wrapper_wrf(th, qv, qc, qr, nr, qi, qir, ni, qib, th_old, qv_old,
     ``w`` likewise feeds only the unused ``uzpl`` (:2204).
     """
     ni_pts, nk = th.shape
-    nc = np.zeros((ni_pts, nk), dtype=np.float32)     # :847 (specified Nc)
+    log_predictNc = nc_3d is not None                  # :819-820
+    if log_predictNc:
+        nc = nc_3d                                     # :844, updated in place
+    else:
+        nc = np.zeros((ni_pts, nk), dtype=np.float32)  # :847 (specified Nc)
     ssat = np.zeros((ni_pts, nk), dtype=np.float32)   # :851
     prt_liq = np.zeros(ni_pts, dtype=np.float32)
     prt_sol = np.zeros(ni_pts, dtype=np.float32)
@@ -1603,7 +1882,7 @@ def mp_p3_wrapper_wrf(th, qv, qc, qr, nr, qi, qir, ni, qib, th_old, qv_old,
     p3_main(qc, nc, qr, nr, th_old, th, qv_old, qv, dt, qi, qir, ni, qib,
             ssat, pres, dz, itimestep, prt_liq, prt_sol,
             refl_10cm, re_cloud, re_ice, vmi3d, di3d, rhopo3d,
-            n_cat=1, log_predictNc=False, model="WRF",
+            n_cat=1, log_predictNc=log_predictNc, model="WRF",
             clbfact_dep=1.0, clbfact_sub=1.0, runtime=runtime)
 
     dum1 = f32(1000.0) * f32(dt)
@@ -1643,6 +1922,31 @@ def _from_slab(dev, slab) -> None:
     dev[...] = _as_backend(dev, host)
 
 
+def _p3_required_fields(state, cfg) -> bool:
+    """Refuse a state that lacks the variant's fields; return predict_nc.
+
+    The breakage this refusal prevents is concrete: a mp=51 state without
+    its prognostic ``nc`` would otherwise run the specified-Nc branch
+    (droplet number reset to nccnst/rho every step) under an mp=51 label,
+    and every droplet-number output would be the wrong scheme's.
+    """
+    from woof.config import p3_predicts_nc
+
+    predict_nc = p3_predicts_nc(cfg.mp_physics)
+    required = ("qi", "nr", "ni", "qir", "qib", "th_old", "qv_old") + (
+        ("nc",) if predict_nc else ())
+    from woof.config import p3_variant
+    variant = p3_variant(cfg.mp_physics)
+    if variant is not None:
+        required = ("qi", "nr", "ni", "qir", "qib", "th_old", "qv_old") + variant.extra_species
+    missing = [name for name in required
+               if getattr(state, name, None) is None]
+    if missing:
+        raise ValueError(f"mp_physics={cfg.mp_physics} state lacks P3 "
+                         "fields: " + ", ".join(missing))
+    return predict_nc
+
+
 def apply_reference(state, cfg, dt: float, *, refl_10cm_due: bool = False):
     """THE REFERENCE/DEBUG PATH: prepare WRF's inputs and run the CPU
     float32 transcription on ``state`` in place.
@@ -1659,6 +1963,10 @@ def apply_reference(state, cfg, dt: float, *, refl_10cm_due: bool = False):
     adapters (full theta, layer depths from the full geopotential) and the
     theta update goes through the ``moist_physics_prep/finish`` bracket.
     """
+    if cfg.mp_physics == 52:
+        raise ValueError("P3 two-category integration needs the CUDA backend; "
+                         "the CPU reference carries one category and would "
+                         "omit ice-ice collection, category merge and category-2 sedimentation")
     from woof.core import constants as c
     from woof.core.microphysics import (MicrophysicsDiagnostics,
                                          moist_physics_finish,
@@ -1666,12 +1974,7 @@ def apply_reference(state, cfg, dt: float, *, refl_10cm_due: bool = False):
                                          prepare_microphysics_exner)
     from woof.core.state import DTYPE
 
-    required = ("qi", "nr", "ni", "qir", "qib", "th_old", "qv_old")
-    missing = [name for name in required
-               if getattr(state, name, None) is None]
-    if missing:
-        raise ValueError("mp_physics=50 state lacks P3 fields: "
-                         + ", ".join(missing))
+    predict_nc = _p3_required_fields(state, cfg)
     runtime = p3_init()   # loud table refusal happens here, before any prep
 
     nz, ny, nx = state.p.shape
@@ -1682,7 +1985,8 @@ def apply_reference(state, cfg, dt: float, *, refl_10cm_due: bool = False):
     pii = state.scratch((nz, ny, nx), "mp_pii")
     dz_dev = state.scratch((nz, ny, nx), "mp_dz8w")
     z8w = state.scratch((nz + 1, ny, nx), "mp_z8w")
-    th_dev[...] = thb + state.thp
+    th_dev[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
     prepare_microphysics_exner(state.p, pii)
     z8w[...] = (phb + state.php) / DTYPE(c.G)
     dz_dev[...] = z8w[1:] - z8w[:-1]
@@ -1721,6 +2025,8 @@ def apply_reference(state, cfg, dt: float, *, refl_10cm_due: bool = False):
               "nr": state.nr, "qi": state.qi, "qir": state.qir,
               "ni": state.ni, "qib": state.qib, "th_old": state.th_old,
               "qv_old": state.qv_old, "pres": state.p, "dz": dz_dev}
+    if predict_nc:
+        fields["nc"] = state.nc          # nc_3d = qnc_curr (mp = 51)
     for name, dev in fields.items():
         slabs[name] = _to_slab(dev)
 
@@ -1747,10 +2053,10 @@ def apply_reference(state, cfg, dt: float, *, refl_10cm_due: bool = False):
         host_surface["rainnc"], host_surface["rainncv"], host_surface["sr"],
         host_surface["snownc"], host_surface["snowncv"],
         refl, re_cloud, re_ice, vmi_slab, di_slab, rhopo_slab,
-        runtime=runtime)
+        nc_3d=slabs["nc"] if predict_nc else None, runtime=runtime)
 
     for name in ("qv", "qc", "qr", "nr", "qi", "qir", "ni", "qib",
-                 "th_old", "qv_old"):
+                 "th_old", "qv_old") + (("nc",) if predict_nc else ()):
         _from_slab(fields[name], slabs[name])
     _from_slab(th_dev, slabs["th"])
     for name, dev in (("rainnc", rainnc), ("rainncv", rainncv), ("sr", sr),
@@ -1813,12 +2119,36 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
     (:func:`apply_reference`) instead, and a state whose arrays are not on
     a CuPy backend takes that path automatically.
     """
+    from woof.config import p3_variant
+
+    variant = p3_variant(cfg.mp_physics)
+    if variant is None:
+        raise ValueError(
+            f"woof.core.p3.apply was called for mp_physics={cfg.mp_physics}, "
+            "which is not a P3 package (woof.config.P3_VARIANTS)")
+    from woof.core.p3_tables import P3_CATEGORY2_FIELDS
+    n_cat = variant.n_cat
     backend = _p3_backend(state, cfg)
     if backend == "reference":
+        if variant.three_moment_ice or variant.n_cat > 1:
+            # The CPU transcription carries mp=50's call shape only; a
+            # host-array state takes this branch without asking, so the
+            # refusal has to live here as well as in validate_run_config.
+            raise ValueError(
+                f"mp_physics={cfg.mp_physics} ({variant.label}) runs on the "
+                "card only: the CPU reference transcription "
+                "(woof/core/p3.py p3_main) carries two-moment ice with "
+                "specified droplet number, so it would integrate a different "
+                "scheme and leave qzi/nc untouched.  This state's arrays are "
+                "not on a CuPy backend.")
         return apply_reference(state, cfg, dt, refl_10cm_due=refl_10cm_due)
 
     import cupy as cp
 
+    if cfg.mp_physics == 52 and not hasattr(state.qv, "get"):
+        raise ValueError("P3 two-category integration needs the CUDA backend; "
+                         "the CPU reference carries one category and would "
+                         "omit ice-ice collection, category merge and category-2 sedimentation")
     from woof.core import constants as c
     from woof.core import p3_device as PD
     from woof.core.microphysics import (MicrophysicsDiagnostics,
@@ -1826,16 +2156,8 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
                                          save_pre_mp_theta)
     from woof.core.state import DTYPE
 
-    required = ("qi", "nr", "ni", "qir", "qib", "th_old", "qv_old")
-    missing = [name for name in required
-               if getattr(state, name, None) is None]
-    if missing:
-        raise ValueError("mp_physics=50 state lacks P3 fields: "
-                         + ", ".join(missing))
-    # p3_init stays on the host and runs once: it carries the loud SHA-256
-    # table refusal, which must fire before any live state is touched.
-    runtime = p3_init()
-    tables = PD.device_tables(runtime)
+    log_predict_nc = _p3_required_fields(state, cfg)
+    tables = PD.device_tables(n_cat=n_cat, three_moment=variant.three_moment_ice)
 
     nz, ny, nx = state.p.shape
     ncol = ny * nx
@@ -1844,10 +2166,13 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
 
     th_dev = state.scratch((nz, ny, nx), "mp_th")
     dz_dev = state.scratch((nz, ny, nx), "mp_dz8w")
-    z8w = state.scratch((nz + 1, ny, nx), "mp_z8w")
-    th_dev[...] = thb + state.thp
-    z8w[...] = (phb + state.php) / DTYPE(c.G)
-    dz_dev[...] = z8w[1:] - z8w[:-1]
+    fused_adapter = variant.three_moment_ice or n_cat > 1
+    if not fused_adapter:
+        z8w = state.scratch((nz + 1, ny, nx), "mp_z8w")
+        th_dev[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+                   else thb + state.thp)
+        z8w[...] = (phb + state.php) / DTYPE(c.G)
+        dz_dev[...] = z8w[1:] - z8w[:-1]
     # ``mp_pii`` is NOT allocated on this path.  The device kernels build
     # the Exner factor themselves from pres, exactly where the authority
     # builds it (:2293), so a separate full-domain array would be a second
@@ -1856,6 +2181,8 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
     surface = (ny, nx)
     diag_slots = {"zdbz": "refl_10cm", "effc": "p3_effc", "effi": "p3_effi",
                   "vmi": "p3_vmi", "di": "p3_di", "rhopo": "p3_rhopo"}
+    if n_cat > 1:
+        diag_slots.update(vmi2="p3_vmi2", di2="p3_di2", rhopo2="p3_rhopo2")
     diag = {name: state.scratch((nz, ny, nx), slot)
             for name, slot in diag_slots.items()}
     surf_slots = {"prt_liq": "p3_prt_liq", "prt_sol": "p3_prt_sol",
@@ -1871,14 +2198,19 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
     # it is storage and an argument, not a constant folded away because
     # log_predictSsat is false today.
     ssat = state.scratch((nz, ny, nx), "p3_ssat")
-    ssat[...] = 0.0
-    # SEAM 3: log_predictNc is driven by whether nc is a prognostic field
-    # on the state, exactly as the authority drives it from `present(nc)`
-    # (:819-820).  mp=50 has no such field and gets the specified-Nc
-    # scratch; mp=51 would pass its own.
-    prognostic_nc = getattr(state, "nc", None)
-    log_predict_nc = bool(cfg.mp_physics == 51 and prognostic_nc is not None)
-    nc_dev = prognostic_nc if log_predict_nc else state.scratch(
+    if fused_adapter:
+        from woof.core.p3_adapter import prepare
+        prepare(state, th_dev, dz_dev, ssat)
+    else:
+        ssat[...] = 0.0
+    # SEAM 3: log_predictNc is the authority's `present(nc_3d)` (:819-820)
+    # and log_3momentIce its `present(qzi1_3d)` (:822-823); WRF's driver
+    # decides both by package, and so does the P3_VARIANTS row here.  A
+    # specified-Nc package gets the wrapper's zeroed nc array (:847) as
+    # scratch; a predicted-Nc package passes its own prognostic field.
+    log_predict_nc = bool(variant.predict_nc)
+    log_3moment_ice = bool(variant.three_moment_ice)
+    nc_dev = state.nc if log_predict_nc else state.scratch(
         (nz, ny, nx), "p3_nc")
 
     fields = {"qc": state.qc, "nc": nc_dev, "qr": state.qr, "nr": state.nr,
@@ -1886,6 +2218,13 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
               "qib": state.qib, "th": th_dev, "qv": state.qv,
               "th_old": state.th_old, "qv_old": state.qv_old,
               "ssat": ssat, "pres": state.p, "dz": dz_dev}
+    if log_3moment_ice:
+        # The ADVECTED (N*Z)**0.5 (Registry QZI); the kernels convert it to
+        # Z and back where the wrapper does (:826-838, :912-924).
+        fields["qzi"] = state.qzi
+
+    if n_cat > 1:
+        fields.update({name: getattr(state, name) for name in P3_CATEGORY2_FIELDS})
 
     # See woof/core/p3.py:apply_reference for why the clock, not a
     # serialized counter, is what makes ``it`` survive a restart.
@@ -1896,28 +2235,35 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
     state.p3_itimestep = it
 
     ws = getattr(state, "_p3_workspace", None)
-    if ws is None or ws.ncol != ncol or ws.nk != nz:
+    if (ws is None or ws.ncol != ncol or ws.nk != nz
+            or ws.three_moment != log_3moment_ice):
         # Every P3 companion comes from DomainState.scratch, so the
         # allocation gate sees all of it and a normal timestep allocates
         # nothing.  woof/core/preflight.py prices these slots for mp=50.
         ws = PD.make_workspace(
             ncol, nz,
-            allocate=lambda slot, nlev: state.scratch((nlev, ny, nx), slot))
+            allocate=lambda slot, nlev: state.scratch((nlev, ny, nx), slot),
+            three_moment=log_3moment_ice)
         state._p3_workspace = ws
 
-    save_pre_mp_theta(state)          # WRF moist_physics_prep_em
+    if not fused_adapter:
+        save_pre_mp_theta(state)      # WRF moist_physics_prep_em
     PD.run_p3_device(
         {k: v.reshape(nz, ncol) for k, v in fields.items()},
         {k: v.reshape(nz, ncol) for k, v in diag.items()},
         {k: v.reshape(ncol) for k, v in surf.items()},
         workspace=ws, tables=tables, dt=float(dt), it=it,
-        log_predictNc=log_predict_nc,
+        log_predictNc=log_predict_nc, log_3momentIce=log_3moment_ice, n_cat=n_cat,
         arm=PD.CONFIG_ARM[str(getattr(cfg, "p3_backend", "cuda"))])
 
     # P3 returns effective radii in METRES; the state carries the
     # radiation-facing MICRON convention (woof/core/state.py mp arms).
-    state.effc[...] = diag["effc"] * cp.float32(1.0e6)
-    state.effi[...] = diag["effi"] * cp.float32(1.0e6)
+    if fused_adapter:
+        from woof.core.p3_adapter import radii
+        radii(diag, state)
+    else:
+        state.effc[...] = diag["effc"] * cp.float32(1.0e6)
+        state.effi[...] = diag["effi"] * cp.float32(1.0e6)
 
     if refl_10cm_due:
         from woof.core.refl import stash_refl_10cm

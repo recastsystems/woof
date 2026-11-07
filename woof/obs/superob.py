@@ -469,8 +469,8 @@ def _dealias_velocity_sweep(sweep, nyquist, dealias_params, site,
         reference = velocity_reference.radial_reference(
             azimuth, elevation, height - site.alt_m)
 
-    # The clock from lane/perf-instrument around the call as
-    # lane/dealias-region left it: the region engine needs the gate
+    # The clock from development branch around the call as
+    # development branch left it: the region engine needs the gate
     # geometry, and the instrument must time the call the front door
     # actually makes, not the one that predates it.
     with perf_timing.stage("obs.dealias.sweep_total", gates=int(raw.size)):

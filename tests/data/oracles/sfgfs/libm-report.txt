@@ -1,0 +1,9 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# libm entry points module_sf_gfs.o calls:
+U exp
+U log
+U pow
+# libm entry points module_gfs_funcphys.o calls:
+U exp
+U pow

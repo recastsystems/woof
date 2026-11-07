@@ -111,10 +111,11 @@ from woof.ingest.lateral_bc import (attach_nest_boundaries,
 _STAGGER = {"u": "x", "v": "y"}
 _APPLICATION_NAME = {"t": "theta", "ph": "phi"}
 
-#: The six SIGNED prognostics in the feedback inventory; everything else
+#: Signed prognostics and passive tracers in the feedback inventory. Everything else
 #: (qv, qc, qr, ... and every number concentration) is positive-definite
 #: and gets the post-smdsm non-negativity clamp in ``feedback_commit``.
-_SIGNED_KINDS = frozenset({"u", "v", "w", "t", "ph", "mu"})
+from woof.core.passive_tracer_contract import TRACER_NAMES
+_SIGNED_KINDS = frozenset({"u", "v", "w", "t", "ph", "mu", *TRACER_NAMES})
 
 #: WRF's ``t0`` (share/module_model_constants.F:37, ``PARAMETER :: t0 =
 #: 300.``): the prognostic ``t_2`` is ``theta - t0``, a GLOBAL constant
@@ -143,7 +144,7 @@ def _rebase_feedback_theta(state, reg, spec_zone) -> None:
         # (woof.core.state re-expresses each loaded state to thb = 300),
         # so the restriction already IS the parent's t_2, as in WRF.  The
         # change of frame here would be (x + 300) - 300, which is not x in
-        # FP32: on a 9 km/3 km pair it moved d01's THM in 124,313
+        # FP32: on the nested 9 km/3 km pair it moved d01's THM in 124,313
         # words at t = 0 (up to 1.5e-5 K) against wrf.exe 4.6.1.
         return
     i_lo, i_hi, j_lo, j_hi = feedback_parent_bounds(
@@ -357,6 +358,7 @@ class NestCoupler:
         self.force_sync_bytes = 0
         self.feedback_sync_bytes = 0
         self.feedback_host_scratch_bytes = 0
+        self.surface_feedback_fields = ()
         self.first_parent_ticks = None
         self.last_parent_ticks = None
         #: The parent's STEP COUNT at the first and last force.  Ticks
@@ -473,6 +475,7 @@ class NestCoupler:
         self.feedback_sync_bytes = 0
         self.feedback_host_scratch_bytes = 0
         self.feedback_count = 0
+        self.surface_feedback_fields = ()
         self.last_feedback_ticks = None
         self._last_tables = None
         self._prepared_feedback = None
@@ -588,6 +591,7 @@ class NestCoupler:
         receipt.update({
             "source_domain": int(self.child_node.parent.cfg.grid_id),
             "target_domain": int(self.child_node.cfg.grid_id),
+            "surface_feedback_fields": list(self.surface_feedback_fields),
             "requested_policy": str(
                 self.child_node.cfg.run.nest_microphysics_transition),
             "effective_policy": self.microphysics_transition.policy_id,
@@ -724,7 +728,7 @@ class NestCoupler:
         from woof.wrf_exact import ENABLED as wrf_exact
         if kind != "t" or wrf_exact:
             # Strict mode carries WRF's t_2 itself (thb = 300 on every
-            # domain); (thp + 300) - 300 is not thp in FP32, and on a 9 km/3 km
+            # domain); (thp + 300) - 300 is not thp in FP32, and on the nested
             # pair it moved the parent's restricted THM in every column.
             return getattr(state, _state_attr(kind))
         shape = _field_shape(state, kind)
@@ -826,19 +830,67 @@ class NestCoupler:
                  else node.parent.state)
         return streamed_chunk_shape(state)
 
-    def _force_windowed(self, kind, out, parent_source, child_source):
-        """Build rolling strips from bounded canonical operands."""
+    def _force_windows(self, kind):
         from woof.core.nest_interp import bdy_width, window_registration
         from woof.core.nest_operands import boundary_windows
-
-        node = self.child_node
         reg = self.registrations[_STAGGER.get(kind, "m")]
-        run = node.cfg.run
+        run = self.child_node.cfg.run
         width = bdy_width(run.spec_zone, run.relax_zone, run.spec_bdy_width)
+        chunks = self._transaction_chunk_shape()
+        # The cache belongs to these registration OBJECTS. It holds them, so a
+        # rebuilt registration can never reuse a retired one's id(): keyed on
+        # bare id()s, a relocation whose new registrations landed at the freed
+        # addresses kept the old placement's windows and forced the moved child
+        # from the wrong parent cells (2.9.12 R6, test_streamed_relocation_
+        # rebuild_gpu keeps_owner[True], most first runs in a process).
+        registrations = tuple(self.registrations.values())
+        held = getattr(self, '_force_window_registrations', None)
+        if (held is None or len(held) != len(registrations)
+                or any(a is not b for a, b in zip(held, registrations))
+                or getattr(self, '_force_window_extent', None) != (width, chunks)):
+            self._force_window_registrations = registrations
+            self._force_window_extent = (width, chunks)
+            # A fresh token per geometry generation; the request cache holds
+            # it, so it is never equal to a later generation's.
+            self._force_window_signature = object()
+            self._force_window_cache = {}
+        stagger = _STAGGER.get(kind, "m")
+        if stagger not in self._force_window_cache:
+            self._force_window_cache[stagger] = tuple(
+                (side, window, destination, *window_registration(reg, window))
+                for side, window, destination in boundary_windows(reg, width, chunks))
+        return self._force_window_cache[stagger]
+
+    def _prepare_force_sources(self, parent_source, child_source, kinds):
+        from woof.core.microphysics_transition import edge_parent_planes
+        # Refresh the geometry signature before consulting the request cache.
+        for kind in kinds:
+            self._force_windows(kind)
+        # The transition object itself, not its id(): the held reference
+        # keeps a replaced transition's address from being taken for it.
+        signature = (self._force_window_signature, kinds,
+                     self.microphysics_transition)
+        if getattr(self, '_force_request_signature', None) != signature:
+            parent_requests, child_requests = [], []
+            for kind in kinds:
+                for _, window, _, _, donor in self._force_windows(kind):
+                    if transition_handles_field(self.microphysics_transition, kind):
+                        parent_requests.extend((name, donor) for name in
+                            edge_parent_planes() + ('thb', 'c1h', 'c2h'))
+                    else:
+                        parent_requests.extend(parent_source.coupled_requests(kind, donor))
+                    child_requests.extend(child_source.coupled_requests(kind, window))
+            self._force_requests = (parent_requests, child_requests)
+            self._force_request_signature = signature
+        parent_source.prepare(self._force_requests[0])
+        child_source.prepare(self._force_requests[1])
+
+    def _force_windowed(self, kind, out, parent_source, child_source):
+        """Build rolling strips from bounded canonical operands."""
+        node = self.child_node
+        run = node.cfg.run
         transition = transition_handles_field(self.microphysics_transition, kind)
-        for side, window, destination in boundary_windows(
-                reg, width, self._transaction_chunk_shape()):
-            cropped, donor = window_registration(reg, window)
+        for side, window, destination, cropped, donor in self._force_windows(kind):
             if not transition:
                 parent_field = parent_source.coupled(kind, donor)
             else:
@@ -877,14 +929,18 @@ class NestCoupler:
                 child = (source.raw(kind, donor) if mapped is None else
                          source.device_array(mapped, donor))
                 target = field[(...,) + window]
-                result = cp.empty(target.shape, dtype=cp.float32)
+                result = cp.empty(target.shape if target.ndim == 3 else
+                                  (1,) + target.shape, dtype=cp.float32)
+                if child.ndim == 2:
+                    child = child[None]
                 copy_fcn(result, child, reg, spec_zone=run.spec_zone,
                          parent_window=window, child_window=donor)
-                if kind == "t":
+                from woof.wrf_exact import ENABLED as wrf_exact
+                if kind == "t" and not wrf_exact:
                     result += _WRF_T0
                     thb = parent_source.device("thb", window)
                     result -= thb if thb.ndim == 3 else thb[:, None, None]
-                parent_source.write(attr, window, result)
+                parent_source.write(attr, window, result if target.ndim == 3 else result[0])
 
     def force(self, node) -> None:
         """Refresh this child's rolling tables from ``parent(t+dt_p)``.
@@ -923,9 +979,12 @@ class NestCoupler:
                             or getattr(parent.state, "_streamed_domain", None) is not None)
         if bounded_operands:
             from woof.core.nest_operands import NestWindowSource
-            parent_source = NestWindowSource(parent.state)
-            child_source = NestWindowSource(node.state)
-        for kind in nest_field_kinds(run):
+            parent_source = NestWindowSource(parent.state, read_only=True)
+            child_source = NestWindowSource(node.state, read_only=True)
+        kinds = tuple(nest_field_kinds(run))
+        if bounded_operands:
+            self._prepare_force_sources(parent_source, child_source, kinds)
+        for kind in kinds:
             if bounded_operands:
                 out = self._rolling_out(kind)
                 self._force_windowed(kind, out, parent_source, child_source)
@@ -939,15 +998,21 @@ class NestCoupler:
                 parent_field, child_field, self.registrations[stagger],
                 parent_dt_fp32=parent.clock.dt_fp32,   # LIVE
                 parent_interval_ticks=parent_interval_ticks,
+                allow_backward=bool(getattr(node.clock, '_dfi_backward', False)),
                 spec_zone=run.spec_zone, relax_zone=run.relax_zone,
                 spec_bdy_width=run.spec_bdy_width, out=out)
             fields[_APPLICATION_NAME.get(kind, kind)] = out
 
-        if bounded_operands:
-            self.force_sync_bytes += (parent_source.host_to_device_bytes
-                                      + child_source.host_to_device_bytes)
-
         from woof.wrf_exact import ENABLED as wrf_exact
+        if wrf_exact and bounded_operands:
+            from woof.core.nest_operands import couple_round_trip_canonical
+            for source, config in ((child_source, run), (parent_source, parent.cfg.run)):
+                if source.owner is None:
+                    from woof.core.nest_round_trip import couple_round_trip
+                    couple_round_trip(source.state, config)
+                else:
+                    couple_round_trip_canonical(source, config,
+                        chunk_shape=self._transaction_chunk_shape())
         if wrf_exact and not bounded_operands:
             # med_force_domain couples both domains in place and uncouples
             # them after the interpolation; strict mode leaves the same
@@ -955,6 +1020,11 @@ class NestCoupler:
             from woof.core.nest_round_trip import couple_round_trip
             couple_round_trip(node.state, run)
             couple_round_trip(parent.state, parent.cfg.run)
+
+        if bounded_operands:
+            self.force_sync_bytes += (parent_source.host_to_device_bytes
+                + parent_source.device_to_host_bytes + child_source.host_to_device_bytes
+                + child_source.device_to_host_bytes)
 
         if self.inflow_perturbation is not None:
             # After bdy_interp1 has written every rolling table and
@@ -1068,9 +1138,116 @@ class NestCoupler:
             "kinds": kinds,
             "dropped_kinds": tuple(dropped),
             "ticks": int(node.clock.ticks),
+            "surface": self._surface_feedback_plan(),
         }
         self._prepared_feedback = payload
         out.payload = payload
+
+    def _surface_feedback_plan(self):
+        """Resolve allocated Registry carriers against their canonical owners."""
+        from woof.core.nest_operands import NestWindowSource
+        from woof.core.nest_surface_fields import SURFACE_FEEDBACK
+
+        child = NestWindowSource(self.child_node.state)
+        parent = NestWindowSource(self.child_node.parent.state)
+        plan = []
+        for row in SURFACE_FEEDBACK:
+            for key in row.keys:
+                target, source = parent.array(key), child.array(key)
+                if target is None or source is None:
+                    continue
+                reg = self.registrations[row.stagger]
+                if (target.shape[-2:] != (reg.nyp, reg.nxp)
+                        or source.shape[-2:] != (reg.nyc, reg.nxc)
+                        or target.shape[:-2] != source.shape[:-2]
+                        or target.dtype != source.dtype):
+                    raise ValueError(
+                        f"WRF surface feedback {row.name} needs matching carrier "
+                        f"levels and dtype on its {row.stagger} registration; "
+                        f"parent={target.shape}/{target.dtype}, "
+                        f"child={source.shape}/{source.dtype}")
+                expected = (np.int32, np.int64) if row.operator == "copy_fcni" else (np.float32,)
+                if target.dtype not in expected:
+                    raise TypeError(f"WRF feedback {row.name} has unsupported dtype {target.dtype}")
+                plan.append((row.name, key, row.operator, row.stagger))
+        return tuple(plan)
+
+    def _feedback_surface(self, plan):
+        """Use exact masked/integer pickup, reusing the priced F16 arenas."""
+        import cupy as cp
+        from woof.core.nest_interp import copy_fcnm, copy_fcni, feedback_pick_window
+        from woof.core.nest_operands import NestWindowSource
+
+        node = self.child_node
+        parent = NestWindowSource(node.parent.state)
+        child = NestWindowSource(node.state)
+        bounded = parent.store is not None or child.store is not None
+        spec = node.cfg.run.spec_zone
+        from woof.state_serialization_contract import (
+            FEEDBACK_GEOGRAPHY_ATTRS, retain_feedback_geography)
+        if any(key in FEEDBACK_GEOGRAPHY_ATTRS for _, key, _, _ in plan):
+            retain_feedback_geography(node.parent.state, {
+                name: parent.array(name) for name in FEEDBACK_GEOGRAPHY_ATTRS})
+        for name, key, operator, stagger in plan:
+            reg = self.registrations[stagger]
+            target, source = parent.array(key), child.array(key)
+            kernel = copy_fcni if operator == "copy_fcni" else copy_fcnm
+            if not bounded:
+                kernel(target, source, reg, spec_zone=spec)
+                continue
+            ilo, ihi, jlo, jhi = feedback_parent_bounds(reg, spec_zone=spec)
+            if ihi < ilo or jhi < jlo:
+                continue
+            parent_backing = self._scratch("nest_parent_field").view(target.dtype).reshape(-1)
+            child_backing = self._scratch("nest_child_field").view(source.dtype).reshape(-1)
+            layers = math.prod(target.shape[:-2])
+            if layers > min(parent_backing.size, child_backing.size):
+                raise RuntimeError(f"surface feedback {name} exceeds its priced transaction arenas")
+            from woof.core.nest_operands import streamed_chunk_shape
+            endpoint = node.state if child.owner is not None else node.parent.state
+            if child.owner is not None or parent.owner is not None:
+                sy, sx = streamed_chunk_shape(endpoint)
+            else:
+                sy, sx = reg.nrj, reg.nri
+            py, px = max(1, sy // reg.nrj), max(1, sx // reg.nri)
+            # Bound every packed operand by the existing arena, including
+            # urban/mosaic leading axes deeper than the atmospheric column.
+            while True:
+                trial = (slice(jlo, min(jlo+py, jhi+1)), slice(ilo, min(ilo+px, ihi+1)))
+                donor = feedback_pick_window(reg, trial, spec_zone=spec)
+                cy, cx = donor
+                if (layers*py*px <= parent_backing.size
+                        and layers*(cy.stop-cy.start)*(cx.stop-cx.start) <= child_backing.size):
+                    break
+                if py >= px and py > 1:
+                    py = max(1, py//2)
+                elif px > 1:
+                    px = max(1, px//2)
+                else:
+                    raise RuntimeError(f"surface feedback {name} cannot fit one donor in its priced arenas")
+            for j in range(jlo, jhi+1, py):
+                for i in range(ilo, ihi+1, px):
+                    win = (slice(j, min(j+py, jhi+1)), slice(i, min(i+px, ihi+1)))
+                    donor = feedback_pick_window(reg, win, spec_zone=spec)
+                    y, x = win
+                    cy, cx = donor
+                    pshape = target.shape[:-2] + (y.stop-y.start, x.stop-x.start)
+                    cshape = source.shape[:-2] + (cy.stop-cy.start, cx.stop-cx.start)
+                    result = parent_backing[:math.prod(pshape)].reshape(pshape)
+                    packed = child_backing[:math.prod(cshape)].reshape(cshape)
+                    child.device_into(key, donor, packed)
+                    kernel(result, packed, reg, spec_zone=spec,
+                           parent_window=win, child_window=donor)
+                    parent.write(key, win, result)
+        self.surface_feedback_fields = tuple(row[0] for row in plan)
+        self.feedback_sync_bytes += (child.host_to_device_bytes + parent.device_to_host_bytes)
+        # Geometry may now be nonidentity even if initialization was identity.
+        # Conservative flags avoid a per-feedback device reduction/host read.
+        if any(key in ("msft", "msfu", "msfv") for _, key, _, _ in plan):
+            node.parent.state.has_msf = True
+            node.parent.state.rotational = True
+        elif any(key in ("f", "e", "sina", "cosa") for _, key, _, _ in plan):
+            node.parent.state.rotational = True
 
     def feedback_commit(self, node, *, start: bool = False) -> None:
         """Restrict the child into the parent.
@@ -1090,6 +1267,8 @@ class NestCoupler:
             raise RuntimeError("feedback clock changed after prepare")
         parent = node.parent
         run = node.cfg.run
+        from woof.core.trajectory import feedback as trajectory_feedback
+        trajectory_feedback(parent.state,node.state)
         self._bind_geometry()
 
         # A STREAMED parent is mutated here from outside dycore.step, so the
@@ -1175,6 +1354,38 @@ class NestCoupler:
                 _rebase_feedback_theta(parent.state, reg, run.spec_zone)
             written.append(_state_attr(kind))
 
+        # The slab's surface fields carry Registry u but no s: masked
+        # point restriction for TSK/TSLB, averages for ACHFX/ACLHF, and
+        # no smoother. Keep this scheme-specific inventory separate from
+        # the atmospheric inventory above.
+        if 1 in (int(parent.cfg.run.sf_surface_physics),
+                 int(run.sf_surface_physics)):
+            if int(parent.cfg.run.num_soil_layers) != int(run.num_soil_layers):
+                raise ValueError("WRF num_soil_layers is global; a slab nest and its parent require five layers")
+            from woof.core.slab_nest import feedback_slab_surface
+            feedback_slab_surface(
+                parent.state, node.state, self.registrations["m"],
+                spec_zone=run.spec_zone,
+                chunk_shape=(self._transaction_chunk_shape()
+                             if bounded_operands else None))
+
+        from woof.core.noahmp_nest import feedback_selected_noahmp, selected_noahmp
+        if selected_noahmp(parent.cfg.run) or selected_noahmp(run):
+            surface_feedback = feedback_selected_noahmp(
+                node, self.registrations["m"], spec_zone=run.spec_zone,
+                chunk_shape=(self._transaction_chunk_shape()
+                             if bounded_operands else (32, 32)))
+            payload["noahmp_fields"] = surface_feedback["fields"]
+            self.feedback_sync_bytes += surface_feedback["sync_bytes"]
+        if (int(parent.cfg.run.sf_surface_physics) == 8
+                and int(run.sf_surface_physics) == 8):
+            from woof.core.ssib_nesting import feedback as ssib_feedback
+            self.feedback_sync_bytes += ssib_feedback(
+                parent.state, node.state, self.registrations["m"],
+                spec_zone=run.spec_zone,
+                chunk_shape=(self._transaction_chunk_shape()
+                             if bounded_operands else None)) or 0
+
         # Strict mode, per-step: WRF also restricts the base state (phb,
         # mub, alb and pb carry the Registry ``u`` flag,
         # inc/nest_feedbackup_interp.inc) and nothing rebuilds it afterwards
@@ -1189,11 +1400,20 @@ class NestCoupler:
         base_kinds = ()
         base_key = (int(self.registrations["m"].i_parent_start),
                     int(self.registrations["m"].j_parent_start))
-        if (wrf_exact and not start and not bounded_operands
-                and parent.state.phb.ndim == 3
+        base_source = parent_source if bounded_operands else None
+        parent_phb = (base_source.array("phb") if base_source is not None else parent.state.phb)
+        if (wrf_exact and not start
+                and parent_phb.ndim == 3
                 and getattr(self, "_wrf_base_fed_back", None) != base_key):
+            from woof.state_serialization_contract import retain_feedback_setup
+            retain_feedback_setup(parent.state, {
+                attr: base_source.array(attr) for attr in ("mub2d", "alb", "pb", "phb")
+            } if base_source is not None else None)
             reg = self.registrations["m"]
             for attr in ("mub2d", "alb", "pb", "phb"):
+                if bounded_operands:
+                    self._restrict_windowed(attr, child_source, parent_source)
+                    continue
                 target = getattr(parent.state, attr)
                 source = getattr(node.state, attr)
                 copy_fcn(target if target.ndim == 3 else target[None],
@@ -1249,34 +1469,67 @@ class NestCoupler:
             if self.smooth_option != 0:
                 reg = self.registrations["m"]
                 for attr in base_kinds:
+                    if canonical_parent:
+                        from woof.core.nest_operands import smooth_canonical_parent, streamed_chunk_shape
+                        smooth_canonical_parent(parent_source, attr, reg,
+                            smooth_option=self.smooth_option,
+                            chunk_shape=streamed_chunk_shape(parent.state))
+                        continue
                     field = getattr(parent.state, attr)
                     smoother(field if field.ndim == 3 else field[None], reg,
                              smooth_option=self.smooth_option,
                              scratch=self._scratch("nest_parent_field"))
             # dphb_resid and the host height cache follow the new phb.
-            parent.state.set_base_geopotential(parent.state.phb)
+            if canonical_parent:
+                from woof.core.nest_operands import refresh_canonical_base
+                refresh_canonical_base(parent_source)
+            else:
+                parent.state.set_base_geopotential(parent.state.phb)
             # WRF keeps its perturbation p and forms pb + p where it reads
             # the total (calc_coef_w's c2a, small_step_prep), so the total
             # the next step reads is the stale p on the fed-back pb.
-            p_pert = getattr(parent.state, "p_perturbation", None)
+            p_pert = None if canonical_parent else getattr(parent.state, "p_perturbation", None)
             if p_pert is not None:
                 import cupy as cp
                 cp.add(parent.state.pb, p_pert, out=parent.state.p)
                 # rk_step_prep's calc_alt (module_em.F:176) re-forms
                 # alt = al + alb at every RK stage, rk_step 1 included, so
                 # the next step reads the stale al on the fed-back alb.
-                # Kept stale, a 9 km/3 km pair's parent left wrf.exe at its
+                # Kept stale, the nested pair's parent left wrf.exe at its
                 # second step inside the nest (W in 96,501 words at 90 s).
                 cp.add(parent.state.al, parent.state.alb, out=parent.state.alt)
             self._wrf_base_fed_back = base_key
+            parent.state._feedback_base_children[str(node.cfg.grid_id)] = list(base_key)
+        self._feedback_surface(payload["surface"])
         if streamed_parent and not canonical_parent:
             _sync_out(parent.state, tuple(dict.fromkeys(written)))
+        feedback_done = set(self.surface_feedback_fields)
+        if not start:
+            # Registry u-marked surface, soil and carried physics fields
+            # follow the same runtime feedback transaction at either theta.
+            from woof.core.nest_physics_feedback import feedback_physics
+            feedback_done.update(feedback_physics(self, node, skip_names=feedback_done))
         if bounded_operands:
             self.feedback_sync_bytes += (
                 child_source.host_to_device_bytes + parent_source.host_to_device_bytes
                 + parent_source.device_to_host_bytes)
             self.feedback_host_scratch_bytes = max(
                 self.feedback_host_scratch_bytes, parent_source.max_host_scratch_bytes)
+        from woof.core.surface_nests import commit_surface_feedback
+        surface = commit_surface_feedback(
+            parent.state, node.state, run, self.registrations["m"],
+            spec_zone=run.spec_zone, skip_names=feedback_done)
+        self.feedback_sync_bytes += surface["sync_bytes"]
+        self.feedback_host_scratch_bytes = max(
+            self.feedback_host_scratch_bytes, surface["host_scratch_bytes"])
+        self.last_surface_feedback_fields = surface["fields"]
+        feedback_done.update(surface["fields"])
+        # PX's Registry u flags include masked surface and soil state.
+        # Keep this scheme-scoped so every pre-existing option is unchanged.
+        if int(parent.cfg.run.sf_surface_physics) == 7:
+            from woof.core.pxlsm_runtime import feedback_surface
+            feedback_surface(parent, node, self.registrations["m"],
+                             spec_zone=run.spec_zone, skip_names=feedback_done)
         self.feedback_count += 1
         self.last_feedback_ticks = int(node.clock.ticks)
 

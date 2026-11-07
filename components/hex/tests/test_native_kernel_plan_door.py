@@ -25,6 +25,11 @@ def test_native_prewarm_precedes_run_and_receipt_survives_failure(tmp_path, monk
     # (resident_v842.ported_route_refusal, tested in test_mpasphys_resident_v842) is not their subject.
     monkeypatch.setattr("woof.hex.mpasphys.resident_v842.ported_route_refusal", lambda config: None)
     monkeypatch.setattr(licence_gate, 'admit', lambda c, a: c)
+    monkeypatch.setattr(forecast_door, 'admit_native_device', lambda *a: events.append('admit'))
+    # a801558f: the door prices the MPAS route's device memory (reading the init's
+    # dimensions and probing the card) after device admission and before warm-up.
+    monkeypatch.setattr('woof.hex.mpasphys.memory_admission.admit',
+                        lambda a: events.append('memory') or {'route': 'mpas'})
     monkeypatch.setattr(forecast_door, 'announce_physics_mode', lambda *a: None)
     monkeypatch.setattr(forecast_door, 'announce_cpu_slots', lambda *a: None)
     monkeypatch.setattr(kernel_prewarm, 'install_recorder', lambda: events.append('record'))
@@ -33,7 +38,7 @@ def test_native_prewarm_precedes_run_and_receipt_survives_failure(tmp_path, monk
 
     def run(a, c, native_text):
         assert a is arguments and c is config and native_text == text
-        assert events == ['record', 'replay']
+        assert events == ['admit', 'memory', 'record', 'replay']
         events.append('run')
         if fail:
             raise RuntimeError('controlled native failure')
@@ -46,4 +51,4 @@ def test_native_prewarm_precedes_run_and_receipt_survives_failure(tmp_path, monk
     else:
         assert forecast_door._run_forecast(arguments) == 7
     receipt = json.loads((tmp_path / 'kernel-plan-receipt.json').read_text())
-    assert receipt == {'test_events': ['record', 'replay', 'run']}
+    assert receipt == {'test_events': ['admit', 'memory', 'record', 'replay', 'run']}

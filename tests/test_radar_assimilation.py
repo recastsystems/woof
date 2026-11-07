@@ -396,10 +396,16 @@ def test_reflectivity_for_a_scheme_with_no_hx_route_is_refused_at_config_time():
     # polar-scattering diagnostic is not ported), so there is no H(x) over
     # its bin spectra.  The gate refuses it here, at configuration, which is
     # the shipped positive control the synthesised row below stood in for.
-    assert sorted(mp for mp, route in routes.items() if route == "unrouted") == [24, 30]
-    with pytest.raises(RadarAssimilationError, match=r"no H\(x\) route"):
-        _config(reflectivity=True, analysis_fields=HYDRO_FIELDS,
-                positivity_policy="clip", mp_physics=30)
+    # CAMMGMP retains an initialized zero field and supplies no radar H(x).
+    # 3.0.0 port folds: UDM (27) and RCON (29) keep their own native field,
+    # Eta new (95) and the empty MAD-WRF arm (96) have none; none has a radar
+    # H(x), so each is refused at configuration (woof.da.obsop cites them).
+    unrouted = [11, 24, 27, 29, 30, 95, 96]
+    assert sorted(mp for mp, route in routes.items() if route == "unrouted") == unrouted
+    for mp in unrouted:
+        with pytest.raises(RadarAssimilationError, match=r"no H\(x\) route"):
+            _config(reflectivity=True, analysis_fields=HYDRO_FIELDS,
+                    positivity_policy="clip", mp_physics=mp)
     # NOR is any scheme fused any more: mp=50's Z was lifted into
     # woof/core/kernels/p3_zdiag.cu (audit S14) and is a scheme
     # diagnostic.  The fused arm of the gate is driven on a probe row
@@ -408,9 +414,9 @@ def test_reflectivity_for_a_scheme_with_no_hx_route_is_refused_at_config_time():
     # inside its own step (obsop.NATIVE_Z_NOT_SEPARABLE_FROM_THE_STEP), so a
     # reflectivity cycle on it is refused by name below, the positive
     # control this arm lacked.  Ferrier-Aligo (5) computes its DBZ column
-    # inside EGCP01COLUMN, so it is fused too.
-    from woof.microphysics_schemes import NAMED_MP_IDS
-    assert set(fused) == {5} | set(NAMED_MP_IDS), routes
+    # inside EGCP01COLUMN, so it is fused too. Goddard 4-ice (7) writes
+    # hail-inclusive reflectivity inside saticel_s.
+    assert set(fused) == {5, 7, 15, 55, 900}, routes
     assert routes[50] == "scheme-diagnostic", routes
     for mp in fused:
         with pytest.raises(RadarAssimilationError,
@@ -1693,7 +1699,7 @@ def test_moment_guard_refuses_a_truncated_field_set_before_the_solve(
         hydro_world, hydro_grid):
     """A mass field without its number moment, refused at configuration.
 
-    This is the a development machine defect: nine fields, no number concentrations,
+    This is the test host 8 defect: nine fields, no number concentrations,
     reflectivity assimilation creating rain in cells the background left
     clear, and Morrison's slope closure evaluating to NaN.  Under
     full-moment it is now refused before a single H(x) is computed,

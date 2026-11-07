@@ -514,10 +514,30 @@ class ConservativeMap:
                         candidate_pairs=tested, overlaps=matrix.nnz, overlap_execution=overlap_execution, seconds=time.perf_counter()-began,
                         **geometry_receipt))
 
-    def with_physical_areas(self, source_area, target_area, *, source_geometry_area=None):
+    def with_physical_areas(self, source_area, target_area, *, source_geometry_area=None,
+                            generator_areas=None, generator_area_scale=None):
         """Reconcile only prepared metric rounding, conserving active areas."""
         source_area=np.asarray(source_area,dtype=np.float64)
         target_area=np.asarray(target_area,dtype=np.float64)
+        source_reference = (np.asarray(source_geometry_area, dtype=np.float64)
+                            if self.receipt.get('target_subdomain', False) else self.source_area)
+        references = (source_reference, self.target_area)
+        actuals = (source_area, target_area)
+        exact_cast = all(np.array_equal(a, r.astype(np.float32).astype(float))
+                         for a, r in zip(actuals, references))
+        rkind_cast = False
+        if generator_areas is not None:
+            scale = float(generator_area_scale)
+            if not np.isfinite(scale) or scale <= 0 or len(generator_areas) != 2:
+                raise ValueError('prepared metric generator authority is incomplete')
+            raw = tuple(np.asarray(a, dtype=np.float64) for a in generator_areas)
+            if any(a.shape != r.shape or not np.array_equal(a * scale, r)
+                   for a, r in zip(raw, references)):
+                raise ValueError('prepared metric generator differs from admitted geometry')
+            rkind_cast = all(np.array_equal(a, g.astype(np.float32) * np.float32(scale))
+                             or np.array_equal(a, r.astype(np.float32))
+                             for a, g, r in zip(actuals, raw, references))
+        exact_metric_cast = exact_cast or rkind_cast
         if self.receipt.get('target_subdomain', False):
             geometry = np.asarray(source_geometry_area, dtype=np.float64)
             if (geometry.shape != source_area.shape or np.any(geometry <= 0)
@@ -526,7 +546,7 @@ class ConservativeMap:
                 raise ValueError('subdomain prepared metrics require complete source geometry areas')
             metric_error = max(float(np.max(abs(source_area / geometry - 1))),
                                float(np.max(abs(target_area / self.target_area - 1))))
-            if not np.isfinite(metric_error) or metric_error > np.finfo(np.float32).eps:
+            if not np.isfinite(metric_error) or metric_error > np.finfo(np.float32).eps and not exact_metric_cast:
                 raise ValueError('prepared physical areas differ beyond FP32 metric rounding')
             matrix = self.overlap.copy()
             matrix.data *= np.repeat(target_area / np.asarray(matrix.sum(axis=1)).ravel(),
@@ -538,7 +558,7 @@ class ConservativeMap:
                 integral_area_authority='prepared target areaCell and covered parent overlap'))
         metric_error=max(float(np.max(abs(source_area/self.source_area-1))),
                          float(np.max(abs(target_area/self.target_area-1))))
-        if metric_error>np.finfo(np.float32).eps:
+        if metric_error>np.finfo(np.float32).eps and not exact_metric_cast:
             raise ValueError('prepared physical areas differ beyond FP32 metric rounding')
         total_difference=float(source_area.sum()-target_area.sum())
         arithmetic=16*np.finfo(float).eps*float(self.source_area.sum())
@@ -548,9 +568,7 @@ class ConservativeMap:
             # Different cell counts have different FP32 area sums. Admit only
             # the exact cast of each independently validated geometry metric.
             # Do not rescale an atmospheric field or substitute equal totals.
-            exact_cast=(np.array_equal(source_area,self.source_area.astype(np.float32).astype(float)) and
-                        np.array_equal(target_area,self.target_area.astype(np.float32).astype(float)))
-            if not exact_cast or abs(total_difference)>cast_envelope+arithmetic:
+            if not exact_metric_cast or abs(total_difference)>cast_envelope+arithmetic:
                 raise ValueError('prepared source and target global areas disagree beyond exact metric casts')
         matrix=self.overlap.copy()
         # Each sparse diagonal product only scales the existing CSR entries.

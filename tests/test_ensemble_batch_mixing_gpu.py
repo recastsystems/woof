@@ -28,10 +28,10 @@ _TARGETS = ("ru_t", "rv_t", "rw_t", "rth_t")
 
 def _inputs(count, *, terrain=False, mapped=False, km_opt=4, diff6=2,
             open_x=False, open_y=False, specified=False, slope=1,
-            isfflx=1, clock_dt=0.0, hybrid_opt=2, shape=(12, 11), pbl=0):
+            isfflx=1, clock_dt=0.0, hybrid_opt=2, shape=(12, 11), pbl=0, use_theta_m=0):
     from woof.core.diagnostics import update_diagnostics
     cfg = RunConfig(nx=shape[0], ny=shape[1], nz=5, dx=3000.0, dy=2700.0,
-                    ztop=9000.0, dt=3.0, run_seconds=30.0,
+                    ztop=9000.0, dt=3.0, run_seconds=30.0, use_theta_m=use_theta_m,
                     terrain_opt=int(terrain), km_opt=km_opt, diff_opt=2,
                     diff_6th_opt=diff6, diff_6th_slopeopt=slope,
                     diff_6th_factor=0.2, clock_dt=clock_dt, hybrid_opt=hybrid_opt,
@@ -494,3 +494,9 @@ def test_original_metric_ptx_rounding_matches_raw_cubin(monkeypatch, tmp_path):
     monkeypatch.setattr(mixing, "_raw", ptx_bind)
     test_each_metric_mixing_raw_leaf_matches_scalar_identical_input_words(1, monkeypatch, tmp_path)
     assert any(name in seen for name in ("wrf_smag_hd_w", "wrf_smag_hd_w_stress", "wrf_smag_hd_w_cached"))
+
+
+@pytest.mark.parametrize("members", [1, 4])
+@pytest.mark.parametrize("isfflx", [0, 1, 2])
+def test_moist_theta_surface_flux_bindings_match_scalar(members, isfflx):
+    _prove(_inputs(members, terrain=True, mapped=True, isfflx=isfflx, use_theta_m=1))

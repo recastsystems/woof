@@ -92,18 +92,17 @@ grep -q "fn read_lbc_met_file(" "$woof/tools/rustwx/crates/rw-mpas/src/init/metf
 rev=${GPUWM_BRIDGE_SOURCE_REV:-$(git -C "$woof" rev-parse HEAD 2>/dev/null || true)}
 [[ "$rev" =~ ^[0-9a-f]{40}$ ]] || { echo "set GPUWM_BRIDGE_SOURCE_REV to the 40-hex woof commit of $woof" >&2; exit 2; }
 engine_cli=$(command -v podman || command -v docker) || { echo "needs podman or docker" >&2; exit 2; }
-# rw_sfc_series (this tree's crate, with its own Cargo.lock) builds only against an engine whose vendored registry
-# holds every crate that lock names; woof 2.9.10's does not (tokio 1.53.3: "failed to select a version for the
-# requirement tokio = ^1.0 (locked to 1.53.3)", engine-bridges-v0.4.10 build). An OUT_DIR/rw_sfc_series placed
-# beforehand whose SHA-256 is the pinned one is carried; otherwise the step builds it as before.
-carry_sfc=0
-pinned_sfc=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_prebuilts"]["files"]["rw_sfc_series"]["sha256"])' \
-  "$tree/src/hexcore/data/engine-bridges.json")
-if [ -f "$out/rw_sfc_series" ] && [ "$(sha256sum "$out/rw_sfc_series" | cut -d' ' -f1)" = "$pinned_sfc" ]; then carry_sfc=1; fi
+# The source-owned surface producer uses its committed lock against this engine graph.
 cat >"$out/job.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
+export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-16}
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8
+export CARGO_TARGET_DIR=/out/cargo-target
+mkdir -p /out/netcdf4-static
+ln -s /out/netcdf4-static /opt/netcdf4-static
 bash /hex/tree/tools/build_netcdf4_static.sh /opt/netcdf4-static
+export LIBRARY_PATH=/opt/netcdf4-static/lib
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "${toolchain}" >/dev/null
 export PATH="\$HOME/.cargo/bin:\$PATH"
 mkdir -p /build && cp -a /woof/tools /build/tools
@@ -117,17 +116,17 @@ cp /woof/pyproject.toml /build/pyproject.toml
 if [ -d /woof/woof/data ]; then mkdir -p /build/gpuwm && cp -a /woof/woof/data /build/woof/data; fi
 cd /build/tools/rustwx
 GPUWM_BRIDGE_SOURCE_REV=${rev} LIBRARY_PATH=/opt/netcdf4-static/lib \\
-  cargo build --release --locked --offline -p rw-mpas --features system-netcdf $(printf -- "--bin %s " $BRIDGES)
-for b in ${BRIDGES}; do cp target/release/\$b /out/\$b; done
+  cargo build -j "\$CARGO_BUILD_JOBS" --release --locked --offline -p rw-mpas --features system-netcdf $(printf -- "--bin %s " $BRIDGES)
+for b in ${BRIDGES}; do cp /out/cargo-target/release/\$b /out/\$b; done
 GPUWM_BRIDGE_SOURCE_REV=${rev} \\
-  cargo build --release --locked --offline -p rw-obs $(printf -- "--bin %s " $OBS_BRIDGES)
-for b in ${OBS_BRIDGES}; do cp target/release/\$b /out/\$b; done
-if [ "${carry_sfc}" = 1 ]; then
-  echo "rw_sfc_series: carried, the pinned bytes already in OUT_DIR"
-else
-  bash /hex/tree/tools/build_sfc_series.sh /build /out/sfc-build
-  cp /out/sfc-build/rw_sfc_series /out/rw_sfc_series
-fi
+  cargo build -j "\$CARGO_BUILD_JOBS" --release --locked --offline -p rw-obs $(printf -- "--bin %s " $OBS_BRIDGES)
+for b in ${OBS_BRIDGES}; do cp /out/cargo-target/release/\$b /out/\$b; done
+bash /hex/tree/tools/build_sfc_series.sh /build /out/sfc-build
+cp /out/sfc-build/rw_sfc_series /out/rw_sfc_series
+# The converter has its own capability patches and build receipt, just as the renderer does.
+(cd / && GPUWM_BRIDGE_SOURCE_REV=${rev} LIBRARY_PATH=/opt/netcdf4-static/lib \
+  bash /hex/tree/tools/build_chemistry_converter.sh /build /out/converter-build)
+cp /out/converter-build/rw_mpas_convert /out/rw_mpas_convert
 # From /, not the engine workspace: the recipe builds the rw_s2s reducer in this tree's own workspace with its own
 # Cargo.lock, and cargo reads the engine's vendored-registry config from the working directory, so the reducer
 # stopped "failed to select a version for the requirement chrono = =0.4.44" against woof 2.9.10's vendor
@@ -141,14 +140,14 @@ cp /out/s2s-renderer-build/rw_s2s /out/rw_s2s
 RUSTFLAGS="-L native=/opt/netcdf4-static/lib" LIBRARY_PATH=/opt/netcdf4-static/lib \\
   bash /hex/tree/tools/build_surface_reader.sh /out/surface-reader-build --features static-netcdf
 cp /out/surface-reader-build/target/release/librw_surface.so /out/librw_surface.so
-for b in ${BRIDGES} ${OBS_BRIDGES} rw_sfc_series librw_surface.so rw_wrfbatch rw_ensbatch; do
+for b in ${BRIDGES} ${OBS_BRIDGES} rw_sfc_series librw_surface.so rw_wrfbatch rw_ensbatch rw_mpas_convert; do
   ldd /out/\$b
   ! ldd /out/\$b | grep -E "not found|libnetcdf|libhdf5|libz\\." || { echo "\$b is not self-contained"; exit 1; }
 done
 /out/rw_mpas_geometry --abi > /out/rw_mpas_geometry.abi
 grep -q "hex-vertical-v1" /out/rw_mpas_geometry || { echo "rw_mpas_geometry lacks hex-vertical-v1"; exit 1; }
 rustc --version > /out/rustc.txt
-cd /out && sha256sum ${BRIDGES} ${OBS_BRIDGES} rw_sfc_series librw_surface.so rw_wrfbatch rw_ensbatch > SHA256SUMS
+cd /out && sha256sum ${BRIDGES} ${OBS_BRIDGES} rw_sfc_series librw_surface.so rw_wrfbatch rw_ensbatch rw_mpas_convert > SHA256SUMS
 EOF
 chmod +x "$out/job.sh"
 "$engine_cli" run --rm -v "$tree/..:/hex:ro,Z" -v "$woof:/gpuwm:ro,Z" -v "$out:/out:Z" "$image" /out/job.sh 2>&1 | tee "$out/build.log"
@@ -165,6 +164,8 @@ hex_root = pathlib.Path(sys.argv[5])
 record = {
     "schema": "gpuwm-hex.engine-bridges-build/v1",
     "gpuwm_source_rev": rev,
+    "cargo_build_jobs": int(__import__("os").environ.get("CARGO_BUILD_JOBS", "16")),
+    "release_codegen_units": 8,
     "image": image,
     "rustc": (out / "rustc.txt").read_text().strip(),
     "netcdf_c": "4.9.3 static with netCDF-4: HDF5 1.14.6 and zlib 1.3.1 (tools/build_netcdf4_static.sh)",
@@ -196,6 +197,7 @@ record["bridges"]["rw_sfc_series"] = {
     "sha256": sha(out / "rw_sfc_series"), "bytes": (out / "rw_sfc_series").stat().st_size,
     "sources": {str(path.relative_to(crate)): sha(path) for path in sorted(crate.rglob("*")) if path.is_file()}}
 record["bridges"]["rw_wrfbatch"] = json.loads((out / "s2s-renderer-build/provenance.json").read_text())
+record["chemistry_converter"] = json.loads((out / "converter-build/provenance.json").read_text())
 record["surface_reader"] = {
     "sha256": sha(out / "librw_surface.so"), "bytes": (out / "librw_surface.so").stat().st_size,
     "source": "tools/rustwx/crates/rw-surface/src/lib.rs",

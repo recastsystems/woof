@@ -280,7 +280,7 @@ def forget_modules_imported_under_fake_cupy():
     ``cupy`` entry but not those bindings.  On a card host that turned
     ``tests/test_health.py``'s real-GPU inventory test into "GPU health
     field 'held.pbl.ru' is not a CUDA array" whenever it ran after this
-    file (W1, 2026-10-07, lane/verify-base5).
+    file (W1, 2026-10-07, development branch).
     """
     before = set(sys.modules)
     yield

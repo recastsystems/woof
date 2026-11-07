@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -140,6 +141,21 @@ def _drawn_region(args):
         raise MpasPortError(str(error)) from error
 
 
+def _projected_row(source):
+    """The intermediate row a country region reads ``source`` through, or None for its table leads.
+
+    A global row's mapped composition (gfs, added for TC composition and the storm merge) is not
+    its boundary path: the country door requests neither, so the row keeps its posted leads and
+    --boundary-interval-hours, as the regional door does (regional_door.plan, 8ceff87f). THE
+    BREAKAGE THIS PREVENTS: once the TC fold gave gfs an intermediate row, every GFS country region
+    dropped its hourly source endpoints for the 3-hourly composition door.
+    """
+    spec = source.get("intermediate") or {}
+    if spec.get("backend") == "mapped-composition" and source.get("coverage", "global") == "global":
+        return None
+    return spec.get("row")
+
+
 def producer_suite(named):
     """The forecast's suite when it initializes through its own producer row (hrrrv5, the rrfs_* suites), else None."""
     suite = named.get("suite")
@@ -159,14 +175,24 @@ def _producer_init_argv(args, value):
     from .mesh_point import resolve_geog
     argv += ["--geog", str(resolve_geog(args.geog).expanduser().absolute())]
     from .init_sources import cold_soil_init_flags, load_table, resolve_source, surface_input_init_flags
-    source = resolve_source(load_table(getattr(args, "source_table", None)), value["row"]["init_source"])
+    from .regional_door import resolve_regional_source
+    _, source = resolve_regional_source(value["row"]["init_source"], load_table(getattr(args, "source_table", None)))
     if source.get("cold_soil") or source.get("surface_input"):
-        first = value["boundary_endpoints"][0]["argv"]
+        first = (value.get("start_endpoints") or value["boundary_endpoints"])[0]["argv"]
         decoded = json.loads((Path(first[first.index("--out-dir") + 1]) / "init-source-receipt.json").read_text())
         if source.get("cold_soil"):
             argv += cold_soil_init_flags(decoded["products"], source["cold_soil"])
         argv += surface_input_init_flags(decoded.get("surface_input"))
+    met = Path(argv[argv.index("--met") + 1]).parent
+    guess = _measured_first_guess(met, value["start_first_guess"])
+    for key in ("nfglevels", "nfgsoillevels"):
+        argv[argv.index("--" + key) + 1] = str(guess[key])
     return argv
+
+
+def _measured_first_guess(met, declared):
+    from .regional_door import _first_guess
+    return _first_guess({"source": {"first_guess": declared}, "paths": {"met": str(met)}})
 
 
 def region_specification(row):
@@ -177,7 +203,7 @@ def region_specification(row):
         return ladder_spec(tuple(row["geometry"]["center_deg"]), fine_dx_m=mesh["fine_dx_m"],
             radius_km=row["geometry"]["radius_km"], background_km=mesh["background_km"], name=row["id"])
     # A drawn region (--polygon) takes the regional door's grown halving ladder, rung for rung as a cap does.
-    # THE BREAKAGE THIS PREVENTS (hex-shapes-1card, V8X6000 2026-10-29 06:05-06:16Z, re-run on an RTX 4090 host 07:09Z with
+    # THE BREAKAGE THIS PREVENTS (one-card shape check, eight-card system 2026-10-29 06:05-06:16Z, re-run on an RTX 4090 host 07:09Z with
     # the hex 0.4.10 generator): `country --polygon CONUS --fine-dx-m 3000 --background-km 96` (and 120 -> 3.75 km)
     # wrote ONE region with the table default's 540 km ramp (18 x its 30 km), whatever --fine-dx-m asked. The ramp is
     # a tanh centred on the outline, so a polygon a couple of ramps deep never reads its spacing to 0.1 % anywhere:
@@ -235,15 +261,74 @@ def _suite_parent_init(value, parent_init, mesh):
     return Path(prepared) if receipt is not None else None
 
 
+class _SourceBesideMesh:
+    """The source's fetch and decode, running from the start of the preparation until its own stage joins them.
+
+    THE BREAKAGE THIS PREVENTS (hrrrv5 regional region from IFS, build host, 2026-10-31): 13 s of decode (25 s and 186 s on
+    a loaded build host) after the mesh, static and cut had finished, while the card waited; they read no mesh. Each lead
+    is its own process, so a door that stops early stops them, and a failure reads as before at the stage that joins.
+    """
+
+    def __init__(self, commands, met_dir, workers, produce):
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        self.stopped = threading.Event()
+        self.running = []
+        self.ready = {item["valid_time"]: threading.Event() for item in commands if isinstance(item, dict)}
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="boundary-endpoints")
+        self.future = pool.submit(produce, commands, met_dir, workers=workers, runner=self.run,
+                                  on_ready=lambda item, record: self.ready[item["valid_time"]].set())
+        pool.shutdown(wait=False)
+
+    def wait(self, valid_time):
+        """Block until the endpoint at ``valid_time`` is decoded and verified (or the source stage has ended).
+
+        THE BREAKAGE THIS PREVENTS (hex 0.4.14 both-routes matrix, RED 3, 2026-11-06): endpoint 0 decodes into
+        parent/init, and the init stage ran its own full init-source into the same directory beside it, so two
+        processes wrote parent/init/MET:<start> and the endpoint's digest check read the other writer's file
+        ("boundary intermediate digest differs"). The init now waits here and builds with --from-decoded."""
+        event = self.ready[valid_time]
+        while not event.wait(0.05):
+            if self.future.done():
+                self.future.result()  # the endpoint's own failure, named where it happened
+                return
+
+    def run(self, argv):
+        if self.stopped.is_set():
+            return 1
+        process = subprocess.Popen([sys.executable, "-m", "woof.hex.cli", *argv], start_new_session=True)
+        self.running.append(process)
+        return process.wait()
+
+    def stop(self):
+        self.stopped.set()
+        for process in self.running:
+            if process.poll() is None:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+
+
 def _prepare_region(args, value, status):
+    from .lbc_producer import produce_source_endpoints
+    if args.endpoint_workers < 1:
+        raise MpasPortError("endpoint workers must be positive")
+    source = _SourceBesideMesh(value["boundary_endpoints"], args.work_dir.resolve() / "boundary-met",
+                               args.endpoint_workers, produce_source_endpoints)
+    try:
+        return _prepare_region_stages(args, value, status, source)
+    finally:
+        source.stop()
+
+
+def _prepare_region_stages(args, value, status, source):
+    from .lbc_producer import produce_source_endpoints
     from .cli import main
     from . import mesh_rows
     from .mesh_point import admit_pair
     from .engines import resolve, ENGINES
     from .prep_store import run_or_fetch
-    from .lbc_producer import produce_source_endpoints
-    if args.endpoint_workers < 1:
-        raise MpasPortError("endpoint workers must be positive")
     root = args.work_dir.resolve()
     parent = root / "parent"
     parent.mkdir(exist_ok=True)
@@ -307,6 +392,10 @@ def _prepare_region(args, value, status):
         # A producer suite (hrrrv5) starts from its own case 7 on the cut below, so the parent's v8.4.2 init is
         # neither built nor cut: the start time's intermediate comes from boundary endpoint 0's decode.
         status.note("initializing the global parent from the selected source")
+        if "--from-decoded" in value["commands"]["init"]:
+            # One writer of parent/init: boundary endpoint 0 decodes the start time there beside the mesh, and the
+            # init builds from that decode once it is verified (_SourceBesideMesh.wait).
+            measured("start-decode", lambda: source.wait(value["boundary_endpoints"][0]["valid_time"]))
         rc = measured("init", lambda: main(value["commands"]["init"]))
         if rc:
             return rc
@@ -332,8 +421,16 @@ def _prepare_region(args, value, status):
         lbc_source=f"{row['init_source']} source table endpoints in {root / 'lbc'}", admission=cut_admission,
         dt_seconds=mesh["dt_seconds"])
     mesh_rows.write_rows(root / "mesh-rows.json", [registered, cut])
-    measured("boundary-endpoints", lambda: produce_source_endpoints(
-        value["boundary_endpoints"], root / "boundary-met", workers=args.endpoint_workers))
+    measured("boundary-endpoints", source.future.result)
+    if value.get("start_endpoints"):
+        measured("start-endpoint", lambda: produce_source_endpoints(
+            value["start_endpoints"], root / "start-met", workers=args.endpoint_workers))
+    for name in ("start_intermediate", "boundary_intermediate"):
+        if name in value["commands"]:
+            rc = measured(name, lambda: main(value["commands"][name]))
+            if rc:
+                return rc
+
     if producer:
         # THE BREAKAGE THIS PREVENTS (hrrrv5 physics on regular regions, 2026-10-31): the door built hex's own
         # 55-level v8.4.2 start state, completed RUC's nine soil levels with the ArWen seam, and wrote v8.4.2
@@ -345,7 +442,15 @@ def _prepare_region(args, value, status):
         rc = measured("producer-init", lambda: main(_producer_init_argv(args, value)))
         if rc:
             return rc
-    return measured("lbc", lambda: main(value["commands"]["lbc"]))
+    boundary = list(value["commands"]["lbc"])
+    guess = _measured_first_guess(root / "boundary-met", value["boundary_first_guess"])
+    boundary[boundary.index("--nfglevels") + 1] = str(guess["nfglevels"])
+    timings.update(source=row["init_source"], cycle=args.cycle,
+                   boundary_source=value["boundary_source"], boundary_cycle=value["boundary_cycle"],
+                   start_first_guess=_measured_first_guess(root / ("start-met" if value.get("split_boundary") else "boundary-met"),
+                                                         value["start_first_guess"]),
+                   boundary_first_guess=guess)
+    return measured("lbc", lambda: main(boundary))
 
 def plan(args):
     try:
@@ -362,9 +467,16 @@ def plan(args):
         if args.grid or args.static or args.init:
             raise MpasPortError("region geometry prepares its own parent and cull; grid/static/init overrides cannot identify that chain")
     source_table = load_table(getattr(args, "source_table", None))
-    source = resolve_source(source_table, getattr(args, "source", None) or row["init_source"])
+    from .regional_door import resolve_regional_source
+    _, source = resolve_regional_source(getattr(args, "source", None) or row["init_source"], source_table)
     row = copy.deepcopy(row)
     row["init_source"] = source["id"]
+    if "geometry" not in row and source.get("coverage") == "limited_area":
+        raise MpasPortError(f"{source['id']} covers a limited area; choose a country with regional geometry")
+    if "geometry" not in row and (getattr(args, "boundary_source", None) or getattr(args, "boundary_cycle", None)):
+        raise MpasPortError("boundary source and cycle apply to a country with regional geometry")
+    from .init_sources import admit_cycle
+    admit_cycle(source, issued)
     root = args.work_dir.resolve()
     mesh = row["mesh"]
     grid = args.grid or root / "mesh.grid.nc"
@@ -432,12 +544,40 @@ def plan(args):
     extra = {}
     if "geometry" in row:
         from .lbc_producer import source_endpoint_commands
-        endpoints = source_endpoint_commands(source=source["id"], cycle=args.cycle, hours=args.hours,
+        from .regional_door import boundary_plan
+        boundary_source, boundary_issued, boundary_lead, boundary_step = boundary_plan(
+            source, issued, lead, args.hours, name=getattr(args, "boundary_source", None),
+            boundary_cycle=getattr(args, "boundary_cycle", None),
+            requested=getattr(args, "boundary_interval_hours", None), source_table=source_table)
+        split = source["id"] != boundary_source["id"] or issued != boundary_issued
+        from .packaged_intermediate import coverage_refusal
+        from .mesh_shape import centroid, _ring
+        import numpy as np
+        geometry = row["geometry"]
+        center = tuple(geometry["center_deg"]) if geometry["kind"] == "cap" else centroid(geometry)
+        if geometry["kind"] == "cap":
+            radius = float(geometry["radius_km"])
+        else:
+            vertices = _ring(geometry)
+            a, b = np.radians(vertices[:, 0]), np.radians(vertices[:, 1])
+            c, d = np.radians(center)
+            radius = float(6371.229 * np.arccos(np.clip(np.sin(a)*np.sin(c)+np.cos(a)*np.cos(c)*np.cos(b-d), -1, 1)).max())
+        for candidate in (source, boundary_source):
+            refusal = coverage_refusal(candidate, center, radius, margin_km=7 * mesh["background_km"] + 30)
+            if refusal:
+                raise MpasPortError(refusal)
+        projected_boundary = _projected_row(boundary_source)
+        endpoints = [] if projected_boundary else source_endpoint_commands(
+            source=boundary_source["id"], cycle=boundary_issued.strftime("%Y-%m-%dT%H"), hours=args.hours,
             out_dir=root / "boundary-source", staged=args.staged, member=getattr(args, "member", None),
-            table=getattr(args, "source_table", None), lead_hours=lead,
+            table=getattr(args, "source_table", None), lead_hours=boundary_lead,
             boundary_interval_hours=getattr(args, "boundary_interval_hours", None))
         parent = root / "parent"
-        endpoints[0]["argv"][endpoints[0]["argv"].index("--out-dir") + 1] = str(parent / "init")
+        if endpoints and not split:
+            # Endpoint 0 is the start time's decode, made beside the mesh into the init's own directory; the init
+            # builds from it (--from-decoded) and never decodes there itself (RED 3, _SourceBesideMesh.wait).
+            endpoints[0]["argv"][endpoints[0]["argv"].index("--out-dir") + 1] = str(parent / "init")
+            initialization += ["--from-decoded"]
         initialization[initialization.index("--grid") + 1] = str(parent / "mesh.grid.nc")
         initialization[initialization.index("--static") + 1] = str(parent / "mesh.static.nc")
         initialization[initialization.index("--out-dir") + 1] = str(parent / "init")
@@ -446,15 +586,28 @@ def plan(args):
                "--parent-init", str(parent / "init/init.nc"), "--region", str(root / "region.json"),
                "--out-dir", str(root), "--name", "mesh", "--clobber"]
         fg, switches = source["first_guess"], source_table["run_switches"]
+        bfg = boundary_source["first_guess"]
         boundary = ["lbc", "--grid", str(root / "mesh.init.nc"), "--met-dir", str(root / "boundary-met"),
-                    "--out-dir", str(root / "lbc"), "--start-time", start, "--stop-time", endpoints[-1]["valid_time"],
-                    "--nfglevels", str(fg["nfglevels"]), "--use-spechumd", fg["use_spechumd"],
+                    "--out-dir", str(root / "lbc"), "--start-time", start, "--stop-time",
+                    endpoints[-1]["valid_time"] if endpoints else (issued + timedelta(hours=lead + args.hours)).strftime("%Y-%m-%d_%H:%M:%S"),
+                    "--nfglevels", str(bfg["nfglevels"]), "--use-spechumd", bfg["use_spechumd"],
                     "--extrap-airtemp", switches["extrap_airtemp"], "--theta-adv-order", str(switches["theta_adv_order"]),
                     "--coef-3rd-order", str(switches["coef_3rd_order"]), "--oned-underflow", switches["oned_underflow"]]
         forecast[forecast.index("--init") + 1] = str(root / "mesh.init.nc")
         init = root / "mesh.init.nc"
         extra = {"cull": cut, "lbc": boundary}
+        if projected_boundary:
+            extra["boundary_intermediate"] = [
+                "intermediate", "--source", projected_boundary, "--grid", str(root / "mesh.grid.nc"),
+                "--cycle", boundary_issued.strftime("%Y-%m-%dT%H"),
+                "--hours", f"0-{boundary_lead + int(args.hours)}",
+                "--grib-dir", str(root / "boundary-grib"), "--out-dir", str(root / "boundary-met"),
+                "--workers", str(args.endpoint_workers)]
         producer = producer_suite(named)
+        from .mpasphys.rrfs.cold_start_rrfs import require_boundary_producer
+        require_boundary_producer(getattr(args, "boundary_recipe", None), producer)
+        if getattr(args, "boundary_recipe", None):
+            boundary += ["--boundary-recipe", args.boundary_recipe]
         if producer:
             # A producer suite (hrrrv5): the cut carries grid and static only, the start state is the producer's
             # case 7 on it (its own static from the geography, the decoded start intermediate) and the boundaries
@@ -462,13 +615,31 @@ def plan(args):
             init = root / "rrfs-init" / "init.nc"
             cut[cut.index("--parent-init"):cut.index("--parent-init") + 2] = []
             boundary[boundary.index("--grid") + 1] = str(init)
-            boundary += ["--physics-suite", producer]
+            from .mpasphys.rrfs.cold_start_rrfs import producer_pin_arguments
+            pin = producer_pin_arguments(forecast)
+            boundary += ["--physics-suite", producer, *pin]
             forecast[forecast.index("--init") + 1] = str(init)
-            producer_init = ["init", "--met", str(root / "boundary-met" / ("MET:" + start[:13])),
+            start_met = root / ("start-met" if split else "boundary-met")
+            projected_start = _projected_row(source)
+            if split:
+                if projected_start:
+                    extra["start_intermediate"] = [
+                        "intermediate", "--source", projected_start, "--grid", str(root / "mesh.grid.nc"),
+                        "--cycle", args.cycle, "--hours", str(lead), "--grib-dir", str(root / "start-grib"),
+                        "--out-dir", str(start_met), "--workers", str(args.endpoint_workers),
+                        "--physics-suite", producer]
+                else:
+                    extra["start_endpoints"] = source_endpoint_commands(
+                        source=source["id"], cycle=args.cycle, hours=1, out_dir=root / "start-source",
+                        staged=args.staged, member=getattr(args, "member", None),
+                        table=getattr(args, "source_table", None), lead_hours=lead)[:1]
+            if projected_boundary:
+                extra["boundary_intermediate"] += ["--physics-suite", producer]
+            producer_init = ["init", "--met", str(start_met / ("MET:" + start[:13])),
                              "--static", str(root / "mesh.static.nc"), "--grid", str(root / "mesh.grid.nc"),
                              "--out", str(init), "--start-time", start,
                              "--nfglevels", str(fg["nfglevels"]), "--nfgsoillevels", str(fg["nfgsoillevels"]),
-                             "--physics-suite", producer]
+                             "--physics-suite", producer, *pin]
             if getattr(args, "deep_soil_temperature", None):
                 producer_init += ["--deep-soil-temperature", args.deep_soil_temperature]
             extra["producer_init"] = producer_init
@@ -478,9 +649,20 @@ def plan(args):
     product_argv += ["--case", case_token(None, Path(forecast[forecast.index("--grid") + 1]), start, mesh["id"])]
     return {"schema": "gpuwm-hex.country-plan/v1", "row": row, "cycle": args.cycle, "lead_hours": lead,
             "start_time": start,
+            **({"boundary_recipe": {"name": args.boundary_recipe,
+                 **({"applied": False, "reason": "this country row has no lateral boundaries"}
+                    if "geometry" not in row else {})}}
+               if getattr(args, "boundary_recipe", None) else {}),
             "paths": {"grid": str(grid), "static": str(static), "init": str(init), "spec": str(spec)},
-            "commands": {"init": initialization, "forecast": forecast, "products": product_argv, "score": score, **extra},
-            **({"boundary_endpoints": endpoints} if "geometry" in row else {}),
+            "commands": {"init": initialization, "forecast": forecast, "products": product_argv, "score": score, **{k: v for k, v in extra.items() if k != "start_endpoints"}},
+            **({"boundary_endpoints": endpoints,
+                "boundary_source": boundary_source["id"],
+                "boundary_cycle": boundary_issued.strftime("%Y-%m-%dT%H"),
+                "boundary_lead_hours": boundary_lead,
+                "split_boundary": split,
+                "start_endpoints": extra.pop("start_endpoints", []),
+                "start_first_guess": dict(source["first_guess"]),
+                "boundary_first_guess": dict(boundary_source["first_guess"])} if "geometry" in row else {}),
             "scorecard": config}
 
 
@@ -567,9 +749,8 @@ def _run_stage(name, args, value, status, stages=(), state=None):
         raise MpasPortError("country stages need 'country --stage prepare' first; the mesh has no registered byte identity")
     config = root / "observation-scorecard.config.json"
     if name == "score":
-        from .observation_scorecard import completed_scorecard, join_automatic_scorer
-        joined = (completed_scorecard(root / "forecast", config)
-                  or join_automatic_scorer(root / "forecast", config))
+        from .observation_scorecard import door_scorecard
+        joined = door_scorecard(root / "forecast", config)
         if joined is not None:
             status.note(joined["note"])
             print(json.dumps(joined), flush=True)
@@ -597,11 +778,6 @@ def _run_stage(name, args, value, status, stages=(), state=None):
             state["live_receipt"] = look.receipt()
             status.note(f"first look: {state['first_look'].get('status')}, "
                         f"{state['first_look']['live']['drawn']} frames drawn while the forecast ran")
-    if name == "score" and rc == 3:
-        completed = completed_scorecard(root / "forecast", config)
-        if completed is not None:
-            status.note(completed["note"])
-            return {**completed, "scorer_returncode": rc}
     return {"returncode": rc, **({"first_look": state["first_look"]} if look is not None else {})}
 
 
@@ -622,7 +798,10 @@ def run_country(args):
     if status.log_path is not None:
         print(f"log: {status.log_path}", flush=True)
     receipt = {"schema": "gpuwm-hex.country-run/v1", "plan": str(root / "country-plan.json"),
-               "row": args.row, "cycle": args.cycle, "stages": {}}
+               "row": args.row, "cycle": args.cycle, "source": value["row"]["init_source"],
+               "boundary_source": value.get("boundary_source"), "boundary_cycle": value.get("boundary_cycle"),
+               "parallelism": {"endpoint_workers": args.endpoint_workers, "rayon_threads": os.environ.get("RAYON_NUM_THREADS")},
+               "stages": {}}
     rows_env = os.pathsep.join(filter(None, [str(root / "mesh-rows.json"), os.environ.get("WOOF_HEX_MESH_ROWS")]))
     env = {"WOOF_HEX_MESH_ROWS": rows_env, "WOOF_HEX_OBSERVATION_CONFIG": str(config)}
     if "score" in set(args.skip or []):
@@ -649,6 +828,9 @@ def run_country(args):
                 # card back now instead of after them (woof.hex.card_lease).
                 from .card_lease import gpu_work_done
                 timing["card_given_back"] = gpu_work_done()
+                if "score" in stages:
+                    from .observation_scorecard import door_scorecard
+                    timing["observation_scoring"] = door_scorecard(root / "forecast", config)
         status.done(f"{args.row} {args.cycle}: {', '.join(stages)}")
         return 0
     except MpasPortError as error:
@@ -697,6 +879,8 @@ def add_country_parser(commands):
     parser.add_argument("--lead-hours", type=int, default=0, metavar="H",
                         help="start from this forecast hour of --cycle (a forecast source's own cadence, e.g. GFS "
                              "2026-10-23T18 --lead-hours 348): the init is that hour and the boundaries follow it")
+    parser.add_argument("--boundary-source", help="source for regional lateral boundaries")
+    parser.add_argument("--boundary-cycle", metavar="YYYY-MM-DDTHH", help="cycle for regional lateral boundaries")
     parser.add_argument("--boundary-interval-hours", type=int, default=None, metavar="H",
                         help="boundary step of a table source on a geometry row. Default: the finest step the "
                              "source posts over the run (GFS 1 h to 120 h, IFS and GEFS 3 h)")
@@ -725,6 +909,8 @@ def add_country_parser(commands):
     parser.add_argument("--deep-soil-temperature", choices=("era5", "islscp-i"), default=None,
                         help="a producer suite (hrrrv5): the deep-soil temperature its static is built with "
                              "(default era5; islscp-i is NOAA's soiltemp_1deg, licence unclear)")
+    from .mpasphys.rrfs.cold_start_rrfs import add_boundary_recipe_argument
+    add_boundary_recipe_argument(parser)
     parser.add_argument("--forecast-arg", action="append", default=[], metavar="ARG",
                         help="a flag for the forecast door, e.g. --forecast-arg=--physics-suite=rrfs_v2_dev "
                              "(`woof hex physics list`); repeat for several")

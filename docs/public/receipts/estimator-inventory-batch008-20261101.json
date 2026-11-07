@@ -1,0 +1,772 @@
+{
+  "utc": "2026-11-01T23:46:28.323557+00:00",
+  "previous_fixture_commit": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+  "measured_source": "509fa6d414fe8660e16db340aaaa52eee144ddd9",
+  "rows": [
+    {
+      "key": "lsm0-mp0",
+      "before_domain_sha256": "86885e1a0ae7419ee3c73048ed507245f6775217e7fc1f76f35c1eb7a1fb948e",
+      "after_domain_sha256": "fb51d29566652ef87db5ab2624714b5ff125a257636d861091755af6edc80c13",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "c221dfc710136f124d7aad4b67616179fb1336e275e3f6b688d31fdb1ebacc8a",
+      "after_full_sha256": "de90d577a94fcdeba0e6d690862510a4ca802f438f951a214cf3879f2b875e7c",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp0",
+      "before_domain_sha256": "86885e1a0ae7419ee3c73048ed507245f6775217e7fc1f76f35c1eb7a1fb948e",
+      "after_domain_sha256": "fb51d29566652ef87db5ab2624714b5ff125a257636d861091755af6edc80c13",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "8fb7d92e98b61745f5db42342b52ffae96bc3db643ec5ac82d13a348febd38c0",
+      "after_full_sha256": "7c94d1c54b17422edf105a5bb69130cb62cc75fd4cd1fa7e7e29ab39e4cf83c0",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp0",
+      "before_domain_sha256": "86aed45e9ba3a1732390975138c37563f454caab20743d13fcfa4e2798925a8b",
+      "after_domain_sha256": "6527259289b63750b29b6e7a32bf93dc08f7de585c0ff96c51e900591eb55c04",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "c6c7dfcc5d6e24699b44ca39c6efdcdcf6525ff66ac3a98673ccaad107dde1a4",
+      "after_full_sha256": "ce90227c259ea53062f76ca3f177bb9114c0df8941bd2ac661c2cbf9c05d4626",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp0",
+      "before_domain_sha256": "87ed0c817df3c317926fd7559987cd9bd748d858bf8ce7df359b396f329d7ef8",
+      "after_domain_sha256": "f8321be61306cd35f74c96b494bf7c175c2e3d4833ae42c669b5d32e19f562fa",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp1",
+      "before_domain_sha256": "d5658fd1e21da5de7393c4ff82f774e999e2835ac5b37843be7e61aa52db2c35",
+      "after_domain_sha256": "180d09ede74a452e57e8bbb87908ed4109a317de6bb623b5453bf106e95d525e",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "09732c63b70a5ed54fa49ab55b4b8f5922c69dbdf47abbde676371b27a2dd181",
+      "after_full_sha256": "4244ca8c94758429799dece2d06c5bc063cec3b09946eb37356af8f7f81875ad",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp1",
+      "before_domain_sha256": "d5658fd1e21da5de7393c4ff82f774e999e2835ac5b37843be7e61aa52db2c35",
+      "after_domain_sha256": "180d09ede74a452e57e8bbb87908ed4109a317de6bb623b5453bf106e95d525e",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "755ed41e968606869d5a4150f3bd04ce4fb8c9e15e17af0c9808e39055c0757f",
+      "after_full_sha256": "29c1cf9253703da244da3149a61ac2ee71fdb1c7ff371acd2584f75608092bc2",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp1",
+      "before_domain_sha256": "ee09f56a93d56e536d214c4764b7ee907215e3834a18a3cd117e9d173d21f002",
+      "after_domain_sha256": "b2255460c3b9b6196877486d48a0f57e784992e293792910676c77ee658b6eae",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "f46c31eed1cc62d8f1220f1d83bf1c2587aa5207e4fc551a15ae640222b9c9de",
+      "after_full_sha256": "506e01b3a2e12e16a7df79e7f1d11d9c6f358d5047a2122030599246ac1a6fe3",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp1",
+      "before_domain_sha256": "97c7bb9ca2b7cbf78e857074bac3ca0a9c57ea2fe08254677ef6848ecec7554f",
+      "after_domain_sha256": "c1a7b902773b9b073cc636b8bea456375db320068cc2d1955bb66e55303b14e3",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp6",
+      "before_domain_sha256": "959c63d88166ce338ce94a467c6448f44ade02b9c2f55a67d0592d026df13476",
+      "after_domain_sha256": "479cf2a179c925a9daa1b193f0843a5f928877088f684144640af59421032bbd",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "8f07bfcf4001a427e24a17f0f388d49e1ba2d7b79b1a498eb60b3a2ae03c9474",
+      "after_full_sha256": "7cd23444648e1bb019b94820a34269461314d563331f9031ee32330ba57f53eb",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp6",
+      "before_domain_sha256": "959c63d88166ce338ce94a467c6448f44ade02b9c2f55a67d0592d026df13476",
+      "after_domain_sha256": "479cf2a179c925a9daa1b193f0843a5f928877088f684144640af59421032bbd",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "921167e5ffc2d974de5c8fca39d1daaede63c16308aaa305b38c95b61c5c95ff",
+      "after_full_sha256": "29b98df4475c9c0cb7d533acc0313aff688439ac50ca01b32549e2cd820c9bd8",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp6",
+      "before_domain_sha256": "20e79a96ad9af784a5784713221a064511ea7e8c62119579b3c786ec937c51f9",
+      "after_domain_sha256": "34cdb26441441a6c0a2dc34d2f54fdb728afde05cddba818fda103e38b2a2779",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "40d7c11993bf660917ec7caf78417d28282e9401b2529e07c916ef7e97a8a12d",
+      "after_full_sha256": "f7d17d33d8261776cdd29cf11b069e1f8c8b1fe7f589dd9c48fbdecd3f9001ae",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp6",
+      "before_domain_sha256": "61a339c706da6b318655166ce8cd09370e0454f524f199c6715dde4eb011a7f6",
+      "after_domain_sha256": "aed6c8e2c06e7acf6e1ef37cc492787b5b6a35290e903f3e7e5bad8708f57173",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp8",
+      "before_domain_sha256": "92eaae028101528175f0cd5387e3340b28908a2011dcfc05aada314bf622dee0",
+      "after_domain_sha256": "c716dd9d340fa683f4f210491dc54c39e5ebef71c8b0fb8da3e295e849a90fd0",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "904986cd747fd89e43bfbc139f27d539313277483c6a0617d642b046308ba064",
+      "after_full_sha256": "939319c548b2c43f84de922c6c5c0a51598c2368ada81b9d9b0a74c6506e4cfa",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp8",
+      "before_domain_sha256": "92eaae028101528175f0cd5387e3340b28908a2011dcfc05aada314bf622dee0",
+      "after_domain_sha256": "c716dd9d340fa683f4f210491dc54c39e5ebef71c8b0fb8da3e295e849a90fd0",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "8c4c4c45358fc2e2a73de3b6f3f4d2aa39e439dbe15609bde6da27529817fb48",
+      "after_full_sha256": "2c941d057a1f17474c11588cb18dde2496752b21029af8537bb2b74642f8f378",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp8",
+      "before_domain_sha256": "58e16ddb99b346603c3b072cdfc440db650baa20997333e7b31af9b0c88ae97b",
+      "after_domain_sha256": "f2da79cde950baddeb79e84ddc80d7a68a3186ab793c2cb35fdbe0eed5e50ffd",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "c52b923597d7635e1f041d2733937e6d0a23210d7e79a59ec253bf74a7b9d6ac",
+      "after_full_sha256": "5819444a4a661eb97a6b77a3740aeaf02839c446ea55f2c31c5adcb397c6d474",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp8",
+      "before_domain_sha256": "872369ada9f65c9a7c3c6434ac10a76db8e34191214b2079c214f15bb92722c8",
+      "after_domain_sha256": "88d819f0353dd765d4b090877d1b17c15b2201aea36b2c87d5a768841a8354ad",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp9",
+      "before_domain_sha256": "35fad42fe2d12ed13a830d497727b7387046b4753154b3aa066aa14e78c4a791",
+      "after_domain_sha256": "7602c8d94e9565644abba40b7be6168daad31dc1413e4c00bb7e525d5f0c7f03",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "8f18c04bb50cf8a3eb517c1040409d1fbab852649242b074cf9408ec3c979632",
+      "after_full_sha256": "37520b7863ed3e241d453103fe1d16fb9ce63980e496acc9efd88e98716df035",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp9",
+      "before_domain_sha256": "35fad42fe2d12ed13a830d497727b7387046b4753154b3aa066aa14e78c4a791",
+      "after_domain_sha256": "7602c8d94e9565644abba40b7be6168daad31dc1413e4c00bb7e525d5f0c7f03",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "18885ee6ef54e0e4d1267b30ea69bcb82d714b8cc659041f209bbf53d8e61d72",
+      "after_full_sha256": "87130b0832f742c1f1865858d0ae8da2a124a052ec0864c64d8343dd175972cd",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp9",
+      "before_domain_sha256": "0b08c6900e63a74efe5d054a956ce795d4d1adac3616578f144eacd703859bda",
+      "after_domain_sha256": "2e102a0fec079a114601d568f83a86117cd3fd18902abf3b576d395b32ddd6cf",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "8eef413397e188700eb364eb258a30dc7942116a6ecdfb67e4c388fa584628a4",
+      "after_full_sha256": "22060e2479332c1afc47ec5bdd4a2e163e1908b317698d7d2b4f02d069c37814",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp9",
+      "before_domain_sha256": "bcc70d8c8ae756209a23a30c6f3ed3f6ccab3e0ec91f50e9d2116209bb4f02d5",
+      "after_domain_sha256": "89de617777712bfe5f1df10bb0191ad12569e376f46da08ecf73921a79c2172e",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp10",
+      "before_domain_sha256": "1144d119255697e117f005b0c444493e011c39dc186d7a7a5dece3ab710b4755",
+      "after_domain_sha256": "c676d2593cff19b7b233a4493e4c2f0b361b86856f4e4ba8e31a37a4fe9d1a76",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "cadc80b99924c84e29d25fff0b7d11a0e7f94bee49ca0f9ee7c219211975f856",
+      "after_full_sha256": "2ed72341a26ebde9070cfe9fffce889b16a312d87313d1db9d22be43f5b44798",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp10",
+      "before_domain_sha256": "1144d119255697e117f005b0c444493e011c39dc186d7a7a5dece3ab710b4755",
+      "after_domain_sha256": "c676d2593cff19b7b233a4493e4c2f0b361b86856f4e4ba8e31a37a4fe9d1a76",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "21e11483ef1eb9e9b665f7b3a04df5a129fe535d1e9d54c9ab2781c755d7aebb",
+      "after_full_sha256": "8380c0f948c6c72b5b1afe9c978d952772f0edd490fa109a44824904cac4d3b4",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp10",
+      "before_domain_sha256": "f5116cf0180f8b896f2ff97cc04913c1bb26bd6147bdd143e6b9007762ff86f3",
+      "after_domain_sha256": "4d03b5fd9c6d82ed03083d04bf268afe443d827eb9257913ad8aafe4c8ab43ab",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "b479240456bb7f1ed7a700dba3835b97ca0e8b6385799d738842ddbd0adca16c",
+      "after_full_sha256": "c06c8dc804acec917e23a2c54132727888962586d154ee29ceb37e3811ea7d2a",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp10",
+      "before_domain_sha256": "bfd1e6be4d5e89123dd70703e171e3e1d5d8b790d3e1d51edf9f971b31617cb6",
+      "after_domain_sha256": "7b48cb3673b77f1fe2702c7d6e803f5c48921b3c5f85226de0462d23ef175cd1",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp16",
+      "before_domain_sha256": "6f3b2cefdc204fbd49430b7e5eb47d177e6fdf864ec6fc6f18a16a4186530fc9",
+      "after_domain_sha256": "e59fffe3f3ca5bec69da1d7a252ca1945477827698eeb4ab355563ddbb00d3ef",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "1da50ca2ab7b7388e757b1c97e5b36be98b9cd7c98c9eb200af131d45de27df3",
+      "after_full_sha256": "281afd5e0dbde0593e5fb5296dba63de3a5755c4349fad8d66cd53ab988539d2",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp16",
+      "before_domain_sha256": "6f3b2cefdc204fbd49430b7e5eb47d177e6fdf864ec6fc6f18a16a4186530fc9",
+      "after_domain_sha256": "e59fffe3f3ca5bec69da1d7a252ca1945477827698eeb4ab355563ddbb00d3ef",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "749d7524d9062ec0bdda0f6142201817a4ba645a6f1d8c43b40d2d37c2a1ecdb",
+      "after_full_sha256": "65be726ad668ebee39ba18c03bf36ff61e499a90d6f2727fe736df9f6a5c09f1",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp16",
+      "before_domain_sha256": "a054a3cd9d28da222afe98db1f99a906e3e670ef0f40a1d034c80d2c4cc0f7a0",
+      "after_domain_sha256": "da50bc054794558984d499f752af52ab75a10f182c3ffbf56a00150833c05d28",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "0d8ff4e163687eed2287b16105bcbb808af6b926354dce1eba8cd83d9bb5cb8d",
+      "after_full_sha256": "b2d81e3171ada28d513317e077f3e7664fcace7323f1fcadbf6ca1119e785511",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp16",
+      "before_domain_sha256": "c3d00f06ea602b0d00c6fb99d011258b65a72c1222ff97c218fb5ee06bb30527",
+      "after_domain_sha256": "b890a5676d40ffe89bcfdb4492453f4afca1bda5eb502a6e0f9995c7474e1cf3",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp18",
+      "before_domain_sha256": "ee4429f63a83545cad1642ee9c272580845a42a50934d36eedab3001f22b1f9d",
+      "after_domain_sha256": "0ae953e45d3bc37d6507854bb72435a989f7c19c715bb8ac15d3336f3c388763",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "53be781e292be2a5ebc03e0f8cca15963764743b38ac652a96be11e1ec6ae2a0",
+      "after_full_sha256": "44e98e2eb2003c2b167118db67010991eea68cb81f0585d28e5bc56700d625da",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp18",
+      "before_domain_sha256": "ee4429f63a83545cad1642ee9c272580845a42a50934d36eedab3001f22b1f9d",
+      "after_domain_sha256": "0ae953e45d3bc37d6507854bb72435a989f7c19c715bb8ac15d3336f3c388763",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "ff53076571652bfec50062be751a6f00f649e6520fde1799adb703b0f282ef94",
+      "after_full_sha256": "0f0cd939b0620c9a889bb5f184a8437a6fdc4c896d9ae419804d64bad103eefa",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp18",
+      "before_domain_sha256": "c94a42cc8af63bd6034f5523345ded1951206b6ec862b1bf6e7b1b7ec45726b5",
+      "after_domain_sha256": "e769a66e490d8eb906026e244b7ab4e3a8439bdc9312fcfc45372157c72a50a7",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "7fa99989d8b06be9174f834db360cbb6702bada672c486cc69eae518fe436567",
+      "after_full_sha256": "5b3fd21565816262e0eacef1efdc5b615d43a279253af1cf72d9770ea5dbe761",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp18",
+      "before_domain_sha256": "8f324188ba3bd036f4d6340cc469cceab66ff68cf5ca8da4d97d972488e66fd3",
+      "after_domain_sha256": "e24fe99060c85df0fe8dbc6f870ea2115c872286bf92a1b69e9853f3bfc9406d",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp28",
+      "before_domain_sha256": "2093583b9e3cbc672a931c230866bdfa488ba3e27ab7b040eb9c0d3af5324b9b",
+      "after_domain_sha256": "6927973735d02144c77fc5ddba7921eee209c3c54d049b5b94936fe6a01e350e",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "b9e1d8b9042d102d3fb5ef933679ba1656acaeb36317ecb878c2b7774d06a4ec",
+      "after_full_sha256": "a06692081f7e3c4401daafd08b547b6b42554cb384d0802cc10bf4b3c715b7fa",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm2-mp28",
+      "before_domain_sha256": "2093583b9e3cbc672a931c230866bdfa488ba3e27ab7b040eb9c0d3af5324b9b",
+      "after_domain_sha256": "6927973735d02144c77fc5ddba7921eee209c3c54d049b5b94936fe6a01e350e",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "c5a460dee0efce55fe7c94ce304e899c7b7bc62d157cd566c31fe8ba873c652b",
+      "after_full_sha256": "5308d4844cca0f10abc6e9d2c4ec5fab0039998c45623e608b706b41fb7feaed",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm3-mp28",
+      "before_domain_sha256": "f731d722bc276609fa9b0ff7daf4197189cf699c5b5fd8cbf8f078a0ca5f5e0a",
+      "after_domain_sha256": "69435c7aaf8b21d4cfca97c8ce68f94b1f1fde0e8ae469aa508179e7e4ea6036",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null,
+      "before_full_sha256": "30c24bda54f92ec1beacda52612893cdb57ce1f7ce530cd7196d2073af61e249",
+      "after_full_sha256": "c5ebcae36227fbc52367b7ba4b61f8cff806ab938b7c6493d406723a293566ab",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": null
+    },
+    {
+      "key": "lsm4-mp28",
+      "before_domain_sha256": "08107ee0f68e55d491eb7b6605e5dec304e11af3d50b151fe076da951889db1c",
+      "after_domain_sha256": "7efb2655cedcbffe877a3a1cf62ebd57bac2ff07db592127b4a5c51b73a63950",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": null
+    },
+    {
+      "key": "lsm0-mp50",
+      "before_domain_sha256": "c7dc82158bddcda51d6108a2c6431faf01d03f8fb217cb5499928ee4c43e9475",
+      "after_domain_sha256": "5462850d0a86dbffd0f79e43de71344e6ab9c81fb0985c3b64b7256aa3894088",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": "before mp_th",
+      "before_full_sha256": "7c062cc481ffd7aa2282899cba23a49dfb81d3c78caee97499230aabb181dd3d",
+      "after_full_sha256": "d2967601b04cd93084a5eb661dad8ea6e8d36b90e92d1648ad771ee29eee5878",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": 64
+    },
+    {
+      "key": "lsm2-mp50",
+      "before_domain_sha256": "c7dc82158bddcda51d6108a2c6431faf01d03f8fb217cb5499928ee4c43e9475",
+      "after_domain_sha256": "5462850d0a86dbffd0f79e43de71344e6ab9c81fb0985c3b64b7256aa3894088",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": "before mp_th",
+      "before_full_sha256": "97a95a412f1f6d2839ba8f0fb669fd0518e6959d0d322da592eff2e96c91ef4d",
+      "after_full_sha256": "e3dfd9a0c6d008d1004dea2dc562e3f8fe2556e6420cf29bb4b1a425dc6ac82c",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": 64
+    },
+    {
+      "key": "lsm3-mp50",
+      "before_domain_sha256": "f45257cf90426b5fc3f7b8dcabac9e887f5f60733f06b51bf9a53a4e6eb14902",
+      "after_domain_sha256": "e1f86290f1b25e5e0a6d46fca8e6e29fe1d56653abbbebc5967cccc7d84c6fb2",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": "before mp_th",
+      "before_full_sha256": "1b89bdf642b01171bdea161a2dd0c28c38aa04a8c8afc91c17db8e6211193f9e",
+      "after_full_sha256": "cedbdad1a60896aad1025002cdde59b1c03558fca56d06faf2cd7bf1badae246",
+      "added_alloc_with_headroom": 28928,
+      "added_solar_frame": 32,
+      "p3_frame": 64
+    },
+    {
+      "key": "lsm4-mp50",
+      "before_domain_sha256": "bd7b65643bce318d97dc0e6d1918823b12b45f29a6b73ccec0955aeefa9a53e4",
+      "after_domain_sha256": "9a866c27930b36084e30ff6fcfacc7902875338964d866a0be8129da5a3ea0ef",
+      "added_fields": [
+        "fields/eclipse_initialized",
+        "fields/ecmask",
+        "fields/ecobsc",
+        "fields/elat_track",
+        "fields/elon_track"
+      ],
+      "added_field_bytes": 25600,
+      "theta_metadata": 0,
+      "p3_nc_order": "before mp_th"
+    }
+  ],
+  "reason": "Newly routed shortwave eclipse adapter prices five native surface carriers and a32-byte frame for ra_physics90 at its native-on default. All old arrays, all estimator policy values and every other allocation are identical. Existing theta metadata is0; the same P3 NC array is listed before mp_th and the earlier qualified P3 frame is64 rather than0.",
+  "source_lines": [
+    "gpuwm/core/preflight.py:4111",
+    "gpuwm/core/preflight.py:5802",
+    "gpuwm/core/kernel_frame_recordings.py:3504"
+  ],
+  "command": "python3 refresh_batch008_estimator_snapshots.py",
+  "source": "refresh_batch008_estimator_snapshots.py:1",
+  "input_receipts": [
+    "logs/batch008-estimator-baseline-rows.json",
+    "logs/batch008-estimator-main0486-rows.json",
+    "logs/batch008-estimator-scratch008-rows.json",
+    "logs/batch008-estimator-deltas.json"
+  ],
+  "scope": "Reviewed allocation snapshots only; no default field-word or numerical claim"
+}

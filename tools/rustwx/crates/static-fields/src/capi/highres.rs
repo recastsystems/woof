@@ -1159,11 +1159,10 @@ pub unsafe extern "C" fn gpuwm_static_highres_transform_points(
 /// refusal rather than a defect.
 ///
 /// The distinction is not cosmetic and it is not inferable from the
-/// message: `gpuwm.static.highres_production` routes a coverage
-/// refusal through the user's `on_refuse` policy (`fallback-30s`
-/// proceeds on the unchanged 30-arc-second baseline), while anything
-/// else is a fault that must stop the case.  Collapsing the two would
-/// let a corrupt raster be silently answered with baseline terrain, so
+/// message: `gpuwm.static.highres_production` distinguishes absent
+/// required land coverage from a corrupt raster. The former baseline
+/// fallback is retired; both failures stop preparation, while an
+/// all-water footprint succeeds without replacing terrain cells. Thus
 /// the seam reports it as a distinct return code (-2) rather than
 /// asking Python to pattern-match a sentence.
 struct DeriveFailure {

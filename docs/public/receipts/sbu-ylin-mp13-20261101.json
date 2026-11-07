@@ -1,0 +1,499 @@
+{
+  "schema": "gpuwm.sbu-ylin.port-proof.v1",
+  "date": "2026-11-01",
+  "implementation_commit": "2120f63ed1e",
+  "base_commit": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+  "source": {
+    "source": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_mp_sbu_ylin.F",
+      "sha256": "d06a0b8fa01465c09ac218f94e2afc409b4ef3a65cf5782fc79cbe8a9d25e06f",
+      "bytes": 58738
+    },
+    "license": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027,
+      "finding": "WRF public-domain notice; source has no separate restrictive license; no external tables"
+    },
+    "equivalent_source": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_mp_sbu_ylin.F",
+    "inspection": "Checked official source and notice before port work; identical v4.6.1/v4.7.1 source pin recorded in oracle README."
+  },
+  "real_native_replay": {
+    "schema": "gpuwm.sbu-ylin.native-replay.v1",
+    "columns": 144,
+    "levels": 49,
+    "calls": [
+      1,
+      241,
+      481,
+      720
+    ],
+    "strict": true,
+    "comparison": {
+      "th": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 7056,
+        "worst_index": [
+          0,
+          0
+        ]
+      },
+      "qv": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 7056,
+        "worst_index": [
+          0,
+          0
+        ]
+      },
+      "qc": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 7056,
+        "worst_index": [
+          0,
+          0
+        ]
+      },
+      "qr": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 7056,
+        "worst_index": [
+          0,
+          0
+        ]
+      },
+      "qi": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 7056,
+        "worst_index": [
+          0,
+          0
+        ]
+      },
+      "qs": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 7056,
+        "worst_index": [
+          0,
+          0
+        ]
+      },
+      "rimi": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 7056,
+        "worst_index": [
+          0,
+          0
+        ]
+      },
+      "rainnc": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 144,
+        "worst_index": [
+          0
+        ]
+      },
+      "rainncv": {
+        "max_ulp": 0,
+        "words_differing": 0,
+        "words": 144,
+        "worst_index": [
+          0
+        ]
+      },
+      "_total_words_differing": 0,
+      "_max_ulp": 0
+    },
+    "words": 49680,
+    "input_species_positive": {
+      "qv": 7056,
+      "qc": 728,
+      "qr": 2057,
+      "qi": 739,
+      "qs": 3503
+    }
+  },
+  "native_replay_receipt_sha256": "3080a6bf89c2ed5ab7b4ccab054ea3342f6cb28a38c75ab547fc228ce14155de",
+  "native_build": {
+    "flags": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+    "mpi_ranks": 2,
+    "binary_sha256": "a2efeedf315fdcf3f1b2ca0a7f6f3d590982111fff2fcf8a35edf597324c3365",
+    "column_body_unchanged_sha256": "b2291a0cdf5870672fbac9c7890b41a06d3cbcd581378b20ce205281153e572e"
+  },
+  "forecast": {
+    "initial_time_utc": "2026-10-16T09:00:00Z",
+    "final_time_utc": "2026-10-16T12:00:00Z",
+    "domain_mass_cells": [
+      49,
+      300,
+      300
+    ],
+    "dx_m": 3000,
+    "dt_s": 15,
+    "steps": 720,
+    "numerics": "fast",
+    "physics": {
+      "mp": 13,
+      "lw": 4,
+      "sw": 4,
+      "radiation_variant": "rrtmg_legacy",
+      "surface_layer": 91,
+      "land_surface": 2,
+      "pbl": 1,
+      "cumulus": 0
+    },
+    "command": "python -m gpuwm go --wrfinput ../forecast-input --outdir ../gpu-forecast-final --run-seconds 10800 --products 2m_temperature,total_qpf,composite_reflectivity --allow-shared-gpu",
+    "execution_seconds": 55.23572902660817,
+    "total_seconds": 60.99900052789599,
+    "runtime_source_identity": {
+      "git_commit": "918fe3886aa91184f15d2136ffe94559569033c2",
+      "git_tree": "813d1f7f2611376a4f7274ed294a3668fa486f37",
+      "gpuwm_version": "0+unknown",
+      "source_sha256": {
+        "gpuwm/core/kernels/nest_microphysics.cu": "a00a3f6cd14622bb53d27152652df31889267ae83c160a4f97128051b99c539c",
+        "gpuwm/core/microphysics_transition.py": "e713f12cd3269641361bbe47af989156f6b683bfa9af8d11674a214bc1563f65",
+        "gpuwm/core/model.py": "b45d56d80e05c67d1c214167711f725652326824e22dc49f78298b847f396d95",
+        "gpuwm/core/nest.py": "f248326cd6d9c3ec9ffa1665ebd94bf72561b2873cc8dc1ef6167b26115a312b",
+        "gpuwm/prepared_domain_tree_forecast.py": "8801989ae0b26d8aedb2da8e0e3e4daa3aa47aec93262bc8aee74316ca5c0196"
+      }
+    },
+    "compiler_numerics": {
+      "compiler_hook_installed": true,
+      "env": "GPUWM_NUMERICS",
+      "fast_drops": [
+        "--fmad=false",
+        "-fmad=false",
+        "--fmad=False",
+        "-fmad=False"
+      ],
+      "mode": "fast"
+    },
+    "step_timing": {
+      "steps": 720,
+      "log_sha256": "f27c891a3ee9c2fde13637c5bb050b8d20703da89e50b73629038f3cc9940679",
+      "units": "milliseconds",
+      "measurement": "host reported main-step elapsed, shared GPU; not isolated stage time",
+      "median": 33.74,
+      "mean": 42.523625,
+      "p95": 62.75,
+      "min": 30.27,
+      "max": 748.79
+    },
+    "history_sha256": [
+      {
+        "file": "wrfout_d01_2026-10-16_09_00_00",
+        "sha256": "911ac1423ce758fd6f1c8cfbdaad7c1e564782b34975871aa35e93c6f8f4626f"
+      },
+      {
+        "file": "wrfout_d01_2026-10-16_10_00_00",
+        "sha256": "c4417e2877168e737dcc66820699593858191dd6bd482a95387cb48c0864fb41"
+      },
+      {
+        "file": "wrfout_d01_2026-10-16_11_00_00",
+        "sha256": "c2b7a68e26f38af2f34c1741bb402e53bddd1d9a337c91e060cc7f84376e9ee6"
+      },
+      {
+        "file": "wrfout_d01_2026-10-16_12_00_00",
+        "sha256": "7f3f97855ef2a195fd717f89ae341f20b5b03a8a4bb3f9eb6df00ff76c913745"
+      }
+    ]
+  },
+  "stage_timing": {
+    "measured_utc": "2026-11-01T10:52:16.128096+00:00",
+    "input_sha256": "aaa907c93c378b216600a7c5473d43f7da109be68479d048ce9614ff63459c93",
+    "command_file": "evidence/time_real_columns.py",
+    "method": "CUDA events, one warmup and 20 samples per scheme, resets outside timed ranges, one final event wait",
+    "domain": [
+      49,
+      300,
+      300
+    ],
+    "dt": 15,
+    "samples": 20,
+    "numerics": "fast",
+    "closest_scheme": "WSM5 mp=4, same five transported mass species",
+    "device": "NVIDIA GeForce RTX 5090",
+    "stages_ms": {
+      "13": {
+        "total": {
+          "median": 4.665263891220093,
+          "min": 4.288512229919434,
+          "max": 4.976064205169678
+        },
+        "prepare": {
+          "median": 0.21692799776792526,
+          "min": 0.21526400744915009,
+          "max": 0.5036479830741882
+        },
+        "column": {
+          "median": 4.307760000228882,
+          "min": 3.9481279850006104,
+          "max": 4.366079807281494
+        },
+        "save_theta": {
+          "median": 0.021663999184966087,
+          "min": 0.01961600035429001,
+          "max": 0.02236800082027912
+        },
+        "finish": {
+          "median": 0.09785600006580353,
+          "min": 0.09683199971914291,
+          "max": 0.27904000878334045
+        }
+      },
+      "4": {
+        "total": {
+          "median": 4.323839902877808,
+          "min": 4.231264114379883,
+          "max": 6.782303810119629
+        },
+        "column": {
+          "median": 4.029152154922485,
+          "min": 3.9339520931243896,
+          "max": 6.493855953216553
+        },
+        "save_theta": {
+          "median": 0.021056000143289566,
+          "min": 0.020479999482631683,
+          "max": 0.022495999932289124
+        },
+        "finish": {
+          "median": 0.09446399658918381,
+          "min": 0.09283199906349182,
+          "max": 0.09583999961614609
+        },
+        "prepare_and_dispatch_remainder": {
+          "median": 0.1791677512228489
+        }
+      }
+    },
+    "total_ratio_mp13_over_wsm5": 1.0789631429496371
+  },
+  "stage_timing_interpretation": "MP13 is within 1.2 times the five-class WSM5 adapter time.",
+  "visual_review": {
+    "method": "Manual visual review of Rust rw_wrfbatch comparison sheets through gpuwm.rustwx",
+    "fields": [
+      "2m_temperature",
+      "total_qpf"
+    ],
+    "observations": "IEM TX_ASOS temperature, nearest report per station within 600 s; no precipitation observation score",
+    "automatic_verifier": "Initial installed verifier remained pending with invalid verification time 2. The current source build passed native frame preparation at 10 UTC, including the previous-hour precipitation input. No quantitative observation score was run.",
+    "hours": [
+      {
+        "hour_utc": 10,
+        "temperature": "Both fields retain the cool northwest and warm southeast. Station colors follow the broad gradient. Isolated station departures remain. No domain seam or blowup is visible.",
+        "precipitation": "Light precipitation is confined to the southwest corner in both fields. The small red and blue difference patches sit within that wet area."
+      },
+      {
+        "hour_utc": 11,
+        "temperature": "Both fields retain the same broad gradient. Several inland station circles are visibly cooler than either field. Small localized model differences appear in northeast Oklahoma, near the Red River and in scattered urban areas; no domain-wide offset is visible.",
+        "precipitation": "The southwest wet patch expands in both models. Its shape remains close by eye, with localized red and blue differences within the rain area."
+      },
+      {
+        "hour_utc": 12,
+        "temperature": "Both models retain the cool northwest and warm southeast, with the station colors following the broad gradient. Several inland stations remain cooler than either model. Differences stay localized in northeast Oklahoma, near the Red River, urban areas and the southwest rain area; no seam or domain-wide drift is visible. Maximum model difference is 1.56 F; the difference color scale is adaptive.",
+        "precipitation": "Both models show the same southwest rain band and expanding light-rain edge. Small intensity and placement differences remain inside that area, with a maximum model difference of 0.0735 inches. No precipitation observation comparison was made."
+      }
+    ]
+  },
+  "verifier_bridge_check": {
+    "status": "native preparation passed",
+    "valid_time": "2026-10-16T10:00:00Z",
+    "schema": "gpuwm.verify-visuals.request.v1",
+    "quantitative_observation_score": false,
+    "request": {
+      "arms": [
+        {
+          "kind": "netcdf",
+          "label": "WOOF",
+          "path": "gpu-forecast-final/wrfout/wrfout_d01_2026-10-16_10_00_00",
+          "previous_path": "gpu-forecast-final/wrfout/wrfout_d01_2026-10-16_09_00_00"
+        }
+      ],
+      "cycle": "2026-10-16T09:00:00Z",
+      "domain": "d01",
+      "out_root": "verifier-current",
+      "schema": "gpuwm.verify-visuals.request.v1",
+      "station_mode": "observed",
+      "valid_time": "2026-10-16T10:00:00Z"
+    },
+    "artifacts": [
+      {
+        "file": "verifier-current/d01/verification_inputs/2026-10-16/woof-20261016100000.metadata.json",
+        "bytes": 1523,
+        "sha256": "d641e5d2982fe72057a55b00fa4eec0236a8d24b40473116cf3a61ae88ee0e69"
+      },
+      {
+        "file": "verifier-current/d01/verification_inputs/2026-10-16/woof-20261016100000.npz",
+        "bytes": 5041672,
+        "sha256": "af9fc6f01da478c98e6af60acb4f1b39cc59bb69ffdeb7dc9aa7d37f4438cec9"
+      },
+      {
+        "file": "verifier-current/prepare.request.json",
+        "bytes": 677,
+        "sha256": "9af4c09d97f26c0270b5a70c91d21f62c4183620a1121600cb14a058073abd80"
+      },
+      {
+        "file": "verifier-current/prepared.request.json",
+        "bytes": 2588,
+        "sha256": "d2794d9dedfc36aff6614015a190c7b475c6d2bfb9e2f97bae06df17ffd2cddf"
+      }
+    ],
+    "binaries": [
+      {
+        "file": "engine/tools/rustwx/target/release/rw_verify",
+        "bytes": 350896,
+        "sha256": "42e3d29a09a5dd146042eb50038f3bb55d88a52e6be86d2e051193dcf1c3f9e0"
+      },
+      {
+        "file": "engine/tools/rustwx/target/release/rw_wrfbatch",
+        "bytes": 27199528,
+        "sha256": "5bd00bf2bbd45ffe19ead72fc4971672e5856fee462cf5ab985b792ffa1b832a"
+      }
+    ],
+    "source_existing_fix": "tools/rustwx/vendor/netcrust/vendor/netcdf-reader/src/nc4/mod.rs:297 joins fixed one-byte string rows"
+  },
+  "map_ranges": [
+    {
+      "hour_utc": 10,
+      "observations": 201,
+      "ranges": [
+        {
+          "key": "d01-3km_2m_temperature",
+          "units": "\u00b0F",
+          "half_range": "0.1",
+          "step": "0.02",
+          "rule": "adaptive(table=10,p99=0.0720)",
+          "defined_cells": "90000",
+          "differing_cells": "89573",
+          "max_abs": "0.655"
+        },
+        {
+          "key": "d01-3km_total_qpf",
+          "units": "in",
+          "half_range": "0.005",
+          "step": "0.001",
+          "rule": "p99=0.0033",
+          "defined_cells": "1375",
+          "differing_cells": "1375",
+          "max_abs": "0.00557"
+        }
+      ],
+      "renderer_sha256": "5bd00bf2bbd45ffe19ead72fc4971672e5856fee462cf5ab985b792ffa1b832a",
+      "figures": [
+        {
+          "file": "evidence/maps-10Z/mp13-2m_temperature-comparison.png",
+          "bytes": 1382639,
+          "sha256": "dc4d64388fb77b345046ad280bffdfd99a92d1d5ef1d56424cac04bb29c1cde7"
+        },
+        {
+          "file": "evidence/maps-10Z/mp13-total_qpf-comparison.png",
+          "bytes": 657426,
+          "sha256": "23174fdb1e4dda5d9ad025b145b7b318276dc72e12ce30387594f00e3dcd1c76"
+        }
+      ]
+    },
+    {
+      "hour_utc": 11,
+      "observations": 201,
+      "ranges": [
+        {
+          "key": "d01-3km_2m_temperature",
+          "units": "\u00b0F",
+          "half_range": "0.25",
+          "step": "0.05",
+          "rule": "adaptive(table=10,p99=0.1016)",
+          "defined_cells": "90000",
+          "differing_cells": "89636",
+          "max_abs": "2.03"
+        },
+        {
+          "key": "d01-3km_total_qpf",
+          "units": "in",
+          "half_range": "0.01",
+          "step": "0.002",
+          "rule": "p99=0.0084",
+          "defined_cells": "3955",
+          "differing_cells": "3955",
+          "max_abs": "0.0271"
+        }
+      ],
+      "renderer_sha256": "5bd00bf2bbd45ffe19ead72fc4971672e5856fee462cf5ab985b792ffa1b832a",
+      "figures": [
+        {
+          "file": "evidence/maps-11Z/mp13-2m_temperature-comparison.png",
+          "bytes": 1148051,
+          "sha256": "3fce267ef6e7133b74fbeabded4cc5822237ebd39095530e73061a2d6d121e6a"
+        },
+        {
+          "file": "evidence/maps-11Z/mp13-total_qpf-comparison.png",
+          "bytes": 681183,
+          "sha256": "81d9940b5aea1d4729d15a0c8ca2e7a611afe2ec019f63d82c9cec8144fc7329"
+        }
+      ]
+    },
+    {
+      "hour_utc": 12,
+      "observations": 202,
+      "ranges": [
+        {
+          "key": "d01-3km_2m_temperature",
+          "units": "\u00b0F",
+          "half_range": "0.25",
+          "step": "0.05",
+          "rule": "adaptive(table=10,p99=0.1149)",
+          "defined_cells": "90000",
+          "differing_cells": "89633",
+          "max_abs": "1.56"
+        },
+        {
+          "key": "d01-3km_total_qpf",
+          "units": "in",
+          "half_range": "0.05",
+          "step": "0.01",
+          "rule": "p99=0.0307",
+          "defined_cells": "5064",
+          "differing_cells": "5064",
+          "max_abs": "0.0735"
+        }
+      ],
+      "renderer_sha256": "5bd00bf2bbd45ffe19ead72fc4971672e5856fee462cf5ab985b792ffa1b832a",
+      "figures": [
+        {
+          "file": "evidence/maps-12Z/mp13-2m_temperature-comparison.png",
+          "bytes": 1158426,
+          "sha256": "83ee68a98f6fee77c244d03ed1e2dcf5ccfeaee1dea00bc49ea1c94f585d882b"
+        },
+        {
+          "file": "evidence/maps-12Z/mp13-total_qpf-comparison.png",
+          "bytes": 697291,
+          "sha256": "77fddaa14c363ecb8d69e4a12fbc8a2cb11890fc51564e9eee45ae1dc5cadeb6"
+        }
+      ]
+    }
+  ],
+  "option_off": {
+    "base": "4123f1916e3",
+    "scheme": 6,
+    "steps": 3,
+    "field_count": 80,
+    "bytes": 420632,
+    "differing_fields": 0
+  },
+  "limits": [
+    "One real single-domain three-hour case; no general forecast-skill claim.",
+    "Temperature observations reviewed visually; no quantitative observation score or precipitation observation comparison.",
+    "The initial installed rw_verify failed to parse its verification time. A current source build passed native frame preparation; no quantitative observation score was run.",
+    "Nest feedback 0 and 1, restart/checkpoint and ensembles have component checks; no full nested or ensemble forecast was run.",
+    "MP13 supplies no native effective radii or reflectivity; RTE+RRTMGP is refused and optional reflectivity is an engine diagnostic.",
+    "Stage timing uses a shared RTX 5090 and native captured columns tiled to the forecast domain."
+  ]
+}

@@ -1,0 +1,228 @@
+{
+  "cases": [
+    {
+      "storm": "AL092022",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2022/bal092022.dat.gz"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2022/aal092022.dat.gz"
+      ],
+      "cycles": [
+        "2022092600"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "notes": "Operational baseline seed. No ArWen or hex forecast supplied.",
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      }
+    },
+    {
+      "storm": "AL142024",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/bal142024.dat.gz"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/aal142024.dat.gz"
+      ],
+      "cycles": [
+        "2024100700"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "notes": "Operational baseline seed. No ArWen or hex forecast supplied.",
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      }
+    },
+    {
+      "storm": "AL142018",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2018/bal142018.dat.gz"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2018/aal142018.dat.gz"
+      ],
+      "cycles": [
+        "2018100800"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "notes": "Operational baseline seed. No ArWen or hex forecast supplied.",
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      }
+    },
+    {
+      "storm": "AL132020",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2020/bal132020.dat.gz"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2020/aal132020.dat.gz"
+      ],
+      "cycles": [
+        "2020082500"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "notes": "Operational baseline seed. No ArWen or hex forecast supplied.",
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      }
+    },
+    {
+      "storm": "AL092021",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2021/bal092021.dat.gz"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2021/aal092021.dat.gz"
+      ],
+      "cycles": [
+        "2021082800"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "notes": "Operational baseline seed. No ArWen or hex forecast supplied.",
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      }
+    },
+    {
+      "storm": "AL092024",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/bal092024.dat.gz"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/aal092024.dat.gz"
+      ],
+      "cycles": [
+        "2024092412"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "notes": "Operational baseline seed. No ArWen or hex forecast supplied.",
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      }
+    },
+    {
+      "storm": "EP182023",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/bep182023.dat.gz"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/aep182023.dat.gz"
+      ],
+      "cycles": [
+        "2023102312"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "notes": "Operational baseline seed. No ArWen or hex forecast supplied.",
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      }
+    },
+    {
+      "storm": "AL132023",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/bal132023.dat.gz"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/aal132023.dat.gz"
+      ],
+      "cycles": [
+        "2023090612"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "notes": "Operational baseline seed. No ArWen or hex forecast supplied.",
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      }
+    },
+    {
+      "storm": "WP202019",
+      "best_format": "ibtracs-usa",
+      "best_urls": [
+        "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.WP.list.v04r01.csv"
+      ],
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2019/awp202019.dat.gz"
+      ],
+      "cycles": [
+        "2019100600"
+      ],
+      "models": [
+        "AVNO",
+        "JTWC"
+      ],
+      "notes": "NOAA IBTrACS USA agency best track, one-minute winds. Archived forecast aids unavailable from tested public endpoint; missing competitors are not scores.",
+      "metric_models": {
+        "mslp_hpa": [
+          "AVNO",
+          "JTWC"
+        ]
+      }
+    }
+  ]
+}

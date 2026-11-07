@@ -94,6 +94,10 @@ path = "src/bin/prepbufr.rs"
 name = "rw_madis"
 path = "src/bin/madis.rs"
 
+[[bin]]
+name = "rw_fddaobs"
+path = "src/bin/fddaobs.rs"
+
 [dependencies]
 rustwx-calc = { path = "../rustwx-calc" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

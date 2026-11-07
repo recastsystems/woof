@@ -257,7 +257,8 @@ def test_external_input_provider_carries_pinned_gas_and_declared_column_cap(tmp_
     when = datetime(2001,6,15)
     raw = dict(XLAT=np.full((2,3),38.),XLONG=np.full((2,3),-97.))
     grid = SimpleNamespace(latlon_mass=lambda: (raw["XLAT"],raw["XLONG"]))
-    restored = SimpleNamespace(raw=raw,initial_result=object(),met=object(),surface=object())
+    restored = SimpleNamespace(raw=raw,initial_result=object(),met=object(),surface=object(),
+        global_attributes={"CEN_LAT":37.5})
     bundle = SimpleNamespace(restored=restored,landuse=object(),cache=object(),
         cache_identity={},static_fields={},fractional_seaice=False,isoilwater=19,
         geog_selection=SimpleNamespace(landuse_global_attrs=lambda:{}))
@@ -292,6 +293,7 @@ def test_external_input_provider_carries_pinned_gas_and_declared_column_cap(tmp_
         assert kwargs["fractional_seaice"] is False and kwargs["isoilwater"] == 19
     else:
         assert args[0] is state and args[1] is restored
+        assert selected["center_lat"] == 37.5
         assert kwargs["radiation"] is radiation
         assert factories[0][0][0] is domain.run and factories[0][0][1] == when
         assert factories[0][0][2] is raw["XLAT"] and factories[0][0][3] is raw["XLONG"]

@@ -57,8 +57,8 @@ def test_the_accepted_menu_is_the_loader_menu():
     """
     from woof import config as config_mod
 
-    assert config_mod.MP_PHYSICS_ACCEPTED == (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18,
-                                              24, 28, 30, 50, 106, 900)
+    # 3.0 ports: UDM (27), RCON (29), old Eta Ferrier (95) and MADWRF (96).
+    assert config_mod.MP_PHYSICS_ACCEPTED == (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106, 900)
     # Every accepted value passes the loader's mp gate: the refusal for
     # an out-of-menu value recites the menu sentence, so an accepted
     # value must never produce it.
@@ -222,7 +222,13 @@ def test_each_moist_scheme_has_a_reflectivity_consumer_or_named_exclusion():
     from woof import prepared_single_domain_forecast, runtime
     from woof.verify.cases import nest_ideal_common
 
-    moist = tuple(mp for mp in MP_PHYSICS_ACCEPTED if mp and mp != 30)
+    from woof.core.refl import SCHEME_ABSENT_REFL_10CM
+    # Old Eta Ferrier (95) and MADWRF (96) write no REFL_10CM in WRF either.
+    assert set(SCHEME_ABSENT_REFL_10CM) == {0, 11, 95, 96}
+    assert "never writes REFL_10CM" in SCHEME_ABSENT_REFL_10CM[11]
+    assert "writes no REFL_10CM" in SCHEME_ABSENT_REFL_10CM[95]
+    assert "never writes REFL_10CM" in SCHEME_ABSENT_REFL_10CM[96]
+    moist = tuple(mp for mp in MP_PHYSICS_ACCEPTED if mp not in (0, 11, 30, 95, 96))
     from woof.core.refl import SCHEME_NATIVE_REFL_10CM
     assert "polar-scattering" in SCHEME_NATIVE_REFL_10CM[30]
     assert runtime.REFL_10CM_MICROPHYSICS == moist

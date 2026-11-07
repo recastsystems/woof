@@ -690,7 +690,8 @@ def require_devices(
             major = int(props["major"])
             minor = int(props["minor"])
             free, total = cupy_module.cuda.runtime.memGetInfo()
-        if (major, minor) < tuple(min_compute):
+        is_hip = bool(getattr(cupy_module.cuda.runtime, "is_hip", False))
+        if not is_hip and (major, minor) < tuple(min_compute):
             raise SchedulerError(
                 f"device {device} compute capability {major}.{minor} < required "
                 f"{min_compute[0]}.{min_compute[1]}"
@@ -705,7 +706,8 @@ def require_devices(
             {
                 "device": device,
                 "name": name.decode() if isinstance(name, bytes) else str(name),
-                "compute_capability": f"{major}.{minor}",
+                "compute_capability": None if is_hip else f"{major}.{minor}",
+                **({"architecture": __import__("woof.hip_backend", fromlist=["architecture"]).architecture(cupy_module, device), "backend": "hip"} if is_hip else {}),
                 "free_bytes": int(free),
                 "total_bytes": int(total),
             }

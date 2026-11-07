@@ -22,6 +22,17 @@
 pub use crate::init::{capsule,emit,hinterp,advection,reconstruction,artifact};
 pub mod dynamics;
 pub mod aerosols;
+
+/// Return completely free allocator pages after releasing full-domain pools.
+/// Other live allocations and every stored numerical word remain untouched.
+pub(crate) fn release_free_pages() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        unsafe extern "C" { fn malloc_trim(pad: usize) -> i32; }
+        // SAFETY: glibc owns the process allocator; zero reserves no padding.
+        unsafe { malloc_trim(0); }
+    }
+}
 pub mod vinterp;
 pub mod metfile;
 pub mod projection;
@@ -558,7 +569,9 @@ pub fn horizontal_pass(
     let underflow_hits = std::sync::atomic::AtomicU64::new(0);
 
     let mut fg = FirstGuess {
-        scalars:(0..scalars::COUNT).map(|_| zero_columns(n_cells, nfg)).collect(),
+        // An absent species is an implicit positive-zero field. Allocate its
+        // columns only if a record actually supplies it.
+        scalars:(0..scalars::COUNT).map(|_| Vec::new()).collect(),
         snowh:vec![0.;n_cells],canwat:vec![0.;n_cells],vegfra:vec![0.;n_cells],shdmin:vec![0.;n_cells],shdmax:vec![0.;n_cells],
         vert_level: Vec::new(),
         t: zero_columns(n_cells, nfg),
@@ -665,7 +678,10 @@ pub fn horizontal_pass(
         });
 
         match rule.target {
-            Target::Scalar(i)=> scatter_level(&mut fg.scalars[i], level_index, &values),
+            Target::Scalar(i)=> {
+                if fg.scalars[i].is_empty() {fg.scalars[i]=zero_columns(n_cells,nfg);}
+                scatter_level(&mut fg.scalars[i], level_index, &values);
+            },
             Target::SnowH=>fg.snowh.copy_from_slice(&values),
             Target::Canwat=>fg.canwat.copy_from_slice(&values),
             Target::Vegfra=>fg.vegfra.copy_from_slice(&values),
@@ -820,6 +836,8 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
     clock.mark("rotate winds, surface pass");
     let mut scalar_state=scalars::interpolate(&fg.scalars,&fg.vert_level,&fg.z,&metrics.zgrid,false,cfg.smoke,cfg.dust)?;
     clock.mark("scalar vertical interpolation");
+    std::mem::take(&mut fg.scalars).into_par_iter().for_each(drop);
+
 
     // Vertical interpolation, cell by cell.
     let zgrid = &metrics.zgrid;
@@ -1169,6 +1187,16 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
         .map(|c| dynamics::diagnose_q2(t2m[c], psfc[c], rh2[c]))
         .collect();
     clock.mark("soil, surface, sea ice");
+    // These consumed donors have no later reader. Reclaim their storage
+    // across the worker pool before climatology and output encoding coexist.
+    let donors=[std::mem::take(&mut fg.t),std::mem::take(&mut fg.rh),
+        std::mem::take(&mut fg.sh),std::mem::take(&mut fg.z),std::mem::take(&mut fg.p),
+        std::mem::take(&mut fg.u),std::mem::take(&mut fg.v),
+        std::mem::take(&mut fg.st),std::mem::take(&mut fg.sm)];
+    donors.into_par_iter().for_each(drop);
+    release_free_pages();
+    clock.mark("release consumed donor arrays");
+
 
     // Assemble the computed set, cell-major with the vertical fastest. Each
     // cell's (or edge's) run of levels is filled on its own core; the words
@@ -1198,56 +1226,8 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
         out
     };
 
-    // MPAS: src/core_init_atmosphere/mpas_init_atm_cases.F:261-267;
-    // src/core_init_atmosphere/mpas_init_atm_thompson_aerosols.F:36-205;
-    // src/core_init_atmosphere/mpas_init_atm_core_interface.F:229-231.
-    let aerosol_capsule = netcrust::File::open(&cfg.capsule_path)?;
-    let aerosol_vars = aerosol_capsule.variables()?;
-    let has_nifa = aerosol_vars.iter().any(|v| v.name() == "nifa");
-    let has_nwfa = aerosol_vars.iter().any(|v| v.name() == "nwfa");
-    if has_nifa != has_nwfa {
-        return Err(MpasError::Refusal("init capsule must carry both nifa and nwfa; emitting only one loses a Thompson aerosol scalar".into()));
-    }
-    let native_path = PathBuf::from(aerosols::NATIVE_FILENAME);
-    let gocart_path = cfg.gocart_path.as_deref().unwrap_or(&native_path);
     let use_rap=scalars::use_rap_aerosols(cfg.tempo_rap,&scalar_state);
-    let aerosol_state = if has_nifa && use_rap {
-        Some(aerosols::AerosolState {nifa:std::mem::take(&mut scalar_state[11]),nwfa:std::mem::take(&mut scalar_state[10])})
-    } else if has_nifa {
-        let n_gocart = cfg
-            .gocart_levels
-            .or_else(|| {
-                aerosol_capsule
-                    .dimensions()
-                    .ok()?
-                    .iter()
-                    .find(|d| d.name() == "nGocartLevels")
-                    .map(|d| d.len())
-            })
-            .unwrap_or(30);
-        let pressure_base = flat3(&|c, k| states[c].pressure_base[k]);
-        let (state, audit) = aerosols::initialize(
-            gocart_path,
-            &mesh.lat_cell,
-            &mesh.lon_cell,
-            &statics.landmask,
-            n_gocart,
-            &cfg.start_time,
-            &pressure_base,
-            nz,
-        )?;
-        receipt.aerosols = audit;
-        Some(state)
-    } else {
-        if cfg.gocart_path.is_some() || gocart_path.try_exists()? {
-            return Err(MpasError::Refusal(format!(
-                "GOCART climatology {} selected but the init capsule has no nifa/nwfa slots; emitting would discard the climatology",
-                gocart_path.display()
-            )));
-        }
-        None
-    };
-    clock.mark("GOCART aerosols");
+    let pressure_base = flat3(&|c, k| states[c].pressure_base[k]);
 
     let mut computed: BTreeMap<String, emit::Computed> = BTreeMap::new();
     let mut put = |name: &str, v: Vec<f32>| {
@@ -1260,10 +1240,6 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
     // pair) is rebuilt by the model at start-up and is not in this file; the
     // emitter refuses on any computed name the file has no variable for, so a
     // rename upstream cannot silently drop one of these.
-    if let Some(aerosols) = aerosol_state {
-        put("nifa", aerosols.nifa);
-        put("nwfa", aerosols.nwfa);
-    }
     put("theta", flat3(&|c, k| states[c].theta[k]));
     put("rho", flat3(&|c, k| states[c].rho[k]));
     put("rho_base", flat3(&|c, k| states[c].rho_base[k]));
@@ -1410,6 +1386,74 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
     let file_id = emit::mint_file_id(&seed);
     let parent = capsule_file_id(&cfg.capsule_path).unwrap_or_default();
     clock.mark("assemble output fields");
+    // These columns have been copied to their final output slots. Release
+    // their millions of small allocations before climatology and encoding.
+    rayon::scope(|scope| {
+        scope.spawn(move |_| drop(fg));
+        scope.spawn(move |_| drop(states));
+        scope.spawn(move |_| drop(t_col));
+        scope.spawn(move |_| drop(rh_col));
+        scope.spawn(move |_| drop(sh_col));
+        scope.spawn(move |_| drop(p_col));
+        scope.spawn(move |_| drop(gfs_z_col));
+        scope.spawn(move |_| drop(u_edge));
+        scope.spawn(move |_| drop(winds));
+    });
+    release_free_pages();
+    clock.mark("release completed columns");
+    // MPAS: src/core_init_atmosphere/mpas_init_atm_cases.F:261-267;
+    // src/core_init_atmosphere/mpas_init_atm_thompson_aerosols.F:36-205;
+    // src/core_init_atmosphere/mpas_init_atm_core_interface.F:229-231.
+    let aerosol_capsule = netcrust::File::open(&cfg.capsule_path)?;
+    let aerosol_vars = aerosol_capsule.variables()?;
+    let has_nifa = aerosol_vars.iter().any(|v| v.name() == "nifa");
+    let has_nwfa = aerosol_vars.iter().any(|v| v.name() == "nwfa");
+    if has_nifa != has_nwfa {
+        return Err(MpasError::Refusal("init capsule must carry both nifa and nwfa; emitting only one loses a Thompson aerosol scalar".into()));
+    }
+    let native_path = PathBuf::from(aerosols::NATIVE_FILENAME);
+    let gocart_path = cfg.gocart_path.as_deref().unwrap_or(&native_path);
+    let aerosol_state = if has_nifa && use_rap {
+        Some(aerosols::AerosolState {nifa:std::mem::take(&mut scalar_state[11]),nwfa:std::mem::take(&mut scalar_state[10])})
+    } else if has_nifa {
+        let n_gocart = cfg
+            .gocart_levels
+            .or_else(|| {
+                aerosol_capsule
+                    .dimensions()
+                    .ok()?
+                    .iter()
+                    .find(|d| d.name() == "nGocartLevels")
+                    .map(|d| d.len())
+            })
+            .unwrap_or(30);
+        let (state, audit) = aerosols::initialize(
+            gocart_path,
+            &mesh.lat_cell,
+            &mesh.lon_cell,
+            &statics.landmask,
+            n_gocart,
+            &cfg.start_time,
+            &pressure_base,
+            nz,
+        )?;
+        receipt.aerosols = audit;
+        Some(state)
+    } else {
+        if cfg.gocart_path.is_some() || gocart_path.try_exists()? {
+            return Err(MpasError::Refusal(format!(
+                "GOCART climatology {} selected but the init capsule has no nifa/nwfa slots; emitting would discard the climatology",
+                gocart_path.display()
+            )));
+        }
+        None
+    };
+    clock.mark("GOCART aerosols");
+
+    if let Some(aerosols) = aerosol_state {
+        computed.insert("nifa".into(), emit::Computed::Floats(aerosols.nifa));
+        computed.insert("nwfa".into(), emit::Computed::Floats(aerosols.nwfa));
+    }
     receipt.emit = emit::write_init(
         &cfg.out_path,
         &cfg.capsule_path,
@@ -1425,10 +1469,9 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
         &cfg.lineage,
     )?;
     clock.mark("write init file");
-    // The column arrays (first guess, column states, edge winds: ~100 million
-    // small heap blocks on conus3km) are freed off the main thread; one
-    // thread spent seconds freeing them after the file was already written.
-    let spent = (fg, states, t_col, rh_col, sh_col, p_col, gfs_z_col, u_edge, winds, metrics, mesh, statics, slabs, scalar_state);
+    // Column workspaces were released in parallel before encoding. Drop the
+    // remaining mesh, metrics, static fields and input slabs beside receipt output.
+    let spent = (metrics, mesh, statics, slabs);
     std::thread::spawn(move || drop(spent));
 
     receipt.stage_seconds = clock.marks;

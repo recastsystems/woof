@@ -25,10 +25,10 @@ for name in (binary, 'SOURCE-PINS.json', 'build.log', 'toolchain.txt', 'compile-
 shutil.copy2(first / 'source-correction.diff', pub / 'APPROVED.patch')
 shutil.copy2(repeat / 'flag-audit.json', pub / 'rebuild-flag-audit.json')
 old = Path(__import__('os').environ['MPAS_LANES']) / 'ref/rrfs/native/incoming-approved-init-r0-v1'
-ruling = json.loads((old / 'DREW-RULING.json').read_text())
+ruling = json.loads((old / 'REFERENCE-RULING.json').read_text())
 ruling.update(carried=True, confirmation='pending', target_fork='44c084944e17f7098668bef6d1e353d12e3c2d1a',
               carried_by='GUIDE-A1A4 INBOX 2026-10-28T21:53:48Z', carried_patch_sha256=sha(pub / 'APPROVED.patch'))
-write(pub / 'DREW-RULING.json', ruling)
+write(pub / 'REFERENCE-RULING.json', ruling)
 recipe = pub / 'recipe'
 shutil.copytree(ref / 'native/init_atmosphere/recipe', recipe, dirs_exist_ok=True)
 for name in ('prepare.py', 'build.sh', 'rebuild.sh'):

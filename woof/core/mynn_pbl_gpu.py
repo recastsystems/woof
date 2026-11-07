@@ -35,6 +35,8 @@ from woof.core.mynn_pbl_scratch import (
     SLOT_EXCHANGE,
     SLOT_GSD41_CONDENSATION_WORK,
     SLOT_GSD41_THVL,
+    SLOT_GSD41_DIAGNOSTICS,
+    GSD41_DIAGNOSTICS,
     SLOT_INITIALIZE,
     SLOT_INITIALIZE_WORK,
     SLOT_LEVEL2_FULL,
@@ -1543,6 +1545,10 @@ def mynn_dmp_mf_cuda(
                             (ncol, nz + 1))
     plume_columns = work.group(SLOT_PLUME_COLUMN,
                                ("maxwidth", "ztop", "maxmf"), (ncol,))
+    if bl_mynn_version == "gsd_41" and export_sink is None:
+        export_sink = work.group(SLOT_GSD41_DIAGNOSTICS, GSD41_DIAGNOSTICS, (ncol,))
+        for name in ("kbot_shallow", "nupdraft"):
+            export_sink[name] = export_sink[name].view(cp.int32)
     result = MynnDmpMfResult(
         **layers, **interfaces,
         **work.group(SLOT_PLUME_ZERO_LAYER, MYNN_DMP_MF_ZERO_OUTPUTS,
@@ -1573,7 +1579,8 @@ def mynn_dmp_mf_cuda(
     if bl_mynn_mixscalars == 0:
         kernel = mynn_pbl_kernel("mynn_dmp_mf_columns", bl_mynn_version, (nz, 1, ncol))
         gsd41_args = () if bl_mynn_version == "wrf_461" else (
-            _pair_array(values["sgm"], (ncol, nz), "sgm"),)
+            _pair_array(values["sgm"], (ncol, nz), "sgm"),
+            *(export_sink[name] for name in ("mf_at_base", "kbot_shallow", "nupdraft")),)
         kernel(
             (blocks,), (_TPB,),
             (
@@ -1781,6 +1788,20 @@ def mynn_bl_driver_cuda(
     not retain the former FP64-then-round allowance.
     """
 
+    if bl_mynn_version == "wrf_471":
+        if mix_chem is not False:
+            raise ValueError("WRF 4.7.1 MYNN chemistry mixing is not admitted")
+        from woof.core.mynn471_gpu import driver
+        return driver(values, initflag=initflag, delt=delt, scratch=scratch,
+                      closure=closure, restart=restart, cycling=cycling,
+                      bl_mynn_cloudpdf=bl_mynn_cloudpdf, bl_mynn_mixlength=bl_mynn_mixlength,
+                      bl_mynn_edmf=bl_mynn_edmf, bl_mynn_edmf_mom=bl_mynn_edmf_mom,
+                      bl_mynn_edmf_tke=bl_mynn_edmf_tke, bl_mynn_mixscalars=bl_mynn_mixscalars,
+                      bl_mynn_cloudmix=bl_mynn_cloudmix, bl_mynn_mixqt=bl_mynn_mixqt,
+                      bl_mynn_output=bl_mynn_output, bl_mynn_tkeadvect=bl_mynn_tkeadvect, icloud_bl=icloud_bl, tke_budget=tke_budget,
+                      spp_pbl=spp_pbl, flag_qc=flag_qc, flag_qi=flag_qi, flag_qs=flag_qs,
+                      flag_qnc=flag_qnc, flag_qni=flag_qni, flag_qnwfa=flag_qnwfa,
+                      flag_qnifa=flag_qnifa, flag_qnbca=flag_qnbca, flag_ozone=flag_ozone)
     if type(initflag) is not int:
         raise TypeError("MYNN driver initflag must be an int")
     if restart is not False:
@@ -2009,6 +2030,17 @@ def mynn_bl_driver_cuda(
     pmz = surface["pmz"]
     phh = surface["phh"]
     scalars["rmol"] = rmol
+    gsd_diagnostics = {}
+    if bl_mynn_version == "gsd_41":
+        gsd_diagnostics = work.group(SLOT_GSD41_DIAGNOSTICS, GSD41_DIAGNOSTICS, (ncol,))
+        for name in ("kbot_shallow", "nupdraft"):
+            gsd_diagnostics[name] = gsd_diagnostics[name].view(cp.int32)
+        mynn_pbl_kernel("mynn_gsd41_grims_diagnostics", "gsd_41")(
+            ((ncol + _TPB - 1) // _TPB,), (_TPB,),
+            (layers["th"], gsd41_water["qv"], layers["rho"], scalars["hfx"],
+             scalars["qfx"], scalars["ust"], scalars["pblh"],
+             gsd_diagnostics["wstar"], gsd_diagnostics["delta"], np.int32(ncol)),
+        )
 
     # ---- module_bl_mynn.F:1104-1112 subgrid condensation -----------------
     # WRF :1104-1106 selects the real snow column under FLAG_QS and kzero
@@ -2064,6 +2096,7 @@ def mynn_bl_driver_cuda(
         spp_pbl=spp_pbl,
         scratch=work,
         bl_mynn_version=bl_mynn_version,
+        export_sink=gsd_diagnostics if bl_mynn_version == "gsd_41" else None,
     )
     qc_bl = plumes.qc_bl
     cldfra_bl = plumes.cldfra_bl
@@ -2217,6 +2250,7 @@ def mynn_bl_driver_cuda(
         "rmol": rmol, "maxwidth": plumes.maxwidth,
         "maxmf": plumes.maxmf, "ztop_plume": plumes.ztop,
         "ktop_plume": plumes.ktop,
+        **gsd_diagnostics,
     }
 
 

@@ -43,6 +43,7 @@ def retire_finished_preparations(controller, evidence):
                    for s in state['segments'])):
         return
     protected = {state['current'], controller.a.start_member}
+    protected.update(row['member'] for row in state.get('recovery_carriers', []))
     protected.update(s['member'] for s in state['segments'])
     protected.update(f['member'] for f in state['frames'])
     for name, member in state['members'].items():
@@ -50,6 +51,14 @@ def retire_finished_preparations(controller, evidence):
                 and member['status'] in ('ready', 'prepared', 'preparing', 'stale', 'cancelled')):
             member['status'] = 'cancelled'
     retire_members(controller, evidence)
+
+
+def speculative_admission(state, limit):
+    """Bound retained future members, rather than only simultaneous builders."""
+    if not limit:
+        return True
+    return sum(name != state['current'] and row['status'] in ('preparing', 'prepared', 'ready')
+               for name, row in state['members'].items()) < limit
 
 
 def retire_members(controller, evidence):
@@ -61,6 +70,7 @@ def retire_members(controller, evidence):
     if not root.is_relative_to(controller.out.resolve()):
         raise ValueError('member retirement requires a cache inside this run')
     protected = {state['current'], controller.a.start_member}
+    protected.update(row['member'] for row in state.get('recovery_carriers', []))
     if state.get('pending_move'):
         protected.add(state['pending_move']['target'])
     if controller.prelaunched:

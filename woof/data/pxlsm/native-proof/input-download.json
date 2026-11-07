@@ -1,0 +1,32 @@
+{
+  "source": "https://www2.mmm.ucar.edu/wrf/src/data/wps_30km.tar.gz",
+  "headers": {
+    "Date": "Sun, 01 Nov 2026 10:27:13 GMT",
+    "Server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k mod_fcgid/2.3.9",
+    "Last-Modified": "Wed, 23 Oct 2013 20:38:41 GMT",
+    "ETag": "\"508c8a3-4e96e80a7d640\"",
+    "Accept-Ranges": "bytes",
+    "Content-Length": "84461731",
+    "Content-Security-Policy": "frame-ancestors 'self' https://www.mmm.ucar.edu;",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "1; mode=block",
+    "Connection": "close",
+    "Content-Type": "application/x-gzip"
+  },
+  "created_shared_directory": "/workspace/shared-prepared/port-sf7-pxlsm-jan00",
+  "files": [
+    {
+      "path": "/workspace/shared-prepared/port-sf7-pxlsm-jan00/met_em.d01.2000-01-24_12:00:00.nc",
+      "bytes": 5485304,
+      "sha256": "6acd419fa0272634b0ca6076d5f82c478b357323e67c4260aaf7281b84e02705",
+      "archive_member": "met_em.d01.2000-01-24_12:00:00.nc"
+    },
+    {
+      "path": "/workspace/shared-prepared/port-sf7-pxlsm-jan00/met_em.d01.2000-01-24_15:00:00.nc",
+      "bytes": 5467556,
+      "sha256": "8bfb2533eed4146d4ae1443492aaf7db0ce4ffb48c2e6caa155e1ef282a25179",
+      "archive_member": "met_em.d01.2000-01-24_15:00:00.nc"
+    }
+  ],
+  "archive_saved": false
+}

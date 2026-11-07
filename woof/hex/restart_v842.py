@@ -77,6 +77,24 @@ def _date(value: datetime | str) -> datetime:
     return _as_datetime(value)
 
 
+def initial_time_or_blank(value: datetime | str | None) -> datetime | None:
+    """The run's ``initial_time``; None when the init carries it blank (or not at all).
+
+    mpas_atm_core.F:264-277 keeps the init's ``initial_time`` exactly as read and only copies it to the
+    second time level, so native runs an init whose ``initial_time`` is blank: it writes the blank back and
+    its CF ``Time`` units read "seconds since". THE BREAKAGE THIS FIXES: hex parsed the blank as a date and
+    refused the run (paper B-1 rerun on 0.4.11, an init made by hex's own vertical-grid writer).
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return _date(value)
+
+
+def time_units(initial: datetime | None) -> str:
+    """CF ``Time`` units as native writes them: mpas_atm_core.F:273-274 and mpas_attlist.F:296 (trimmed)."""
+    return 'seconds since' if initial is None else f'seconds since {initial:%Y-%m-%d %H:%M:%S}'
+
+
 def _publish_stream(staged: Path, path: Path, mode: str) -> None:
     """Publish complete durable bytes atomically, copying only across devices."""
     try:
@@ -182,7 +200,7 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
     mesh_dims = getattr(mesh,'variable_dimensions',{})
     sizes = {k:int(v) for k,v in getattr(mesh,'dimensions',{}).items() if k != 'Time'}
     sizes.update(Time=1,StrLen=64)
-    initial, valid = _date(initial_time), _date(valid_time)
+    initial, valid = initial_time_or_blank(initial_time), _date(valid_time)
     converted = set(getattr(mesh,'converted_connectivity',()))
     precision = stream.options.get('precision','native')
     missing = [n for n in names if n not in ('Time','xtime','initial_time') and n not in fields and n not in arrays]
@@ -208,14 +226,17 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
             variable={'name':name,'dtype':dtype,'dimensions':disk_dims,'attrs':_json_attrs(attrs)}
             if name in ('xtime','initial_time'):
                 value=valid if name=='xtime' else initial
-                variable['text']=[value.strftime('%Y-%m-%d_%H:%M:%S')]
+                variable['text']=['' if value is None else value.strftime('%Y-%m-%d_%H:%M:%S')]
             else:
                 if name=='Time':
                     # Native accumulates this RKIND word per step. A registered
                     # pool value must survive fractional-step rounding exactly;
                     # elapsed calendar seconds are only the standalone default.
-                    raw=fields.get(name,HistoryField(np.asarray([(valid-initial).total_seconds()],dtype=np.float32),('Time',)))
-                    variable['attrs']['units']=f'seconds since {initial:%Y-%m-%d %H:%M:%S}'
+                    if name not in fields and initial is None:
+                        raise ValueError(f'{stream.name}: Time needs its pool value when initial_time is blank')
+                    raw=(fields[name] if name in fields else
+                         HistoryField(np.asarray([(valid-initial).total_seconds()],dtype=np.float32),('Time',)))
+                    variable['attrs']['units']=time_units(initial)
                 else: raw=fields[name] if name in fields else arrays[name]
                 if isinstance(raw,HistoryField):
                     array=np.asarray(raw.values); dims=raw.dimensions
@@ -287,12 +308,22 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
         append=exists and mode in ('append','overwrite')
         if append:
             # Validate timestamps before selecting a write position.
-            with read_stream(path, scratch=stage, select=('xtime',)) as current:
-                stamps=current.variables['xtime'].text
-                if record_index > len(stamps): raise ValueError('record_index would leave a gap in the native file')
-                if mode=='append' and record_index!=len(stamps): raise ValueError('append refuses an existing record')
-                if mode=='overwrite' and record_index<len(stamps) and stamps[record_index]!=valid.strftime('%Y-%m-%d_%H:%M:%S'):
-                    raise ValueError('overwrite record timestamp differs from the native file')
+            if 'xtime' in names:
+                with read_stream(path, scratch=stage, select=('xtime',)) as current:
+                    stamps=current.variables['xtime'].text
+                records=len(stamps)
+            else:
+                # A deck stream need not carry xtime (native writes such a stream record after
+                # record). THE BREAKAGE THIS FIXES: the second frame of an xtime-less output stream
+                # asked the file for xtime and failed ("missing requested fields: [xtime]", paper B-1
+                # rerun on 0.4.11). The record count comes from the file's Time axis instead.
+                stamps=None
+                records=int(inspect_stream(path, scratch=stage)['dimensions'].get('Time',0))
+            if record_index > records: raise ValueError('record_index would leave a gap in the native file')
+            if mode=='append' and record_index!=records: raise ValueError('append refuses an existing record')
+            if (mode=='overwrite' and stamps is not None and record_index<records
+                    and stamps[record_index]!=valid.strftime('%Y-%m-%d_%H:%M:%S')):
+                raise ValueError('overwrite record timestamp differs from the native file')
             shutil.copyfile(path,staged)
         attrs=_json_attrs(getattr(mesh,'attrs',{}))
         if global_attrs: attrs.update(_json_attrs(global_attrs))
@@ -637,7 +668,7 @@ class NativePoolStreams:
             if name=='Time':
                 # mpas_atm_core.F:264-277 initializes the runtime CF epoch,
                 # while update_state_time retains the actual accumulated word.
-                attrs['units']=f'seconds since {self.initial:%Y-%m-%d %H:%M:%S}'
+                attrs['units']=time_units(getattr(self,'initial_time',self.initial))
             result[name] = HistoryField(value[tuple(slice(0,size) for size in expected)],dims,attrs)
         return result
 
@@ -658,7 +689,8 @@ class NativePoolStreams:
                 raise ValueError(f'{name}: native stream filename escapes output directory')
             record = self.records.get(target,0)
             publication = self.publication_stream(stream)
-            kwargs = dict(initial_time=self.initial,active_packages=self.layout.packages,
+            initial = getattr(self,'initial_time',self.initial)
+            kwargs = dict(initial_time='' if initial is None else initial,active_packages=self.layout.packages,
                           streams=self.streams,global_attrs=self.attrs,
                           field_attrs=self.field_attrs,
                           scratch=self.output/'stream-scratch',record_index=record)
@@ -687,7 +719,9 @@ class NativePoolStreams:
                                                authority_layout=True) as source:
             # MPAS src/framework/mpas_bootstrapping.F:287-334: retain the
             # geometry and source metadata even without an attribute pre-read.
-            initial = _date(source.variables['initial_time'].text[0])
+            # A blank initial_time (an init made by hex's own vertical-grid writer, paper B-1) is kept
+            # blank, as native keeps it (mpas_atm_core.F:264-277); the alarms keep the clock start.
+            initial = initial_time_or_blank(source.variables['initial_time'].text[0])
             pending, texts, attributes = {}, [], {}
             for name,var in source.variables.items():
                 if name not in self.rows:
@@ -717,7 +751,9 @@ class NativePoolStreams:
             for (pool,field),(row,buffer) in pending.items():
                 for level in range(1,row['nlevels']+1):
                     self.native.put_field(pool,field,buffer,level=level,nlevels=row['nlevels'])
-            self.initial = initial
+            self.initial_time = initial
+            if initial is not None:
+                self.initial = initial
             self.attrs = {**source.global_attrs, **self.attrs}
             self.field_attrs.update(attributes)
         self.alarms = self.contract.alarms(self.streams,self.start,self.initial,self.final,

@@ -59,22 +59,12 @@ def test_the_importer_can_express_every_suite_the_authority_admits():
         assert _blockers(mp_physics=mp_physics, sf_sfclay_physics=5,
                          bl_pbl_physics=5) == ()
 
-    # Control: a scheme woof has NOT ported stays unmapped.  The map is an
-    # implemented-scheme list, not an open door.
-    #
-    # PIN MOVED, and re-derived rather than deleted.  This control used to
-    # name sf_sfclay_physics=2 (Eta/MYJ), which WAS unported when the MYNN
-    # lane wrote it; the MYJ port added it to _SFCLAY_ALLOWED and turned a
-    # control into a false statement.  The control's JOB is to prove the
-    # allow-list is not "every WRF value", so it is repointed at surface
-    # layers that are genuinely absent today -- 4 (QNSE) and 7 (Pleim-Xiu),
-    # neither of which has a kernel, a runner or a registry row -- and the
-    # PBL half keeps BouLac, which is still unported.  When either of those
-    # is ported, this control moves again, deliberately, in that port's own
-    # commit.
-    assert 8 not in _BL_MAP, "BouLac is not implemented and must not map"
-    assert 4 not in _SFCLAY_ALLOWED, "QNSE surface layer is not ported"
-    assert 7 not in _SFCLAY_ALLOWED, "Pleim-Xiu surface layer is not ported"
+    # Both QNSE and BouLac import with their actual paired surface layer.
+    assert 4 in _BL_MAP and 4 in _SFCLAY_ALLOWED
+    assert _blockers(sf_sfclay_physics=4, bl_pbl_physics=4) == ()
+    assert 8 in _BL_MAP, "BouLac imports natively"
+    assert 7 in _SFCLAY_ALLOWED, "Pleim-Xiu surface layer is importable"
+
 
 
 def test_the_runtime_leg_that_was_already_there():

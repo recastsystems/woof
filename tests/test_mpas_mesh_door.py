@@ -346,8 +346,7 @@ def _port_checkout() -> Path | None:
 
     ``WOOF_HEX_TREE`` names it outright; otherwise the port checkout
     is looked for as ``woof hex/tree`` beside any ancestor of this
-    repository (which also finds it from a worktree under
-    ``.claude/worktrees/``).
+    repository (which also finds it from a nested worktree).
     """
 
     override = os.environ.get(_PORT_CHECKOUT_ENV)

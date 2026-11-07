@@ -1,0 +1,439 @@
+{
+  "cases": [
+    {
+      "storm": "AL142024",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/bal142024.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/aal142024.dat.gz"
+      ],
+      "cycles": [
+        "2024100512",
+        "2024100600",
+        "2024100612",
+        "2024100700"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL092024",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/bal092024.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/aal092024.dat.gz"
+      ],
+      "cycles": [
+        "2024092400",
+        "2024092412",
+        "2024092500",
+        "2024092512"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "EP182023",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/bep182023.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/aep182023.dat.gz"
+      ],
+      "cycles": [
+        "2023102212",
+        "2023102300",
+        "2023102312",
+        "2023102400"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL142018",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2018/bal142018.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2018/aal142018.dat.gz"
+      ],
+      "cycles": [
+        "2018100712",
+        "2018100800",
+        "2018100812",
+        "2018100900"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL092021",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2021/bal092021.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2021/aal092021.dat.gz"
+      ],
+      "cycles": [
+        "2021082700",
+        "2021082712",
+        "2021082800",
+        "2021082812"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL092022",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2022/bal092022.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2022/aal092022.dat.gz"
+      ],
+      "cycles": [
+        "2022092412",
+        "2022092512",
+        "2022092612",
+        "2022092712"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL062018",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2018/bal062018.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2018/aal062018.dat.gz"
+      ],
+      "cycles": [
+        "2018090900",
+        "2018091000",
+        "2018091100",
+        "2018091200"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL052019",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2019/bal052019.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2019/aal052019.dat.gz"
+      ],
+      "cycles": [
+        "2019083000",
+        "2019083100",
+        "2019090100",
+        "2019090200"
+      ],
+      "models": [
+        "HWRF",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HWRF",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL172023",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/bal172023.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/aal172023.dat.gz"
+      ],
+      "cycles": [
+        "2023092600",
+        "2023092800",
+        "2023093000",
+        "2023100200"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL042024",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/bal042024.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2024/aal042024.dat.gz"
+      ],
+      "cycles": [
+        "2024080312",
+        "2024080412",
+        "2024080512",
+        "2024080612"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "EP092023",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/bep092023.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/aep092023.dat.gz"
+      ],
+      "cycles": [
+        "2023081612",
+        "2023081712",
+        "2023081812",
+        "2023081912"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL052025",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2025/bal052025.dat.gz"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2025/aal052025.dat.gz"
+      ],
+      "cycles": [
+        "2025081400",
+        "2025081412",
+        "2025081500",
+        "2025081600"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "AL092026",
+      "best_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2026/bal092026.dat.gz",
+        "https://ftp.nhc.noaa.gov/atcf/btk/bal092026.dat"
+      ],
+      "best_format": "atcf",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/aid_public/aal092026.dat.gz"
+      ],
+      "cycles": [
+        "2026100700",
+        "2026100712",
+        "2026100800",
+        "2026100812"
+      ],
+      "models": [
+        "HFSA",
+        "HFSB",
+        "AVNO",
+        "OFCL"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "HFSA",
+          "HFSB",
+          "AVNO"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied. Operational current-season best track is provisional."
+    },
+    {
+      "storm": "WP022023",
+      "best_urls": [
+        "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.WP.list.v04r01.csv"
+      ],
+      "best_format": "ibtracs-usa",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2023/awp022023.dat.gz"
+      ],
+      "cycles": [
+        "2023052100",
+        "2023052200",
+        "2023052300",
+        "2023052400"
+      ],
+      "models": [
+        "AVNO",
+        "JTWC"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "AVNO",
+          "JTWC"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    },
+    {
+      "storm": "WP312025",
+      "best_urls": [
+        "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.WP.list.v04r01.csv"
+      ],
+      "best_format": "ibtracs-usa",
+      "adeck_urls": [
+        "https://ftp.nhc.noaa.gov/atcf/archive/2025/awp312025.dat.gz"
+      ],
+      "cycles": [
+        "2025110200",
+        "2025110212",
+        "2025110300",
+        "2025110312"
+      ],
+      "models": [
+        "AVNO",
+        "JTWC"
+      ],
+      "metric_models": {
+        "mslp_hpa": [
+          "AVNO",
+          "JTWC"
+        ]
+      },
+      "notes": "PROGRAM phase-1 staging catalogue, four design cycles. Observational status and aid availability must be checked; no engine forecasts supplied."
+    }
+  ]
+}

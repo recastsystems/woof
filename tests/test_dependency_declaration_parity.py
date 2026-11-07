@@ -93,6 +93,8 @@ _FIRST_PARTY = frozenset({"woof", "tools", "tilestream",
 _PROVIDERS: dict[str, tuple[str, ...]] = {
     # The folded hex model's own third-party imports (woof/hex); each is gated below.
     "boto3": ("boto3",),
+    # (WOOF 1.1.6) nvidia.nccl, the optional NCCL wheel woof/hex/nccl_runtime.py looks in -- see _OPTIONAL_BY_DESIGN.
+    "nvidia": ("nvidia-nccl-cu12",),
     "cfgrib": ("cfgrib",),
     "cftime": ("cftime",),
     "mpi4py": ("mpi4py",),
@@ -101,9 +103,9 @@ _PROVIDERS: dict[str, tuple[str, ...]] = {
     "rustmatrix": ("rustmatrix",),
     "PIL": ("pillow",),
     "affine": ("affine",),
-    "cupy": ("cupy-cuda12x", "cupy-cuda13x"),
-    "cupy_backends": ("cupy-cuda12x", "cupy-cuda13x"),
-    "cupyx": ("cupy-cuda12x", "cupy-cuda13x"),
+    "cupy": ("cupy-cuda12x", "cupy-cuda13x", "cupy-rocm-7-0"),
+    "cupy_backends": ("cupy-cuda12x", "cupy-cuda13x", "cupy-rocm-7-0"),
+    "cupyx": ("cupy-cuda12x", "cupy-cuda13x", "cupy-rocm-7-0"),
     "cuda": ("cuda-pathfinder",),
     "huggingface_hub": ("huggingface_hub",),
     "jsonschema": ("jsonschema",),
@@ -127,6 +129,14 @@ _PROVIDERS: dict[str, tuple[str, ...]] = {
     # It carries the RRTMGP and Thompson table directories; woof pins it
     # `==` and woof.data_assets resolves through it.
     "woof_data": ("recast-woof-data",),
+    # The 3.0 kernel-pack companions (SIZE-01 split the precompiled packs out
+    # of the engine wheel): woof pins both `==` and woof.kernel_aot resolves
+    # its default packs through them.
+    "gpuwm_kernels": ("gpuwm-kernels",),
+    "gpuwm_kernels_startup": ("gpuwm-kernels-startup",),
+    # NO public distribution provides this: the site's storm-tracker hook,
+    # imported only under WOOF_TC_TRACKER -- see _OPTIONAL_BY_DESIGN.
+    "woof_tools_tc_tracker": (),
     # NO distribution provides this: it is the repository's own mapped
     # parity battery (tests/test_mapped_engine_parity.py), and tests/ does
     # not ship.  The two decode instruments that import it are
@@ -143,6 +153,8 @@ _PROVIDERS: dict[str, tuple[str, ...]] = {
     "woof_wsm6_inputs": (),
     "arwen_global": ("arwen-global",),
     "cdsapi": ("cdsapi",),
+    # (WOOF 1.1.6) the rapidgzip command the hex global door runs (_GENERATED_SOURCE_CONSUMERS)
+    "rapidgzip": ("rapidgzip",),
     "setuptools": ("setuptools",),
     "xdist": ("pytest-xdist",),
     # tests/test_no_undefined_names.py locates the linter through the
@@ -197,12 +209,36 @@ _GUARANTORS: dict[str, tuple[str, str]] = {
     ),
 }
 
+#: Version constraints on a distribution a declared dependency already installs.  Nothing imports them by
+#: name: the line only narrows what the guarantor resolves.  Each row names the guarantor and the breakage.
+_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "nvidia-cuda-nvrtc": (
+        "cupy-cuda13x",
+        "cupy-cuda13x[ctk] installs NVRTC through cuda-toolkit; [gpu-cu13] keeps it below 13.5 because no "
+        "kernel ULP row, frame recording or startup image is recorded for NVRTC 13.5 (2.9.13 GPU gate, "
+        "tests/_toolchain_rows.py: no row for NVRTC 13.5 on sm_120).",
+    ),
+    "nvidia-nvjitlink": (
+        "cupy-cuda13x",
+        "cuda-toolkit 13.4.3 pins every component but nvJitLink (>=13.4.92,<14); [gpu-cu13] keeps it with NVRTC "
+        "below 13.5 so the batch kernels' PTX link uses the compiler that wrote it (2.9.13 R6).",
+    ),
+}
+
 #: Consumers an AST walk cannot see, because the import lives inside a
 #: *string* that some other process executes.  Recorded rather than waved
 #: through: :func:`test_generated_source_consumers_still_exist` re-checks that
 #: the named file still contains the named import, so deleting the consumer
 #: still trips the gate.
 _GENERATED_SOURCE_CONSUMERS: dict[str, tuple[str, str, str]] = {
+    "rapidgzip": (
+        "woof/hex/global_door.py",
+        'shutil.which("rapidgzip")',
+        "(WOOF 1.1.6) the hex global door decodes the MPAS mesh archives with the "
+        "rapidgzip command the distribution installs, found on PATH and never "
+        "imported; without the declaration a fresh `woof hex global` refused at "
+        "its mesh stage (\"rapidgzip is missing\").",
+    ),
     "psutil": (
         "tests/test_prepare_hrrr_wrf.py",
         "import psutil",
@@ -250,6 +286,11 @@ _EARTH2_INTERPRETER = (
 )
 
 _OPTIONAL_BY_DESIGN: dict[str, str] = {
+    "nvidia": (
+        "(WOOF 1.1.6) woof/hex/nccl_runtime.py tries nvidia.nccl inside a try/except to find libnccl.so.2 "
+        "from an installed nvidia-nccl wheel, then the system library; a single-card run never loads "
+        "NCCL, and a multi-card run without either is refused by name."
+    ),
     "boto3": (
         "woof/hex/analysis_bundle.py tries boto3 inside a try/except for an s3:// analysis bundle and "
         "falls back to the HTTPS route without it; no default door needs it."
@@ -267,6 +308,12 @@ _OPTIONAL_BY_DESIGN: dict[str, str] = {
     "tomli": (
         "woof/hex/nest_triggers.py falls back to tomli only when tomllib is missing, which is Python "
         "below 3.11; the distribution requires 3.11 or newer, so the fallback never runs."
+    ),
+    "woof_tools_tc_tracker": (
+        "woof/runtime.py and woof/prepared_single_domain_forecast.py import it "
+        "only when WOOF_TC_TRACKER is set, as the site's storm-tracker hook on "
+        "each committed history frame; no engine door sets it and a bare run "
+        "never imports it."
     ),
     "rustmatrix": (
         "tools/build_radar_scattering_tables.py (labs/radar-bands, 2.9.11) is the "
@@ -819,6 +866,9 @@ def test_every_declaration_is_imported(shipped_imports, test_suite_imports,
         wanted |= set(_providers(module))
     for module in _GUARANTORS:                      # guarantors are consumed
         wanted.add(_canonical(_GUARANTORS[module][0]))
+    for distribution, (guarantor, _why) in _CONSTRAINTS.items():   # a constraint narrows its guarantor
+        assert _canonical(guarantor) in declaration["all"], (distribution, guarantor)
+        wanted.add(_canonical(distribution))
 
     unused = sorted(declaration["all"] - wanted)
     assert not unused, (
@@ -874,6 +924,12 @@ def test_all_covers_every_extra_a_forecast_user_needs(declaration, pyproject):
     aggregates = {"all", "all-cu12", "all-cu13", "gpu"}
     excused = {
         "dev": "the test suite, not a runtime capability",
+        "rocm": "the experimental AMD (ROCm/HIP) backend's CuPy build. "
+                "cupy-rocm-7-0 and cupy-cuda12x/13x all install the one "
+                "`cupy` package, so an aggregate carrying both would pip "
+                "one over the other; CUDA is the default and `--backend "
+                "amd` is the explicit selection (project ruling 2026-11-01: "
+                "an AMD backend from the same kernel source).",
         "publish": "maintainer-only mirror publishing, needs credentials "
                    "on a dataset repository no user has",
         "geog": "the PARITY FALLBACK for the high-resolution warp, not "

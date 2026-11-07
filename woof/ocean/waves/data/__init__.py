@@ -74,13 +74,12 @@ def load_prepared(path, *, forcing=None):
         arrays[name] = array
     return manifest, arrays
 
-def register_cli(commands):
-    parser = commands.add_parser("waves", help="prepare, verify and render spectral wave data")
-    doors = parser.add_subparsers(dest="wave_data_command", required=True)
+def register_cli(doors):
     for name in ("stage", "catalog", "prepare", "forcing", "audit", "verify", "products", "observations"):
         door = doors.add_parser(name)
         door.add_argument("request", type=Path)
         door.set_defaults(func=main, wave_data_operation=name)
+    return doors
 
 def main(args):
     if args.wave_data_operation == "verify":

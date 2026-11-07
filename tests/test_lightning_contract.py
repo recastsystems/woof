@@ -10,8 +10,12 @@ def test_namelist_defaults_are_executable_config():
     assert all(fields[k] == v for k,v in LIGHTNING_DEFAULTS.items())
     assert set(LIGHTNING_OPTIONS) == {0,1,2,3,11}
 
-def test_no_ftz_no_fma_shared_compile_route():
+def test_fast_default_and_strict_shared_compile_route(monkeypatch):
     from woof.core.kernels import module_options, module_source
+    from woof import wrf_exact
+    monkeypatch.setattr(wrf_exact,"ENABLED",False)
+    assert module_options("lightning") == ("-std=c++17","--ftz=false")
+    monkeypatch.setattr(wrf_exact,"ENABLED",True)
     assert module_options("lightning") == ("-std=c++17","--ftz=false","--fmad=false")
     assert "lightning_patch" in module_source("lightning")
 
@@ -72,12 +76,12 @@ def test_bare_namelist_import_reaches_lightning(tmp_path):
     from woof.namelist_import import import_namelists
     from woof.experiment import load_experiment
     wps,inp=_generic_hierarchy_pair(tmp_path,1)
-    text=inp.read_text().replace("&physics","&physics\n lightning_option=1, lightning_dt=15., do_radar_ref=1, iccg_method=4,")
+    text=inp.read_text().replace("&physics","&physics\n lightning_option=1, lightning_dt=15., do_radar_ref=1, iccg_method=2,")
     inp.write_text(text)
     toml,_=import_namelists(wps,inp,name="lightning")
     target=tmp_path/"lightning.toml";target.write_text(toml)
     run=load_experiment(target).root.run
-    assert (run.lightning_option,run.lightning_dt,run.iccg_method,run.do_radar_ref)==(1,15.,4,1)
+    assert (run.lightning_option,run.lightning_dt,run.iccg_method,run.do_radar_ref)==(1,15.,2,1)
 
 def test_lightning_checkpoint_roundtrip_and_identity(tmp_path,monkeypatch):
     from test_restart import _cfg,_shim_state,_fill_setup
@@ -114,8 +118,37 @@ def test_off_diagnostic_controls_do_not_move_checkpoint_identity():
     from woof.config import RunConfig
     from woof.io.restart import _configuration_digest_values
     cfg=RunConfig(nx=6,ny=4,nz=5,dx=2000.,dy=2000.,ztop=8000.,dt=10.,run_seconds=0.)
-    moved=dataclasses.replace(cfg,do_radar_ref=1,lightning_dt=15.,iccg_method=2)
+    moved=dataclasses.replace(cfg,lightning_dt=15.,iccg_method=2)
     assert _configuration_digest_values(dataclasses.asdict(cfg)) == _configuration_digest_values(dataclasses.asdict(moved))
+
+
+def test_radar_history_survives_stock_import_with_lightning_off(tmp_path):
+    from test_namelist_import import _generic_hierarchy_pair
+    from woof.namelist_import import import_namelists
+    from woof.experiment import load_experiment
+    from woof.io.restart import configuration_echo
+    wps, inp = _generic_hierarchy_pair(tmp_path, 1)
+    inp.write_text(inp.read_text().replace(
+        "&physics", "&physics\n do_radar_ref=1, lightning_option=0,"))
+    text, report = import_namelists(wps, inp, name="radar-history")
+    target = tmp_path / "radar.toml"
+    target.write_text(text)
+    run = load_experiment(target).root.run
+    assert run.lightning_option == 0
+    assert run.do_radar_ref == 1
+    assert configuration_echo(run)["do_radar_ref"] == 1
+    assert "do_radar_ref = 1" in text
+
+
+@pytest.mark.parametrize("value", ["2", ".true."])
+def test_radar_history_import_refuses_undefined_switch(tmp_path, value):
+    from test_namelist_import import _generic_hierarchy_pair
+    from woof.namelist_import import import_namelists
+    wps, inp = _generic_hierarchy_pair(tmp_path, 1)
+    inp.write_text(inp.read_text().replace(
+        "&physics", f"&physics\n do_radar_ref={value},"))
+    with pytest.raises(ValueError, match="do_radar_ref"):
+        import_namelists(wps, inp)
 
 
 # Producer tables (2.9.0). LPI reads state.qg and PR92z reads the cumulus
@@ -186,3 +219,55 @@ def test_pr92_cloud_top_refuses_a_scheme_without_ktop_deep_by_its_number(cu):
     from woof.lightning_contract import validate_lightning
     with pytest.raises(ValueError, match=rf"cu_physics={cu} does not publish ltng_ktop_deep"):
         validate_lightning(_lightning_cfg(lightning_option=11, cu_physics=cu))
+
+
+def test_static_tile_geometry_rejects_gaps_and_overlaps():
+    from woof.core.lightning import _validated_tiles
+    tiles=((0,1,0,4),(1,7,0,2),(1,7,2,4))
+    assert _validated_tiles(7,4,tiles)==tiles
+    with pytest.raises(ValueError,match="overlaps"):
+        _validated_tiles(7,4,((0,5,0,4),(4,7,0,4)))
+    with pytest.raises(ValueError,match="gaps"):
+        _validated_tiles(7,4,((0,3,0,4),(4,7,0,4)))
+
+
+def test_due_clock_and_tile_scalars_do_not_read_device_values():
+    from types import SimpleNamespace
+    from woof.core.lightning import lightning_due
+    from tilestream.physics_inventory import carrier_scalars, set_carrier_scalars
+    class NoHostRead:
+        def __getitem__(self, key):
+            raise AssertionError("a step read a device clock")
+    state = SimpleNamespace(_scratch={"ltng_ltngacttime": NoHostRead()}, elapsed_seconds=10.,
+        physics=None, _lightning_host_clock={"activation": 20., "calendar": [2026,1,31,23,59,30]})
+    state.existing_scratch = state._scratch.get
+    cfg = SimpleNamespace(lightning_option=3, lightning_dt=15., dt=10.)
+    assert lightning_due(state, cfg)
+    values = carrier_scalars(state)
+    state._lightning_host_clock["activation"] = 200.
+    set_carrier_scalars(state, values)
+    assert lightning_due(state, cfg)
+    assert state._lightning_host_clock["calendar"] == [2026,1,31,23,59,30]
+
+
+def test_restored_array_clock_invalidates_the_driver_mirror():
+    import numpy as np
+    from types import SimpleNamespace
+    from woof.core.lightning import host_clock, invalidate_host_clock
+    state = SimpleNamespace(_scratch={"ltng_ltngacttime": np.array([45.], np.float32),
+        "ltng_calendar": np.array([2026,2,1,0,0,0], np.int32)},
+        _lightning_host_clock={"activation": 20., "calendar": [2026,1,1,0,0,0]},
+        _host_setup_state=True)
+    state.existing_scratch = state._scratch.get
+    invalidate_host_clock(state)
+    assert host_clock(state) == {"activation": 45., "calendar": [2026,2,1,0,0,0]}
+
+
+def test_native_monthly_input_rank_wall_is_named():
+    from woof.lightning_contract import validate_lightning
+    import pytest
+    with pytest.raises(ValueError,match="outside the native allocation"):
+        validate_lightning(_lightning_cfg(lightning_option=1,mp_physics=8,moist=True,do_radar_ref=1,iccg_method=4))
+
+# Release census replacements (reviewed against the merged sources).
+# Census: test_no_ftz_no_fma_shared_compile_route is covered by test_fast_default_and_strict_shared_compile_route.

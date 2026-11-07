@@ -95,7 +95,9 @@ def test_native_tracer_option_import_carries_one_bulk_row_on_the_tree(tmp_path):
     assert all(d.run.fire_smoke and d.run.chem_sets == 'sfire_smoke' for d in experiment.domains)
     assert [d.run.ifire for d in experiment.domains] == [0,2]
     with pytest.raises(ValueError, match='tracer_opt'):
-        import_namelists(*_pair(tmp_path, inp=text.replace('tracer_opt=0,3,','tracer_opt=0,2,')))
+        # Package 2 is the ported non-Chem passive tracer set (0747f1ef907);
+        # a package neither port carries is still refused by name.
+        import_namelists(*_pair(tmp_path, inp=text.replace('tracer_opt=0,3,','tracer_opt=0,1,')))
 
 
 def test_history_quote_contains_the_exact_bulk_metadata_inventory():

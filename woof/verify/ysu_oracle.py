@@ -17,7 +17,7 @@ Two CSVs live in ``woof/data/ysu/oracle/``:
 Both CSVs also carry the momentum tendencies from a *second* call made with
 ``ctopo = ctopo2 = 1``.  That second call is not an alternative -- it is what
 WRF's own driver does on every column of every default run
-(``module_bl_ysu.F:404``), and since lane/parity-286 it is the arm every
+(``module_bl_ysu.F:404``), and since development branch it is the arm every
 entry point of ``kernels/ysu_480.cu`` takes, so the port's ``du``/``dv`` are
 graded against it.  The first, ctopo-absent call (``utnp``/``vtnp``) is
 kept as the WRF-against-WRF control that shows the two arms differ.
@@ -31,6 +31,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from pathlib import Path
+from woof import data_assets
 
 import numpy as np
 
@@ -45,7 +46,7 @@ __all__ = [
 ]
 
 #: Where the packaged fixture lives.
-YSU_ORACLE_DIR = Path(__file__).resolve().parents[1] / "data" / "ysu" / "oracle"
+YSU_ORACLE_DIR = data_assets.verify_oracle_path("ysu/oracle")
 
 #: port output name -> oracle column name, for the per-level fields.
 LEVEL_FIELD_MAP = {
@@ -68,7 +69,7 @@ SURFACE_FIELD_MAP = {
 
 #: The ctopo-absent call (bl_ysu.F90:1315, ``ad(1) = 1+fric``), which no WRF
 #: run reaches because module_bl_ysu.F:404 always passes ctopo.  The port
-#: stopped taking it in lane/parity-286; measured against it only to show
+#: stopped taking it in development branch; measured against it only to show
 #: the port now sits on WRF's default arm and not on this one.
 NOCTOPO_FIELD_MAP = {"du": "utnp", "dv": "vtnp"}
 
@@ -110,6 +111,7 @@ def load_ysu_oracle(directory: Path | None = None) -> YsuOracleFixture:
     how the comparison was set up.
     """
     directory = Path(directory) if directory is not None else YSU_ORACLE_DIR
+    data_assets.require_verify_oracle(directory)
     with (directory / "ysu-levels.csv").open(newline="", encoding="ascii") as fh:
         level_rows = list(csv.DictReader(fh))
     with (directory / "ysu-surface.csv").open(newline="", encoding="ascii") as fh:

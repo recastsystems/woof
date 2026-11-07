@@ -13,7 +13,7 @@ class RelocationContinuation:
     land: dict
 
 
-def stage_relocation_continuation(captured, new_dc, static, *, plan=None):
+def stage_relocation_continuation(captured, new_dc, static, *, plan=None, parent_node=None):
     """Shift on the full domain and choose global same-class donor columns.
 
     The result may be sliced for bounded device construction afterwards.
@@ -70,6 +70,19 @@ def stage_relocation_continuation(captured, new_dc, static, *, plan=None):
         for value in captured.get("continuation", {}).values())
     fill = donor_fill_plan(overlap_mask=overlap_mask_for_plan(plan, (cfg.ny, cfg.nx)),
                            landmask=np.asarray(static["LANDMASK"]), device=device)
+    # Ocean profiles on newly exposed water come from the live parent.
+    # The overlap retains the outgoing child bit for bit, including its wake.
+    from woof.ingest.relocation_init import PWP_CONTINUATION_FIELDS
+    ocean = set(captured["fields"]) & set(PWP_CONTINUATION_FIELDS)
+    parent_ocean = {}
+    if ocean:
+        if ocean != set(PWP_CONTINUATION_FIELDS):
+            raise RelocationRefusal("moving PWP requires the outgoing child's complete ocean state")
+        from woof.ocean.mixed_layer.nest import parent_columns
+        driver = getattr(getattr(parent_node, "state", None), "physics", None)
+        if driver is None or not ocean <= set(driver.fields):
+            raise RelocationRefusal("moving PWP needs the live parent's complete ocean state")
+        parent_ocean = parent_columns(driver.fields, new_dc, np.asarray(static["LANDMASK"]))
     moved = {}
     for name, old in captured["fields"].items():
         window = plan.window(old.shape)
@@ -77,7 +90,14 @@ def stage_relocation_continuation(captured, new_dc, static, *, plan=None):
             continue
         (dst_j, src_j), (dst_i, src_i) = window
         xp = _array_module(old)
-        staged = xp.zeros_like(old)
-        staged[..., dst_j, dst_i] = old[..., src_j, src_i]
-        moved[name] = fill.apply(staged)
+        if name in parent_ocean:
+            staged = xp.asarray(parent_ocean[name], dtype=old.dtype).copy()
+            if staged.shape != old.shape:
+                raise RelocationRefusal("parent and child PWP must use the same ocean layers")
+            staged[..., dst_j, dst_i] = old[..., src_j, src_i]
+            moved[name] = staged
+        else:
+            staged = xp.zeros_like(old)
+            staged[..., dst_j, dst_i] = old[..., src_j, src_i]
+            moved[name] = fill.apply(staged)
     return RelocationContinuation(captured, plan, verdict, fill, moved)

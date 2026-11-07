@@ -224,7 +224,8 @@ def apply(state: DomainState, cfg: RunConfig, dt: float, *,
     zh = state.scratch((nz, ny, nx), "my2_z")
     psfc = state.scratch((ny, nx), "my2_psfc")
 
-    theta[...] = thb + state.thp
+    theta[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
     pii[...] = cp.power(state.p / DTYPE(c.P0), DTYPE(c.RCP))
     # WRF's t2d, :3644.  The scheme integrates absolute temperature and the
     # wrapper divides by pii again at :3671.
@@ -322,7 +323,8 @@ def reflectivity(state: DomainState, *, temperature=None, pressure=None):
     if temperature is None:
         thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
         t = state.scratch((nz, ny, nx), "my2_zet_t")
-        t[...] = (thb + state.thp) * cp.power(
+        t[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+                  else thb + state.thp) * cp.power(
             state.p / DTYPE(c.P0), DTYPE(c.RCP))
         pres = state.p
     else:

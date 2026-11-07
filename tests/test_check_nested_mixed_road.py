@@ -305,7 +305,7 @@ def test_a_single_domain_config_is_not_given_a_tree_road(tmp_path, capsys):
 # --- the PINNED child: the same walk, the same standing -------------------
 #
 # THE SECOND DEFECT, reproduced on this line's tip against the real artifact
-# (a development machine, woof 2.6.5, a 4-domain ERA5 tree whose 1 km d04 cannot sit
+# (test host 2, gpuwm 2.6.5, a 4-domain ERA5 tree whose 1 km d04 cannot sit
 # resident on a 32 GiB 5090).  Varying only d04's ``tiles`` line:
 #
 #   { mode = "auto" }                      -> d04 streams, claim 16.24 GiB,

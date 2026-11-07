@@ -13,6 +13,7 @@ use crate::init::{metfile::{MetReader, MetSlab}, soil};
 use crate::error::{MpasError, MpasResult};
 use rayon::prelude::*;
 use std::cell::Cell;
+use std::sync::Arc;
 use std::path::Path;
 
 pub const NATIVE_FILENAME: &str = "QNWFA_QNIFA_SIGMA_MONTHLY.dat";
@@ -42,9 +43,10 @@ pub struct AerosolReceipt {
 pub struct Climatology {
     pub n_cells: usize,
     pub n_levels: usize,
-    pub nifa: Vec<Vec<f32>>,
-    pub nwfa: Vec<Vec<f32>>,
-    pub pressure: Vec<Vec<f32>>,
+    pub nifa: Vec<Arc<[f32]>>,
+    pub nwfa: Vec<Arc<[f32]>>,
+    pub pressure: Vec<Arc<[f32]>>,
+    months: [bool;12],
     // get_julgmt DATA mmd keeps February=29 after the first leap-year call.
     february_is_29: Cell<bool>,
 }
@@ -231,7 +233,7 @@ fn grouped(path: &Path, lat: &[f32], lon: &[f32], landmask: &[i32], n_levels: us
         for month in 0..12 {
             let group: Vec<&GocartRecord> = records.iter()
                 .filter(|r| r.family == family && r.month == month).collect();
-            if group.is_empty() { continue; }
+            if group.is_empty() || !clim.months[month] { continue; }
             let contexts: Vec<InterpContext> = group.iter().map(|r| InterpContext {
                 array: &r.slab,
                 msgval: 0.0,
@@ -245,7 +247,7 @@ fn grouped(path: &Path, lat: &[f32], lon: &[f32], landmask: &[i32], n_levels: us
                 1 => &mut clim.nwfa,
                 _ => &mut clim.pressure,
             };
-            dest[month].par_chunks_mut(n_levels).enumerate().try_for_each(|(c, column)| {
+            Arc::make_mut(&mut dest[month]).par_chunks_mut(n_levels).enumerate().try_for_each(|(c, column)| {
                 if landmask[c] == -1 {
                     for r in &group { column[r.slot] = 0.0; }
                     return Ok(());
@@ -259,7 +261,7 @@ fn grouped(path: &Path, lat: &[f32], lon: &[f32], landmask: &[i32], n_levels: us
             })?;
         }
     }
-    Ok((read, records.len()))
+    Ok((read, records.iter().filter(|r|clim.months[r.month]).count()))
 }
 
 /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_thompson_aerosols.F:209-719 (init_hinterp_gocart) at 1d6e370e.
@@ -271,6 +273,29 @@ pub fn horizontal(
     landmask: &[i32],
     n_levels: usize,
 ) -> MpasResult<(Climatology, AerosolReceipt)> {
+    horizontal_for_dates(path,lat,lon,landmask,n_levels,&[])
+}
+
+/// Only months that can contribute to the requested dates are materialized.
+/// All source records are still decoded and their grid/level headers checked.
+/// The complete twelve-month API above remains available for module replays.
+pub fn horizontal_for_dates(path:&Path,lat:&[f32],lon:&[f32],landmask:&[i32],
+    n_levels:usize,dates:&[&str])->MpasResult<(Climatology,AerosolReceipt)> {
+    let mut months=[dates.is_empty();12];
+    for date in dates {
+        let month=date.get(5..7).and_then(|s|s.parse::<usize>().ok());
+        let day=date.get(8..10).and_then(|s|s.parse::<usize>().ok());
+        match (month,day) {
+            (Some(m @ 1..=12),Some(d @ 1..=31)) => {
+                months[m-1]=true;
+                months[if d<=15 {(m+10)%12} else {m%12}]=true;
+            },
+            _=>months.fill(true), // at_date returns the original date refusal
+        }
+    }
+    // Gaussian locate rejects NaN latitudes. Preserve that refusal even for
+    // an unused month by taking the complete original path on such meshes.
+    if lat.iter().any(|v|!v.is_finite()) {months.fill(true);}
     let n_cells = lat.len();
     if lon.len() != n_cells || landmask.len() != n_cells || n_levels < 2 {
         return Err(MpasError::Refusal(
@@ -282,9 +307,10 @@ pub fn horizontal(
         n_levels,
         // One zeroed allocation per month (vec![v; 12] would copy the first
         // eleven times on one core: 9 GB of copies on conus3km).
-        nifa: (0..12).map(|_| vec![0.0; n_cells * n_levels]).collect(),
-        nwfa: (0..12).map(|_| vec![0.0; n_cells * n_levels]).collect(),
-        pressure: (0..12).map(|_| vec![0.0; n_cells * n_levels]).collect(),
+        nifa: (0..12).map(|m| Arc::from(vec![0.0; if months[m] || m==0 {n_cells*n_levels} else {0}])).collect(),
+        nwfa: (0..12).map(|m| Arc::from(vec![0.0; if months[m] || m==0 {n_cells*n_levels} else {0}])).collect(),
+        pressure: (0..12).map(|m| Arc::from(vec![0.0; if months[m] || m==0 {n_cells*n_levels} else {0}])).collect(),
+        months,
         february_is_29: Cell::new(false),
     };
     let mut receipt = AerosolReceipt {
@@ -304,7 +330,7 @@ pub fn horizontal(
             // A refusal somewhere: rerun record by record from zeroed months,
             // so the refusal returned is the one that loop meets first.
             for months in [&mut clim.nifa, &mut clim.nwfa, &mut clim.pressure] {
-                for month in months.iter_mut() { month.iter_mut().for_each(|v| *v = 0.0); }
+                for month in months.iter_mut() { Arc::make_mut(month).iter_mut().for_each(|v| *v = 0.0); }
             }
         }
     }
@@ -329,6 +355,7 @@ pub fn horizontal(
         } else {
             None
         };
+        if !clim.months[month] {continue;}
         let slab = Slab::from_met(&field.values, field.nx, field.ny);
         let ctx = InterpContext {
             array: &slab,
@@ -362,11 +389,11 @@ pub fn horizontal(
                 hinterp::interp_sequence(x, y, &ctx, &METHODS, 0)
             })
         };
-        let parallel: MpasResult<()> = dest[month].par_chunks_mut(n_levels).enumerate()
+        let parallel: MpasResult<()> = Arc::make_mut(&mut dest[month]).par_chunks_mut(n_levels).enumerate()
             .try_for_each(|(c, column)| { column[slot] = sample(c)?; Ok(()) });
         if parallel.is_err() {
             for c in 0..n_cells {
-                dest[month][c * n_levels + slot] = sample(c)?;
+                Arc::make_mut(&mut dest[month])[c * n_levels + slot] = sample(c)?;
             }
         }
         receipt.records_interpolated += 1;
@@ -377,6 +404,12 @@ pub fn horizontal(
 /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_thompson_aerosols.F:87-205 (init_vinterp_gocart) at 1d6e370e.
 /// Also the identical interpolation slice of init_atm_thompson_aerosols_lbc:790-844.
 impl Climatology {
+    pub(crate) fn seed_calendar<'a>(&self,dates:impl Iterator<Item=&'a str>) {
+        if dates.filter_map(|d|d.get(..4)?.parse::<i32>().ok()).any(|y|y%4==0 && (y%100!=0 || y%400==0)) {
+            self.february_is_29.set(true);
+        }
+    }
+
     /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_thompson_aerosols.F:693-839 at 1d6e370e.
     pub fn at_date(
         &self,
@@ -410,13 +443,18 @@ impl Climatology {
                 "invalid GOCART interpolation date {date}"
             )));
         }
+        let m=month as usize-1;
+        let adjacent=if day<=15 {(m+11)%12} else {(m+1)%12};
+        if !self.months[m] || !self.months[adjacent] {
+            return Err(MpasError::Refusal("GOCART date was not included in the requested climatology window".into()));
+        }
         let size = self.n_cells * self.n_levels;
         if self.n_levels < 2
             || n_vert == 0
             || pressure_base.len() != self.n_cells * n_vert
             || [&self.nifa, &self.nwfa, &self.pressure]
                 .iter()
-                .any(|a| a.len() != 12 || a.iter().any(|v| v.len() != size))
+                .any(|a| a.len() != 12 || a.iter().enumerate().any(|(m,v)| v.len()!=size && (self.months[m] || m==0)))
         {
             return Err(MpasError::Refusal(
                 "GOCART climatology and pressure_base have inconsistent array shapes".into(),
@@ -425,7 +463,7 @@ impl Climatology {
         self.february_is_29.set(self.february_is_29.get() || leap);
         let native_leap = self.february_is_29.get();
         let p = soil::monthly_interp_with_february(&self.pressure, year, month, day, native_leap);
-        let interpolate = |monthly: &[Vec<f32>]| {
+        let interpolate = |monthly: &[Arc<[f32]>]| {
             let v = soil::monthly_interp_with_february(monthly, year, month, day, native_leap);
             // The weights registers run on from cell to cell as in the native
             // serial loop; vinterp::carried_columns runs the cells on every
@@ -497,7 +535,7 @@ pub fn initialize(
         ));
     }
     let started = std::time::Instant::now();
-    let (clim, mut receipt) = horizontal(path, lat, lon, landmask, n_levels)?;
+    let (clim, mut receipt) = horizontal_for_dates(path, lat, lon, landmask, n_levels,&[date])?;
     eprintln!("[case7]   GOCART climatology read + horizontal: {:.3} s", started.elapsed().as_secs_f64());
     let started = std::time::Instant::now();
     let state = clim.at_date(date, pressure_base, n_vert)?;
@@ -521,12 +559,29 @@ pub fn initialize_lbc(
     n_vert: usize,
     cache: &mut Option<Climatology>,
 ) -> MpasResult<Option<AerosolState>> {
+    initialize_lbc_for_dates(path,timestamp,timestart,lat,lon,landmask,n_levels,
+        pressure_base,n_vert,cache,&[])
+}
+
+pub fn initialize_lbc_for_dates(
+    path: &Path,
+    timestamp: &str,
+    timestart: &str,
+    lat: &[f32],
+    lon: &[f32],
+    landmask: &[i32],
+    n_levels: usize,
+    pressure_base: &[f32],
+    n_vert: usize,
+    cache: &mut Option<Climatology>,
+    dates:&[&str],
+) -> MpasResult<Option<AerosolState>> {
     if !path.try_exists()? {
         return Ok(None);
     }
     if timestamp == timestart {
         let started = std::time::Instant::now();
-        *cache = Some(horizontal(path, lat, lon, landmask, n_levels)?.0);
+        *cache = Some(horizontal_for_dates(path, lat, lon, landmask, n_levels,dates)?.0);
         eprintln!("[case9]   GOCART climatology read + horizontal: {:.3} s", started.elapsed().as_secs_f64());
     }
     let clim = cache.as_ref().ok_or_else(|| {

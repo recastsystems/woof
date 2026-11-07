@@ -104,6 +104,35 @@ def test_changed_request_gets_an_owned_download_directory(tmp_path):
     assert preparation_data_directory(args,raw,tmp_path)==args.data_dir
 
 
+def test_local_forcing_preparation_keeps_inputs_and_cadence(monkeypatch,tmp_path):
+    from copy import deepcopy
+    from types import SimpleNamespace
+    from woof import case_data,era5_preparation
+    source=tmp_path/'source'/'experiment.toml'
+    forcing=tmp_path/'analysis.nc'
+    monkeypatch.setattr(case_data,'load_case_data',lambda path: (
+        SimpleNamespace(forcing=(forcing,)) if path==source else None))
+    raw={'case_data':{'forcing':['../analysis.nc'],'vtable':'Vtable',
+        'forcing_interval_s':3600.,'sfcp_to_sfcp':False}}
+    before=deepcopy(raw)
+    target=tmp_path/'prepared'/'source.toml'
+    era5_preparation.configure_member(raw,target=target,original=source)
+    assert raw['case_data']['forcing']==[str(forcing)]
+    assert raw['case_data']['forcing_interval_s']==before['case_data']['forcing_interval_s']
+    assert raw['case_data']['sfcp_to_sfcp'] is False
+    assert raw['case_data']['vtable']==str(source.parent/'Vtable')
+    assert raw['case_data']['wps_namelist']==str(target.with_suffix('.namelist.wps'))
+    assert 'fetch' not in raw
+
+
+def test_local_analysis_preparation_needs_no_download_request(tmp_path):
+    from types import SimpleNamespace
+    from woof.spectral_nudging.cli import preparation_data_directory
+    args=SimpleNamespace(data_dir=None)
+    raw={'case_data':{'forcing':['analysis.nc']},'nudging':{'mode':'grid'}}
+    assert preparation_data_directory(args,raw,tmp_path)==tmp_path/'source-inputs'
+
+
 def test_prepared_root_selection_preserves_explicit_nest_override(monkeypatch,tmp_path):
     from types import SimpleNamespace
     from woof import experiment,go_cli

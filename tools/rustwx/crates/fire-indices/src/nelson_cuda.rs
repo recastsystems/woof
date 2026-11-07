@@ -44,7 +44,7 @@ impl Backend {
             if threads == 0 {
                 return Err("CUDA returned zero Nelson block size".into());
             }
-            eprintln!("Nelson CUDA block size: {threads} threads");
+            eprintln!("Nelson GPU block size: {threads} threads");
             Ok((stream, function, threads))
         });
         match opened {
@@ -69,7 +69,11 @@ impl Backend {
     }
     pub fn name(&self) -> &str {
         if self.active() {
-            "Rust + CUDA Nelson radial transport; Rayon daily indices"
+            if cudarc::gpuwm_hip::requested() {
+                "Rust + HIP Nelson radial transport; Rayon daily indices"
+            } else {
+                "Rust + CUDA Nelson radial transport; Rayon daily indices"
+            }
         } else {
             "Rust CPU Rayon"
         }

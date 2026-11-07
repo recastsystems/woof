@@ -699,9 +699,22 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
                 from woof.hex.arwen_surface_update import attach_host
                 attach_host(stack["backend"], host, schedule, output_root,
                             dt=base_dt, layout=tables.layout)
+                if moving_resume is not None and moving_weights is not None:
+                    from woof.hex.moving_ocean import restore_surface_backend
+                    ocean_transfer = restore_surface_backend(stack["backend"], moving_resume,
+                        moving_weights, tables.layout, mesh, mapped_physics_cache)
+                    if ocean_transfer is not None:
+                        physics_remaps[-1]["ocean_transfer"] = ocean_transfer
                 if moving_resume is not None and moving_weights is None and "local_atmospheres" in moving_resume:
                     from woof.hex.moving_checkpoint import restore_local_atmosphere
                     restore_local_atmosphere(stack["driver"],moving_resume["local_atmospheres"][tables.index])
+                # Each class's own updraft-helicity layers over its local mesh (woof.hex.uh_layers.attach_rank);
+                # its owned words reach the history through _capture_rank. THE BREAKAGE THIS PREVENTS
+                # (both-routes matrix, woof hex 0.4.14 candidate, 2026-11-06): the class executor never armed
+                # the layers, so an ArWen LTS run rendered no UH maps while the same run on the fixed step did.
+                from woof.hex.uh_layers import attach_rank
+                attach_rank(stack, local_host["prepared"].mesh, cp,
+                            initial=start_step == 0 and moving_resume is None)
                 cp.cuda.get_current_stream().synchronize()
             edge_extent = int(stack["driver"].horizontal.nedges)
             stack["owned_health_extents"] = {
@@ -790,6 +803,8 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
             moving_receipt["new_rates"] = rate_info
             Path(output_root, "moving-remap.json").write_text(json.dumps(moving_receipt,indent=2)+"\n")
 
+        tc_start_calls = [row['steps'] for row in class_calls]
+
         # F000's surface-layer diagnostics come from each class's first physics
         # call (woof.hex.f000_first_call): every class's first step starts from
         # the start state, so its seam then holds the scheme's diagnosis of its
@@ -838,6 +853,10 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
                 raise
             previous[index] = committed.surface_updates
             forcing[index] = next_dynamics
+            if stack.get("uh_layers") is not None:
+                from woof.hex.uh_layers import rank_update
+                with physics_scope.rank(index, int(cp.cuda.Device().id)):
+                    rank_update(stack)
             if first_call is not None and not first_call.done and index not in first_reads:
                 with physics_scope.rank(index, int(cp.cuda.Device().id)):
                     first_reads[index] = f000_first_call.read_arwen_first_call(stack["backend"], cp)
@@ -934,6 +953,9 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
                 raise RuntimeError(f"an interface register is not empty at history step {step}; "
                                    "the frame would be written between two halves of a transfer")
             began = time.perf_counter()
+            for stack in stacks:
+                if getattr(stack["backend"], "wave_binding", None) is not None:
+                    stack["backend"].wave_binding.service.output(clock_offset+step*base_dt)
             arrays = []
             for index, stack in enumerate(stacks):
                 with physics_scope.rank(index, int(cp.cuda.Device().id)):
@@ -1249,7 +1271,11 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
             "clock_offset_seconds": clock_offset,
             "remap_shock_series": shock_rows,
         }
+        from woof.hex.tc_flux import class_receipts as tc_class_receipts
+        tc_cost = tc_class_receipts(stacks, [row['steps'] - initial
+            for row, initial in zip(class_calls, tc_start_calls)])
         lts_receipt = {
+            **({'tc_flux_by_class': tc_cost} if tc_cost else {}),
             "schema": "gpuwm-hex.fullstep-lts-forecast/v1",
             "dispatch": "rate classes",
             **moving_fields,
@@ -1514,9 +1540,19 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
                     from woof.hex.arwen_surface_update import attach_host
                     attach_host(stack["backend"], host, schedule, output_root,
                                 dt=base_dt, layout=tables.layout)
+                    if moving_resume is not None and not same_partition:
+                        from woof.hex.moving_ocean import restore_surface_backend
+                        with physics_lock:
+                            ocean_transfer = restore_surface_backend(stack["backend"], moving_resume,
+                                moving_weights, tables.layout, mesh, mapped_physics_cache)
+                            if ocean_transfer is not None:
+                                physics_remaps[tables.gid]["ocean_transfer"] = ocean_transfer
                     if same_partition and "local_atmospheres" in moving_resume:
                         from woof.hex.moving_checkpoint import restore_local_atmosphere
                         restore_local_atmosphere(stack["driver"], moving_resume["local_atmospheres"][tables.gid])
+                    # Each block's own updraft-helicity layers (woof.hex.uh_layers.attach_rank), as on one card.
+                    from woof.hex.uh_layers import attach_rank
+                    attach_rank(stack, local_host["prepared"].mesh, cp, initial=moving_resume is None)
                     cp.cuda.get_current_stream().synchronize()
                 edge_extent = int(stack["driver"].horizontal.nedges)
                 stack["owned_health_extents"] = {
@@ -1596,6 +1632,10 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
                     after_phase_one=block.exchanger.round_phase_one if raw_exchange else None)
             previous[gid] = committed.surface_updates
             forcing[gid] = next_dynamics
+            if stack.get("uh_layers") is not None:
+                from woof.hex.uh_layers import rank_update
+                with physics_scope.rank(gid, block.device):
+                    rank_update(stack)
             if first_call is not None and not first_call.done and gid not in first_reads:
                 with physics_scope.rank(gid, block.device):
                     first_reads[gid] = f000_first_call.read_arwen_first_call(stack["backend"], cp)
@@ -1878,7 +1918,11 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
                 "clock_offset_seconds": clock_offset,
                 "remap_shock_series": shock_rows,
             }
+            from woof.hex.tc_flux import class_receipts as tc_class_receipts
+            tc_cost = tc_class_receipts(stacks, [row['steps'] for row in class_calls],
+                                       devices=block_devices)
             lts_receipt = {
+                **({'tc_flux_by_block': tc_cost} if tc_cost else {}),
                 "schema": "gpuwm-hex.fullstep-lts-forecast/v2",
                 "dispatch": "rate classes cut into blocks on several cards",
                 **moving_fields,

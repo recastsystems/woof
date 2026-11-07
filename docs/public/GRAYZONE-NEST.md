@@ -103,7 +103,7 @@ Every bound in [LES.md](LES.md) §4 applies unchanged: the 49-level shared
 vertical grid (this is coarse LES at the gray-zone edge; vertical
 resolution, not dx, is the binding constraint), the one-way nesting, and
 the fetch/spin-up finding, the D90 measurement on the shipped case
-(lane/les-p3-inflow, `INFLOW-FETCH-D90-2026-08-03.md`) found the 250 m
+(development branch, `INFLOW-FETCH-D90-2026-08-03.md`) found the 250 m
 child's inflow spin-up exceeds most of its own domain, so whole-domain
 child scores on either parent chain are fetch-weighted averages until the
 inflow generator lands.

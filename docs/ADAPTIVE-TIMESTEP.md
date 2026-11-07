@@ -1,6 +1,6 @@
 # Adaptive time stepping: what it cost, what it bought
 
-Measured 2026-09-02 against woof 2.6.5 on an RTX 5070 Ti, on a
+Measured 2026-09-02 against gpuwm 2.6.5 on an RTX 5070 Ti, on a
 two-domain tree (d01 311x229 at 10 km, d02 300x300 at 2 km, nz 61, 5:1
 ratio, d02 relocating), 30-minute forecast, 9 wrfout frames.
 

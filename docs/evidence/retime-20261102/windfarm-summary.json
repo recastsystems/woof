@@ -1,0 +1,89 @@
+{
+  "row": "windfarm",
+  "scope": "wind_hook",
+  "baseline_scope": "wind_hook",
+  "commit": "6a3e6ea15e60594499f310894d9b1966f50884e6",
+  "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
+  "warm_policy": "first actual forecast step retained separately; steps 2 onward for stage ratios",
+  "stage_ratio": 2.0441143060392832,
+  "median_stage_ratio": 1.9416499250350931,
+  "amortized_stage_ratio": 2.044114306039283,
+  "active_whole_forecast_wall_ratio": 0.8989145152887152,
+  "active_whole_forecast_seconds": {
+    "baseline": 22.254444047808647,
+    "candidate": 20.004842784255743
+  },
+  "whole_forecast_warm_step_ratio": 1.014971213738614,
+  "arms": {
+    "baseline": {
+      "wind_hook": {
+        "calls": 179,
+        "median_ms": 0.07952000200748444,
+        "mean_ms": 0.08510140808267966,
+        "sum_ms": 15.23315204679966,
+        "mean_host_ms": 0.07195995506627599
+      },
+      "step": {
+        "calls": 179,
+        "median_ms": 24.225055694580078,
+        "mean_ms": 26.794659358829094,
+        "sum_ms": 4796.244025230408,
+        "mean_host_ms": 25.700663741906926
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 36.87807846069336,
+        "mean_ms": 36.82150147177956,
+        "sum_ms": 405.0365161895752,
+        "mean_host_ms": 36.80506992069157
+      }
+    },
+    "candidate": {
+      "wind_hook": {
+        "calls": 179,
+        "median_ms": 0.15440000593662262,
+        "mean_ms": 0.17395700572589257,
+        "sum_ms": 31.13830402493477,
+        "mean_host_ms": 0.16696112199202598
+      },
+      "step": {
+        "calls": 179,
+        "median_ms": 24.582847595214844,
+        "mean_ms": 27.195807931143477,
+        "sum_ms": 4868.049619674683,
+        "mean_host_ms": 26.09846154071765
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 35.88822555541992,
+        "mean_ms": 36.46729885448109,
+        "sum_ms": 401.140287399292,
+        "mean_host_ms": 36.46737167781049
+      }
+    }
+  },
+  "nonfinite_heating": {
+    "baseline": 0,
+    "candidate": 0
+  },
+  "cold_first_step": {
+    "baseline": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 450.6382141113281,
+      "host_seconds": 0.45072166249156
+    },
+    "candidate": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 408.2672119140625,
+      "host_seconds": 0.4083506762981415
+    }
+  },
+  "forecasts": {
+    "baseline": "/workspace/runs/spd-retime-rad-cu/logs/windfarm-baseline.log",
+    "candidate": "/workspace/runs/spd-retime-rad-cu/logs/windfarm-candidate.log"
+  },
+  "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/spd-retime-rad-cu",
+  "retained_native_root": "~/weather/data/datasets/paper/wrf-ports/spd-retime-rad-cu"
+}

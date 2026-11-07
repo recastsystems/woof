@@ -84,7 +84,8 @@ def test_the_floor_is_the_one_the_gpu_extras_declare():
     text = (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     floors = set()
     for extra in ("gpu-cu12", "gpu-cu13"):
-        line = re.search(rf'^{extra}\s*=\s*\["cupy-cuda1[23]x\[ctk\]>=(\d+)\.(\d+)"\]',
+        # The CuPy requirement comes first; a constraint may follow it (gpu-cu13 keeps NVRTC below 13.5).
+        line = re.search(rf'^{extra}\s*=\s*\["cupy-cuda1[23]x\[ctk\]>=(\d+)\.(\d+)"(?:,\s*"[^"]*")*\]',
                          text, re.MULTILINE)
         assert line, f"{extra} no longer declares a CuPy floor this test can read"
         floors.add((int(line.group(1)), int(line.group(2))))

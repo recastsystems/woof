@@ -214,6 +214,11 @@ struct Args {
     mesh_labels: (String, String),
     /// `--mesh-bounds W,E,S,N`: the frame a mesh product is drawn in.
     mesh_bounds: Option<(f64, f64, f64, f64)>,
+    /// `--bounds W,E,S,N`: the frame every map product of the wrfout lane is
+    /// drawn in, in place of the grid's own extent (a storm-centred crop
+    /// whose centre follows the storm frame by frame, so the eye stays still
+    /// across a moving nest's relocation jumps).  Absent, the native grid.
+    render_bounds: Option<(f64, f64, f64, f64)>,
     /// `--footer-*`: the caption fields the theme's footer strip fills.
     /// Absent every one of them, no strip is drawn even under a theme that
     /// names one, so an existing render is unchanged.
@@ -238,7 +243,7 @@ fn usage() -> &'static str {
 [--source-label TEXT] [--theme NAME|FILE.json] [--radar-colors standard|classic] [--section lat,lon,lat,lon|FILE.json] \
 [--section-across KM] [--isotherms L,L,...[@H]] [--section-top-km N] \
 [--section-size WxH] [--section-reference-km N] \
-[--mesh-grid FILE.nc] [--mesh-reference DIR|FILE] [--mesh-labels A,B] [--mesh-bounds W,E,S,N] \
+[--mesh-grid FILE.nc] [--mesh-reference DIR|FILE] [--mesh-labels A,B] [--mesh-bounds W,E,S,N] [--bounds W,E,S,N] [--forecast-start YYYY-MM-DD_HH:MM:SS] \
 [--footer-title TEXT] [--footer-valid TEXT] [--footer-mesh TEXT] [--footer-leg TEXT] \
 [--footer-note TEXT] [--diff-against WRFOUT]... [--diff-inputs-json FILE] \
 [--diff-labels A,B] [--diff-label-a TEXT] [--diff-label-b TEXT] [--diff-sheet] \
@@ -724,6 +729,7 @@ fn parse_args_from(raw: impl IntoIterator<Item = String>) -> Result<Invocation, 
     let mut mesh_reference: Option<PathBuf> = None;
     let mut mesh_labels = ("TREATMENT".to_string(), "CONTROL".to_string());
     let mut mesh_bounds: Option<(f64, f64, f64, f64)> = None;
+    let mut render_bounds: Option<(f64, f64, f64, f64)> = None;
     let mut footer = rustwx_render::FooterFields::default();
     let mut diff_against: Vec<PathBuf> = Vec::new();
     let mut diff_labels: Option<rustwx_render::difference::DifferenceLabels> = None;
@@ -959,6 +965,32 @@ fn parse_args_from(raw: impl IntoIterator<Item = String>) -> Result<Invocation, 
                 }
                 mesh_bounds = Some((parts[0], parts[1], parts[2], parts[3]));
             }
+            "--forecast-start" => {
+                let value = raw.next().ok_or("--forecast-start requires YYYY-MM-DD_HH:MM:SS")?;
+                // Read by the import's run-origin rule (local_import.rs
+                // wrf_run_origin); set while parsing, before any thread
+                // starts or any file is opened.
+                unsafe { std::env::set_var("RUSTWX_FORECAST_START", value.trim()) };
+            }
+            "--bounds" => {
+                let value = raw.next().ok_or("--bounds requires W,E,S,N")?;
+                let parts: Vec<f64> = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter_map(|part| part.parse::<f64>().ok())
+                    .collect();
+                if parts.len() != 4 || parts.iter().any(|value| !value.is_finite()) {
+                    return Err(CliError::Usage(format!(
+                        "--bounds '{value}' is not four finite degrees W,E,S,N"
+                    )));
+                }
+                if parts[2] >= parts[3] || parts[0] == parts[1] {
+                    return Err(CliError::Usage(format!(
+                        "--bounds '{value}': needs west != east and south below north"
+                    )));
+                }
+                render_bounds = Some((parts[0], parts[1], parts[2], parts[3]));
+            }
             // The footer strip's caption fields.  The strip itself is the
             // theme's; these fill it.  Setting none of them draws none.
             "--footer-title" => {
@@ -1122,6 +1154,7 @@ fn parse_args_from(raw: impl IntoIterator<Item = String>) -> Result<Invocation, 
         mesh_reference,
         mesh_labels,
         mesh_bounds,
+        render_bounds,
         footer,
         difference,
         save_import,
@@ -1303,7 +1336,13 @@ const GRID_NAME_ATTRIBUTE: &str = "GPUWM_GRID_NAME";
 const REFC_NOTE_ATTRIBUTE: &str = "GPUWM_REFC_NOTE";
 
 /// The recipes whose field is `REFC`, which a `GPUWM_REFC_NOTE` is about.
-const REFC_RECIPES: [&str; 2] = ["composite_reflectivity", "composite_reflectivity_uh"];
+const REFC_RECIPES: [&str; 5] = [
+    "composite_reflectivity",
+    "composite_reflectivity_uh",
+    "composite_reflectivity_uh0to1km",
+    "composite_reflectivity_uh0to2km",
+    "composite_reflectivity_uh0to3km",
+];
 
 /// A file's grid label as the headline may print it: whitespace collapsed,
 /// at most 32 characters, no control character and no `|`; anything else
@@ -1393,6 +1432,18 @@ fn with_refc_note(
         annotations.title_notes.entry(recipe.to_string()).or_insert_with(|| note.clone());
     }
     Some(annotations)
+}
+
+/// The headline's grid parenthetical: the caller's `--annotate` `grid_label` when it gives one (checked as a file's
+/// label is; empty drops it), else the inputs' own (domain_title_label).
+fn annotated_grid_label(
+    annotations: Option<&rustwx_products::geographic_overlays::PanelAnnotations>,
+    identity: &GridIdentity,
+) -> Option<String> {
+    match annotations.and_then(|annotations| annotations.grid_label.as_deref()) {
+        Some(label) => checked_grid_label(label),
+        None => domain_title_label(identity),
+    }
 }
 
 fn domain_token_from_id(grid_id: i32) -> Option<String> {
@@ -1698,7 +1749,7 @@ fn run(mut args: Args) -> Result<(), String> {
     let domain_slug = native_domain_slug(&identity);
     let spacing = subtitle_spacing(&identity);
     let title_provenance = TitleProvenance::LocalImport {
-        grid_label: domain_title_label(&identity),
+        grid_label: annotated_grid_label(args.annotations.as_ref(), &identity),
     };
     let refc_note = run_refc_note(&args);
     let imported = match &args.from_import {
@@ -1792,6 +1843,7 @@ fn run(mut args: Args) -> Result<(), String> {
         panel_annotations: with_refc_note(args.annotations, refc_note),
         width: args.width,
         height: args.height,
+        render_bounds: args.render_bounds,
     });
     let cancel = AtomicBool::new(false);
     // Every RENDERED panel's georeference (or the lane's reason it has
@@ -2042,7 +2094,11 @@ fn import_run(
             options = rainfall;
         }
     }
-    let task = spawn_process_paths(inputs, store_root.to_path_buf(), options);
+    let task = if std::env::var("RUSTWX_INCREMENTAL_IMPORT").as_deref() == Ok("1") {
+        wrf_process::spawn_process_incremental_paths(inputs, store_root.to_path_buf(), options)
+    } else {
+        spawn_process_paths(inputs, store_root.to_path_buf(), options)
+    };
     let import = loop {
         match task
             .rx
@@ -2120,6 +2176,7 @@ struct StoreBatch {
     panel_annotations: Option<rustwx_products::geographic_overlays::PanelAnnotations>,
     width: u32,
     height: u32,
+    render_bounds: Option<(f64, f64, f64, f64)>,
 }
 
 /// The batch request for one store render, with its limits sized to it.
@@ -2150,7 +2207,16 @@ fn store_batch_request(batch: StoreBatch) -> BatchRenderRequest {
         hours: batch.hours,
         product_spec: batch.product_spec,
         out_dir: batch.out_dir,
-        domain: BatchRenderDomain::NativeGrid,
+        domain: match batch.render_bounds {
+            Some((west, east, south, north)) => BatchRenderDomain::Bounds {
+                slug: batch.native_domain_slug.clone().unwrap_or_else(|| "custom".to_string()),
+                west,
+                east,
+                south,
+                north,
+            },
+            None => BatchRenderDomain::NativeGrid,
+        },
         native_domain_slug: batch.native_domain_slug,
         subtitle_spacing: batch.subtitle_spacing,
         source_label: Some(batch.source_label),
@@ -3080,6 +3146,7 @@ mod tests {
             mesh_reference: None,
             mesh_labels: ("TREATMENT".to_string(), "CONTROL".to_string()),
             mesh_bounds: None,
+            render_bounds: None,
             footer: rustwx_render::FooterFields::default(),
             difference: None,
             save_import: None,
@@ -3505,6 +3572,16 @@ mod tests {
         };
         assert_eq!(native_domain_slug(&graded).as_deref(), Some("hex60-3km"));
         assert_eq!(checked_grid_label("a|b"), None);
+        // --annotate grid_label: a label replaces the file's, an empty one drops the parenthetical, absent keeps it.
+        let file = GridIdentity { domain: Some("d01".into()), spacing_m: Some(2000.0), label: None, name: None };
+        let with = |label: Option<&str>| rustwx_products::geographic_overlays::PanelAnnotations {
+            grid_label: label.map(str::to_string),
+            ..Default::default()
+        };
+        assert_eq!(annotated_grid_label(None, &file), domain_title_label(&file));
+        assert_eq!(annotated_grid_label(Some(&with(None)), &file), domain_title_label(&file));
+        assert_eq!(annotated_grid_label(Some(&with(Some(""))), &file), None);
+        assert_eq!(annotated_grid_label(Some(&with(Some("2 km grid"))), &file).as_deref(), Some("2 km grid"));
         assert_eq!(checked_grid_label("   "), None);
         assert_eq!(checked_grid_label(&"x".repeat(33)), None);
         // No label: the WRF identity, exactly as before.
@@ -3556,7 +3633,10 @@ mod tests {
             serde_json::from_str(r#"{"subtitle_center":"VERIFIED"}"#).unwrap();
         let merged = with_refc_note(Some(caller), Some("incl. parameterised convection".into())).unwrap();
         assert_eq!(merged.subtitle_center.as_deref(), Some("VERIFIED"));
-        assert_eq!(merged.title_notes.len(), 2);
+        assert_eq!(merged.title_notes.len(), REFC_RECIPES.len());
+        // The low-level UH overlays draw on the same REFC, so they carry the note too.
+        assert_eq!(annotated.title_notes.get("composite_reflectivity_uh0to3km").map(String::as_str),
+                   Some("incl. parameterised convection"));
     }
 
     #[test]

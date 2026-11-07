@@ -80,7 +80,7 @@ CODE_SUFFIXES = frozenset({
 #: package's package-data (tests/test_package_data_coverage.py holds every
 #: data file under gpuwm/ declared), the data companion's ``data/**/*`` and
 #: the repository configs (``configs = ["**/*"]``).
-WHEEL_DATA_SUBTREES = ("woof/", "recast-woof-data/woof_data/", "configs/")
+WHEEL_DATA_SUBTREES = ("woof/", "recast-woof-data/woof_data/", "gpuwm-kernels/gpuwm_kernels/", "gpuwm-kernels-startup/gpuwm_kernels_startup/", "configs/")
 
 #: The other package-data declarations, as tree patterns: the tools package's
 #: ``release/*.json``, the default-on hydro door's three source tables
@@ -97,7 +97,7 @@ WHEEL_DATA_PATTERNS = ("tools/release/*.json",
 #: ``tilestream*``, ``configs*``, ``mpas_cycle_bridge*``) and the data
 #: companion's package.  Read whole: a development module the build leaves
 #: out (tilestream's ``test_*``) is still in the public tree.
-WHEEL_CODE_SUBTREES = ("woof/", "recast-woof-data/woof_data/", "configs/",
+WHEEL_CODE_SUBTREES = ("woof/", "recast-woof-data/woof_data/", "gpuwm-kernels/gpuwm_kernels/", "gpuwm-kernels-startup/gpuwm_kernels_startup/", "configs/",
                        "tilestream/", "mpas_cycle_bridge/")
 
 #: The top-level-only packages the root pyproject includes (``tools`` and
@@ -182,7 +182,13 @@ def pinned_record_digests(repo_root: str | Path) -> frozenset[str]:
 #: host name, and the edit that re-pins the kernel drops it in the same commit.
 #: tests/test_release_snapshot_machine_paths.py fails on an entry whose file no
 #: longer has these bytes, so a spent entry cannot linger.
-PINNED_KERNEL_SOURCES = {
+PINNED_KERNEL_SOURCES: dict[str, str] = {
+    # flt32_expf_fma.cuh, kf.cu, lin_support.cuh and p3.cu were re-pinned by
+    # their own edits in the 3.0.0 fix batch and their entries were dropped.
+    # noah.cu: 07eaae5abfe (2026-11-02) cites the -O2 referee disassembly in a
+    # comment naming one lab host; its bytes bind the 3.0.0 cold-start kernel
+    # packs (rel30-packs 62189113d77) and the Noah frame recordings, so
+    # the next edit to noah.cu rewords that comment and drops this entry.
 }
 
 
@@ -257,7 +263,6 @@ DA_TOOLING_ALLOWED_FILES = {
     "woof/data/nwpsuite/shapes.v1.json": (10, "the stock upstream DA methods an agency suite shape may name (public since 2.9.0)"),
     "woof/data/nwpsuite/suite.v1.schema.json": (4, "the schema enum of those methods (public since 2.9.0)"),
     "woof/data/nwpsuite/templates/agency-2box.toml": (1, "the agency template's shadow DA row, stock upstream method (public since 2.9.0)"),
-    "woof/data/kernel-pack-cuda13.json": (1, "no name at all: the base64 of a compiled cubin (cubin_xz_base64) in the cold-start kernel pack spells the marker by chance; the file is one JSON line"),
 }
 
 

@@ -22,10 +22,12 @@ PHYSICS_COMPONENTS = (
 # a qualified packed binding. The caller must supply the admitted binding.
 _NATIVE_LEAVES = {
     ("microphysics", "thompson-mp8"): "woof.ensemble.batch_physics.prepare_thompson_column_batch",
+    ("microphysics", "ishmael-mp55"): "woof.ensemble.batch_physics.prepare_registered_column_batch",
     ("surface_layer", "revised-mm5"): "woof.ensemble.batch_physics.prepare_sfclay_column_batch",
     ("surface_layer", "classic-mm5"): "woof.ensemble.batch_physics.prepare_sfclay_column_batch",
     ("land_surface", "noah"): "woof.ensemble.batch_physics.prepare_noah_column_batch",
     ("pbl", "ysu"): "woof.ensemble.batch_physics.prepare_ysu_column_batch",
+    ("cumulus", "kain-fritsch-cu99"): "woof.core.kf.launch_kf_old",
 }
 
 
@@ -133,6 +135,8 @@ def plan_suite(cfg, *, members=1, registry=None):
         raise ValueError("members must be a positive integer")
     components = selected_capabilities(cfg, registry=registry)
     reasons = []
+    if _value(cfg, "obs_nudge_opt", 0):
+        reasons.append("observation FDDA retains independent member report QC, time windows and captured tendency graphs on the original member driver")
     if _value(cfg, "chem_sets", ""):
         reasons.append("active chemistry keeps the original member species arrays, source-hour caches and mass ledger; the native packed graph lacks chemistry producers and typed state ownership")
     for row in components:
@@ -140,16 +144,22 @@ def plan_suite(cfg, *, members=1, registry=None):
             reasons.append(f"{row.component} selection has no qualified packed registry row")
     selections = {
         "mp_physics": 8, "sf_surface_physics": 2, "bl_pbl_physics": 1,
-        "cu_physics": 0, "sf_urban_physics": 0, "sf_surface_mosaic": 0,
+        "sf_urban_physics": 0, "sf_surface_mosaic": 0,
         "topo_wind": 0, "gwd_opt": 0, "slope_rad": 0, "topo_shading": 0,
         # WRF's swint_opt = 1 rewrites the surface shortwave from a carrier
         # the packed driver does not bank per member, and aer_opt = 3 needs
         # the aerosol-aware Thompson scheme the packed binding does not
         # run; both run on the original member driver.
         "swint_opt": 0, "aer_opt": 0,
+        # These options mutate surface classes or carry a member-local
+        # clock/history bank. The original CUDA driver owns those arrays;
+        # the packed Noah shared-field bank cannot alias them across members.
+        "sst_update": 0, "sst_skin": 0, "tmn_update": 0,
     }
     for key, required in selections.items():
         value = _value(cfg, key, 0)
+        if key == "mp_physics" and value == 55:
+            continue
         if value != required:
             if key == "sf_surface_physics" and value == 3:
                 reasons.append("sf_surface_physics=3 lacks a qualified packed RUC state and fused land driver graph")
@@ -157,6 +167,8 @@ def plan_suite(cfg, *, members=1, registry=None):
                 reasons.append("bl_pbl_physics=5 lacks a qualified packed MYNN turbulence, diffusion and TKE transport driver graph")
             else:
                 reasons.append(f"{key}={value!r} has no qualified packed producer and driver composition")
+    if _value(cfg, "cu_physics", 0) not in (0, 99):
+        reasons.append(f"cu_physics={_value(cfg, 'cu_physics', 0)!r} has no qualified packed producer and driver composition")
     if _value(cfg, "sf_sfclay_physics", 0) not in (1, 91):
         surface = _value(cfg, "sf_sfclay_physics", 0)
         reasons.append(f"sf_sfclay_physics={surface!r} has no qualified packed surface flux and carrier driver binding")

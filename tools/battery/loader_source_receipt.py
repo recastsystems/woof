@@ -17,6 +17,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -48,6 +49,8 @@ def main():
     parser.add_argument("--replay", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--write", action="store_true")
+    parser.add_argument("--extension-only", action="store_true",
+                        help="record measured source transitions; leave global seals for the final rebuild")
     parser.add_argument("--moved", action="append", default=[],
                         help="another source-extension source whose bytes moved since the last seal; "
                              "its after-pin is re-earned by these same zero-difference replays")
@@ -123,7 +126,16 @@ def main():
     base_source = json.loads(subprocess.check_output([sys.executable, "-c", code],
         cwd=args.base, env=os.environ | {"PYTHONPATH": str(args.base)}, text=True))
     current_source, method = capture_compiled_source("ysu")
-    assert method == "loader-capture" and current_source == base_source, "YSU compiler source moved"
+    assert method == "loader-capture"
+    # Public comment cleanup changes assembled hashes without changing CUDA.
+    # Keep quoted literals verbatim and remove only lexically complete comments.
+    def without_comments(source):
+        token = r"\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|//[^\n]*|/\*[\s\S]*?\*/"
+        return re.sub(token, lambda m: "" if m[0].startswith(("//", "/*")) else m[0], source)
+    assert without_comments(current_source) == without_comments(base_source), "YSU compiler code moved"
+    comment_transition = dict(before=hashlib.sha256(base_source.encode()).hexdigest(),
+                              after=hashlib.sha256(current_source.encode()).hexdigest(),
+                              identical_without_comments=True)
     assert kernel_source_path("ysu").read_bytes() == (args.base / "woof/core/kernels/ysu_default.cu").read_bytes()
 
     folder = ROOT / "tests/data/assembled_legacy_proofs"
@@ -136,7 +148,14 @@ def main():
     for module, name in sorted(moved_kernels.items()):
         before_digest = identities["base-acoustic"]["module_source_sha256"][module]
         after_digest = identities["tip-acoustic"]["module_source_sha256"][module]
-        assert before_digest != after_digest and pin(args.base / name) != pin(ROOT / name), f"{name} did not move"
+        assert before_digest != after_digest, f"{module} did not move"
+        if pin(args.base / name) == pin(ROOT / name):
+            code = ('import json; from woof.core.kernels import module_source; '
+                    f'print(json.dumps(module_source({module!r})))')
+            prior_source = json.loads(subprocess.check_output([sys.executable, "-c", code],
+                cwd=args.base, env=os.environ | {"PYTHONPATH": str(args.base)}, text=True))
+            assert without_comments(prior_source) == without_comments(kernels.module_source(module)), (
+                module, "unchanged physical source has a changed compiler preamble")
         for family in ("coordinate", "drivers", "acoustic"):
             assert identities[f"base-{family}"]["module_source_sha256"][module] == before_digest, (family, module)
             assert identities[f"tip-{family}"]["module_source_sha256"][module] == after_digest, (family, module)
@@ -153,6 +172,7 @@ def main():
                   generator_sha256=sha(ROOT / "tools/assembled_legacy_replay.py"),
                   recorder="tools/battery/loader_source_receipt.py", recorder_sha256=sha(Path(__file__)),
                   numerics="strict", measurements=measurements, artifacts=artifacts,
+                  ysu_comment_transition=comment_transition,
                   capture_identity=identities["tip-coordinate"],
                   ysu_compiled_source_sha256=hashlib.sha256(current_source.encode()).hexdigest())
     if moved:
@@ -162,36 +182,37 @@ def main():
         result["moved_kernels"] = kernel_moves
 
     readings = []
-    mp8 = ROOT / "tests/test_mp8_frozen.py"
-    frozen = dictionary(mp8, "FROZEN_MODULE_DIGESTS")
-    # Only YSU's physical authority moved; its assembled compile string did not.
-    frozen["ysu"] = (sha(kernel_source_path("ysu")), frozen["ysu"][1])
-    assert frozen["ysu"][1] == result["ysu_compiled_source_sha256"]
-    patch_file(mp8, {"FROZEN_MODULE_DIGESTS": frozen.get}, {}, readings, False)
-    spp = ROOT / "tests/test_spp_consumers.py"
-    spp_tree = ast.parse(spp.read_text())
-    spp_pins = next(ast.literal_eval(node.value) for node in ast.walk(spp_tree)
-                    if isinstance(node, ast.Assign) and any(getattr(t,"id",None)=="pins" for t in node.targets))
-    spp_pins["mynn_pbl"] = frozen["mynn_pbl"][1]
-    assert hashlib.sha256(kernels.module_source("mynn_pbl").encode()).hexdigest() == spp_pins["mynn_pbl"]
-    patch_file(spp, {"pins": spp_pins.get}, {}, readings, False)
-    closure = ROOT / "tests/test_kernel_source_freeze_per_module.py"
-    header = "ysu_topo_default.cuh"
-    assert sha(kernels._KDIR / header) == dictionary(closure, "COMPOSED_HEADERS")[header]
-    assert header in kernels.EXTRA_HEADERS["ysu"]
-    header_node = next(value for item in ast.parse(closure.read_text()).body
-                       for label, value in [assignment(item)] if label == "PINNED_HEADERS")
-    needs_header = header not in {ast.literal_eval(key) for key in header_node.keys}
-    if args.write:
-        patch_file(mp8, {"FROZEN_MODULE_DIGESTS": frozen.get}, {}, [], True)
-        patch_file(spp, {"pins": spp_pins.get}, {}, [], True)
-    if args.write and needs_header:
-        text = closure.read_text()
-        node = next(value for item in ast.parse(text).body for label,value in [assignment(item)] if label=="PINNED_HEADERS")
-        lines = text.splitlines(keepends=True)
-        offset = sum(map(len, lines[:node.end_lineno-1]))
-        text = text[:offset] + f'    # Slimming promotes the retained YSU header to the loader closure.\n    {header!r}: {sha(kernels._KDIR / header)!r},\n' + text[offset:]
-        closure.write_text(text)
+    if not args.extension_only:
+        mp8 = ROOT / "tests/test_mp8_frozen.py"
+        frozen = dictionary(mp8, "FROZEN_MODULE_DIGESTS")
+        # Only YSU's physical authority moved; its assembled compile string did not.
+        frozen["ysu"] = (sha(kernel_source_path("ysu")), frozen["ysu"][1])
+        assert frozen["ysu"][1] == result["ysu_compiled_source_sha256"]
+        patch_file(mp8, {"FROZEN_MODULE_DIGESTS": frozen.get}, {}, readings, False)
+        spp = ROOT / "tests/test_spp_consumers.py"
+        spp_tree = ast.parse(spp.read_text())
+        spp_pins = next(ast.literal_eval(node.value) for node in ast.walk(spp_tree)
+                        if isinstance(node, ast.Assign) and any(getattr(t,"id",None)=="pins" for t in node.targets))
+        spp_pins["mynn_pbl"] = frozen["mynn_pbl"][1]
+        assert hashlib.sha256(kernels.module_source("mynn_pbl").encode()).hexdigest() == spp_pins["mynn_pbl"]
+        patch_file(spp, {"pins": spp_pins.get}, {}, readings, False)
+        closure = ROOT / "tests/test_kernel_source_freeze_per_module.py"
+        header = "ysu_topo_default.cuh"
+        assert sha(kernels._KDIR / header) == dictionary(closure, "COMPOSED_HEADERS")[header]
+        assert header in kernels.EXTRA_HEADERS["ysu"]
+        header_node = next(value for item in ast.parse(closure.read_text()).body
+                           for label, value in [assignment(item)] if label == "PINNED_HEADERS")
+        needs_header = header not in {ast.literal_eval(key) for key in header_node.keys}
+        if args.write:
+            patch_file(mp8, {"FROZEN_MODULE_DIGESTS": frozen.get}, {}, [], True)
+            patch_file(spp, {"pins": spp_pins.get}, {}, [], True)
+        if args.write and needs_header:
+            text = closure.read_text()
+            node = next(value for item in ast.parse(text).body for label,value in [assignment(item)] if label=="PINNED_HEADERS")
+            lines = text.splitlines(keepends=True)
+            offset = sum(map(len, lines[:node.end_lineno-1]))
+            text = text[:offset] + f'    # Slimming promotes the retained YSU header to the loader closure.\n    {header!r}: {sha(kernels._KDIR / header)!r},\n' + text[offset:]
+            closure.write_text(text)
     result["pin_changes"] = readings
     payload = json.dumps(result, indent=2) + "\n"
     args.out.write_text(payload)
@@ -204,8 +225,14 @@ def main():
         for name, move in kernel_moves.items():
             transition = extension["sources"].setdefault(name, {"before": move["before"]})
             transition["after"] = move["after"]
-            extension.setdefault("module_sources", {})[move["module"]] = {
-                "before": move["module_source_sha256"]["before"], "after": move["module_source_sha256"]["after"],
+            modules = extension.setdefault("module_sources", {})
+            previous = modules.get(move["module"])
+            before = move["module_source_sha256"]["before"]
+            if previous is not None:
+                assert previous["after"] == before, "kernel replay chain is discontinuous"
+                before = previous["before"]
+            modules[move["module"]] = {
+                "before": before, "after": move["module_source_sha256"]["after"],
                 "source": name}
         if "woof/core/dycore.py" in moved:
             # This replay re-earns dycore.py's whole move from the base, so the per-row seals of earlier,

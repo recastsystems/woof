@@ -432,7 +432,7 @@ by hash reports "different" every time.
 Measured 2026-08-20 on sha256-identical input and module bytes, over two
 independent pairs (a 192x192 scalar and vector probe, and a 128x128 pair
 scored through the real `woof spectral run` door) between the Windows
-desktop (Python 3.13.7, numpy 2.2.6, UCRT) and a development machine (Python 3.14.4,
+desktop (Python 3.13.7, numpy 2.2.6, UCRT) and test host 1 (Python 3.14.4,
 numpy 2.3.5, glibc 2.43): 169 of 489 metric values were bit-identical and the
 rest differed. Repeating a run on either box reproduced it to the bit, so the
 spread is the boxes, not the run.

@@ -13,7 +13,7 @@ from woof import remote_cli as rc
 
 
 def args(**overrides):
-    return Namespace(**{**dict(host="gpu-host", python="/opt/the model's runtime/bin/python",
+    return Namespace(**{**dict(host="test-host", python="/opt/the model's runtime/bin/python",
         workspace="/srv/weather space", port=None, identity=None, ssh_config=None,
         remote_action="probe", json=True), **overrides})
 
@@ -26,13 +26,13 @@ def test_host_cannot_add_ssh_options_or_shell_words(host):
 
 def test_only_quoted_python_and_fixed_protocol_words_enter_remote_shell(monkeypatch, tmp_path):
     config = tmp_path / "a config"
-    config.write_text("Host gpu-host\n")
+    config.write_text("Host test-host\n")
     key = tmp_path / "identity"
     key.write_bytes(b"fixture placeholder, not read by this test")
     monkeypatch.setattr(rc.shutil, "which", lambda *names, **options: "ssh-fixture")
     options = args(ssh_config=str(config), identity=str(key), port=2222)
     command = rc.ssh_command(options)
-    assert command[-3:-1] == ["--", "gpu-host"]
+    assert command[-3:-1] == ["--", "test-host"]
     assert shlex.split(command[-1]) == [options.python, "-I", "-m", "woof.remote_worker", "--rpc"]
     assert options.workspace not in command[-1]
     assert "BatchMode=yes" in command and "StrictHostKeyChecking=yes" in command
@@ -174,7 +174,7 @@ def test_a_typed_option_is_refused_for_itself_not_for_a_missing_client(monkeypat
         rc.ssh_command(args())
     # Both doors read one configuration through one function.
     profile = rc.transport_profile(args(port=2222))
-    assert profile["host"] == "gpu-host" and profile["port"] == 2222
+    assert profile["host"] == "test-host" and profile["port"] == 2222
 
 
 def _program(tmp_path, body):

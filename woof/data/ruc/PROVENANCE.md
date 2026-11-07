@@ -549,7 +549,7 @@ get wrong -- the water arm's `continue` leaving `lh`, `qfx`, `hfx`, `sfcexc`,
 **What the driver does not copy, and what it reproduces.**  WRF accumulates
 `sfcevp` twice per land column, at `:1095` and again at `:1116`, with nothing
 in between changing `qfx`; the fixture shows `sfcevp` advancing by
-`2*qfx*dt`.  That is a WRF defect, and since lane/verify-ruc-lsm WOOF
+`2*qfx*dt`.  That is a WRF defect, and since development branch WOOF
 accumulates it once; the fixture comparisons grade `sfcevp` against WRF's
 entry value plus `qfx*dt` once.  `rhosnf`, `precipfr` and `snowfallac` are declared `intent(out)` at
 `:344-347` but `rhosnf` is read at `:695` and `snowfallac` is read inside
@@ -814,7 +814,7 @@ sea-ice groups the switch moves, every word is WRF's bit for bit except one
 column.  `tests/test_ruc_lsmruc_hrrr_switches.py` pins the map and runs the two
 negative controls (the 0.5 pin and the table LAI each break the fixture).
 
-Rebuilt on box W1 (lane/verify-ruc-lsm) with `build_lsmruc_frac.sh` on the
+Rebuilt on the test host (development branch) with `build_lsmruc_frac.sh` on the
 13.3.0 / glibc 2.39 toolchain `lsmruc.csv` was pinned on (sha256
 `8f9fea614ebc5b253773d149cc7dcfaf3aaaf8b260917bdbb3d3d60c030bc170`).  With
 RUC on WOOF's float32 libm words the port reproduces it bit for bit except

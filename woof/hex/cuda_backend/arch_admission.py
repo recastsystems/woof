@@ -655,10 +655,10 @@ def measure_numeric_route(cupy_module=None) -> dict[str, object]:
     started = time.perf_counter()
     f32_in, f64_in = _probe_inputs()
     previous = os.environ.get("CUPY_CACHE_DIR")
+    from .cupy_cache import bound
     with tempfile.TemporaryDirectory(
         prefix="hex-numeric-route-", ignore_cleanup_errors=True
-    ) as cache:
-        os.environ["CUPY_CACHE_DIR"] = cache
+    ) as cache, bound(cache):
         try:
             module = cp.RawModule(
                 code=CUDA_FTZ_HELPERS + _PROBE_KERNEL,

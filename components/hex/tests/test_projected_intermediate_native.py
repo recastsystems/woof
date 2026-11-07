@@ -21,7 +21,7 @@ def _needs_native():
     """Skip, naming why, when the projected-intermediate library is not staged.
 
     The library ships with the engine's bridge bundle from the release that
-    carries it; woof 2.8.7 does not, and a runner with no engine has none.
+    carries it; gpuwm 2.8.7 does not, and a runner with no engine has none.
     The runtime refusal these tests would otherwise hit is held by
     test_missing_explicit_native_artifact_cannot_select_another_library.
     """

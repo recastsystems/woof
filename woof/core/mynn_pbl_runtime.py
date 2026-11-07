@@ -99,14 +99,13 @@ VERTICAL_LEVEL_BOUNDS = (5, None)
 #: ``Registry.EM_COMMON:3031`` declares ``package wdm6scheme
 #: mp_physics==16 - moist:qv,qc,qr,qi,qs,qg;scalar:qnn,qnc,qnr``, so F_QS
 #: is true and the scheme's snow is MYNN's to see.
+#: 13 (SBU-YLin): ``package sbu_ylinscheme mp_physics==13 -
+#: moist:qv,qc,qr,qi,qs`` (Registry.EM_COMMON:3029), so F_QS is true.
 #:
 #: A named scheme (woof/microphysics_schemes.py) joins from its own row: it
 #: belongs here exactly when its mass species carry ``qs``.
 from woof.core.mynn_pbl_metadata import MYNN_SNOW_MICROPHYSICS  # noqa: E402
 
-
-from woof.microphysics_schemes import PORTED_WRF_SNOW_SELECTORS
-MYNN_SNOW_MICROPHYSICS |= frozenset(PORTED_WRF_SNOW_SELECTORS)
 
 
 def mynn_flag_qs(mp_physics: int) -> bool:
@@ -244,6 +243,8 @@ def mynn_pbl_step(
                 MYNN_PBL_TENDENCY_FIELDS,
                 mynn_pbl_tendency_field_shapes(nz, ny, nx).items())
         }
+        if options.get("bl_mynn_version", "wrf_461") == "wrf_471":
+            work._mynn471_graph_owner = state
 
     # Stage B (W4 full admission): the qn columns for the five stock
     # mixscalars solves.  Key-off runs never enter this block, stage no
@@ -251,6 +252,7 @@ def mynn_pbl_step(
     # mixscalars=0 path is by construction.  The per-chunk level-major
     # copies below are plain pool allocations, accepted behind the key
     # (the priced-scratch discipline covers the always-on path only).
+    wrf471 = options.get("bl_mynn_version") == "wrf_471"
     mixscalars_on = int(options.get("bl_mynn_mixscalars", 0)) == 1
     scalar_diffusion_on = scalar_pblmix == 1
     qn_source: dict[str, cp.ndarray] = {}
@@ -263,15 +265,20 @@ def mynn_pbl_step(
                 "check so the refusal names the missing state, not a "
                 "KeyError inside a chunk loop")
         for solver_name, state_name, _ in MYNN_MIXSCALARS_QN:
-            qn_source[solver_name] = (
-                qn_scalars[state_name].reshape(nz, ncol))
+            if state_name in qn_scalars:
+                qn_source[solver_name] = qn_scalars[state_name].reshape(nz, ncol)
         qn_out = {out_name: cp.zeros((nz, ny, nx), dtype=DTYPE)
                   for _, _, out_name in MYNN_MIXSCALARS_QN}
     if mixscalars_on:
         # The driver's fixture-pinned combo requires all five qn flags.
         for flag in ("flag_qnc", "flag_qni", "flag_qnwfa", "flag_qnifa",
                      "flag_qnbca"):
-            options.setdefault(flag, True)
+            solver_name = flag.removeprefix("flag_")
+            if wrf471:
+                from woof.config import MYNN_QN_FLAG_SPECIES
+                options.setdefault(flag, solver_name in MYNN_QN_FLAG_SPECIES.get(int(mp_physics),()))
+            else:
+                options.setdefault(flag, True)
 
     # Flat (nz, ncol) / (ncol,) views.  Reshape on a C-contiguous field is a
     # view, so nothing here is a copy.
@@ -345,12 +352,17 @@ def mynn_pbl_step(
         for name in flat_columns:
             values[name] = flat_columns[name][lo:hi]
         values["kpbl"] = flat_kpbl[lo:hi]
+        if wrf471:
+            # WRF 4.7.1's active top-down radiative input is held between
+            # radiation calls; the compile-time topdown switch is zero.
+            if "rthraten" in fields:
+                values["rthraten1"] = cp.asfortranarray(fields["rthraten"].reshape(nz,ncol)[:,lo:hi].T)
         if stochastic:
             values["rstoch"] = cp.asfortranarray(stochastic_flat[:, lo:hi].T)
         if mixscalars_on:
             for solver_name, _, _ in MYNN_MIXSCALARS_QN:
-                values[solver_name] = cp.asfortranarray(
-                    qn_source[solver_name][:, lo:hi].T)
+                if solver_name in qn_source:
+                    values[solver_name] = cp.asfortranarray(qn_source[solver_name][:, lo:hi].T)
             # WOOF's mp=28 carries no qnbca; the zero column solves to
             # exactly zero (see MYNN_MIXSCALARS_QN).
             values["qnbca"] = cp.zeros((n, nz), dtype=DTYPE, order="F")
@@ -363,7 +375,11 @@ def mynn_pbl_step(
         # --- module_bl_mynn_wrapper.F:587-607 specific -> mixing ratio -----
         # gsd_41 already returns mixing-ratio tendencies from the updated
         # vapour and keeps its in-cloud QC_BL as written.
-        mynn_pbl_kernel("mynn_wrapper_from_specific",
+        if wrf471:
+            from woof.core.mynn471_gpu import post_run
+            post_run(stage, out, delt, icloud=options.get("icloud_bl",1))
+        else:
+            mynn_pbl_kernel("mynn_wrapper_from_specific",
                         options.get("bl_mynn_version", "wrf_461"))(
             (blocks,), (_TPB,),
             (stage["sqv"], out["rqvblten"], out["rqcblten"],
@@ -371,12 +387,21 @@ def mynn_pbl_step(
         )
 
         for name, target in out_state.items():
+            if wrf471 and options.get("icloud_bl",1)==0 and name in ("qc_bl","qi_bl","cldfra_bl"):
+                continue
             target[:, lo:hi] = out[name].T
+        if wrf471:
+            from woof.core.mynn471_gpu import BUDGET, PLUMES
+            for name in (*BUDGET,*PLUMES):
+                if name in out and name in fields:
+                    fields[name][:nz].reshape(nz,ncol)[:,lo:hi] = out[name].T
         if options.get("bl_mynn_tkeadvect", False):
             fields["qke_adv"].reshape(nz, ncol)[:, lo:hi] = out["qke_adv"].T
         for name in ("pblh", "rmol", "kpbl"):
             fields[name].reshape(ncol)[lo:hi] = out[name]
         for name in (*MYNN_PBL_DIAGNOSTICS_2D, *MYNN_PBL_DIAGNOSTICS_INT_2D):
+            if wrf471 and (options.get("bl_mynn_edmf",1)==0 or name=="ktop_plume"):
+                continue
             fields[name].reshape(ncol)[lo:hi] = out[name]
         for solver_name, tendency_name in _TENDENCY_OUT:
             flat_tendencies[tendency_name][:, lo:hi] = out[solver_name].T

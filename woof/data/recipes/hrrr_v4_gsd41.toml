@@ -131,7 +131,8 @@ mp_zero_out_all = 1
 # hrrr_wrf.nl hailcast_opt = 1 (haildt = 60 s).
 hailcast_opt = 1
 # Operational GSD output with the fork's 60-minute maxima reset.
-nwp_diagnostics = 1
+# The fork GSD package below owns the interval arrays.
+nwp_diagnostics = 0
 # module_diag_cl climate-statistics windows (minutes).
 output_diagnostics = 1
 diag_int = 15

@@ -21,7 +21,16 @@
 //!           grid_hash, locator {step, ix, iy, lat, lon}, meta (the writer's own provenance)
 //! index     tiles_y * tiles_x entries of (u64 offset from file start, u32 length), row-major (ty outer)
 //! tiles     each tile zlib(payload)
+//! surface   (optional, `surface` in the header) the SURFACE SECTION: every surface plane of the point forecast,
+//!           exact f32, on the same tiles: each tile zlib(payload) of f32 [field][y][x] byte-shuffled into 4 planes,
+//!           fields in `surface.fields` order (lat and lon first, then the six sounding planes, then the rest);
+//!           then the surface index, tiles_y * tiles_x entries of (u64 offset, u32 length) row-major, at
+//!           `surface.index_offset`; then the 8-byte trailer `RWSURF01`, the last bytes of the file
 //! ```
+//! The surface section is additive inside schema `rw-store.columns.v2`: the main tiles keep exactly their 2-D planes
+//! (the eight of `fields2d`), so every reader of the main tiles (soundings) reads a file with a surface section
+//! unchanged, at the same sizes, and ignores the bytes after the last main tile. A point-forecast reader takes the
+//! surface entry for tile k with one suffix range read (`bytes=-(12 * (ntiles - k) + 8)`), then the tile.
 //! Tile (tx, ty) holds columns x in [tx*T, min(tx*T+T, nx-1)] and y likewise: tiles overlap by one column, so the
 //! four corners of any grid cell lie in one tile and a bilinear sample is one read.
 //!
@@ -69,6 +78,8 @@ pub const MAGIC_PREFOLD: &[u8; 8] = b"GPWMCOL1";
 /// Version 1 hour file magic (see [`crate::format::MAGIC`]).
 pub const MAGIC_V1: &[u8; 8] = b"RWSTORE1";
 pub const SCHEMA: &str = "rw-store.columns.v2";
+/// The last 8 bytes of a file that carries a surface section.
+pub const SURFACE_TRAILER: &[u8; 8] = b"RWSURF01";
 pub const SCHEMA_PREFOLD: &str = "gpuwm-columns.v1";
 
 /// The canonical sounding fields: names, units and quanta every column writer uses (the WOOF box, the DA loop).
@@ -214,7 +225,7 @@ impl Mode {
     }
 }
 
-fn span(t: usize, tile: usize, n: usize) -> (usize, usize) {
+pub(crate) fn span(t: usize, tile: usize, n: usize) -> (usize, usize) {
     let a = t * tile;
     (a, (a + tile).min(n - 1))
 }
@@ -228,7 +239,7 @@ fn unzigzag(z: u32) -> i32 {
     ((z >> 1) as i32) ^ -((z & 1) as i32)
 }
 
-fn shuffle_into(out: &mut [u8], codes: &[u32], width: usize) {
+pub(crate) fn shuffle_into(out: &mut [u8], codes: &[u32], width: usize) {
     let n = codes.len();
     for (i, c) in codes.iter().enumerate() {
         for (b, byte) in c.to_le_bytes()[..width].iter().enumerate() {
@@ -250,13 +261,60 @@ fn src_x(w: &ColumnsWrite, x: usize) -> usize {
 
 /// Longitude of stored column `x` on row `y`: the wrap column carries on past the last column.
 fn lon_at(w: &ColumnsWrite, x: usize, y: usize) -> f64 {
-    let row = y * w.nx;
-    if x == w.nx {
-        let (first, last) = (w.lon.get(row), w.lon.get(row + w.nx - 1));
+    lon_wrap(w.lon, w.nx, x, y)
+}
+
+/// [`lon_at`] for any longitude plane of a source grid `src_nx` wide.
+fn lon_wrap(lon: Values, src_nx: usize, x: usize, y: usize) -> f64 {
+    let row = y * src_nx;
+    if x == src_nx {
+        let (first, last) = (lon.get(row), lon.get(row + src_nx - 1));
         last + (first - last).rem_euclid(360.0)
     } else {
-        w.lon.get(row + x)
+        lon.get(row + x)
     }
+}
+
+/// The surface section of one file: every 2-D plane of the point forecast, each stored as `(data * scale + offset)
+/// as f32` (exact: no quantum, nothing rounded), on the main tiles. `lat` and `lon` are the source grid's (the same
+/// as the main part's) and are stored first; `fields` follow in order. A field whose inputs a frame does not carry is
+/// left out by the caller, never filled.
+pub struct SurfaceWrite<'a> {
+    pub lat: Values<'a>,
+    pub lon: Values<'a>,
+    pub fields: Vec<Field2<'a>>,
+    /// What each plane is, in words (accumulations, at-the-hour values), copied into the header's `surface.notes`.
+    pub notes: Value,
+}
+
+/// One surface tile: every surface plane over the tile's span, f32.
+fn encode_surface_tile(s: &SurfaceWrite, src_nx: usize, x0: usize, x1: usize, y0: usize, y1: usize) -> RwResult<Vec<u8>> {
+    let sx = |x: usize| if x == src_nx { 0 } else { x };
+    let plane = (x1 - x0 + 1) * (y1 - y0 + 1);
+    let mut floats: Vec<u32> = Vec::with_capacity((s.fields.len() + 2) * plane);
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            floats.push((s.lat.get(y * src_nx + sx(x)) as f32).to_bits());
+        }
+    }
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            floats.push((lon_wrap(s.lon, src_nx, x, y) as f32).to_bits());
+        }
+    }
+    for f in &s.fields {
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let a = f.data.get(y * src_nx + sx(x)) * f.scale;
+                floats.push(((if f.offset == 0.0 { a } else { a + f.offset }) as f32).to_bits());
+            }
+        }
+    }
+    let mut payload = vec![0u8; floats.len() * 4];
+    shuffle_into(&mut payload, &floats, 4);
+    let mut enc = ZlibEncoder::new(Vec::with_capacity(payload.len() / 2), Compression::new(5));
+    enc.write_all(&payload).map_err(RwStoreError::Io)?;
+    enc.finish().map_err(RwStoreError::Io)
 }
 
 /// Whether the grid is periodic in x: every row is one latitude, steps east evenly, and the step from its last
@@ -431,8 +489,38 @@ fn iso(t: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", secs / 3600, secs / 60 % 60, secs % 60)
 }
 
+/// The main part of one file, encoded (header and tiles): [`finish`] lays it out, with a surface section or without.
+/// Holding it lets a caller free the 3-D fields before it builds the surface planes.
+pub struct Encoded {
+    header: Value,
+    blobs: Vec<Vec<u8>>,
+    src_nx: usize,
+    nx: usize,
+    ny: usize,
+    tile: usize,
+    tiles_x: usize,
+    tiles_y: usize,
+}
+
+impl Encoded {
+    /// The source grid's width (the stored grid is one wider when it wraps).
+    pub fn source_nx(&self) -> usize {
+        self.src_nx
+    }
+}
+
+/// Unix seconds as the ISO UTC form a column file's header holds (2024-07-14T16:00:00Z).
+pub fn iso_time(t: i64) -> String {
+    iso(t)
+}
+
 /// Encode one file in memory.
 pub fn encode(w: &ColumnsWrite) -> RwResult<Vec<u8>> {
+    finish(encode_main(w)?, None)
+}
+
+/// Encode the main part of one file (header fields and tiles), the layout left to [`finish`].
+pub fn encode_main(w: &ColumnsWrite) -> RwResult<Encoded> {
     let (nx, ny, nz) = (w.nx, w.ny, w.nz);
     if nx < 2 || ny < 2 || nz < 1 {
         return Err(fmt(format!("{}: a {nx}x{ny}x{nz} grid has no columns to store", w.domain)));
@@ -551,13 +639,60 @@ pub fn encode(w: &ColumnsWrite) -> RwResult<Vec<u8>> {
     if wrap {
         header["wrap_x"] = json!({"source_nx": src_nx, "columns": 1});
     }
-    // The index offset depends on the header's own length: leave room for the number, then pad to it.
+    Ok(Encoded { header, blobs, src_nx, nx, ny, tile, tiles_x, tiles_y })
+}
+
+/// Lay out one file: header, index, main tiles and, when given, the surface section (its tiles on the same spans,
+/// its index and the `RWSURF01` trailer).
+pub fn finish(e: Encoded, surface: Option<&SurfaceWrite>) -> RwResult<Vec<u8>> {
+    let Encoded { mut header, blobs, src_nx, nx, ny, tile, tiles_x, tiles_y } = e;
+    let ntiles = tiles_x * tiles_y;
+    let surface_blobs: Vec<Vec<u8>> = match surface {
+        None => Vec::new(),
+        Some(s) => {
+            let n = src_nx * ny;
+            if s.lat.len() != n || s.lon.len() != n {
+                return Err(fmt(format!("surface lat/lon hold {} and {} values for a {src_nx}x{ny} grid", s.lat.len(), s.lon.len())));
+            }
+            for f in &s.fields {
+                if f.data.len() != n {
+                    return Err(fmt(format!("surface {}: {} values, expected {n}", f.name, f.data.len())));
+                }
+            }
+            let mut fields = vec!["lat", "lon"];
+            let mut units = vec!["degrees_north", "degrees_east"];
+            fields.extend(s.fields.iter().map(|f| f.name));
+            units.extend(s.fields.iter().map(|f| f.units));
+            header["surface"] = json!({
+                "fields": fields, "units": units, "dtype": "f32", "codec": "shuffle-zlib",
+                "layout": "per tile (the main tiles' spans): f32 [field][y][x] byte-shuffled into 4 planes, zlib;                            index of (u64 offset, u32 length) per tile at index_offset; trailer RWSURF01",
+                "index_offset": 0, "notes": s.notes,
+            });
+            (0..ntiles)
+                .into_par_iter()
+                .map(|t| {
+                    let (x0, x1) = span(t % tiles_x, tile, nx);
+                    let (y0, y1) = span(t / tiles_x, tile, ny);
+                    encode_surface_tile(s, src_nx, x0, x1, y0, y1)
+                })
+                .collect::<RwResult<_>>()?
+        }
+    };
+    // The offsets depend on the header's own length: leave room for the numbers, then pad to them.
     let probe = serde_json::to_vec(&header).map_err(fmt)?;
-    let index_offset = 12 + probe.len() + 24;
+    let index_offset = 12 + probe.len() + 48;
+    let main_end = index_offset + blobs.len() * 12 + blobs.iter().map(|b| b.len()).sum::<usize>();
+    let surface_index = main_end + surface_blobs.iter().map(|b| b.len()).sum::<usize>();
     header["index_offset"] = json!(index_offset);
+    if surface.is_some() {
+        header["surface"]["index_offset"] = json!(surface_index);
+    }
     let mut head = serde_json::to_vec(&header).map_err(fmt)?;
+    if head.len() > index_offset - 12 {
+        return Err(fmt("column file header outgrew its room"));
+    }
     head.resize(index_offset - 12, b' ');
-    let total = index_offset + blobs.len() * 12 + blobs.iter().map(|b| b.len()).sum::<usize>();
+    let total = if surface.is_some() { surface_index + ntiles * 12 + 8 } else { main_end };
     let mut out = Vec::with_capacity(total);
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&(head.len() as u32).to_le_bytes());
@@ -571,19 +706,36 @@ pub fn encode(w: &ColumnsWrite) -> RwResult<Vec<u8>> {
     for b in &blobs {
         out.extend_from_slice(b);
     }
+    if surface.is_some() {
+        for b in &surface_blobs {
+            out.extend_from_slice(b);
+        }
+        let mut offset = main_end as u64;
+        for b in &surface_blobs {
+            out.extend_from_slice(&offset.to_le_bytes());
+            out.extend_from_slice(&(b.len() as u32).to_le_bytes());
+            offset += b.len() as u64;
+        }
+        out.extend_from_slice(SURFACE_TRAILER);
+    }
+    debug_assert_eq!(out.len(), total);
     Ok(out)
 }
 
 /// Encode and write one file: written beside and renamed in, so an uploader or a reader never sees half a file.
 pub fn write(path: &Path, w: &ColumnsWrite) -> RwResult<u64> {
-    let out = encode(w)?;
+    write_bytes(path, &encode(w)?)
+}
+
+/// Write an already laid out file ([`finish`]) the same way: beside, then renamed in.
+pub fn write_bytes(path: &Path, out: &[u8]) -> RwResult<u64> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(RwStoreError::Io)?;
     }
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
     let tmp = std::path::PathBuf::from(tmp);
-    std::fs::write(&tmp, &out).map_err(RwStoreError::Io)?;
+    std::fs::write(&tmp, out).map_err(RwStoreError::Io)?;
     std::fs::rename(&tmp, path).map_err(RwStoreError::Io)?;
     Ok(out.len() as u64)
 }
@@ -681,6 +833,27 @@ pub struct ColumnHeader {
     pub locator: Locator,
     #[serde(default)]
     pub meta: Value,
+    /// The surface section, when the file carries one.
+    #[serde(default)]
+    pub surface: Option<SurfaceHeader>,
+}
+
+/// The header's description of a file's surface section.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SurfaceHeader {
+    pub fields: Vec<String>,
+    pub units: Vec<String>,
+    pub dtype: String,
+    pub codec: String,
+    pub index_offset: u64,
+    #[serde(default)]
+    pub notes: Value,
+}
+
+impl SurfaceHeader {
+    pub fn field(&self, name: &str) -> Option<usize> {
+        self.fields.iter().position(|f| f == name)
+    }
 }
 
 impl ColumnHeader {
@@ -845,6 +1018,13 @@ impl<S: RangeSource> ColumnFile<S> {
         if header.codec != "shuffle-zlib" || header.dtype2d != "f32" {
             return Err(fmt(format!("unknown codec {} / dtype2d {}", header.codec, header.dtype2d)));
         }
+        if let Some(s) = &header.surface {
+            if s.codec != "shuffle-zlib" || s.dtype != "f32" || s.fields.len() != s.units.len() || s.fields.len() < 2
+                || s.fields[0] != "lat" || s.fields[1] != "lon"
+            {
+                return Err(fmt("a surface section that is not shuffle-zlib f32 planes after lat and lon"));
+            }
+        }
         let ntiles = header.tiles_x * header.tiles_y;
         let (a, b) = (header.index_offset as usize, header.index_offset as usize + ntiles * 12);
         let raw = if head.len() >= b { head[a..b].to_vec() } else { src.read_range(a as u64, b - a)? };
@@ -877,6 +1057,69 @@ impl<S: RangeSource> ColumnFile<S> {
             return Err(fmt(format!("tile ({tx},{ty}) is truncated")));
         }
         decode_tile(&self.header, tx, ty, &blob)
+    }
+
+    /// Byte range (offset, length) of one SURFACE tile (one 12-byte read of the surface index), or None when the file
+    /// carries no surface section.
+    pub fn surface_tile_range(&self, tx: usize, ty: usize) -> RwResult<Option<(u64, u32)>> {
+        let Some(s) = &self.header.surface else { return Ok(None) };
+        if tx >= self.header.tiles_x || ty >= self.header.tiles_y {
+            return Err(fmt(format!("tile ({tx},{ty}) outside {}x{}", self.header.tiles_x, self.header.tiles_y)));
+        }
+        let e = self.src.read_range(s.index_offset + 12 * (ty * self.header.tiles_x + tx) as u64, 12)?;
+        if e.len() != 12 {
+            return Err(fmt("surface index is truncated"));
+        }
+        Ok(Some((u64::from_le_bytes(e[..8].try_into().unwrap()), u32::from_le_bytes(e[8..].try_into().unwrap()))))
+    }
+
+    /// The whole surface index (every tile's (offset, length)), one read, or None without a surface section.
+    pub fn surface_index(&self) -> RwResult<Option<Vec<(u64, u32)>>> {
+        let Some(s) = &self.header.surface else { return Ok(None) };
+        let n = self.header.tiles_x * self.header.tiles_y;
+        let raw = self.src.read_range(s.index_offset, n * 12)?;
+        if raw.len() != n * 12 {
+            return Err(fmt("surface index is truncated"));
+        }
+        Ok(Some(
+            raw.chunks_exact(12)
+                .map(|e| (u64::from_le_bytes(e[..8].try_into().unwrap()), u32::from_le_bytes(e[8..].try_into().unwrap())))
+                .collect(),
+        ))
+    }
+
+    /// One surface tile, or None when the file carries no surface section.
+    pub fn read_surface_tile(&self, tx: usize, ty: usize) -> RwResult<Option<SurfaceTile>> {
+        let Some((off, len)) = self.surface_tile_range(tx, ty)? else { return Ok(None) };
+        let blob = self.src.read_range(off, len as usize)?;
+        if blob.len() != len as usize {
+            return Err(fmt(format!("surface tile ({tx},{ty}) is truncated")));
+        }
+        decode_surface_tile(&self.header, tx, ty, &blob).map(Some)
+    }
+
+    /// Every surface plane over the whole grid (each tile decoded once, in parallel), in `surface.fields` order: for
+    /// checks, never for a click.
+    pub fn read_full_surface(&self) -> RwResult<Option<Vec<Vec<f32>>>> {
+        let h = &self.header;
+        let Some(s) = &h.surface else { return Ok(None) };
+        let n = h.nx * h.ny;
+        let tiles: Vec<SurfaceTile> = (0..h.tiles_x * h.tiles_y)
+            .into_par_iter()
+            .map(|t| self.read_surface_tile(t % h.tiles_x, t / h.tiles_x).map(Option::unwrap))
+            .collect::<RwResult<_>>()?;
+        let mut out = vec![vec![f32::NAN; n]; s.fields.len()];
+        for t in &tiles {
+            for y in 0..t.h {
+                for x in 0..t.w {
+                    let g = (t.y0 + y) * h.nx + t.x0 + x;
+                    for (i, f) in out.iter_mut().enumerate() {
+                        f[g] = t.f[i][y * t.w + x];
+                    }
+                }
+            }
+        }
+        Ok(Some(out))
     }
 
     /// The tile holding the bilinear cell of (fx, fy), read once.
@@ -944,7 +1187,7 @@ impl<S: RangeSource> ColumnFile<S> {
     }
 }
 
-fn unshuffle(data: &[u8], n: usize, width: usize) -> Vec<u32> {
+pub(crate) fn unshuffle(data: &[u8], n: usize, width: usize) -> Vec<u32> {
     (0..n)
         .map(|i| {
             let mut b = [0u8; 4];
@@ -1073,6 +1316,52 @@ pub fn decode_tile(h: &ColumnHeader, tx: usize, ty: usize, blob: &[u8]) -> RwRes
         .map(|i| floats[i * plane..(i + 1) * plane].iter().map(|b| f32::from_bits(*b)).collect())
         .collect();
     Ok(Tile { x0, y0, w, h: hh, nz, f3, f2 })
+}
+
+/// One decoded surface tile: every surface plane [y][x] over the tile's span, as f32, in `surface.fields` order.
+pub struct SurfaceTile {
+    pub x0: usize,
+    pub y0: usize,
+    pub w: usize,
+    pub h: usize,
+    pub f: Vec<Vec<f32>>,
+}
+
+impl SurfaceTile {
+    pub fn point(&self, field: usize, ix: usize, iy: usize) -> f32 {
+        self.f[field][(iy - self.y0) * self.w + (ix - self.x0)]
+    }
+    /// The bilinear value at fractional grid position (fx, fy) (the arithmetic of the sounding's surface sample, in
+    /// f64 from the four stored corners). NaN when a corner is not finite: a plane that is missing at a corner is
+    /// missing at the point.
+    pub fn sample(&self, field: usize, fx: f64, fy: f64, nx: usize, ny: usize) -> f64 {
+        let fx = fx.clamp(0.0, (nx - 1) as f64);
+        let fy = fy.clamp(0.0, (ny - 1) as f64);
+        let (x0, y0) = (fx.floor() as usize, fy.floor() as usize);
+        let (x1, y1) = ((x0 + 1).min(nx - 1), (y0 + 1).min(ny - 1));
+        let (ax, ay) = (fx - x0 as f64, fy - y0 as f64);
+        let g = |ix, iy| f64::from(self.point(field, ix, iy));
+        (g(x0, y0) * (1.0 - ax) + g(x1, y0) * ax) * (1.0 - ay) + (g(x0, y1) * (1.0 - ax) + g(x1, y1) * ax) * ay
+    }
+}
+
+/// Decode one surface tile's compressed bytes under its header.
+pub fn decode_surface_tile(h: &ColumnHeader, tx: usize, ty: usize, blob: &[u8]) -> RwResult<SurfaceTile> {
+    let s = h.surface.as_ref().ok_or_else(|| fmt("the file carries no surface section"))?;
+    let (x0, x1, y0, y1) = h.tile_span(tx, ty);
+    let (w, hh) = (x1 - x0 + 1, y1 - y0 + 1);
+    let plane = w * hh;
+    let mut payload = Vec::new();
+    ZlibDecoder::new(blob).read_to_end(&mut payload).map_err(|e| fmt(format!("surface tile ({tx},{ty}): {e}")))?;
+    let nf = s.fields.len() * plane;
+    if payload.len() != nf * 4 {
+        return Err(fmt(format!("surface tile ({tx},{ty}): payload {} bytes, expected {}", payload.len(), nf * 4)));
+    }
+    let floats = unshuffle(&payload, nf, 4);
+    let f = (0..s.fields.len())
+        .map(|i| floats[i * plane..(i + 1) * plane].iter().map(|b| f32::from_bits(*b)).collect())
+        .collect();
+    Ok(SurfaceTile { x0, y0, w, h: hh, f })
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1323,6 +1612,76 @@ mod tests {
         assert_eq!(end, raw.len());
         // omega NaNs counted per stored value, tiles overlapping by one column
         assert!(f.header.filled > 0);
+    }
+
+    /// A file with a surface section: the main tiles, the header's main fields and every sounding read are what
+    /// they are without it (an old reader sizes the 2-D block from `fields2d`, unchanged); the surface planes come
+    /// back bit for bit, NaN included, through the index and through the suffix read a remote reader makes; the
+    /// trailer ends the file. A global grid's surface planes carry the wrap column.
+    #[test]
+    fn surface_section_is_additive_and_exact() {
+        for global in [false, true] {
+            let mut g = grid(37, 20, 6);
+            if global {
+                g = grid(36, 9, 4);
+                g.lon = (0..g.nx * g.ny).map(|i| -180.0 + (i % g.nx) as f64 * 10.0).collect();
+                g.lat = (0..g.nx * g.ny).map(|i| -40.0 + (i / g.nx) as f64 * 10.0).collect();
+            }
+            let n = g.nx * g.ny;
+            let precip: Vec<f64> = (0..n).map(|i| if i % 13 == 0 { f64::NAN } else { i as f64 * 0.017 }).collect();
+            let mslp: Vec<f32> = (0..n).map(|i| 101_000.0 + i as f32).collect();
+            let w = write_of(&g, false);
+            let plain = encode(&w).unwrap();
+            let s = SurfaceWrite {
+                lat: w.lat,
+                lon: w.lon,
+                fields: vec![
+                    Field2 { name: "precip_mm", units: "mm", data: Values::F64(&precip), scale: 1.0, offset: 0.0 },
+                    Field2 { name: "mslp_hpa", units: "hPa", data: Values::F32(&mslp), scale: 0.01, offset: 0.0 },
+                ],
+                notes: json!({"precip_mm": "run total"}),
+            };
+            let raw = finish(encode_main(&w).unwrap(), Some(&s)).unwrap();
+            assert_eq!(&raw[raw.len() - 8..], SURFACE_TRAILER);
+            let a = ColumnFile::from_source(plain.clone()).unwrap();
+            let b = ColumnFile::from_source(raw.clone()).unwrap();
+            assert_eq!(a.header.fields2d, b.header.fields2d);
+            let (a3, a2) = a.read_full().unwrap();
+            let (b3, b2) = b.read_full().unwrap();
+            let bits = |v: &Vec<Vec<f32>>| v.iter().flatten().map(|x| x.to_bits()).collect::<Vec<_>>();
+            assert_eq!(bits(&a3), bits(&b3));
+            assert_eq!(bits(&a2), bits(&b2));
+            let ntiles = a.header.tiles_x * a.header.tiles_y;
+            for t in 0..ntiles {
+                let (tx, ty) = (t % a.header.tiles_x, t / a.header.tiles_x);
+                // the same main tile bytes, so a sounding read is the same size
+                let (ra, rb) = (a.tile_range(tx, ty), b.tile_range(tx, ty));
+                assert_eq!(ra.1, rb.1);
+                assert_eq!(plain[ra.0 as usize..ra.0 as usize + ra.1 as usize], raw[rb.0 as usize..rb.0 as usize + rb.1 as usize]);
+                // the suffix read a remote reader makes finds the same entry as the index
+                let k = ty * a.header.tiles_x + tx;
+                let tail = &raw[raw.len() - (12 * (ntiles - k) + 8)..];
+                let off = u64::from_le_bytes(tail[..8].try_into().unwrap());
+                let len = u32::from_le_bytes(tail[8..12].try_into().unwrap());
+                assert_eq!(Some((off, len)), b.surface_tile_range(tx, ty).unwrap());
+            }
+            assert!(a.read_full_surface().unwrap().is_none());
+            let sf = b.read_full_surface().unwrap().unwrap();
+            let sh = b.header.surface.as_ref().unwrap();
+            assert_eq!(sh.fields, vec!["lat", "lon", "precip_mm", "mslp_hpa"]);
+            let nxo = b.header.nx;
+            for y in 0..g.ny {
+                for x in 0..nxo {
+                    let src = if x == g.nx { 0 } else { x };
+                    let want = precip[y * g.nx + src] as f32;
+                    assert_eq!(sf[2][y * nxo + x].to_bits(), want.to_bits());
+                    assert_eq!(sf[3][y * nxo + x].to_bits(), ((mslp[y * g.nx + src] as f64 * 0.01) as f32).to_bits());
+                    assert_eq!(sf[0][y * nxo + x].to_bits(), a2[0][y * nxo + x].to_bits());
+                    assert_eq!(sf[1][y * nxo + x].to_bits(), a2[1][y * nxo + x].to_bits());
+                }
+            }
+            assert_eq!(global, b.header.wrap_x.is_some());
+        }
     }
 
     /// Exact fields come back bit for bit (NaN included); quantized fields come back as round(x / q) * q.

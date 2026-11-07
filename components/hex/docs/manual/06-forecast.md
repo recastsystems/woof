@@ -435,7 +435,7 @@ the pinned bytes rather than editing the pin.
 > **This section used to open by telling you the lane could not be opened
 > with a published engine. That was true of 2.5.7, and it is no longer the
 > current answer.** Walked 2026-08-27 from an installed 0.2.0 wheel against
-> woof 2.5.7: the `rw_mpas_mesh` that `woof fetch-bridges` staged had no
+> gpuwm 2.5.7: the `rw_mpas_mesh` that `woof fetch-bridges` staged had no
 > `--cull-parent` (it dropped the flag silently and then asked for `--spec`),
 > and `rw_mpas_lbc` was in no published bundle and no published source.
 >

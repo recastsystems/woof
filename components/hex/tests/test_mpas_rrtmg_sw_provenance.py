@@ -14,6 +14,7 @@ def test_pinned_mpas_v842_source_windows():
         pytest.skip("MPAS_V842_SOURCE must name the pinned read-only source tree")
     sys.path.insert(0,str(tree/"tools"))
     import check_mpas_citations as checker
+    # Inventory includes the additional published aerosol window references.
     expected = json.loads((tree/"tests/mpas_rrtmg_sw_oracle/citations.v842.json").read_text())
     occurrences = checker.citations(source_root=tree/"src/hexcore/mpasphys")
     actual=[]

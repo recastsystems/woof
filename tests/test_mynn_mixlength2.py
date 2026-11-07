@@ -26,7 +26,7 @@ import test_mynn_pbl as oracle
 # on RTX PRO 6000 (sm_120) with CuPy 14.2.0 / NVRTC 12.9.
 # These are WRF-facing, all-five-column maxima. Keep the cold and warm
 # populations separate so first-step residue cannot hide a warm regression.
-# lane/mynn-exact: 0 on the RTX 5090 (sm_120, NVRTC 12.9) after the YSU recipe (--fmad=false, glibc 2.39 libm incl. the FMA-ifunc logf/powf/expf); tools/mynn_pbl_wrf461_oracle/ulp_census.py.
+# development branch: 0 on the RTX 5090 (sm_120, NVRTC 12.9) after the YSU recipe (--fmad=false, glibc 2.39 libm incl. the FMA-ifunc logf/powf/expf); tools/mynn_pbl_wrf461_oracle/ulp_census.py.
 _DRIVER_ZERO = {"rublten": 0, "rvblten": 0, "rthblten": 0, "rqvblten": 0, "rqcblten": 0, "rqiblten": 0, "dozone": 0, "exch_h": 0, "exch_m": 0, "qke": 0, "tsq": 0, "qsq": 0, "cov": 0, "el": 0, "sh": 0, "sm": 0, "qc_bl": 0, "qi_bl": 0, "cldfra_bl": 0, "pblh": 0, "rmol": 0, "maxwidth": 0, "maxmf": 0, "ztop_plume": 0}
 _DRIVER_CUDA_ULP = {1: _DRIVER_ZERO, 2: _DRIVER_ZERO}
 

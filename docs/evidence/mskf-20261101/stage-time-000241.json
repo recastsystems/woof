@@ -1,0 +1,34 @@
+{
+  "numerics": "fast",
+  "columns": 8192,
+  "nz": 49,
+  "capture": "mskf-000241-0001-0001.bin",
+  "capture_columns": 16,
+  "capture_precipitating_columns": 0,
+  "nca_forced_active": true,
+  "w0avg_updated": false,
+  "timings": {
+    "mskf": {
+      "samples_ms": [
+        14.67801570892334,
+        14.776320457458496,
+        14.629887580871582,
+        14.535679817199707,
+        14.700544357299805
+      ],
+      "median_ms": 14.67801570892334
+    },
+    "kf": {
+      "samples_ms": [
+        0.44646400213241577,
+        0.6420480012893677,
+        0.5980160236358643,
+        0.5753600001335144,
+        0.5652480125427246
+      ],
+      "median_ms": 0.5753600001335144
+    }
+  },
+  "mskf_over_kf": 25.511011723994113,
+  "gpu": "NVIDIA GeForce RTX 4090"
+}

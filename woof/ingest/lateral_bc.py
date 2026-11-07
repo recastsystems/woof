@@ -10,10 +10,11 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
-from woof.boundary_fields import SCALAR_ARRAY_BOUNDARY_FIELDS
+from woof.boundary_fields import SCALAR_ARRAY_BOUNDARY_FIELDS, scalar_array_boundary_fields
 from woof.core import portable_math as pm
 from woof.core.kernels import get_kernel
 from woof.wrf_exact import ENABLED as WRF_EXACT
+from woof.core.ntu import NTU_SCALAR_ATTRS
 from woof.grid_requirements import boundary_axis
 
 #: Every transported hydrometeor/number/volume scalar the coupled-units
@@ -28,10 +29,13 @@ from woof.grid_requirements import boundary_axis
 #: instrument pins this set against every accepted scheme's
 #: ``nest_field_kinds``.
 from woof.core.fast_sbm_contract import BIN_SPECIES as _FSBM_BIN_SPECIES
+from woof.core.passive_tracer_contract import TRACER_NAMES
 
 COUPLED_SCALAR_STATE_FIELDS = frozenset({
+    "qrimef",  # WRF scalar: qi times rime factor; same dry-mass coupling.
     "qke_adv",
-    "qv", "qc", "qr", "qi", "qs", "qg", "tke_edmf",
+    "keps_tke_adv", "keps_diss_adv", "keps_tpe_adv",
+    "qv", "qc", "qr", "qt", "qi", "qs", "qg", "tke_edmf",
     "nr", "ni", "ns", "ng", "nc", "nwfa", "nifa",
     # mp=9 (Milbrandt-Yau): hail number; the rest of its moments were
     # already named by the schemes that spelled them first.
@@ -39,12 +43,13 @@ COUPLED_SCALAR_STATE_FIELDS = frozenset({
     # mp=16 (WDM6): the CCN reservoir.
     "nn",
     # mp=50 (P3): rime mass and rime volume, transported with qi.
-    "qir", "qib",
+    "qir", "qib", "qi2", "ni2", "qir2", "qib2", "qzi",
+    "qi3", "ni3", "qvoli", "qaoli", "qvoli2", "qaoli2", "qvoli3", "qaoli3",
     "qh", "qndrop", "qnr",
     "qni", "qns", "qng", "qnh", "qnn", "qvolg", "qvolh",
     # TEMPO's graupel volume (a named scheme's row); a dry-mass mixing
     # ratio like NSSL's qvolg, generic coupling code 7.
-    "volg"}) | frozenset(_FSBM_BIN_SPECIES)
+    "volg", "pek_adv", "pep_adv"}) | frozenset(_FSBM_BIN_SPECIES) | frozenset(NTU_SCALAR_ATTRS) | frozenset(TRACER_NAMES)
 
 
 
@@ -900,6 +905,34 @@ def _evaluate_device_interval(state, interval, dtbc):
     return resident.evaluated_interval, np.float32(0.0)
 
 
+def _constant_dfi_interval(state, cfg, device):
+    """Native solve_em constant_bc: zero tendencies only during DFI.
+
+    Values alias the actual served tables, including each captured child
+    FORCE. Zero tendencies are resident allocations prepared before capture;
+    the ordinary forecast retains the original tendencies without copying.
+    """
+    if not (getattr(cfg,'dfi_constant_bc',False) and
+            hasattr(state,'_dfi_boundary_start')):
+        return device
+    import cupy as cp
+    cache = getattr(state,'_dfi_constant_tables',None)
+    if cache is None:
+        cache = state._dfi_constant_tables = {}
+    key = tuple((side.value.data.ptr,side.tendency.data.ptr)
+        for field in device.fields.values()
+        for side in (field.west,field.east,field.south,field.north))
+    if key not in cache:
+        fields = {}
+        for name,field in device.fields.items():
+            fields[name] = _DeviceFieldBoundary(**{side_name:_DeviceSideBoundary(
+                getattr(field,side_name).value,
+                cp.zeros_like(getattr(field,side_name).tendency))
+                for side_name in ('west','east','south','north')})
+        cache[key] = _DeviceBoundaryInterval(fields)
+    return cache[key]
+
+
 def _active_device_interval(state, cfg):
     """Return ``(device interval, dtbc, child dt, spec_exp)``."""
     resident = getattr(state, "_lateral_boundary_device", None)
@@ -921,11 +954,12 @@ def _active_device_interval(state, cfg):
             # is once per run, so a hook-time refresh would serve the
             # first FORCE's forcing forever.
             reload_tables(state)
-        return (resident.intervals[0], resident.clock.dtbc_launch_fp32,
+        return (_constant_dfi_interval(state,cfg,resident.intervals[0]), resident.clock.dtbc_launch_fp32,
                 resident.clock.dt_fp32, 0.0)   # LIVE
     interval, dtbc = _served_external_interval(state, resident)
     device, offset = _evaluate_device_interval(
-        state, _held_resident_interval(state, cfg, interval), dtbc)
+        state, _constant_dfi_interval(state,cfg,
+            _held_resident_interval(state, cfg, interval)), dtbc)
     return (device, offset, lateral_boundary_clock_dt(cfg), cfg.spec_exp)
 
 
@@ -1132,7 +1166,14 @@ def _served_external_interval(state, resident):
     boundaries = state.lateral_boundaries
     elapsed = (state.elapsed_seconds if resident.clock is None
                else resident.clock.elapsed_seconds)
-    interval = boundaries.interval_at(elapsed)
+    dfi_start = getattr(state, '_dfi_boundary_start', None)
+    if dfi_start is not None and dfi_start <= elapsed < boundaries.intervals[0].start_seconds:
+        # WRF DFI reads the first wrfbdy record and extrapolates its
+        # original tendency backward. Scope is the active, bounded pass;
+        # ordinary forecasts still reject unavailable forcing times.
+        interval = boundaries.intervals[0]
+    else:
+        interval = boundaries.interval_at(elapsed)
     dtbc = (state.elapsed_seconds - interval.start_seconds
             if resident.clock is None else resident.clock.dtbc_launch_fp32)
     return interval, dtbc
@@ -1482,7 +1523,9 @@ def _coupled_device_field_items(state):
     del v
     # WRF module_bc.F:2081,2139-2142: boundary scalars use mu-only
     # coupling; 1/msf belongs only to u/v/w.  T is perturbation theta.
-    yield "theta", chm * (state.total_theta() - _THETA_OFFSET_K)
+    thermal = (state.prognostic_theta() if getattr(state, "use_theta_m", 0)
+               else state.total_theta())
+    yield "theta", chm * (thermal - _THETA_OFFSET_K)
     yield "phi", chf * state.php
     yield "mu", state.mup[None]
     # The decision belongs to the analysis producer, before any tile
@@ -2639,6 +2682,23 @@ def _apply_state_lateral_boundaries_wrf(state, cfg, rk_stage,
         weights=weights)
 
 
+def prepare_lateral_boundary_graph(state, cfg) -> None:
+    """Prepare the signed clock's invariant Davies weights before capture.
+
+    Boundary evaluation remains in the graph and reads the served forcing
+    and its actual clock. This only moves the first-use coefficient upload
+    out of a cold model step; it does not advance the model.
+    """
+    if not (cfg.specified or cfg.nested):
+        return
+    device, _, dt, spec_exp = _active_device_interval(state, cfg)
+    widths = {field.west.value.shape[-1] for field in device.fields.values()}
+    for width in sorted(widths):
+        _resident_weights(state, width, cfg.spec_zone, cfg.relax_zone, dt,
+                          spec_exp, wrf_real=bool(cfg.nested),
+                          timescale_s=relax_timescale_seconds(cfg))
+
+
 def apply_state_lateral_boundaries(state, cfg, *, rk_stage: int) -> None:
     """Apply WRF dry specified/relaxation tendencies for one RK stage.
 
@@ -2834,8 +2894,8 @@ def _wrf_final_muts_arg(state) -> tuple:
     """
     if not WRF_EXACT:
         return ()
-    from woof.state_serialization_contract import WRF_MUTS_SLOT
-    muts = state.existing_scratch(WRF_MUTS_SLOT)
+    from woof.state_serialization_contract import carried_wrf_muts
+    muts = carried_wrf_muts(state)
     return (muts if muts is not None else np.uint64(0),)
 
 
@@ -2913,7 +2973,7 @@ def apply_state_boundary_values(state, cfg, elapsed_seconds=None) -> None:
     # to 1.6 percent a step for the force-back to put back.
     scalars = tuple(name for name in device_interval.fields
                     if name in COUPLED_SCALAR_STATE_FIELDS
-                    and name not in SCALAR_ARRAY_BOUNDARY_FIELDS)
+                    and name not in scalar_array_boundary_fields(cfg))
     # A hydrometeor number is forced back WITH its mass.  The mass is a
     # moist-array species and is put back on the table every step; left to
     # its tendency alone, its number reached exactly 0 on the outermost row
@@ -3002,6 +3062,9 @@ def close_ring_numbers(state, cfg, pairs) -> int:
         alt = state.alt[strip]
         p = state.p[strip]
         theta = state.thp[strip] + (thb[strip] if thb.shape[1] > 1 else thb)
+        if int(getattr(state, "use_theta_m", 0)):
+            from woof.core import constants as c
+            theta = theta / (np.float32(1.0) + np.float32(c.RVOVRD) * state.qv[strip])
         receipt = close_numbers(
             int(cfg.mp_physics), masses, numbers,
             rho=lambda idx, alt=alt: 1.0 / alt[idx],

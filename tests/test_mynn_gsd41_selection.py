@@ -65,7 +65,7 @@ def test_named_import_emitted_bytes_select_the_pbl_source(
     from woof.physics_source_defaults import with_physics_selector_comment
     fixtures = Path(__file__).parent / "fixtures/source_requests"
     expected = (fixtures / "mynn-gsd41-hrrr-import.toml").read_bytes()
-    # 188ffdf41, lane/sw-excess, adds only the named NOAA cloud-optics
+    # 188ffdf41, development branch, adds only the named NOAA cloud-optics
     # selector to this MYNN fixture. Retain the original capture hash after
     # removing that one exact row; no other historical byte may change.
     # 2.8.6 re-pins both digests for one row: the importer now carries
@@ -80,7 +80,7 @@ def test_named_import_emitted_bytes_select_the_pbl_source(
         "20bcb69f93ee79ea3679dbc74209820cd7e3d13a73e0fd5ba7689fa56cc13f46")
     assert tomllib.loads(expected.decode())["projection"]["ref_lat"] == 38.5
     path = tmp_path / "hrrr_wrf.nl"
-    # ac415b50c, lane/ruc-evap-gap: retain its explicit old RUC overrides
+    # ac415b50c, development branch: retain its explicit old RUC overrides
     # while the current named HRRR defaults select prescribed monthly fields.
     # Retain the pre-RUC-correction lineage and neutral albedo of this
     # MYNN byte control, including the unprescribed monthly surface fields.
@@ -90,7 +90,7 @@ def test_named_import_emitted_bytes_select_the_pbl_source(
         "ruc_qvg_cold_start": "wrf", "ruc_2m_diagnostic": "flux",
     }
     if not fork_thompson:
-        # 3e5245839, lane/ruc-evap-gap, preserves the original historical
+        # 3e5245839, development branch, preserves the original historical
         # control by explicitly selecting neutral Thompson generations.
         selectors.update(thompson_version="wrf_461", thompson_fork_snow_fall="blend")
     path.write_text(with_physics_selector_comment(
@@ -116,7 +116,7 @@ def test_named_import_emitted_bytes_select_the_pbl_source(
     if not fork_thompson:
         carried_rows += ['thompson_version = "wrf_461"\n',
                          'thompson_fork_snow_fall = "blend"\n']
-    # 9822cdfbd, lane/wrf-exact-start: this namelist has mp_physics = 28,
+    # 9822cdfbd, development branch: this namelist has mp_physics = 28,
     # use_aero_icbc = .true. and MYNN without bl_mynn_mixscalars, so WRF's
     # check_a_mundo runs scalar_pblmix = 1 although the namelist leaves it
     # at 0, and the importer now emits the value wrf.exe runs.  The
@@ -126,14 +126,19 @@ def test_named_import_emitted_bytes_select_the_pbl_source(
     # (tests/capability_campaign_import.py).
     from capability_campaign_import import CAMPAIGN_IMPORT_LINES
     carried_rows += list(CAMPAIGN_IMPORT_LINES)
-    # 2.9.7 lane/hrrr-v4-clwrf: the namelist's climate statistics
+    # 2.9.7 development branch: the namelist's climate statistics
     # (output_diagnostics = 1 with its intervals) are imported since that
     # port; the historical capture predates it.
     carried_rows += ['output_diagnostics = 1\n', 'diag_int = 15\n', 'wind_int = 5\n']
+    # Native namelist imports preserve WRF's automatic HAILCAST selector -1
+    # (tests/capability_campaign_import.py HAILCAST_IMPORT_LINES), and
+    # 5c995111329 carries the namelist's do_radar_ref = 1 (stock
+    # reflectivity diagnostics kept with lightning off).
+    carried_rows += ['hailcast_opt = -1\n', 'do_radar_ref = 1\n']
     for carried in carried_rows:
         assert previous.count(carried) == 1
         previous = previous.replace(carried, "")
-    # a18db4bb087 and eca4e06cd357, lane/286-fork-thompson, add the
+    # a18db4bb087 and eca4e06cd357, development branch, add the
     # operational MP28 generation and explicit fork snow fall when alb_sol
     # names the fork. Keep the original MYNN pin and every other byte.
     fork_lines = (
@@ -150,6 +155,19 @@ def test_named_import_emitted_bytes_select_the_pbl_source(
         expected = expected.replace(anchor, anchor + fork_lines)
     # The namelist omits &dynamics top_lid: the pinned import resolved the
     # profile's rigid lid, today's reads WRF's open top (2026-10-12).
+    # The fixture omits use_theta_m and carries the fork-only alb_sol, so
+    # the importer reads it on the fork's WRF 3.9 line (dry theta, its
+    # Registry default) instead of booking the V4 moist-theta default as
+    # a substitution to dry theta: same run, a different header line.
+    theta_substitution = (
+        b"#   use_theta_m 1 (moist potential temperature (theta_m) "
+        b"prognostic) -> use_theta_m 0 (dry potential temperature)\n")
+    theta_line = (
+        b"# &dynamics use_theta_m is omitted in the namelist: read as 0 "
+        b"on WRF line 3, from the namelist's operational WRF 3.9 fork "
+        b"keys (&physics alb_sol).\n")
+    assert expected.count(theta_substitution) == 1
+    expected = expected.replace(theta_substitution, theta_line)
     from operational_namelist_edits import as_open_top
     from woof_engine_spelling import engine_spelling
     assert engine_spelling(previous).encode() == engine_spelling(as_open_top(expected).decode()).encode()

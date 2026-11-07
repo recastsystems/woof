@@ -1,0 +1,93 @@
+{
+  "coefficient_decision": {
+    "nssl_alphah": "Native finite gamma distributions and gmoi interpolation addresses; CUDA distribution-shape branches implemented and qualified jointly at graupel 2.5 / hail 0.",
+    "nssl_cccn": "Stock parameter-array caller: ABS(nssl_params(1)); no physical lower or upper bound enforced by WRF. Finite representable FP32 inputs only in the candidate.",
+    "nssl_icdx": "Native int32 including negative/zero power laws, independent CD laws and native scalar CD carry. CUDA preserves the gathered wet-64 order for graupel >6 and hail 2 or >6 and the whole-column order for fallout. No fabricated 0..6 parsing bound."
+  },
+  "external_table_files": [],
+  "licence_checked_before_port_changes": true,
+  "numerical_version": "v4.6.1",
+  "qualification": "Lane receipts qualify CCN 1e7, shapes 2.5/0 and drags 2/4 in MP18 hail/predicted-CCN, and native one-moment options 19/21: real captured strict replay, complete 900-step forecasts with Rust native/observation maps, both whole nest feedback modes, exact checkpoint continuation, ordinary/member equivalence, default forecast byte identity and paired production-stage timing. One-moment real proof counts 2994/2406 active written words and separately witnesses 882 unchanged unwritten radius words. Joint nondefault one-moment coefficients also match the 10614-word frozen mixed-phase fixture. Gathered scalar-CD inheritance is qualified at graupel 7 / hail 2, CCN 1e7: complete real 74-column native-row strict replay matches all 76812 active words; four mixed branches each match 10614. Separate native/GPU forecasts complete 900 steps, all 18 Rust native/observation comparison panels at three hours are viewed, both whole nest feedback modes and exact 65987832-word continuation pass, two concurrent full members match 4478 array hashes and Rust products, and default histories/checkpoints remain byte identical. Final paired fast production-stage total is 0.872704/0.861952 ms = 1.012474x on 22200 columns x49 levels; full frozen NUCOND alone costs 2.758671x (six extra fields, 86 vs 71 registers, zero local spills).",
+  "review_date_utc": "2026-11-01",
+  "schema": "wrf-nssl-source-pin-v1",
+  "sources": [
+    {
+      "commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+      "licence": "WRF public-domain statement; no more restrictive file notice found",
+      "licence_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "licence_url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/LICENSE.txt",
+      "path": "phys/module_mp_nssl_2mom.F",
+      "role": "unchanged numerical referee",
+      "sha256_canonical_lf": "1eb1b138b75ff3b0cfe33c23779f4ec9b72e57a5455a53ef11c9e55ae0f42722",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_mp_nssl_2mom.F",
+      "version": "v4.6.1"
+    },
+    {
+      "commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+      "licence": "WRF public-domain statement; no more restrictive file notice found",
+      "licence_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "licence_url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/LICENSE.txt",
+      "path": "share/module_check_a_mundo.F",
+      "role": "pinned selector remaps",
+      "sha256_canonical_lf": "2d6d4eb1f9183b4a4157f32de2ba34753bc4c0c10c380ad2ba4cfb524885b038",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/share/module_check_a_mundo.F",
+      "version": "v4.6.1"
+    },
+    {
+      "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "licence": "WRF public-domain statement; no more restrictive file notice found",
+      "licence_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "licence_url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/LICENSE.txt",
+      "path": "phys/module_mp_nssl_2mom.F",
+      "role": "coefficient and one-moment branch audit",
+      "sha256_canonical_lf": "29f42e76fbeca027a3ffb2ac805b148aaa1425c7f99ed1d8f19a90ebc1d015f8",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_mp_nssl_2mom.F",
+      "version": "v4.7.1"
+    },
+    {
+      "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "licence": "WRF public-domain statement; no more restrictive file notice found",
+      "licence_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "licence_url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/LICENSE.txt",
+      "path": "share/module_check_a_mundo.F",
+      "role": "later selector comparison only",
+      "sha256_canonical_lf": "c66b3ef802da58e2a453b62fc00a04542c66ea93d752aa49bbd981fe00d40784",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/share/module_check_a_mundo.F",
+      "version": "v4.7.1"
+    },
+    {
+      "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "licence": "WRF public-domain statement; no more restrictive file notice found",
+      "licence_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "licence_url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/LICENSE.txt",
+      "path": "phys/module_physics_init.F",
+      "role": "stock parameter-array caller audit",
+      "sha256_canonical_lf": "f48cf9793f782a72c3969e986eef24746252f030cd33cfba71cc82b81d128d90",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_physics_init.F",
+      "version": "v4.7.1"
+    },
+    {
+      "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "licence": "WRF public-domain statement; no more restrictive file notice found",
+      "licence_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "licence_url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/LICENSE.txt",
+      "path": "Registry/Registry.EM_COMMON",
+      "role": "coefficient defaults and allocated package audit",
+      "sha256_canonical_lf": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/Registry/Registry.EM_COMMON",
+      "version": "v4.7.1"
+    },
+    {
+      "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "version": "v4.7.1",
+      "path": "dyn_em/start_em.F",
+      "role": "MP21 missing QNCCN cold-start initialization audit, lines 1751-1775",
+      "sha256_canonical_lf": "4b6c98a06fb2b2c4472af73415099e311502747dc5543d9e9b1323497d83ddb4",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/dyn_em/start_em.F",
+      "licence": "WRF public-domain statement; no more restrictive file notice found",
+      "licence_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "licence_url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/LICENSE.txt"
+    }
+  ],
+  "tables_note": "NSSL generates its tables in nssl_2mom_init. This harness reads no external table files."
+}

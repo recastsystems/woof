@@ -1,0 +1,5 @@
+# ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+range [1,10): 27262976 words, 5759391 differ from correctly rounded
+range [10,1000): 56229888 words, 3021088 differ from correctly rounded
+range [1000,100000): 55136256 words, 1468741 differ from correctly rounded
+range [100000,1e+07): 55920256 words, 1061460 differ from correctly rounded

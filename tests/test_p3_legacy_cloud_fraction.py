@@ -35,6 +35,7 @@ from woof.core.rrtmg_legacy import (
     _LEGACY_ICE_ACTIVE_MICROPHYSICS,
     _LEGACY_ICE_ONLY_MICROPHYSICS,
     _LEGACY_NO_ICE_MICROPHYSICS,
+    _LEGACY_SNOW_ONLY_MICROPHYSICS,
     RRTMGLegacyRadiation,
     legacy_cloud_fraction_flags,
     legacy_ice_active,
@@ -126,14 +127,16 @@ def test_p3_gets_wrfs_ice_no_snow_flag_pair_not_a_fused_boolean():
 def test_every_accepted_selector_has_a_cloud_fraction_row():
     """No selector woof admits may reach cal_cldfra1 undecided.
 
-    The three sets must partition ``MP_PHYSICS_ACCEPTED`` exactly.  The
+    The four sets must partition ``MP_PHYSICS_ACCEPTED`` exactly (the
+    snow-only row joined with the old Eta Ferrier port, mp=95).  The
     defect this file exists for was a selector that was simply not in the
     one set there was, and silently inherited the ice-free arm.
     """
 
     rows = (_LEGACY_ICE_ACTIVE_MICROPHYSICS
             | _LEGACY_ICE_ONLY_MICROPHYSICS
-            | _LEGACY_NO_ICE_MICROPHYSICS)
+            | _LEGACY_NO_ICE_MICROPHYSICS
+            | _LEGACY_SNOW_ONLY_MICROPHYSICS)
     missing = sorted(set(MP_PHYSICS_ACCEPTED) - rows)
     assert missing == [], (
         f"mp_physics {missing} are admitted by woof/config.py but have no "
@@ -143,13 +146,17 @@ def test_every_accepted_selector_has_a_cloud_fraction_row():
                 & _LEGACY_ICE_ONLY_MICROPHYSICS)
     assert not (_LEGACY_ICE_ACTIVE_MICROPHYSICS & _LEGACY_NO_ICE_MICROPHYSICS)
     assert not (_LEGACY_ICE_ONLY_MICROPHYSICS & _LEGACY_NO_ICE_MICROPHYSICS)
+    for other in (_LEGACY_ICE_ACTIVE_MICROPHYSICS, _LEGACY_ICE_ONLY_MICROPHYSICS,
+                  _LEGACY_NO_ICE_MICROPHYSICS):
+        assert not (_LEGACY_SNOW_ONLY_MICROPHYSICS & other)
 
 
 def test_an_unmapped_selector_refuses_by_name_instead_of_going_ice_free():
     """Fails closed.  A future scheme raises rather than radiating clear."""
 
     with pytest.raises(NotImplementedError) as excinfo:
-        legacy_cloud_fraction_flags(7)
+        # No scheme carries this selector (95 joined with its 3.0 port).
+        legacy_cloud_fraction_flags(12345)
     message = str(excinfo.value)
     assert "Registry" in message
     assert "_LEGACY_ICE_ONLY_MICROPHYSICS" in message

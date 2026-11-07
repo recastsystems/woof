@@ -9,6 +9,8 @@ is not GPU or forecast acceptance. Arrays are RKIND binary32; radar complex
 intermediates retain native real(8), including default-complex rounding.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 import re
 from woof.hex import numerics as _hex_numerics
 
@@ -4127,7 +4129,7 @@ def _compile_cuda(source: str, names, modules=None):
     """
     import cupy as cp
     from ..cuda_backend.aot import direct_image
-    image = direct_image(source, compiler_options(), cp.cuda.Device().compute_capability)
+    image = direct_image(source, compiler_options(), _compilation_target(xp=cp))
     module = cp.cuda.function.Module()
     module.load(image)
     if modules is not None:

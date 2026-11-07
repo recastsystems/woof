@@ -1013,12 +1013,14 @@ def _inert(switches: Mapping[str, Any], components: Mapping[str, str]) -> set[st
     if not components:
         return set()
     owners: dict[str, set[str]] = {}
+    aliases = table().get("parameter_owners", {})
     live: set[str] = set()
     for family, rows in _menu().items():
         running = components.get(family)
         for row in rows.values():
             for key in row["settings"]:
-                owners.setdefault(key, set()).add(f"{family}/{row['registry_option_id']}")
+                owner = aliases.get(family, {}).get(row["registry_option_id"], {}).get(key, row["registry_option_id"])
+                owners.setdefault(key, set()).add(f"{family}/{owner}")
             if running is not None and running in (row["id"], row["registry_option_id"]):
                 live.update(row["settings"])
     return {key for key in switches if len(owners.get(key, ())) == 1 and key not in live}

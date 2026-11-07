@@ -707,8 +707,13 @@ def scalar_reference_asin_f32(values) -> np.ndarray:
         return result
 
     probes = np.array([0xbd137442, 0xbd222103, 0xbd289002], dtype=np.uint32).view(np.float32)
-    expected = np.array([0xbd137c6b, 0xbd222bdc, 0xbd289c33], dtype=np.uint32)
-    if not np.array_equal(evaluate(probes).view(np.uint32), expected):
+    # Both scalar libm profiles are witnessed by native Fortran. The second
+    # is gfortran's non-vectorized ASIN on the MP52 native forecast host;
+    # see tools/p3_wrf461_oracle/native_asin_probe.f90. A single assumed
+    # profile rejected that native runtime even though Rust matched it.
+    qualified = ((0xbd137c6b, 0xbd222bdc, 0xbd289c33),
+                 (0xbd137c6a, 0xbd222bdb, 0xbd289c32))
+    if tuple(map(int, evaluate(probes).view(np.uint32))) not in qualified:
         raise StaticBridgeError(
             "this native scalar rounding changes SLP_AZI and SWNORM before "
             "Noah, or solar COSZEN; it cannot match the scalar reference")

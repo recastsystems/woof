@@ -39,6 +39,44 @@ def test_fused_low_order_keeps_the_lts_hook_before_the_accumulation(monkeypatch)
     assert events == ["hook", "kernel"]
 
 
+
+@pytest.mark.parametrize("name", ("fct_horizontal_low_order_scale_elem_v841", "fct_finish_elem_v841"))
+def test_lts_hook_reads_native_stencils_and_the_kernel_slot_major(monkeypatch, name):
+    """rrfs/s6-scalar-default 04b17ec0 relaid the stencils in _launch, above the tap, so
+    lts_donor_guard (and the finish audit) indexed the slot-major tables as (cell, slot)."""
+    from woof.hex import cuda_fullstep_lts_scalars as lts
+    from woof.hex import cuda_transport_v841 as transport
+
+    cp = SimpleNamespace(cuda=SimpleNamespace(Device=lambda: SimpleNamespace(id=0),
+                                              get_current_stream=lambda: SimpleNamespace(ptr=1)),
+                         zeros=np.zeros)
+    monkeypatch.setattr(transport, "_cupy", lambda: cp)
+    monkeypatch.setattr(transport, "_EDGE_STENCILS", {})
+    monkeypatch.setattr(transport, "_KERNELS", {})
+    ncells, max_edges = 7, 6
+    edges = np.arange(ncells * max_edges, dtype=np.int32).reshape(ncells, max_edges)
+    signs = np.linspace(-1, 1, ncells * max_edges, dtype=np.float32).reshape(ncells, max_edges)
+    arguments = (np.int32(2), np.int32(3), np.int32(ncells), np.int32(20), np.int32(max_edges),
+                 np.full(ncells, max_edges, np.int32), edges, signs) + tuple(object() for _ in range(9))
+    seen = {}
+
+    class Cache:
+        def raw_kernel(self, kernel_name, source, *, module_key):
+            def kernel(grid, block, args):
+                seen["kernel"] = args
+            return kernel
+
+    cache = Cache()
+    lts.tap_kernel(transport, cache, name, before=lambda args: seen.setdefault("hook", args))
+    transport._launch(name, 2 * 3 * ncells, arguments, cache)
+    assert seen["hook"] is arguments
+    assert seen["hook"][6] is edges and seen["hook"][7] is signs
+    kernel_args = seen["kernel"]
+    np.testing.assert_array_equal(kernel_args[6], edges.T)
+    np.testing.assert_array_equal(kernel_args[7], signs.T)
+    assert kernel_args[6].flags.c_contiguous and kernel_args[7].flags.c_contiguous
+    assert all(a is b for i, (a, b) in enumerate(zip(kernel_args, arguments)) if i not in (6, 7))
+
 @pytest.mark.gpu
 def test_fused_horizontal_scale_matches_separate_kernels_word_for_word():
     cp = pytest.importorskip("cupy")

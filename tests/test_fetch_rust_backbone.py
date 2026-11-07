@@ -806,10 +806,10 @@ def _hrrr_argv(tmp_path, *extra):
 
 def test_the_hrrr_default_is_the_record_subset_through_the_backbone(
         tmp_path, monkeypatch):
-    """Move only the bytes the preparation reads (the project owner, 2026-10-29).
+    """Move only the bytes the preparation reads (the project ruling, 2026-10-29).
 
     ``auto`` takes the ``.idx`` record subset wherever the index is
-    complete and the whole object where it is not.  Measured on a development machine
+    complete and the whole object where it is not.  Measured on test host 2
     over AWS, 12Z f00-f03: whole files 4,601 MB, the subset 1,823 MB,
     quicker and with byte-identical prepared files.
     """

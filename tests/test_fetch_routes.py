@@ -117,7 +117,8 @@ def test_every_route_declares_an_endpoint_ladder_and_known_tokens():
         assert all(host.why.strip() for host in route.hosts), source_id
         assert route.host(None) is route.hosts[0], source_id
         for row in route.files:
-            unknown = fetch_routes.unknown_tokens(row.path)
+            unknown = tuple(token for token in fetch_routes.unknown_tokens(row.path)
+                            if token not in (route.parameters or {}))
             assert unknown == (), (source_id, row.role, unknown)
 
 
@@ -455,7 +456,9 @@ def test_only_producers_with_step0_statics_declare_them():
     IFS open data carries its land mask and surface geopotential in every
     step (its f024 and f150 starts prepared, 2026-09-30); ICON's statics
     are cycle objects with no lead; AIGFS borrows a same-cycle analysis.
-    AIFS and GDPS publish theirs at the analysis step only.
+    AIFS and GDPS publish theirs at the analysis step only; so do RDPS,
+    and HRDPS for its land mask and ice analysis (its terrain rides every
+    lead).
     """
 
     step0_supplement = sorted(
@@ -467,7 +470,7 @@ def test_only_producers_with_step0_statics_declare_them():
         if any(row.leads == "step0"
                for row in fetch_routes.route_for(source).files))
     assert step0_supplement == ["aifs"]
-    assert step0_rows == ["gem-gdps", "hrrr-native", "hrrr-prs"]
+    assert step0_rows == ["gem-gdps", "gem-hrdps", "gem-rdps", "hrrr-native", "hrrr-prs"]
 
 
 def test_icon_eu_expands_125_field_objects_a_lead_plus_two_invariants():
@@ -952,6 +955,7 @@ def test_every_route_prints_the_whole_prep_line_it_published(source,
         assert cycle is not None
     plan = fetch_routes.resolve_request(
         source, cycle=cycle, start_hour=route.first_lead,
+        source_parameters=("STORM=01l" if "STORM" in (route.parameters or {}) else None),
         hours=min(route.default_cadence, fetch_routes.ladder_for(route, cycle)[-1]-route.first_lead))
     fetch_routes.write_handoff(plan, tmp_path)
     document = json.loads(
@@ -970,3 +974,19 @@ def test_every_route_prints_the_whole_prep_line_it_published(source,
         assert flag in comments, flag
     for role in document["unbound_supplement_roles"]:
         assert f"--supplement {role}=" in comments, role
+
+
+@pytest.mark.parametrize("source", ["hafs-a", "hafs-b"])
+def test_parameterized_source_identity_and_transport(source):
+    cycle = datetime(2024, 10, 7)
+    with pytest.raises(ValueError, match="STORM"):
+        fetch_routes.resolve_request(source, cycle=cycle, hours=0)
+    for bad in ("STORM=../01l", "STORM=01l,STORM=02l", "STORM=01l,YYYY=2000", "STORM=01l,DOMAIN=outer"):
+        with pytest.raises(ValueError):
+            fetch_routes.resolve_request(source, cycle=cycle, hours=0, source_parameters=bad)
+    parent = fetch_routes.resolve_request(source, cycle=cycle, hours=72, source_parameters="STORM=01l")
+    nest = fetch_routes.resolve_request(source, cycle=cycle, hours=72, source_parameters="STORM=01l,DOMAIN=storm")
+    assert len(nest.objects) == 25
+    assert parent.objects[0].url != nest.objects[0].url
+    assert dict(parent.source_parameters) == {"STORM": "01l", "DOMAIN": "parent"}
+    assert dict(nest.source_parameters)["DOMAIN"] == "storm"

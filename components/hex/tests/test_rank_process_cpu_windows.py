@@ -1,6 +1,6 @@
 """Rank-process CPU windows: start-up vs step 1 vs stepping, with system time per thread group.
 
-THE QUESTION (NOAA RRFS v2 conus3km, V8X6000, 2026-10-29): rank processes spent more CPU time in the kernel than in
+THE QUESTION (NOAA RRFS v2 conus3km, eight-card system, 2026-10-29): rank processes spent more CPU time in the kernel than in
 user code (rank 0 775.7 s system / 428 s user in a 543 s 4-card run) and the exit totals could not say when or on
 which thread.  These tests hold the instrument to what it reports; host-only, no card.
 """

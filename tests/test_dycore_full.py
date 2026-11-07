@@ -1,3 +1,4 @@
+import dataclasses
 from types import SimpleNamespace
 
 import numpy as np
@@ -103,7 +104,7 @@ def test_warm_bubble_rises():
     from woof.core.state import init_theta_perturbation
     from woof.core.dycore import run_steps
     cfg, vc, b = _rest_setup(nx=100, nz=50)
-    cfg = RunConfig(**{**cfg.__dict__, "dx": 200.0, "dy": 200.0, "dt": 1.0})
+    cfg = dataclasses.replace(cfg, **{"dx": 200.0, "dy": 200.0, "dt": 1.0})
     def bubble(x, z):
         L = np.sqrt((x[None, None, :] / 2000.0) ** 2
                     + ((z[:, None, None] - 2000.0) / 2000.0) ** 2)

@@ -187,6 +187,13 @@ pub struct PanelAnnotations {
     /// empty for every other caller, so their titles are unchanged.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub title_notes: std::collections::BTreeMap<String, String>,
+    /// The headline's grid parenthetical (`(d01 2 km)`) for a local wrfout render: a label replaces the one read off the
+    /// file, an empty string drops it.  `rw_wrfbatch` reads it once for the whole call (every lane's title takes the same
+    /// provenance); absent, the file's own label stands and the render is byte-unchanged.  A caller whose own header row
+    /// names the grid and the time (the live ensemble product: "Cycle 03:15Z · Member 5 · +15 min") has no use for the
+    /// internal domain id in the title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grid_label: Option<String>,
 }
 
 impl MapOverlays {

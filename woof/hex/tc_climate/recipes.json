@@ -1,0 +1,31 @@
+{
+  "schema": "gpuwm-hex.tc-climate-recipe/v1",
+  "method": "2021 TC detection thresholds with deterministic online nearest-pair stitching",
+  "doi": [
+    "10.5194/gmd-10-1069-2017",
+    "10.5194/gmd-14-5023-2021",
+    "10.1175/JCLI4282.1"
+  ],
+  "recipe": {
+    "pressure_delta_pa": 200.0,
+    "pressure_radius_deg": 5.5,
+    "thickness_delta_m": 6.0,
+    "thickness_radius_deg": 6.5,
+    "warm_offset_deg": 1.0,
+    "merge_deg": 6.0,
+    "wind_radius_deg": 2.0,
+    "link_deg": 8.0,
+    "max_gap_hours": 24.0,
+    "min_duration_hours": 54.0,
+    "min_wind_ms": 10.0,
+    "max_abs_lat_deg": 50.0,
+    "max_terrain_m": 150.0,
+    "min_qualified_samples": 10,
+    "cadence_hours": 6.0,
+    "candidate_capacity": 4096,
+    "flood_capacity": 8192,
+    "pi_ckcd": 0.9,
+    "pi_wind_reduction": 0.8,
+    "pi_top_hpa": 50.0
+  }
+}

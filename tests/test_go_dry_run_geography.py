@@ -6,7 +6,7 @@ registered launch the HRRR and ICON routes take) printed the plan and
 exited 0 for ``--geog-root`` naming a directory that does not exist, while
 the real launch of the same command refused with ``geography_refusal``
 ("the staged WPS_GEOG tree is not usable") before its fetch.  Measured on
-the 2.8.8 candidate on a development machine with a GFS config: dry run rc 0, launch
+the 2.8.8 candidate on test host 1 with a GFS config: dry run rc 0, launch
 refused.
 """
 from __future__ import annotations

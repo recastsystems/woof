@@ -45,7 +45,10 @@ from woof.config import (  # noqa: E402
     CU_SCHEMES,
     KM_OPT_ZERO_ACK,
     LAND_SURFACE_SCHEMES,
+    MP_PHYSICS_ACCEPTED,
     PBL_SCHEMES,
+    RA_LW_PHYSICS_ACCEPTED,
+    RA_SW_PHYSICS_ACCEPTED,
     SASE_PBL_SCHEME,
     SURFACE_LAYER_SCHEMES,
     validated_soil_layer_count,
@@ -170,9 +173,8 @@ class Axis:
 
 
 #: The physics selectors a user sets per domain, with the admitted values
-#: taken from the validation code in ``woof/config.py`` -- from the exported
-#: tuples where the code exports one, and from the inline literal in
-#: ``validate_run_config`` / ``validate_km_opt`` where it does not.  Tier E
+#: taken from the exported validation tuples in ``woof/config.py`` and
+#: from ``validate_km_opt`` for turbulence. Tier E
 #: MEASURES each of these sets against the loader rather than trusting the
 #: transcription.
 AXES = (
@@ -186,25 +188,21 @@ AXES = (
     # Lin), 3 (WSM3), 4 (WSM5), 5 (Ferrier-Aligo), 24 (WSM7) and 106
     # (WSM6R) with their ports.  ra_lw/ra_sw 5 (New Goddard, golden/ports-rad)
     # joined the radiation checks below the same way in 2.9.0.
-    Axis("mp_physics", (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106, 900),
-         "woof.config.validate_run_config, inline 'mp_physics must be' "
-         "check, plus its two by-name gates -- _P3_UNPORTED_VARIANTS and "
-         "the WDM5/WDM7 siblings -- each of which recites the same menu"),
+    Axis("mp_physics", tuple(MP_PHYSICS_ACCEPTED),
+         "woof.config.MP_PHYSICS_ACCEPTED"),
     Axis("bl_pbl_physics", tuple(PBL_SCHEMES),
          "woof.config.PBL_SCHEMES"),
     Axis("sf_sfclay_physics", tuple(SURFACE_LAYER_SCHEMES),
          "woof.config.SURFACE_LAYER_SCHEMES"),
     Axis("sf_surface_physics", tuple(LAND_SURFACE_SCHEMES),
          "woof.config.LAND_SURFACE_SCHEMES"),
-    Axis("ra_lw_physics", (0, 1, 4, 5, 90),
-         "woof.config.validate_run_config, inline 'ra_lw_physics must be' "
-         "check (after woof.config.radiation_scheme_ids resolution)"),
-    Axis("ra_sw_physics", (0, 1, 4, 5, 90),
-         "woof.config.validate_run_config, inline 'ra_sw_physics must be' "
-         "check (after woof.config.radiation_scheme_ids resolution)"),
+    Axis("ra_lw_physics", tuple(RA_LW_PHYSICS_ACCEPTED),
+         "woof.config.RA_LW_PHYSICS_ACCEPTED"),
+    Axis("ra_sw_physics", tuple(RA_SW_PHYSICS_ACCEPTED),
+         "woof.config.RA_SW_PHYSICS_ACCEPTED"),
     Axis("cu_physics", tuple(CU_SCHEMES),
          "woof.config.CU_SCHEMES"),
-    Axis("km_opt", (0, 1, 2, 3, 4),
+    Axis("km_opt", (0, 1, 2, 3, 4, 5),
          "woof.config.validate_km_opt"),
 )
 
@@ -227,12 +225,22 @@ _TAG = {"mp_physics": "mp", "bl_pbl_physics": "pbl",
 #: asserted to be in the accepted set, so an anchor cannot silently become a
 #: refused configuration and hide a whole tier's worth of coverage.
 ANCHORS = {
+    "gbm-mm5-noah-rrtmgp": {
+        "mp_physics": 8, "bl_pbl_physics": 12, "sf_sfclay_physics": 1,
+        "sf_surface_physics": 2, "ra_lw_physics": 4, "ra_sw_physics": 4,
+        "cu_physics": 1, "km_opt": 4},
     "mynn-rrtmgp-noah": {
         "bl_pbl_physics": 5, "sf_sfclay_physics": 5,
         "sf_surface_physics": 2, "ra_lw_physics": 4, "ra_sw_physics": 4,
         "km_opt": 1},
     "ysu-mm5-noah-rrtmgp": {
         "bl_pbl_physics": 1, "sf_sfclay_physics": 1,
+        "sf_surface_physics": 2, "ra_lw_physics": 4, "ra_sw_physics": 4,
+        "km_opt": 1},
+    # CAM ZM (cu=7) owns a MYJ/CAM UW PBL contract. Include its native
+    # MYJ/Janjic background instead of measuring it only on refused pairs.
+    "myj-janjic-noah-rrtmgp": {
+        "bl_pbl_physics": 2, "sf_sfclay_physics": 2,
         "sf_surface_physics": 2, "ra_lw_physics": 4, "ra_sw_physics": 4,
         "km_opt": 1},
     "shinhong-mm5-noahmp-analytic": {
@@ -271,9 +279,10 @@ COVERAGE_RULE = (
     "(8 / 1).",
     "TIER B -- FULL cartesian over the two axes tier A holds, mp_physics x "
     "cu_physics, crossed with every anchor suite.  The anchors are one "
-    "accepted tier-A suite per PBL family (none, YSU, MYNN, Shin-Hong, "
-    "SASE), so each microphysics and each cumulus scheme is seen against "
-    "five different backgrounds rather than one.",
+    "accepted tier-A suite per represented PBL family (none, YSU, MYJ, "
+    "MYNN, Shin-Hong, GBM, SASE). Each microphysics and each cumulus "
+    "scheme is measured on every background, including its named native "
+    "pairing when a different family is refused.",
     "TIER C -- the legacy ra_physics aggregate, every admitted value, "
     "crossed with every anchor, with the explicit LW/SW pair left unset.",
     "TIER D -- the km_opt=0 acknowledgement, both directions, on every "
@@ -401,6 +410,38 @@ _SASE = {"bl_pbl_physics": SASE_PBL_SCHEME, "sf_sfclay_physics": 1,
 #: these entries cover exactly the rules the walk produced -- a new refusal
 #: cannot land without someone demonstrating that its advice works.
 REMEDIES = (
+    {"id": "sms-3dtke-needs-surface-fluxes",
+     "remedy": "Select revised MM5 to supply the SMS lower boundary fluxes.",
+     "before": _suite(km_opt=5, bl_pbl_physics=0, sf_sfclay_physics=3, sf_surface_physics=0),
+     "after": _suite(km_opt=5, bl_pbl_physics=0, sf_sfclay_physics=1, sf_surface_physics=0)},
+    {"id": "keps-needs-surface-state",
+     "remedy": "Select revised MM5 to supply UST HFX QFX BR ZNT PSIM PSIH.",
+     "before": _suite(bl_pbl_physics=17, sf_sfclay_physics=0),
+     "after": _suite(bl_pbl_physics=17, sf_sfclay_physics=1)},
+    {"id": "myj-needs-eta-instead-of-gfs",
+     "remedy": "Select Eta similarity to supply AKHS AKMS THZ0 QZ0 UZ0 VZ0.",
+     "before": _suite(bl_pbl_physics=2, sf_sfclay_physics=3),
+     "after": _suite(bl_pbl_physics=2, sf_sfclay_physics=2)},
+    {"id": "gfs-surface-needs-gfs-pbl",
+     "remedy": "Select GFS PBL, which consumes the GFS surface contract.",
+     "before": _suite(bl_pbl_physics=5, sf_sfclay_physics=3),
+     "after": _suite(bl_pbl_physics=3, sf_sfclay_physics=3)},
+    {"id": "gfs-pbl-needs-paired-surface",
+     "remedy": "Select the GFS surface layer to supply GFS PBL exchange fields.",
+     "before": _suite(bl_pbl_physics=3, sf_sfclay_physics=0, sf_surface_physics=0),
+     "after": _suite(bl_pbl_physics=3, sf_sfclay_physics=3, sf_surface_physics=0)},
+    {"id": "flg-longwave-needs-active-shortwave",
+     "remedy": "select an active ra_sw_physics",
+     "before": _suite(ra_lw_physics=7, ra_sw_physics=0),
+     "after": _suite(ra_lw_physics=7, ra_sw_physics=1)},
+    {"id": "flg-shortwave-needs-active-longwave",
+     "remedy": "select an implemented ra_lw_physics",
+     "before": _suite(ra_lw_physics=0, ra_sw_physics=7),
+     "after": _suite(ra_lw_physics=1, ra_sw_physics=7)},
+    {"id": "sms-3dtke-supplies-the-pbl-closure",
+     "remedy": "select bl_pbl_physics=0 when km_opt=5 supplies turbulence",
+     "before": _suite(km_opt=5),
+     "after": _suite(km_opt=5, bl_pbl_physics=0)},
     {"id": "cloud-optics-without-effective-radii",
      "remedy": "Set ra_rrtmg_variant='rrtmg_legacy' for the backend that diagnoses its own radii.",
      "before": _suite(mp_physics=2, ra_lw_physics=4, ra_sw_physics=4),
@@ -416,6 +457,30 @@ REMEDIES = (
      "after": _suite(bl_pbl_physics=901, sf_sfclay_physics=1,
                      sf_surface_physics=0, ra_lw_physics=0,
                      ra_sw_physics=0)},
+    {"id": "temf-pbl-needs-its-surface-writer",
+     "remedy": "select sf_sfclay_physics=10 to write shared TEMF energy and height",
+     "before": _suite(bl_pbl_physics=10, sf_sfclay_physics=1),
+     "after": _suite(bl_pbl_physics=10, sf_sfclay_physics=10)},
+    {"id": "temf-surface-needs-its-pbl-writer",
+     "remedy": "select bl_pbl_physics=10 to advance shared TEMF energy and height",
+     "before": _suite(bl_pbl_physics=1, sf_sfclay_physics=10),
+     "after": _suite(bl_pbl_physics=10, sf_sfclay_physics=10)},
+    {"id": "gbm-requires-mm5-surface-inputs",
+     "remedy": "select sf_sfclay_physics=1 or 91 to supply GZ1OZ0 and PSIM",
+     "before": _suite(bl_pbl_physics=12, sf_sfclay_physics=5),
+     "after": _suite(bl_pbl_physics=12, sf_sfclay_physics=1)},
+    {"id": "gbm-requires-condensate-species",
+     "remedy": "select a microphysics with cloud-water and cloud-ice state",
+     "before": _suite(bl_pbl_physics=12, mp_physics=1),
+     "after": _suite(bl_pbl_physics=12, mp_physics=6)},
+    {"id": "qnse-pbl-requires-qnse-surface-layer",
+     "remedy": "Select sf_sfclay_physics=4 to produce the QNSE lower boundary state.",
+     "before": _suite(bl_pbl_physics=4, sf_sfclay_physics=1),
+     "after": _suite(bl_pbl_physics=4, sf_sfclay_physics=4)},
+    {"id": "qnse-surface-layer-requires-qnse-pbl",
+     "remedy": "Select bl_pbl_physics=4 to carry the TKE column the surface layer scans.",
+     "before": _suite(bl_pbl_physics=1, sf_sfclay_physics=4),
+     "after": _suite(bl_pbl_physics=4, sf_sfclay_physics=4)},
     # Independent spectrum composition retired the coupled-LW/SW and
     # classic-RRTM/Dudhia-only refusals. Their former before cases now
     # accept unchanged and are covered by the positive composition gate.
@@ -589,6 +654,13 @@ REMEDIES = (
      "before": _suite(ra_lw_physics=0, ra_sw_physics=0) | {
          "_radiation_ack_withheld": True},
      "after": _suite(ra_lw_physics=0, ra_sw_physics=0)},
+    # SBU-YLin supplies no native effective radii. Exercise its named
+    # native legacy-RRTMG remedy as well as the refused modern pairing.
+    {"id": "sbu-ylin-has-no-rte-rrtmgp-cloud-optics",
+     "remedy": "'Set ra_rrtmg_variant='rrtmg_legacy' (which computes its "
+               "own radii the way WRF does)'",
+     "before": _suite(mp_physics=13),
+     "after": _suite(mp_physics=13) | {"ra_rrtmg_variant": "rrtmg_legacy"}},
     # FAST_SBM (mp_physics=30) on the default RTE+RRTMGP arm: a JUDGED
     # cloud-optics exclusion (woof.core.rrtmgp._NO_CLOUD_OPTICS_COUPLING),
     # refused at the run door.  Followed the first way it names.
@@ -597,6 +669,52 @@ REMEDIES = (
                "own radii the way WRF does)'",
      "before": _suite(mp_physics=30),
      "after": _suite(mp_physics=30) | {"ra_rrtmg_variant": "rrtmg_legacy"}},
+    {"id": "ntu-has-no-rte-rrtmgp-cloud-optics",
+     "remedy": "'Set ra_rrtmg_variant='rrtmg_legacy' (which computes its "
+               "own radii the way WRF does)'",
+     "before": _suite(mp_physics=56),
+     "after": _suite(mp_physics=56) | {"ra_rrtmg_variant": "rrtmg_legacy"}},
+    {"id": "cam-zm-needs-native-pbl-temperature-excess",
+     "remedy": "'bl_pbl_physics=2 with sf_sfclay_physics=2'",
+     "before": _suite(cu_physics=7),
+     "after": _suite(cu_physics=7, bl_pbl_physics=2,
+                     sf_sfclay_physics=2)},
+    # The WRF 4.7.1 port's IDEALSCM prescribed-flux surface layer (89):
+    # WRF gives it no PBL isfc and no surface producer, so it runs alone.
+    {"id": "idealscm-surface-needs-pbl-off",
+     "remedy": "'sf_sfclay_physics=89 requires bl_pbl_physics=0'",
+     "before": _suite(sf_sfclay_physics=89, bl_pbl_physics=1,
+                      sf_surface_physics=0),
+     "after": _suite(sf_sfclay_physics=89, bl_pbl_physics=0,
+                     sf_surface_physics=0)},
+    {"id": "idealscm-surface-needs-land-surface-off",
+     "remedy": "'sf_sfclay_physics=89 requires sf_surface_physics=0'",
+     "before": _suite(sf_sfclay_physics=89, bl_pbl_physics=0,
+                      sf_surface_physics=2),
+     "after": _suite(sf_sfclay_physics=89, bl_pbl_physics=0,
+                     sf_surface_physics=0)},
+    # RCON-SPEED-01 (woof/config.py): RCON is held at the forecast door
+    # until its speed proof clears; the message names the scheme to run.
+    {"id": "rcon-held-for-its-speed-proof",
+     "remedy": "'select another microphysics scheme, such as mp_physics=28'",
+     "before": _suite(mp_physics=29),
+     "after": _suite(mp_physics=28)},
+    # The port's MAD-WRF, UDM and Eta Ferrier schemes: judged RTE+RRTMGP
+    # cloud-optics exclusions, followed the legacy-RRTMG way they name.
+    {"id": "madwrf-has-no-rte-rrtmgp-cloud-optics",
+     "remedy": "'use --rrtmg-variant rrtmg_legacy'",
+     "before": _suite(mp_physics=96),
+     "after": _suite(mp_physics=96) | {"ra_rrtmg_variant": "rrtmg_legacy"}},
+    {"id": "udm-has-no-rte-rrtmgp-cloud-optics",
+     "remedy": "'Set ra_rrtmg_variant='rrtmg_legacy' (which computes its "
+               "own radii the way WRF does)'",
+     "before": _suite(mp_physics=27),
+     "after": _suite(mp_physics=27) | {"ra_rrtmg_variant": "rrtmg_legacy"}},
+    {"id": "eta-ferrier-has-no-rte-rrtmgp-cloud-optics",
+     "remedy": "'Set ra_rrtmg_variant='rrtmg_legacy' (which computes its "
+               "own radii the way WRF does)'",
+     "before": _suite(mp_physics=95),
+     "after": _suite(mp_physics=95) | {"ra_rrtmg_variant": "rrtmg_legacy"}},
 )
 
 
@@ -670,6 +788,12 @@ def render_config(combination: dict[str, object]) -> str:
     """The experiment TOML for one combination, companions resolved."""
 
     shared = dict(combination)
+    from woof.physics_registry import column_surface_contract
+    contract = column_surface_contract(shared.get("sf_surface_physics", 0))
+    if contract:
+        for key, row in contract["admission"].items():
+            if key not in AXIS_VALUES and key not in shared and len(row["values"]) == 1:
+                shared[key] = row["values"][0]
     shared["num_soil_layers"] = _soil_layers(
         shared.get("sf_surface_physics", 0))
     if (shared.get("km_opt") == 0
@@ -786,11 +910,41 @@ def key_of(combination: dict[str, object]) -> str:
 # The walk.
 # ---------------------------------------------------------------------------
 
+def _attempt_batch(rows):
+    """Evaluate independent loader calls; preserve their declared order."""
+    return [(tier, label, dict(combination), attempt(combination))
+            for tier, label, combination in rows]
+
+
+def _batches(rows, size=256):
+    rows = iter(rows)
+    while batch := list(itertools.islice(rows, size)):
+        yield batch
+
+
 class Walk:
     """Accumulates every attempt so the receipt can be built from it."""
 
-    def __init__(self) -> None:
+    def __init__(self, jobs: int | None = None) -> None:
+        import os
+        available = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else (os.cpu_count() or 1)
+        requested = int(os.environ.get('WOOF_COMPOSITION_WORKERS', '8')) if jobs is None else jobs
+        if requested < 1:
+            raise ValueError('composition workers must be positive')
+        self.jobs = min(requested, available)
         self.rows: list[tuple[str, str, dict, Outcome]] = []
+
+    def run_many(self, rows) -> None:
+        # Bounded batches avoid one Future per combination in the full
+        # Cartesian. Ordered map keeps receipt bytes independent of scheduling.
+        if self.jobs == 1:
+            for batch in _batches(rows):
+                self.rows.extend(_attempt_batch(batch))
+            return
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=self.jobs) as pool:
+            for outcomes in pool.map(_attempt_batch, _batches(rows)):
+                self.rows.extend(outcomes)
 
     def run(self, tier: str, combination: dict[str, object],
             label: str = "") -> Outcome:
@@ -802,22 +956,21 @@ class Walk:
     def tier_a(self) -> None:
         axes = ("bl_pbl_physics", "sf_sfclay_physics", "sf_surface_physics",
                 "ra_lw_physics", "ra_sw_physics", "km_opt")
-        for values in itertools.product(*(AXIS_VALUES[a] for a in axes)):
-            combination = dict(TIER_A_HELD)
-            combination.update(dict(zip(axes, values)))
-            self.run("A-nexus-cartesian", combination)
+        self.run_many(("A-nexus-cartesian", "", dict(TIER_A_HELD, **dict(zip(axes, values))))
+                      for values in itertools.product(*(AXIS_VALUES[a] for a in axes)))
 
     def tier_b(self) -> None:
-        for name, anchor in ANCHORS.items():
-            for mp, cu in itertools.product(
-                    AXIS_VALUES["mp_physics"], AXIS_VALUES["cu_physics"]):
-                combination = dict(anchor)
-                combination.update(mp_physics=mp, cu_physics=cu)
-                self.run("B-scheme-cartesian-on-anchors", combination, name)
-                if mp == 2 and combination.get("ra_lw_physics") == 4 and combination.get("ra_sw_physics") == 4:
-                    legacy = dict(combination, ra_rrtmg_variant="rrtmg_legacy",
-                                  wrf_rrtmg_compatibility="wrf-rrtmg-4-4-legacy-v1")
-                    self.run("B-scheme-cartesian-on-anchors", legacy, name + ".legacy-cloud-optics")
+        def rows():
+            for name, anchor in ANCHORS.items():
+                for mp, cu in itertools.product(
+                        AXIS_VALUES["mp_physics"], AXIS_VALUES["cu_physics"]):
+                    combination = dict(anchor, mp_physics=mp, cu_physics=cu)
+                    yield "B-scheme-cartesian-on-anchors", name, combination
+                    if mp in (2, 13, 56) and combination.get("ra_lw_physics") == 4 and combination.get("ra_sw_physics") == 4:
+                        legacy = dict(combination, ra_rrtmg_variant="rrtmg_legacy",
+                                      wrf_rrtmg_compatibility="wrf-rrtmg-4-4-legacy-v1")
+                        yield "B-scheme-cartesian-on-anchors", name + ".legacy-cloud-optics", legacy
+        self.run_many(rows())
 
     def tier_c(self) -> None:
         for name, anchor in ANCHORS.items():
@@ -869,11 +1022,37 @@ class Walk:
             self.run("G-radiation-declaration", dict(suite),
                      f"{label}/supplied")
 
+    def column_remedies(self):
+        """Follow each registered column coupling's selector remedy."""
+        from woof.physics_registry import column_surface_contract
+        for selector in LAND_SURFACE_SCHEMES:
+            contract = column_surface_contract(selector)
+            if not contract:
+                continue
+            admitted = contract["admission"]
+            after = _suite(sf_surface_physics=selector,
+                           ra_rrtmg_variant="rrtmg_legacy")
+            for key, row in admitted.items():
+                if len(row["values"]) == 1:
+                    after[key] = row["values"][0]
+            rejected = {"sf_sfclay_physics": 91, "bl_pbl_physics": 0,
+                        "ra_lw_physics": 90, "ra_sw_physics": 90}
+            for key, value in rejected.items():
+                if value in admitted[key]["values"]:
+                    continue
+                yield {"id": f"column-{selector}-{key}",
+                       "remedy": admitted[key]["reason"],
+                       "before": dict(after, **{key: value}), "after": after}
+            yield {"id": f"column-{selector}-spectral-carriers",
+                   "remedy": "Select ra_rrtmg_variant='rrtmg_legacy'.",
+                   "before": dict(after, ra_rrtmg_variant="rte-rrtmgp"),
+                   "after": after}
+
     def tier_f(self) -> list[dict[str, object]]:
         """Do what each refusal says to do, and see whether it works."""
 
         rows = []
-        for entry in REMEDIES:
+        for entry in (*REMEDIES, *self.column_remedies()):
             before = self.run("F-remedy-follow-through", entry["before"],
                               f"{entry['id']}/before")
             after = self.run("F-remedy-follow-through", entry["after"],
@@ -934,7 +1113,7 @@ class Walk:
         return measured
 
 
-def evaluate() -> dict[str, object]:
+def evaluate(*, jobs: int | None = None) -> dict[str, object]:
     """Walk the space and return the receipt."""
 
     from datetime import datetime
@@ -943,7 +1122,7 @@ def evaluate() -> dict[str, object]:
         datetime.fromisoformat(START_TIME), RUN_SECONDS,
         ref_lat=REF_LAT, ref_lon=REF_LON)
 
-    walk = Walk()
+    walk = Walk(jobs=jobs)
     walk.tier_a()
     walk.tier_b()
     walk.tier_c()
@@ -1239,9 +1418,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--table", action="store_true",
                         help="print the human-readable table to stdout")
     parser.add_argument("--no-write", action="store_true")
+    parser.add_argument("--jobs", type=int, default=None, help="bounded loader workers (default 8)")
     args = parser.parse_args(argv)
 
-    report = evaluate()
+    report = evaluate(jobs=args.jobs)
     if not args.no_write:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_bytes(render(report))

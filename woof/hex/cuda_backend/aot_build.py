@@ -42,7 +42,7 @@ def inventory(package_root=None, numerics=None, compiler_family=None, *, compile
             continue
         text = path.read_text(encoding="utf-8-sig")
         # Only a file whose text names raw_kernel can hold a raw_kernel(s) call, so the rest are not parsed:
-        # the same rows.  THE COST THIS REMOVES (V8X6000, 2026-10-29): parsing and walking all ~500 files was
+        # the same rows.  THE COST THIS REMOVES (eight-card system, 2026-10-29): parsing and walking all ~500 files was
         # 10 of the 15 s the cold catalog took on one thread before the compile pool could start.
         if "raw_kernel" not in text:
             continue
@@ -115,16 +115,20 @@ def inventory(package_root=None, numerics=None, compiler_family=None, *, compile
         return list(result.values())
     declared = {row["source_sha256"] for row in result.values()}
     selections = {selection(row) for row in result.values()}
-    catalogs = sorted((root / "data").glob("compiler-recipes*.json"))
+    # (WOOF 1.1.6) a wheel carries each catalog as <name>.json.xz (woof.packed_data,
+    # PyPI's per-file limit); a plain glob there found none, and every fresh box
+    # would compile the recorded rows at first use, as in the VRFS breakage below.
+    from woof import packed_data
+    catalogs = packed_data.glob(root / "data", "compiler-recipes*.json")
     if compiler_family is not None:
         family_catalog = root / "data" / f"compiler-recipes-cuda{int(compiler_family)}.json"
-        if not family_catalog.is_file() and int(compiler_family) == 13:
+        if not packed_data.exists(family_catalog) and int(compiler_family) == 13:
             family_catalog = root / "data" / "compiler-recipes.json"
-        if not family_catalog.is_file():
+        if not packed_data.exists(family_catalog):
             raise ValueError(f"no compiler recipe catalog for CUDA {compiler_family}: {family_catalog}")
         catalogs = [family_catalog]
     for catalog in catalogs:
-        entries = json.loads(catalog.read_text(encoding="utf-8"))
+        entries = json.loads(packed_data.read_text(catalog))
         if not isinstance(entries, list) or len(entries) > 4000:
             raise ValueError("compiler recipe inventory is malformed or oversized")
         # A KernelCache module is served under its own module key before
@@ -388,6 +392,13 @@ def physics_inventory(numerics=None):
                            "options": list(_hex_numerics.options(gf.COMPILER_OPTIONS, numerics=numerics)),
                            "route": "raw-nvrtc", "filename": "gf_mpas_v842.cu"}),
                  "physics_family": "gf_mpas"})
+    # RRFS GF-Li ("hrrrv5 + storm scheme" on the zoom globe). THE BREAKAGE THIS ENDS: absent here, a fresh box compiled
+    # it at its first convection call, about 2 min on one core while the card waited (cold canary, 2026-10-31).
+    from woof.hex.mpasphys.rrfs import cu_gfl_bf6a4b0 as gfl
+    rows.append({**recipe({"source": gfl.cuda_source(),
+                           "options": list(_hex_numerics.options(gfl.COMPILER_OPTIONS, numerics=numerics)),
+                           "route": "raw-nvrtc", "filename": "cu_gfl_bf6a4b0.cu"}),
+                 "physics_family": "rrfs_cu_gfl_bf6a4b0"})
     from woof.hex.mpasphys import seaice_v842 as seaice
     from woof.hex.mpasphys.rrfs import noah_seaice as rrfs_seaice
     for family, source, filename in (
@@ -416,7 +427,7 @@ def physics_inventory(numerics=None):
                          "physics_family": "thompson_workspace"})
         # The same column module without the per-column workspace (thompson_v842._module workspace=False, exact
         # text). THE BREAKAGE THIS ENDS: absent here, a cold convection_permitting run compiled it on one core at
-        # its first radar/history output, 12.3-13.5 s after step 1 (V8X6000, 64 -> 2 km zoom globe, 2026-10-29).
+        # its first radar/history output, 12.3-13.5 s after step 1 (eight-card system, 64 -> 2 km zoom globe, 2026-10-29).
         source = thompson.cuda_source(device_math_source=resources.thompson_maths(resources._vendored_maths()),
                                       max_levels=levels, corrections=(), workspace=False, numerics=numerics)
         rows.append({**recipe({"source": source,
@@ -471,7 +482,7 @@ def physics_inventory(numerics=None):
                            "route": "direct-nvrtc", "filename": "kern.cu"}),
                  "physics_family": "tempo_rrfs"})
     # TEMPO's reflectivity of a given state (tempo_refl_v303: the f000 frame of a correct-mode TEMPO forecast
-    # and the DA posterior observers). It compiles the same strict text under both numerics, so it is declared
+    # and the state analysis posterior observers). It compiles the same strict text under both numerics, so it is declared
     # once, with the strict rows; the pack serves it by its text to a fast run too. THE BREAKAGE THIS ENDS:
     # absent here, every correct-mode TEMPO forecast compiled it on one core beside its set-up.
     if (numerics or _hex_numerics.mode()) == "strict":
@@ -518,8 +529,9 @@ def _shortwave_table_defines():
     A different layout still has a different exact compiler request and
     follows the normal foreground path; no cache key is relaxed.
     """
+    from woof import packed_data
     catalog = Path(__file__).resolve().parents[1] / "data" / "compiler-recipes.json"
-    for entry in json.loads(catalog.read_text(encoding="utf-8")):
+    for entry in json.loads(packed_data.read_text(catalog)):
         if entry.get("filename") != "mpas_rrtmg_sw_v842.cu":
             continue
         match = re.match(r"\A(?:#define RSW_[TC]_[^\n]*\n)+", entry["source"])
@@ -663,11 +675,275 @@ def _compile_job(job):
     return result
 
 
-def build(output, *, entries=None, architectures=ARCHITECTURES, base_pack=None, workers=None):
+def _memory_room():
+    """Bytes this process may still allocate: MemAvailable, bounded by every enclosing cgroup memory limit."""
+    info = {}
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        key, _, value = line.partition(":")
+        if value.split():
+            info[key] = int(value.split()[0]) * 1024
+    room = info.get("MemAvailable", 0)
+    try:
+        relative = Path("/proc/self/cgroup").read_text().splitlines()[0].split("::", 1)[1]
+        top = Path("/sys/fs/cgroup")
+        directory = top / relative.lstrip("/")
+        while True:
+            limit_file = directory / "memory.max"
+            limit = limit_file.read_text().strip() if limit_file.is_file() else "max"
+            if limit != "max":
+                stat = dict(line.split() for line in (directory / "memory.stat").read_text().splitlines())
+                used = int((directory / "memory.current").read_text()) - int(stat.get("inactive_file", 0))
+                room = min(room, int(limit) - used)
+            if directory == top or top not in directory.parents:
+                break
+            directory = directory.parent
+    except (OSError, ValueError, IndexError):
+        pass
+    return room
+
+
+def _rss(pid):
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return 0
+
+
+def _prior_bytes(row):
+    """Peak compiler memory assumed for a module before one of its images is measured.
+
+    Most images take 0.5-1.5 GiB; a few physics units (MYNN, MYNN-EDMF) take tens of GiB.  THE
+    BREAKAGE THIS BALANCES (a test host, 2026-11-02 and 2026-11-06): a pool that started several of
+    the heavy units at once was OOM-killed, and a 48 GiB prior for every large source let one
+    compile run at a time on a 24-core machine.  The prior is modest; the live room (running
+    jobs' measured RSS), at most six unmeasured large units at once (WOOF_HEX_AOT_LARGE_AT_ONCE),
+    and an OOM requeue with the measured peak do the rest."""
+    size = len(row["source"])
+    if size >= 300_000:
+        return 6 << 30
+    if size >= 100_000:
+        return 3 << 30
+    return 2 << 30
+
+
+class _Ledger:
+    """Expected growth of compile jobs started by other builders on this machine.
+
+    Two schedulers (two NVRTC families built at once) each read the same free memory; without
+    sharing what they have just started, both admit a heavy compile into the same room.  Each
+    builder writes its running jobs' expected peaks to ``<directory>/<pid>.json`` under a lock."""
+
+    def __init__(self, directory):
+        self.directory = Path(directory) if directory else None
+        if self.directory:
+            self.directory.mkdir(parents=True, exist_ok=True)
+
+    def __enter__(self):
+        if self.directory:
+            import fcntl
+            self._lock = open(self.directory / ".lock", "w")
+            fcntl.flock(self._lock, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc):
+        if self.directory:
+            self._lock.close()
+
+    def forget(self):
+        """In a forked compile: drop the inherited lock descriptor, so the lock ends with the parent's."""
+        if self.directory:
+            self._lock.close()
+
+    def others(self):
+        """(expected growth in bytes, number of compiles) of the other builders' running jobs."""
+        import os
+        if not self.directory:
+            return 0, 0
+        total = count = 0
+        for path in self.directory.glob("*.json"):
+            if path.stem == str(os.getpid()):
+                continue
+            try:
+                os.kill(int(path.stem), 0)
+                running = json.loads(path.read_text())
+            except (ValueError, OSError):
+                continue
+            alive = {pid: estimate for pid, estimate in running.items() if Path(f"/proc/{pid}").exists()}
+            total += sum(max(0, estimate - _rss(int(pid))) for pid, estimate in alive.items())
+            count += len(alive)
+        return total, count
+
+    def publish(self, running):
+        import os
+        if self.directory:
+            path = self.directory / f"{os.getpid()}.json"
+            if running:
+                path.write_text(json.dumps({str(pid): estimate for pid, (_, estimate, _) in running.items()}))
+            else:
+                path.unlink(missing_ok=True)
+
+
+def _job_digest(identity, row, arch):
+    return hashlib.sha256(json.dumps([identity, list(selection(row)), row["source_sha256"], arch],
+                                     sort_keys=True, default=list).encode("utf-8")).hexdigest()
+
+
+def _compile_jobs(jobs, *, workers, identity, job_dir, reserve_bytes):
+    """Compile ``(row, arch)`` jobs, one forked process per image, admitted by measured memory.
+
+    Each finished image is kept in ``job_dir``, so an interrupted or OOM-killed build resumes where
+    it stopped, and every job logs its compile seconds and peak RSS.  A job starts only when the
+    room left after the running jobs' expected growth covers its expected peak plus
+    ``reserve_bytes``.  A module's expected peak is its largest measured image once one has
+    finished; light jobs fill the remaining cores."""
+    import os
+    import signal
+    import sys
+    import time
+    import traceback
+    from .aot import Pack
+    job_dir = Path(job_dir)
+    job_dir.mkdir(parents=True, exist_ok=True)
+    targets = [job_dir / (_job_digest(identity, row, arch) + ".json") for row, arch in jobs]
+    results = {}
+    for index, target in enumerate(targets):
+        if not target.is_file():
+            continue
+        try:
+            kept = json.loads(target.read_text())
+        except ValueError:
+            continue
+        row, arch = jobs[index]
+        if (kept.get("arch") == arch and kept.get("module_key") == row["module_key"]
+                and kept.get("source_sha256") == row["source_sha256"] and Pack.image(kept) is not None):
+            results[index] = kept
+    print(json.dumps({"jobs": len(jobs), "resumed": len(results), "workers": workers,
+                      "reserve_gib": round(reserve_bytes / 2**30, 1)}), file=sys.stderr, flush=True)
+    # Largest first by default.  A helper machine compiling into a synchronised copy of ``job_dir``
+    # takes the other end (WOOF_HEX_AOT_ORDER=small-first) and leaves images over its memory
+    # (WOOF_HEX_AOT_MAX_JOB_GIB) to this one; each builder absorbs images the other finished.
+    small_first = os.environ.get("WOOF_HEX_AOT_ORDER") == "small-first"
+    ceiling = float(os.environ.get("WOOF_HEX_AOT_MAX_JOB_GIB") or "inf") * 2**30
+    pending = sorted((i for i in range(len(jobs)) if i not in results),
+                     key=lambda i: ((1 if small_first else -1) * len(jobs[i][0]["source"]), i))
+
+    def absorbed(index):
+        target = targets[index]
+        if not target.is_file():
+            return False
+        try:
+            kept = json.loads(target.read_text())
+        except ValueError:
+            return False
+        row, arch = jobs[index]
+        if (kept.get("arch") == arch and kept.get("module_key") == row["module_key"]
+                and kept.get("source_sha256") == row["source_sha256"] and Pack.image(kept) is not None):
+            results[index] = kept
+            return True
+        return False
+    learned, attempts, running = {}, {}, {}
+    light = 4 << 30
+    # Unmeasured large units admitted together (each assumed at its prior until its first image is measured).
+    large_at_once = int(os.environ.get("WOOF_HEX_AOT_LARGE_AT_ONCE") or 6)
+    ledger = _Ledger(os.environ.get("WOOF_HEX_AOT_LEDGER"))
+    while pending or running:
+        while running:
+            pid, status, usage = os.wait4(-1, os.WNOHANG)
+            if pid == 0:
+                break
+            index, estimate, started = running.pop(pid)
+            row, arch = jobs[index]
+            module = selection(row)
+            peak = usage.ru_maxrss * 1024
+            ok = os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+            print(json.dumps({"module_key": row["module_key"], "arch": arch, "ok": ok,
+                              "compile_seconds": round(time.perf_counter() - started, 2),
+                              "peak_rss_gib": round(peak / 2**30, 2),
+                              "signal": os.WTERMSIG(status) if os.WIFSIGNALED(status) else None}),
+                  file=sys.stderr, flush=True)
+            if ok:
+                learned[module] = max(learned.get(module, 0), peak)
+                results[index] = json.loads(targets[index].read_text())
+                continue
+            attempts[index] = attempts.get(index, 0) + 1
+            error = targets[index].with_suffix(".err")
+            if os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL and attempts[index] < 4:
+                # The OOM killer: requeue with a larger expected peak, so it waits for room.
+                learned[module] = max(learned.get(module, 0), int(estimate * 1.5), peak)
+                pending.insert(0, index)
+                continue
+            for other in running:
+                os.kill(other, signal.SIGTERM)
+            raise RuntimeError(f"{row['module_key']} {arch}: compile failed: "
+                               + (error.read_text()[-4000:] if error.is_file() else f"status {status}"))
+        ledger.__enter__()
+        room = _memory_room()
+        other_bytes, other_jobs = ledger.others()
+        committed = other_bytes + sum(max(0, estimate - _rss(pid)) for pid, (_, estimate, _) in running.items())
+        blocked_heavy = False
+        for index in list(pending):
+            # ``workers`` bounds every builder sharing the ledger together: one compile per core.
+            if len(running) + other_jobs >= workers:
+                break
+            row, arch = jobs[index]
+            module = selection(row)
+            if absorbed(index):
+                pending.remove(index)
+                continue
+            large = len(row["source"]) >= 300_000 and module not in learned
+            if large and sum(1 for i, _, _ in running.values() if len(jobs[i][0]["source"]) >= 300_000
+                             and selection(jobs[i][0]) not in learned) >= large_at_once:
+                continue
+            estimate = int(learned[module] * 1.15) + (1 << 29) if module in learned else _prior_bytes(row)
+            if estimate > ceiling:
+                continue
+            # A heavy job waiting for room holds back later heavy jobs, never light ones.
+            if (running or other_jobs) and ((blocked_heavy and estimate > light)
+                            or room - committed - estimate < reserve_bytes):
+                blocked_heavy = blocked_heavy or estimate > light
+                continue
+            pending.remove(index)
+            target = targets[index]
+            started = time.perf_counter()
+            pid = os.fork()
+            if pid == 0:
+                code = 1
+                try:
+                    ledger.forget()
+                    result = compile_entry(row, arch)
+                    partial = target.with_suffix(".partial")
+                    partial.write_text(json.dumps(result, sort_keys=True))
+                    os.replace(partial, target)
+                    code = 0
+                except BaseException:
+                    try:
+                        target.with_suffix(".err").write_text(traceback.format_exc())
+                    except OSError:
+                        pass
+                finally:
+                    os._exit(code)
+            running[pid] = (index, estimate, started)
+            committed += estimate
+            ledger.publish(running)
+        ledger.publish(running)
+        ledger.__exit__()
+        time.sleep(0.5)
+    ledger.publish({})
+    return [results[i] for i in range(len(jobs))]
+
+
+def build(output, *, entries=None, architectures=ARCHITECTURES, base_pack=None, workers=None,
+          prune=False, job_dir=None, reserve_bytes=8 << 30):
     """Build requested images, optionally extending a verified shared pack.
 
     Existing selections are reused only with the exact compiler, source,
-    options and compile request. Unrelated images remain in the shared pack.
+    options and compile request. Unrelated images remain in the shared pack,
+    unless ``prune`` keeps only the base images this inventory selects, so a
+    release pack holds exactly its kernel sources.  ``job_dir`` compiles through
+    the memory-admitted, resumable scheduler (:func:`_compile_jobs`).
     """
     from .aot import Pack
     from woof.hex.kernel_pack import write
@@ -691,7 +967,7 @@ def build(output, *, entries=None, architectures=ARCHITECTURES, base_pack=None, 
     import multiprocessing
     import os
     jobs = []
-    reused = 0
+    reused = []
     queued = set()
     for row in rows:
         if selection(row) in queued:
@@ -706,12 +982,22 @@ def build(output, *, entries=None, architectures=ARCHITECTURES, base_pack=None, 
             if existing is None:
                 jobs.append((row, arch))
             else:
-                if selected.image(existing) is None:
-                    raise ValueError(f"base pack has a corrupt image: {row['module_key']} {arch}")
-                reused += 1
-    context = multiprocessing.get_context("fork")
+                reused.append(existing)
+    if reused:
+        # Every reused image's bytes are verified (LZMA and SHA-256 release the GIL), on all cores.
+        with concurrent.futures.ThreadPoolExecutor(max(1, os.cpu_count() or 1)) as verifier:
+            for existing, blob in zip(reused, verifier.map(selected.image, reused)):
+                if blob is None:
+                    raise ValueError(f"base pack has a corrupt image: {existing['module_key']} {existing['arch']}")
+    if prune:
+        kept = {id(row) for row in reused}
+        retained = [row for row in retained if id(row) in kept]
     compiled = []
-    if jobs:
+    if jobs and job_dir is not None:
+        compiled = _compile_jobs(jobs, workers=workers or max(1, os.cpu_count() or 1), identity=identity,
+                                 job_dir=job_dir, reserve_bytes=reserve_bytes)
+    elif jobs:
+        context = multiprocessing.get_context("fork")
         count = min(len(jobs), workers or max(1, os.cpu_count() or 1))
         with concurrent.futures.ProcessPoolExecutor(count, mp_context=context) as pool:
             compiled = list(pool.map(_compile_job, jobs, chunksize=1))
@@ -723,5 +1009,5 @@ def build(output, *, entries=None, architectures=ARCHITECTURES, base_pack=None, 
     compiled = [{**row, "nvrtc_banner": banner} for row in compiled]
     write(output, identity, [*retained, *compiled])
     return {"modules": len(rows), "entries": len(retained) + len(compiled),
-            "compiled": len(compiled), "reused": reused, "retained": len(retained),
+            "compiled": len(compiled), "reused": len(reused), "retained": len(retained),
             "architectures": list(architectures)}

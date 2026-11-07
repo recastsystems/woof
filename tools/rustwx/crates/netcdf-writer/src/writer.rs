@@ -1,7 +1,7 @@
 //! The writer itself: create with a schema, push data, finish.
 
-use std::fs::File;
-use std::io::{BufWriter, Seek, SeekFrom, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use crate::error::{NcWriteError, Result};
@@ -41,6 +41,36 @@ pub struct NcWriter {
 }
 
 impl NcWriter {
+    /// Reopen a complete prefix with the identical schema and record count.
+    /// Validation precedes every write; incomplete or foreign files are refused.
+    pub fn resume(path: impl AsRef<Path>, schema: Schema, records: u64) -> Result<Self> {
+        let layout = Layout::compute(&schema)?;
+        let header = serialize_header(&schema, &layout.vars, records);
+        let path = path.as_ref().to_path_buf();
+        let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
+        let size = layout.recsize.checked_mul(records)
+            .and_then(|n| layout.rec_base.checked_add(n))
+            .ok_or_else(|| NcWriteError::Capacity("resume size overflow".into()))?;
+        if file.metadata()?.len() != size {
+            return Err(NcWriteError::Usage("resume prefix has an unexpected byte length".into()));
+        }
+        let mut actual = vec![0; header.len()];
+        file.read_exact(&mut actual)?;
+        if actual != header {
+            return Err(NcWriteError::Usage("resume prefix schema or record count differs".into()));
+        }
+        let count = usize::try_from(records)
+            .map_err(|_| NcWriteError::Capacity("resume record count exceeds usize".into()))?;
+        file.seek(SeekFrom::Start(size))?;
+        Ok(Self {
+            path, fixed_written: vec![true; schema.vars.len()], schema,
+            out: BufWriter::with_capacity(1 << 20, file), pos: size,
+            numrecs: records,
+            record_written: vec![vec![true; layout.num_record_vars]; count],
+            layout, finished: false,
+        })
+    }
+
     /// Compute the layout, refuse anything that will not fit, then create
     /// the file and write its header.
     ///

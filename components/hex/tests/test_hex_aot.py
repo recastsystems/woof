@@ -158,6 +158,7 @@ def test_direct_physics_pack_serves_bytes_and_corruption_uses_exact_fallback(tmp
     from woof.hex.kernel_pack import write
 
     entry = {**row(), "module_key": "nvrtc.direct." + source_hash("source"),
+             "options": list(aot.effective_options(("--fmad=false",))),
              "compile_request": aot.direct_metadata("physics.cu")}
     path = tmp_path / "direct.json"
     write(path, {"compiler": "test"}, [entry])
@@ -173,7 +174,7 @@ def test_direct_physics_pack_serves_bytes_and_corruption_uses_exact_fallback(tmp
     assert not calls
     selected.rows[0]["cubin_sha256"] = "0" * 64
     assert aot.direct_image("source", ["--fmad=false"], "sm_120", filename="physics.cu") == b"fallback"
-    assert calls == [("source", dict(options=("--fmad=false",), arch="120", filename="physics.cu"))]
+    assert calls == [("source", dict(options=tuple(entry["options"]), arch="120", filename="physics.cu"))]
 
 
 def test_direct_physics_inventory_covers_both_surface_variants_and_numerics():
@@ -190,7 +191,7 @@ def test_direct_physics_inventory_covers_both_surface_variants_and_numerics():
                                  "rrtmg_lw", "rrtmg_sw", "noah_shared_tables", "gf_mpas", "thompson", "thompson_workspace", "thompson_aero_workspace", "tempo_rrfs",
                                  "rrfs_sfclay_mm5", "noah_seaice", "rrfs_noah_seaice",
                                  "wsm6", "wsm6_workspace", "rrfs_wsm6_radar", "rrfs_wsm6_relhum", "ntiedtke", "ysu", "ysu_gwdo", "ugwp_ngw",
-                                 "rrfs_smoke", "nssl_rrfs", *fast_only, *strict_only}
+                                 "rrfs_smoke", "nssl_rrfs", "rrfs_cu_gfl_bf6a4b0", *fast_only, *strict_only}
         assert families.count("sf_mynn") == families.count("sfclay_mm5") == 2
         # MYNN: exact text and every correct-mode text set (RP7, the MPAS-route default).
         from woof.hex.mpasphys.bl_mynn_v842 import MYNN_TEXT_CORRECTIONS
@@ -200,7 +201,7 @@ def test_direct_physics_inventory_covers_both_surface_variants_and_numerics():
         assert all(families.count(name) == 2 for name in ("wsm6_workspace", "rrfs_wsm6_radar", "thompson"))
         # WSM6: the exact text and the correct-mode text (WB3, WB5), at 55 and 59 levels.
         assert families.count("wsm6") == 4
-        assert all(row["compiler_route"] == ("raw-nvrtc" if row["physics_family"] in {"gf_mpas", "rrfs_smoke", "nssl_rrfs"}
+        assert all(row["compiler_route"] == ("raw-nvrtc" if row["physics_family"] in {"gf_mpas", "rrfs_smoke", "nssl_rrfs", "rrfs_cu_gfl_bf6a4b0"}
                                                else "direct-nvrtc") for row in rows)
         expected = "--fmad=false" if mode == "strict" else "--fmad=true"
         assert all(expected in row["options"] for row in rows)
@@ -258,6 +259,48 @@ def test_incremental_build_preserves_other_images_and_compiles_only_missing(tmp_
     assert result["compiled"] == 3 and result["reused"] == 1
     assert read(path, identity)[:2] == retained
     assert result["entries"] == 5
+
+
+def test_release_build_prunes_stale_images_and_resumes_from_its_job_directory(tmp_path, monkeypatch):
+    """THE BREAKAGE: a release pack rebuilt with --base-pack kept every image of kernels the tree no longer
+    has (0.4.10's 13.0/13.2 packs: 764 stale of 2,340), and a long whole-pack compile killed part way
+    (OOM, a restart) started again from nothing.  tools/build_kernel_packs.py builds with --prune --job-dir."""
+    from woof.hex.cuda_backend import aot_build
+    from woof.hex.cuda_backend.aot import ARCHITECTURES
+    from woof.hex.kernel_pack import read, write
+    from woof.certify import compile_platform
+
+    identity = {"compiler": "test"}
+    monkeypatch.delenv("WOOF_HEX_AOT", raising=False)
+    monkeypatch.setattr(aot_build, "compiler_identity", lambda: identity)
+    monkeypatch.setattr(compile_platform, "nvrtc_banner", lambda: "test banner")
+    monkeypatch.setattr(compile_platform, "nvrtc_build", lambda _: "test")
+    monkeypatch.setattr(compile_platform, "nvrtc_build_id", lambda _: "CL-test")
+    calls = tmp_path / "calls"
+    calls.mkdir()
+    def compile_(entry, arch):
+        # Runs in the forked job process: record the call where the parent can count it.
+        (calls / arch).write_text("1")
+        return row(arch)
+    monkeypatch.setattr(aot_build, "compile_entry", compile_)
+    stale = {**row(), "module_key": "removed.kernel"}
+    base = tmp_path / "base.json"
+    write(base, identity, [row(ARCHITECTURES[0]), stale])
+    out = tmp_path / "pack.json"
+    jobs = tmp_path / "jobs"
+    result = aot_build.build(out, base_pack=base, entries=[row()], workers=2, prune=True, job_dir=jobs,
+                             reserve_bytes=0)
+    assert sorted(p.name for p in calls.iterdir()) == sorted(ARCHITECTURES[1:])
+    assert result["compiled"] == 3 and result["reused"] == 1 and result["entries"] == 4
+    held = read(out, identity)
+    assert "removed.kernel" not in {r["module_key"] for r in held}
+    assert sorted(r["arch"] for r in held) == sorted(ARCHITECTURES)
+    # A second build finds every compiled image in the job directory and compiles nothing.
+    for path in calls.iterdir():
+        path.unlink()
+    again = aot_build.build(tmp_path / "again.json", base_pack=base, entries=[row()], workers=2, prune=True,
+                            job_dir=jobs, reserve_bytes=0)
+    assert not list(calls.iterdir()) and again["entries"] == 4
 
 
 def test_incremental_build_refuses_wrong_compiler_and_corrupt_reuse(tmp_path, monkeypatch):
@@ -413,14 +456,14 @@ def test_pack_image_refuses_a_cubin_that_fails_its_digest():
     assert Pack.image({**shipped, "cubin_sha256": "0" * 64}) is None
 
 
-@pytest.mark.parametrize("family", [12, 13])
+@pytest.mark.parametrize("family", ["12", "13", "13.0", "13.2", "13.4", "13.4.59"])
 def test_shipped_pack_covers_every_declared_module_on_every_architecture(family):
     """THE BREAKAGE: a kernel edited without rebuilding the pack JITs on every fresh box.
 
     Checked per numerics mode with the exact options the pack selects on: a pack holding only
     strict rows misses every hex kernel of a default (fast) run (owner ruling 2026-10-16).
-    Rebuild with: python tools/build_hex_aot.py --output release-assets/kernel-packs/<name>
-    (in a venv holding the pack's CuPy and NVRTC, named in its "compiler" field).
+    Rebuild every pack with: python tools/build_kernel_packs.py <tree> --out <dir> --base <previous packs>
+    --tag kernel-packs-v<version> (one venv per NVRTC; only changed kernels compile).
     """
     from woof.hex.cuda_backend.aot import ARCHITECTURES
     from woof.hex.cuda_backend.aot_build import inventory
@@ -437,7 +480,8 @@ def test_shipped_pack_covers_every_declared_module_on_every_architecture(family)
     held = {(e["arguments"]["module_key"], e["arguments"]["source_sha256"],
              tuple(e["arguments"]["options"]), e["arguments"]["arch"]) for e in document["entries"]}
     for mode in ("fast", "strict"):
-        missing = sorted({row["module_key"] for row in inventory(numerics=mode, compiler_family=family) for arch in ARCHITECTURES
+        missing = sorted({row["module_key"] for row in inventory(numerics=mode, compiler_family=int(family.split(".")[0]))
+                          for arch in ARCHITECTURES
                           if (row["module_key"], row["source_sha256"], tuple(row["options"]), arch) not in held})
         assert not missing, f"kernel pack is stale for {mode} numerics: {missing}"
 

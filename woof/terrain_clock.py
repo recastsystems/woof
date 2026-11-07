@@ -1019,7 +1019,7 @@ class MemoStartWinds(StartWinds):
     prevents: every hourly interval of a head-bound HRRR run re-read the
     four whole 3-D start fields (u, v, php, phb, each hashed on read) on the
     stepping thread, part of a 6.5-15.4 s stall per forecast hour on
-    8 x RTX 5090 (V59, 2026-10-21).  The answer is the same call's answer.
+    8 x RTX 5090 (test host, 2026-10-21).  The answer is the same call's answer.
     """
 
     memo: dict = field(default_factory=dict, compare=False, repr=False)
@@ -1050,7 +1050,7 @@ class MemoBoundaryWinds(BoundaryWinds):
     reading gives.  Breakage this prevents: the streamed clock guard read
     every interval so far at every new interval, so its cost grew with the
     forecast hour on the stepping thread (the stall grew from 7.3 s to
-    15.4 s over 14 h on V59, 2026-10-21).
+    15.4 s over 14 h on test host, 2026-10-21).
     """
 
     memo: dict = field(default_factory=dict, compare=False, repr=False)

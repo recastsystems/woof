@@ -1005,8 +1005,8 @@ class RRTMLongwaveRadiation:
             cp.asarray(self.longitude_deg, dtype=cp.float32))
         if self.latitude_deg.shape != self.longitude_deg.shape:
             raise ValueError("radiation latitude/longitude shapes must match")
-        if self.icloud not in (0, 1, 2):
-            raise ValueError("icloud=3 requires unported cal_cldfra3 condensate adjustment; choose 0, 1 or 2")
+        if self.icloud not in (0, 1, 2, 3):
+            raise ValueError("icloud must be 0, 1, 2 or 3")
         if self.column_chunk is not None:
             effective_column_chunk(self.column_chunk, 1)  # validate the explicit pin
         # Fail closed at construction if the packaged tables are missing
@@ -1133,13 +1133,26 @@ class RRTMLongwaveRadiation:
             # (tests/test_rrtm_lw_cloud_fraction_flags.py measures it).
             f_qi, f_qs = legacy_cloud_fraction_flags(
                 int(getattr(cfg, "mp_physics", 0)))
-            if self.icloud == 2:
+            flags = None
+            cup_active = int(getattr(cfg, "cu_physics", 0)) == 10
+            if "radiation_cldfra3" in fields:
+                cldfra = self._columns(fields["radiation_cldfra3"])
+            elif self.icloud == 2:
                 cldfra = cal_cldfra2(qc, qi,
                     f_qc=int(getattr(cfg, "mp_physics", 0)) != 0, f_qi=f_qi)
+            elif cup_active and self.icloud == 1:
+                cldfra, flags = cal_cldfra1(qv, qc, qi, qs, t_cols, p_cols,
+                    f_qc=True, f_qi=f_qi, f_qs=f_qs,
+                    mp_physics=int(cfg.mp_physics), return_flags=True,
+                    f_ice_phy=self._columns(state.f_ice_phy) if int(getattr(cfg, "mp_physics", 0))==95 else None)
             else:
                 cldfra = cal_cldfra1(qv, qc, qi, qs, t_cols, p_cols,
                                      f_qc=True, f_qi=f_qi, f_qs=f_qs,
-                                     mp_physics=int(getattr(cfg, "mp_physics", 0)))
+                                     mp_physics=int(getattr(cfg, "mp_physics", 0)),
+                                     f_ice_phy=self._columns(state.f_ice_phy) if int(getattr(cfg, "mp_physics", 0))==95 else None)
+            if cup_active:
+                from woof.core.kfcup_radiation import merge_kfcup_clouds
+                qc, cldfra = merge_kfcup_clouds(qc, cldfra, flags, fields, cfg)
             active_bl = self.icloud == 1 and mynn_bl_cloud_active(
                 getattr(cfg, "bl_pbl_physics", 0),
                 getattr(cfg, "icloud_bl", 0))
@@ -1155,6 +1168,10 @@ class RRTMLongwaveRadiation:
                            if active_bl else 1),
                 bl_mynn_version=getattr(cfg, "bl_mynn_version", "wrf_461"),
                 temperature=t_cols if active_bl else None)
+            from woof.core.column_cumulus import merge_column_cumulus_clouds
+            qc, qi, cldfra = merge_column_cumulus_clouds(
+                qc, qi, cldfra, fields=fields, cfg=cfg,
+                columns=self._columns)
             #  RRTMLWRAD's F_QI-absent branch (F:1929-1943), which moves
             #  QC into QI and QR into QS below 273.15 K, is deliberately
             #  not reproduced: it exists for schemes that do not carry
@@ -1166,6 +1183,17 @@ class RRTMLongwaveRadiation:
             #  fraction itself (RRTMLWRAD F:1888-1971); the published
             #  CLDFRA is zero too.
             cldfra = cp.zeros_like(t_cols)
+
+        if not self.icloud and int(getattr(cfg, "cu_physics", 0)) == 10:
+            from woof.core.kfcup_radiation import merge_kfcup_clouds
+            qc, cldfra = merge_kfcup_clouds(qc, cldfra, None, fields, cfg)
+
+        feedback=atmosphere.get("cumulus_feedback")
+        if feedback is not None and self.icloud:
+            from woof.core.cumulus_feedback import merge_cumulus_feedback
+            packed={name:self._columns(value) for name,value in feedback.items()}
+            qc,qi,qs,cldfra,_=merge_cumulus_feedback(qc,qi,qs,cldfra,packed,aerosol=cfg.aercu_opt>0,
+                radii={target:self._columns(getattr(state,source)) for target,source in (("effc","efcg"),("effi","efig"),("effs","efsg"))} if cfg.aercu_opt>0 else None)
 
         p8w = self._columns(atmosphere["p_interface"])
         z_at_w = self._columns(atmosphere["z_interface"])

@@ -27,6 +27,12 @@ pub struct ProductRow {
 pub struct CfScale {
     pub levels: Vec<f64>,
     pub colors: Vec<[u8; 3]>,
+    /// Values under this (display units) are left blank instead of clamped into the first colour. Without it a
+    /// dry precipitation window (a field of zeros) painted the whole domain in the first band, which reads as
+    /// rain (WOOF-NAM qpf_1h dry hours on gpuwm 2.9.11/2.9.12, 2026-11-05: the key was silently dropped).
+    /// Absent = no mask, as before.
+    #[serde(default)]
+    pub mask_below: Option<f64>,
 }
 impl CfScale {
     fn color_scale(&self) -> Result<ColorScale, String> {
@@ -35,11 +41,14 @@ impl CfScale {
             || self.levels.windows(2).any(|v| v[0] >= v[1]) {
             return Err("CF scale needs increasing finite levels and one RGB color per interval".into());
         }
+        if self.mask_below.is_some_and(|v| !v.is_finite()) {
+            return Err("CF scale mask_below must be a finite value in display units".into());
+        }
         Ok(ColorScale::Discrete(DiscreteColorScale {
             levels: self.levels.clone(),
             colors: self.colors.iter().map(|[r,g,b]| Color::rgba(*r,*g,*b,255)).collect(),
             extend: ExtendMode::Both,
-            mask_below: None,
+            mask_below: self.mask_below,
         }))
     }
 }
@@ -326,6 +335,22 @@ impl CfGrid {
             order,
         })
     }
+    /// Keep coordinates and field indices together across a requested map seam.
+    pub fn recenter(&mut self, center: f64) {
+        self.lat.par_chunks_mut(self.nx)
+            .zip(self.lon.par_chunks_mut(self.nx))
+            .zip(self.order.par_chunks_mut(self.nx))
+            .for_each(|((lat, lon), order)| {
+                for x in lon.iter_mut() {
+                    *x = ((*x as f64 - center + 180.).rem_euclid(360.) - 180. + center) as f32;
+                }
+                if let Some(k) = lon.windows(2).position(|p| p[1] - p[0] < -180.) {
+                    lat.rotate_left(k + 1);
+                    lon.rotate_left(k + 1);
+                    order.rotate_left(k + 1);
+                }
+            });
+    }
     pub fn field(&self, name: &str, rows: &[ProductRow]) -> Result<(Vec<f32>, ProductRow), String> {
         let var = self
             .file
@@ -489,13 +514,19 @@ mod tests {
         wr.write_var(v, VarData::F32(&[0., 1., 2., 3., 4., 5., 6., 7.]))
             .unwrap();
         wr.finish().unwrap();
-        let grid = CfGrid::open(&path, Some(moment("2024-09-25T00:00:00Z").unwrap())).unwrap();
+        let mut grid = CfGrid::open(&path, Some(moment("2024-09-25T00:00:00Z").unwrap())).unwrap();
         assert_eq!(&grid.lon[..4], &[-180., -90., 0., 90.]);
         assert_eq!(&grid.lat[..4], &[90.; 4]);
         assert_eq!(grid.source, "diagnostic producer");
         let (values, _) = grid.field("fg10m", &product_rows(None).unwrap()).unwrap();
         assert!((values[0] - 2. * 1.9438445).abs() < 1e-5);
         assert!((values[4] - 6. * 1.9438445).abs() < 1e-5);
+        grid.recenter(180.);
+        assert_eq!(&grid.lon[..4], &[0., 90., 180., 270.]);
+        let (values, _) = grid.field("fg10m", &product_rows(None).unwrap()).unwrap();
+        for (i, value) in values.iter().enumerate() {
+            assert!((*value - i as f32 * 1.9438445).abs() < 1e-5);
+        }
         std::fs::remove_file(path).unwrap();
     }
     #[test]
@@ -566,10 +597,27 @@ mod cf_physical_scale_tests {
     use super::*;
     #[test]
     fn signed_physical_ladder_validates_before_render() {
-        let scale = CfScale { levels: vec![-1., 0., 1.], colors: vec![[0,0,255],[255,0,0]] };
+        let scale = CfScale { levels: vec![-1., 0., 1.], colors: vec![[0,0,255],[255,0,0]], mask_below: None };
         assert!(scale.color_scale().is_ok());
         for levels in [vec![0., 0., 1.], vec![0., f64::NAN, 1.], vec![0., 1.]] {
-            assert!(CfScale { levels, colors: scale.colors.clone() }.color_scale().is_err());
+            assert!(CfScale { levels, colors: scale.colors.clone(), mask_below: None }.color_scale().is_err());
+        }
+        let bad = CfScale { mask_below: Some(f64::NAN), ..scale.clone() };
+        assert!(bad.color_scale().is_err());
+    }
+    #[test]
+    fn a_row_scale_mask_below_reaches_the_colour_scale() {
+        // 2.9.11/2.9.12 dropped the key, so a field of zeros painted the whole domain in the first colour.
+        let row: CfScale = serde_json::from_str(
+            r#"{"levels": [0.01, 0.1, 1.0], "colors": [[150,230,150],[30,150,30]], "mask_below": 0.01}"#).unwrap();
+        match row.color_scale().unwrap() {
+            ColorScale::Discrete(scale) => assert_eq!(scale.mask_below, Some(0.01)),
+            _ => panic!("a CF row scale is discrete"),
+        }
+        let plain: CfScale = serde_json::from_str(r#"{"levels": [0.0, 1.0], "colors": [[0,0,0]]}"#).unwrap();
+        match plain.color_scale().unwrap() {
+            ColorScale::Discrete(scale) => assert_eq!(scale.mask_below, None),
+            _ => panic!("a CF row scale is discrete"),
         }
     }
 }

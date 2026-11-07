@@ -165,7 +165,7 @@ def test_hybrid_opt2_matches_wrf_closed_form():
 # the cube was ``znw ** 3``, NumPy's pow, whose AVX-512 loop and C library
 # round differently.  So the default coordinate (hybrid_opt = 2), and every
 # base state built on it, came out with different bits on different hosts:
-# over the ladders below a development machine (glibc 2.43, no AVX-512) and WSL Ubuntu 24.04
+# over the ladders below test host 4 (glibc 2.43, no AVX-512) and WSL Ubuntu 24.04
 # (glibc 2.39, NumPy 2.5.3) with AVX-512 dispatch on and off gave three
 # answers at integrate/2.8 5f6007af9 and one after the change.
 
@@ -243,7 +243,7 @@ def _host_free_ladders():
 
 #: sha256[:24] of every compute_hybrid_coeffs array (c1f..c4h) over
 #: :func:`_host_free_ladders` and p_top 1000, 2000 and 5000 Pa, per etac.
-#: Measured identical on a development machine and on WSL with AVX-512 dispatch on and off.
+#: Measured identical on test host 4 and on WSL with AVX-512 dispatch on and off.
 HYBRID_COEFF_PINS = {
     0.1: "993a29712fae5568b97944f9",
     0.15: "fac10de3827acf599343a4cd",

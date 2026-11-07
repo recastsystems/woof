@@ -1,0 +1,338 @@
+{
+ "committed_gpu": "NVIDIA GeForce RTX 5090",
+ "compute_capability": [
+  12,
+  0
+ ],
+ "cuda_runtime": 13020,
+ "cupy": "14.2.0",
+ "environment": {
+  "cuda_driver": 13000,
+  "cuda_runtime": 13020,
+  "cupy": "14.2.0",
+  "nvrtc": [
+   13,
+   4
+  ]
+ },
+ "every_variant_reproduced": true,
+ "fixture": "tests/data/wrf_legacy_advect",
+ "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+ "installed": true,
+ "kernels_captured": {
+  "advection": "075f8edde330612422da3a096fb83f882920449da97162d51d9c0a7b3457211d",
+  "openbc": "5bf7babe4a953b1a12f8ddca403f04d86fa0aed0f7684992b5eabb5d82cbca57",
+  "pd_advection": "59139c1b2c592a4f3b098976ef11d5a749d93f7ec29f2cd7b2c7332db5767766",
+  "pd_vertical_sl": "dad6c8c0d6c5bf32a602d324c88685dd788faedfe2a44368df32623782cd9733"
+ },
+ "kernels_committed": {
+  "advection": "af8f5c6cb0441dcdc8198ac7453bca539edaaf56aa1d450e9ab0fb7d1d8de66e",
+  "openbc": "5bf7babe4a953b1a12f8ddca403f04d86fa0aed0f7684992b5eabb5d82cbca57",
+  "pd_advection": "9011930b5b510770f81e11c56a7fd6764233e1592127edc05c1d9c20f7e5142b",
+  "pd_vertical_sl": "929291a52c94c01fc7a3c648d867e26f0339b84865a24445911d8f7b2f862222"
+ },
+ "mode": "architecture",
+ "mutation_rejected": true,
+ "native_fix_verified": false,
+ "production_reproduced": true,
+ "production_words_compared": 2867200,
+ "production_words_different": 0,
+ "receipt": "gpu-receipt-sm120.json",
+ "tool": "tools/advect_wrf471_oracle/recapture_receipt.py",
+ "variants": {
+  "mutation": {
+   "cases": {
+    "limiter_moisture_front": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "map_factor_extremes": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_interior": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_open_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_steep_terrain": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_west_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "southern_reflection": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "zero_nearzero_tracers": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    }
+   },
+   "identical": true,
+   "words_compared": 0,
+   "words_different": 0
+  },
+  "no_fma": {
+   "cases": {
+    "limiter_moisture_front": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "map_factor_extremes": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_interior": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_open_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_steep_terrain": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_west_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "southern_reflection": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "zero_nearzero_tracers": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    }
+   },
+   "identical": true,
+   "words_compared": 0,
+   "words_different": 0
+  },
+  "production": {
+   "cases": {
+    "limiter_moisture_front": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_compared": 358400,
+     "words_different": 0,
+     "words_stored": true
+    },
+    "map_factor_extremes": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_compared": 358400,
+     "words_different": 0,
+     "words_stored": true
+    },
+    "real_interior": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_compared": 358400,
+     "words_different": 0,
+     "words_stored": true
+    },
+    "real_open_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_compared": 358400,
+     "words_different": 0,
+     "words_stored": true
+    },
+    "real_steep_terrain": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_compared": 358400,
+     "words_different": 0,
+     "words_stored": true
+    },
+    "real_west_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_compared": 358400,
+     "words_different": 0,
+     "words_stored": true
+    },
+    "southern_reflection": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_compared": 358400,
+     "words_different": 0,
+     "words_stored": true
+    },
+    "zero_nearzero_tracers": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_compared": 358400,
+     "words_different": 0,
+     "words_stored": true
+    }
+   },
+   "identical": true,
+   "words_compared": 2867200,
+   "words_different": 0
+  },
+  "wrf_flux": {
+   "cases": {
+    "limiter_moisture_front": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "map_factor_extremes": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_interior": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_open_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_steep_terrain": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_west_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "southern_reflection": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "zero_nearzero_tracers": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    }
+   },
+   "identical": true,
+   "words_compared": 0,
+   "words_different": 0
+  },
+  "wrf_flux_no_fma": {
+   "cases": {
+    "limiter_moisture_front": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "map_factor_extremes": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_interior": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_open_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_steep_terrain": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "real_west_boundary": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "southern_reflection": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    },
+    "zero_nearzero_tracers": {
+     "identical": true,
+     "levels_identical": true,
+     "measurements_identical": true,
+     "words_stored": false
+    }
+   },
+   "identical": true,
+   "words_compared": 0,
+   "words_different": 0
+  }
+ },
+ "written": [
+  "gpu-receipt-sm120.json"
+ ]
+}

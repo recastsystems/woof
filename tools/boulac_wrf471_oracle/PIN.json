@@ -1,0 +1,19 @@
+{
+  "wrf_tag": "v4.7.1",
+  "wrf_file": "phys/module_bl_boulac.F",
+  "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_bl_boulac.F",
+  "source_sha256": "68285f1457fe62e37ad1d76680d3c69e4a48a6baca93348f6f8a15c5fb40d871",
+  "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+  "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+  "license": "public-domain WRF statement; no module-specific restriction",
+  "external_tables": [],
+  "prior_fixture_source_identical": "v4.6.1",
+  "strict_flags": [
+    "-O2",
+    "-fno-fast-math",
+    "-ffp-contract=off",
+    "-fno-tree-vectorize"
+  ],
+  "capture": "instrument_native.py instruments the first module invocation per MPI tile; input and output streams use the existing boulac_oracle binary schema",
+  "production": "GPUWM_WRF_EXACT=1 opts into exact arithmetic; default permits CUDA libm and contraction"
+}

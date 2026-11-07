@@ -93,3 +93,19 @@ def test_identity_module_has_no_forecast_or_python_decoder_dependency():
         if isinstance(node,ast.Import): imported.extend(alias.name for alias in node.names)
         if isinstance(node,ast.ImportFrom): imported.append(node.module or '')
     assert not any(name.startswith(('woof.core','woof.runtime','netCDF4','h5py','xarray','cupy')) for name in imported)
+
+
+@requires_netcdf_bridge
+def test_native_written_child_retains_root_origin_but_requires_its_record_time(tmp_path):
+    path = _file(tmp_path, GRID_ID=2)
+    with netCDF4.Dataset(path, 'a') as ds:
+        ds['Times'][:] = np.frombuffer(b'2021-12-30_17:00:12', dtype='S1').reshape(1, 19)
+    with pytest.raises(ValueError, match='Times'):
+        read_wrfinput_identity(path)
+    identity = read_wrfinput_identity(path, child=True)
+    request = _request()
+    request['domain'].grid_id = 2
+    with pytest.raises(ValueError, match='start_time'):
+        check_wrfinput_identity(identity, **request)
+    request['start_time'] = datetime(2021, 12, 30, 17, 0, 12)
+    check_wrfinput_identity(identity, **request)

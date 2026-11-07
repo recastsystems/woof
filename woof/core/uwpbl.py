@@ -103,7 +103,8 @@ def _check(name, array, shape, dtype):
 
 
 def uwpbl_step(inputs, carried, *, dt: float, itimestep: int,
-               budget_bytes: int = UWPBL_WORKSPACE_BUDGET_BYTES) -> dict:
+               budget_bytes: int = UWPBL_WORKSPACE_BUDGET_BYTES,
+               workspace=None) -> dict:
     """Run one camuwpbl call over every column and return its outputs.
 
     ``inputs`` holds :data:`UWPBL_MASS_INPUTS` ``(nz, ny, nx)``,
@@ -139,20 +140,25 @@ def uwpbl_step(inputs, carried, *, dt: float, itimestep: int,
     for name in ("tauresx2d", "tauresy2d"):
         _check(name, carried[name], shape, DTYPE)
 
-    out = {name: cp.empty((nz, ny, nx), dtype=DTYPE)
+    def allocate(name, shape, dtype=DTYPE, *, clear=False):
+        if workspace is not None:
+            return workspace.array('uwpbl/' + name, shape, dtype, clear=clear)
+        return (cp.zeros if clear else cp.empty)(shape, dtype=dtype)
+
+    out = {name: allocate(name, (nz, ny, nx))
            for name in UWPBL_MASS_OUTPUTS}
     for name in UWPBL_DIAGNOSTICS_FULL:
-        out[name] = cp.empty((nz + 1, ny, nx), dtype=DTYPE)
+        out[name] = allocate(name, (nz + 1, ny, nx))
     for name in UWPBL_SURFACE_OUTPUTS:
-        out[name] = cp.empty(shape, dtype=DTYPE)
-    out["kpbl2d"] = cp.empty(shape, dtype=cp.int32)
+        out[name] = allocate(name, shape)
+    out["kpbl2d"] = allocate('kpbl2d', shape, cp.int32)
 
     ncols = ny * nx
     chunk = uwpbl_chunk_columns(nz, ncols, budget_bytes)
     r8cap, i4cap = uwpbl_workspace_slots(nz)
-    r8pool = cp.empty(r8cap * chunk, dtype=cp.float64)
-    i4pool = cp.empty(i4cap * chunk, dtype=cp.int32)
-    err = cp.zeros(1, dtype=cp.int32)
+    r8pool = allocate('r8pool', r8cap * chunk, cp.float64)
+    i4pool = allocate('i4pool', i4cap * chunk, cp.int32)
+    err = allocate('status', 1, cp.int32, clear=True)
     kernel = _module().get_function("uwpbl_columns")
     args_fixed = (
         tuple(inputs[name] for name in UWPBL_MASS_INPUTS)
@@ -173,22 +179,23 @@ def uwpbl_step(inputs, carried, *, dt: float, itimestep: int,
                              np.float32(dt), np.int32(itimestep),
                              r8pool, i4pool, np.int32(r8cap),
                              np.int32(i4cap), err))
-    status = int(err.get()[0])
-    if status == 2:
+    def describe(status):
         # uwpbl_driver.cuh sets 2 where camuwpbl would call endrun on a
         # non-empty compute_vdiff errstring (module_cam_bl_diffusion_solver.F
         # :300-302); the driver's fixed field list cannot reach it.
-        raise RuntimeError(
-            "the UW PBL's diffusion solver refused its field list "
-            "('diffusion_solver.compute_vdiff: must diffuse s if diffusing "
-            "u or v'), which WRF treats as fatal")
-    if status:
+        if status & 2:
+            raise RuntimeError(
+                "the UW PBL's diffusion solver refused its field list "
+                "('diffusion_solver.compute_vdiff: must diffuse s if diffusing "
+                "u or v'), which WRF treats as fatal")
         raise RuntimeError(
             "the UW PBL column workspace overflowed its pool "
             f"({r8cap} binary64 / {i4cap} int32 slots per column at "
             f"nz={nz}); raise UWPBL_R8_SLOTS_PER_LEVEL or "
             "UWPBL_I4_SLOTS_PER_LEVEL in woof/core/physics_inventory.py: "
             "the overflowing columns' outputs are not trustworthy")
+    from woof.core.health_ledger import read_status
+    read_status(err, site='uwpbl/column', describe=describe)
     out.update({"du": out["rublten"], "dv": out["rvblten"],
                 "dtheta": out["rthblten"], "dqv": out["rqvblten"],
                 "dqc": out["rqcblten"], "dqi": out["rqiblten"],
@@ -208,7 +215,7 @@ def uwpbl_ice_number_name(cfg) -> str | None:
     return UW_PBL_ICE_NUMBER_SPECIES.get(int(cfg.mp_physics))
 
 
-def uwpbl_radiation_cloud_fraction(atmosphere, cfg, out) -> None:
+def uwpbl_radiation_cloud_fraction(atmosphere, cfg, out, *, state=None) -> None:
     """Write the radiation step's CLDFRA into ``out`` (nz, ny, nx), in place.
 
     WRF's radiation driver zeroes CLDFRA, then with ``icloud == 1`` and
@@ -242,5 +249,7 @@ def uwpbl_radiation_cloud_fraction(atmosphere, cfg, out) -> None:
     cldfra = cal_cldfra1(flat("qv"), flat("qc"), flat("qi"), flat("qs"),
                          flat("temperature"), flat("pressure"),
                          f_qc=True, f_qi=f_qi, f_qs=f_qs,
-                         mp_physics=int(cfg.mp_physics))
+                         mp_physics=int(cfg.mp_physics),
+                         f_ice_phy=cp.ascontiguousarray(state.f_ice_phy).reshape(nz, cols)
+                         if int(cfg.mp_physics)==95 else None)
     out[...] = cldfra.reshape(out.shape)

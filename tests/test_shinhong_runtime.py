@@ -160,7 +160,7 @@ def test_off_path_bl1_micro_run_state_hash_is_pinned():
 
     20 steps of a tiny YSU dry CBL, SHA-256 over the prognostic bytes.
     The pin below was recorded WITH the scheme-11 runtime code present
-    in the tree but unselected (lane/shinhong-port, Phase D wiring, RTX
+    in the tree but unselected (development branch, Phase D wiring, RTX
     5090 -- the card the suite's device goldens and the cross-card
     determinism receipt sanction byte pins on).  Any future leak of
     scheme-11 code into the off path -- an allocation in a shared
@@ -197,10 +197,10 @@ def test_off_path_bl1_micro_run_state_hash_is_pinned():
     # dual-run comparison that doubles as the no-ECC corruption screen).
     # The 12.9.86 row was measured 2026-08-06 on the same card,
     # deterministic over two runs and identical across four checkouts of
-    # this tree.  The 13.3.33 row was measured 2026-09-18 on a development machine's RTX
+    # this tree.  The 13.3.33 row was measured 2026-09-18 on test host 1's RTX
     # 4090 (compute capability 8.9, driver 610.57.04, cupy 14.2.0, NVRTC
     # build id CL-37862127, library sha256 e51d197b...6750a) at the
-    # lane/2.7.6-pin-gates tip 221f66f14, two independent processes
+    # the 2.7.6 verification change tip 221f66f14, two independent processes
     # identical; it was the release card stage's first reading of this
     # pin, which had failed there naming the unrecorded build (receipts
     # tests/data/receipts/pin-gates/extra-pin-readings-221f66f14-run1.json
@@ -212,6 +212,12 @@ def test_off_path_bl1_micro_run_state_hash_is_pinned():
     # is a max over a coarser quantity; bytes are the finer instrument and
     # they saw it.
     pinned = {
+        # Independently matches published 2.9.11; see the attributed receipt
+        # tests/data/receipts/pin-gates/nvrtc-13.4.59-reading.json.
+        "13.4.59": {
+            "NVIDIA GeForce RTX 5090":
+                "887cf16540a769794ff9dc94fe0bbfe27e93ca72a073419539d19d4d488490ec",
+        },
         "13.0.48": {
             "NVIDIA GeForce RTX 5090":
                 "76450502591b84d602b8711d7414d62a3feed17a951212748319878742ed6394",
@@ -236,9 +242,9 @@ def test_off_path_bl1_micro_run_state_hash_is_pinned():
         # The bytes equal the 13.3.33 row's on the same card: this build
         # moved nothing in the bl=1 off path.
         #
-        # The RTX 5090 row was RECORDED 2026-10-01 on a development machine's 5090
+        # The RTX 5090 row was RECORDED 2026-10-01 on test host 2's 5090
         # (compute capability 12.0, driver 13.3, cupy 14.2.0) at
-        # lane/281-nvrtc-literal-div after A146, two independent processes
+        # development branch after A146, two independent processes
         # identical.  A146 moves this card's bytes: NVRTC had compiled every
         # float division by a compile-time constant for sm_120 as a multiply
         # by the rounded reciprocal (the advection fluxes' / 60 and / 12 and
@@ -255,11 +261,29 @@ def test_off_path_bl1_micro_run_state_hash_is_pinned():
         # so no cause can be named for re-pinning them.  After A146 they read
         # e3465ef39e7ae725c02e1cc270ee32051d4f85056bc5c62aaae89356afe0bae3 and
         # 0cc2278147b5919ea1000621183fbb0d0232148e24650f80bc32943f2b498c92.
+        # Current-source reading, 2026-11-01: a fresh cache compiled all 55
+        # programs with 13.4.92 (library SHA-256 measured before and after).
+        # No older compiler images were loaded. The historical 5090 reading
+        # above no longer describes this source; retain it in the receipt.
+        # tests/data/receipts/pin-gates/nvrtc-13.4.92-reading.json.
         "13.4.92": {
             "NVIDIA GeForce RTX 4090":
                 "854866c8c67f9c8ae8c058e7d4e1ba7365237466eaa76ebbbc8c2e188998e6ab",
             "NVIDIA GeForce RTX 5090":
-                "694aed5d2f619930f894bbf73027386d72daad104eca27ea4f8dbf0311749d08",
+                "887cf16540a769794ff9dc94fe0bbfe27e93ca72a073419539d19d4d488490ec",
+            # Read 2026-11-02 on the release box at the 3.0.0 strict-reds tip:
+            # equal to the 5090 pin, so the current source has no off-path leak.
+            "NVIDIA RTX PRO 6000 Blackwell Server Edition":
+                "887cf16540a769794ff9dc94fe0bbfe27e93ca72a073419539d19d4d488490ec",
+        },
+        # 13.2.51 (library sha256 0b7d690f...d747) is one of the four shipped
+        # kernel-pack compilers and the one the 3.0.0 strict leg runs.  Read
+        # 2026-11-02 on the RTX PRO 6000, two fresh-cache processes identical,
+        # e_sgs absent, equal to the Blackwell 13.4.x pin; receipt
+        # tests/data/receipts/pin-gates/nvrtc-13.2.51-reading.json.
+        "13.2.51": {
+            "NVIDIA RTX PRO 6000 Blackwell Server Edition":
+                "887cf16540a769794ff9dc94fe0bbfe27e93ca72a073419539d19d4d488490ec",
         },
     }
     build = nvrtc_build()
@@ -304,9 +328,9 @@ def test_selector_11_resolves_to_run_shinhong_and_unrouted_still_raises():
     # due surface step of a real run.
     assert callable(getattr(PhysicsDriver, "_run_shinhong"))
     # Negative control, provably firing: a real WRF PBL value with no
-    # woof runner (12 is GBM) still refuses instead of substituting.
+    # woof runner (14 is the GFS PBL) still refuses instead of substituting.
     with pytest.raises(UnroutedPhysicsSelectorError) as caught:
-        resolve_physics_slot("bl_pbl_physics", 12)
+        resolve_physics_slot("bl_pbl_physics", 14)
     assert "refusing to substitute" in str(caught.value)
     assert "PHYSICS_SLOT_DISPATCH" in str(caught.value)
 

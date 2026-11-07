@@ -67,6 +67,40 @@ def test_forecast_hook_queues_without_scoring_or_gpu_lease_delay(tmp_path, monke
     assert all(r["n"] == 0 and r["status"] == "NOT_MEASURED" for r in card["metrics"])
 
 
+def test_a_door_run_with_scoring_off_reports_skipped_instead_of_raising(tmp_path, monkeypatch):
+    """both-routes matrix, woof hex 0.4.14 candidate (2026-11-06): with WOOF_HEX_OBSERVATION_SCORING=off and the
+    score stage still listed, door_scorecard raised "could not schedule CPU observation scoring" after a finished
+    forecast and the country door exited 1."""
+    run = tmp_path / "forecast"
+    run.mkdir()
+    (run / "cuda-history.2026-10-10_12.00.00.nc").write_bytes(b"history inventory fixture")
+    config = tmp_path / "observation-scorecard.config.json"
+    config.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv(scorecard.SCORING_ENV, "off")
+    monkeypatch.setattr(scorecard, "queue_retry", lambda *a, **k: (_ for _ in ()).throw(AssertionError("queued")))
+    joined = scorecard.door_scorecard(run, config)
+    assert joined["status"] == "SKIPPED" and joined["joined"] == "skipped"
+    assert "SKIPPED" in joined["note"] and scorecard.SCORING_ENV in joined["note"]
+    card = json.loads((run / "observation-scorecard" / "scorecard.json").read_text(encoding="utf-8"))
+    assert card["status"] == "SKIPPED" and card["measured_metrics"] == 0
+
+
+def test_the_country_door_score_stage_finishes_with_scoring_off(tmp_path, monkeypatch):
+    from woof.hex import country_door
+
+    root = tmp_path / "work"
+    (root / "forecast").mkdir(parents=True)
+    (root / "mesh-rows.json").write_text("{}", encoding="utf-8")
+    (root / "observation-scorecard.config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv(scorecard.SCORING_ENV, "off")
+    notes = []
+    status = type("Status", (), {"note": lambda self, text: notes.append(text)})()
+    args = type("Args", (), {"work_dir": root})()
+    result = country_door._run_stage("score", args, {"commands": {}}, status)
+    assert result["returncode"] == 0 and result["status"] == "SKIPPED"
+    assert any("SKIPPED" in note for note in notes)
+
+
 def test_small_command_receipt_avoids_loading_large_driver_arrays(tmp_path):
     run = tmp_path / "fc"
     run.mkdir()
@@ -229,7 +263,7 @@ def test_no_archive_serving_the_hour_names_every_archive_tried(tmp_path, monkeyp
 
 
 def test_rw_igra2_resolves_to_the_copy_this_wheel_bundles(tmp_path, monkeypatch):
-    # The published woof 2.9.0 wheel does not install rw_igra2, so every past case scored no sondes
+    # The published gpuwm 2.9.0 wheel does not install rw_igra2, so every past case scored no sondes
     # (daily rehearsal HX7, 2026-10-15); the wheel bundles it, and the score door reads that copy
     # before woof's ladder, unless WOOF_RW_IGRA2 names one explicitly.
     import woof.hex.engines as engines
@@ -244,8 +278,8 @@ def test_rw_igra2_resolves_to_the_copy_this_wheel_bundles(tmp_path, monkeypatch)
 
 
 def test_on_demand_bridge_is_staged_when_the_ladder_finds_nothing(tmp_path, monkeypatch):
-    # woof 2.9.3 moved rw_asos out of the wheel to on-demand; the scorer never fetched it, so every
-    # ASOS row scored NOT_MEASURED (hex 0.4.1 on woof 2.9.3, 2026-10-20).
+    # gpuwm 2.9.3 moved rw_asos out of the wheel to on-demand; the scorer never fetched it, so every
+    # ASOS row scored NOT_MEASURED (hex 0.4.1 on gpuwm 2.9.3, 2026-10-20).
     import woof.hex.engines as engines
     import woof.rustwx as rustwx
     from woof import bridges
@@ -373,3 +407,15 @@ def test_completed_card_checks_binary_configuration_and_all_native_stream_bytes(
         files[key].write_bytes(saved)
     write(card)
     assert scorecard.completed_scorecard(tmp_path, cfg)['measured_metrics'] == 1
+
+
+def test_regional_current_year_fetch_selects_only_its_stations(tmp_path, monkeypatch):
+    monkeypatch.setattr(scorecard, "binary", lambda name: f"/bin/{name}")
+    commands = _ArchiveCommands(tmp_path)
+    config = _sonde_config(tmp_path)
+    config["region"] = {"west": -99, "south": 33, "east": -95, "north": 37}
+    scorecard.acquire_sondes_igra2(scorecard.datetime.now(scorecard.timezone.utc), tmp_path / "sondes", commands, config)
+    fetches = [argv for argv, _ in commands.calls if Path(str(argv[0])).name == "rw_igra2"]
+    assert len(fetches) == 1
+    assert "--stations" in fetches[0]
+    assert fetches[0][fetches[0].index("--stations") + 1] == "USM00072357,USM00072451"

@@ -9,7 +9,7 @@ from woof.spectral_nudging.prepared import AnalysisWriter, PreparedNudging, FIEL
 
 
 def experiment(**controls):
-    run = SimpleNamespace(nz=2, ny=3, nx=4, dt=60., use_adaptive_time_step=False)
+    run = SimpleNamespace(nz=2, ny=3, nx=4, dt=60., use_adaptive_time_step=False, use_theta_m=0)
     root = SimpleNamespace(grid_id=1, run=run)
     return SimpleNamespace(root=root, start_time=datetime(2023, 7, 1), run_seconds=21600.,
         nudging=NudgingOptions(((1, NudgingConfig(enabled=True, **controls)),)))

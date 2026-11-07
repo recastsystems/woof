@@ -238,9 +238,22 @@ fn rule_for(field: &str) -> Option<FieldRule> {
 /// observed 40-50 dBZ cells, because the HRRR intermediate's QC/QR/QI/QS/QG
 /// and QNC/QNI/QNR were dropped here while the hrrrv5 route (the RRFS
 /// producer) read them.
-pub const FIRST_GUESS_SPECIES: [(&str, &str); 8] = [
+///
+/// The WRF spellings (QCLOUD QRAIN QICE QSNOW QGRAUP, and QNG) are what a
+/// storm-merged intermediate carries (gpuwm/authorities/
+/// wps-intermediate-fields.v1.json, the HAFS donor's inner core).  The
+/// hurricane fold (ba5f12d3753) had put them, and QNC/QNI/QNR, in the native
+/// table above, so they were read on EVERY run: an HRRR-started init with
+/// the switch off was no longer MPAS-A v8.4.2 case 7, and the merged masses
+/// skipped the number-from-mass step below (Thompson rains a mass with a
+/// zero number out over the first hour).  They are read here, under the
+/// same switch, so a storm merge with hydrometeors asks for them with
+/// `--first-guess-hydrometeors yes`.
+pub const FIRST_GUESS_SPECIES: [(&str, &str); 14] = [
     ("QC", "qc"), ("QR", "qr"), ("QI", "qi"), ("QS", "qs"), ("QG", "qg"),
     ("QNC", "nc"), ("QNI", "ni"), ("QNR", "nr"),
+    ("QCLOUD", "qc"), ("QRAIN", "qr"), ("QICE", "qi"), ("QSNOW", "qs"), ("QGRAUP", "qg"),
+    ("QNG", "ng"),
 ];
 
 fn species_rule(field: &str) -> Option<FieldRule> {
@@ -313,6 +326,15 @@ pub struct InitConfig {
     /// `true` and a first guess that carries none of them (GFS, ERA5, IFS as
     /// their rows stand) the file is byte-identical to `false`.
     pub first_guess_hydrometeors: bool,
+    /// Interpolate SKINTEMP to each cell from source points of the cell's own surface type (water cells from
+    /// LANDSEA=0 points, land cells from LANDSEA=1 points), the WPS METGRID.TBL SKINTEMP rule
+    /// (masked=both, sixteen_pt+four_pt+wt_average_4pt+search), falling back to the unmasked value only where
+    /// no same-type source point exists.  `false` is MPAS-A v8.4.2 case 7 (unmasked sixteen_pt+search), what
+    /// every native-identity proof runs.  THE BREAKAGE `true` FIXES (a 96->3 km zoom mesh started from GEFS
+    /// 0.5 degree, 2026-11-02): about 36 coastal WATER cells per member along the Gulf of California took the
+    /// desert LAND skin temperature as skintemp, sst, tmn and tslb (308-344 K beside 288-305 K water), and
+    /// the delayed-start soil-temperature guard refused the start.
+    pub masked_skintemp: bool,
     pub provenance: String,
     /// Who this file says it is: `model_name`, `core_name`, `version` and
     /// `git_version`, the four lineage attributes `rw_mpas_lbc` refuses a
@@ -401,6 +423,10 @@ pub struct InitReceipt {
     pub seaice: soil::SeaiceCounts,
     pub emit: emit::EmitLedger,
     pub first_guess_hydrometeors: HydrometeorReceipt,
+    /// Cells whose skintemp came from the same-surface-type (masked) interpolation and differs from the
+    /// native unmasked value; 0 with masked_skintemp off.
+    pub masked_skintemp_cells_changed: usize,
+    pub masked_skintemp: bool,
     /// Named loudly so nobody markets a capsule-fed init as a from-scratch one.
     pub deferrals: Vec<String>,
     pub seconds: f64,
@@ -495,6 +521,7 @@ pub fn horizontal_pass(
     nfgs: usize,
     underflow: hinterp::Underflow,
     hydrometeors: bool,
+    masked_skintemp: bool,
     receipt: &mut InitReceipt,
 ) -> MpasResult<FirstGuess> {
     let n_cells = mesh.n_cells;
@@ -620,7 +647,7 @@ pub fn horizontal_pass(
         // ignores destination masks and always supplies the source mask.
         let masked_flag = if surface_wind {None} else {Some(rule.mask.map(|(_,m,_)|m).unwrap_or(-1))};
         let fillval = rule.mask.map(|(_, _, f)| f).unwrap_or(0.0);
-        let values: Vec<f32> = (0..n_cells)
+        let mut values: Vec<f32> = (0..n_cells)
             .into_par_iter()
             .map(|c| {
                 if let Some(m) = masked_flag {
@@ -631,6 +658,30 @@ pub fn horizontal_pass(
                 sample(c, &cell_lat, &cell_lon)
             })
             .collect();
+        if masked_skintemp && rule.target == Target::Skintemp {
+            // WPS METGRID.TBL SKINTEMP: masked=both, interp_land_mask=LANDSEA(1), interp_water_mask=LANDSEA(0).
+            // A water cell skips LANDSEA=1 source points and a land cell skips LANDSEA=0 points.
+            let typed = |maskval: f32| InterpContext {
+                array: &array, msgval: MSGVAL, maskval: Some(maskval), mask: Some(&mask_slab),
+                underflow, underflow_hits: Some(&underflow_hits),
+            };
+            let (water, land) = (typed(1.0), typed(0.0));
+            let changed: usize = values
+                .par_iter_mut()
+                .enumerate()
+                .map(|(c, value)| {
+                    let ctx = if statics.landmask[c] == 0 { &water } else { &land };
+                    let (x, y) = proj.locate(cell_lat[c], cell_lon[c]);
+                    let typed_value = hinterp::interp_sequence(x, y, ctx, SOIL_T_METHODS, 0);
+                    if typed_value == MSGVAL || typed_value.to_bits() == value.to_bits() {
+                        return 0;
+                    }
+                    *value = typed_value;
+                    1
+                })
+                .sum();
+            receipt.masked_skintemp_cells_changed += changed;
+        }
 
         match rule.target {
             Target::T => {
@@ -812,7 +863,8 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
     let slabs = slabs?;
     stage("read");
     let mut fg = horizontal_pass(&slabs, &mesh, &statics, cfg.n_fg_levels,
-        cfg.n_fg_soil_levels,cfg.oned_underflow,cfg.first_guess_hydrometeors,&mut receipt)?;
+        cfg.n_fg_soil_levels,cfg.oned_underflow,cfg.first_guess_hydrometeors,cfg.masked_skintemp,&mut receipt)?;
+    receipt.masked_skintemp = cfg.masked_skintemp;
     if let Some(path)=&cfg.seaice_met_path {
         receipt.seaice_met_records_used=auxiliary::interpolate(&metfile::read_met_file(path)?,auxiliary::Kind::SeaIce,
             &mesh.lat_cell,&mesh.lon_cell,&statics.landmask,&mut fg.xice,cfg.oned_underflow)?;
@@ -1477,8 +1529,9 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
         // initialization. Its geometry must still agree with RUC's nodes.
         put("dz", vec![0.; n_cells * 9]);
     }
-    if ["nwfa","nifa"].iter().all(|name|fg.numbers.contains_key(name)) {
+    if !fg.numbers.is_empty() {
         for (name, field) in &fg.numbers {
+            if ["nwfa","nifa"].contains(name) && !["nwfa","nifa"].iter().all(|n|fg.numbers.contains_key(n)) {continue;}
             // Columns on rayon workers; the first failing column (in cell
             // order) is still the one reported.
             let columns:Vec<MpasResult<Vec<f32>>>=(0..n_cells).into_par_iter().map(|c| {
@@ -1492,7 +1545,7 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
                 for k in 0..nz {
                     let target=0.5*(zgrid[c][k]+zgrid[c][k+1]);
                     col.push(vertical_interp(target,&coord,&values,Extrap::Constant)
-                        .map_err(|_|MpasError::Refusal(format!("invalid analysis aerosol column {c}")))?.max(0.));
+                        .map_err(|_|MpasError::Refusal(format!("invalid analysis scalar column {c}")))?.max(0.));
                 }
                 Ok(col)
             }).collect();

@@ -120,6 +120,8 @@ class ResidentSfclaySlot:
         kwargs = dict(vegtype=self.vegetation, errors=self.errors, xice_threshold=self.threshold,
                       itimestep=call.itimestep,
                       initflag=int(not (self.restart or self.cycling or call.itimestep > 1)))
+        from ...wave_surface import feedback
+        kwargs['ocean_z0'] = feedback(self.provider)
         sfc.run_packed(self.packed, self.options, **kwargs)
         if self.frac:
             # This dependency sits between the two column calls, not in pack.

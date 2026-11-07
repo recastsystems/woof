@@ -39,7 +39,7 @@ CLOSED in golden/ports-pbl (2026-10-12), and now inside the ordinary table:
   ``woof.verify.npref.np_ysu_column``; case 12 is now WRF's word on every
   lane (:func:`test_a_calm_column_runs_wrfs_whole_scheme`).
 
-CLOSED in lane/parity-286, and now inside the ordinary table:
+CLOSED in development branch, and now inside the ordinary table:
 
 * case 7  -- ``br`` is the smallest positive subnormal.  WRF's ``br > 0``
   (bl_ysu.F90:613) is true and the column is stable; sm_120 DAZes the
@@ -90,7 +90,7 @@ BRANCH_DIVERGENCE_CASES = (13,)
 #: over the 23 columns where WRF wrote numbers (22 until golden/ports-pbl
 #: removed the zero-flux short circuit and case 12 joined at 0 ULP on every
 #: field; the maxima below did not move -- RTX PRO 6000, NVRTC 12.9).  This is the kernel
-#: as it ships, and since lane/parity-286 it is WRF's word on every lane except
+#: as it ships, and since development branch it is WRF's word on every lane except
 #: the ones the card's flush-to-zero reaches (``SUBNORMAL_LANES``): the dqv,
 #: dqc and dqi maxima below are those lanes, where WRF wrote a subnormal
 #: tendency and the -ftz kernel writes exactly zero
@@ -104,7 +104,7 @@ BRANCH_DIVERGENCE_CASES = (13,)
 #:                            (bl_ysu.F90:1103), not ``(rhs + 300 - theta)``.
 #:   hpbl 112 -> 1, exch 283/48 -> 7, dv 46604 -> 23302
 #:                            ``ep1 = RV/RD - 1.0f``, WRF's float32 EP_1.
-#:   everything -> 0          lane/parity-286 (sweep row 10): glibc's powf and
+#:   everything -> 0          development branch (sweep row 10): glibc's powf and
 #:                            expf (gfk_pow/gfk_exp from glibc_flt32.cuh) in
 #:                            place of CUDA's, every ``x**r`` with a REAL
 #:                            exponent spelled as the powf call gfortran makes

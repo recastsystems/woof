@@ -131,6 +131,8 @@ _COMMON_IMPLEMENTATION_SOURCES = (
     "woof/ingest/cold_start_cpu.py",
     "woof/ingest/host_arrays.py",
     "woof/ingest/preparation_fingerprints.py",
+    "woof/ingest/soil_points.py",
+    "woof/core/kernels/soil_points.cu",
     "woof/ingest/horiz.py",
     "woof/ingest/preprocess_backend.py",
     "woof/ingest/interpolation_support.py",
@@ -1135,6 +1137,10 @@ def _auto_device_load(cp):
 def _certified_cuda(cp) -> tuple[bool, str]:
     """Whether this CuPy/runtime pair is certified, and the sentence saying so."""
 
+    if bool(getattr(cp.cuda.runtime, "is_hip", False)):
+        return False, (
+            "ROCm/HIP preprocessing has no recorded GPU certification; "
+            "the CUDA certification table does not apply")
     runtime_version = int(cp.cuda.runtime.runtimeGetVersion())
     major = runtime_version // 1000
     cupy_version = str(cp.__version__)
@@ -1332,6 +1338,14 @@ def _cuda_not_yet_initialized() -> bool:
     """True when this process has not called ``cuInit`` (asked without calling it)."""
 
     import ctypes
+    from woof.gpu_smi import is_amd
+    if is_amd():
+        # Loading HIP can freeze visibility. Only choose a mask when the
+        # runtime has never been mapped into this Linux process.
+        try:
+            return 'libamdhip64' not in __import__('pathlib').Path('/proc/self/maps').read_text()
+        except OSError:
+            return False
 
     name = "nvcuda.dll" if sys.platform == "win32" else "libcuda.so.1"
     try:
@@ -1348,7 +1362,7 @@ def _mask_to_the_least_busy_card(environ=None) -> str | None:
 
     THE BREAKAGE: a preparation with no ``CUDA_VISIBLE_DEVICES`` on a shared
     multi-card box took CUDA's device 0 whatever ran there (ml-probs T1 on
-    V8X, 2026-10-27: every ``gfs_direct`` preparation held a context on card
+    shared host, 2026-10-27: every ``gfs_direct`` preparation held a context on card
     0, another lane's card, while cards 4-7 were the lane's).  The forecast
     already refuses an ambiguous card (``supervisor.select_gpu``); a
     preparation is short and needs no lock, so it takes the visible card
@@ -1360,11 +1374,11 @@ def _mask_to_the_least_busy_card(environ=None) -> str | None:
     """
 
     environ = os.environ if environ is None else environ
-    if environ.get("CUDA_VISIBLE_DEVICES") is not None:
+    if any(environ.get(key) is not None for key in ("CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES")):
         return None
     try:
         completed = subprocess.run(
-            ["nvidia-smi", "--query-gpu=index,uuid,memory.free,utilization.gpu",
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=index,uuid,memory.free,utilization.gpu",
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=15, check=False)
     except (OSError, subprocess.SubprocessError):
@@ -1384,7 +1398,8 @@ def _mask_to_the_least_busy_card(environ=None) -> str | None:
     if not idle or not _cuda_not_yet_initialized():
         return None
     index, uuid, free_mib, utilization = max(idle, key=lambda card: (card[2], -card[0]))
-    environ["CUDA_VISIBLE_DEVICES"] = uuid
+    from woof.gpu_smi import visibility_environment
+    environ.update(visibility_environment(uuid))
     print(f"preprocess: {len(cards)} cards visible and no CUDA_VISIBLE_DEVICES; "
           f"preparing on card {index} ({uuid}, {free_mib} MiB free, "
           f"{utilization}% busy): the most free memory of the cards under "

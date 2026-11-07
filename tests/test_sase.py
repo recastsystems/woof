@@ -1459,7 +1459,7 @@ def test_sase_moist_n2_is_not_exempt_from_the_restart_config_match(tmp_path):
     assert restart.CONFIG_DIAGNOSTIC_FIELDS == frozenset(
         {"nwp_diagnostics", "tke_budget", "sase_flux_diag", "hmix_k_diag",
          "surface_energy_diag", "thompson_cloud_surface_booking"}), (
-        # thompson_cloud_surface_booking (correct mode WB1, lane/290-A4)
+        # thompson_cloud_surface_booking (correct mode WB1, development branch)
         # joined with its own inertness proof
         # (tests/test_correct_mode_water_budget.py
         # test_wb1_thompson_books_settled_cloud_and_changes_nothing_else:

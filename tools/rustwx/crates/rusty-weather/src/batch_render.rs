@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use rustwx_core::{CycleSpec, ModelId, SourceId};
 use rustwx_models::{model_summary, plot_recipe_store_requirements};
@@ -665,10 +665,11 @@ pub fn run_batch_render(
     let available_bytes = host_memory::available_bytes();
     let worker_count = product_worker_count_within(per_hour.len(), available_bytes);
     advise_if_memory_bound(worker_count, per_hour.len(), available_bytes);
-    let pool = if worker_count > 1 {
+    let processors = render_processor_budget();
+    let pool = if processors > 1 {
         Some(
             rayon::ThreadPoolBuilder::new()
-                .num_threads(worker_count)
+                .num_threads(processors)
                 .thread_name(|index| format!("rustwx-batch-render-{index}"))
                 .build()
                 .map_err(|err| format!("build the batch render worker pool: {err}"))?,
@@ -731,8 +732,20 @@ pub fn run_batch_render(
         let mut config = render_config(&request, model, &cycle, source, domain);
         apply_planned_canvas(&mut config, &store, &mut planned_canvas)?;
 
+        // Full-domain requests carry multiple mesh-sized fields and geometry.
+        // Bound concurrent products by grid size, independently of the pool
+        // whose threads also execute disjoint rows within each product.
+        let product_bytes = (store.grid_coordinates().0.len() as u64)
+            .saturating_mul(320)
+            .max(PRODUCT_WORKER_BYTES);
+        let product_workers = product_worker_count_within_bytes(
+            per_hour.len(),
+            host_memory::available_bytes(),
+            product_bytes,
+        );
         render_hour_items(
             pool.as_ref(),
+            product_workers,
             &config,
             &store,
             hour,
@@ -888,56 +901,23 @@ pub fn run_batch_render(
 
 /// How many of an hour's products render at the same time.
 ///
-/// Ordinary batch renders use half the logical processors, as the derived
-/// lane does. Live frames reserve one processor for the foreground forecast
-/// and divide the remainder between the frames drawing as this one starts
-/// (`RUSTWX_LIVE_RENDER_DRAWING`, this one included), or between
-/// `RUSTWX_LIVE_RENDER_SLOTS` processes when the driver does not say.
-/// The free-memory share below stays divided by the slots: frames that may
-/// start later need their memory, not the processors this frame uses now.
-/// The existing `RUSTWX_RENDER_THREADS` variable still overrides the default;
-/// `RUSTWX_BATCH_RENDER_THREADS` narrows this loop alone, which is the
-/// knob for a memory-tight box (each concurrent product holds its own
-/// decoded planes, so peak RAM scales with this number).
-///
-/// One divergence from the derived lane's version: an explicit override
-/// wins even when `available_parallelism` cannot answer, rather than
-/// being silently discarded in favour of 1.
-///
-/// The default is capped by MEMORY as well as by cores and by the work,
-/// because the two limits are independent and cores are the one users
-/// have more of.  Peak resident memory over this loop is measured, on a
-/// 337-plot gallery of a 250x200 12 km grid and again of a 501x501
-/// 1.33 km grid, as
-///
-/// ```text
-/// peak(width) ~= PRODUCT_LOOP_BASE_BYTES + width * PRODUCT_WORKER_BYTES
-/// ```
-///
-/// -- flat in grid size, because a product's cost is dominated by the
-/// fixed per-plot work (projection, basemap, encoding a 1200x900 PNG)
-/// rather than by the field it draws, which is the same reason the
-/// speedup holds at both resolutions.  So the width a box can afford is
-///
-/// ```text
-/// cap = (available_physical_bytes * BUDGET_FRACTION) / PRODUCT_WORKER_BYTES
-/// cores = logical processors / 2, or (logical processors - 1) / live slots
-/// width = min(cores, products in the hour, cap), at least 1
-/// ```
-///
-/// [`BUDGET_FRACTION`] is half: a render is a guest on the box, and the
-/// number it divides is already what is free rather than what is
-/// installed.  A platform that will not report free memory imposes no
-/// cap at all, which is what this loop did before the cap existed.
-///
-/// An override skips the cap entirely.  A user who names a width has
-/// said what their box can take, and refusing to honour it would leave
-/// no way to ask for more.
-///
-/// `available_bytes` is a PARAMETER rather than a query inside, so the
-/// rule can be tested at memory sizes this box does not have, and so the
-/// width and the line explaining the width read one number, not two.
+/// The CPU pool uses the available processor budget. Concurrent products are
+/// limited separately because decoded planes and projected geometry grow with
+/// the input grid. The per-product allowance is the larger of the small-grid
+/// floor and 320 bytes per grid point, including temporary field/mesh copies.
+/// Half the currently available memory is shared between live render slots.
+/// Explicit product limits retain their existing override semantics.
+/// `RUSTWX_BATCH_RENDER_THREADS` limits concurrent products only; nested
+/// projection and raster work can still use the CPU pool.
 fn product_worker_count_within(item_count: usize, available_bytes: Option<u64>) -> usize {
+    product_worker_count_within_bytes(item_count, available_bytes, PRODUCT_WORKER_BYTES)
+}
+
+fn product_worker_count_within_bytes(
+    item_count: usize,
+    available_bytes: Option<u64>,
+    product_bytes: u64,
+) -> usize {
     if item_count <= 1 {
         return 1;
     }
@@ -950,15 +930,13 @@ fn product_worker_count_within(item_count: usize, available_bytes: Option<u64>) 
         return width.min(item_count);
     }
     let live_slots = live_render_slots();
-    let detected = std::thread::available_parallelism()
-        .map(|count| default_product_worker_count(count.get(), live_processor_share()))
-        .unwrap_or(1);
+    let detected = render_processor_budget();
     let affordable = match available_bytes {
         Some(bytes) => {
             let budget = (bytes as f64 * BUDGET_FRACTION) as u64
                 / live_slots.unwrap_or(1) as u64;
             let for_workers = budget.saturating_sub(PRODUCT_LOOP_BASE_BYTES);
-            usize::try_from(for_workers / PRODUCT_WORKER_BYTES)
+            usize::try_from(for_workers / product_bytes)
                 .unwrap_or(usize::MAX)
                 .max(1)
         }
@@ -992,10 +970,29 @@ fn live_processor_share() -> Option<usize> {
     }
 }
 
+/// One CPU budget for nested image work and the product scheduler.
+fn render_processor_budget() -> usize {
+    let processors = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let requested = ["RUSTWX_RENDER_THREADS", "RAYON_NUM_THREADS"]
+        .iter()
+        .find_map(|key| {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .filter(|&n| n > 0)
+        });
+    default_product_worker_count(
+        requested.unwrap_or(processors).min(processors),
+        live_processor_share(),
+    )
+}
+
 fn default_product_worker_count(processors: usize, live_slots: Option<usize>) -> usize {
     match live_slots {
         Some(slots) => processors.saturating_sub(1) / slots.max(1),
-        None => processors / 2,
+        None => processors,
     }
     .max(1)
 }
@@ -1029,10 +1026,7 @@ fn advise_if_memory_bound(width: usize, item_count: usize, available_bytes: Opti
     {
         return;
     }
-    let uncapped = std::thread::available_parallelism()
-        .map(|count| default_product_worker_count(count.get(), live_processor_share()))
-        .unwrap_or(1)
-        .min(item_count);
+    let uncapped = render_processor_budget().min(item_count);
     if width >= uncapped {
         return;
     }
@@ -1081,6 +1075,7 @@ type ProductReport = (usize, Option<Result<ProductOutcome, String>>, Vec<Advisor
 #[allow(clippy::too_many_arguments)]
 fn render_hour_items(
     pool: Option<&rayon::ThreadPool>,
+    product_workers: usize,
     config: &StoreRenderConfig,
     store: &StoreFieldSource,
     hour: u16,
@@ -1126,25 +1121,31 @@ fn render_hour_items(
             let (sender, receiver) = std::sync::mpsc::channel::<ProductReport>();
             scope.spawn(move || {
                 pool.install(move || {
-                    work.par_iter().for_each_with(
-                        sender,
-                        |sender: &mut Sender<ProductReport>, &(index, kind, slug)| {
-                            // Cancellation is observed when a product is
-                            // PICKED UP.  The renders already in flight
-                            // (at most one per worker) are allowed to
-                            // finish so renderer state is never abandoned
-                            // halfway through a file write.
-                            let report = if cancel.load(Ordering::Relaxed) {
-                                (index, None, Vec::new())
-                            } else {
-                                let (outcome, advice) = advisory::hold(|| {
-                                    protected(|| render_hour_item(config, store, hour, kind, slug))
-                                });
-                                (index, Some(outcome), advice)
-                            };
-                            let _ = sender.send(report);
-                        },
-                    );
+                    let next = std::sync::atomic::AtomicUsize::new(0);
+                    (0..product_workers.min(work.len()))
+                        .into_par_iter()
+                        .for_each_with(sender, |sender: &mut Sender<ProductReport>, _| {
+                            while let Some(&(index, kind, slug)) =
+                                work.get(next.fetch_add(1, Ordering::Relaxed))
+                            {
+                                // Cancellation is observed when a product is
+                                // PICKED UP.  The renders already in flight
+                                // (at most one per worker) are allowed to
+                                // finish so renderer state is never abandoned
+                                // halfway through a file write.
+                                let report = if cancel.load(Ordering::Relaxed) {
+                                    (index, None, Vec::new())
+                                } else {
+                                    let (outcome, advice) = advisory::hold(|| {
+                                        protected(|| {
+                                            render_hour_item(config, store, hour, kind, slug)
+                                        })
+                                    });
+                                    (index, Some(outcome), advice)
+                                };
+                                let _ = sender.send(report);
+                            }
+                        });
                 });
             });
             receiver
@@ -2413,10 +2414,10 @@ mod tests {
     fn live_frames_alone_share_the_forecast_cpu_budget() {
         for (processors, batch, single_live, three_live) in [
             (1, 1, 1, 1),
-            (2, 1, 1, 1),
-            (8, 4, 7, 2),
-            (16, 8, 15, 5),
-            (64, 32, 63, 21),
+            (2, 2, 1, 1),
+            (8, 8, 7, 2),
+            (16, 16, 15, 5),
+            (64, 64, 63, 21),
         ] {
             assert_eq!(default_product_worker_count(processors, None), batch);
             assert_eq!(default_product_worker_count(processors, Some(1)), single_live);
@@ -2425,13 +2426,10 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_batch_keeps_half_the_logical_processors() {
-        let processors = std::thread::available_parallelism()
-            .map(|count| count.get())
-            .unwrap_or(1);
+    fn ordinary_batch_uses_the_processor_budget() {
         assert_eq!(
             product_worker_count_within(usize::MAX, None),
-            (processors / 2).max(1)
+            render_processor_budget()
         );
     }
 
@@ -2440,9 +2438,7 @@ mod tests {
     /// rule is tested at memory sizes this machine does not have.
     #[test]
     fn the_default_width_is_capped_by_free_memory() {
-        let cores = std::thread::available_parallelism()
-            .map(|count| default_product_worker_count(count.get(), live_processor_share()))
-            .unwrap_or(1);
+        let cores = render_processor_budget();
         let plenty = PRODUCT_LOOP_BASE_BYTES * 8 + PRODUCT_WORKER_BYTES * 4096;
 
         // Room for everything: cores and the work are what bind.
@@ -2474,9 +2470,7 @@ mod tests {
     /// freely never says anything.
     #[test]
     fn a_memory_bound_width_advises_and_an_unbound_one_does_not() {
-        let cores = std::thread::available_parallelism()
-            .map(|count| default_product_worker_count(count.get(), live_processor_share()))
-            .unwrap_or(1);
+        let cores = render_processor_budget();
         if cores < 2 {
             return; // Nothing to be capped below.
         }

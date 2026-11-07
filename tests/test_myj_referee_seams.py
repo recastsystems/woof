@@ -28,7 +28,7 @@ from woof.core.myjsfc_tables import build_psi_tables
 from woof.core.noahmp_libm import atanf, atanf_correctly_rounded
 
 #: SHA-256 of the little-endian float32 words MYJSFCINIT wrote in the
-#: pinned WRF 4.6.1 build on Ubuntu GLIBC 2.43-2ubuntu2.4 (a development machine,
+#: pinned WRF 4.6.1 build on Ubuntu GLIBC 2.43-2ubuntu2.4 (test host 1,
 #: tools/myj_wrf461_capture/run_myjsfc on the captured case, 2026-10-29).
 REFEREE_243_PSIM = "404d6c605938057af623d99b6856b7131a9c5dc00e0dd27faa0c8f1094bf6f93"
 REFEREE_PSIH = "2a60d4f997dc3b5a0a63907a8fd236ea0fdc7814c46b4934a482a230c3f5a28b"

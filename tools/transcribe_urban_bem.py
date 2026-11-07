@@ -13,8 +13,9 @@ other source stops before writing anything.
 
 This deliberately narrow translator rejects syntax it does not understand.
 Generated arithmetic is typed and parenthesized before C++ emission, in
-Fortran's evaluation order.  The generated port is graded bit for bit by
-``tests/test_urban_bem_wrf471_parity.py``.
+Fortran's evaluation order.  Written by the BEM port's implementer (an
+automated port lane) and adapted for the repository by that lane; the port it
+emits is graded bit for bit by ``tests/test_urban_bem_wrf471_parity.py``.
 """
 from __future__ import annotations
 

@@ -196,7 +196,16 @@ def ready(state, *arrays, mut=None) -> bool:
             and all(ok(a, (nz, ny, nx)) for a in arrays))
 
 
-def couple_mass(state, mut, slots, *, theta_slot, mask_ring, momentum=None):
+def _output(cp, shape, previous):
+    """Reuse an owned, fully overwritten rate buffer when its layout fits."""
+    if (type(previous) is cp.ndarray and previous.shape == shape
+            and previous.dtype == cp.float32 and previous.flags.c_contiguous):
+        return previous
+    return cp.empty(shape, dtype=cp.float32)
+
+
+def couple_mass(state, mut, slots, *, theta_slot, mask_ring, momentum=None,
+                outputs=None):
     """Coupled scalar rates, and ``chm*du``/``chm*dv`` when ``momentum``.
 
     ``slots`` is a sequence of ``(rate, wanted)``: a wanted slot with no rate
@@ -211,8 +220,11 @@ def couple_mass(state, mut, slots, *, theta_slot, mask_ring, momentum=None):
     if len(slots) > MAX_SLOTS:
         raise ValueError(f"at most {MAX_SLOTS} rate slots, got {len(slots)}")
     shape = (nz, ny, nx)
-    outputs = [cp.empty(shape, dtype=cp.float32) if wanted else None
-               for _rate, wanted in slots]
+    previous = [None] * len(slots) if outputs is None else list(outputs)
+    if len(previous) != len(slots):
+        raise ValueError("one output buffer is required for each rate slot")
+    outputs = [_output(cp, shape, old) if wanted else None
+               for (_rate, wanted), old in zip(slots, previous)]
     present = sum(1 << s for s, (rate, _w) in enumerate(slots)
                   if rate is not None)
     wanted = sum(1 << s for s, (_r, w) in enumerate(slots) if w)
@@ -243,13 +255,15 @@ def couple_mass(state, mut, slots, *, theta_slot, mask_ring, momentum=None):
     return outputs, mass_u, mass_v
 
 
-def couple_faces(state, mass_u, mass_v, *, mask_ring, open_x, open_y):
+def couple_faces(state, mass_u, mass_v, *, mask_ring, open_x, open_y,
+                 outputs=None):
     """``_couple_momentum_to_faces`` in one launch; returns ``(ru, rv)``."""
     import cupy as cp
 
     nz, ny, nx = (int(n) for n in state.p.shape)
-    ru = cp.empty((nz, ny, nx + 1), dtype=cp.float32)
-    rv = cp.empty((nz, ny + 1, nx), dtype=cp.float32)
+    old_u, old_v = (None, None) if outputs is None else outputs
+    ru = _output(cp, (nz, ny, nx + 1), old_u)
+    rv = _output(cp, (nz, ny + 1, nx), old_v)
     if state.has_msf:
         msfu, msfv = state.msfu, state.msfv
     else:

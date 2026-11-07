@@ -4,6 +4,7 @@ use crate::overlay::MapExtent;
 use crate::projection::ProjectionProjector;
 use crate::request::{GeographicClipBounds, RasterSampleMode};
 use image::RgbaImage;
+use rayon::prelude::*;
 
 fn projected_pixel_to_f64(point: (f32, f32)) -> (f64, f64) {
     (point.0 as f64, point.1 as f64)
@@ -11,14 +12,23 @@ fn projected_pixel_to_f64(point: (f32, f32)) -> (f64, f64) {
 
 pub fn cuda_rasterize_stats() -> [(&'static str, usize); 2] {
     #[cfg(any(windows, target_os = "linux"))]
-    { crate::rasterize_cuda::stats() }
+    {
+        crate::rasterize_cuda::stats()
+    }
     #[cfg(not(any(windows, target_os = "linux")))]
-    { [("structured raster CUDA OK", 0), ("structured raster CUDA failed", 0)] }
+    {
+        [
+            ("structured raster CUDA OK", 0),
+            ("structured raster CUDA failed", 0),
+        ]
+    }
 }
 
 pub fn print_cuda_rasterize_stats_if_enabled() {
     if std::env::var_os("RUSTWX_CUDA_RASTERIZE_DEBUG").is_some() {
-        for (name, count) in cuda_rasterize_stats() { eprintln!("{name}: {count}"); }
+        for (name, count) in cuda_rasterize_stats() {
+            eprintln!("{name}: {count}");
+        }
     }
 }
 
@@ -36,14 +46,23 @@ pub fn rasterize_grid(
     img_h: u32,
 ) -> RgbaImage {
     #[cfg(any(windows, target_os = "linux"))]
-    if let Some(img) = crate::rasterize_cuda::render(data, ny, nx, cmap, sample_mode, img_w, img_h, None) {
+    if let Some(img) =
+        crate::rasterize_cuda::render(data, ny, nx, cmap, sample_mode, img_w, img_h, None)
+    {
         return img;
     }
     rasterize_grid_cpu(data, ny, nx, cmap, sample_mode, img_w, img_h)
 }
 
-fn rasterize_grid_cpu(data: &[f64], ny: usize, nx: usize, cmap: &LeveledColormap,
-    sample_mode: RasterSampleMode, img_w: u32, img_h: u32) -> RgbaImage {
+fn rasterize_grid_cpu(
+    data: &[f64],
+    ny: usize,
+    nx: usize,
+    cmap: &LeveledColormap,
+    sample_mode: RasterSampleMode,
+    img_w: u32,
+    img_h: u32,
+) -> RgbaImage {
     let mut img = RgbaImage::new(img_w, img_h);
 
     if ny == 0 || nx == 0 {
@@ -55,37 +74,41 @@ fn rasterize_grid_cpu(data: &[f64], ny: usize, nx: usize, cmap: &LeveledColormap
     let gx_den = nx.saturating_sub(1).max(1) as f64;
     let gy_den = ny.saturating_sub(1).max(1) as f64;
 
-    for py in 0..img_h {
-        for px in 0..img_w {
-            let gx = px as f64 / x_den * gx_den;
-            let gy = (img_h.saturating_sub(1) - py) as f64 / y_den * gy_den;
+    img.as_mut()
+        .par_chunks_mut((img_w as usize * 4).max(1))
+        .enumerate()
+        .for_each(|(py, row)| {
+            let py = py as u32;
+            for px in 0..img_w {
+                let gx = px as f64 / x_den * gx_den;
+                let gy = (img_h.saturating_sub(1) - py) as f64 / y_den * gy_den;
 
-            let value = match sample_mode {
-                RasterSampleMode::Nearest => {
-                    let i = (gx.round() as usize).min(nx - 1);
-                    let j = (gy.round() as usize).min(ny - 1);
-                    data[j * nx + i]
-                }
-                RasterSampleMode::Linear => {
-                    let i0 = gx.floor() as usize;
-                    let j0 = gy.floor() as usize;
-                    let i1 = (i0 + 1).min(nx - 1);
-                    let j1 = (j0 + 1).min(ny - 1);
-                    let fx = gx - i0 as f64;
-                    let fy = gy - j0 as f64;
+                let value = match sample_mode {
+                    RasterSampleMode::Nearest => {
+                        let i = (gx.round() as usize).min(nx - 1);
+                        let j = (gy.round() as usize).min(ny - 1);
+                        data[j * nx + i]
+                    }
+                    RasterSampleMode::Linear => {
+                        let i0 = gx.floor() as usize;
+                        let j0 = gy.floor() as usize;
+                        let i1 = (i0 + 1).min(nx - 1);
+                        let j1 = (j0 + 1).min(ny - 1);
+                        let fx = gx - i0 as f64;
+                        let fy = gy - j0 as f64;
 
-                    let v00 = data[j0 * nx + i0];
-                    let v10 = data[j0 * nx + i1];
-                    let v01 = data[j1 * nx + i0];
-                    let v11 = data[j1 * nx + i1];
+                        let v00 = data[j0 * nx + i0];
+                        let v10 = data[j0 * nx + i1];
+                        let v01 = data[j1 * nx + i0];
+                        let v11 = data[j1 * nx + i1];
 
-                    bilinear(v00, v10, v01, v11, fx, fy)
-                }
-            };
-            let color = cmap.map(value);
-            img.put_pixel(px, py, color.to_image_rgba());
-        }
-    }
+                        bilinear(v00, v10, v01, v11, fx, fy)
+                    }
+                };
+                let color = cmap.map(value);
+                row[px as usize * 4..px as usize * 4 + 4].copy_from_slice(&color.to_image_rgba().0);
+            }
+        });
 
     img
 }
@@ -128,30 +151,132 @@ pub fn rasterize_projected_grid(
         return img;
     }
 
-    for j in 0..(ny - 1) {
-        for i in 0..(nx - 1) {
-            let idx = |jj: usize, ii: usize| jj * nx + ii;
-            let p00 = pixel_points[idx(j, i)];
-            let p10 = pixel_points[idx(j, i + 1)];
-            let p01 = pixel_points[idx(j + 1, i)];
-            let p11 = pixel_points[idx(j + 1, i + 1)];
-
-            let (p00, p10, p01, p11) = match (p00, p10, p01, p11) {
-                (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
-                _ => continue,
+    if img_w == 0 || img_h == 0 {
+        return img;
+    }
+    // Each stripe owns only its rows of ONE output image. Its cell list is
+    // in the original traversal order, so shared triangle edges and masked
+    // cells retain the same last writer. No image per worker, no blending
+    // reduction and no change to interpolation arithmetic.
+    const STRIPE_ROWS: usize = 64;
+    let stripes = (img_h as usize).div_ceil(STRIPE_ROWS);
+    let mut cells = vec![Vec::<usize>::new(); stripes];
+    let max_references = (ny - 1).saturating_mul(nx - 1).saturating_mul(2);
+    let mut references = 0usize;
+    let mut bounded = true;
+    'bins: for j in 0..ny - 1 {
+        for i in 0..nx - 1 {
+            let cell = j * nx + i;
+            let points = [
+                pixel_points[cell],
+                pixel_points[cell + 1],
+                pixel_points[cell + nx],
+                pixel_points[cell + nx + 1],
+            ];
+            let [Some(a), Some(b), Some(c), Some(d)] = points else {
+                continue;
             };
+            let lo = (a.1 as f64)
+                .min(b.1 as f64)
+                .min(c.1 as f64)
+                .min(d.1 as f64)
+                .floor()
+                .max(0.0) as usize;
+            let hi = (a.1 as f64)
+                .max(b.1 as f64)
+                .max(c.1 as f64)
+                .max(d.1 as f64)
+                .ceil()
+                .min(img_h as f64 - 1.0)
+                .max(0.0) as usize;
+            if lo > hi || lo >= img_h as usize {
+                continue;
+            }
+            let (first, last) = (lo / STRIPE_ROWS, hi / STRIPE_ROWS);
+            references = references.saturating_add(last - first + 1);
+            if references > max_references {
+                bounded = false;
+                break 'bins;
+            }
+            for stripe in &mut cells[first..=last] {
+                stripe.push(cell);
+            }
+        }
+    }
+    if bounded {
+        let row_bytes = img_w as usize * 4;
+        img.as_mut()
+            .par_chunks_mut(row_bytes * STRIPE_ROWS)
+            .enumerate()
+            .for_each(|(stripe, bytes)| {
+                let origin = stripe * STRIPE_ROWS;
+                for &cell in &cells[stripe] {
+                    let [Some(p00), Some(p10), Some(p01), Some(p11)] = [
+                        pixel_points[cell],
+                        pixel_points[cell + 1],
+                        pixel_points[cell + nx],
+                        pixel_points[cell + nx + 1],
+                    ] else {
+                        unreachable!()
+                    };
+                    let [p00, p10, p01, p11] = [p00, p10, p01, p11].map(projected_pixel_to_f64);
+                    rasterize_triangle_rows(
+                        bytes,
+                        img_w,
+                        origin,
+                        p00,
+                        data[cell],
+                        p10,
+                        data[cell + 1],
+                        p11,
+                        data[cell + nx + 1],
+                        cmap,
+                        sample_mode,
+                    );
+                    rasterize_triangle_rows(
+                        bytes,
+                        img_w,
+                        origin,
+                        p00,
+                        data[cell],
+                        p11,
+                        data[cell + nx + 1],
+                        p01,
+                        data[cell + nx],
+                        cmap,
+                        sample_mode,
+                    );
+                }
+            });
+    } else {
+        // Pathological folded cells can cross every stripe. Bound the index
+        // storage to two references per cell instead of multiplying by height.
+        drop(cells);
+        for j in 0..(ny - 1) {
+            for i in 0..(nx - 1) {
+                let idx = |jj: usize, ii: usize| jj * nx + ii;
+                let p00 = pixel_points[idx(j, i)];
+                let p10 = pixel_points[idx(j, i + 1)];
+                let p01 = pixel_points[idx(j + 1, i)];
+                let p11 = pixel_points[idx(j + 1, i + 1)];
 
-            let v00 = data[idx(j, i)];
-            let v10 = data[idx(j, i + 1)];
-            let v01 = data[idx(j + 1, i)];
-            let v11 = data[idx(j + 1, i + 1)];
+                let (p00, p10, p01, p11) = match (p00, p10, p01, p11) {
+                    (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
+                    _ => continue,
+                };
 
-            let p00 = projected_pixel_to_f64(p00);
-            let p10 = projected_pixel_to_f64(p10);
-            let p01 = projected_pixel_to_f64(p01);
-            let p11 = projected_pixel_to_f64(p11);
-            rasterize_triangle(&mut img, p00, v00, p10, v10, p11, v11, cmap, sample_mode);
-            rasterize_triangle(&mut img, p00, v00, p11, v11, p01, v01, cmap, sample_mode);
+                let v00 = data[idx(j, i)];
+                let v10 = data[idx(j, i + 1)];
+                let v01 = data[idx(j + 1, i)];
+                let v11 = data[idx(j + 1, i + 1)];
+
+                let p00 = projected_pixel_to_f64(p00);
+                let p10 = projected_pixel_to_f64(p10);
+                let p01 = projected_pixel_to_f64(p01);
+                let p11 = projected_pixel_to_f64(p11);
+                rasterize_triangle(&mut img, p00, v00, p10, v10, p11, v11, cmap, sample_mode);
+                rasterize_triangle(&mut img, p00, v00, p11, v11, p01, v01, cmap, sample_mode);
+            }
         }
     }
 
@@ -262,8 +387,16 @@ fn rasterize_rectilinear_projected_grid(
     }
     let axes = rectilinear_pixel_axes(ny, nx, pixel_points)?;
     #[cfg(any(windows, target_os = "linux"))]
-    if let Some(img) = crate::rasterize_cuda::render(data, ny, nx, cmap, sample_mode, img_w, img_h,
-        Some([axes.x0, axes.y0, axes.dx, axes.dy])) {
+    if let Some(img) = crate::rasterize_cuda::render(
+        data,
+        ny,
+        nx,
+        cmap,
+        sample_mode,
+        img_w,
+        img_h,
+        Some([axes.x0, axes.y0, axes.dx, axes.dy]),
+    ) {
         return Some(img);
     }
     let mut img = rasterize_rectilinear_cpu(data, ny, nx, axes, cmap, sample_mode, img_w, img_h);
@@ -271,58 +404,70 @@ fn rasterize_rectilinear_projected_grid(
     Some(img)
 }
 
-fn rasterize_rectilinear_cpu(data: &[f64], ny: usize, nx: usize, axes: RectilinearPixelAxes,
-    cmap: &LeveledColormap, sample_mode: RasterSampleMode, img_w: u32, img_h: u32) -> RgbaImage {
+fn rasterize_rectilinear_cpu(
+    data: &[f64],
+    ny: usize,
+    nx: usize,
+    axes: RectilinearPixelAxes,
+    cmap: &LeveledColormap,
+    sample_mode: RasterSampleMode,
+    img_w: u32,
+    img_h: u32,
+) -> RgbaImage {
     let x_samples = axis_samples(axes.x0, axes.dx, nx, img_w);
     let y_samples = axis_samples(axes.y0, axes.dy, ny, img_h);
     let mut img = RgbaImage::new(img_w, img_h);
 
-    for (py, y_sample) in y_samples.iter().enumerate() {
-        let Some(y_sample) = y_sample else {
-            continue;
-        };
-        let j0 = y_sample.lower;
-        let j1 = y_sample.upper;
-        let fy = y_sample.fraction;
-        for (px, x_sample) in x_samples.iter().enumerate() {
-            let Some(x_sample) = x_sample else {
-                continue;
+    img.as_mut()
+        .par_chunks_mut((img_w as usize * 4).max(1))
+        .enumerate()
+        .for_each(|(py, row)| {
+            let y_sample = &y_samples[py];
+            let Some(y_sample) = y_sample else {
+                return;
             };
-            let i0 = x_sample.lower;
-            let i1 = x_sample.upper;
-            let fx = x_sample.fraction;
-            let idx = |j: usize, i: usize| j * nx + i;
-            let value = match sample_mode {
-                RasterSampleMode::Linear => {
-                    let cell_j0 = j0.min(ny - 2);
-                    let cell_i0 = i0.min(nx - 2);
-                    if !data[idx(cell_j0, cell_i0)].is_finite()
-                        || !data[idx(cell_j0, cell_i0 + 1)].is_finite()
-                        || !data[idx(cell_j0 + 1, cell_i0)].is_finite()
-                        || !data[idx(cell_j0 + 1, cell_i0 + 1)].is_finite()
-                    {
-                        continue;
+            let j0 = y_sample.lower;
+            let j1 = y_sample.upper;
+            let fy = y_sample.fraction;
+            for (px, x_sample) in x_samples.iter().enumerate() {
+                let Some(x_sample) = x_sample else {
+                    continue;
+                };
+                let i0 = x_sample.lower;
+                let i1 = x_sample.upper;
+                let fx = x_sample.fraction;
+                let idx = |j: usize, i: usize| j * nx + i;
+                let value = match sample_mode {
+                    RasterSampleMode::Linear => {
+                        let cell_j0 = j0.min(ny - 2);
+                        let cell_i0 = i0.min(nx - 2);
+                        if !data[idx(cell_j0, cell_i0)].is_finite()
+                            || !data[idx(cell_j0, cell_i0 + 1)].is_finite()
+                            || !data[idx(cell_j0 + 1, cell_i0)].is_finite()
+                            || !data[idx(cell_j0 + 1, cell_i0 + 1)].is_finite()
+                        {
+                            continue;
+                        }
+                        let v00 = data[idx(j0, i0)];
+                        let v10 = data[idx(j0, i1)];
+                        let v01 = data[idx(j1, i0)];
+                        let v11 = data[idx(j1, i1)];
+                        bilinear(v00, v10, v01, v11, fx, fy)
                     }
-                    let v00 = data[idx(j0, i0)];
-                    let v10 = data[idx(j0, i1)];
-                    let v01 = data[idx(j1, i0)];
-                    let v11 = data[idx(j1, i1)];
-                    bilinear(v00, v10, v01, v11, fx, fy)
+                    // The grid point this pixel is closest to; a non-finite one
+                    // maps to transparent and leaves the pixel empty.
+                    RasterSampleMode::Nearest => {
+                        let j = if fy < 0.5 { j0 } else { j1 };
+                        let i = if fx < 0.5 { i0 } else { i1 };
+                        data[idx(j, i)]
+                    }
+                };
+                let color = cmap.map(value).to_image_rgba();
+                if color.0[3] > 0 {
+                    row[px as usize * 4..px as usize * 4 + 4].copy_from_slice(&color.0);
                 }
-                // The grid point this pixel is closest to; a non-finite one
-                // maps to transparent and leaves the pixel empty.
-                RasterSampleMode::Nearest => {
-                    let j = if fy < 0.5 { j0 } else { j1 };
-                    let i = if fx < 0.5 { i0 } else { i1 };
-                    data[idx(j, i)]
-                }
-            };
-            let color = cmap.map(value).to_image_rgba();
-            if color.0[3] > 0 {
-                img.put_pixel(px as u32, py as u32, color);
             }
-        }
-    }
+        });
 
     img
 }
@@ -341,23 +486,62 @@ pub(crate) fn rasterize_inverse_projected_grid(
     img_w: u32,
     img_h: u32,
 ) -> RgbaImage {
-    if data.len() == ny.saturating_mul(nx) && lat_deg.len() == data.len() && lon_deg.len() == data.len() {
-        if let Some(axes) = RegularLatLonAxes::from_grid(lat_deg,lon_deg,ny,nx) {
+    if data.len() == ny.saturating_mul(nx)
+        && lat_deg.len() == data.len()
+        && lon_deg.len() == data.len()
+    {
+        if let Some(axes) = RegularLatLonAxes::from_grid(lat_deg, lon_deg, ny, nx) {
             #[cfg(any(windows, target_os = "linux"))]
             if let Some(params) = projector.inverse_kernel_params().filter(|p| p.kind == 1) {
-                let clip = clip_bounds.unwrap_or(GeographicClipBounds::new(-180.0,180.0,-90.0,90.0));
-                let q = [axes.lat0, axes.lat_step, axes.lon0, axes.lon_step,
-                    f64::from(axes.periodic_lon), axes.period_points, params.p0,
-                    extent.x_min, extent.x_max, extent.y_min, extent.y_max,
-                    f64::from(clip_bounds.is_some()), clip.west_deg, clip.east_deg, clip.south_deg, clip.north_deg];
-                if let Some(img) = crate::rasterize_cuda::render_inverse(data,ny,nx,cmap,sample_mode,img_w,img_h,&q) {
+                let clip =
+                    clip_bounds.unwrap_or(GeographicClipBounds::new(-180.0, 180.0, -90.0, 90.0));
+                let q = [
+                    axes.lat0,
+                    axes.lat_step,
+                    axes.lon0,
+                    axes.lon_step,
+                    f64::from(axes.periodic_lon),
+                    axes.period_points,
+                    params.p0,
+                    extent.x_min,
+                    extent.x_max,
+                    extent.y_min,
+                    extent.y_max,
+                    f64::from(clip_bounds.is_some()),
+                    clip.west_deg,
+                    clip.east_deg,
+                    clip.south_deg,
+                    clip.north_deg,
+                ];
+                if let Some(img) = crate::rasterize_cuda::render_inverse(
+                    data,
+                    ny,
+                    nx,
+                    cmap,
+                    sample_mode,
+                    img_w,
+                    img_h,
+                    &q,
+                ) {
                     return img;
                 }
             }
-
         }
     }
-    rasterize_inverse_projected_grid_cpu(data,ny,nx,lat_deg,lon_deg,projector,clip_bounds,extent,cmap,sample_mode,img_w,img_h)
+    rasterize_inverse_projected_grid_cpu(
+        data,
+        ny,
+        nx,
+        lat_deg,
+        lon_deg,
+        projector,
+        clip_bounds,
+        extent,
+        cmap,
+        sample_mode,
+        img_w,
+        img_h,
+    )
 }
 
 fn rasterize_inverse_projected_grid_cpu(
@@ -390,28 +574,32 @@ fn rasterize_inverse_projected_grid_cpu(
 
     let x_den = img_w.saturating_sub(1).max(1) as f64;
     let y_den = img_h.saturating_sub(1).max(1) as f64;
-    for py in 0..img_h {
-        let y = extent.y_max - (py as f64 / y_den) * (extent.y_max - extent.y_min);
-        for px in 0..img_w {
-            let x = extent.x_min + (px as f64 / x_den) * (extent.x_max - extent.x_min);
-            let Some((lat, lon)) = projector.unproject(x, y) else {
-                continue;
-            };
-            if clip_bounds.is_some_and(|bounds| !bounds.contains(lat, lon)) {
-                continue;
+    img.as_mut()
+        .par_chunks_mut((img_w as usize * 4).max(1))
+        .enumerate()
+        .for_each(|(py, row)| {
+            let py = py as u32;
+            let y = extent.y_max - (py as f64 / y_den) * (extent.y_max - extent.y_min);
+            for px in 0..img_w {
+                let x = extent.x_min + (px as f64 / x_den) * (extent.x_max - extent.x_min);
+                let Some((lat, lon)) = projector.unproject(x, y) else {
+                    continue;
+                };
+                if clip_bounds.is_some_and(|bounds| !bounds.contains(lat, lon)) {
+                    continue;
+                }
+                let Some(value) =
+                    sample_regular_latlon_grid_with_mode(data, &axes, lat, lon, sample_mode)
+                else {
+                    continue;
+                };
+                let color = cmap.map(value);
+                let rgba = color.to_image_rgba();
+                if rgba.0[3] > 0 {
+                    row[px as usize * 4..px as usize * 4 + 4].copy_from_slice(&rgba.0);
+                }
             }
-            let Some(value) =
-                sample_regular_latlon_grid_with_mode(data, &axes, lat, lon, sample_mode)
-            else {
-                continue;
-            };
-            let color = cmap.map(value);
-            let rgba = color.to_image_rgba();
-            if rgba.0[3] > 0 {
-                img.put_pixel(px, py, rgba);
-            }
-        }
-    }
+        });
     img
 }
 
@@ -433,28 +621,33 @@ pub fn rasterize_rgba_grid(
     let gx_den = nx.saturating_sub(1).max(1) as f64;
     let gy_den = ny.saturating_sub(1).max(1) as f64;
 
-    for py in 0..img_h {
-        for px in 0..img_w {
-            let gx = px as f64 / x_den * gx_den;
-            let gy = (img_h.saturating_sub(1) - py) as f64 / y_den * gy_den;
+    img.as_mut()
+        .par_chunks_mut((img_w as usize * 4).max(1))
+        .enumerate()
+        .for_each(|(py, row)| {
+            let py = py as u32;
+            for px in 0..img_w {
+                let gx = px as f64 / x_den * gx_den;
+                let gy = (img_h.saturating_sub(1) - py) as f64 / y_den * gy_den;
 
-            let i0 = gx.floor() as usize;
-            let j0 = gy.floor() as usize;
-            let i1 = (i0 + 1).min(nx - 1);
-            let j1 = (j0 + 1).min(ny - 1);
-            let fx = gx - i0 as f64;
-            let fy = gy - j0 as f64;
+                let i0 = gx.floor() as usize;
+                let j0 = gy.floor() as usize;
+                let i1 = (i0 + 1).min(nx - 1);
+                let j1 = (j0 + 1).min(ny - 1);
+                let fx = gx - i0 as f64;
+                let fy = gy - j0 as f64;
 
-            let c00 = pixels[j0 * nx + i0];
-            let c10 = pixels[j0 * nx + i1];
-            let c01 = pixels[j1 * nx + i0];
-            let c11 = pixels[j1 * nx + i1];
-            let color = bilinear_rgba(c00, c10, c01, c11, fx, fy);
-            if color.a > 0 {
-                img.put_pixel(px, py, color.to_image_rgba());
+                let c00 = pixels[j0 * nx + i0];
+                let c10 = pixels[j0 * nx + i1];
+                let c01 = pixels[j1 * nx + i0];
+                let c11 = pixels[j1 * nx + i1];
+                let color = bilinear_rgba(c00, c10, c01, c11, fx, fy);
+                if color.a > 0 {
+                    row[px as usize * 4..px as usize * 4 + 4]
+                        .copy_from_slice(&color.to_image_rgba().0);
+                }
             }
-        }
-    }
+        });
 
     img
 }
@@ -700,7 +893,10 @@ fn bilinear(v00: f64, v10: f64, v01: f64, v11: f64, fx: f64, fy: f64) -> f64 {
         // A uniform cell stays exactly at its source value. Weighted
         // summation can put a constant display-floor value one ULP below
         // its mask and punch transparent stripes into an opaque field.
-        if [v10, v01, v11].iter().all(|value| value.to_bits() == v00.to_bits()) {
+        if [v10, v01, v11]
+            .iter()
+            .all(|value| value.to_bits() == v00.to_bits())
+        {
             return v00;
         }
         let south = v00 * (1.0 - fx) + v10 * fx;
@@ -736,6 +932,36 @@ fn rasterize_triangle(
     cmap: &LeveledColormap,
     sample_mode: RasterSampleMode,
 ) {
+    let width = img.width();
+    rasterize_triangle_rows(
+        img.as_mut(),
+        width,
+        0,
+        p0,
+        v0,
+        p1,
+        v1,
+        p2,
+        v2,
+        cmap,
+        sample_mode,
+    );
+}
+
+fn rasterize_triangle_rows(
+    pixels: &mut [u8],
+    width: u32,
+    origin: usize,
+    p0: (f64, f64),
+    v0: f64,
+    p1: (f64, f64),
+    v1: f64,
+    p2: (f64, f64),
+    v2: f64,
+    cmap: &LeveledColormap,
+    sample_mode: RasterSampleMode,
+) {
+    let height = pixels.len() / (width as usize * 4).max(1);
     // An interpolated triangle needs all three values. A nearest one needs
     // only the vertex a pixel takes, and a non-finite one maps to
     // transparent, so the finite vertices keep their share of the triangle
@@ -750,17 +976,13 @@ fn rasterize_triangle(
     }
 
     let min_x = p0.0.min(p1.0).min(p2.0).floor().max(0.0) as i32;
-    let max_x =
-        p0.0.max(p1.0)
-            .max(p2.0)
-            .ceil()
-            .min(img.width() as f64 - 1.0) as i32;
-    let min_y = p0.1.min(p1.1).min(p2.1).floor().max(0.0) as i32;
+    let max_x = p0.0.max(p1.0).max(p2.0).ceil().min(width as f64 - 1.0) as i32;
+    let min_y = p0.1.min(p1.1).min(p2.1).floor().max(origin as f64) as i32;
     let max_y =
         p0.1.max(p1.1)
             .max(p2.1)
             .ceil()
-            .min(img.height() as f64 - 1.0) as i32;
+            .min((origin + height) as f64 - 1.0) as i32;
 
     if min_x > max_x || min_y > max_y {
         return;
@@ -809,7 +1031,8 @@ fn rasterize_triangle(
             };
             let color = cmap.map(value).to_image_rgba();
             if color.0[3] > 0 {
-                img.put_pixel(px as u32, py as u32, color);
+                let offset = ((py as usize - origin) * width as usize + px as usize) * 4;
+                pixels[offset..offset + 4].copy_from_slice(&color.0);
             }
         }
     }
@@ -957,38 +1180,42 @@ fn feather_projected_raster_edges(img: &mut RgbaImage) {
     let width = src.width() as i32;
     let height = src.height() as i32;
 
-    for py in 0..height {
-        for px in 0..width {
-            let center = src.get_pixel(px as u32, py as u32);
-            let center_alpha = center.0[3];
-            let mut transparent_neighbor = false;
+    img.as_mut()
+        .par_chunks_mut((width as usize * 4).max(1))
+        .enumerate()
+        .for_each(|(py, row)| {
+            let py = py as i32;
+            for px in 0..width {
+                let center = src.get_pixel(px as u32, py as u32);
+                let center_alpha = center.0[3];
+                let mut transparent_neighbor = false;
 
-            for dy in -1..=1 {
-                for dx in -1..=1 {
-                    if dx == 0 && dy == 0 {
-                        continue;
-                    }
-                    let nx = px + dx;
-                    let ny = py + dy;
-                    if nx < 0 || ny < 0 || nx >= width || ny >= height {
-                        transparent_neighbor = true;
-                        continue;
-                    }
-                    let neighbor = src.get_pixel(nx as u32, ny as u32);
-                    if neighbor.0[3] > 0 {
-                    } else {
-                        transparent_neighbor = true;
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        if dx == 0 && dy == 0 {
+                            continue;
+                        }
+                        let nx = px + dx;
+                        let ny = py + dy;
+                        if nx < 0 || ny < 0 || nx >= width || ny >= height {
+                            transparent_neighbor = true;
+                            continue;
+                        }
+                        let neighbor = src.get_pixel(nx as u32, ny as u32);
+                        if neighbor.0[3] > 0 {
+                        } else {
+                            transparent_neighbor = true;
+                        }
                     }
                 }
-            }
 
-            if center_alpha > 0 && transparent_neighbor {
-                let mut softened = *center;
-                softened.0[3] = softened.0[3].min(216);
-                img.put_pixel(px as u32, py as u32, softened);
+                if center_alpha > 0 && transparent_neighbor {
+                    let mut softened = *center;
+                    softened.0[3] = softened.0[3].min(216);
+                    row[px as usize * 4..px as usize * 4 + 4].copy_from_slice(&softened.0);
+                }
             }
-        }
-    }
+        });
 }
 
 #[cfg(test)]
@@ -1000,6 +1227,79 @@ mod tests {
     use crate::color::Rgba;
     use crate::colormap::{Extend, LeveledColormap};
     use crate::request::RasterSampleMode;
+
+    #[test]
+    fn parallel_stripes_keep_serial_triangle_bytes_across_boundaries() {
+        let (nx, ny) = (47, 39);
+        let points: Vec<_> = (0..ny)
+            .flat_map(|j| {
+                (0..nx).map(move |i| {
+                    Some((
+                        i as f32 * 4.5 + (j as f32 * 0.2).sin(),
+                        j as f32 * 3.6 + (i as f32 * 0.3).sin(),
+                    ))
+                })
+            })
+            .collect();
+        let values: Vec<_> = (0..nx * ny)
+            .map(|i| {
+                if i % 97 == 0 {
+                    f64::NAN
+                } else {
+                    (i % 11) as f64
+                }
+            })
+            .collect();
+        let cmap = LeveledColormap::from_palette(
+            &[Rgba::new(4, 30, 220), Rgba::new(250, 110, 0)],
+            &[0.0, 5.0, 11.0],
+            Extend::Both,
+            None,
+        );
+        for mode in [RasterSampleMode::Linear, RasterSampleMode::Nearest] {
+            let mut serial = image::RgbaImage::new(211, 139);
+            for j in 0..ny - 1 {
+                for i in 0..nx - 1 {
+                    let a = j * nx + i;
+                    let b = a + 1;
+                    let c = a + nx;
+                    let d = c + 1;
+                    let p = |idx: usize| super::projected_pixel_to_f64(points[idx].unwrap());
+                    super::rasterize_triangle(
+                        &mut serial,
+                        p(a),
+                        values[a],
+                        p(b),
+                        values[b],
+                        p(d),
+                        values[d],
+                        &cmap,
+                        mode,
+                    );
+                    super::rasterize_triangle(
+                        &mut serial,
+                        p(a),
+                        values[a],
+                        p(d),
+                        values[d],
+                        p(c),
+                        values[c],
+                        &cmap,
+                        mode,
+                    );
+                }
+            }
+            super::feather_projected_raster_edges(&mut serial);
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(4)
+                .build()
+                .unwrap();
+            let parallel = pool.install(|| {
+                rasterize_projected_grid(&values, ny, nx, &points, &cmap, mode, 211, 139)
+            });
+            assert_eq!(parallel.as_raw(), serial.as_raw());
+        }
+    }
 
     #[test]
     fn projected_raster_keeps_nan_mask_holes_transparent() {

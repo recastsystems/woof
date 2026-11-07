@@ -46,7 +46,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from woof.core.thompson_aerosol_launch import aerosol_kernel
+from woof.core.thompson_aerosol_launch import (
+    aerosol_kernel, hail_graupel_arguments)
 from woof.core.state import DTYPE
 from woof.core.thompson_aerosol_launch import (
     WARM_MODULE,
@@ -76,6 +77,9 @@ RAIN_GRAUPEL_TABLE_SHAPE = (37, 37, 1, 37, 37)
 #: woof.core.thompson_contract.FORK_GENERATED_TABLE_FILES).
 WRF39_RAIN_SNOW_TABLE_SHAPE = (28, 9, 37, 37)
 WRF39_RAIN_GRAUPEL_TABLE_SHAPE = (28, 28, 37, 37)
+#: The hail-aware scheme's nine-slab shape (mp_physics=38,
+#: qr_acr_qg_mp38V1.dat, module_mp_thompson.F:4117-4125, :4192-4273).
+HAIL_RAIN_GRAUPEL_TABLE_SHAPE = (37, 37, 9, 37, 37)
 
 
 def _rain_snow_shape():
@@ -86,7 +90,10 @@ def _rain_snow_shape():
 
 
 def _rain_graupel_shape():
-    from woof.core.thompson_aerosol_launch import active_thompson_version
+    from woof.core.thompson_aerosol_launch import (
+        active_hail_aware, active_thompson_version)
+    if active_hail_aware():
+        return HAIL_RAIN_GRAUPEL_TABLE_SHAPE
     return (WRF39_RAIN_GRAUPEL_TABLE_SHAPE
             if active_thompson_version() == "wrf_39_noaa"
             else RAIN_GRAUPEL_TABLE_SHAPE)
@@ -162,7 +169,7 @@ def launch_aerosol_warm_source_network(
         rain_cloud_efficiency, snow_cloud_efficiency,
         rain_snow_tables, rain_graupel_tables, dt: float, *,
         qcten=None, qrten=None, nrten=None, qvten=None,
-        tten=None, qsten=None, qgten=None, ngten=None) -> None:
+        tten=None, qsten=None, qgten=None, ngten=None, graupel_volume=None, qbten=None) -> None:
     """Apply WRF-ordered warm-level sources with a prognostic droplet number.
 
     ``nc_entry``/``nwfa_entry``/``nifa_entry`` are the FROZEN per-kilogram
@@ -217,6 +224,9 @@ def launch_aerosol_warm_source_network(
     add_optional_fields(fields, qrten=qrten, nrten=nrten)
     add_optional_fields(fields, qvten=qvten, tten=tten)
     add_optional_fields(fields, qsten=qsten, qgten=qgten, ngten=ngten)
+    hail_arguments = hail_graupel_arguments(
+        fields, graupel_volume=graupel_volume, qgten=qgten, ngten=ngten,
+        qbten=qbten)
     _, size = validate_fields(fields)
     if qcten is not None and _arrays_overlap(qc, qcten):
         raise ValueError("qcten must not alias qc; the entry cloud is "
@@ -264,6 +274,7 @@ def launch_aerosol_warm_source_network(
          rain_cloud_efficiency, snow_cloud_efficiency,
          *rain_snow_values, *rain_graupel_values,
          qcten, qrten, nrten, qvten, tten, qsten, qgten, ngten,
+         graupel_volume, qbten,
          DTYPE(dt), np.int32(size)))
 
 
@@ -275,7 +286,7 @@ def launch_aerosol_warm_source_network_from_owner(
         ncten, nwfaten, nifaten,
         table_owner, dt: float, *, qcten=None, qrten=None,
         nrten=None, qvten=None, tten=None, qsten=None, qgten=None,
-        ngten=None) -> None:
+        ngten=None, graupel_volume=None, qbten=None) -> None:
     """Launch the warm network from one verified classic table owner.
 
     mp=28 reuses the four classic Thompson caches unchanged; only
@@ -297,7 +308,8 @@ def launch_aerosol_warm_source_network_from_owner(
         tables.rain_cloud_efficiency, table_owner.t_Efsw,
         tables.rain_snow_tables, tables.rain_graupel_tables, dt,
         qcten=qcten, qrten=qrten, nrten=nrten, qvten=qvten, tten=tten,
-        qsten=qsten, qgten=qgten, ngten=ngten)
+        qsten=qsten, qgten=qgten, ngten=ngten,
+        graupel_volume=graupel_volume, qbten=qbten)
 
 
 def launch_ncten_balance(

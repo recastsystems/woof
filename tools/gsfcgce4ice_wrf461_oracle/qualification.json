@@ -1,0 +1,646 @@
+{
+  "schema": "gpuwm-mp7-real-qualification-v1",
+  "selector": {
+    "mp_physics": 7
+  },
+  "tested_runtime_commit": "3bf1fa2e8065d758d6665dc3030aca1235cb7891",
+  "base_commit": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "source_sha256": {
+    "module_mp_gsfcgce_4ice_nuwrf.F": "79b782f6832ce45c0a13f463841d1820cabc4de0049ac60b5c2a23d24389cb8b",
+    "module_mp_radar.F": "aa99da858be41efa579966680708d230123a7417560af0eb2e24f4c94e253688"
+  },
+  "licences": {
+    "WRF": "public domain, WRF README statement checked before port; full notice retained",
+    "strict_log10": "MIT CORE-MATH; upstream notice retained in gsfcgce4ice_log10.cuh",
+    "external_tables": []
+  },
+  "native": {
+    "compiler": "GNU Fortran 15.2.0",
+    "glibc": "2.43",
+    "libm_sha256": "1c488db6f4fe8cecb72456bc018de000b7a9b539c2994864b0416b5e8371b3d8",
+    "mp7_flags": [
+      "-O2",
+      "-ffp-contract=off",
+      "-fno-fast-math",
+      "-fno-tree-vectorize"
+    ],
+    "other_modules": "reused stock WRF 4.6.1 build objects; no claim of rebuilding the remaining model with MP7 strict flags",
+    "wrf_exe_sha256": "c6bb063e7049c8081f0c8068055303cafc1105d5d5eca08be0a24e71b21304a0",
+    "mpi_ranks": 2,
+    "nproc_x": 1,
+    "instrumented_sha256": "86e6706586db0c72deaaa59e1c41e530c58cd5bf92dfecc631b117f9552ab9f1",
+    "capture_source": "instrument_capture.py, actual native tile crossing j=75 at native timesteps",
+    "success": true
+  },
+  "strict_real_module_replay": {
+    "environment": {
+      "GPUWM_WRF_EXACT": "1",
+      "GPUWM_WRF_GLIBC": "2.43",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1"
+    },
+    "total": {
+      "words": 120899128,
+      "nonzero_ulp_words": 0,
+      "signed_zero_words": 0,
+      "max_ulp": 0,
+      "rejected_words": 0
+    },
+    "native_undefined_exclusions": [],
+    "captures": [
+      {
+        "case": "case-real-000001",
+        "ncol": 10952,
+        "nz": 49,
+        "dt": 12.0,
+        "dx": 3000.0,
+        "itimestep": [
+          1
+        ],
+        "diagflag": [
+          0
+        ],
+        "do_radar_ref": 1,
+        "fields": {
+          "qc": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "qr": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "qi": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "qs": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "qg": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "qh": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "refl_10cm": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          }
+        },
+        "input_bytes": 71363264,
+        "input_sha256": "1e4315fbc3443912e30ea96ea7af6ac6c2da94729ab8481ef51a81e6a7fc0141",
+        "expected_bytes": 79818176,
+        "expected_sha256": "5c897932c69f14bf6174a08e8ad1cd6bde13d64c6384d2a4430cdf8b0bd60caf"
+      },
+      {
+        "case": "case-real-000300",
+        "ncol": 10952,
+        "nz": 49,
+        "dt": 12.0,
+        "dx": 3000.0,
+        "itimestep": [
+          300
+        ],
+        "diagflag": [
+          1
+        ],
+        "do_radar_ref": 1,
+        "fields": {
+          "qc": {
+            "nonzero": 91181,
+            "min": -5.726861118660054e-08,
+            "max": 0.0016756121767684817,
+            "sha256": "d4ca0d8b42e09d75e7b9ca2359e8969837e10f8ce01c848688a035a8698285bd"
+          },
+          "qr": {
+            "nonzero": 14098,
+            "min": -1.0684695350704487e-09,
+            "max": 5.1762548537226394e-05,
+            "sha256": "ff703cd9854dc3eef45a56ed8db7db06cc3f7867c0ff12bc2bcc79e4974a0d9b"
+          },
+          "qi": {
+            "nonzero": 107512,
+            "min": -6.14078503758525e-13,
+            "max": 9.277136268792674e-05,
+            "sha256": "a21925d617e87c9bc0c4a8e560c41241901612626a60ede8518d52f0653d487c"
+          },
+          "qs": {
+            "nonzero": 144270,
+            "min": -2.9031581283943397e-13,
+            "max": 3.072504114243202e-05,
+            "sha256": "711ad0fa5bb52a145350002b39e74ac85581001c7d9fd7747e7c8cc802d2737f"
+          },
+          "qg": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "qh": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "refl_10cm": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          }
+        },
+        "input_bytes": 71363264,
+        "input_sha256": "c2141ca7bf364a80c70c8a256e51ad030e4af338126d9d82fc59e101cbacf0a3",
+        "expected_bytes": 79818176,
+        "expected_sha256": "29c24fa93b69c27422a769f375c9307b8eddcdccca7e9e4d335ec6cf0ed62883"
+      },
+      {
+        "case": "case-real-000600",
+        "ncol": 10952,
+        "nz": 49,
+        "dt": 12.0,
+        "dx": 3000.0,
+        "itimestep": [
+          600
+        ],
+        "diagflag": [
+          1
+        ],
+        "do_radar_ref": 1,
+        "fields": {
+          "qc": {
+            "nonzero": 136217,
+            "min": -1.1966315582867537e-07,
+            "max": 0.0019634913187474012,
+            "sha256": "773952e404e1360478ecd684d83f9c84174d21f5ede55f9ac2689c36bfbb4eea"
+          },
+          "qr": {
+            "nonzero": 17241,
+            "min": -3.3459144344050173e-09,
+            "max": 8.042820991249755e-05,
+            "sha256": "9e887b1f65ca386aa898041d2a720c493687e541c67a7a6c41bf0dab63dcab43"
+          },
+          "qi": {
+            "nonzero": 145138,
+            "min": -1.2498987305223364e-12,
+            "max": 0.00014232052490115166,
+            "sha256": "ec9ef1ed468eb05a8184ff98bef2942d65f0fa63306afecfe169823f082adf63"
+          },
+          "qs": {
+            "nonzero": 208273,
+            "min": -8.196241537035409e-13,
+            "max": 5.804222746519372e-05,
+            "sha256": "01be3247f339a251d8d9f69328d5aac0dc6ae66e65d50884ec27bd76544ae6bc"
+          },
+          "qg": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "qh": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "sha256": "8197ff7435f718ca2576656586d68a665d83c12c1476d4e1d5e6ba5754550d97"
+          },
+          "refl_10cm": {
+            "nonzero": 536648,
+            "min": -35.0,
+            "max": 23.17070198059082,
+            "sha256": "6362eab292340248650cdd08cb2de58c6151b0dd656b52001f747767e8037637"
+          }
+        },
+        "input_bytes": 71363264,
+        "input_sha256": "98309bcc890f61fa234d2165677e3e8276f3f8bf7ed5d1915e62cb64a29c00e4",
+        "expected_bytes": 79818176,
+        "expected_sha256": "c25d4e68959d61e90a13e5ab95866368a75698c736b794e67e4b6ac83ad69505"
+      },
+      {
+        "case": "case-real-000900",
+        "ncol": 10952,
+        "nz": 49,
+        "dt": 12.0,
+        "dx": 3000.0,
+        "itimestep": [
+          900
+        ],
+        "diagflag": [
+          1
+        ],
+        "do_radar_ref": 1,
+        "fields": {
+          "qc": {
+            "nonzero": 200418,
+            "min": -1.603095540758659e-07,
+            "max": 0.0017572786891832948,
+            "sha256": "0d385c6e6f69822c2d3482839ecffd851918f0ec208fa030e03c2a4e247b8771"
+          },
+          "qr": {
+            "nonzero": 28883,
+            "min": -1.8738870455337064e-09,
+            "max": 6.542475603055209e-05,
+            "sha256": "c8b508c1c6c88e119f8ec883b5301f170db5eade5155a380a00e63d656719933"
+          },
+          "qi": {
+            "nonzero": 179725,
+            "min": -1.0378716983061587e-11,
+            "max": 0.000268021336523816,
+            "sha256": "2b3bf9cdcef852b431d23842a5e241444cf08524ec1dcc24b2bde0e2c6b3b635"
+          },
+          "qs": {
+            "nonzero": 223037,
+            "min": -5.337306985264689e-12,
+            "max": 0.0003787364112213254,
+            "sha256": "fad92fb8fa45609b70a4825a2cd6bce3a6f0a3b16ba4a90242440952dbfb4506"
+          },
+          "qg": {
+            "nonzero": 5926,
+            "min": -2.5222131834126823e-15,
+            "max": 2.726566528110652e-08,
+            "sha256": "0d97ec3c6e67a15a7db67496dc1b9c7b9a42dcd255b50afc19c5e239991a17e9"
+          },
+          "qh": {
+            "nonzero": 3914,
+            "min": -3.234231408215252e-15,
+            "max": 1.974768570889296e-09,
+            "sha256": "ce55f6b51e6ea73c9679e9de7c768e7604d36cb076e3b740a5b4e1b9f4abc5ac"
+          },
+          "refl_10cm": {
+            "nonzero": 536648,
+            "min": -35.0,
+            "max": 24.693004608154297,
+            "sha256": "a92d79f21b10461a0fe2a9ffe9e24097f26c0a9c32d1f15882d45a31fa1dbbd9"
+          }
+        },
+        "input_bytes": 71363264,
+        "input_sha256": "3cd82f9dc359d8a696599c46506004b709202d139ad73efefd11532e0bbfb082",
+        "expected_bytes": 79818176,
+        "expected_sha256": "b6adbf0e0ce8dfd66cccc247151f9a308ee75214c3b98cc6ce60f45ead7b7442"
+      },
+      {
+        "case": "case-real-001200",
+        "ncol": 10952,
+        "nz": 49,
+        "dt": 12.0,
+        "dx": 3000.0,
+        "itimestep": [
+          1200
+        ],
+        "diagflag": [
+          1
+        ],
+        "do_radar_ref": 1,
+        "fields": {
+          "qc": {
+            "nonzero": 218897,
+            "min": -2.9088050723657943e-07,
+            "max": 0.004266990348696709,
+            "sha256": "2d043a87b213392c045e5e428bc7a2f463dd274f218a07f044205429972f783e"
+          },
+          "qr": {
+            "nonzero": 60515,
+            "min": -6.426705567719182e-08,
+            "max": 0.006140863057225943,
+            "sha256": "f86fccd8cce4e0096a7960eb57ce597b6a33e63c3731dc024f1bb63aa1190076"
+          },
+          "qi": {
+            "nonzero": 166885,
+            "min": -9.208430640228471e-08,
+            "max": 0.0035267542116343975,
+            "sha256": "aab0e067a7a82f18012c6d195c019a41703347d1f12f48d8b3e8e9151be8f1f4"
+          },
+          "qs": {
+            "nonzero": 269074,
+            "min": -2.6335882807870803e-07,
+            "max": 0.005191406700760126,
+            "sha256": "7e8c2a12198694166db9b96f1269edb7dfb097b6c69d07155484610fbde27af4"
+          },
+          "qg": {
+            "nonzero": 147312,
+            "min": -3.273880722076683e-08,
+            "max": 0.0014572388026863337,
+            "sha256": "5d08d8c1ea8ed13f7a00539bf3f8edafdfcc446e8811e5de922454680516ee2a"
+          },
+          "qh": {
+            "nonzero": 80840,
+            "min": -2.0905835285134344e-08,
+            "max": 0.0071466839872300625,
+            "sha256": "182978388550239e74f23e28e1fca6592735da4d667def5913a54c0ad2562bfa"
+          },
+          "refl_10cm": {
+            "nonzero": 536648,
+            "min": -35.0,
+            "max": 25.509803771972656,
+            "sha256": "54b88f680fc9d4dea5358305b483d267267a10a4373c6de32e9310c8a92aa0fc"
+          }
+        },
+        "input_bytes": 71363264,
+        "input_sha256": "aafcce4171af29118fe0f79e7a33983dabcda92dc933f6dd47c174768ab43d51",
+        "expected_bytes": 79818176,
+        "expected_sha256": "387c2e29f3e18b10fafce50f2725186fd526b536360876868b258dffc72860ca"
+      },
+      {
+        "case": "case-real-001500",
+        "ncol": 10952,
+        "nz": 49,
+        "dt": 12.0,
+        "dx": 3000.0,
+        "itimestep": [
+          1500
+        ],
+        "diagflag": [
+          1
+        ],
+        "do_radar_ref": 1,
+        "fields": {
+          "qc": {
+            "nonzero": 218089,
+            "min": -1.9159881503583165e-07,
+            "max": 0.005075119435787201,
+            "sha256": "e65f676609284f705965d629e014aa1504b17230e739b9ee3d8ed63df061af4f"
+          },
+          "qr": {
+            "nonzero": 77157,
+            "min": -9.480385187998763e-07,
+            "max": 0.008470620028674603,
+            "sha256": "1a34013aa0e3f5ae3543369c90bea2da9267f45a06a5de34ea274712f8769fcb"
+          },
+          "qi": {
+            "nonzero": 219916,
+            "min": -3.338801590757612e-08,
+            "max": 0.004136149305850267,
+            "sha256": "7ee3429467871a20ce67e0f1b9178013caa75be0ac71e05376d025a1a6f5e233"
+          },
+          "qs": {
+            "nonzero": 288741,
+            "min": -3.943310034060232e-08,
+            "max": 0.0055405208840966225,
+            "sha256": "1b76d2c81b171ef5efa49d66f5481a99f357366e6c332caace15b450faa5c0b9"
+          },
+          "qg": {
+            "nonzero": 226938,
+            "min": -1.8274722179967284e-08,
+            "max": 0.0036586150527000427,
+            "sha256": "d6a0f8e94ccc2b4bc9d7b5a0f310366542534463eb52208345ef4e6f27ef4759"
+          },
+          "qh": {
+            "nonzero": 146347,
+            "min": -3.020194583314151e-08,
+            "max": 0.011794764548540115,
+            "sha256": "de61de929652578910f36be081de20de27352bb9c68ef9e94d613f2bd65c1af3"
+          },
+          "refl_10cm": {
+            "nonzero": 536648,
+            "min": -35.0,
+            "max": 58.58775329589844,
+            "sha256": "f4af5868e0560f44046cd06ce2fe1587e47c658a07bf3c9d03f04010c3b2002d"
+          }
+        },
+        "input_bytes": 71363264,
+        "input_sha256": "59cd4159bd73aa61cf7ea4c982a53218c0a9e420dd893c3a54a9167dd9ddc856",
+        "expected_bytes": 79818176,
+        "expected_sha256": "4e4f91e174099a42ea10868412d8a0a6f555a9ee616be977e1214ac2a6728783"
+      },
+      {
+        "case": "case-real-001800",
+        "ncol": 10952,
+        "nz": 49,
+        "dt": 12.0,
+        "dx": 3000.0,
+        "itimestep": [
+          1800
+        ],
+        "diagflag": [
+          1
+        ],
+        "do_radar_ref": 1,
+        "fields": {
+          "qc": {
+            "nonzero": 211955,
+            "min": -7.939920010358037e-08,
+            "max": 0.003837891388684511,
+            "sha256": "24bd0bd1da3a90347286548b57ed71cc3380f87c807f0910ced879a2f6f98c47"
+          },
+          "qr": {
+            "nonzero": 93123,
+            "min": -1.2695653595073964e-06,
+            "max": 0.011835192330181599,
+            "sha256": "52fc6e67f5c74effaaac7ba234c970e5e6378fb3517c864f3223c34bc132136e"
+          },
+          "qi": {
+            "nonzero": 240337,
+            "min": -2.2434088364775562e-08,
+            "max": 0.003040705807507038,
+            "sha256": "db1a48dc6bca757cb8ff6891acdee642f76a8afc277f69d367140c94224cf1e9"
+          },
+          "qs": {
+            "nonzero": 255911,
+            "min": -1.460092562410864e-07,
+            "max": 0.004901386331766844,
+            "sha256": "9b409dbf69bd72281a205035ceeffb8dfaa65368da1574853f4a230493ac5937"
+          },
+          "qg": {
+            "nonzero": 224646,
+            "min": -1.0309432951771669e-07,
+            "max": 0.003952828235924244,
+            "sha256": "1f5d3e75486d5c60b4b2ea7996560dde1f009927dc1a28277f0c88b73b52318c"
+          },
+          "qh": {
+            "nonzero": 163933,
+            "min": -3.7875345526572346e-08,
+            "max": 0.009518184699118137,
+            "sha256": "1201fb3787407ae9abc3a55a46e56b4cbd8098fcc22f7b3cf2d3595a81830eb7"
+          },
+          "refl_10cm": {
+            "nonzero": 536648,
+            "min": -35.0,
+            "max": 63.18077087402344,
+            "sha256": "9933188f02fcab487667cb6d0a9b9a52890df8855c8d236ec9bb4c6362144022"
+          }
+        },
+        "input_bytes": 71363264,
+        "input_sha256": "56ccd7192cecd3f2262a6241e1c391de368f046b92fc1a2f653fd06044c5d3cd",
+        "expected_bytes": 79818176,
+        "expected_sha256": "1100cfd5f5b86bec1ba001f0289bdbb7593b6c2b4fc26384c355e9ef620976a3"
+      }
+    ],
+    "command": "GPUWM_WRF_EXACT=1 GPUWM_WRF_GLIBC=2.43 python tools/gsfcgce4ice_wrf461_oracle/run_gpu.py ORACLE_DIR --json strict.json"
+  },
+  "forecast": {
+    "entry": "gpuwm go --wrfinput NATIVE_INPUT_DIR --run-seconds 21600",
+    "valid_start": "2024-05-25T18:00:00Z",
+    "valid_end": "2024-05-26T00:00:00Z",
+    "mass_grid": [
+      49,
+      150,
+      150
+    ],
+    "dx_m": 3000,
+    "dt_s": 12,
+    "steps": 1800,
+    "hourly_history_frames": 7,
+    "physics": {
+      "mp_physics": 7,
+      "ra_lw_physics": 4,
+      "ra_sw_physics": 4,
+      "ra_rrtmg_variant": "rrtmg_legacy",
+      "bl_pbl_physics": 1,
+      "sf_sfclay_physics": 1,
+      "sf_surface_physics": 2,
+      "cu_physics": 0,
+      "use_mp_re": 1,
+      "use_theta_m": 0
+    },
+    "native_real_exe_initialization": true,
+    "arithmetic": "default fast CUDA math",
+    "visual_review": {
+      "schema": "mp7-real-visual-review-v1",
+      "inspected_by_eye": true,
+      "hours": [
+        "2024-05-25T19:00:00Z",
+        "2024-05-25T21:00:00Z",
+        "2024-05-25T23:00:00Z"
+      ],
+      "products": [
+        "composite_reflectivity",
+        "temperature_2m"
+      ],
+      "renderer": "owned rw_compare dispatches owned rw_wrfbatch through gpuwm.rustwx.renderer_env",
+      "renderer_receipt": "render-19-21-23.json",
+      "figures": [
+        {
+          "path": "figures/19-21-23/d01-3km/compare_panels_2m_temperature/2024-05-25/mp7-t2m.png",
+          "sha256": "f4ef88ad80820302bea022c5f452cab05bd7f95b2b9f7fdb9bbe4d7d18726452",
+          "receipt": "figures/19-21-23/d01-3km/compare_panels_2m_temperature/2024-05-25/mp7-t2m.json",
+          "receipt_sha256": "57a84e7ad32cb5582e0edc2362d4301e8e400ced63f000bf2195b2ba41acb5e8",
+          "valid_times": [
+            "2024-05-25T19:00:00+00:00",
+            "2024-05-25T21:00:00+00:00",
+            "2024-05-25T23:00:00+00:00"
+          ],
+          "product": "t2m"
+        },
+        {
+          "path": "figures/19-21-23/d01-3km/compare_panels_composite_reflectivity/2024-05-25/mp7-refc.png",
+          "sha256": "6c7c3385909668fe1d0e642a10f39e01967a79da035350d3070ad7eb068e35bd",
+          "receipt": "figures/19-21-23/d01-3km/compare_panels_composite_reflectivity/2024-05-25/mp7-refc.json",
+          "receipt_sha256": "aa68e137447c564b309945e3f1e7bb2050db8184bd3c846d53528cf521b26dde",
+          "valid_times": [
+            "2024-05-25T19:00:00+00:00",
+            "2024-05-25T21:00:00+00:00",
+            "2024-05-25T23:00:00+00:00"
+          ],
+          "product": "refc"
+        }
+      ],
+      "observation_provenance": "observation-provenance.json",
+      "actual_mrms_times": [
+        "2024-05-25T19:00:40Z",
+        "2024-05-25T21:00:40Z",
+        "2024-05-25T23:00:43Z"
+      ],
+      "mrms_time_match_seconds": 120,
+      "temperature_station_count_per_panel": 61,
+      "finding": "At 19Z both forecasts are largely clear while MRMS has weak southwest echoes. At 21Z native WRF and CUDA show nearly identical weak northern and southwest echoes but both miss the observed southwest convection. At 23Z both forecasts show nearly the same stronger north-south convective line and anvil pattern; MRMS instead has more separated cells and broader precipitation extending farther east. The temperature sheets show matching broad warm gradients and storm cold-pool structure in the two forecasts, with visible local differences against station observations. There is no visible GPU-specific seam or gross field failure. These shared case errors are not a claim of observation skill.",
+      "whole_model_bitwise_claim": false,
+      "observation_skill_claim": false,
+      "physics_tuned_to_case": false
+    },
+    "observation_skill_claim": false,
+    "automatic_verifier": {
+      "installed_bridge": "October rw_verify failed inventory with invalid verification time 2",
+      "current_local_build": "accepts all seven actual forecast histories; no source fix required",
+      "receipt": "verifier-current-all-hours.json",
+      "remedy": "GPUWM_RW_VERIFY=LANE/native/rustwx-target/release/rw_verify",
+      "observation_scores_claimed": false
+    }
+  },
+  "checkpoint_continuation": {
+    "restored_time": "2024-05-25T21:00:00Z",
+    "continued_steps": 900,
+    "history_frames": 3,
+    "numeric_words": 165494157,
+    "all_files_byte_identical": true
+  },
+  "option_off": {
+    "selector": 8,
+    "history_frames": 7,
+    "numeric_words": 201023033,
+    "all_files_byte_identical": true,
+    "scope": "same six-hour real case; both arms explicitly disable HAILCAST; 205 other assembled CUDA units also unchanged"
+  },
+  "nests_and_members": {
+    "stock_namelist_feedback": [
+      0,
+      1
+    ],
+    "gpu_nest_edge_feedback": [
+      0,
+      1
+    ],
+    "member_specific_nonzero_hail": true,
+    "production_member_driver_sizes": [
+      1,
+      4
+    ],
+    "execution": "original GPU member path; no packed MP7 microphysics claim",
+    "mixed_scheme_edges": "refused by named unvalidated hail-water folding constraint"
+  },
+  "speed": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "stage": "production prep + MP7 + finish, 40x64x64, dt=3 s, 2 warmup, 10 evolving timed calls, default math, no output-due reflectivity",
+    "mp7_median_ms": 1.3561279773712158,
+    "nearest_scheme": 6,
+    "nearest_scheme_median_ms": 1.5112000107765198,
+    "ratio": 0.8973848383407427,
+    "shared_gpu_outliers_retained": true,
+    "whole_forecast_median_step_ms": 25.913
+  },
+  "paper_evidence": {
+    "delivery": "WRF-PORTS-2026-11-01/evidence/port-mp7-goddard4ice",
+    "lane_report": "WRF-PORTS-2026-11-01/port-mp7-goddard4ice.md",
+    "commands": "COMMANDS.md",
+    "sha256": {
+      "real-strict-final.json": "a3e29b74c0c291c9a13fc494f70dd3b9ec824c22dbe0881e62be5df0ff615e21",
+      "real-capture-coverage-final.json": "ba95c3895a3df416711d319cbad6e6ed0997f31abd98442da9459c8722cd116a",
+      "native-transfer.json": "f744e516ff9bd744633ee70c72f61d50bcd467498943698f79abbcc2d3c2e0f5",
+      "real-input-provenance.json": "a2b6446534824cf7450b34fc25cbfa675f467a3bea50f3c08d725f838ce3474e",
+      "real-namelist.input": "36e4b39a079b5a305d1ff89ba7e3950e3dc5c721279f96814967f52fbda1bdbc",
+      "gpu-real-namelist.input": "809c673940135f487ce8eeae1017bc066ea046324af5f2fdc2b440fe29a0e1fc",
+      "gpu-real-forecast-v6.log": "85c853f13c8f5d18b1080a4192a6365ff9ec09edcc17c5cb52d8102fac16f6ff",
+      "real-gpu-history.json": "47995e416e0bbdd870d1a3eb5190d62b095ba83f5d76cf55692de98d64f2868c",
+      "real-checkpoint-all-frames.json": "daa9331203e626e1b7c8d0b9ca207d7f991ad1f4a8188c88d9f83653c674cc92",
+      "option-off-whole-forecast.json": "3e2f26e1ba00617b7b0cb74b6f7904c16f2fe632a19950bad6e886cefe34bf88",
+      "stage-fast-mp7.json": "ae732b5dc84a62abb35fd7639e6c98534d8e78b0b6b0e761b6b8f8be57005f4e",
+      "stage-candidate-mp6.json": "cecfa745ff7b99898697a4b805fb1ff18312173e03c54ef14659ce6327239cfa",
+      "whole-rust-build.json": "cff3633f5a1ca264e11f7a75e7aed3931791a9eb3da5fc60604a5490f61503c7",
+      "visual-review-final.json": "9997cb0db23cc441061dae4b8291f36c9e17b94ab9424d8d47dba4f42c4d588a",
+      "verifier-current-all-hours.json": "fbdf8682253bf59c1ebc640bd8ff3bafe1b13e34886a0f5d9cef4c7c0ea69770"
+    }
+  },
+  "scope": "active WRF_CHEM=0 entry; no simplified replacement; supported is code qualification, not observation validation; native WRF normalizes microphysics across nests at share/module_check_a_mundo.F:774-790",
+  "current_qualification": {
+    "receipt": "qualification-skeptic2.json",
+    "scope": "Second-skeptic moist-theta integration fix and regenerated retained native capture. The original strict replay packets below were deleted before the evidence-retention ruling and are superseded by this retained replay, with its new MPI decomposition and word count."
+  }
+}

@@ -221,7 +221,7 @@ def test_the_nest_prepares_and_its_receipt_names_the_island(capsys, monkeypatch)
     # The warning is said once per process for a (domain, cells) key, and
     # tests/test_masked_stencil_native.py maps this island too: run before
     # this file on the same worker it used the announcement up, and this
-    # cell read no warning (a development machine's full CPU leg; reproduced by running
+    # cell read no warning (test host 4's full CPU leg; reproduced by running
     # the two files in that order).  The cell asks for the first
     # announcement, so it starts from none.
     from woof.ingest import hrrr as hrrr_ingest

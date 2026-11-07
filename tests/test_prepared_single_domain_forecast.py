@@ -389,13 +389,15 @@ def test_prepared_runner_capability_query_is_side_effect_free_without_run_args(
     assert payload["supported_sources"] == sorted({
         "20crv3", "20crv3-cf", "aifs", "aigefs", "aigfs",
         "ecmwf-ens", "ecmwf-open-data", "era5", "era5-l137", "gdas", "gefs",
-        # lane/cap-gefs-archive (6a3b8fd50bf): the indexed GEFS retrospectives.
+        # development branch (6a3b8fd50bf): the indexed GEFS retrospectives.
         "gefs-reforecast", "gefs-reforecast-weekly", "gefs-v11", "gefs-v11-flat",
-        "gem-gdps", "gfs", "hex-global", "hrrr", "hrrr-native", "hrrr-prs", "icon-d2", "icon-eu",
+        "gem-gdps", "gem-hrdps", "gem-rdps", "gfs", "hex-global", "hrrr", "hrrr-native", "hrrr-prs", "icon-d2", "icon-eu",
         "icon-global", "mapped", "rap", "rap-native", "rrfs",
         # 2.9.7: IFS HRES open data at 0.1 degree (E-SRC) and the RRFS
         # ensemble member with its deterministic companion (S9).
-        "ecmwf-open-data-0p1", "rrfs-ens"} | model_table_rows)
+        "ecmwf-open-data-0p1", "rrfs-ens",
+        # 3.0: GFS pressure-level files and the HAFS parent/storm-nest rows.
+        "gfs-pressure", "hafs-a", "hafs-b"} | model_table_rows)
     assert payload["physics_profile_ids"] == list(runner.PHYSICS_PROFILES)
     assert payload["report_schema"] == runner.REPORT_SCHEMA
     assert payload["window"]["limit_policy"] \
@@ -416,6 +418,8 @@ def test_prepared_runner_capability_query_is_side_effect_free_without_run_args(
         "gdas": "uniform-positive-whole-hour",
         "gefs": "uniform-positive-whole-hour",
         "gem-gdps": "uniform-positive-whole-hour",
+        "gem-hrdps": "uniform-positive-whole-hour",
+        "gem-rdps": "uniform-positive-whole-hour",
         "icon-eu": "uniform-positive-whole-hour",
         "icon-d2": "uniform-positive-whole-hour",
         "rap": "uniform-positive-whole-hour",
@@ -2421,7 +2425,7 @@ def test_a_disagreeing_history_interval_flag_is_refused_not_ignored():
     """Open-defects ledger A15: --history-interval-seconds that disagrees
     with the hash-bound experiment used to warn and then write the
     experiment's cadence; it is refused now, naming the flag.  The
-    run-length half of A15 is retired by lane/fp-door-run-length-fetch:
+    run-length half of A15 is retired by development branch:
     a requested --run-seconds is applied to the experiment and executed
     (tests/test_prepared_run_length.py), so it is no longer refused."""
     exp = load_experiment(ROOT / "configs" / "gfs_wrf_direct_proof.toml")
@@ -2506,11 +2510,12 @@ def test_an_unimplemented_mp_selector_still_refuses_naming_the_switch(
     assert text.count("mp_physics = 6") == 1
     bad = tmp_path / "unimplemented-mp.toml"
     bad.write_text(
-        text.replace("mp_physics = 6", "mp_physics = 95"),
+        # 95 (old Eta Ferrier) joined with its 3.0 port; this id names no scheme.
+        text.replace("mp_physics = 6", "mp_physics = 12345"),
         encoding="utf-8")
     with pytest.raises(ValueError, match="mp_physics") as caught:
         load_experiment(bad)
-    assert "95" in str(caught.value)
+    assert "12345" in str(caught.value)
 
     from woof.physics_compat import (
         PhysicsCapabilityError,
@@ -2518,7 +2523,7 @@ def test_an_unimplemented_mp_selector_still_refuses_naming_the_switch(
     )
     selectors = runner.single_domain_runtime_switches(
         runner.WSM6_PROFILE_ID)
-    selectors["mp_physics"] = 95
+    selectors["mp_physics"] = 12345
     with pytest.raises(PhysicsCapabilityError, match="mp_physics"):
         validate_physics_capabilities(selectors)
 
@@ -2637,8 +2642,12 @@ _EXPECTED_280_PREFLIGHT_REFUSALS = {
         "registry physics of components.pbl.options.ysu (changed)",
         "registry physics of components.surface_layer.options.classic-mm5 "
         "(changed)",
+        # 3.0: horizontal scalar orders 2-6 carried (2582c065c99).
+        "registry physics of parameters.h_sca_adv_order (changed)",
         # golden/ports-rad: icloud gained the value 2 (declared).
         "registry physics of parameters.icloud (changed)",
+        # 3.0: MYNN's icloud_bl cloud coupling is a declared parameter.
+        "registry physics of parameters.icloud_bl (changed)",
         "registry physics of parameters.moist_cq (changed)",
     ],
     None: [
@@ -2646,8 +2655,12 @@ _EXPECTED_280_PREFLIGHT_REFUSALS = {
         "registry physics of components.pbl.options.ysu (changed)",
         "registry physics of components.surface_layer.options.classic-mm5 "
         "(changed)",
+        # 3.0: horizontal scalar orders 2-6 carried (2582c065c99).
+        "registry physics of parameters.h_sca_adv_order (changed)",
         # golden/ports-rad: icloud gained the value 2 (declared).
         "registry physics of parameters.icloud (changed)",
+        # 3.0: MYNN's icloud_bl cloud coupling is a declared parameter.
+        "registry physics of parameters.icloud_bl (changed)",
         "registry physics of parameters.moist_cq (changed)",
     ],
 }
@@ -2703,8 +2716,15 @@ def test_a_proof_prepared_under_the_280_registry_resolves_at_preflight(
         ". Prepare again", 1)[0].split("; ")
     expected = _EXPECTED_280_PREFLIGHT_REFUSALS[physics_profile]
     renamed = _woof_renamed_part_refusals()
-    assert [line for line in refused
-            if line in expected or line not in renamed] == expected
+    # (1.1.6) the preflight names a capped number of parts and folds the rest into "and N more"; the parts
+    # whose source the rename changed take places in that list, so an expected line can fall into the
+    # folded tail (engine 2.9.12 added parts, and parameters.moist_cq became "and 1 more")
+    folds = [re.fullmatch(r"and (\d+) more", line) for line in refused]
+    folded = sum(int(fold.group(1)) for fold in folds if fold)
+    kept = [line for line, fold in zip(refused, folds)
+            if not fold and (line in expected or line not in renamed)]
+    assert kept == expected[:len(kept)]
+    assert len(expected) - len(kept) <= folded
 
     for receipt in (proof["physics"], proof["export"]["physics"]):
         receipt["registry_sha256"] = "e" * 64
@@ -3991,7 +4011,7 @@ def test_output_claim_accepts_the_empty_folder_the_stage_door_just_claimed(
     That is not hypothetical.  `woof sim`'s run-folder claim is
     create-exclusive on purpose (two launches in one second must not
     share a folder), so by the time it dispatches, the stamped folder
-    EXISTS and is empty.  Against the real artifact on a development machine,
+    EXISTS and is empty.  Against the real artifact on test host 1,
     the merged 2.5.0 tip refused its own stamped folder and the forecast
     never started:
 
@@ -4585,7 +4605,7 @@ def test_the_stability_abort_names_the_dominant_term_and_the_remedy():
 
 def test_the_materializer_accepts_the_wizard_s_own_advisory_fetch_table(
         tmp_path):
-    """A development machine #2: `unknown table(s)/top-level key(s) ['fetch']`.
+    """test host 3 #2: `unknown table(s)/top-level key(s) ['fetch']`.
 
     The wizard writes that advisory table into every config it emits,
     and `woof check` and `rw-wps` both accept it -- only the

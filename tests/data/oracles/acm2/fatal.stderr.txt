@@ -1,0 +1,4 @@
+STOP 3
+ORACLE-FATAL <stdin>: RIBX never exceeds RIC, RIB(i,kte) =    0.00000000      THETAV(i,1) =    301.429932      MOL=  -15.3931665      TCONV =    0.00000000      WST =    1.63678324      KMIX =           30  UST =   0.300000012      TST =  -0.431045234      U,V =    3.52826977       5.06687053E-02  I,J=           2           1
+ORACLE-FATAL line 415
+fatal fixture exit status: 3

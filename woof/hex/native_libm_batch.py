@@ -91,7 +91,7 @@ def _library():
     # Source-addressed, atomically published; neither a compiler nor a build is
     # required when the same bridge already exists in the native CPU cache.
     #
-    # THE BREAKAGE THIS PREVENTS (30 km globe over 4 cards on the V5090 box, 2026-10-27): a host without
+    # THE BREAKAGE THIS PREVENTS (30 km globe over 4 cards on the reference system box, 2026-10-27): a host without
     # rustc (every WOOF run box: the image never carries the toolchain) had no bridge, so every batch fell
     # back to one ctypes call per element on the GIL: the vertical velocity damping of each rank's mesh took
     # ~25 s of the dycore build at 1.7 cores for 4 ranks, and every new region mesh paid it.  The wheel now

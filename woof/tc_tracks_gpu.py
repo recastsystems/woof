@@ -23,7 +23,7 @@ def main(request):
     peak=[0];stop=threading.Event()
     def sample():
         while not stop.is_set():
-            p=subprocess.run(['nvidia-smi','--query-compute-apps=pid,used_memory','--format=csv,noheader,nounits'],capture_output=True,text=True)
+            p=subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(),'--query-compute-apps=pid,used_memory','--format=csv,noheader,nounits'],capture_output=True,text=True)
             for line in p.stdout.splitlines():
                 parts=line.split(',')
                 if len(parts)==2 and parts[0].strip()==str(os.getpid()):

@@ -268,7 +268,7 @@ def test_sealed_urban_carrier_reads_back_to_the_carrier_it_sealed(
     assert (echo["urban_legend"], echo["use_wudapt_lcz"]) == ("urban", lcz)
     # The table reader alone still refuses them: they are no
     # [static.highres] key.
-    # (The refusal lists every unknown key; with lane/sf-landsurface the
+    # (The refusal lists every unknown key; with development branch the
     # SLUCM echo also records urban_fraction, listed first.)
     with pytest.raises(ValueError, match="does not have a key .*'urban_legend'"):
         parse_static_table({"highres": {k: v for k, v in echo.items()
@@ -281,7 +281,7 @@ def test_sealed_urban_carrier_reads_back_to_the_carrier_it_sealed(
     assert static_highres_identity(back) == static_highres_identity(cfg)
     assert prepared_highres_settings_match(echo, back)
     # Without the run, the legend still reads back.  The identity follows
-    # it only for SLUCM (option 1): since ae393b7c3 (lane/sf-landsurface)
+    # it only for SLUCM (option 1): since ae393b7c3 (development branch)
     # a SLUCM carrier records its urban_fraction algorithm, so its content
     # names its model, and a carrier is identified by its urban model as
     # well as its legend (coordinator ruling, 2026-10-07).  A BEP/BEM
@@ -349,7 +349,7 @@ def test_a_slucm_carrier_restores_only_under_slucm_on_the_same_legend(tmp_path):
     """A carrier whose content depends on the urban model is identified by
     the model as well as the legend (coordinator ruling, 2026-10-07).
 
-    Since ae393b7c3 (lane/sf-landsurface) a SLUCM carrier (option 1) seals
+    Since ae393b7c3 (development branch) a SLUCM carrier (option 1) seals
     its urban_fraction algorithm: the built fractions SLUCM reads.  Reused
     under BEP or BEP+BEM on the same legend those fractions would be read
     wrong, so the reader refuses; under SLUCM it restores.  Carriers of the

@@ -34,3 +34,6 @@ crc32fast = "1.2"
 cudarc = { version = "=0.19.8", optional = true, default-features = false, features = ["std", "driver", "nvrtc", "dynamic-loading", "cuda-13000"] }
 
 [workspace]
+
+[patch.crates-io]
+cudarc = { path = "../rustwx/vendor/crates-io/cudarc-0.19.8" }

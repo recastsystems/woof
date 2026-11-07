@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from _run_config_fake import run_config_fake
 
 from conftest import requires_gpu
 
@@ -55,7 +56,7 @@ def test_real_adapter_routes_cold_condensate_from_its_kernel(ice_active, monkeyp
     class Module:
         def get_function(self,name): return Function(module.get_function(name))
     monkeypatch.setattr(gf,"_gf_module",lambda *args,**kwargs:Module())
-    cfg=NS(dt=float(sf["dt"][col]),dx=float(sf["dx"][col]),
+    cfg=run_config_fake(dt=float(sf["dt"][col]),dx=float(sf["dx"][col]),
            ishallow=int(sf["ishallow"][col]),clos_choice=int(sf["ichoice"][col]),lightning_option=0)
     result=adapter(atmosphere=atmosphere,fields=fields,state=state,cfg=cfg)
     liquid=saved[0][0,gf._OUT_LEV.index("rqccuten"),:,None,None]

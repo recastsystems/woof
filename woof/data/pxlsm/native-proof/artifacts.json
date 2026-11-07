@@ -1,0 +1,62 @@
+[
+  {
+    "path": "<scratch>/port-sf7-pxlsm/native-run/namelist.input",
+    "bytes": 1514,
+    "sha256": "5324a9b4bb1fde9e6e3d88a2f37220af950462590466698b9dbc27717348ec6c"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/native-run/namelist.output",
+    "bytes": 86590,
+    "sha256": "048f520fe5dccde6ad88c83fcfcf64c4d4f67f57d13fc781742cfbda950aed56"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/native-run/rsl.error.0000",
+    "bytes": 18388,
+    "sha256": "ced58b72aa343e74fa6dd83a21eba8c21289aad82b171348461ae257282f045e"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/native-run/rsl.out.0000",
+    "bytes": 18379,
+    "sha256": "154eadab90d7d2dbd039178de3a686cc7194d0507a61f012d0079a8affefe9c7"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/native-run/wrfbdy_d01",
+    "bytes": 2578723,
+    "sha256": "6e813695e4250347ae2a3e7de39758aa91767604026a9ed9c12ec5acc0a1077e"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/native-run/wrfinput_d01",
+    "bytes": 7594741,
+    "sha256": "3142ebc393cb8c59d85119a7280f8ef6cf56c626b9ce44811af81970a8fa4946"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000001.bin",
+    "bytes": 2277696,
+    "sha256": "d8fd603e0dde63802c248a98972d8b0bd76900eff610c8e41e8894c7cad9c03c"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000061.bin",
+    "bytes": 2277696,
+    "sha256": "46afda940b62ce1c6e4bf42121af0654972e3293e1c239e2e84da95cbf9d4e62"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000121.bin",
+    "bytes": 2277696,
+    "sha256": "837cc07ea6e454fc1ef25cdd06b063a0f393df2db0a8e4461d0968a5598362b8"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000001.bin",
+    "bytes": 700800,
+    "sha256": "e1399dd066a42014bca0fe872b6632ca8b34e6d5029362db1abe6cb727bc8411"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000061.bin",
+    "bytes": 700800,
+    "sha256": "2e47ceaa1eb837c8753026bde89411e414b9dec22a507b45835e6f8118276cdf"
+  },
+  {
+    "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000121.bin",
+    "bytes": 700800,
+    "sha256": "92ebec9b47f875df3027bc932c03581b3a6484b6eb5406a94eda92d6f843115b"
+  }
+]

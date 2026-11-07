@@ -14,8 +14,8 @@ What runs (all Rust, all cores):
   geography root is given): the fork static (mpas_init_atm_static.F:110-1424,1957-2120);
 * ``prepare``: horizontal fields, vertical grid (v8.3.1 L60, cases.F:4448-4905) and the
   init carrier;
-* ``case7``: the initial state (cases.F:4043-7742) with RUC's nine soil nodes
-  (init_soil_properties_ruc), TEMPO aerosols source-first and first-guess hydrometeors;
+* ``case7``: the initial state (cases.F:4043-7742) with the selected land scheme's soil layers
+  (the producer's soil recipe), TEMPO aerosols source-first and first-guess hydrometeors;
 * ``case9`` per boundary time (cases.F:7541-8986) on a carrier made from the case-7 init;
 * the GSL orographic statistics (rw_mpas_gsl_oro) when the geography holds topo_ugwp.
 
@@ -67,7 +67,7 @@ def producer_for_suite(suite: str | None, *, pin_set: str | None = None) -> tupl
             key = route["init_producer"]
             if key not in producers:
                 raise RrfsInitError(f"route names missing init producer {key!r}")
-            return key, producers[key]
+            return key, _land_recipe(producers[key], route, suite)
     for key, row in producers.items():
         route = load_table().get(row["physics_table_key"], {})
         if pin_set is not None and route.get("pin_set") != pin_set:
@@ -75,14 +75,85 @@ def producer_for_suite(suite: str | None, *, pin_set: str | None = None) -> tupl
         if pin_set is None and not route_default_for(route, suite):
             continue
         if suite in row["suite_routes"]:
-            return key, row
+            return key, _land_recipe(row, route, suite)
     if pin_set is not None:
         raise RrfsInitError(f"no init producer for suite {suite!r} and pin set {pin_set!r}")
     return None
 
 
+def _land_recipe(producer, route, suite):
+    selected = route['suites'][route['suite_routes'][suite]]['config_lsm_scheme']
+    soil = producer.get('soil_by_scheme', {}).get(selected)
+    return producer if soil is None else {**producer, 'soil': soil}
+
+
 def producer_suites() -> set[str]:
     return {suite for row in load_producers()["producers"].values() for suite in row["suite_routes"]}
+
+
+def producer_pin_arguments(forecast_args: Sequence[str]) -> list[str]:
+    """Keep a composed init and boundary job on the forecast's explicit producer pin."""
+    selected = None
+    items = iter(forecast_args)
+    for item in items:
+        flag, equals, value = item.partition("=")
+        if flag == "--physics-pin-set":
+            selected = value if equals else next(items, None)
+    return [] if selected is None else ["--physics-pin-set", selected]
+
+
+def add_boundary_recipe_argument(parser: Any) -> None:
+    parser.add_argument("--boundary-recipe", choices=("default", *load_producers()["boundary_recipes"]),
+                        default=None, help="boundary hydrometeors by parent model (default: the producer's "
+                        "existing recipe); noaa follows exrrfs_lbc.sh and can produce edge echoes with GFS")
+
+
+def require_boundary_producer(choice: str | None, producer: Any) -> None:
+    if choice not in (None, "default") and producer is None:
+        raise RrfsInitError(f"--boundary-recipe {choice} needs an init producer: this route's rw_mpas_lbc "
+                            "does not write the condensate and number fields the recipe selects, so accepting "
+                            "it would silently drop those parent fields. Select a suite with an init producer")
+
+
+def boundary_recipe(row: Mapping[str, Any], choice: str | None,
+                    intervals: Sequence[tuple[str, Path]]) -> tuple[Mapping[str, Any], dict[str, Any]]:
+    """Resolve one table recipe from the atmospheric parent's WPS metadata, never its filename.
+
+    Surface and upper-air donors may carry other map_source strings. TT identifies the
+    atmospheric parent. A single case-9 job has one set of switches, so mixed recipes
+    must not silently give an endpoint another parent's fields.
+    """
+    if choice in (None, "default"):
+        return row, {"name": "default", "config": dict(row["lbc"])}
+    import re
+    from ...wps_intermediate import WpsIntermediateReader
+
+    recipes = load_producers()["boundary_recipes"]
+    if choice not in recipes:
+        raise RrfsInitError(f"unknown boundary recipe {choice!r}; choose {', '.join(recipes)}")
+    recipe = recipes[choice]
+    parents = []
+    configs = []
+    for when, met in intervals:
+        with WpsIntermediateReader(met) as reader:
+            source = next((field.map_source for field in reader.iter_fields(load_values=False)
+                           if field.field == "TT"), None)
+        if source is None:
+            raise RrfsInitError(f"{met} has no TT field naming the atmospheric parent; selecting boundary "
+                                "hydrometeors from a surface donor could discard the parent's condensate")
+        parent, match = next(((name, value) for name, value in recipe["parents"].items()
+                              if any(re.fullmatch(pattern, source, re.IGNORECASE)
+                                     for pattern in value.get("map_sources", []))),
+                             ("other", recipe["otherwise"]))
+        parents.append({"valid_time": when, "map_source": source, "parent": parent})
+        configs.append(match["config"])
+    if not configs:
+        return row, {"name": choice, "applied": False, "reason": "no boundary times requested"}
+    if any(config != configs[0] for config in configs[1:]):
+        raise RrfsInitError("boundary parents select different hydrometeor settings within one series; "
+                            "case 9 uses one setting for all times and would discard fields at some endpoints")
+    lbc = dict(row["lbc"], **configs[0], source=recipe["source"])
+    return dict(row, lbc=lbc), {"name": choice, "parents": parents, "config": lbc}
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +199,10 @@ def declarations(row: Mapping[str, Any], start_time: str, part: str) -> dict[str
         raise RrfsInitError(f"{row['declarations']} is for {document.get('source_pin')}, not {row['source_pin']}")
     section = document[part]
     variables = json.loads(json.dumps(section["variables"]).replace("@START_TIME@", start_time))
-    return dict(section, variables=variables)
+    result = dict(section, variables=variables)
+    if 'nSoilLevels' in section.get('dimensions', {}):
+        result['dimensions'] = {**section['dimensions'], 'nSoilLevels': row['soil']['n_soil_layers']}
+    return result
 
 
 def specified_levels_text(row: Mapping[str, Any]) -> str:
@@ -191,7 +265,8 @@ def deep_soil_choice(row: Mapping[str, Any], choice: str | None = None) -> tuple
 
 
 def static_job(row: Mapping[str, Any], *, grid: Path, geog: Path, out: Path, valid_time: str,
-               tile_workers: int | None = None, deep_soil: str | None = None) -> dict[str, Any]:
+               tile_workers: int | None = None, deep_soil: str | None = None,
+               supersample_30s: int = 1) -> dict[str, Any]:
     recipe = row["static"]
     _, chosen = deep_soil_choice(row, deep_soil)
     datasets = dict(recipe["geog"], soil_temperature=chosen["dataset"])
@@ -209,7 +284,7 @@ def static_job(row: Mapping[str, Any], *, grid: Path, geog: Path, out: Path, val
                    "noahmp": recipe["noahmp"], "gwd": recipe["gwd"],
                    "landuse_label": recipe["landuse_label"], "native_init": True},
         "supersample": recipe["supersample"], "supersample_landuse": recipe["supersample_landuse"],
-        "supersample_30s": recipe["supersample_30s"], "host_memory_limit_bytes": None,
+        "supersample_30s": max(int(recipe["supersample_30s"]), supersample_30s), "host_memory_limit_bytes": None,
         "tile_workers": tile_workers, "receipt_path": str(out.with_name(out.name + ".build.json")),
         "provenance": f"woof hex init, RRFS producer {row['source_pin'][:8]} static",
         "valid_time": valid_time, "nominal_dx_m": None, "clobber": True,
@@ -273,6 +348,8 @@ def case7_jobs(row: Mapping[str, Any], *, static: Path, met: Path, start_time: s
                     "git_version": f"gpuwm-hex-{version}" if version else "woof hex"}}}
     if "seaice_cleanup" in c:
         case7["config"]["seaice_cleanup"] = c["seaice_cleanup"]
+    if "absent_numbers" in c:
+        case7["config"]["absent_numbers"] = c["absent_numbers"]
     return [prepare, case7]
 
 
@@ -288,7 +365,7 @@ def case9_jobs(row: Mapping[str, Any], *, init: Path, start_time: str, intervals
     times = [t for t, _ in intervals]
     case9 = {"stage": "case9", "config": {
         "hydrometeors_rrfs": lbc["hydrometeors_rrfs"], "hydrometeors_gfs": lbc["hydrometeors_gfs"],
-        "tempo_rap": c["tempo_rap"], "aerosolaware": lbc["aerosolaware"], "smoke": c["smoke"],
+        "absent_numbers": lbc["absent_numbers"], "tempo_rap": c["tempo_rap"], "aerosolaware": lbc["aerosolaware"], "smoke": c["smoke"],
         "dust": c["dust"], "gocart_path": str(aerosols), "gocart_levels": c["gocart_levels"],
         "grid_path": str(carrier), "out_dir": str(out_dir), "start_time": times[0], "stop_time": times[-1],
         "intervals": [{"valid_time": t, "met_path": str(p)} for t, p in intervals],
@@ -297,7 +374,40 @@ def case9_jobs(row: Mapping[str, Any], *, init: Path, start_time: str, intervals
         "coef_3rd_order": c["coef_3rd_order"], "fg_interval_seconds": lbc["fg_interval_seconds"],
         "oned_underflow": c["oned_underflow"], "attr_overrides": {},
         "provenance": f"woof hex init, RRFS producer {row['source_pin'][:8]} boundaries"}}
+    # Omission is the worker's established true default; only an explicit recipe overrides it.
+    if "aerosol_climatology" in lbc:
+        case9["config"]["aerosol_climatology"] = lbc["aerosol_climatology"]
     return [artifact, case9]
+
+
+def init_on_template(*, suite: str, template: Path, met: Path, out: Path, start_time: str,
+                     nfglevels: int, nfgsoillevels: int) -> dict[str, Any]:
+    """Case 7 on a cut of an existing producer init, retaining its vertical grid cell for cell.
+
+    Preparing the cut again smooths its terrain with different neighbours and changes its vertical grid.
+    A blend would then add fields held at different heights. The whole-mesh init already carries the
+    prepare fields, so its cut serves as static, capsule and reference for case 7 alone.
+    """
+    producer = producer_for_suite(suite)
+    if producer is None:
+        raise RrfsInitError(f"{suite} names no init producer for the shared vertical template")
+    key, row = producer
+    missing = static_missing_fields(template, row)
+    if missing:
+        raise RrfsInitError(f"the cut producer template {template} lacks {', '.join(missing)}")
+    worker = resolve_worker(row)
+    aerosols = resolve_aerosol_table(None)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    jobs = case7_jobs(row, static=template, met=met, start_time=start_time,
+                     nfglevels=nfglevels, nfgsoillevels=nfgsoillevels, artifact=template,
+                     out=out, levels_file=out.parent / "unused-levels.txt", aerosols=aerosols,
+                     regional=True)[1:]
+    stages = run_jobs(worker, jobs, out.parent / "template-init-logs")
+    _refuse_cold_land_soil(out, row, nfgsoillevels)
+    result = {"producer": key, "vertical_template": str(template), "stages": stages,
+              "first_guess": {"nfglevels": nfglevels, "nfgsoillevels": nfgsoillevels}}
+    out.with_name(out.name + ".provenance.json").write_text(json.dumps(result, indent=2) + "\n")
+    return result
 
 
 def run_jobs(worker: Path, jobs: Sequence[Mapping[str, Any]], logs: Path) -> list[dict[str, Any]]:
@@ -320,6 +430,83 @@ def run_jobs(worker: Path, jobs: Sequence[Mapping[str, Any]], logs: Path) -> lis
             result = {"stdout": completed.stdout.decode("utf-8", "replace")[-4000:]}
         receipts.append({"stage": job["stage"], "seconds": round(time.monotonic() - started, 3),
                          "log": str(log), "result": result})
+    return receipts
+
+
+def run_boundary_jobs(worker:Path,jobs:list[dict[str,Any]],logs:Path,*,wait_for_all:bool=False)->list[dict[str,Any]]:
+    """Return after the initial interpolation pair; the producer owns later hours.
+
+    Old workers retain their synchronous contract. The new worker publishes the
+    consumer's existing atomic schedule and durable, hashed per-file markers.
+    """
+    import os
+    import sys
+    from ...lbc_stream import READY, atomic_json, file_name
+
+    probe=subprocess.run([str(worker),"--capabilities"],capture_output=True,text=True)
+    try:
+        streaming=probe.returncode==0 and json.loads(probe.stdout).get("lbc_ready_markers") is True
+    except (ValueError,AttributeError):
+        streaming=False
+    if wait_for_all or not streaming or len(jobs[-1]["config"]["intervals"])<2:
+        return run_jobs(worker,jobs,logs)
+    receipts=run_jobs(worker,jobs[:-1],logs)
+    job=json.loads(json.dumps(jobs[-1]))
+    output=Path(job["config"]["out_dir"])
+    work=output/".rrfs-producer"
+    if (work/"running.json").exists() and not (work/"complete.json").exists() and not (output/"lbc-failed.json").exists():
+        previous=json.loads((work/"running.json").read_text())
+        try:
+            os.kill(previous["pid"],0)
+        except ProcessLookupError:
+            pass
+        else:
+            raise RrfsInitError(f"a boundary producer is still using {output} (pid {previous['pid']})")
+    if work.exists():
+        shutil.rmtree(work)
+    (work/"met").mkdir(parents=True)
+    # Inputs survive a caller's preparation cleanup. Hard links keep the same
+    # immutable bytes without copying weather arrays or retaining open handles.
+    for index,interval in enumerate(job["config"]["intervals"]):
+        original=Path(interval["met_path"])
+        pinned=work/"met"/f"{index:04d}"
+        try:
+            os.link(original,pinned)
+        except OSError:
+            # Separate filesystems cannot retain inputs by hard link. Keep
+            # the original synchronous contract, without a bulk copy stage.
+            shutil.rmtree(work)
+            return receipts+run_jobs(worker,jobs[-1:],logs)
+        interval["met_path"]=str(pinned)
+    (output/"lbc-failed.json").unlink(missing_ok=True)
+    for interval in job["config"]["intervals"]:
+        (output/(file_name(interval["valid_time"])+".ready.json")).unlink(missing_ok=True)
+    specification=work/"job.json"
+    specification.write_text(json.dumps(job)+"\n")
+    started=time.monotonic()
+    with (work/"producer.log").open("wb") as log:
+        child=subprocess.Popen([sys.executable,"-m","woof.hex.mpasphys.rrfs.lbc_background",str(worker),str(specification)],
+                               stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+    atomic_json(work/"running.json",{"pid":child.pid,"worker":str(worker)})
+    for interval in job["config"]["intervals"][:2]:
+        when=interval["valid_time"]
+        marker=output/(file_name(when)+".ready.json")
+        print(f"init: waiting for complete boundary {when}; producer pid {child.pid}",file=sys.stderr,flush=True)
+        while not marker.is_file():
+            failure=output/"lbc-failed.json"
+            if failure.exists() or child.poll() is not None:
+                raise RrfsInitError(f"boundary producer failed; {failure if failure.exists() else work/'producer.log'}")
+            if time.monotonic()-started>1800:
+                raise RrfsInitError(f"timed out waiting for boundary {when}; log {work/'producer.log'}")
+            time.sleep(0.05)
+        record=json.loads(marker.read_text())
+        # The worker has already synced and hashed the file. The forecast
+        # independently verifies the digest when it admits each endpoint.
+        if record.get("schema")!=READY or record.get("valid_time")!=when or (output/file_name(when)).stat().st_size!=record.get("bytes"):
+            raise RrfsInitError(f"invalid complete boundary receipt {marker}")
+    receipts.append({"stage":"case9","seconds":round(time.monotonic()-started,3),"log":str(work/"producer.log"),
+                     "result":{"background_pid":child.pid,"series":str(output/"lbc-series.json"),
+                               "complete_receipt":str(work/"complete.json"),"forecast_ready_times":2}})
     return receipts
 
 
@@ -403,8 +590,14 @@ def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> in
             print(f"init: deep-soil temperature {chosen['dataset']} selected by name: {chosen['licence_hold']}",
                   file=sys.stderr)
         deep_soil = {"choice": choice, "built_here": True, **chosen}
+        # THE BREAKAGE THIS PREVENTS (hrrrv5 937.5 m region, WOOF run_c117e774c73a40c7, 2026-10-31): a cell narrower than
+        # a 30-arc-second pixel owns no sample at the recipe's factor 1, so its terrain is 0/0. 1,134 of 14,875 cells came
+        # out NaN, terrain smoothing spread it, and the init refused 4,367 land cells as "soil temperature of 0 K". The
+        # hex static takes the same factor from the same helper; a mesh with no such cell keeps the recipe's bytes.
+        from ...mesh_point import thirty_second_supersample
+
         jobs.append(static_job(row, grid=grid, geog=geog, out=rrfs_static, valid_time=arguments.start_time,
-                               deep_soil=choice))
+                               deep_soil=choice, supersample_30s=thirty_second_supersample(grid)))
         static = rrfs_static
     else:
         deep_soil = {"built_here": False,
@@ -423,6 +616,7 @@ def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> in
     _refuse_cold_land_soil(out, row, int(arguments.nfgsoillevels))
     lbc_files: list[str] = []
     lbc_met = list(getattr(arguments, "lbc_met", None) or [])
+    _, boundary_record = boundary_recipe(row, getattr(arguments, "boundary_recipe", None), [])
     if lbc_met:
         intervals = []
         for spec in lbc_met:
@@ -430,14 +624,17 @@ def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> in
             if not path:
                 raise RrfsInitError(f"--lbc-met {spec!r} is not TIME=MET_PATH")
             intervals.append((when, resolve_met_source(Path(path).expanduser()).resolve()))
+        row, boundary_record = boundary_recipe(row, getattr(arguments, "boundary_recipe", None), intervals)
         lbc_dir = Path(arguments.lbc_dir).expanduser().absolute() if getattr(arguments, "lbc_dir", None) \
             else out.parent
         lbc_dir.mkdir(parents=True, exist_ok=True)
-        receipts += run_jobs(worker, case9_jobs(row, init=out, start_time=arguments.start_time,
+        receipts += run_boundary_jobs(worker, case9_jobs(row, init=out, start_time=arguments.start_time,
                                                 intervals=intervals, nfglevels=arguments.nfglevels,
                                                 out_dir=lbc_dir, carrier=work / "carrier.nc",
-                                                aerosols=aerosols), work / "logs-lbc")
-        lbc_files = sorted(str(p) for p in lbc_dir.glob("lbc.*.nc"))
+                                                aerosols=aerosols), work / "logs-lbc",
+                                                wait_for_all=getattr(arguments,"wait_for_all_boundaries",False))
+        lbc_files = sorted(str(p) for p in lbc_dir.glob("lbc.*.nc") if p.with_name(p.name+".ready.json").exists()) \
+            if any(r.get("result",{}).get("background_pid") for r in receipts) else sorted(str(p) for p in lbc_dir.glob("lbc.*.nc"))
     oro = _gsl_orography(row, grid=grid, geog=geog, out=out.parent / row["gwd"]["file"],
                          choice=getattr(arguments, "ugwp_oro", None) or row["gwd"]["default"], work=work)
     payload = {
@@ -454,6 +651,7 @@ def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> in
         "stages": receipts,
         "output": {"path": str(out), "bytes": out.stat().st_size, "sha256": _sha256(out)},
         "lbc": lbc_files,
+        "boundary_recipe": boundary_record,
         "ugwp_oro": oro,
         "seconds": round(time.monotonic() - started, 3),
     }
@@ -498,7 +696,8 @@ def _refuse_cold_land_soil(out: Path, row: Mapping[str, Any], nfgsoillevels: int
 
 def run_rrfs_lbc(producer: tuple[str, Mapping[str, Any]], *, init: Path, intervals: Sequence[tuple[str, Path]],
                  nfglevels: int, out_dir: Path, worker: str | Path | None = None,
-                 wif_climatology: Path | None = None) -> dict[str, Any]:
+                 wif_climatology: Path | None = None, recipe: str | None = None,
+                 wait_for_all: bool = False) -> dict[str, Any]:
     """The producer's case-9 boundaries alone, on a carrier made from its own case-7 init.
 
     ``intervals`` are ``(YYYY-MM-DD_HH:MM:SS, WPS intermediate)`` from the start time through the stop
@@ -520,6 +719,7 @@ def run_rrfs_lbc(producer: tuple[str, Mapping[str, Any]], *, init: Path, interva
                             "first-guess interval")
     spacing = int((moments[1] - moments[0]).total_seconds())
     row = dict(row, lbc=dict(row["lbc"], fg_interval_seconds=spacing))
+    row, boundary_record = boundary_recipe(row, recipe, intervals)
     out_dir = Path(out_dir).expanduser().absolute()
     out_dir.mkdir(parents=True, exist_ok=True)
     work = out_dir / ".rrfs-lbc-work"
@@ -529,17 +729,19 @@ def run_rrfs_lbc(producer: tuple[str, Mapping[str, Any]], *, init: Path, interva
     started = time.monotonic()
     resolved = resolve_worker(row, worker)
     aerosols = resolve_aerosol_table(wif_climatology)
-    receipts = run_jobs(resolved, case9_jobs(row, init=Path(init), start_time=intervals[0][0],
+    receipts = run_boundary_jobs(resolved, case9_jobs(row, init=Path(init), start_time=intervals[0][0],
                                              intervals=list(intervals), nfglevels=int(nfglevels),
                                              out_dir=out_dir, carrier=work / "carrier.nc", aerosols=aerosols),
-                        work / "logs")
+                        work / "logs",wait_for_all=wait_for_all)
     (work / "carrier.nc").unlink(missing_ok=True)
-    files = sorted(out_dir.glob("lbc.*.nc"))
-    if len(files) < len(intervals):
+    background=any(r.get("result",{}).get("background_pid") for r in receipts)
+    files = sorted(p for p in out_dir.glob("lbc.*.nc") if not background or p.with_name(p.name+".ready.json").exists())
+    if len(files) < (2 if any(r.get("result",{}).get("background_pid") for r in receipts) else len(intervals)):
         raise RrfsInitError(f"the RRFS producer's case 9 wrote {len(files)} boundary files for {len(intervals)} "
                             f"times; its logs are in {work / 'logs'}")
     return {"producer": {"key": key, "source_pin": row["source_pin"], "worker": str(resolved),
                          "worker_sha256": _sha256(resolved), "abi": row["worker"]["abi"]},
+            "boundary_recipe": boundary_record,
             "fg_interval_seconds": spacing, "stages": receipts, "seconds": round(time.monotonic() - started, 3),
             "files": [str(path) for path in files]}
 
@@ -574,9 +776,7 @@ def select_initial_state_stream(configs: Mapping[str, Any]) -> str:
     stream this module's init writes.
     """
 
+    from ...restart_rrfs import RestartControl
     configs = {key.casefold(): value for key, value in configs.items()}
-    if configs.get("config_do_restart"):
-        return "restart"
-    if configs.get("config_do_dacycling"):
-        return "da_state"
-    return "input"
+    return RestartControl(bool(configs.get("config_do_restart")),
+                          bool(configs.get("config_do_dacycling"))).initial_stream

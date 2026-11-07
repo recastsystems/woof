@@ -100,10 +100,15 @@ def test_rebound_carrier_pointers_are_read_fresh_each_launch():
                        [b.width], [b.rows], live_is_source=True)
     buf = cp.zeros(nbytes, dtype=cp.uint8)
     stream = cp.cuda.Stream(non_blocking=True)
+    # The carriers and buf are written on the legacy default stream, which a non-blocking stream does not wait
+    # for; without this the launch could read them before they landed (2.9.13 R6 red on the RTX 5090, card1
+    # shard 8: buf held garbage at index 0), the same ordering the round-trip test above makes explicit.
+    cp.cuda.Device().synchronize()
     table.launch(a, int(buf.data.ptr), stream)
     stream.synchronize()
     first = cp.asnumpy(buf).copy()
     a = {"q": a["q"] + 1000}  # the driver re-binds a carrier between steps
+    cp.cuda.Device().synchronize()  # the rebound carrier is written on the default stream too
     table.launch(a, int(buf.data.ptr), stream)
     stream.synchronize()
     assert cp.asnumpy(buf).tobytes() != first.tobytes()

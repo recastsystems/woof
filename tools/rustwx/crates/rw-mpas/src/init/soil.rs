@@ -500,14 +500,14 @@ pub fn monthly_interp_to_date(monthly: &[Vec<f32>], year: i32, month: u32, day: 
 /// MPAS: src/core_atmosphere/physics/mpas_atmphys_date_time.F:51-84,148-219.
 /// Aerosol LBC replay retains the native saved mmd(2)=29 after a leap-year call.
 /// Other existing callers retain their calendar contract.
-pub(crate) fn monthly_interp_with_february(
-    monthly: &[Vec<f32>],
+pub(crate) fn monthly_interp_with_february<M: AsRef<[f32]> + Sync>(
+    monthly: &[M],
     year: i32,
     month: u32,
     day: u32,
     leap: bool,
 ) -> Vec<f32> {
-    let n = monthly[0].len();
+    let n = monthly[0].as_ref().len();
     let mmd = [
         31,
         if leap { 29 } else { 28 },
@@ -544,8 +544,8 @@ pub(crate) fn monthly_interp_with_february(
             // Element by element, on every core (pure per element).
             use rayon::prelude::*;
             out.par_iter_mut().enumerate().for_each(|(i, slot)| {
-                *slot = (monthly[m2 - 1][i] * (target - middle[l]) as f32
-                    + monthly[m1 - 1][i] * (middle[l + 1] - target) as f32)
+                *slot = (monthly[m2 - 1].as_ref()[i] * (target - middle[l]) as f32
+                    + monthly[m1 - 1].as_ref()[i] * (middle[l + 1] - target) as f32)
                     / (middle[l + 1] - middle[l]) as f32;
             });
             break;

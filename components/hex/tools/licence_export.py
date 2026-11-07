@@ -88,9 +88,10 @@ def apply(src: Path, dst: Path, holds: list[dict]) -> dict:
         for name in names:
             relative = name if base == "." else f"{base}/{name}"
             probe = relative + ("/" if (Path(directory) / name).is_dir() else "")
-            if name == "__pycache__" or is_held(probe, paths):
+            generated = name in {"__pycache__", "target", "build", "dist", ".pytest_cache", ".git"} or name.endswith(".egg-info")
+            if generated or is_held(probe, paths):
                 skip.add(name)
-                if name != "__pycache__":
+                if not generated:
                     removed.append(probe)
         return skip
 
@@ -146,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("apply")
     a.add_argument("src", type=Path)
     a.add_argument("dst", type=Path)
+    a.add_argument("--engine-source", type=Path, required=True, help="apply content hygiene inside this export using the engine cut rules")
     c = sub.add_parser("check")
     c.add_argument("tree", type=Path)
     args = parser.parse_args(argv)
@@ -153,6 +155,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "apply":
         report = apply(args.src.resolve(), args.dst.resolve(), holds)
         findings = check(args.dst.resolve(), holds)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("hex_release_hygiene", Path(__file__).with_name("release_hygiene.py"))
+        hygiene = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = hygiene
+        spec.loader.exec_module(hygiene)
+        report["content_hygiene"] = hygiene.fix_export(args.dst.resolve(), args.engine_source.resolve())
+        remaining = hygiene.export_tree_findings(args.dst.resolve())
+        findings.extend({"path": path, "line": line, "reason": kind} for path, line, kind, _ in remaining)
         report["findings"] = findings
         print(json.dumps(report, indent=1))
         return 1 if findings else 0

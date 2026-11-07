@@ -136,7 +136,7 @@ def _theta(z):
     Built from :func:`_temperature`: theta = T exp(int_0^z g / (cp T) dz'),
     the hydrostatic Exner relation for a 1000 hPa surface, so the column's
     layer temperatures are the profile's whatever the run's model top.
-    Breakage (2.9.4 landing, V58 2026-10-20): the earlier constant
+    Breakage (2.9.4 landing, test host 2026-10-20): the earlier constant
     N = 0.01/s theta profile cooled without limit aloft, so the column of
     an Earth-2 FCN3 nest (ztop 20 km, p_top 50 hPa) had a 159.2 K top
     layer, below RRTMG's 160 K floor, and the pre-warm failed.
@@ -268,7 +268,7 @@ def forecast_column_config(run):
     the periodic path is refused by the updraft-helicity diagnostic every
     HRRR-shape run carries (nwp_diagnostics = 1; core/uh_diag.py transcribes
     only WRF's non-periodic cal_helicity bounds).  Breakage (2.9.4 landing,
-    V58 2026-10-20): the periodic column failed after compiling everything
+    test host 2026-10-20): the periodic column failed after compiling everything
     else, and the forecast's step 1 compiled 51 s cold with the card idle.
 
     A SPECIFIED (or nested) run warms on a specified column, forced by its
@@ -288,6 +288,10 @@ def forecast_column_config(run):
     common = dict(terrain_opt=0, run_seconds=dt * _STEPS, clock_dt=dt,
                   output_interval_s=dt * _STEPS, open_x=False, open_y=False,
                   nested=False)
+    # Native NWP uses the history interval as its averaging-window divisor.
+    # The two-step synthetic duration need not be a valid whole-minute window.
+    if getattr(run, "nwp_diagnostics", 0) and not getattr(run, "gsd_diagnostics", 0):
+        common["output_interval_s"] = run.output_interval_s
     # A geographic farm belongs to its real domain. The synthetic column
     # warms the background physics; its unrelated grid cannot locate that farm.
     if getattr(run, "wind_farm_scheme", "off") != "off":

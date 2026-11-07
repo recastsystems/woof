@@ -1,0 +1,741 @@
+{
+  "fields": [
+    {
+      "name": "dt",
+      "cname": "dt",
+      "kind": "real",
+      "offset": 0,
+      "count": 1
+    },
+    {
+      "name": "thraten",
+      "cname": "thraten",
+      "kind": "real",
+      "offset": 1,
+      "count": 82
+    },
+    {
+      "name": "thratenlw",
+      "cname": "thratenlw",
+      "kind": "real",
+      "offset": 83,
+      "count": 82
+    },
+    {
+      "name": "thratensw",
+      "cname": "thratensw",
+      "kind": "real",
+      "offset": 165,
+      "count": 82
+    },
+    {
+      "name": "cldfra",
+      "cname": "cldfra",
+      "kind": "real",
+      "offset": 247,
+      "count": 82
+    },
+    {
+      "name": "pi3d",
+      "cname": "pi3d",
+      "kind": "real",
+      "offset": 329,
+      "count": 82
+    },
+    {
+      "name": "xland",
+      "cname": "xland",
+      "kind": "real",
+      "offset": 411,
+      "count": 1
+    },
+    {
+      "name": "p8w",
+      "cname": "p8w",
+      "kind": "real",
+      "offset": 412,
+      "count": 82
+    },
+    {
+      "name": "dz8w",
+      "cname": "dz8w",
+      "kind": "real",
+      "offset": 494,
+      "count": 82
+    },
+    {
+      "name": "rho_phy",
+      "cname": "rho_phy__",
+      "kind": "real",
+      "offset": 576,
+      "count": 82
+    },
+    {
+      "name": "p_phy",
+      "cname": "p_phy__",
+      "kind": "real",
+      "offset": 658,
+      "count": 82
+    },
+    {
+      "name": "t",
+      "cname": "t",
+      "kind": "real",
+      "offset": 740,
+      "count": 82
+    },
+    {
+      "name": "qv",
+      "cname": "qv",
+      "kind": "real",
+      "offset": 822,
+      "count": 82
+    },
+    {
+      "name": "qw",
+      "cname": "qw",
+      "kind": "real",
+      "offset": 904,
+      "count": 82
+    },
+    {
+      "name": "qi",
+      "cname": "qi",
+      "kind": "real",
+      "offset": 986,
+      "count": 82
+    },
+    {
+      "name": "qs",
+      "cname": "qs",
+      "kind": "real",
+      "offset": 1068,
+      "count": 82
+    },
+    {
+      "name": "tsk2d",
+      "cname": "tsk2d",
+      "kind": "real",
+      "offset": 1150,
+      "count": 1
+    },
+    {
+      "name": "glw",
+      "cname": "glw",
+      "kind": "real",
+      "offset": 1151,
+      "count": 1
+    },
+    {
+      "name": "rswin",
+      "cname": "rswin",
+      "kind": "real",
+      "offset": 1152,
+      "count": 1
+    },
+    {
+      "name": "gsw",
+      "cname": "gsw",
+      "kind": "real",
+      "offset": 1153,
+      "count": 1
+    },
+    {
+      "name": "rswinc",
+      "cname": "rswinc",
+      "kind": "real",
+      "offset": 1154,
+      "count": 1
+    },
+    {
+      "name": "rswtoa",
+      "cname": "rswtoa",
+      "kind": "real",
+      "offset": 1155,
+      "count": 1
+    },
+    {
+      "name": "rlwtoa",
+      "cname": "rlwtoa",
+      "kind": "real",
+      "offset": 1156,
+      "count": 1
+    },
+    {
+      "name": "czmean",
+      "cname": "czmean",
+      "kind": "real",
+      "offset": 1157,
+      "count": 1
+    },
+    {
+      "name": "glat",
+      "cname": "glat",
+      "kind": "real",
+      "offset": 1158,
+      "count": 1
+    },
+    {
+      "name": "glon",
+      "cname": "glon",
+      "kind": "real",
+      "offset": 1159,
+      "count": 1
+    },
+    {
+      "name": "htop",
+      "cname": "htop",
+      "kind": "real",
+      "offset": 1160,
+      "count": 1
+    },
+    {
+      "name": "hbot",
+      "cname": "hbot",
+      "kind": "real",
+      "offset": 1161,
+      "count": 1
+    },
+    {
+      "name": "htopr",
+      "cname": "htopr",
+      "kind": "real",
+      "offset": 1162,
+      "count": 1
+    },
+    {
+      "name": "hbotr",
+      "cname": "hbotr",
+      "kind": "real",
+      "offset": 1163,
+      "count": 1
+    },
+    {
+      "name": "albedo",
+      "cname": "albedo",
+      "kind": "real",
+      "offset": 1164,
+      "count": 1
+    },
+    {
+      "name": "cuppt",
+      "cname": "cuppt",
+      "kind": "real",
+      "offset": 1165,
+      "count": 1
+    },
+    {
+      "name": "vegfra",
+      "cname": "vegfra",
+      "kind": "real",
+      "offset": 1166,
+      "count": 1
+    },
+    {
+      "name": "snow",
+      "cname": "snow",
+      "kind": "real",
+      "offset": 1167,
+      "count": 1
+    },
+    {
+      "name": "g",
+      "cname": "g",
+      "kind": "real",
+      "offset": 1168,
+      "count": 1
+    },
+    {
+      "name": "gmt",
+      "cname": "gmt",
+      "kind": "real",
+      "offset": 1169,
+      "count": 1
+    },
+    {
+      "name": "nstepra",
+      "cname": "nstepra",
+      "kind": "integer",
+      "offset": 0,
+      "count": 1
+    },
+    {
+      "name": "nphs",
+      "cname": "nphs",
+      "kind": "integer",
+      "offset": 1,
+      "count": 1
+    },
+    {
+      "name": "itimestep",
+      "cname": "itimestep",
+      "kind": "integer",
+      "offset": 2,
+      "count": 1
+    },
+    {
+      "name": "xtime",
+      "cname": "xtime",
+      "kind": "real",
+      "offset": 1170,
+      "count": 1
+    },
+    {
+      "name": "julian",
+      "cname": "julian",
+      "kind": "real",
+      "offset": 1171,
+      "count": 1
+    },
+    {
+      "name": "julyr",
+      "cname": "julyr",
+      "kind": "integer",
+      "offset": 3,
+      "count": 1
+    },
+    {
+      "name": "julday",
+      "cname": "julday",
+      "kind": "integer",
+      "offset": 4,
+      "count": 1
+    },
+    {
+      "name": "gfdl_lw",
+      "cname": "gfdl_lw__",
+      "kind": "integer",
+      "offset": 5,
+      "count": 1
+    },
+    {
+      "name": "gfdl_sw",
+      "cname": "gfdl_sw__",
+      "kind": "integer",
+      "offset": 6,
+      "count": 1
+    },
+    {
+      "name": "cfracl",
+      "cname": "cfracl",
+      "kind": "real",
+      "offset": 1172,
+      "count": 1
+    },
+    {
+      "name": "cfracm",
+      "cname": "cfracm",
+      "kind": "real",
+      "offset": 1173,
+      "count": 1
+    },
+    {
+      "name": "cfrach",
+      "cname": "cfrach",
+      "kind": "real",
+      "offset": 1174,
+      "count": 1
+    },
+    {
+      "name": "acfrst",
+      "cname": "acfrst",
+      "kind": "real",
+      "offset": 1175,
+      "count": 1
+    },
+    {
+      "name": "ncfrst",
+      "cname": "ncfrst",
+      "kind": "integer",
+      "offset": 7,
+      "count": 1
+    },
+    {
+      "name": "acfrcv",
+      "cname": "acfrcv",
+      "kind": "real",
+      "offset": 1176,
+      "count": 1
+    },
+    {
+      "name": "ncfrcv",
+      "cname": "ncfrcv",
+      "kind": "integer",
+      "offset": 8,
+      "count": 1
+    },
+    {
+      "name": "ids",
+      "cname": "ids",
+      "kind": "integer",
+      "offset": 9,
+      "count": 1
+    },
+    {
+      "name": "ide",
+      "cname": "ide",
+      "kind": "integer",
+      "offset": 10,
+      "count": 1
+    },
+    {
+      "name": "jds",
+      "cname": "jds",
+      "kind": "integer",
+      "offset": 11,
+      "count": 1
+    },
+    {
+      "name": "jde",
+      "cname": "jde",
+      "kind": "integer",
+      "offset": 12,
+      "count": 1
+    },
+    {
+      "name": "kds",
+      "cname": "kds",
+      "kind": "integer",
+      "offset": 13,
+      "count": 1
+    },
+    {
+      "name": "kde",
+      "cname": "kde",
+      "kind": "integer",
+      "offset": 14,
+      "count": 1
+    },
+    {
+      "name": "ims",
+      "cname": "ims",
+      "kind": "integer",
+      "offset": 15,
+      "count": 1
+    },
+    {
+      "name": "ime",
+      "cname": "ime",
+      "kind": "integer",
+      "offset": 16,
+      "count": 1
+    },
+    {
+      "name": "jms",
+      "cname": "jms",
+      "kind": "integer",
+      "offset": 17,
+      "count": 1
+    },
+    {
+      "name": "jme",
+      "cname": "jme",
+      "kind": "integer",
+      "offset": 18,
+      "count": 1
+    },
+    {
+      "name": "kms",
+      "cname": "kms",
+      "kind": "integer",
+      "offset": 19,
+      "count": 1
+    },
+    {
+      "name": "kme",
+      "cname": "kme",
+      "kind": "integer",
+      "offset": 20,
+      "count": 1
+    },
+    {
+      "name": "its",
+      "cname": "its",
+      "kind": "integer",
+      "offset": 21,
+      "count": 1
+    },
+    {
+      "name": "ite",
+      "cname": "ite",
+      "kind": "integer",
+      "offset": 22,
+      "count": 1
+    },
+    {
+      "name": "jts",
+      "cname": "jts",
+      "kind": "integer",
+      "offset": 23,
+      "count": 1
+    },
+    {
+      "name": "jte",
+      "cname": "jte",
+      "kind": "integer",
+      "offset": 24,
+      "count": 1
+    },
+    {
+      "name": "kts",
+      "cname": "kts",
+      "kind": "integer",
+      "offset": 25,
+      "count": 1
+    },
+    {
+      "name": "kte",
+      "cname": "kte",
+      "kind": "integer",
+      "offset": 26,
+      "count": 1
+    }
+  ],
+  "float_count": 1177,
+  "int_count": 27,
+  "tables": {
+    "LTOP": [
+      "INTEGER",
+      "3"
+    ],
+    "PTOPC": [
+      "REAL",
+      "4"
+    ],
+    "XDUO3N": [
+      "REAL",
+      "37,81"
+    ],
+    "XDO3N2": [
+      "REAL",
+      "37,81"
+    ],
+    "XDO3N3": [
+      "REAL",
+      "37,81"
+    ],
+    "XDO3N4": [
+      "REAL",
+      "37,81"
+    ],
+    "PRGFDL": [
+      "REAL",
+      "81"
+    ],
+    "AB15WD": [
+      "REAL",
+      null
+    ],
+    "SKO2D": [
+      "REAL",
+      null
+    ],
+    "SKC1R": [
+      "REAL",
+      null
+    ],
+    "SKO3R": [
+      "REAL",
+      null
+    ],
+    "EM1": [
+      "REAL",
+      "28,180"
+    ],
+    "EM1WDE": [
+      "REAL",
+      "28,180"
+    ],
+    "TABLE1": [
+      "REAL",
+      "28,180"
+    ],
+    "TABLE2": [
+      "REAL",
+      "28,180"
+    ],
+    "TABLE3": [
+      "REAL",
+      "28,180"
+    ],
+    "EM3": [
+      "REAL",
+      "28,180"
+    ],
+    "SOURCE": [
+      "REAL",
+      "28,15"
+    ],
+    "DSRCE": [
+      "REAL",
+      "28,15"
+    ],
+    "T1": [
+      "REAL",
+      "5040"
+    ],
+    "T2": [
+      "REAL",
+      "5040"
+    ],
+    "T4": [
+      "REAL",
+      "5040"
+    ],
+    "EM1V": [
+      "REAL",
+      "5040"
+    ],
+    "EM1VW": [
+      "REAL",
+      "5040"
+    ],
+    "EM3V": [
+      "REAL",
+      "5040"
+    ],
+    "AXSD": [
+      "REAL",
+      "310"
+    ],
+    "RSQR": [
+      "REAL",
+      null
+    ],
+    "CO251": [
+      "REAL",
+      "82,82"
+    ],
+    "CDT51": [
+      "REAL",
+      "82,82"
+    ],
+    "C2D51": [
+      "REAL",
+      "82,82"
+    ],
+    "CO258": [
+      "REAL",
+      "82,82"
+    ],
+    "CDT58": [
+      "REAL",
+      "82,82"
+    ],
+    "C2D58": [
+      "REAL",
+      "82,82"
+    ],
+    "TBPVS": [
+      "REAL",
+      "7501"
+    ],
+    "C1XPVS": [
+      "REAL",
+      null
+    ],
+    "C2XPVS": [
+      "REAL",
+      null
+    ],
+    "STEMP": [
+      "REAL",
+      "82"
+    ],
+    "GTEMP": [
+      "REAL",
+      "82"
+    ],
+    "CO231": [
+      "REAL",
+      "82"
+    ],
+    "CO238": [
+      "REAL",
+      "82"
+    ],
+    "C2D31": [
+      "REAL",
+      "82"
+    ],
+    "C2D38": [
+      "REAL",
+      "82"
+    ],
+    "CDT31": [
+      "REAL",
+      "82"
+    ],
+    "CDT38": [
+      "REAL",
+      "82"
+    ],
+    "CO271": [
+      "REAL",
+      "82"
+    ],
+    "CO278": [
+      "REAL",
+      "82"
+    ],
+    "C2D71": [
+      "REAL",
+      "82"
+    ],
+    "C2D78": [
+      "REAL",
+      "82"
+    ],
+    "CDT71": [
+      "REAL",
+      "82"
+    ],
+    "CDT78": [
+      "REAL",
+      "82"
+    ],
+    "CO2M51": [
+      "REAL",
+      "81"
+    ],
+    "CO2M58": [
+      "REAL",
+      "81"
+    ],
+    "CDTM51": [
+      "REAL",
+      "81"
+    ],
+    "CDTM58": [
+      "REAL",
+      "81"
+    ],
+    "C2DM51": [
+      "REAL",
+      "81"
+    ],
+    "C2DM58": [
+      "REAL",
+      "81"
+    ]
+  },
+  "clock": {
+    "R1": [
+      "REAL",
+      null
+    ],
+    "RSIN1": [
+      "REAL",
+      null
+    ],
+    "RCOS1": [
+      "REAL",
+      null
+    ],
+    "RCOS2": [
+      "REAL",
+      null
+    ]
+  },
+  "scratch_bytes": 234184
+}

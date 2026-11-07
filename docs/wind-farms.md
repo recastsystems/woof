@@ -49,7 +49,24 @@ file contains the curve row count, then hub height (m), rotor diameter (m),
 standing thrust coefficient and rated power (kW), followed by rows of wind
 speed (m/s), thrust coefficient and power (kW). The native decoder checks the
 table and includes every referenced curve in its identity. `windfarm_opt=2`
-remains refused: the MAV momentum and TKE coupling is not implemented.
+selects the native MAV wake and momentum/TKE coupling. It is a named opt-in,
+never a default. Its full forecast hook costs **2.044114x Fitch** (0.173957
+versus 0.085101 ms per call) on a matched, interleaved three-hour forecast
+with eight native-table turbines, 179 warm calls per arm and the same RTX PRO
+6000 and commit. The warm whole-step ratio is 1.014971x.
+
+MAV adds the native 50 by 50 GM disk integration and the 24-node XA
+quadrature (`module_wind_mav.F:686,1265`), which Fitch lacks. The retained
+Nsight Systems profile and same-layout causal control attribute added
+work to these quadratures: removing only wake graph/quadrature work costs
+0.9107x Fitch while keeping the 28 rotor arms and three launches. That
+control is diagnostic and is never installed. It does not establish an
+irreducible lower bound. Evidence is indexed in the lane report
+`<reports>/WRF-PORTS-2026-11-01/spd-windfarm.md` and the
+[forecast receipt](evidence/retime-20261102/windfarm-summary.json). The new
+pinned GNU 13.3 WRF 4.7.1 real replay has zero differences in 516,840 words;
+its inputs and references are retained under
+`~/weather/data/datasets/paper/wrf-ports/spd-retime-rad-cu/windfarm/`.
 
 ## History and interpretation
 

@@ -18,7 +18,8 @@ import math
 
 import numpy as np
 
-from woof.core.kernels import get_kernel
+from woof.core.kernels import get_kernel, get_kernel_int_defines
+from woof.core.nssl2_shape import DEFAULT_SHAPES, shape_kernel
 from woof.core.nssl2_contract import DEFAULT_RESTART_FIELDS
 from woof.core.state import DTYPE
 
@@ -77,6 +78,7 @@ class NSSL2DriverWorkspace:
     category_surface_export: object
     shape: tuple[int, int, int]
     ignored_accumulator: object | None = None
+    drag_cd: object | None = None
 
     def field(self, name: str):
         """Return one mutable internal-unit field view by Registry name."""
@@ -107,7 +109,7 @@ def validate_nssl2_driver_workspace(
     if tuple(workspace.shape) != shape:
         raise ValueError(
             f"workspace has shape {workspace.shape}, expected {shape}")
-    _, ny, nx = shape
+    nz, ny, nx = shape
     buffers = {
         "workspace.state": (workspace.state, (_FIELD_COUNT, *shape)),
         "workspace.category_surface_export": (
@@ -115,6 +117,8 @@ def validate_nssl2_driver_workspace(
         "workspace.ignored_accumulator": (
             workspace.ignored_accumulator, (ny, nx)),
     }
+    if workspace.drag_cd is not None:
+        buffers["workspace.drag_cd"] = (workspace.drag_cd, (7, nz + 1, ny, nx))
     for name, (value, expected) in buffers.items():
         if value is None:
             raise ValueError(f"{name} is required for a reusable workspace")
@@ -169,23 +173,23 @@ def _step32(dt_s: float) -> np.float32:
     return converted
 
 
-def _velocity_gamma_table(device_id):
+def _velocity_gamma_table(device_id, shapes=DEFAULT_SHAPES):
     """Captured calls use base kernels without creating or caching a table."""
     import cupy as cp
 
     if cp.cuda.get_current_stream().is_capturing():
         return None
-    return _cached_velocity_gamma_table(device_id)
+    return _cached_velocity_gamma_table(device_id, shapes)
 
 
 @lru_cache(maxsize=None)
-def _cached_velocity_gamma_table(device_id):
+def _cached_velocity_gamma_table(device_id, shapes=DEFAULT_SHAPES):
     """Fill with device tgamma once and preserve the cross-stream dependency."""
     import cupy as cp
 
     with cp.cuda.Device(device_id):
         table = cp.empty((2, 120), dtype=cp.float64)
-        kernel = get_kernel("nssl2_driver_support", "nssl2_fill_velocity_gamma")
+        kernel = shape_kernel("nssl2_driver_support", "nssl2_fill_velocity_gamma", shapes)
         kernel((2,), (64,), (table,))
         ready = cp.cuda.Event(disable_timing=True)
         ready.record()
@@ -201,6 +205,8 @@ def gather_initialize_and_sediment(
         qrcuten=None, qscuten=None, qicuten=None, qccuten=None,
         workspace: NSSL2DriverWorkspace | None = None,
         predicted_ccn: bool = True,
+        nssl_cccn: float = 0.5e9,
+        shapes=DEFAULT_SHAPES,
         ) -> NSSL2DriverWorkspace:
     """Gather once, initialize moments, diagnose KF numbers, and sediment.
 
@@ -232,6 +238,10 @@ def gather_initialize_and_sediment(
     if not isinstance(predicted_ccn, bool):
         raise TypeError("predicted_ccn must be bool")
 
+    from woof.core.nssl2_contract import (
+        nssl2_background_ccn_per_kg, nssl2_cccn_concentration,
+    )
+    background_ccn_per_kg = nssl2_background_ccn_per_kg(nssl_cccn)
     volume_fields = {
         "air_density": air_density,
         "temperature_k": temperature_k,
@@ -294,12 +304,21 @@ def gather_initialize_and_sediment(
             rate_args.append(value)
 
     element_blocks = (size + _ELEMENT_TPB - 1) // _ELEMENT_TPB
-    get_kernel("nssl2_driver_support", "nssl2_driver_gather_initialize")(
+    coefficient_args = ()
+    if nssl2_cccn_concentration(nssl_cccn) == np.float32(0.5e9):
+        gather_kernel = shape_kernel(
+            "nssl2_driver_support", "nssl2_driver_gather_initialize", shapes)
+    else:
+        gather_kernel = shape_kernel(
+            "nssl2_driver_support", "nssl2_driver_gather_initialize", shapes,
+            (("NSSL2_VARIABLE_CCCN", 1),))
+        coefficient_args = (background_ccn_per_kg,)
+    gather_kernel(
         (element_blocks,), (_ELEMENT_TPB,),
         (air_density, qv, qc, qr, qi, qs, qg, qh,
          qndrop, qnr, qni, qns, qng, qnh, qnn, qvolg, qvolh,
          *rate_args, state, step, np.int32(first_step), np.int32(cu_used),
-         np.int32(size), np.int32(1 if predicted_ccn else 0)))
+         np.int32(size), np.int32(1 if predicted_ccn else 0), *coefficient_args))
 
     ncol = ny * nx
     column_blocks = (ncol + _COLUMN_TPB - 1) // _COLUMN_TPB
@@ -317,17 +336,27 @@ def gather_initialize_and_sediment(
 
     gamma = None
     if isinstance(state, getattr(cp, "ndarray", ())):
-        gamma = _velocity_gamma_table(cp.cuda.runtime.getDevice())
+        gamma = _velocity_gamma_table(cp.cuda.runtime.getDevice(), shapes)
     if gamma is not None:
         gamma_table, gamma_ready, _ = gamma
         cp.cuda.get_current_stream().wait_event(gamma_ready)
 
+    from woof.core.nssl2_shape import requires_cd_carry
+    carry=requires_cd_carry(shapes)
+    drag_cd=None
+    if carry:
+        drag_cd=cp.empty((7,nz+1,ny,nx),dtype=DTYPE) if workspace is None else workspace.drag_cd
+        if drag_cd is None:raise ValueError("NSSL gathered CD scratch was not prepared")
+        shape_kernel("nssl2_driver_support","nssl2_cd_sediment",shapes)(
+            (column_blocks,),(_COLUMN_TPB,),
+            (state,air_density,drag_cd,np.int32(nz),np.int32(ny),np.int32(nx),np.int32(1)))
+
     if gamma is not None and nz <= _SHALLOW_KMAX:
-        get_kernel("nssl2_driver_support", "nssl2_sediment_all_parallel_64")(
+        shape_kernel("nssl2_driver_support", "nssl2_sediment_all_parallel_64", shapes)(
             (ncol, 6), (_COLUMN_TPB,),
             (air_density, temperature_k, state, dz, ignored_accumulator,
              category_export, gamma_table, step,
-             np.int32(nz), np.int32(ny), np.int32(nx)))
+             np.int32(nz), np.int32(ny), np.int32(nx), *((drag_cd,) if carry else ())))
     else:
         dense_suffix = "cached_256" if gamma is not None else suffix
         sediment_calls = (
@@ -347,11 +376,13 @@ def gather_initialize_and_sediment(
             ))
             if volume_index is not None and gamma is not None:
                 arguments.append(gamma_table[export_index - 3])
-            get_kernel("nssl2_driver_support", kernel_name)(
+            if volume_index is not None and carry:
+                arguments.append(drag_cd[export_index-3,0])
+            shape_kernel("nssl2_driver_support", kernel_name, shapes)(
                 (column_blocks,), (_COLUMN_TPB,), tuple(arguments))
 
         # Cloud overwrites the ignored accumulator after the other categories.
-        get_kernel("nssl2_driver_support", f"nssl2_cloud_sediment_{suffix}")(
+        shape_kernel("nssl2_driver_support", f"nssl2_cloud_sediment_{suffix}", shapes)(
             (column_blocks,), (_COLUMN_TPB,),
             (air_density, temperature_k, state[_QC], state[_NC], dz,
              ignored_accumulator, step,
@@ -359,7 +390,7 @@ def gather_initialize_and_sediment(
 
     return NSSL2DriverWorkspace(
         state=state, category_surface_export=category_export,
-        shape=(nz, ny, nx), ignored_accumulator=ignored_accumulator)
+        shape=(nz, ny, nx), ignored_accumulator=ignored_accumulator,drag_cd=drag_cd)
 
 
 def reduce_nssl2_precipitation(

@@ -1,0 +1,25 @@
+source_commit=d66e442fccc04111067e29274c9f9eaccc3cef28
+compiler=GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+libc=ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+flags=-O2 -fno-tree-vectorize -ffree-form -ffree-line-length-none
+fabf19e2a9073cff886e882b187080bfdf089d3fd40c0fce1d19bc93b1e5e802  /work/wrf/src/WRF-4.6.1/phys/module_mp_thompson.F
+aa99da858be41efa579966680708d230123a7417560af0eb2e24f4c94e253688  /work/wrf/src/WRF-4.6.1/phys/module_mp_radar.F
+da958e8bbbc13e5c7fa7e61f8c2e9f2f4d464c76f9ca68e50178f4cba0b0c27a  /work/port-mp38-thompson-gh/src/tools/thompson_wrf461_oracle/build_hail.sh
+bf042de92935d65e755d6521ff174ffb25b4effc083a61272053461f0e4adae6  /work/port-mp38-thompson-gh/src/tools/thompson_wrf461_oracle/stub_wrf_hail.F90
+dcc030b4398675c6c5f319aee30834dd050bc40d94034aeb11203c528a0b7d2a  /work/port-mp38-thompson-gh/src/tools/thompson_wrf461_oracle/generate_tables_hail.F90
+f35cfa8d4cdfe2414ba5be422f475f0241b34f6f3acff14f690a70175a079e24  /work/port-mp38-thompson-gh/src/tools/thompson_wrf461_oracle/run_column_hail.F90
+60edd7ae7ff203d6591e2c6ff1ee282e27b1e00b09c59dde45dfa64e99a6f50b  freezeH2O.dat
+576fb61773c2ff40d68b1568d1e3bbeed179b320ef34b18f1e4255fb521e579a  qr_acr_qg_mp38V1.dat
+7116cd7b5e6a2b4c8cbccbf22981c0c4cb653db13cc2ea391085dfdf4dd03766  qr_acr_qsV2.dat
+def0bc75104149d7ec8c33c11e0e1dada93a9c8843919a860ece4d6412359667  thompson_aux_tables.dat
+f2b8d3916560f9046f89f8ac5f32c5292a1800498fd75301e422f147c82a3dbd  CCN_ACTIVATE.BIN
+a53c5bf27565eb6631cdc15dbdf07eceb6930b08aa4e1120d8bcd07f13612040  ../column-oracle-hail/gh-convective-column.csv
+023a0e6466d239b9191b7c2f902862feffc5b21038957b874a91374c1c22d316  ../column-oracle-hail/gh-convective-surface.csv
+7b3c210277ecfe22305644e981ce55a61e6e53dcef6af38bea560d927eddbf4c  ../column-oracle-hail/gh-density-sweep-column.csv
+188dc7c7e38807a7053cba3f99ddebd72f3fb8dac4c66d950d3ce0bfc868425b  ../column-oracle-hail/gh-density-sweep-surface.csv
+a40e30b987a3a59016e58699e3ba5bdcc579c624c0367c6bb579576dcbafefd5  ../column-oracle-hail/gh-hail-column.csv
+09670cd86666a3649bd502b3482227881cd73cd726e448379fc521bf562652ac  ../column-oracle-hail/gh-hail-surface.csv
+a5bb4ed4b99a42985ff875b5dae87be330db51f36f7281047dae177db1f68336  ../column-oracle-hail/gh-stratiform-column.csv
+cbf97e002ef2ec7abf39ed878b77bfba6becaa7ad74ab387e94f976ea06e7d25  ../column-oracle-hail/gh-stratiform-surface.csv
+4d8e04508827986fe3bb191b359417ebeaba2100c39e8bf280792c57f529f7bf  ../column-oracle-hail/gh-warm-melt-column.csv
+ed1bd37bf54fd20dffe4aec4ff4b59c1bb5805d2dd7abf2008fa95de78ec39da  ../column-oracle-hail/gh-warm-melt-surface.csv

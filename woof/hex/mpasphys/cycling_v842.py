@@ -1,4 +1,4 @@
-"""MPAS-native pools at the JEDI cycling boundary.
+"""MPAS-native pools at the background cycling boundary.
 
 The existing JEDI contract owns CDF-5 I/O and coupled-state initialization.
 No WOOF physics state or soil interpolation is used on this route.

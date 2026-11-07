@@ -5,6 +5,8 @@ import pytest
 import check_mpas_citations as c
 
 PINS = {
+    # RP7 now cites the native lowest-layer pressure-thickness statement.
+    'bl_mynn_subroutines.F90:3102': c.CitationPin('src/core_atmosphere/physics/physics_mmm/bl_mynn_subroutines.F90', 3102, 3102, '07f68e89a4b9357c6b231a5ecc0760bf19cba4f1fc983a942f58a14d42a6eca4', 1),
     'mpas_atmphys_driver_gwdo.F:735-829': c.CitationPin('src/core_atmosphere/physics/mpas_atmphys_driver_gwdo.F', 735, 829, 'f1356b16357871b94f836a8f8d9636d6ee967454df3326e8d768cf319eb0bbbb', 1),
     'mpas_atmphys_driver_gwdo.F:692-834': c.CitationPin('src/core_atmosphere/physics/mpas_atmphys_driver_gwdo.F', 692, 834, 'ef1d4f9ae5a415c44d1dfeaa749c1d281df63e65f52041e9a265681b29d9f68f', 1),
     'mpas_atmphys_driver_seaice.F:495-536': c.CitationPin('src/core_atmosphere/physics/mpas_atmphys_driver_seaice.F', 495, 536, 'b58620c3647a645edb3ef6c5c04dbbb2c7442793f4386be798bf6bd559bbac66', 1),

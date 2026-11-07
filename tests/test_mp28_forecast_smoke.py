@@ -714,12 +714,12 @@ def test_g4_persistent_scratch_is_not_carried_between_forecast_steps():
         "mp_thompson_aero_ncten", "mp_thompson_aero_nwfaten",
         "mp_thompson_aero_nifaten", "mp_thompson_aero_entry_density",
         "mp_thompson_aero_tau1_density", "mp_thompson_aero_nwfa_work_m3",
-        # WRF v4.6.1's hydrometeor tendency accumulators (lane/cut286-mp28-g3).
+        # WRF v4.6.1's hydrometeor tendency accumulators (development branch).
         "mp_thompson_aero_qcten", "mp_thompson_aero_qrten",
         "mp_thompson_aero_nrten", "mp_thompson_aero_qiten",
         "mp_thompson_aero_niten",
         # WRF's REAL vapour and temperature tendencies
-        # (lane/mp28fix-warm-network).
+        # (development branch).
         "mp_thompson_aero_qvten", "mp_thompson_aero_tten",
         # The frozen carriers' snow, graupel and graupel-number accumulators
         # (a860663b5, the delivered frozen-carrier launch).
@@ -1301,8 +1301,11 @@ def test_the_runtime_history_lane_admits_28_for_refl_10cm():
     # FAST_SBM (30) is the one moist scheme out: its polar-scattering
     # diagnostic is not ported, and woof.core.fast_sbm_runtime.apply
     # refuses a due frame, so the history lane never asks it for one.
+    # CAM MG (11) never writes REFL_10CM in WRF; its retained zero field is
+    # not a diagnostic (woof.da.obsop's cited absence), so it is out too,
+    # as are old Eta Ferrier (95) and MADWRF (96), which write none either.
     assert (set(runtime.REFL_10CM_MICROPHYSICS)
-            == {mp for mp in MP_PHYSICS_ACCEPTED if mp} - {30})
+            == {mp for mp in MP_PHYSICS_ACCEPTED if mp} - {30, 11, 95, 96})
     # ... and the set is cross-checked against the estimator's own
     # admission set rather than left as one hand-typed tuple, which is how
     # this pin went stale.  The two sets are no longer EQUAL, and the
@@ -1328,7 +1331,11 @@ def test_the_runtime_history_lane_admits_28_for_refl_10cm():
     # loads refl.cu nor fills the slot, and the history lane leaves it out.
     assert (set(runtime.REFL_10CM_MICROPHYSICS)
             - set(pf._REFLECTIVITY_MICROPHYSICS)
-            == set(pf._SELF_REFLECTIVITY_MICROPHYSICS) - {30} == {4, 5, 9, 18, 24, 50, 900})
+            == set(pf._SELF_REFLECTIVITY_MICROPHYSICS) - {30}
+            # 7, 15, 51-53, 55 and 56 landed with their own radar kernels,
+            # each with its reason row in _SELF_REFLECTIVITY_MICROPHYSICS;
+            # UDM (27) and RCON (29) joined with theirs in 3.0.
+            == {4, 5, 7, 9, 15, 18, 24, 27, 29, 50, 51, 52, 53, 55, 56, 97, 900})
 
     runtime_source = (pathlib.Path(__file__).resolve().parent.parent
                       / "woof" / "runtime.py").read_text(encoding="utf-8")

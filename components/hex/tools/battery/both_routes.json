@@ -25,7 +25,7 @@
       "cards": 1, "vram_mib": 14000, "minutes": 20,
       "steps": [
         {"name": "door", "gpu": true, "argv": ["global", "--row", "global-120km", "--cycle", "{cycle}", "--hours", "2",
-          "--history-every-minutes", "60", "{staged_args}", "--work-dir", "{work}", "--skip", "score", "{route_door}"],
+          "--history-every-minutes", "60", "{staged_args}", "{geog_args}", "--work-dir", "{work}", "--skip", "score", "{route_door}"],
          "watch": ["forecast/history-ready.jsonl", "forecast/*.durable.json"]}
       ],
       "checks": [
@@ -55,7 +55,7 @@
     {
       "id": "zoom-globe",
       "family": "variable-resolution globe (mesh-plan --run)",
-      "cards": 1, "vram_mib": 10000, "minutes": 20,
+      "cards": 1, "vram_mib": 13000, "minutes": 20,
       "steps": [
         {"name": "door", "gpu": true, "argv": ["mesh-plan", "--global-mesh", "--card", "rtx-pro-6000", "--point", "41.5,-93.0", "--background-km", "240",
           "--fine-dx-m", "60000", "--radius-km", "800", "--generate", "--out-dir", "{work}", "{geog_args}", "--run",
@@ -69,7 +69,7 @@
     {
       "id": "lts",
       "family": "local time stepping on a variable-resolution globe",
-      "cards": 1, "vram_mib": 10000, "minutes": 20,
+      "cards": 1, "vram_mib": 13000, "minutes": 20,
       "steps": [
         {"name": "door", "gpu": true, "argv": ["mesh-plan", "--global-mesh", "--card", "rtx-pro-6000", "--point", "41.5,-93.0", "--background-km", "240",
           "--fine-dx-m", "60000", "--radius-km", "800", "--generate", "--out-dir", "{work}", "{geog_args}", "--run",
@@ -110,7 +110,7 @@
       "cards": 1, "vram_mib": 8000, "minutes": 25,
       "steps": [
         {"name": "door", "gpu": true, "argv": ["country", "--point", "36.5,-97.5", "--radius-km", "100", "--cycle", "{cycle}",
-          "--hours", "1", "--work-dir", "{work}", "{geog_args}", "{route_door}"]}
+          "--hours", "1", "--work-dir", "{work}", "{geog_args}", "--skip", "score", "{route_door}"]}
       ],
       "checks": [
         {"kind": "glob", "patterns": ["**/history.*.nc", "**/cuda-history.*.nc"], "min": 2}
@@ -119,7 +119,7 @@
     {
       "id": "multicard",
       "family": "two cards on one host (2 cards = 1 card)",
-      "after": "global", "cards": 2, "vram_mib": 8000, "minutes": 10,
+      "after": "global", "cards": 2, "vram_mib": 16000, "minutes": 10,
       "steps": [
         {"name": "forecast", "gpu": true, "argv": ["{base_forecast}", "--hours", "2", "--samehost-devices", "0,1",
           "--out", "{work}/forecast", "--scratch", "{work}/scratch"]}
@@ -148,7 +148,7 @@
     {
       "id": "iau",
       "family": "incremental analysis update (zero increment over 1 h)",
-      "after": "global", "cards": 1, "vram_mib": 10000, "minutes": 10,
+      "after": "global", "cards": 1, "vram_mib": 13500, "minutes": 10,
       "steps": [
         {"name": "forecast", "gpu": true, "argv": ["{base_forecast}", "--hours", "1", "--iau-analysis", "{init}",
           "--iau-window-seconds", "3600", "--out", "{work}/forecast", "--scratch", "{work}/scratch"]}
@@ -160,7 +160,7 @@
     {
       "id": "jedi-background",
       "family": "JEDI background files",
-      "after": "global", "cards": 1, "vram_mib": 10000, "minutes": 10,
+      "after": "global", "cards": 1, "vram_mib": 13500, "minutes": 10,
       "steps": [
         {"name": "forecast", "gpu": true, "argv": ["{base_forecast}", "--hours", "1", "--jedi-background",
           "--out", "{work}/forecast", "--scratch", "{work}/scratch"]}
@@ -173,7 +173,7 @@
     {
       "id": "chemistry",
       "family": "aerosol transport (--chemistry-config)",
-      "after": "global", "cards": 1, "vram_mib": 10000, "minutes": 10,
+      "after": "global", "cards": 1, "vram_mib": 13500, "minutes": 10,
       "steps": [
         {"name": "inputs", "gpu": false, "builtin": "chemistry_inputs"},
         {"name": "forecast", "gpu": true, "argv": ["{base_forecast}", "--hours", "1",
@@ -187,7 +187,7 @@
     {
       "id": "balance-series",
       "family": "balance series sampler",
-      "after": "global", "cards": 1, "vram_mib": 10000, "minutes": 10,
+      "after": "global", "cards": 1, "vram_mib": 13500, "minutes": 10,
       "steps": [
         {"name": "forecast", "gpu": true, "argv": ["{base_forecast}", "--hours", "1", "--balance-series",
           "--out", "{work}/forecast", "--scratch", "{work}/scratch"]}
@@ -199,7 +199,7 @@
     {
       "id": "nest-triggers",
       "family": "Hex with Regional trigger nests (the look arms)",
-      "after": "global", "cards": 1, "vram_mib": 10000, "minutes": 10,
+      "after": "global", "cards": 1, "vram_mib": 13500, "minutes": 10,
       "steps": [
         {"name": "table", "gpu": false, "builtin": "trigger_table"},
         {"name": "forecast", "gpu": true, "argv": ["{base_forecast}", "--hours", "1", "--nest-triggers", "{work}/triggers.json",
@@ -213,7 +213,7 @@
     {
       "id": "members",
       "family": "co-resident member roster (global --members, s2s)",
-      "after": "global", "cards": 1, "vram_mib": 16000, "minutes": 10,
+      "after": "global", "cards": 1, "vram_mib": 24000, "minutes": 10,
       "steps": [
         {"name": "roster", "gpu": false, "builtin": "member_roster"},
         {"name": "forecast", "gpu": true, "argv": ["{base_forecast}", "--hours", "1", "--members", "{work}/roster.json",
@@ -227,7 +227,7 @@
     {
       "id": "moving",
       "family": "storm-following moving region",
-      "cards": 1, "vram_mib": 20000, "minutes": 40,
+      "cards": 1, "vram_mib": 25000, "minutes": 40,
       "about": "6 h so the member the controller prepares after its first move decision is ready before the forecast ends",
       "steps": [
         {"name": "case", "gpu": false, "argv": ["moving", "case", "--best-track", "{best_track}", "--storm", "{storm_sid}",

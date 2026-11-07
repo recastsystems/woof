@@ -68,11 +68,11 @@ def inventory_shapes(cfg):
     until a prepared bundle supplies its actual carrier inventory.
     """
     from woof.core import preflight as pf
-    from woof.state_serialization_contract import STATE_SERIALIZED_ATTRS
+    from woof.state_serialization_contract import serialized_state_attrs
     from woof.io.restart import SERIALIZED_SCRATCH_SLOTS
     shapes = {"state/" + key: shape
               for key, shape in pf.state_array_shapes(cfg).items()
-              if key in STATE_SERIALIZED_ATTRS}
+              if key in serialized_state_attrs(cfg)}
     if getattr(cfg, "chem_sets", ""):
         from woof.core.device_inventory import chem_state_array_shapes
         from woof.core.chem_history import history_schema
@@ -463,7 +463,7 @@ def estimate_devices(exp, *, options=None, max_map_factor=1.0,
         coordinate_owners = (radiation_owners
                              + int(cfg.sf_surface_physics == 4)
                              + int(cfg.o3input == 2)
-                             + int(int(getattr(cfg, "swint_opt", 0) or 0) == 1))
+                             + int(int(getattr(cfg, "swint_opt", 0) or 0) in (1, 2)))
         geo += coordinate_owners * 2 * cfg.nx * cfg.ny * 8
         basis = "hoststore FieldSpec products over resident carrier/setup census upper bound"
     else:

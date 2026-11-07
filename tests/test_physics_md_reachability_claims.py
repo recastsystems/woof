@@ -544,7 +544,9 @@ def test_the_page_lists_the_whole_mynn_option_identity():
 def test_the_quoted_mynn_identity_refusal_is_the_one_the_loader_emits():
     """A user compares a quoted error against their terminal, character
     for character, so this one is executed rather than transcribed."""
-    message = _refusal(extra="bl_mynn_mixlength = 0")
+    # 0 is WRF 4.7.1's local mixing length since the 4.7.1 MYNN port
+    # (81a0328007c); 3 is a branch no generation implements.
+    message = _refusal(extra="bl_mynn_mixlength = 3")
     assert _squash(message) in _squash(_page()), (
         "docs/public/PHYSICS.md quotes a MYNN option-identity refusal that "
         f"the loader does not emit. Measured:\n{message}")

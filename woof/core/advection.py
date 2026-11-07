@@ -27,7 +27,7 @@ import numpy as np
 
 from woof.config import RunConfig, VERTICAL_ADV_ORDERS
 from woof.grid_requirements import FIFTH_ORDER_STENCIL_AXIS
-from woof.core.kernels import get_kernel
+from woof.core.kernels import get_kernel, get_kernel_int_defines
 from woof.core.state import (DTYPE, DomainState, mu_at_u_faces,
                               mu_at_v_faces)
 
@@ -45,12 +45,20 @@ def vertical_orders(cfg) -> tuple[int, int]:
             int(getattr(cfg, "v_mom_adv_order", 3) or 3))
 
 
+
+def scalar_horizontal_order(cfg) -> int:
+    """Native scalar/w order, retaining the omitted idealized legacy path."""
+    order = int(getattr(cfg, "h_sca_adv_order", 5))
+    return 5 if order == 2 and getattr(cfg, "_legacy_h_sca", False) else order
+
+
 def _launch(func: str, q, ru, rv, rw, tend, rdnw, fnm, fnp,
             dx: float, dy: float,
             nz: int, ny: int, nx: int, n_i: int, n_j: int, n_k: int,
             open_x: bool = False, open_y: bool = False,
             msf=None, has_msf=None, msf_shape=None,
-            spec: bool = False, vorder: int = 3) -> None:
+            spec: bool = False, vorder: int = 3, weno: bool = False,
+            horder: int = 5, theta_offset: bool = False) -> None:
     """Common launch path: 3D grid over the target points, i fastest.
 
     ``open_x``/``open_y`` select the kernels' WRF open-lateral-boundary
@@ -84,7 +92,21 @@ def _launch(func: str, q, ru, rv, rw, tend, rdnw, fnm, fnp,
         has_msf = msf is not None
     if msf is None:
         msf = cp.ones(msf_shape, dtype=DTYPE)
-    kern = get_kernel("advection", func, (nz, ny, nx))
+    if weno:
+        kern = get_kernel_int_defines("advection", func,
+                                     (("GPUWM_WENO_MOM", 1),), (nz, ny, nx))
+        vorder = 5  # Native advect_weno_* fixes both stencil ladders to 5.
+    elif horder != 5:
+        if horder not in (0, 2, 3, 4, 6):
+            raise ValueError('horder must be 0, 2, 3, 4, 5 or 6')
+        defines = ((("GPUWM_NO_HADV", 1),) if horder == 0 else
+                   (("GPUWM_HORDER", horder),))
+        if theta_offset:
+            assert horder == 0 and func == "flux_div_scalar"
+            defines += (("GPUWM_THETA_OFFSET", 1),)
+        kern = get_kernel_int_defines("advection", func, defines, (nz, ny, nx))
+    else:
+        kern = get_kernel("advection", func, (nz, ny, nx))
     grid = ((n_i + _TPB - 1) // _TPB, n_j, n_k)
     kern(grid, (_TPB, 1, 1),
          (q, ru, rv, rw, tend, cp.asarray(rdnw, dtype=DTYPE),
@@ -98,7 +120,7 @@ def _launch(func: str, q, ru, rv, rw, tend, rdnw, fnm, fnp,
 def launch_flux_div_scalar(q, ru, rv, rw, tend, coord, dx, dy,
                            open_x=False, open_y=False,
                            msf=None, has_msf=None, spec=False,
-                           vorder=3) -> None:
+                           vorder=3, horder=5, theta_offset=False) -> None:
     """Add the flux divergence of scalar ``q`` (mass points) into ``tend``.
 
     ``msf`` (optional) is the mass-point map factor ``msft (ny, nx)``;
@@ -107,13 +129,13 @@ def launch_flux_div_scalar(q, ru, rv, rw, tend, coord, dx, dy,
     _launch("flux_div_scalar", q, ru, rv, rw, tend, coord.rdnw,
             coord.fnm, coord.fnp, dx, dy,
             nz, ny, nx, nx, ny, nz, open_x, open_y,
-            msf, has_msf, (ny, nx), spec, vorder)
+            msf, has_msf, (ny, nx), spec, vorder, False, horder, theta_offset)
 
 
 def launch_flux_div_u(u, ru, rv, rw, tend, coord, dx, dy,
                       open_x=False, open_y=False,
                       msf=None, has_msf=None, spec=False,
-                      vorder=3) -> None:
+                      vorder=3, weno=False, horder=5) -> None:
     """Add the flux divergence of ``u`` (u-points) into ``tend``.
 
     ``msf`` (optional) is the u-point map factor ``msfu (ny, nx+1)``;
@@ -123,13 +145,13 @@ def launch_flux_div_u(u, ru, rv, rw, tend, coord, dx, dy,
     _launch("flux_div_u", u, ru, rv, rw, tend, coord.rdnw,
             coord.fnm, coord.fnp, dx, dy,
             nz, ny, nx, nx + 1, ny, nz, open_x, open_y,
-            msf, has_msf, (ny, nx + 1), spec, vorder)
+            msf, has_msf, (ny, nx + 1), spec, vorder, weno, horder)
 
 
 def launch_flux_div_v(v, ru, rv, rw, tend, coord, dx, dy,
                       open_x=False, open_y=False,
                       msf=None, has_msf=None, spec=False,
-                      vorder=3) -> None:
+                      vorder=3, weno=False, horder=5) -> None:
     """Add the flux divergence of ``v`` (v-points) into ``tend``.
 
     ``msf`` (optional) is the v-point map factor ``msfv (ny+1, nx)``;
@@ -139,13 +161,13 @@ def launch_flux_div_v(v, ru, rv, rw, tend, coord, dx, dy,
     _launch("flux_div_v", v, ru, rv, rw, tend, coord.rdnw,
             coord.fnm, coord.fnp, dx, dy,
             nz, ny, nx, nx, ny + 1, nz, open_x, open_y,
-            msf, has_msf, (ny + 1, nx), spec, vorder)
+            msf, has_msf, (ny + 1, nx), spec, vorder, weno, horder)
 
 
 def launch_flux_div_w(w, ru, rv, rw, tend, coord, dx, dy,
                       open_x=False, open_y=False,
                       msf=None, has_msf=None, spec=False,
-                      vorder=3) -> None:
+                      vorder=3, weno=False, horder=5) -> None:
     """Add the flux divergence of ``w`` (interior and top w-points)
     into ``tend``.  Uses ``coord.rdn`` (w-level spacing), not ``rdnw``.
 
@@ -157,10 +179,10 @@ def launch_flux_div_w(w, ru, rv, rw, tend, coord, dx, dy,
     _launch("flux_div_w", w, ru, rv, rw, tend, coord.rdn,
             coord.fnm, coord.fnp, dx, dy,
             nz, ny, nx, nx, ny, nz + 1, open_x, open_y,
-            msf, has_msf, (ny, nx), spec, vorder)
+            msf, has_msf, (ny, nx), spec, vorder, weno, horder)
 
 
-def add_advection_tendencies(state: DomainState, cfg: RunConfig) -> None:
+def add_advection_tendencies(state: DomainState, cfg: RunConfig, *, weno=False) -> None:
     """Accumulate advective tendencies into ``ru_t, rv_t, rw_t, rth_t``.
 
     Phase-1 advection-only path (``dycore.step(acoustic=False)``): builds
@@ -199,15 +221,21 @@ def add_advection_tendencies(state: DomainState, cfg: RunConfig) -> None:
     rw[...] = 0.0                                    # Omega == 0 when w == 0
 
     vsca, vmom = vertical_orders(cfg)
-    launch_flux_div_scalar(state.total_theta(), ru, rv, rw, state.rth_t,
+    theta = (state.prognostic_theta() if getattr(state, "use_theta_m", 0)
+             else state.total_theta())
+    launch_flux_div_scalar(theta, ru, rv, rw, state.rth_t,
                            state, cfg.dx, cfg.dy,
-                           msf=state.msft, has_msf=state.has_msf, vorder=vsca)
+                           msf=state.msft, has_msf=state.has_msf, vorder=vsca,
+                           horder=scalar_horizontal_order(cfg))
     launch_flux_div_u(state.u, ru, rv, rw, state.ru_t, state, cfg.dx, cfg.dy,
-                      msf=state.msfu, has_msf=state.has_msf, vorder=vmom)
+                      msf=state.msfu, has_msf=state.has_msf, vorder=vmom,
+                      weno=weno, horder=cfg.h_mom_adv_order)
     launch_flux_div_v(state.v, ru, rv, rw, state.rv_t, state, cfg.dx, cfg.dy,
-                      msf=state.msfv, has_msf=state.has_msf, vorder=vmom)
+                      msf=state.msfv, has_msf=state.has_msf, vorder=vmom,
+                      weno=weno, horder=cfg.h_mom_adv_order)
     launch_flux_div_w(state.w, ru, rv, rw, state.rw_t, state, cfg.dx, cfg.dy,
-                      msf=state.msft, has_msf=state.has_msf, vorder=vsca)
+                      msf=state.msft, has_msf=state.has_msf, vorder=vsca,
+                      weno=weno, horder=scalar_horizontal_order(cfg))
 
 
 def advect_scalar_rk3_periodic_test(q0, u0: float, dx: float,

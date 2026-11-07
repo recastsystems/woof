@@ -756,7 +756,9 @@ def test_the_release_ships_six_libraries_with_different_abi_symbols() -> None:
         "gpuwm_preprocess_cpu", "region_global_dealias", "netcdf_writer",
         "static_fields", "obs_regrid", "obs_score", "rw_isobaric",
         "rw_superob", "rw_tempo", "rw_projected_intermediate",
-        "nextgen_hydrofabric", "arwen_nextgen_forcing", "rw_nextgen_output"}
+        "nextgen_hydrofabric", "arwen_nextgen_forcing", "rw_nextgen_output", "rw_p3", "rw_cam_tables", "rw_cu99_launch", "arwen_dfi", "gpuwm_tslist",
+        # 3.0: the TC frames library (canonical TC initialization and storm products).
+        "tc_frames_io"}
     symbols = {bridge_assets.library_abi_for(a.name)[0] for a in artifacts}
     assert symbols == {"gpuwm_preprocess_cpu_abi_version", "bw_abi_version",
                        "gpuwm_ncwrite_abi_version",
@@ -767,7 +769,10 @@ def test_the_release_ships_six_libraries_with_different_abi_symbols() -> None:
                        "gpuwm_tempo_abi_version",
                        "gpuwm_projected_intermediate_abi_version",
                        "arwen_hydrofabric_abi_version", "arwen_forcing_abi_version",
-                       "rw_nextgen_output_abi_version"}
+                       "rw_nextgen_output_abi_version", "gpuwm_p3_abi_version",
+                       "gpuwm_cam_tables_abi_version", "gpuwm_cu99_launch_abi_version",
+                       "aw_dfi_runtime_abi", "gpuwm_tslist_abi_version",
+                       "tc_frames_abi_version"}
 
 
 @pytest.mark.parametrize("platform", bridge_assets.SUPPORTED_PLATFORMS)
@@ -1058,22 +1063,25 @@ def test_the_wheel_scan_reads_code_data_and_netcdf_not_metadata(
 
 
 def test_a_frozen_kernel_source_is_allowed_by_its_exact_bytes_only(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The rule's second allowance: a byte-pinned kernel source as it is.
 
-    An edited copy of the same kernel names its host and is refused.
+    An edited copy of the same kernel names its host and is refused.  The
+    shipped allowance is empty (every entry was spent), so the frozen
+    source here is synthetic and names a host built from fragments.
     """
 
-    from tools.release_exclusions import PINNED_KERNEL_SOURCES
+    import hashlib
 
-    if not PINNED_KERNEL_SOURCES:
-        # The Recast WOOF assembly rewords the host names out of the frozen
-        # kernels' comments and retires their allowances, so the table is empty.
-        pytest.skip("no frozen kernel source in this tree names a host, so the allowance has no row to test")
+    from tools import release_exclusions
+
     repo = Path(verify_release_artifacts.__file__).resolve().parents[1]
-    rel = sorted(PINNED_KERNEL_SOURCES)[0]
-    payload = (repo / rel).read_bytes()
+    rel = "woof/core/kernels/frozen_example.cu"
+    payload = ("// measured on " + "no" + "de-9\n"
+               "__global__ void frozen_example() {}\n").encode()
+    monkeypatch.setattr(release_exclusions, "PINNED_KERNEL_SOURCES",
+                        {rel: hashlib.sha256(payload).hexdigest()})
 
     exact = tmp_path / "exact.whl"
     with zipfile.ZipFile(exact, "w") as archive:

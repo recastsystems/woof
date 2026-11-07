@@ -82,6 +82,7 @@ from woof.core.noahmp_slab_libm import copy_slab_slots, split_slab_slots
 import numpy as np
 
 from woof.core.noahmp_radiation_gpu import (
+    BATS_PARAMETER_NAMES,
     N_INPUT as RADIATION_N_IN,
     N_OUTPUT as RADIATION_N_OUT,
     OUTPUT_NAMES as RADIATION_OUTPUT_NAMES,
@@ -327,7 +328,7 @@ def pack_thermoprop_slab(fields, n: int):
     return x, ix
 
 
-def evaluate_thermoprop_slab(fields, n: int) -> dict:
+def evaluate_thermoprop_slab(fields, n: int, *, log10_profile="glibc_2_39") -> dict:
     """One launch of THERMOPROP over ``n`` columns; WRF's six arrays as slabs.
 
     Keys are ``df``, ``hcpct``, ``snicev``, ``snliqv``, ``epore`` and
@@ -340,7 +341,7 @@ def evaluate_thermoprop_slab(fields, n: int) -> dict:
     y = cp.zeros((n, THERMOPROP_N_OUT), dtype=cp.float32)
     if n:
         assert y.flags.c_contiguous
-        _thermoprop_kernel()(
+        _thermoprop_kernel(log10_profile)(
             (_blocks(n, THERMAL_THREADS),), (THERMAL_THREADS,),
             (cp.ascontiguousarray(x), cp.ascontiguousarray(ix), y,
              np.int32(n)))
@@ -358,18 +359,36 @@ def pack_tsnosoi_slab(fields, n: int):
     return x, ix
 
 
-def evaluate_tsnosoi_slab(fields, n: int) -> dict:
+def evaluate_tsnosoi_slab(fields, n: int, *, opt_stc=1, opt_tbot=2) -> dict:
     """One launch of TSNOSOI over ``n`` columns; ``{"stc", "eflxb"}``."""
     import cupy as cp
 
+    if type(opt_stc) is not int or opt_stc not in (1,2,3):
+        raise ValueError("TSNOSOI opt_stc must be 1, 2 or 3")
+    if type(opt_tbot) is not int or opt_tbot not in (1,2):
+        raise ValueError("TSNOSOI opt_tbot must be 1 or 2")
     x, ix = pack_tsnosoi_slab(fields, n)
     y = cp.zeros((n, TSNOSOI_N_OUT), dtype=cp.float32)
     if n:
         assert y.flags.c_contiguous
-        thermal_module().get_function("noahmp_thermal_tsnosoi")(
-            (_blocks(n, THERMAL_THREADS),), (THERMAL_THREADS,),
-            (cp.ascontiguousarray(x), cp.ascontiguousarray(ix), y,
-             np.int32(n)))
+        if "snicar_heating" in fields:
+            from woof.core.noahmp_kernel_sources import selected_kernel
+            kernel = selected_kernel("noahmp_thermal", "noahmp_tsnosoi_snow_papers")
+            args = (cp.ascontiguousarray(x), cp.ascontiguousarray(ix),
+                    cp.ascontiguousarray(fields["snicar_heating"]), y, np.int32(n), np.int32(opt_stc), np.int32(opt_tbot))
+        else:
+            selected = opt_stc == 2 or opt_tbot == 1
+            if selected:
+                from woof.core.noahmp_kernel_sources import selected_kernel
+                kernel = selected_kernel("noahmp_thermal", "noahmp_thermal_tsnosoi_selected")
+            else:
+                kernel = thermal_module().get_function("noahmp_thermal_tsnosoi")
+            kernel(
+                (_blocks(n, THERMAL_THREADS),), (THERMAL_THREADS,),
+                (cp.ascontiguousarray(x), cp.ascontiguousarray(ix), y,
+                 np.int32(n), *((np.int32(opt_stc), np.int32(opt_tbot)) if selected else ())))
+        if "snicar_heating" in fields:
+            kernel((_blocks(n, THERMAL_THREADS),), (THERMAL_THREADS,), args)
     return _split(y, TSNOSOI_OUT, cp)
 
 
@@ -385,7 +404,7 @@ def pack_phasechange_slab(fields, n: int):
     return x, ix
 
 
-def evaluate_phasechange_slab(fields, n: int) -> dict:
+def evaluate_phasechange_slab(fields, n: int, *, opt_frz=1) -> dict:
     """One launch of PHASECHANGE over ``n`` columns; WRF's ten return values.
 
     ``imelt`` comes back ``int32``, as the per-column unpacker's
@@ -393,11 +412,18 @@ def evaluate_phasechange_slab(fields, n: int) -> dict:
     """
     import cupy as cp
 
+    if type(opt_frz) is not int or opt_frz not in (1, 2):
+        raise ValueError("PHASECHANGE opt_frz must be 1 or 2")
     x, ix = pack_phasechange_slab(fields, n)
     y = cp.zeros((n, PHASECHANGE_N_OUT), dtype=cp.float32)
     if n:
         assert y.flags.c_contiguous
-        thermal_module().get_function("noahmp_thermal_phasechange")(
+        if opt_frz == 2:
+            from woof.core.noahmp_kernel_sources import selected_kernel
+            kernel = selected_kernel("noahmp_thermal", "noahmp_thermal_phasechange_frz2")
+        else:
+            kernel = thermal_module().get_function("noahmp_thermal_phasechange")
+        kernel(
             (_blocks(n, THERMAL_THREADS),), (THERMAL_THREADS,),
             (cp.ascontiguousarray(x), cp.ascontiguousarray(ix), y,
              np.int32(n)))
@@ -423,29 +449,83 @@ def pack_radiation_slab(fields, n: int):
     return inputs, cp.ascontiguousarray(ist)
 
 
-def evaluate_radiation_slab(fields, n: int, *, noahmp_snow_age="wrf_470") -> dict:
+def evaluate_radiation_slab(fields, n: int, *, noahmp_snow_age="wrf_470",
+                            opt_alb=2, opt_rad=3) -> dict:
     """One launch of RADIATION over ``n`` columns.
 
     Keys are the ones ``noahmp_radiation_gpu.unpack_radiation_row``
     produces: ``OUTPUT_NAMES``, then ``albsnd``, ``albsni``, ``bgap``,
     ``wgap``, ``albold`` and ``tauss``.  ``albsnd`` and ``albsni`` are
-    ``(n, 2)`` slabs rather than per-column pairs.
+    ``(n, 2)`` slabs rather than per-column pairs. ``opt_alb=1`` requires
+    all seven ``BATS_PARAMETER_NAMES`` fields, each shape ``(n,)``. It uses
+    the native BATS branch inside this same radiation launch. Full-column
+    option admission is separate from this leaf's selected branch.
     """
     import cupy as cp
 
     from woof.core.kernels import get_kernel
 
     from woof.noahmp_generation import radiation_kernel
+    if type(opt_alb) is not int or opt_alb not in (1, 2, 3):
+        raise ValueError("RADIATION opt_alb must be 1 (BATS) or 2 (CLASS) or 3 (snow from papers)")
+    if type(opt_rad) is not int or opt_rad not in (1, 2, 3):
+        raise ValueError("RADIATION opt_rad must be 1 (crown), 2 (dense) or 3 (fractional)")
     kernel_name = radiation_kernel(noahmp_snow_age)
     inputs, ist = pack_radiation_slab(fields, n)
+    bats = None
+    if opt_alb == 1:
+        bats = cp.empty((n, len(BATS_PARAMETER_NAMES)), dtype=cp.float32)
+        _fill(bats, fields, {name: (i, 1) for i, name in
+                            enumerate(BATS_PARAMETER_NAMES)}, n, "BATS", cp)
     out = cp.zeros((n, RADIATION_N_OUT), dtype=cp.float32)
     if n:
         assert out.flags.c_contiguous
-        get_kernel("noahmp_radiation", kernel_name)(
+        args = (cp.ascontiguousarray(inputs), cp.ascontiguousarray(ist))
+        if opt_alb == 3:
+            from woof.core.snow_papers import evaluate
+            snow, carried, absorption = evaluate(inputs, ist, carbon=fields.get("snicar_carbon"),
+                layers=fields.get("snicar_layers"), state=fields.get("snicar_state"),
+                options=fields.get("snicar_options"),
+                air_temperature=fields.get("snicar_air_temperature"), return_fluxes=True)
+            heating = cp.zeros((n,7),dtype=cp.float32)
+            crown = None
+            if opt_rad == 1:
+                crown = cp.empty((n, 3), dtype=cp.float32)
+                _fill(crown, fields, {name: (i, 1) for i, name in
+                                     enumerate(("rc", "hvt", "hvb"))}, n, "RAD1 crown", cp)
+            args += (snow, absorption, heating, crown if crown is not None else np.uint64(0), out,
+                     np.int32(n), np.int32(kernel_name.endswith("_night_age")), np.int32(opt_rad))
+            kernel_name = "noahmp_radiation_batch_snow_papers"
+        elif opt_rad == 1:
+            crown = cp.empty((n, 3), dtype=cp.float32)
+            _fill(crown, fields, {name: (i, 1) for i, name in
+                                 enumerate(("rc", "hvt", "hvb"))}, n, "RAD1 crown", cp)
+            args += (bats if bats is not None else np.uint64(0), crown, out, np.int32(n),
+                     np.int32(kernel_name.endswith("_night_age")))
+            kernel_name = "noahmp_radiation_batch_crown"
+        elif opt_rad == 2:
+            args += (bats if bats is not None else np.uint64(0), out, np.int32(n),
+                     np.int32(kernel_name.endswith("_night_age")))
+            kernel_name = "noahmp_radiation_batch_dense"
+        elif bats is None:
+            args += (out, np.int32(n))
+        else:
+            args += (bats, out, np.int32(n),
+                     np.int32(kernel_name.endswith("_night_age")))
+            kernel_name = "noahmp_radiation_batch_bats"
+        if opt_alb == 3 or bats is not None or opt_rad != 3:
+            from woof.core.noahmp_kernel_sources import selected_kernel
+            kernel = selected_kernel("noahmp_radiation", kernel_name)
+        else:
+            kernel = get_kernel("noahmp_radiation", kernel_name)
+        kernel(
             (_blocks(n, RADIATION_THREADS),), (RADIATION_THREADS,),
-            (cp.ascontiguousarray(inputs), cp.ascontiguousarray(ist), out,
-             np.int32(n)))
-    return _split(out, RADIATION_OUT, cp)
+            args)
+    result = _split(out, RADIATION_OUT, cp)
+    if n and opt_alb == 3:
+        result["snicar_state"] = carried
+        result["snicar_heating"] = heating
+    return result
 
 
 __all__ = [

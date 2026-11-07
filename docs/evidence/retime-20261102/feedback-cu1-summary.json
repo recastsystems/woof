@@ -1,0 +1,89 @@
+{
+  "row": "feedback-cu1",
+  "scope": "radiation",
+  "baseline_scope": "radiation",
+  "commit": "6a3e6ea15e60594499f310894d9b1966f50884e6",
+  "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
+  "warm_policy": "first actual forecast step retained separately; steps 2 onward for stage ratios",
+  "stage_ratio": 0.7780814318542253,
+  "median_stage_ratio": 0.8613918537669614,
+  "amortized_stage_ratio": 0.7780814318542253,
+  "active_whole_forecast_wall_ratio": 0.9978717561717556,
+  "active_whole_forecast_seconds": {
+    "baseline": 14.272105067968369,
+    "candidate": 14.24173054844141
+  },
+  "whole_forecast_warm_step_ratio": 0.9288401073215734,
+  "arms": {
+    "baseline": {
+      "cumulus": {
+        "calls": 59,
+        "median_ms": 2.7277119159698486,
+        "mean_ms": 2.7294779591641185,
+        "sum_ms": 161.03919959068298,
+        "mean_host_ms": 1.5481798830678908
+      },
+      "step": {
+        "calls": 59,
+        "median_ms": 21.611391067504883,
+        "mean_ms": 26.797887333368852,
+        "sum_ms": 1581.0753526687622,
+        "mean_host_ms": 23.790615089869096
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 34.645694732666016,
+        "mean_ms": 37.50176863236861,
+        "sum_ms": 412.5194549560547,
+        "mean_host_ms": 37.499214776537634
+      }
+    },
+    "candidate": {
+      "cumulus": {
+        "calls": 59,
+        "median_ms": 2.8209919929504395,
+        "mean_ms": 2.8123411526114253,
+        "sum_ms": 165.9281280040741,
+        "mean_host_ms": 1.59410759806633
+      },
+      "step": {
+        "calls": 59,
+        "median_ms": 21.775936126708984,
+        "mean_ms": 24.890952546717756,
+        "sum_ms": 1468.5662002563477,
+        "mean_host_ms": 21.857887127641902
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 29.84351921081543,
+        "mean_ms": 29.17942983453924,
+        "sum_ms": 320.97372817993164,
+        "mean_host_ms": 29.178762639110737
+      }
+    }
+  },
+  "nonfinite_heating": {
+    "baseline": 0,
+    "candidate": 0
+  },
+  "cold_first_step": {
+    "baseline": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 352.9737548828125,
+      "host_seconds": 0.3530435301363468
+    },
+    "candidate": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 346.1114807128906,
+      "host_seconds": 0.3461955562233925
+    }
+  },
+  "forecasts": {
+    "baseline": "/workspace/runs/spd-retime-rad-cu/logs/feedback-cu1-baseline.log",
+    "candidate": "/workspace/runs/spd-retime-rad-cu/logs/feedback-cu1-candidate.log"
+  },
+  "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/spd-retime-rad-cu",
+  "retained_native_root": "~/weather/data/datasets/paper/wrf-ports/spd-retime-rad-cu"
+}

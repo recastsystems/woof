@@ -335,6 +335,34 @@ def test_member_colour_is_keyed_to_the_member_not_to_its_position():
 # ---------------------------------------------------------------------------
 
 
+def test_the_ensemble_max_is_a_named_product_end_to_end():
+    """The live DA ensemble menu needs an "Ensemble max" map (outsider check
+    2026-11-03 finding 3): enprod must accept it, expand it once per
+    field, name its file, and reduce it with a NaN member masked."""
+
+    assert "max" in enprod.PRODUCTS
+    products, _ = enprod.parse_products("all")
+    assert "max" in products
+    assert enprod.parse_products("max") == (("max",), False)
+    assert enprod.ensemble_token("max") == "ens-max"
+    requests = enprod.expand_requests(("refl", "uh"), ("max",),
+                                      (30.0, 40.0), (0.0, 5.0))
+    assert [(r.field, r.threshold, r.radius_km) for r in requests] == [
+        ("refl", None, None), ("uh", None, None)]
+
+    stack = np.array([
+        [[10.0, -5.0, np.nan]],
+        [[np.nan, -2.0, np.nan]],
+        [[np.inf, -7.0, np.nan]],
+    ])
+    out = enprod.ensemble_max(stack)
+    assert out[0, 0] == 10.0
+    assert out[0, 1] == -2.0
+    assert np.isnan(out[0, 2])
+    with pytest.raises(enprod.EnsembleRefusal):
+        enprod.ensemble_max(stack, nan_policy="refuse")
+
+
 def test_a_threshold_product_without_a_threshold_is_an_error():
     with pytest.raises(ValueError, match="threshold-based"):
         enprod.ensemble_token("prob")

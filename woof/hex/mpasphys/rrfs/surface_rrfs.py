@@ -18,6 +18,8 @@ the fork), so they run the v8.4.2 service's kernels.  monthly_interp_to_date's a
 rounded to nearest, with no contraction.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -68,7 +70,7 @@ def _module_on(device: int):
     # Direct NVRTC keeps --ftz=false (CuPy's RawModule cache appends forced FTZ).
     binary, _ = compiler.compile_using_nvrtc(
         _CUDA, options=tuple(_hex_numerics.options(CUDA_OPTIONS, keep_ftz=True)),
-        arch=cp.cuda.Device(device).compute_capability)
+        arch=_compilation_target(device, xp=cp))
     with cp.cuda.Device(device):
         module = cp.cuda.function.Module()
         module.load(binary)

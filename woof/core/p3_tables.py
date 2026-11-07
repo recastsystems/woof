@@ -1,4 +1,4 @@
-"""P3 (``mp_physics=50``) lookup-table packaging, loading, and generation.
+"""P3 (``mp_physics=50`` and ``53``) lookup-table packaging, loading, and generation.
 
 Transcription authority: byte-frozen WRF v4.6.1
 ``phys/module_mp_p3.F`` (P3 v4.5.2), subroutine ``p3_init`` lines 112-685.
@@ -27,9 +27,26 @@ configuration this port ships:
    ``mu_r = mu_r_constant`` in the authority (:610), so the 10 columns are
    identical by construction and are computed once and broadcast.
 
-3. The multi-category table 2 and the 3-moment table-1 variant are NOT
-   packaged: they belong to the unported ``mp_physics=52`` / ``53``
-   options, which woof refuses by name (woof/config.py).
+3. For ``nCat > 1`` (``mp_physics = 52``) READ the ice-ice collection
+   table ``p3_lookupTable_2.dat-v5.3`` (:474-519): a version-checked header
+   (:481-496), one blank record, then 25x4x5x25x4x5 records of 6 index
+   tokens + the two collection quantities ``itabcolli1``/``itabcolli2``.
+   The packaged copy is WRF v4.6.1's own ``run/`` bytes (LF), pinned in
+   ``woof/data/p3/tables/MANIFEST.sha256``; :func:`load_lookup_table_2`
+   is measured against the arrays WRF's own ``p3_init(nCat=2)`` holds
+   (tools/p3_wrf461_oracle/table2_dump.sh,
+   :data:`FORTRAN_ITABCOLLI_SHA256`).  The three-moment variant is packaged separately below.
+3. The 3-moment table-1 variant ``p3_lookupTable_1.dat-v5.4_3momI``
+   (mp_physics=53, ``p3_init(trplMomI=.true.)``, :412-470) is the SAME
+   loader on a second :class:`P3TableAsset` row: an 11-deep mu_i axis
+   outermost, four index tokens and 15 quantities per ``itab_3mom``
+   record, the same three-token, two-double ``itabcoll_3mom`` records.
+   It is WRF's own LF text, packaged xz-compressed (17.9 MB of text,
+   0.6 MB on disk); the row's ``compression`` field is what makes the
+   loader decompress before the version, size and digest checks, which
+   all run on the TEXT, against WRF's own ``run/`` digest.
+
+Table 2 and both table-1 variants are packaged with their own pins.
 
 MEASURED against running Fortran, 2026-08-28 (test host A, gfortran 15.2.0,
 WRF's own ``module_mp_p3.F`` compiled unmodified except for an appended
@@ -92,12 +109,29 @@ RIMSIZE = 4       # rime mass fraction index
 RCOLLSIZE = 30    # rain-size index (ice-rain collection)
 TABSIZE = 14      # quantities per itab entry
 COLLTABSIZE = 2   # quantities per itabcoll entry
+# Registry.EM_COMMON:3038 and :3040. Category count is model metadata.
+P3_CATEGORY_COUNTS = {50: 1, 51: 1, 52: 2, 53: 1}
+P3_TRANSPORT_FIELDS = {
+    50: ("qi", "ni", "nr", "qir", "qib"),
+    51: ("qi", "ni", "nr", "qir", "qib", "nc"),
+    53: ("qi", "ni", "nr", "qir", "qib", "nc", "qzi"),
+    52: ("qi", "qi2", "nc", "ni", "nr", "qir", "qib", "ni2", "qir2", "qib2"),
+}
+P3_CATEGORY2_FIELDS = ("qi2", "ni2", "qir2", "qib2")
+
+IISIZE = 25       # normalized-q index of the ice-ice table (table 2)
+ZSIZE = 11        # mu_i index of the 3-moment table (:50)
+TABSIZE_3MOM = 15  # quantities per itab_3mom entry (:55)
 
 #: p3_init's intended table-1 version for the 2-moment-ice configuration
 #: (module_mp_p3.F:138); the file header is checked against it (:351-366)
 #: and a mismatch is a hard stop under model='WRF' (:362-365).
 TABLE_1_2MOM_VERSION = "5.4_2momI"
 TABLE_1_2MOM_FILENAME = f"p3_lookupTable_1.dat-v{TABLE_1_2MOM_VERSION}"
+#: The 3-moment-ice configuration's intended table 1 (:139), selected by
+#: ``trplMomI`` (:158-162).
+TABLE_1_3MOM_VERSION = "5.4_3momI"
+TABLE_1_3MOM_FILENAME = f"p3_lookupTable_1.dat-v{TABLE_1_3MOM_VERSION}"
 
 
 class P3TableVersionError(ValueError):
@@ -121,6 +155,23 @@ class P3TableAsset:
     #: Carried as DATA so a second table (the 3-moment table-1 variant, or
     #: table 2 for nCat>1) is a new row here and not a new code path.
     version: str
+    #: ``"xz"`` when the packaged file is ``filename + ".xz"``; the version,
+    #: size and digest above are those of the decompressed TEXT, which is
+    #: what p3_init reads.  The compressed bytes are pinned for packaging in
+    #: tables/MANIFEST.sha256 but not here: a byte-identical text in a
+    #: differently compressed stream is the same table.
+    compression: str | None = None
+    #: Table SHAPE as data: the mu_i axis (1 for the 2-moment table), the
+    #: quantities per itab record and the index tokens that precede them
+    #: (:379 reads three, :450 reads four).
+    zsize: int = 1
+    tabsize: int = TABSIZE
+    index_tokens: int = 3
+
+    @property
+    def packaged_filename(self) -> str:
+        return (self.filename if self.compression is None
+                else f"{self.filename}.{self.compression}")
 
 
 #: The one packaged asset, pinned to the byte-frozen reference bundle copy
@@ -149,6 +200,69 @@ TABLE_1_2MOM_ASSET = P3TableAsset(
 UPSTREAM_WRF_TABLE_1_2MOM_SHA256 = (
     "be1ab6fb03481e376e47c6c79d808af5d8ab069f2b242931e9c54801bad4ae84")
 UPSTREAM_WRF_TABLE_1_2MOM_SIZE = 1606038
+
+#: p3_init's intended table-2 version (module_mp_p3.F:140), checked against
+#: the file header at :481-496 where a mismatch under model='WRF' is a stop.
+TABLE_2_VERSION = "5.3"
+TABLE_2_FILENAME = f"p3_lookupTable_2.dat-v{TABLE_2_VERSION}"
+
+#: The ice-ice collection table, read only when nCat > 1 (:474).  WRF
+#: v4.6.1's own ``run/`` bytes, LF line endings, byte for byte: unlike table
+#: 1 there is no older CRLF copy whose digest restart identities already
+#: carry, so the packaged file IS the upstream file.
+TABLE_2_ASSET = P3TableAsset(
+    filename=TABLE_2_FILENAME,
+    sha256="c9103041ead719cf9e2e215cf846e0ef81b2004f29386156444a079af6b24d97",
+    size=15250032,
+    version=TABLE_2_VERSION,
+)
+
+#: SHA-256 of ``itabcolli1`` followed by ``itabcolli2`` exactly as WRF's own
+#: ``p3_init(nCat=2)`` holds them (25,4,5,25,4,5 float32 each, Fortran
+#: element order), dumped by tools/p3_wrf461_oracle/table2_dump.sh from a
+#: copy of the pinned module_mp_p3.F with one read-only subroutine added,
+#: gfortran 13.3.0 -O0, 2026-10-08.  The parser's correctness anchor:
+#: :func:`load_lookup_table_2` must reproduce these bytes.
+FORTRAN_ITABCOLLI_SHA256 = (
+    "13a745a56fd11a0239fa0d573bf480abf5e3da44b7e435d28c0b5f59b9ef00a6")
+#: The 3-moment table, pinned to WRF v4.6.1's own ``run/`` bytes (LF line
+#: endings: the text digest IS WRF's, so WRF's run/ directory is a valid
+#: ``WOOF_P3_TABLE_ROOT`` mirror for it once xz-compressed, and the
+#: uncompressed file there is refused by name).  Packaged xz-compressed.
+TABLE_1_3MOM_ASSET = P3TableAsset(
+    filename=TABLE_1_3MOM_FILENAME,
+    sha256="9a3c57ecc09498802c8d7cb3931dbb0200dcf0f51466b3e288120c080271e6dc",
+    size=17886038,
+    version=TABLE_1_3MOM_VERSION,
+    compression="xz",
+    zsize=ZSIZE,
+    tabsize=TABSIZE_3MOM,
+    index_tokens=4,
+)
+
+#: The packaged bytes of the 3-moment table (the .xz stream itself), as
+#: tables/MANIFEST.sha256 pins them: what plan review's asset resolver
+#: checks for presence and size (woof.physics_registry
+#: .resolve_asset_requirement).  The loader's pin is the TEXT digest above.
+TABLE_1_3MOM_PACKAGED_SIZE = 614968
+TABLE_1_3MOM_PACKAGED_SHA256 = (
+    "18ef2429958eee71c84b37f7212a8ec62eb61549043bfabe84f6dad82a836b69")
+
+#: Table-1 rows by p3_init's ``trplMomI``.
+TABLE_1_ASSETS = {False: TABLE_1_2MOM_ASSET, True: TABLE_1_3MOM_ASSET}
+
+#: SHA-256 of the PARSED three-moment arrays -- C-contiguous little-endian
+#: float32 ``itab_3mom[11,5,4,50,15]`` and ``itabcoll_3mom[11,5,4,50,30,2]``
+#: -- as WRF's own TRIPLE_MOMENT_ICE read loop (module_mp_p3.F:446-468,
+#: cut out by line number and compiled with gfortran 13.3.0 -O0 by
+#: tools/p3_wrf461_oracle/table3_dump.sh) loads them from WRF's run/ copy.
+#: MEASURED 2026-10-08: all 165,000 + 660,000 words parsed by
+#: :func:`load_lookup_table_1` from the packaged .xz are bit-identical to
+#: the Fortran's.
+FORTRAN_ITAB3_SHA256 = (
+    "e796debdb46a3b15c8d5012596dad95ab96560eb89743f3d6745d267ce3d8bea")
+FORTRAN_ITABCOLL3_SHA256 = (
+    "d11a042bec68a6f92b9030e252edb6195de1f6afcb37dc7aa10df8fb868269a5")
 
 #: SHA-256 of the PARSED arrays -- C-contiguous little-endian float32
 #: ``itab[5,4,50,14]`` and ``itabcoll[5,4,50,30,2]`` -- as produced by WRF's
@@ -229,14 +343,50 @@ def _validate_asset_bytes(path: Path, asset: P3TableAsset) -> bytes:
     as any operator is concerned -- was refused with "Refusing to parse a
     modified table" and the version refusal below never ran.
     """
-    if not path.is_file():
-        raise FileNotFoundError(
-            f"P3 lookup table missing: {path}. mp_physics=50 cannot run "
-            f"without {asset.filename} (P3 reads it at init, "
-            "module_mp_p3.F:337-410). The canonical copy ships inside the "
-            "woof package; set " + P3_TABLE_ROOT_ENV + " only to point at "
-            "a byte-identical mirror.")
-    blob = path.read_bytes()
+    scheme = ("mp_physics=53" if asset.zsize > 1 else
+              "mp_physics=52" if asset.filename == TABLE_2_FILENAME else
+              "mp_physics=50/51/52")
+    if asset.compression is not None:
+        packed = path.with_name(asset.packaged_filename)
+        if not packed.is_file():
+            hint = (f" ({path} itself is present: that is WRF's "
+                    "uncompressed run/ copy; woof reads the packaged "
+                    f"{asset.packaged_filename})" if path.is_file() else "")
+            raise FileNotFoundError(
+                f"P3 lookup table missing: {packed}. {scheme} cannot run "
+                f"without {asset.packaged_filename} (P3 reads "
+                f"{asset.filename} at init, module_mp_p3.F:412-470){hint}. "
+                "The canonical copy ships inside the woof package; set "
+                + P3_TABLE_ROOT_ENV + " only to point at a byte-identical "
+                "mirror.")
+        packed_bytes = packed.read_bytes()
+        if asset.compression != "xz":
+            raise ValueError(
+                f"P3 table row {asset.filename} names compression "
+                f"{asset.compression!r}; the loader reads only 'xz'")
+        try:
+            import lzma
+        except ImportError:                              # pragma: no cover
+            raise ValueError(
+                f"P3 lookup table {packed} is xz-compressed and this Python "
+                "has no lzma module, so the 3momI table (and with it "
+                f"{scheme}) cannot be read; install a Python built with "
+                "liblzma") from None
+        try:
+            blob = lzma.decompress(packed_bytes)
+        except lzma.LZMAError as error:
+            raise ValueError(
+                f"P3 lookup table {packed} is not a readable xz stream "
+                f"({error}). Refusing to parse a modified table.") from None
+    else:
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"P3 lookup table missing: {path}. {scheme} cannot run "
+                f"without {asset.filename} (P3 reads it at init, "
+                "module_mp_p3.F:337-410). The canonical copy ships inside "
+                "the woof package; set " + P3_TABLE_ROOT_ENV + " only to "
+                "point at a byte-identical mirror.")
+        blob = path.read_bytes()
     found = _header_version(blob, path, asset)
     if found != asset.version:
         raise P3TableVersionError(
@@ -278,50 +428,111 @@ def _validate_asset_bytes(path: Path, asset: P3TableAsset) -> bytes:
     return blob
 
 
-@lru_cache(maxsize=2)
-def load_lookup_table_1(root: str) -> tuple[np.ndarray, np.ndarray]:
-    """Parse table 1 (2-moment ice): ``(itab, itabcoll)`` float32 arrays.
+@lru_cache(maxsize=4)
+def load_lookup_table_1(root: str, three_moment: bool = False
+                        ) -> tuple[np.ndarray, np.ndarray]:
+    """Parse table 1: ``(itab, itabcoll)`` float32 arrays.
 
-    Shapes follow the Fortran declarations (module_mp_p3.F:62/:66):
-    ``itab[densize, rimsize, isize, tabsize]`` and
-    ``itabcoll[densize, rimsize, isize, rcollsize, colltabsize]``, 0-based.
-    The read order matches p3_init exactly (:371-398): per (jj, ii) block,
+    Shapes follow the Fortran declarations (module_mp_p3.F:62-67).  Two
+    moment: ``itab[densize, rimsize, isize, tabsize]`` and
+    ``itabcoll[densize, rimsize, isize, rcollsize, colltabsize]``, 0-based;
+    the read order matches p3_init exactly (:371-398): per (jj, ii) block,
     50 itab records of 3 skipped index tokens + 14 values, then 50 x 30
-    itabcoll records of 3 skipped index tokens + 2 values.  itabcoll is
-    parsed as float64 and stored to float32, matching the Fortran's
-    ``dp_dum1`` -> REAL(4) assignment (:392-394).
+    itabcoll records of 3 skipped index tokens + 2 values.  Three moment
+    (``three_moment=True``, the asset row :data:`TABLE_1_3MOM_ASSET`):
+    the same blocks inside an outer mu_i loop (:446-468), 4 index tokens
+    and 15 values per itab record, giving ``itab_3mom[zsize, densize,
+    rimsize, isize, 15]`` and ``itabcoll_3mom[zsize, densize, rimsize,
+    isize, rcollsize, 2]``.  itabcoll is parsed as float64 and stored to
+    float32, matching the Fortran's ``dp_dum1`` -> REAL(4) assignment
+    (:392-394, :461-463).
     """
-    path = Path(root) / TABLE_1_2MOM_ASSET.filename
+    if three_moment:
+        from woof.core.p3_rust import init_three_moment
+        return init_three_moment(root)[:2]
+    asset = TABLE_1_ASSETS[False]
+    path = Path(root) / asset.filename
     # Version FIRST, then size, then digest -- upstream's order, and the
     # only order in which a wrong-VERSION table is reported as one
     # (:func:`_validate_asset_bytes`).
-    blob = _validate_asset_bytes(path, TABLE_1_2MOM_ASSET)
+    blob = _validate_asset_bytes(path, asset)
     text = blob.decode("ascii")
     first_newline = text.index("\n")
     tokens = text[first_newline:].split()
-    per_block = ISIZE * (3 + TABSIZE) + ISIZE * RCOLLSIZE * (3 + COLLTABSIZE)
-    expected = DENSIZE * RIMSIZE * per_block
+    lead, tabsize, zsize = asset.index_tokens, asset.tabsize, asset.zsize
+    per_block = (ISIZE * (lead + tabsize)
+                 + ISIZE * RCOLLSIZE * (3 + COLLTABSIZE))
+    expected = zsize * DENSIZE * RIMSIZE * per_block
     if len(tokens) != expected:
         raise ValueError(
-            f"P3 lookupTable_1 has {len(tokens)} data tokens, expected "
-            f"{expected}; refusing a truncated or reshaped table.")
+            f"P3 lookupTable_1 ({asset.version}) has {len(tokens)} data "
+            f"tokens, expected {expected}; refusing a truncated or "
+            "reshaped table.")
     values = np.asarray(tokens, dtype=np.float64)
-    itab = np.empty((DENSIZE, RIMSIZE, ISIZE, TABSIZE), dtype=np.float32)
-    itabcoll = np.empty((DENSIZE, RIMSIZE, ISIZE, RCOLLSIZE, COLLTABSIZE),
-                        dtype=np.float32)
+    itab = np.empty((zsize, DENSIZE, RIMSIZE, ISIZE, tabsize),
+                    dtype=np.float32)
+    itabcoll = np.empty((zsize, DENSIZE, RIMSIZE, ISIZE, RCOLLSIZE,
+                         COLLTABSIZE), dtype=np.float32)
     pos = 0
-    itab_block = ISIZE * (3 + TABSIZE)
+    itab_block = ISIZE * (lead + tabsize)
     coll_block = ISIZE * RCOLLSIZE * (3 + COLLTABSIZE)
-    for jj in range(DENSIZE):
-        for ii in range(RIMSIZE):
-            rows = values[pos:pos + itab_block].reshape(ISIZE, 3 + TABSIZE)
-            itab[jj, ii, :, :] = rows[:, 3:].astype(np.float32)
-            pos += itab_block
-            rows = values[pos:pos + coll_block].reshape(
-                ISIZE, RCOLLSIZE, 3 + COLLTABSIZE)
-            itabcoll[jj, ii, :, :, :] = rows[:, :, 3:].astype(np.float32)
-            pos += coll_block
+    for zz in range(zsize):
+        for jj in range(DENSIZE):
+            for ii in range(RIMSIZE):
+                rows = values[pos:pos + itab_block].reshape(
+                    ISIZE, lead + tabsize)
+                itab[zz, jj, ii, :, :] = rows[:, lead:].astype(np.float32)
+                pos += itab_block
+                rows = values[pos:pos + coll_block].reshape(
+                    ISIZE, RCOLLSIZE, 3 + COLLTABSIZE)
+                itabcoll[zz, jj, ii, :, :, :] = rows[:, :, 3:].astype(
+                    np.float32)
+                pos += coll_block
+    if zsize == 1:
+        return itab[0], itabcoll[0]
     return itab, itabcoll
+
+
+@lru_cache(maxsize=2)
+def load_lookup_table_2(root: str) -> tuple[np.ndarray, np.ndarray]:
+    """Parse table 2 (ice-ice collection): ``(itabcolli1, itabcolli2)``.
+
+    module_mp_p3.F:500-514 reads, for i, jjj, jjjj, ii, jjj2, jjjj2 nested
+    in that order (jjjj2 innermost), one record of six skipped tokens and
+    the two values into ``itabcolli1(i,jjj,jjjj,ii,jjj2,jjjj2)`` and
+    ``itabcolli2(...)``, declared ``(iisize,rimsize,densize,iisize,rimsize,
+    densize)`` (:71-72).  Each array is returned C-contiguous with the
+    Fortran index order REVERSED, shape ``(densize, rimsize, iisize,
+    densize, rimsize, iisize)``: its bytes are then exactly the Fortran
+    array's column-major bytes, which is the layout the device kernel
+    addresses and the one :data:`FORTRAN_ITABCOLLI_SHA256` pins.
+
+    The two values are parsed as float64 and rounded to float32 once; a
+    list-directed READ converts the decimal to REAL(4) directly.  The two
+    agree on every one of the 500,000 words of this table (the pinned
+    digest is the Fortran's own arrays), which is the measurement, not an
+    argument, that no value here sits within half an ULP of a float32
+    rounding boundary.
+    """
+    path = Path(root) / TABLE_2_ASSET.filename
+    blob = _validate_asset_bytes(path, TABLE_2_ASSET)
+    text = blob.decode("ascii")
+    # read(10,*) dumstr,version (record 1), read(10,*) (record 2, blank)
+    records = text.split("\n", 2)
+    tokens = records[2].split() if len(records) > 2 else []
+    n = IISIZE * RIMSIZE * DENSIZE * IISIZE * RIMSIZE * DENSIZE
+    if len(tokens) != 8 * n:
+        raise ValueError(
+            f"P3 lookupTable_2 has {len(tokens)} data tokens, expected "
+            f"{8 * n}; refusing a truncated or reshaped table.")
+    rows = np.asarray(tokens, dtype=np.float64).reshape(n, 8)
+    shape_file = (IISIZE, RIMSIZE, DENSIZE, IISIZE, RIMSIZE, DENSIZE)
+    out = []
+    for col in (6, 7):
+        file_order = rows[:, col].astype(np.float32).reshape(shape_file)
+        out.append(np.ascontiguousarray(
+            file_order.transpose(5, 4, 3, 2, 1, 0)))
+    return out[0], out[1]
 
 
 @lru_cache(maxsize=1)

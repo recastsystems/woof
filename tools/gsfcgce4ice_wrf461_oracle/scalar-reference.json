@@ -1,0 +1,13 @@
+{
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "source_sha256": {
+    "module_mp_gsfcgce_4ice_nuwrf.F": "79b782f6832ce45c0a13f463841d1820cabc4de0049ac60b5c2a23d24389cb8b",
+    "module_mp_radar.F": "aa99da858be41efa579966680708d230123a7417560af0eb2e24f4c94e253688"
+  },
+  "output_sha256": {
+    "case-A.expected.out": "c50b21bd3a77fc7c8ecdebd6bac61b33690c7070657456210c802dbe13a13c04",
+    "case-B.expected.out": "93ec9258d360c0f31ce96de66d264debb2d4cda6c5129c0f089f2435eb708f99",
+    "case-C.expected.out": "81746ff28c9e4d287fbfd49da8aa1ad1006ead285e032c2604233ef546ea0525"
+  },
+  "reference": "WRF-built scalar object, identical to standalone scalar on every output byte"
+}

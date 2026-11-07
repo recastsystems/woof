@@ -471,6 +471,36 @@ def _find_dt_admission(receipt: Any) -> Any:
     return None
 
 
+def _driver_result(out: Path, cuda_name: str):
+    """Read the selected door's receipt, including native MPAS rank completion."""
+    path = out / cuda_name
+    if path.is_file():
+        value = json.loads(path.read_text())
+        return path, value, value.get('status')
+    path = out / 'native-physics-receipt.json'
+    if not path.is_file():
+        return path, None, None
+    value = json.loads(path.read_text())
+    complete = value.get('schema') == 'mpas-native-forecast-v1' and value.get('completed') is True
+    ranks = int(value.get('rank_execution', {}).get('ranks', 1))
+    if ranks > 1:
+        launch = out / 'samehost-rank-launch.json'
+        if not launch.is_file():
+            complete = False
+        else:
+            record = json.loads(launch.read_text())
+            complete = complete and record.get('completed') is True and all(
+                code == 0 for code in record.get('rank_process_exit_codes', {}).values())
+        for rank in range(ranks):
+            rank_path = out / f'native-physics-receipt.rank{rank}.json'
+            if not rank_path.is_file():
+                complete = False
+            else:
+                record = json.loads(rank_path.read_text())
+                complete = complete and record.get('schema') == 'mpas-native-forecast-v1' and record.get('completed') is True
+    return path, value, 'passed' if complete else 'incomplete'
+
+
 def _run(arguments: argparse.Namespace, forecast_argv: list[str]) -> tuple[Path, dict[str, Any]]:
     from woof.hex import cli, forecast_door as door, time_ledger
 
@@ -533,12 +563,11 @@ def _run(arguments: argparse.Namespace, forecast_argv: list[str]) -> tuple[Path,
                 and profile.get("profile_wrapper_intact", True)
                 and forcing.metadata["composite_step_restored"]
                 and forcing.metadata["wrapper_intact"])
-    driver_path = parsed.out / door.DRIVER_RECEIPT_NAME
-    driver_receipt = json.loads(driver_path.read_text()) if driver_path.is_file() else None
-    status = driver_receipt.get("status") if driver_receipt else None
+    driver_path, driver_receipt, status = _driver_result(parsed.out, door.DRIVER_RECEIPT_NAME)
     completed = code == 0 and status == "passed"
     forecast_receipt = driver_receipt.get("forecast", {}) if driver_receipt else {}
-    resolved_parallel = len(forecast_receipt.get("devices", ())) > 1
+    resolved_parallel = (len(forecast_receipt.get("devices", ())) > 1
+                         or int((driver_receipt or {}).get('rank_execution', {}).get('ranks', 1)) > 1)
     final_forcing_hashes = (forcing.metadata["hashes"] if forcing.enabled and not resolved_parallel else
                            forecast_receipt.get("final_gf_tendency_hashes"))
     unchanged = _protected_snapshot(before) == _protected_snapshot(after)

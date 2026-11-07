@@ -1,6 +1,6 @@
 """Disk admission prices a quick-look stream's subset frames as the subset.
 
-Breakage it prevents (WOOF 2026-10-28, woof 2.9.9): a GFS 12-3-1 km run,
+Breakage it prevents (WOOF 2026-10-28, gpuwm 2.9.9): a GFS 12-3-1 km run,
 1164 x 714 x 49 on its 1 km grid, 6 h, full frames hourly on every grid and
 the quick-look subset every minute on the 1 km grid
 (``quicklook = { every_s = 60.0 }``), was projected at 361 full frames on its

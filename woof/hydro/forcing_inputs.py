@@ -6,6 +6,7 @@ regridding, hash verification and packet reads are Rust. CUDA owns stepping.
 from __future__ import annotations
 import ctypes
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -25,6 +26,10 @@ def _library(path=None):
         from woof import bridges
         filename = library_names()[0]
         path=bridges.find_artifact(ENV,filename,crate_relative=CRATE,executable=False)
+        # On demand since WOOF 1.1.6 (PyPI per-file limit): staged by the first hydro
+        # preparation from this release's bundle (never inside inspection_only()).
+        if path is None and not os.environ.get(ENV) and bridges.fetch_on_demand(ARTIFACT):
+            path=bridges.find_artifact(ENV,filename,crate_relative=CRATE,executable=False)
         if path is None:
             raise RuntimeError(bridges.artifact_remedy(env_var=ENV,filename=filename,
                 subject="NextGen forcing Rust engine",crate_relative=CRATE,artifact=ARTIFACT))

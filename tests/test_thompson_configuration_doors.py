@@ -55,7 +55,7 @@ def test_non_fork_import_is_byte_identical_to_the_previous_importer(tmp_path):
     from test_namelist_import import _pair
     control = os.environ.get("WOOF_CONFIGURATION_DOOR_BASE")
     if not control:
-        # d191b05b3, lane/286-fork-thompson: preserve the pre-ruling importer
+        # d191b05b3, development branch: preserve the pre-ruling importer
         # as exact LF bytes. The 7df301d1b gate bundle predates this commit,
         # so the control must travel with the tests rather than require Git.
         path = ROOT / "tests/fixtures/thompson/namelist_import_d191b05b3.py"

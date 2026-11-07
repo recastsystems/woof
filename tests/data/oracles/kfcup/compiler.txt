@@ -1,0 +1,6 @@
+GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+WRF build: /work/wrf/build/strict/WRF-4.6.1
+FCOPTIM         =       -O2 -fno-fast-math -ffp-contract=off
+FORMAT_FREE     =       -ffree-form -ffree-line-length-none
+FCBASEOPTS_NO_G =       -w $(FORMAT_FREE) $(BYTESWAPIO) $(FCCOMPAT)

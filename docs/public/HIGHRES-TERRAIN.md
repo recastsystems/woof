@@ -58,7 +58,8 @@ A reused preparation must retain that binding; changing an
 active overlay requires rebuilding its static preparation. Relative cache
 paths stay relative to the original case file when a prepared bundle writes
 its own configuration. `enabled = false` retains the baseline, and
-`on_refuse = "fallback-30s"` records an explicitly requested coverage fallback.
+An all-water footprint is accepted without a terrain replacement. The former
+`fallback-30s` option is retired; unavailable required land coverage stops the run.
 
 ## What you get, and where
 
@@ -300,7 +301,7 @@ cache_root = "D:/gpuwm-cache/highres"
 terrain_source   = "auto"   # auto | copernicus-dem-glo30 | srtm-gl1 | usgs-3dep-13as
 landcover_source = "auto"   # auto | cglc-modis-lcz | annual-nlcd
 fields           = "auto"   # auto | all | terrain
-on_refuse        = "error"  # error | fallback-30s
+on_refuse        = "error"  # required coverage failures stop the run
 max_dx_m         = 1000.0   # absent: every domain; else domains at or finer
 ```
 

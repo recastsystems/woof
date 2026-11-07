@@ -29,12 +29,12 @@ def assert_fork(run):
 def test_generic_namelist_keeps_current_staging_bytes_and_legacy_defaults(tmp_path):
     from test_namelist_import import _pair
     text, _ = import_namelists(*_pair(tmp_path), name="dycore-control")
-    baseline = json.loads((FIXTURE / "identity-e62a72e48-dycore.json").read_text())
+    baseline = json.loads((FIXTURE / "identity-34951539d98-namelist.json").read_text())
     from wrf_clock_lines import WRF_CLOCK_BLOCK, without_wrf_clock_lines
     assert WRF_CLOCK_BLOCK in text
-    # Pinned before 2026-10-12: the input now asks for Morrison by its own
-    # number (55 is refused) and the omitted lid is WRF's open top; with
-    # exactly those two lines put back the parent's hash holds.
+    # Re-recorded by running the base 34951539d98 importer: the earlier
+    # e62a72e48 fixture already failed on that base. Keep the same clock
+    # and retired-selector normalization used by the earlier assertion.
     from ishmael_retirement import with_retired_line
     assert hashlib.sha256(with_retired_line(
         without_wrf_clock_lines(text)).encode()

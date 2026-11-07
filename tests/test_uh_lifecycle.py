@@ -3,8 +3,10 @@
 
 WRF semantics under test (authorities cited in woof/core/uh_diag.py):
 the accumulator exists exactly when nwp_diagnostics = 1, is folded every
-step, rides in every history frame, is zeroed after each frame ("reset at
-history interval"), is carried through restarts (Registry IO "rh02"), and
+step, rides in every history frame, is carried through restarts (Registry
+IO "rh02"), and the native driver owns the reset at the following step.
+The legacy direct helper without a prepared native driver retains its
+reset-on-write contract. In both cases,
 -- the essential property -- is provably trajectory-inert: a run with
 the knob on is bitwise identical to the same run with it off in every
 model field, differing only by the UP_HELI_MAX plane itself.
@@ -478,6 +480,11 @@ def test_up_heli_max_has_no_trajectory_or_restart_reader():
     assert hits == {
         "woof/core/uh_diag.py",      # owner: update/reset/mirror
         "woof/core/gsd_diagnostics.py",  # independent GSD history window
+        "woof/core/nwp_diagnostics.py",  # native first-RK published window
+        # The 0-1/0-2/0-3 km maxima (uh_layers = 1): its own up_heli_max01/02/03
+        # slots, folded from the same step and reset with UP_HELI_MAX; reads
+        # model state only, writes nothing the trajectory reads.
+        "woof/core/uh_layers.py",
         "woof/ensemble/mass_launcher.py",  # diagnostic download only
         "woof/ensemble/batch_product_output.py",  # output field assembly only
         # The WRF warm start's closed-world carrier census names the slot as
@@ -556,6 +563,7 @@ def test_up_heli_max_has_no_trajectory_or_restart_reader():
     # points may appear (no direct slot access).
     sanctioned_scratch = {"woof/core/uh_diag.py", "woof/core/state.py",
                           "woof/core/gsd_diagnostics.py",
+                          "woof/core/nwp_diagnostics.py",
                           "woof/ensemble/mass_launcher.py",
                           "woof/ensemble/batch_product_output.py",
                           "woof/io/history_layout.py", "woof/io/restart.py",
@@ -724,7 +732,9 @@ def test_trajectory_inertness_bitwise(tmp_path):
 
     on_fields = _live_state_history_fields(s_on)
     off_fields = _live_state_history_fields(s_off)
-    assert set(on_fields) - set(off_fields) == {"UP_HELI_MAX"}
+    from woof.core.nwp_diagnostics import HISTORY as NWP_HISTORY
+    assert set(on_fields) - set(off_fields) == {"UP_HELI_MAX",
+        *(row[0] for row in NWP_HISTORY.values())} - set(off_fields)
     # Precipitation accumulators (scratch) are equally untouched.
     np.testing.assert_array_equal(
         cp.asnumpy(s_on.scratch((cfg_on.ny, cfg_on.nx), "mp_rainnc")),
@@ -744,7 +754,8 @@ def test_trajectory_inertness_bitwise(tmp_path):
     with Dataset(paths["off"]) as off_nc, Dataset(paths["on"]) as on_nc:
         off_vars = set(off_nc.variables)
         on_vars = set(on_nc.variables)
-        assert on_vars - off_vars == {"UP_HELI_MAX"}
+        assert on_vars - off_vars == {"UP_HELI_MAX",
+            *(row[0] for row in NWP_HISTORY.values())} - off_vars
         assert off_vars - on_vars == set()
         for name in sorted(off_vars):
             if name == "Times":

@@ -67,6 +67,20 @@ class _Cache:
         return self.value
 
 
+@pytest.mark.parametrize('surface_layer', [0, 1, 5, 91])
+def test_stock_noah_export_accepts_sms_turbulence_inputs(surface_layer):
+    from dataclasses import replace
+    cfg = RunConfig(nx=30, ny=30, nz=10, dx=3000., dy=3000., ztop=10000.,
+                    dt=6., run_seconds=60., moist=True, mp_physics=8,
+                    km_opt=5, diff_opt=2, bl_pbl_physics=0,
+                    sf_sfclay_physics=surface_layer, sf_surface_physics=2,
+                    use_theta_m=1, do_avgflx_em=1, specified=True,
+                    hybrid_opt=2, hypsometric_opt=2)
+    wrf_direct.validate_stock_wrf_export_config(cfg)
+    with pytest.raises(StockWrfExportUnsupported, match='sf_surface_physics'):
+        wrf_direct.validate_stock_wrf_export_config(replace(cfg, sf_surface_physics=3))
+
+
 def test_stock_wrf_export_rejects_gpuwm_mixed_microphysics_before_output(
         tmp_path):
     parent = RunConfig(
@@ -115,34 +129,18 @@ def _minimal_prepared_cache(root: Path, run: dict) -> Path:
     return root
 
 
-def test_the_profile_free_export_gate_keeps_its_exact_v2_stock_slice(tmp_path):
-    """F2 fixes the LAYERING; this pins the gate's CONTENT, unchanged.
-
-    The compatibility branch -- the one the hierarchy root export takes,
-    because it supplies no profile -- still demands bl_pbl_physics=1,
-    sf_sfclay_physics=91 and sf_surface_physics=2, and still writes
-    nothing when it refuses.  The message is the one the probes quoted
-    verbatim.
-    """
-
+def test_profile_free_export_refuses_a_surface_without_the_noah_input_contract(tmp_path):
+    """PBL and surface-layer pins retired; the actual Noah input layout still binds."""
     cache = _minimal_prepared_cache(tmp_path / "prepared", {
         "mp_physics": 6, "hybrid_opt": 2, "hypsometric_opt": 2,
         "specified": True, "nested": False, "spec_bdy_width": 5,
-        # The MYNN tree the probes drove: registry-reachable, and refused.
-        "bl_pbl_physics": 5, "sf_sfclay_physics": 5, "sf_surface_physics": 2,
+        "bl_pbl_physics": 5, "sf_sfclay_physics": 5, "sf_surface_physics": 3,
     })
     output = tmp_path / "wrf-native-input"
-
     with pytest.raises(StockWrfExportUnsupported) as refusal:
-        export_prepared_wrf(
-            cache, tmp_path / "static.npz", tmp_path / "geometry.json",
-            output, valid_time=datetime(2026, 7, 29, 6))
-
-    assert str(refusal.value) == (
-        "unsupported direct-export configuration: "
-        "{'bl_pbl_physics': (5, 1), 'sf_sfclay_physics': (5, 91)}")
-    assert refusal.value.unsupported == {
-        "bl_pbl_physics": (5, 1), "sf_sfclay_physics": (5, 91)}
+        export_prepared_wrf(cache, tmp_path / "static.npz", tmp_path / "geometry.json",
+                            output, valid_time=datetime(2026, 7, 29, 6))
+    assert refusal.value.unsupported == {"sf_surface_physics": (3, 2)}
     assert not output.exists()
     assert not list(tmp_path.glob("wrf-native-input.tmp-*"))
 
@@ -315,6 +313,8 @@ def test_contract_inventory_is_frozen():
         (6, ()),
         (8, ("QNICE", "QNRAIN")),
         (10, ("QNICE", "QNSNOW", "QNRAIN", "QNGRAUPEL")),
+        (55, ("QICE2", "QICE3", "QNRAIN", "QNICE", "QVOLI", "QAOLI",
+              "QNICE2", "QVOLI2", "QAOLI2", "QNICE3", "QVOLI3", "QAOLI3")),
         (
             18,
             (
@@ -420,7 +420,7 @@ def test_number_moment_wrfinput_contract_writes_arbitrary_vertical_shape(
 def _export_a_real_prepared_cache(tmp_path, mp_physics, numbers=None,
                                   *, boundary_scalars=None,
                                   replace_start=None, intervals=1, surface_override=None,
-                                  zones=(5, 1, 4), cells=12,
+                                  zones=(5, 1, 4), cells=12, runtime_snapshot=None,
                                   **run_overrides):
     """A real CPU cold start through the prepared cache and the export.
 
@@ -524,6 +524,15 @@ def _export_a_real_prepared_cache(tmp_path, mp_physics, numbers=None,
         geometry_doc["cache"]["bytes"] = static_path.stat().st_size
         geometry_path.write_text(json.dumps(geometry_doc))
     cache_path = tmp_path / "prepared-cache"
+    if runtime_snapshot is not None:
+        soil = SimpleNamespace(**{name: surface[key] for name, key in {
+            'tsk': 'TSK', 'soil_temperature': 'TSLB', 'soil_moisture': 'SMOIS',
+            'liquid_moisture': 'SH2O', 'deep_soil_temperature': 'TMN', 'xice': 'SEAICE',
+            'xland': 'XLAND', 'landmask': 'LANDMASK', 'snow_water': 'SNOW',
+            'snow_depth': 'SNOWH'}.items()})
+        geometry, values = wrf_direct.runtime_wrfinput_fields(
+            result, met, soil, static, grid, cfg, valid_time)
+        runtime_snapshot.update(values)
     write_prepared_cache(
         cache_path,
         identity={"domain_config": {"run": dataclasses.asdict(cfg)},
@@ -537,6 +546,20 @@ def _export_a_real_prepared_cache(tmp_path, mp_physics, numbers=None,
         cache_path, static_path, geometry_path, output,
         valid_time=valid_time, boundary_interval_seconds=3600)
     return output, cfg, seeded
+
+
+def test_live_dfi_input_snapshot_matches_the_complete_prepared_input(tmp_path):
+    snapshot = {}
+    output, cfg, _ = _export_a_real_prepared_cache(tmp_path, 8, runtime_snapshot=snapshot)
+    with netCDF4.Dataset(output / 'wrfinput_d01') as dataset:
+        dataset.set_auto_maskandscale(False)
+        assert {'FNM', 'FNP', 'LANDUSEF', 'TSLB', 'QNRAIN'} <= snapshot.keys()
+        for name, value in snapshot.items():
+            if name not in dataset.variables:
+                continue
+            variable = dataset.variables[name]
+            stored = variable[0] if variable.dimensions[:1] == ('Time',) else variable[:]
+            np.testing.assert_array_equal(stored, np.asarray(value, dtype=variable.dtype), err_msg=name)
 
 
 @pytest.mark.parametrize("mp_physics, numbers", [
@@ -788,6 +811,33 @@ def test_the_export_holds_one_theta_representation_and_says_which(tmp_path):
                         > 1.0e3 * bound), suffix
     manifest = json.loads((output / "manifest.json").read_text())
     assert manifest["use_theta_m"] == EXPORT_USE_THETA_M
+
+
+def test_export_moist_theta_keeps_prognostic_boundary_and_dry_history(tmp_path):
+    """Run real preparation through export and check the paired thermal words."""
+    from woof.ingest.wrfinput import read_wrfinput, read_wrfbdy
+    from woof.core import constants as c
+    output, cfg, _ = _export_a_real_prepared_cache(tmp_path, 6, use_theta_m=1)
+    with netCDF4.Dataset(output / "wrfinput_d01") as initial:
+        assert int(initial.USE_THETA_M) == 1
+        dry = np.asarray(initial["T"][0], np.float32)
+        moist = np.asarray(initial["THM"][0], np.float32)
+        qv = np.asarray(initial["QVAPOR"][0], np.float32)
+        expected = ((moist + np.float32(300)) /
+                    (np.float32(1) + np.float32(c.RVOVRD) * qv) - np.float32(300))
+        np.testing.assert_array_equal(dry.view(np.uint32), expected.view(np.uint32))
+        assert np.any(dry != moist)
+    dims = dict(west_east=cfg.nx, west_east_stag=cfg.nx + 1,
+                south_north=cfg.ny, south_north_stag=cfg.ny + 1,
+                bottom_top=cfg.nz, bottom_top_stag=cfg.nz + 1,
+                soil_layers_stag=4)
+    restored = read_wrfinput(output / "wrfinput_d01", cfg=cfg,
+                            expected_dimensions=dims, require_complete=False)
+    read_back = read_wrfbdy(output / "wrfbdy_d01", restored=restored,
+                           run_seconds=3600, forcing_interval_seconds=3600,
+                           spec_bdy_width=cfg.spec_bdy_width, cfg=cfg)
+    assert len(read_back.intervals) == 1
+    assert json.loads((output / "manifest.json").read_text())["use_theta_m"] == 1
 
 
 def test_an_hrrr_width_boundary_exports_its_own_ten_row_wrfbdy(tmp_path):
@@ -2134,3 +2184,28 @@ def test_export_preserves_lake_bathymetry_and_presence(tmp_path):
     with pytest.raises(ValueError, match="missing required lake bathymetry"):
         wrf_direct._lake_export_fields({}, cfg, mask)
     assert wrf_direct._lake_export_fields({}, cfg, np.zeros_like(mask)) == {}
+
+
+def test_ishmael_stock_export_preserves_every_nonzero_habit_moment(tmp_path):
+    from woof.wrf_physics_inventory import stock_wrf_physics_inventory
+    inventory = stock_wrf_physics_inventory(55)
+    expected = {}
+
+    def seed(state):
+        for index, field in enumerate(inventory.wrfinput_fields):
+            target = getattr(state, field.state_key)
+            scale = 1e-10 if field.registry_name.startswith(("qvol", "qaol")) else 1e-5
+            value = np.full(target.shape, (index + 1) * scale, dtype=np.float32)
+            target[...] = value
+            expected[field.netcdf_name] = value
+
+    output, _, _ = _export_a_real_prepared_cache(tmp_path, 55, replace_start=seed)
+    with netCDF4.Dataset(output / "wrfinput_d01") as dataset:
+        for name, value in expected.items():
+            np.testing.assert_array_equal(
+                np.asarray(dataset.variables[name][0], dtype=np.float32).view(np.uint32),
+                value.view(np.uint32), err_msg=name)
+        assert not ({"QSNOW", "QGRAUP", "QNSNOW", "QNGRAUPEL"} & set(dataset.variables))
+
+# Release census replacements (reviewed against the merged sources).
+# Census: test_the_profile_free_export_gate_keeps_its_exact_v2_stock_slice is covered by test_profile_free_export_refuses_a_surface_without_the_noah_input_contract.

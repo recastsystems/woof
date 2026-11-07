@@ -1048,6 +1048,10 @@ _SHARED_GRID_AND_DYNAMICS = {
     # audience reads UH products, so the UP_HELI_MAX running-max
     # diagnostic ships ON (trajectory-inert; tests/test_uh_lifecycle.py).
     "nwp_diagnostics": 1,
+    # ... and the 0-1, 0-2 and 0-3 km maxima beside it (UP_HELI_MAX01/02/03,
+    # woof/core/uh_layers.py; measured 0.40 ms a step on a 200x160x49 3 km
+    # domain, about 0.1% of the step).
+    "uh_layers": 1,
 }
 
 #: Physics switches the ROOT domain carries rather than ``[shared]``.
@@ -2476,7 +2480,8 @@ def _root_physics_periods(physics: dict, shared: dict) -> tuple[Fraction, ...]:
         radt = physics.get("radt", 0.0)
         periods.append(radt if radt > 0 else physics.get("radt_minutes",
             shared.get("radt_minutes", RunConfig.radt_minutes)))
-    if int(physics["cu_physics"]) == 1:
+    from woof.config import KF_FAMILY_CU_SCHEMES
+    if int(physics["cu_physics"]) in KF_FAMILY_CU_SCHEMES:
         periods.append(physics["cudt_minutes"])
     if any(int(shared.get(name, 0)) for name in
            ("bl_pbl_physics", "sf_sfclay_physics", "sf_surface_physics")):
@@ -2630,13 +2635,16 @@ def snap_cadences_to_clock(time_step: Fraction | int | float,
     """
 
     dt = Fraction(time_step)
+    from woof.config import KF_FAMILY_CU_SCHEMES
+
     adjusted = dict(physics)
     notes: list[str] = []
     for key in ("radt", "cudt_minutes"):
         minutes = adjusted.get(key)
         if minutes is None or float(minutes) <= 0.0:
             continue  # 0 = every step (WRF convention); nothing to snap
-        if key == "cudt_minutes" and int(adjusted.get("cu_physics", 0)) != 1:
+        if (key == "cudt_minutes"
+                and int(adjusted.get("cu_physics", 0)) not in KF_FAMILY_CU_SCHEMES):
             continue  # the loader paces cudt only under Kain-Fritsch
         seconds = Fraction(str(minutes)) * 60
         steps = seconds / dt
@@ -4184,6 +4192,34 @@ def render_config(*, name: str, start_time: datetime, hours: int,
             "# ground the terrain clock caps it at launch.  Re-emit with "
             "`--clock fixed`\n"
             "# for one step throughout.\n")
+    # WRF 4.7.1 NWP interval diagnostics take their window from the
+    # history interval in whole minutes (idump = history_interval*60/dt,
+    # module_diag_nwp.F); validate_run_config refuses a domain whose history
+    # cadence is not a whole minute of at least one step.  The shared default
+    # above carries the switch on, so a cadence with no native window turns
+    # it off for this file and says so, instead of emitting a config that its
+    # own loader refuses.
+    if shared.get("nwp_diagnostics"):
+        histories = [DEFAULT_ROOT_HISTORY_INTERVAL_S if history_interval_s is None
+                     else float(history_interval_s)]
+        histories += [nest_history_interval_at(nest_history_interval_s, i, len(ratios))
+                      for i in range(len(ratios))]
+        steps, step = [], Fraction(time_step)
+        for index in range(len(histories)):
+            if index:
+                step = step / ratios[index - 1]
+            steps.append(float(step))
+        if any(h < 60 or h % 60 or d > h for h, d in zip(histories, steps)):
+            shared["nwp_diagnostics"] = 0
+            # The 0-1/0-2/0-3 km maxima fold inside the same NWP step
+            # (validate_run_config refuses uh_layers without it), so they go
+            # off with it.
+            if shared.get("uh_layers"):
+                shared["uh_layers"] = 0
+            header += ("# NWP DIAGNOSTICS OFF: a history interval here is not a whole "
+                       "minute of at least\n# one step, which WRF's NWP interval "
+                       "windows (UP_HELI_MAX, its 0-1/0-2/0-3 km layers and the rest) "
+                       "need.\n")
     parts = [
         header,
         _render_table("experiment", experiment),
@@ -5884,7 +5920,7 @@ def _fit_source_projection(projection: dict, source: str,
     if bool(points_outside(source_coverage_window(source),
                            projection["ref_lat"], projection["ref_lon"])):
         return projection
-    # 6a69b356f, lane/hrrr-statics, aligns exact-spacing emission to the
+    # 6a69b356f, development branch, aligns exact-spacing emission to the
     # source projection and lattice. Root dimensions have an even quantum,
     # so a 2x2 planning window establishes their half-cell center before
     # sizing every level. Final actual-dimension crop admission still runs.
@@ -7104,7 +7140,7 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
     # exact failure v1.7.1 shipped a guard for -- and the audit reproduced
     # a real user's journey ending in a config that could never be
     # refused by anything.  Speaking the declaration aloud (the advisory
-    # below, from lane/advisory) was necessary and is not sufficient: the
+    # below, from the advisory change) was necessary and is not sufficient: the
     # FILE still carried a statement nobody made.
     #
     # Refuse instead, here, before any fitting or fetching, and name the

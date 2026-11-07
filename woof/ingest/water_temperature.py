@@ -938,6 +938,65 @@ def announce_water_temperature(receipt, *, seen=None, scope=None):
     print(advisory, file=sys.stderr)
     return advisory
 
+def model_sst_with_skin_fill(raw_sst, *, skin, landmask):
+    """The model's SST carrier: the source SST, with TSK where water has none.
+
+    Returns ``(sst, receipt)``.  Every forcing route's real-case
+    initialization (:func:`woof.runtime._initialize_real_case_physics`)
+    calls this once, so the rule is one rule for every source, not a
+    per-source branch.
+
+    The mapped SST is an analysis that is undefined over the source's land,
+    and the horizontal stencil leaves ``fill_missing = 0`` within a source
+    cell or two of every coastline.  The finished water TEMPERATURE
+    (:func:`assemble_water_temperature`, carried in TSK) already fills
+    those cells; the raw SST handed to the model as its ``sst`` carrier did
+    not, so it reached the physics as 0 K.  real.exe's rule where a water
+    column has no SST is ``sst = tsk`` (WRF 4.6.1 module_initialize_real.F
+    :2815-2823, a water cell whose SST is outside 150..400 K, and
+    :3655-3656, the ``flag_sst /= 1`` arm), and that is what is done here: a water cell (``landmask < 0.5``) whose SST is non-finite or
+    outside 170..400 K takes this cell's TSK.  Land cells and every water
+    cell with an admissible SST keep their bytes; with nothing to fill the
+    input array itself is returned, so a case with no such cell is
+    byte-identical to before.
+
+    THE BREAKAGE THIS PREVENTS (WOOF 2026-11-06, Pickens ERA5 WoFS
+    ensemble, ERA5 2011-04-27T16Z, 12 km d01 reaching the Gulf coast): 44
+    of 210 open-water cells carried sst = 0 K while TSK was valid on all
+    210, so every member's SST-offset draw was refused ("offset ocean
+    temperature is outside 170..400 K") after member 0.
+    """
+    def host(value):
+        return value.get() if hasattr(value, "get") else np.asarray(value)
+
+    skin_host = host(skin)
+    if raw_sst is None:
+        return skin, {"source_cells": 0, "filled_from_tsk": 0,
+                      "rule": "no source SST: sst = tsk"}
+    sst = host(raw_sst)
+    water = host(landmask) < 0.5
+    if sst.shape != water.shape or skin_host.shape != water.shape:
+        raise ValueError(
+            f"SST {sst.shape}, TSK {skin_host.shape} and landmask "
+            f"{water.shape} shapes differ")
+    fill = water & ~_admissible(sst)
+    filled = int(np.count_nonzero(fill))
+    receipt = {"source_cells": int(np.count_nonzero(water)) - filled,
+               "filled_from_tsk": filled,
+               "rule": "water cell with no admissible SST: sst = tsk"}
+    if not filled:
+        return raw_sst, receipt
+    bad_skin = fill & ~_admissible(skin_host)
+    if np.any(bad_skin):
+        raise ValueError(
+            f"{int(np.count_nonzero(bad_skin))} water cell(s) have neither an "
+            "admissible SST nor an admissible TSK (170..400 K) to fill it from")
+    out = np.array(sst, copy=True)
+    out[fill] = skin_host[fill].astype(out.dtype, copy=False)
+    receipt["filled_cells"] = [
+        [int(j), int(i)] for j, i in np.argwhere(fill)[:MAX_LISTED_DECLINED_CELLS]]
+    return out, receipt
+
 
 __all__ = [
     "MODIS_LAKE_CATEGORY",
@@ -955,6 +1014,7 @@ __all__ = [
     "normalized_masked_bilinear",
     "assemble_water_temperature",
     "assemble_for_route",
+    "model_sst_with_skin_fill",
     "require_assembled_water_temperature",
     "water_temperature_advisory",
     "announce_water_temperature",

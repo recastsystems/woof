@@ -62,6 +62,21 @@ Land/glacier snow layers still use a single coherent compatible donor; they do
 not have a global land-water conservation claim. Coupled ocean/ice skill beyond
 the tropical forecast smoke remains unqualified.
 
+Ocean ice has exactly one owner on every physics route. With a coupled hex ocean
+(`--ocean-mode pwp` or `prognostic`) the hex Noah-MP sea-ice hook steps it on the
+frozen route and on the suite route (any `--physics` override, such as
+`tc_flux_curve=bell2012`), and woof's independent ice model is removed; a route
+without the hook refuses a coupled ocean. On the MPAS physics route PWP runs in
+MPAS's ocean-mixed-layer slot on open water only and MPAS's own sea-ice scheme
+keeps the ice, so ice again has one owner; the PWP columns move with the region
+by each target cell's coherent surface donor, on one card or several. After a move every sea point takes the
+surface role of its carried ice: at or above the ice threshold xland 1 and the
+land-ice vegetation and soil classes, below it xland 2 and the water classes, and
+xicem equals the carried ice, so MPAS's conversion sees no false crossing and no
+sea point runs Noah-MP's land or glacier column. Each move receipt's
+`ocean_transfer.surface_roles` counts the columns changed and the sea points the
+conversion alone would have left as land or glacier.
+
 `--member-retirement-evidence EVIDENCE` enables guarded cleanup tied to the
 external collector's completed receipts. Inactive used members retain their
 static geometry; revisiting a retired centre gets a fresh identity so old
@@ -88,8 +103,8 @@ instantaneous model diagnostic, unlike a one-minute best-track wind.
 DA consumers must resolve the exact member grid, static, cell order, vertical
 geometry and time. The ordinary forecast door's JEDI-background/checkpoint and
 analysis arguments may be forwarded through repeated `--forecast-arg`, but a
-complete JEDI cycle across a moved member requires integration validation.
-No DA implementation is included here.
+complete background cycle across a moved member requires integration validation.
+No private DA implementation is included here.
 
 The short real-storm smoke and numerical checks do not establish whole-storm
 skill, a default-on setting, an OFF/base bitwise result, two-card scaling, or

@@ -127,7 +127,8 @@ def _tile(kernel, ncol: int) -> int:
     sms = cp.cuda.Device().attributes["MultiProcessorCount"]
     per_sm = TILE_BLOCKS_PER_SM
     try:
-        resident = driver.occupancyMaxActiveBlocksPerMultiprocessor(
+        from woof.backend import active_blocks_per_multiprocessor
+        resident = active_blocks_per_multiprocessor(
             kernel.ptr, BLOCK, 0)
         per_sm = min(per_sm, int(resident))
     except Exception:  # noqa: BLE001  -- the tile bound alone still holds

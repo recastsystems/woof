@@ -69,8 +69,10 @@ def test_hrrr_is_limited_area_and_cannot_initialize_global_mesh():
     assert resolve_source(table, "hrrr-conus", coverage="limited_area")["intermediate"]["row"] == "hrrr"
     with pytest.raises(MpasPortError, match="covers a limited area"):
         resolve_source(table, "hrrr")
-    with pytest.raises(MpasPortError, match="is a global source"):
-        resolve_source(table, "gfs", coverage="limited_area")
+    gfs = resolve_source(table, "gfs", coverage="limited_area")
+    assert gfs["intermediate"]["profile"] == "gfs-pressure-grib2-v1"
+    assert gfs["first_guess"]["use_spechumd"] == "yes"
+    assert resolve_source(table, "gfs")["first_guess"]["use_spechumd"] == "no"
 
 
 def _gfs_region(tmp_path, cycle, lead, hours, *extra, source="gfs"):
@@ -78,6 +80,18 @@ def _gfs_region(tmp_path, cycle, lead, hours, *extra, source="gfs"):
         "regional", "--point=-5.5,18.5", "--cycle", cycle, "--source", source, "--lead-hours", str(lead),
         "--hours", str(hours), "--fine-dx-m", "3000", "--radius-km", "600", "--background-km", "48",
         "--work-dir", str(tmp_path / "run"), *extra]))
+
+
+def test_a_southern_region_reaches_the_mesh_door_on_every_python(tmp_path, monkeypatch):
+    """On Python 3.11-3.13 argparse reads "-5.5,18.5" after a bare --point as an unknown option, so every region south of
+    the equator stopped at its mesh stage ("--point: expected one argument"); 3.14, on WOOF's boxes, accepts it."""
+    value = _gfs_region(tmp_path, "2026-10-27T18", 3, 12)
+    seen = []
+    monkeypatch.setattr(door, "_cli", lambda argv, status: seen.append(argv) or 0)
+    # Source prefetch has its own tests; this check only parses the mesh command.
+    monkeypatch.setattr(door, "_start_source_prefetch", lambda *args: None)
+    door._stage_mesh(type("A", (), {"geog": None})(), value, None)
+    assert build_parser().parse_args(seen[0]).point == "-5.5,18.5"
 
 
 def test_gfs_region_starts_at_any_lead_gfs_writes(tmp_path):
@@ -92,6 +106,15 @@ def test_gfs_region_starts_at_any_lead_gfs_writes(tmp_path):
         _gfs_region(tmp_path, "2026-10-27T18", 121, 6)
     with pytest.raises(door.RegionalRefusal, match="writes no lead"):
         _gfs_region(tmp_path, "2026-10-27T18", 380, 6)
+
+
+def test_composition_selectors_keep_the_composition_humidity_and_door(tmp_path):
+    value = _gfs_region(tmp_path, "2026-10-27T18", 0, 6, "--source-parameters", "member=1")
+    assert value["source"]["intermediate_row"] == "gfs"
+    assert value["source"]["first_guess"]["use_spechumd"] == "yes"
+    plain = _gfs_region(tmp_path, "2026-10-27T18", 0, 6)
+    assert plain["source"]["intermediate_row"] is None
+    assert plain["source"]["first_guess"]["use_spechumd"] == "no"
 
 
 def test_table_regions_take_the_finest_step_the_source_posts(tmp_path):
@@ -157,7 +180,7 @@ def test_a_producer_suite_takes_its_producers_boundaries_and_the_measured_levels
 def test_an_mpas_a_suite_keeps_the_v842_boundaries(tmp_path, monkeypatch):
     args = build_parser().parse_args([
         "regional", "--point", "45.75,-75.75", "--cycle", "2026-10-07T18", "--hours", "6",
-        "--source", "gfs", "--work-dir", str(tmp_path / "run")])
+        "--source", "gem-hrdps", "--work-dir", str(tmp_path / "run")])
     value = door.plan(args)
     monkeypatch.setattr(door, "_generated", lambda value: {"cull": {"lbc_dir": str(tmp_path / "lbc")}})
     seen = []
@@ -166,7 +189,7 @@ def test_an_mpas_a_suite_keeps_the_v842_boundaries(tmp_path, monkeypatch):
     door._stage_lbc(args, value, status=None)
     assert "--physics-suite" not in seen[0]
     # No intermediate receipt yet: the row's own count.
-    assert seen[0][seen[0].index("--nfglevels") + 1] == "34"
+    assert seen[0][seen[0].index("--nfglevels") + 1] == "39"
 
 
 def test_the_lbc_door_hands_a_producer_suite_to_its_case_9(tmp_path, monkeypatch):
@@ -293,3 +316,19 @@ def test_the_region_is_drawn_while_its_forecast_runs_and_the_full_pass_keeps_tho
     assert products[products.index("--live-frames") + 1] == str(Path(look.forecast).parent / "live-frames.json")
     receipt = json.loads((args.work_dir / "regional-receipt.json").read_text())
     assert receipt["stages"]["forecast"]["first_look"]["status"] == "drawn"
+
+
+@pytest.mark.parametrize("point,radius", [("50,-100", "100"), ("45,-75", "150")])
+def test_packaged_mapped_source_waits_for_mesh_before_decoding(tmp_path, monkeypatch, point, radius):
+    args = build_parser().parse_args([
+        "regional", "--point", point, "--radius-km", radius, "--source", "gem-hrdps",
+        "--cycle", "2026-10-31T12", "--hours", "1", "--work-dir", str(tmp_path)])
+    value = door.plan(args)
+    assert value["source"]["intermediate_row"] == "gem-hrdps"
+    monkeypatch.setattr(door, "_start_table_decode", lambda *a: pytest.fail("mapped decode needs the mesh"))
+    door._start_source_prefetch(args, value, SimpleNamespace(note=lambda *a: None))
+    monkeypatch.setattr(door, "_generated", lambda v: {"_path": "generated-plan.json"})
+    seen = []
+    monkeypatch.setattr(door, "_cli", lambda argv, status: seen.append(argv) or 0)
+    assert door._stage_intermediate(args, value, None)["returncode"] == 0
+    assert seen[0][:5] == ["intermediate", "--source", "gem-hrdps", "--from-plan", "generated-plan.json"]

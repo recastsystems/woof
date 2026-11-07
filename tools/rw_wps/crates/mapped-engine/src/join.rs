@@ -2114,7 +2114,17 @@ pub fn register_projected_subset(
 ) -> Result<()> {
     let p = primary.grid_declaration()?;
     let d = donor.grid_declaration()?;
-    if !p.is_lambert() && !d.is_lambert() { return Ok(()); }
+    if !p.is_projected() && !d.is_projected() { return Ok(()); }
+    if p.is_rotated() || d.is_rotated() {
+        // A rotated donor joins only a primary on the identical declared
+        // lattice: the axes are then the same distances from the same
+        // origin and the exact subset join needs no registration.
+        if p.is_rotated() && d.is_rotated() && p.rotated == d.rotated {
+            return Ok(());
+        }
+        return Err(frame_invalid(
+            "projected composition needs both sources on one declared rotated lattice"));
+    }
     let (Some(p), Some(d)) = (p.parameters, d.parameters) else {
         return Err(frame_invalid("projected composition needs both sources on a declared Lambert grid"));
     };

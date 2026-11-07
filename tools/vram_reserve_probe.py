@@ -206,7 +206,9 @@ def mode_law() -> dict:
 # ---------------------------------------------------------------------------
 
 _SYMBOL = re.compile(
-    r'extern\s+"C"\s+__global__\s+void\s+([A-Za-z_][A-Za-z0-9_]*)')
+    r'extern\s+"C"\s+__global__\s+'
+    r'(?:__launch_bounds__\s*\([^)]*\)\s*)?'
+    r'void\s+([A-Za-z_][A-Za-z0-9_]*)')
 
 
 def mode_frames() -> dict:

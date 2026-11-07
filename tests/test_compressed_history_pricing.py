@@ -1,6 +1,6 @@
 """Disk admission prices lossless compressed history frames at their measured size.
 
-Breakage it prevents: woof 2.9.10 writes history frames lossless-compressed
+Breakage it prevents: gpuwm 2.9.10 writes history frames lossless-compressed
 by default (shuffle + deflate NetCDF-4, the same words in about a third of the
 disk), while disk admission still priced every frame at its classic layout, so
 a run was projected at 2.7-3.9x the history it writes and refused on disks it

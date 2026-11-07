@@ -1,0 +1,55 @@
+{
+  "upstream": "https://github.com/wrf-model/WRF",
+  "tag": "v4.7.1",
+  "compatible_oracle_tag": "v4.6.1",
+  "module_identical_between_tags": true,
+  "files": [
+    {
+      "path": "phys/module_bl_mrf.F",
+      "sha256": "a1306d0063043d001fa4a53b9219031b931999c7d7daea172fd97518bc9b19eb",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_bl_mrf.F",
+      "license": "WRF public domain"
+    },
+    {
+      "path": "share/module_model_constants.F",
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_model_constants.F",
+      "license": "WRF public domain"
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "license": "WRF public domain"
+    },
+    {
+      "path": "phys/module_pbl_driver.F",
+      "sha256": "42ff53571ba1fb926fa6063108806d9a2f8ff5fdd1fa2ecfc1fdde60f2bf65fb",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_pbl_driver.F",
+      "license": "WRF public domain"
+    },
+    {
+      "path": "LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "license": "WRF public domain"
+    },
+    {
+      "path": "phys/module_surface_driver.F",
+      "sha256": "a653965f9ffd1db5e4c42aa79e41b4d111755b6fca0f1a3b91f3a93455813ffd",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_surface_driver.F",
+      "license": "WRF public domain",
+      "use": "Native restart SHDAVG disposition evidence"
+    },
+    {
+      "path": "phys/module_sf_noahdrv.F",
+      "sha256": "bde4ecc9a63c9a57c1ca40408eec1703881749fefd8698a7a1a9260cfaba06b1",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_sf_noahdrv.F",
+      "license": "WRF public domain",
+      "use": "Native restart SHDAVG disposition evidence"
+    }
+  ],
+  "license_notice": "licenses/LICENSE-WRF-public-domain.txt",
+  "tables": "constants.cuh contains scalar constants derived from the pinned sources. MRF has no external lookup table.",
+  "proof_scope": "Packaged synthetic native module inputs and a separate four-call, 49-level real native WRF forecast capture. Replay compares all 1192 defined native output words, including the unconverted top-down KPBL integer. Whole-forecast qualification is reported separately."
+}

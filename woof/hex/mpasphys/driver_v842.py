@@ -21,6 +21,7 @@ from ..config import parse_fortran_namelist
 from ..physics_suites import load_table
 
 SCHEMA = "mpas-port.physics-driver-v842/v1"
+_RELEASED_TENDENCIES = object()
 
 #: The correct-mode switch (the correct-mode key of 2026-10-13): ``config_physics_mode`` in
 #: &nhyd_model, "exact" (default, MPAS-A v8.4.2 word for word) or "correct".  An optional
@@ -297,6 +298,10 @@ class DriverConfig:
     #: The active slots that run on the CPU in this run (a route resolution records them; a library
     #: resolution for module replays records none).
     cpu_slots: tuple[CpuSlot, ...] = ()
+    # Engine extension; never insert these keys into the native Registry.
+    tc_surface: Mapping[str, str] = field(default_factory=dict)
+    #: --ocean-mode pwp on this route (woof.hex.mpasphys.ocean_pwp_v842): the PWP column table the OML slot runs.
+    ocean_pwp: Mapping[str, Any] = field(default_factory=dict)
 
     def cpu_warning(self) -> str | None:
         """The loud start-up lines naming each active slot that runs on the CPU, or None when none does."""
@@ -386,6 +391,10 @@ class DriverConfig:
             result["service_backends"] = {s: str(b) for s, b in self.service_backends.items()}
         if self.cpu_slots:
             result["cpu_slots"] = [item.as_dict() for item in self.cpu_slots]
+        if self.tc_surface:
+            result["tc_surface"] = dict(self.tc_surface)
+        if self.ocean_pwp:
+            result["ocean_pwp"] = dict(self.ocean_pwp)
         # Exact-mode receipts stay word for word what they were before the switch existed.
         if self.mode != "exact":
             result.update(physics_mode=self.mode, corrections=sorted(self.corrections),
@@ -1303,6 +1312,8 @@ class PhysicsDriver:
             if window:
                 glue("close_surface_precipitation_window")
             glue("atmphys_sfc_diagnostics")
+        if getattr(c, 'tc_surface', None) and c.active("surface_layer") and due:
+            glue("tc_surface_spray")
         if c.active("pbl") and c.active("surface_layer") and due:
             glue("allocate_pbl")
             run("pbl")
@@ -1335,6 +1346,8 @@ class PhysicsDriver:
         # (the time-integration lines cited in the docstring above). Its zero sources also make
         # the final dynamics heating available to native restart output.
         if self._tendencies_ready:
+            if self._tendencies is _RELEASED_TENDENCIES:
+                raise RuntimeError("physics sources were already handed to the runtime and released this step")
             return self._tendencies
         if (rk_step, dynamics_substep) != (1, 1):
             raise RuntimeError("native physics sources must be assembled before the first RK stage")
@@ -1344,6 +1357,17 @@ class PhysicsDriver:
                                       "dynamics_substep": dynamics_substep})
         self._tendencies_ready = True
         return self._tendencies
+
+    def release_held_tendencies(self):
+        """Hand ownership to ResidentNativeCoupling after its once-per-step assembly.
+
+        The coupling retains sources through their last use. Keeping this second
+        reference prevents release_dynamics_sources from recycling the mass,
+        momentum and theta arrays during scalar transport and microphysics.
+        Standalone callers retain the held-source contract until they hand off.
+        """
+        if self._tendencies_ready:
+            self._tendencies = _RELEASED_TENDENCIES
 
     def finish_step(self, *, pools: Any) -> Any:
         """Post-transport microphysics; mpas_atm_time_integration.F:2770-2816."""

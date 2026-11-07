@@ -102,9 +102,11 @@ def _scheme_closure(state, contract):
 
     nz, ny, nx = _SHAPE
     shape = _SHAPE
+    theta = state.thb[:, None, None] + state.thp
+    if getattr(state, "use_theta_m", 0):
+        theta = theta / (np.float32(1.0) + np.float32(c.RVOVRD) * state.qv)
     temperature = cp.ascontiguousarray(
-        (state.thb[:, None, None] + state.thp)
-        * cp.power(state.p / np.float32(c.P0), np.float32(c.RCP)))
+        theta * cp.power(state.p / np.float32(c.P0), np.float32(c.RCP)))
     z8w = cp.asarray(
         np.linspace(0.0, 16.0e3, nz + 1)[:, None, None]
         * np.ones((nz + 1, ny, nx)), dtype=cp.float32)
@@ -144,10 +146,16 @@ def _scheme_closure(state, contract):
     return {name: value * scratch["ide"] for name, value in numbers.items()}
 
 
-def test_the_edge_diagnoses_the_schemes_own_numbers():
+@pytest.mark.parametrize("use_theta_m", [0, 1])
+def test_the_edge_diagnoses_the_schemes_own_numbers(use_theta_m):
     import cupy as cp
 
     state = _parent_state()
+    state.use_theta_m = use_theta_m
+    if use_theta_m:
+        state.thp = ((state.thb[:, None, None] + state.thp)
+                     * (np.float32(1.0) + np.float32(c.RVOVRD) * state.qv)
+                     - state.thb[:, None, None])
     contract = _contract()
     assert contract.mixed is True
     reference = _scheme_closure(state, contract)

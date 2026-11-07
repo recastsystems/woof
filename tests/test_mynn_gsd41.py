@@ -223,7 +223,7 @@ def test_gsd41_mixlength2_cuda_matches_its_fortran(csv_name, unsquared):
     got = cp.asnumpy(actual.qkw)
     np.testing.assert_array_equal(got, fields["qkw"], err_msg="qkw")
     distance = fp32_ulp_distance(cp.asnumpy(actual.el), fields["el"])
-    # lane/mynn-exact: 0 on the RTX 5090 (sm_120, NVRTC 12.9) afte
+    # development branch: 0 on the RTX 5090 (sm_120, NVRTC 12.9) afte
     # with the fork CSVs rebuilt on glibc 2.39 (mixlength2-gsd41-provenance.txt).
     assert int(distance.max()) == 0, int(distance.max())
 
@@ -563,7 +563,7 @@ def test_gsd41_turbulence_matches_its_fortran():
     # The interface arithmetic of this kernel is the v4.6.1 port's plain
     # operators (NVRTC may contract), as on the default path; MEASURED at
     # most 3 ULP on the RTX 4090 over 70 interfaces.
-    # lane/mynn-exact: 0 with the fork's a2den algebra, --fmad=false and the
+    # development branch: 0 with the fork's a2den algebra, --fmad=false and the
     # glibc 2.39 rebuild of turbulence2-gsd41-sq.csv.
     assert max(worst.values()) == 0, worst
 

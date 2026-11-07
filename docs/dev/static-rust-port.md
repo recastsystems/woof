@@ -358,8 +358,8 @@ warping in Python and saying nothing.  Closed:
   `static_compute` field cannot disagree;
 - the land-cover clip's two SOURCE-COVERAGE refusals cross as their own
   return code (-2) rather than as a sentence to pattern-match, because
-  `on_refuse = "fallback-30s"` may answer a coverage refusal with the
-  30-arc-second baseline and must never answer a decode fault that way;
+  coverage and decode failures need distinct diagnostics. Both stop an
+  enabled overlay; the former whole-domain fallback is retired;
 - `require_geography_stack` now refuses when the engine that WOULD run
   cannot, instead of when rasterio is absent: a wheel carrying only the
   shipped default used to be refused by that gate;

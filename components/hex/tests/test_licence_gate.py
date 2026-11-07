@@ -176,7 +176,7 @@ def test_the_fork_exact_rrfs_stage_runs_with_no_opt_in():
 def test_no_gate_row_names_ugwp_or_the_noaa_gsl_physics():
     table = licence_gate.load_table()
     assert set(table["terms"]) == {"ucar-noahmp"}
-    assert {row["component"] for row in table["selections"]} == {"noahmp-v5-mpas", "noahmp-v5-rrfs"}
+    assert {row["component"] for row in table["selections"]} == {"noahmp-v5-mpas", "noahmp-v5-rrfs", "noahmp-v5-rrfs-44c0849"}
     assert {"ugwp", "noaa-gsl-rrfs-physics"} <= set(table["not_gated"])
     assert {row["scheme"] for row in table["selections"]} == {"sf_noahmp"}
     holds = {hold["id"] for hold in json.loads((ROOT / "tools" / "licence_holds.json").read_text())["holds"]}
@@ -273,6 +273,10 @@ def native_preflight(monkeypatch):
     # These door tests fake the forecast itself; the ported-route suite refusal
     # (resident_v842.ported_route_refusal, tested in test_mpasphys_resident_v842) is not their subject.
     monkeypatch.setattr("woof.hex.mpasphys.resident_v842.ported_route_refusal", lambda config: None)
+    monkeypatch.setattr(door, 'admit_native_device', lambda *a: None)
+    # The MPAS memory admission (a801558f) reads the init's dimensions and probes the card,
+    # like the device admission faked above; the placeholder init.nc is not NetCDF.
+    monkeypatch.setattr("woof.hex.mpasphys.memory_admission.admit", lambda arguments: None)
     layout = SimpleNamespace(configs={"config_start_time": "2023-03-31_12:00:00", "config_dt": 360.0,
                                       "config_run_duration": "0_01:00:00", "config_do_restart": False})
     monkeypatch.setattr(forecast_v842, "decode_registry_pools", lambda *a, **k: layout)
@@ -354,3 +358,23 @@ def test_the_door_runs_the_rrfs_stage_with_no_flag(tmp_path, native_preflight, c
     assert config.selectors["gwdo"] == "bl_ugwp_gwdo" and "licence_opt_in" not in config.receipt()
     assert str(config.backends["gwdo"]) == "hex-cuda"
     assert "LICENCE" not in capsys.readouterr().err
+
+
+def test_pinned_rrfs_noahmp_requires_the_named_ucar_opt_in(monkeypatch):
+    # The pinned fork could select its held land surface without any gate row.
+    config = driver_rrfs.resolve_namelist(
+        "&physics\nconfig_physics_suite='hrrrv5'\nconfig_lsm_scheme='sf_noahmp'\n/",
+        table_key="mpasphys_rrfs_44c0849")
+    assert len(licence_gate.hits(config)) == 1
+    with pytest.raises(licence_gate.LicenceRefusal, match="UCAR Noah-MP terms"):
+        licence_gate.admit(config, _arguments(), environ={})
+    config = driver_rrfs.resolve_namelist(
+        "&physics\nconfig_physics_suite='hrrrv5'\nconfig_lsm_scheme='sf_noahmp'\n/"
+        "\n&hex_mpasphys\nconfig_lsm_backend='hex-cuda'\n/",
+        table_key="mpasphys_rrfs_44c0849")
+    monkeypatch.setattr(licence_gate, "port_present", lambda module: False)
+    with pytest.raises(licence_gate.LicenceRefusal, match="public export withholds it for licence"):
+        licence_gate.admit(config, _arguments("ucar-noahmp"), environ={})
+    default = driver_rrfs.resolve_namelist(
+        "&physics\nconfig_physics_suite='hrrrv5'\n/", table_key="mpasphys_rrfs_44c0849")
+    assert licence_gate.hits(default) == []

@@ -264,6 +264,10 @@ def prepare_scalars_stage(state, cfg, ru, rv, ww, dt_eff, final, *, apply_relax=
                 apply_relax=apply_relax, physics_tendencies=physics, fixed_tendencies=fixed,
                 export_advective_forcing=export_advective_forcing, implicit=implicit)
         return single
+    if cfg.tracer_opt == 2:
+        raise BatchStateUnsupported(
+            'member tracer transport needs independent tracer_adv_opt and native '
+            'zero-inflow boundary bindings; use the ordinary member executor')
     if implicit is not None or cfg.zadvect_implicit:
         raise BatchStateUnsupported('member scalar transport needs its own IEVA column solve before applying implicit fluxes')
     if state.lateral_boundaries is not None and tables is None:
@@ -287,6 +291,13 @@ def prepare_scalars_stage(state, cfg, ru, rv, ww, dt_eff, final, *, apply_relax=
     pd = final and cfg.moist_adv_opt == 1 and not (cfg.open_x or cfg.open_y)
     from woof.core.advection import vertical_orders
     vorder_scalar = vertical_orders(cfg)[0]
+    # moist.py passes scalar_horizontal_order(cfg) to both species routes
+    # (launch_pd_fluxes and launch_flux_div_scalar) since 2582c065c99.
+    from woof.core.advection import scalar_horizontal_order
+    horder_scalar = scalar_horizontal_order(cfg)
+    if pd and horder_scalar not in (2, 3, 4, 5, 6):
+        raise ValueError("WRF advect_scalar_pd admits horder 2, 3, 4, 5 or 6")
+    pd_defines = () if horder_scalar == 5 else (('GPUWM_HORDER', int(horder_scalar)),)
     supplied = frozenset()
     selection = evaluated = None
     capture_rows = []
@@ -348,7 +359,7 @@ def prepare_scalars_stage(state, cfg, ru, rv, ww, dt_eff, final, *, apply_relax=
                 _I(value) for value in (nz, ny, nx, state.has_msf, bx, by, vorder_scalar))
             flux = prepare_batch_kernel_launch(flux_spec, state.members,
                 ((nx + 1 + _TPB - 1) // _TPB, ny + 1, nz + 1), (_TPB, 1, 1),
-                flux_args, pointer_strides=strides)
+                flux_args, pointer_strides=strides, defines=pd_defines)
             if vorder_scalar == 5:
                 primary = flux
                 vertical = prepare_batch_kernel_launch(
@@ -377,7 +388,8 @@ def prepare_scalars_stage(state, cfg, ru, rv, ww, dt_eff, final, *, apply_relax=
         else:
             flux = prepare_flux_div(q, ru, rv, ww, tend, state.rdnw, state.fnm, state.fnp,
                 state.msft, dx=cfg.dx, dy=cfg.dy, open_x=bx, open_y=by,
-                has_msf=state.has_msf, spec=forced, vorder=vorder_scalar)
+                has_msf=state.has_msf, spec=forced, vorder=vorder_scalar,
+                horder=horder_scalar)
             renorm = None
             update = _prepare_update(binding, q, q0, tend, mu0, mu, dt_eff,
                                      physics=physics, fixed=fixed, clamp=final,

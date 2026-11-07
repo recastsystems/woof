@@ -124,7 +124,7 @@ def query_cards(uuids=None):
     if uuids is None:
         uuids = visible_card_uuids()
     result = subprocess.run(
-        ["nvidia-smi", "--query-gpu=uuid,memory.total,memory.free", "--format=csv,noheader,nounits"],
+        [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=uuid,memory.total,memory.free", "--format=csv,noheader,nounits"],
         check=True, capture_output=True, text=True, timeout=15)
     cards = []
     for line in result.stdout.splitlines():
@@ -544,7 +544,8 @@ def _stop(process):
 
 def _member_environment(gpu_uuid, plan):
     environment = os.environ.copy()
-    environment.update(CUDA_VISIBLE_DEVICES=gpu_uuid, CUDA_DEVICE_ORDER="PCI_BUS_ID",
+    environment.update(__import__("woof.gpu_smi",fromlist=["visibility_environment"]).visibility_environment(gpu_uuid))
+    environment.update(CUDA_DEVICE_ORDER="PCI_BUS_ID",
         GPUWM_MAPPED_ENGINE_THREADS="12", GPUWM_MAPPED_ENGINE_MEMORY_BUDGET_BYTES=str(plan["decoder_budget_bytes"]),
         WOOF_PREPROCESS_THREADS="12", RAYON_NUM_THREADS="12",
         OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1",

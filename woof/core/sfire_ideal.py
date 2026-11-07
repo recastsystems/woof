@@ -287,7 +287,11 @@ def build_state(cfg, raw_sounding, input_fields=None):
         state.qv[...] = atmosphere["QVAPOR"]
     elif cfg.moist:
         raise ValueError("native moist ideal state did not allocate its vapor carrier")
-    _launch("sfire_ideal_state_fields", state.p.size, (atmosphere["T_INIT"], atmosphere["T_DRY"],
+    thermal = atmosphere["T_DRY"]
+    if getattr(state, "use_theta_m", 0):
+        from woof.core.constants import RVOVRD
+        thermal = thermal * (np.float32(1) + np.float32(RVOVRD) * state.qv)
+    _launch("sfire_ideal_state_fields", state.p.size, (atmosphere["T_INIT"], thermal,
         atmosphere["PB"], atmosphere["P"], state.thb, state.thp, state.p, np.int32(state.p.size)))
     for name in VERTICAL_FIELDS:
         getattr(state, name)[...] = vertical[name]

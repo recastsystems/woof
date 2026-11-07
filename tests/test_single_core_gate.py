@@ -179,6 +179,9 @@ def test_c1_stage_carries_cpu_and_a_serial_stage_is_flagged(tmp_path, monkeypatc
         rows = dict(par.ledger_stages(path, **QUICK))
         if rows["prep.serial_child"]["verdict"] == "single-core":
             break
+        # Calibrate beside each missed reading, not once after the last: 2.9.12 pass 3acde933 R5 read the child at
+        # 0.52 of a core three times while a single calibration spin afterwards got a whole one.
+        _skip_if_host_cannot_give_one_core("C1 serial child read below one core")
     if rows["prep.serial_child"]["verdict"] != "single-core":
         _skip_if_host_cannot_give_one_core("C1 serial child read below one core")
     assert rows["prep.serial_child"]["verdict"] == "single-core", rows
@@ -196,11 +199,19 @@ def test_relayed_boundaries_carry_no_cpu(tmp_path, monkeypatch):
 
 
 def test_stage_meter_records_cores():
-    meter = par.StageMeter(cards=False)
-    mark = meter.mark()
-    subprocess.run(_spin(1.2), check=True)
-    rec = meter.since(mark, **QUICK)
-    meter.close()
+    # Contention comes and goes on a shared Stage-1 host: 2.9.12 pass be38e676 R5 read the spin at 0.58 of a core
+    # (cpu 0.72 s over 1.25 s wall, a development machine load ~170 and MemAvailable down to ~3 GiB) while the single calibration
+    # spin afterwards got a whole one, so the test failed on the host, not the meter.  Up to three readings, as the
+    # CLI and C1 tests take, with the calibration beside each missed reading; a reading above 1.3 cores stays red.
+    for _attempt in range(3):
+        meter = par.StageMeter(cards=False)
+        mark = meter.mark()
+        subprocess.run(_spin(1.2), check=True)
+        rec = meter.since(mark, **QUICK)
+        meter.close()
+        if not LINUX or rec["cores"] >= 0.6:
+            break
+        _skip_if_host_cannot_give_one_core("stage meter read the spin below one core")
     if LINUX:
         if rec["cores"] < 0.6:
             _skip_if_host_cannot_give_one_core("stage meter read the spin below one core")

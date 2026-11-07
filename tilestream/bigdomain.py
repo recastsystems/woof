@@ -556,7 +556,8 @@ def _replace_nxny(cfg, nx: int, ny: int):
 def build_store_by_slabs(cfg, geo, *, slab_rows: int, noise: SeededNoise,
                          bubbles=None, store=None, log=print,
                          manifest=None, amplitudes=None,
-                         budget_bytes: int | None = None):
+                         budget_bytes: int | None = None,
+                         inventory_fn=None, prepare=None):
     """The full-domain initial store, built one slab at a time.
 
     Returns ``(store, geo_store, scalars, missing)``.  ``store`` and
@@ -565,6 +566,10 @@ def build_store_by_slabs(cfg, geo, *, slab_rows: int, noise: SeededNoise,
     :func:`tilestream.driver.geography_inventory` key them, which is what
     ``run_tiled`` requires of both.  ``missing`` names the carriers no slab
     produced.
+
+    Ranked callers may pass their full streamed inventory and its lazy
+    carrier priming function.  The default retains the original tile-stream
+    inventory; priming allocates carriers without advancing the atmosphere.
 
     ``missing`` is not an error case to be silently tolerated: two carriers
     in this rung are allocated LAZILY on first use (Kain-Fritsch's
@@ -603,7 +608,9 @@ def build_store_by_slabs(cfg, geo, *, slab_rows: int, noise: SeededNoise,
         state, drv = build_slab_state(cfg_slab, geo_slab, noise, j0,
                                       bubbles=bubbles, dx=float(cfg.dx),
                                       amplitudes=amplitudes)
-        inv = physinv.carrier_inventory(state)
+        if prepare is not None:
+            prepare(state, cfg_slab)
+        inv = (inventory_fn or physinv.carrier_inventory)(state)
         ginv = tdriver.geography_inventory(state)
         if not allocated:
             allocated = True

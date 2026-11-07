@@ -1,0 +1,14 @@
+{
+  "upstream": "https://github.com/wrf-model/WRF",
+  "release": "v4.7.1",
+  "path": "phys/module_cu_gd.F",
+  "sha256": "14948e3b6e82ba2d1529c2b31ff89c2e40e1596018d01898123bc2baa8eb81df",
+  "previous_pin": "WRF v4.6.1, byte-identical module",
+  "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+  "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+  "license": "public-domain",
+  "notice": "licenses/LICENSE-WRF-public-domain.txt",
+  "tables": [],
+  "runtime_arm": "stock",
+  "correction_experiment": "explicit wrf_closure_count=0 in the oracle only"
+}

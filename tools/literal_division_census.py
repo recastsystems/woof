@@ -64,6 +64,7 @@ Usage (needs CuPy's NVRTC; no GPU is touched when CUDA is hidden)::
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import struct
@@ -170,6 +171,24 @@ def production_units(root) -> list[Unit]:
         return (f"woof/core/kernels/{name}",
                 (kdir / name).read_text(encoding="utf-8"))
 
+    # Static macro aliases are compiler input owned by the loader itself.
+    # Attribute their literal bytes to their actual source lines instead of
+    # maintaining a second hand-copied alias list. Full assembly equality
+    # below still catches an omitted or changed byte, in either mode.
+    loader_path = Path(root).resolve() / "woof/core/kernels/__init__.py"
+    loader_ast = ast.parse(loader_path.read_text(encoding="utf-8"))
+    composer = next(n for n in loader_ast.body
+                    if isinstance(n, ast.FunctionDef) and n.name == "_extra_header_text")
+    loader_macros = []
+    for node in ast.walk(composer):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            lines = node.value.splitlines()
+            if (lines and any(line.strip() for line in lines)
+                    and all(not line.strip() or line.startswith(("#define ", "#undef "))
+                            for line in lines)):
+                loader_macros.append((f"woof/core/kernels/__init__.py:{node.lineno}",
+                                      node.value))
+
     def headers(name):
         # Resolve the active loader composition, including mode-selected
         # headers. Keep labels for PTX attribution and require exact bytes.
@@ -182,6 +201,81 @@ def production_units(root) -> list[Unit]:
         while remaining:
             matches = [(p.name, p.read_text(encoding="utf-8"))
                        for p in sorted(p for p in kdir.iterdir() if p.is_file())]
+            matches.extend(loader_macros)
+            if "gfdleta_support.cuh" in K.EXTRA_HEADERS.get(name, ()):
+                from woof.wrf_exact import referee_glibc
+                matches.append(("<GPUWM_GFDLETA_GLIBC243>",
+                                f"#define GPUWM_GFDLETA_GLIBC243 {int(referee_glibc() >= (2, 43))}\n"))
+            if name == "gfs_sas":
+                from woof.numerics import is_strict
+                matches.append(("<SAS_STRICT>",
+                                f"#define SAS_STRICT {int(is_strict())}\n"))
+            if name in ("gsfcgce4ice", "gsfcgce4ice_aux"):
+                from woof.wrf_exact import referee_glibc
+                if referee_glibc() >= (2, 41):
+                    matches.append(("<GPUWM_G4_CORE_LOG10>",
+                                    "#define GPUWM_G4_CORE_LOG10 1\n"))
+            if name == "cu_osas" and ENABLED:
+                matches.append(("<GPUWM_COLUMN_R8_STRICT>",
+                                "#define GPUWM_COLUMN_R8_STRICT 1\n"))
+            if not ENABLED and name in ("nssl2_shape_nucond", "nssl2_shape_gs",
+                                        "nssl2_shape_driver", "nssl2_shape_diagnostics"):
+                # Loader text (K._extra_header_text): the fast NSSL shape
+                # units alias the WRF libm names to CUDA's, as the fast nssl2
+                # unit does; their __fdiv_rn spellings stay IEEE (A146).
+                matches.append(("<nssl2 default math>",
+                                "#define gfk_pow powf\n#define gfk_exp expf\n#define gfk_log logf\n"))
+            if not ENABLED and name in ("wind_mav", "wind_legacy"):
+                # Loader text: the fast wind units take CUDA's libm.
+                matches.append(("<wind fast math>",
+                                "#define GPUWM_WIND_FAST 1\n#define glibc_sinf sinf\n"
+                                "#define glibc_cosf cosf\n#define glibc_asinf asinf\n"
+                                "#define glibc_acosf acosf\n#define gfk_exp expf\n"
+                                "#define plm_exp exp\n#define uw_acos acos\n"))
+            if name == "sas" and K._sas_strict_numerics():
+                from woof.wrf_exact import referee_correctly_rounded_trig
+                if referee_correctly_rounded_trig():
+                    matches.append(("<SAS correctly rounded trig>",
+                                    "\n#undef wrf_atan_f32\n#define wrf_atan_f32 glibc_atanf\n"))
+            if name == "temf_sfclay":
+                from woof.core.temf_constants import cuda_table
+                matches.append(("<TEMF constants>", cuda_table()))
+            if name in K._TABLE_HEADERS:
+                relative = K._TABLE_HEADERS[name][0]
+                matches.append((f"woof/data/{relative}",
+                                K._table_header_text(name, data_root=kdir.parents[1] / "data")))
+            if name == "keps":
+                from woof.table_assets import kernel_parameter_source_pieces
+                matches.extend(kernel_parameter_source_pieces(
+                    name, data_root=kdir.parents[1] / "data"))
+            # Declared coefficient headers live beside the scanned
+            # kernels under this same tree, not the imported package.
+            for header in K.EXTRA_HEADERS.get(name, ()):
+                if header.startswith("../../data/"):
+                    path = (kdir / header).resolve()
+                    matches.append((path.relative_to(Path(root).resolve()).as_posix(),
+                                    path.read_text(encoding="utf-8")))
+            if name == "sfs_output":
+                matches = [("<SFS geometry from smag2d.cu>", K._sfs_smag_geometry_source(text))
+                           if n == "smag2d.cu" else (n, text)
+                           for n, text in matches]
+            if name == "flg_column":
+                if not ENABLED:
+                    # Attribute the production column's exact fast/rounded
+                    # boundary to its generated source, retaining every byte.
+                    stream = "// Generated from pristine WRF FLG stream solver statements."
+                    cloud = "// Generated from WRF module_ra_flg.F SHA256"
+                    rounded = "\n#undef __fadd_rn\n#undef __fsub_rn\n#undef __fmul_rn\n#undef __fdiv_rn\n"
+                    matches = [(n, (K._flg_fast_math_aliases() + text.replace(
+                        stream, rounded + stream, 1).replace(
+                        cloud, K._flg_fast_math_aliases() + cloud, 1))
+                        if n == "flg_workspace_generated.cuh" else text)
+                        for n, text in matches]
+                    matches.append(("<FLG column rounded math>",
+                                    K._flg_fast_math_aliases(rounded_operators=True)))
+                matches = [(n, K._flg_column_noinline(text)) for n, text in matches]
+            if not ENABLED and name in ("flg_column", "flg_driver"):
+                matches.append(("<FLG default math>", K._flg_fast_math_aliases()))
             if not ENABLED and name == "smag2d":
                 # smag2d's default composition is glibc_flt32.cuh with the
                 # loader's own gfk_exp rewrite (K._smag2d_default_gfk_exp);
@@ -193,7 +287,8 @@ def production_units(root) -> list[Unit]:
             if not matches:
                 raise AssertionError(f"unattributed loader header for {name}")
             filename, text = max(matches, key=lambda item: len(item[1]))
-            parts.append((f"woof/core/kernels/{filename}", text))
+            label = filename if "/" in filename else f"woof/core/kernels/{filename}"
+            parts.append((label, text))
             remaining = remaining[len(text):]
         return parts
 
@@ -245,6 +340,16 @@ def production_units(root) -> list[Unit]:
         extra = headers(name)
         from woof.cuda_subnormals import MARKER
         prefix = [("<GPUWM_RETAIN_SUBNORMALS>", MARKER)] if name in K._URBAN_NO_FTZ_MODULES else []
+        # module_source's own prefixes, in its order (K.module_source).
+        if name == "pxsfclay":
+            from woof.core.pxsfclay import source_constant_prefix
+            prefix.append(("woof/data/pxsfclay/constants.json",
+                           source_constant_prefix(kdir.parents[1] / "data" / "pxsfclay")))
+        if name in ("deng", "mskf", "mskf_aerosol_replay"):
+            from woof.numerics import is_strict
+            if not is_strict():
+                define = "GPUWM_DENG_FAST" if name == "deng" else "GPUWM_MSKF_FAST"
+                prefix.append(("<" + define + ">", "#define " + define + " 1\n"))
         unit = _segmented(f"kernels:{name}", prefix + pre + extra + unit_piece(name),
                           K.module_options(name))
         if unit.source != K.module_source(name, kernel_dir=kdir):

@@ -7,6 +7,8 @@ conversion, real CLI selection and whole forecasts remain unqualified.
 No WRF radiation kernel is reused and WOOF defaults remain unchanged.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target, image_target as _image_target
 from woof.hex import numerics as _hex_numerics
 
 OPTIONAL_ARGUMENTS = ('swupt', 'swuptc', 'swdnt', 'swdntc', 'lwupt', 'lwuptc', 'lwdnt', 'lwdntc', 'swupb', 'swupbc', 'swdnb', 'swdnbc', 'lwupb', 'lwupbc', 'lwdnb', 'lwdnbc')
@@ -14001,7 +14003,7 @@ def _module(device):
             import hashlib
             import json
             path=Path(artifact);record=json.loads(path.with_suffix('.json').read_text())
-            required=_hex_numerics.options(COMPILE_OPTIONS)+('-I'+str(directory),'--gpu-architecture=sm_'+cp.cuda.Device(device).compute_capability)
+            required=_hex_numerics.options(COMPILE_OPTIONS)+('-I'+str(directory),'--gpu-architecture=' + _image_target(device, xp=cp))
             if (record['source_sha256']!=hashlib.sha256(CUDA_SOURCE.encode()).hexdigest() or
                     record['artifact_sha256']!=hashlib.sha256(path.read_bytes()).hexdigest() or
                     tuple(record['options'])!=required or any(
@@ -14017,7 +14019,7 @@ def _module(device):
         from cupy.cuda import compiler
         binary,_=compiler.compile_using_nvrtc(
             CUDA_SOURCE,options=_hex_numerics.options(COMPILE_OPTIONS)+('-I'+str(directory),),
-            arch=cp.cuda.Device(device).compute_capability,cache_in_memory=True)
+            arch=_compilation_target(device, xp=cp),cache_in_memory=True)
         module=cp.cuda.function.Module()
         module.load(binary)
         return module

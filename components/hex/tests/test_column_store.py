@@ -113,3 +113,49 @@ def test_a_frame_that_fails_is_named_and_the_door_goes_on(monkeypatch):
     monkeypatch.setattr(soundings, "write_columns", boom)
     receipt = column_store.write([Path("/x/wrfout_d01_2024-04-26_12_00_00")], Path("/o"), say=lambda *a, **k: None)
     assert receipt["files"] == 0 and "no PH" in receipt["failed"][0]["error"]
+
+
+def test_a_finished_view_folds_its_store_into_the_point_series(monkeypatch, tmp_path):
+    """A view's store, once its frames are all written, gets each grid's point-forecast series (the engine's
+    write_series, every core); the columns index names it; a series that fails is said and the door goes on."""
+    import json
+
+    import woof.soundings as soundings
+    from woof.hex import products_door
+
+    folder = tmp_path / "global" / "columns"
+    (folder / "d01").mkdir(parents=True)
+    (folder / "d01" / "20240426T120000Z.wcol").write_bytes(b"RWSTORE2")
+    calls = []
+
+    def fake(store, threads=None, **_):
+        calls.append(Path(store))
+        (Path(store) / "d01" / "series.wser").write_bytes(b"RWSERIE1")
+        return [{"domain": "d01", "path": str(Path(store) / "d01" / "series.wser"), "bytes": 8, "ms": 1.0,
+                 "members": 1, "times": 1, "fields": 30}]
+    # The series API is optional on supported older engine installs.
+    monkeypatch.setattr(soundings, "write_series", fake, raising=False)
+    path = products_door.write_columns_index(tmp_path, [{"view": "global", "window": "global"}])
+    row = json.loads(path.read_text())["views"][0]
+    assert calls == [folder]
+    assert row["series"] == ["global/columns/d01/series.wser"]
+    assert row["series_receipt"]["files"] == 1
+
+    def broken(store, threads=None, **_):
+        raise RuntimeError("disk full")
+    monkeypatch.setattr(soundings, "write_series", broken)
+    receipt = column_store.write_series(folder, say=lambda *a, **k: None)
+    assert receipt["files"] == 0 and "disk full" in receipt["error"]
+
+
+def test_a_finished_store_keeps_hourly_files_without_an_engine_series_writer(
+        monkeypatch, tmp_path):
+    import woof.soundings as soundings
+
+    monkeypatch.delattr(soundings, "write_series", raising=False)
+    hourly = tmp_path / "d01" / "20240426T120000Z.wcol"
+    hourly.parent.mkdir()
+    hourly.write_bytes(b"RWSTORE2")
+    receipt = column_store.write_series(tmp_path, say=lambda *a, **k: None)
+    assert receipt["files"] == 0 and "no series writer" in receipt["skipped"]
+    assert hourly.read_bytes() == b"RWSTORE2"

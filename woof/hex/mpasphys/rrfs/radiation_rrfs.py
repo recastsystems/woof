@@ -7,6 +7,8 @@ Those numerical kernels are supplied by p21/p22/p23. The SW solar delta
 runs before the wrapper's day/night selection on every call.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from contextvars import ContextVar
@@ -116,7 +118,7 @@ def _module_on(device: int, eot_day_offset=1.0, eot_second_sine=0.04089):
     solar_source = solar_source.replace('.04089f', f'{eot_second_sine}f')
     source += (root / "glibc_trig_flt32.cuh").read_text() + solar_source
     binary, _ = compiler.compile_using_nvrtc(source, options=_hex_numerics.options(CUDA_OPTIONS),
-        arch=_cp().cuda.Device(device).compute_capability)
+        arch=_compilation_target(device, xp=_cp()))
     with _cp().cuda.Device(device):
         module = function.Module()
         module.load(binary)

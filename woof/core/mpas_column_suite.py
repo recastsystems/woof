@@ -170,6 +170,15 @@ SUITE_RESTART_SCHEMA = "mpas-column-suite-v1"
 #: seam built with no generation is byte-for-byte the seam before this
 #: table existed.
 GENERATION_SELECTORS = MappingProxyType({
+    # Shared TC exchange runs in PhysicsDriver for both horizontal engines.
+    "tc_flux_curve": {
+        "values": ("off", "gz-option0", "gz-option1", "gz-option2", "gz-psu",
+                   "gz-k2d0", "powell2003", "donelan2004", "bell2012",
+                   "emanuel2003-adapted"),
+        "requires": ("surface_layer_scheme", ("revised_mm5", "mynn"))},
+    "tc_spray": {
+        "values": ("off", "bao2000", "barr2023"),
+        "requires": ("surface_layer_scheme", ("revised_mm5", "mynn"))},
     "aer_opt": {
         "values": (0, 3),
         "requires": ("radiation_scheme", ("rrtmg_legacy",))},
@@ -330,6 +339,25 @@ def _nominal_znu(z_interface_nominal_m, p_top_pa: float) -> np.ndarray:
         p11 * np.exp(-(zmid - 11000.0) / 6341.62))
     znu = (p - float(p_top_pa)) / (p0 - float(p_top_pa))
     return np.clip(znu, 0.0, 1.0).astype(np.float32)
+
+
+def _nominal_znw(z_interface_nominal_m, p_top_pa: float) -> np.ndarray:
+    """:func:`_nominal_znu`'s coordinate on the nominal interfaces.
+
+    The same standard atmosphere and normalization, evaluated at the
+    ``n_levels + 1`` interfaces, so the bottom is 1 and the column runs
+    down toward 0 at ``p_top`` (WRF ZNW).
+    """
+    z = np.asarray(z_interface_nominal_m, dtype=np.float64)
+    zi = z - z[0]
+    p0 = 101325.0
+    p11 = p0 * (216.65 / 288.15) ** 5.25588
+    p = np.where(
+        zi <= 11000.0,
+        p0 * np.power(1.0 - 2.25577e-5 * np.minimum(zi, 11000.0), 5.25588),
+        p11 * np.exp(-(zi - 11000.0) / 6341.62))
+    znw = (p - float(p_top_pa)) / (p0 - float(p_top_pa))
+    return np.clip(znw, 0.0, 1.0).astype(np.float32)
 
 
 class _SuiteColumnState(_ColumnBatchState):
@@ -961,7 +989,11 @@ _FIXED_MASS_RATES = (("dqv", "rqv"), ("dqc", "rqc"), ("dqr", "rqr"),
 #: state and geometry, so they run at the first phase 2 rather than on the
 #: seam's zero placeholder buffers.  Keyed by ``mp_physics``; a scheme
 #: without a row has no such step.
-_FIRST_CONTACT = {28: "_thompson_first_contact", 900: "_tempo_first_contact"}
+# Both aerosol-aware Thompson members derive surface emissions from the
+# first real layer depth; placeholder geometry would divide by zero.
+_FIRST_CONTACT = {28: "_thompson_first_contact",
+                  38: "_thompson_first_contact",
+                  900: "_tempo_first_contact"}
 
 
 def physics_selector_menu() -> dict:
@@ -1113,13 +1145,20 @@ def _allocator_layout(cfg) -> dict:
              if not name.startswith("_")
              and (name not in vars(bare)
                   or (getattr(bare, name) is None and value is not None))}
-    arrays, scalars, skipped = {}, {}, []
+    arrays, scalars, vectors = {}, {}, {}
     for name, value in added.items():
         if isinstance(value, np.ndarray):
-            if name.endswith("0") and name[:-1] in added:
-                continue
             if _mirror_shape(value.shape, 1) is None:
-                skipped.append(name)
+                # Grid-free scheme state (Eta Ferrier's restart vector,
+                # its two saturation tables and their step stamp,
+                # state.py ETANEWinit): one copy per domain, so the column
+                # state carries it as the allocator made it.  Checked
+                # before the RK-copy rule: RK copies are mass-grid fields,
+                # and etanew_tbpvs0 is a table of its own, not a copy of
+                # etanew_tbpvs.
+                vectors[name] = value.copy()
+                continue
+            if name.endswith("0") and name[:-1] in added:
                 continue
             arrays[name] = value
         elif value is None or isinstance(value, (bool, int, float, str)):
@@ -1149,7 +1188,7 @@ def _allocator_layout(cfg) -> dict:
         "species": species,
         "mass_species": tuple(name for name in species
                               if name in WRF_MOIST_ARRAY_SPECIES),
-        "fields": fields, "scalars": scalars, "skipped": tuple(skipped),
+        "fields": fields, "scalars": scalars, "vectors": vectors,
     }
 
 
@@ -1232,6 +1271,11 @@ def _plan_from_config(cfg, chosen, cadences) -> ColumnPhysicsPlan:
         "species": list(species), "n_soil_levels": n_soil,
         "static_fields": list(statics),
     }
+    from woof.config import radiation_scheme_ids
+    if radiation_scheme_ids(cfg)[0] == 31:
+        # This is a caller obligation at every RK stage, beside the column
+        # thermal call. Keep it in the restart identity as well as the plan.
+        identity["rk_momentum"] = "held-suarez-edge-v1"
     return ColumnPhysicsPlan(
         physics=MappingProxyType(resolved),
         species=species,
@@ -1279,6 +1323,12 @@ def column_physics_plan(physics, *, n_levels=None, dt=None,
         surface_pbl_seconds=surface_pbl_seconds if timed else step,
         cumulus_seconds=cumulus_seconds if timed else None,
         cu_physics=int(chosen.get("cu_physics", 0) or 0))
+    if not timed:
+        # This probe discovers state and species without offering a timed
+        # seam. Use the native every-step spelling: a positive bldt can
+        # require held restart tendencies that this caller never requested.
+        # Explicit timed plans still judge the seam's positive cadence.
+        cadences["bldt_minutes"] = 0.0
     nz = _PROBE_NZ if n_levels is None else int(n_levels)
     cfg = _selection_config(chosen, nz=nz, ncol=_PROBE_NX, ny=_PROBE_NY,
                             dx=12000.0, ztop=20000.0, cadences=cadences)
@@ -1289,11 +1339,17 @@ class _GenericColumnState(_SuiteColumnState):
     """The column state with the engine allocator's own scheme fields."""
 
     def __init__(self, cfg, fnm, fnp, p_top, terrain_height, xp, *, znu,
-                 layout, latitude_deg):
+                 znw, layout, latitude_deg):
         super().__init__(cfg, fnm, fnp, p_top, terrain_height, xp,
                          species=("qv", "qc", "qr"), znu=znu)
         ny, nx = cfg.ny, cfg.nx
         nz = cfg.nz
+        # The interface partner of ``znu`` (an ARW state carries both; the
+        # GFDL/Eta radiation tables read the pair, gfdleta.py GFDLTables).
+        self.znw = xp.asarray(znw, dtype=np.float32)
+        # Grid-free scheme state, one copy per domain as allocated.
+        for name, value in layout["vectors"].items():
+            setattr(self, name, xp.asarray(value.copy()))
         # The grid facts an ARW state carries and a scheme may read, in
         # the form they take on this state: identity mass coupling on the
         # interface levels as on the mass levels (c1f = 1, c2f = 0, beside
@@ -1373,7 +1429,8 @@ class MpasColumnPhysics(MpasColumnBatchPhysics):
                  start_time, latitude_deg, longitude_deg,
                  terrain_height_m, z_interface_nominal_m, p_top_pa, dx_m,
                  cumulus_seconds=None, dx_column_m=None, cell_area_m2=None,
-                 surface=None, statics=None, cumulus_active_column=None):
+                 surface=None, statics=None, cumulus_active_column=None,
+                 rk_momentum=None):
         # ---- pure validation FIRST (no device allocation before it) ----
         if not isinstance(n_levels, numbers.Integral) or n_levels < 3:
             raise ValueError(
@@ -1401,6 +1458,14 @@ class MpasColumnPhysics(MpasColumnBatchPhysics):
             z_interface_nominal_m, dtype=np.float64)[-1])
         cfg = _selection_config(chosen, nz=nz, ncol=ncol, ny=1, dx=dx,
                                 ztop=top_nominal, cadences=cadences)
+        from woof.config import radiation_scheme_ids
+        from woof.core.held_suarez_mesh import HeldSuarezMeshMomentum
+        if radiation_scheme_ids(cfg)[0] == 31:
+            if not isinstance(rk_momentum, HeldSuarezMeshMomentum):
+                raise ValueError("ra_lw_physics=31 requires RK-stage edge momentum damping; pass a HeldSuarezMeshMomentum binding")
+        elif rk_momentum is not None:
+            raise ValueError("an RK momentum binding requires ra_lw_physics=31")
+        self.rk_momentum = rk_momentum
         plan = _plan_from_config(cfg, chosen, cadences)
         lat = np.asarray(latitude_deg, dtype=np.float32).reshape(-1)
         lon = np.asarray(longitude_deg, dtype=np.float32).reshape(-1)
@@ -1479,6 +1544,19 @@ class MpasColumnPhysics(MpasColumnBatchPhysics):
                     f"column ({ncol},), got {value.shape}")
             oro[name] = value.reshape(1, ncol)
         znu = _nominal_znu(z_interface_nominal_m, p_top)
+        znw = _nominal_znw(z_interface_nominal_m, p_top)
+        if 99 in radiation_scheme_ids(cfg) and not (
+                np.all(np.diff(znw) < 0.0) and np.all(znu > 0.0)):
+            # Named breakage: GFDL-Eta builds its CO2 and ozone tables on
+            # this eta pair (gfdleta.py GFDLTables); a layer clipped to
+            # eta 0 has zero thickness and the longwave rate goes
+            # non-finite.  It happens when p_top_pa is above the standard
+            # atmosphere's pressure at the nominal top.
+            raise ValueError(
+                "GFDL-Eta radiation needs a strictly decreasing nominal eta: "
+                f"p_top_pa={p_top} is above the standard-atmosphere "
+                "pressure of the nominal top, so the upper layers clip to "
+                "eta 0; pass a p_top_pa at or below that pressure")
 
         self._cfg = cfg
         self._plan = plan
@@ -1497,8 +1575,11 @@ class MpasColumnPhysics(MpasColumnBatchPhysics):
         self._has_graupel = any(
             component == "graupelnc" for component, _ in self._surface_slots)
         self._species = plan.species
+        # Grid-free scheme state (layout "vectors") restarts with the rest:
+        # Eta Ferrier's restart stamp decides whether ETANEWinit reruns.
         self._state_restart_fields = tuple(
-            dict.fromkeys(plan.state_fields + ("h_diabatic",)))
+            dict.fromkeys(plan.state_fields + tuple(plan.layout["vectors"])
+                          + ("h_diabatic",)))
         self._identity = dict(
             plan.identity,
             n_levels=nz, n_columns=ncol, dt=self._dt,
@@ -1518,7 +1599,7 @@ class MpasColumnPhysics(MpasColumnBatchPhysics):
         self._cp = cp
         self._cell_area_m2 = None if area is None else cp.asarray(area)
         state = _GenericColumnState(cfg, fnm, fnp, p_top, terrain, cp,
-                                    znu=znu, layout=plan.layout,
+                                    znu=znu, znw=znw, layout=plan.layout,
                                     latitude_deg=lat)
         self._state = state
         self._species_buffers = {
@@ -1667,6 +1748,8 @@ class MpasColumnPhysics(MpasColumnBatchPhysics):
         The frozen seam's phase 1 with the species passed as one mapping
         (exactly ``self.species``).  Read-only on every input.
         """
+        if self.rk_momentum is not None and not self.rk_momentum.bound:
+            raise RuntimeError("Held–Suarez RK-stage edge momentum damping is not bound")
         if self._pending_phase != _PHASE1:
             raise RuntimeError(
                 "run_phase1 called out of order: the previous step's "
@@ -1907,7 +1990,18 @@ class MpasColumnPhysics(MpasColumnBatchPhysics):
         first_contact = _FIRST_CONTACT.get(int(cfg.mp_physics))
         if first_contact is not None and self._aerosol_init is None:
             self._aerosol_init = getattr(self, first_contact)(z_interface)
-        if int(cfg.mp_physics) != 0:
+        if int(cfg.mp_physics) == 96:
+            # MADWRF_MP's scheme CASE is empty (dycore.py, the solve_em
+            # order): only the common mp_zero_out hook acts, and no
+            # microphysics diagnostic result exists to accept.
+            if refl_10cm_due:
+                raise ValueError(
+                    "refl_10cm_due with mp_physics=96: MADWRF_MP runs no "
+                    "scheme, so nothing computes a reflectivity")
+            if cfg.mp_zero_out:
+                from woof.core.microphysics import microphysics_zero_out
+                microphysics_zero_out(state, cfg)
+        elif int(cfg.mp_physics) != 0:
             diagnostics = type(self)._PHASE2_MICROPHYSICS(
                 state, cfg, self._dt, refl_10cm_due=refl_10cm_due)
             driver.accept_microphysics(diagnostics)

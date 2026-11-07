@@ -1,0 +1,22 @@
+recast-radar-tools volume writers retained by WOOF
+
+Copyright (c) 2026 Fahrenheit Research
+License: MIT OR Apache-2.0
+Repository: https://github.com/recastsystems/recast-radar-tools
+Reference commit: c206a2495c36341caa2a62ff7be3025320dbb028
+Version: 0.1.3
+
+This subset includes recast-radar-core, recast-radar-bzip2,
+recast-radar-hdf5, recast-radar-io-nexrad, recast-radar-io-cfradial and
+recast-radar-io-odim. Source files are unchanged. The crate manifests omit
+development-only targets and dependencies; SOURCE.json records every file.
+The complete grants are retained in LICENSE-MIT and LICENSE-APACHE.
+
+THIRD_PARTY_NOTICES.md retains the upstream notice collection verbatim.
+Its bzip2 / libbzip2 section applies to the randomisation table in
+crates/recast-radar-bzip2/src/rand.rs. The WOOF binary-form notice retains
+that complete grant. The upstream correction, BUFR and test-data components
+named in the other sections are outside this subset.
+
+All six crate dependencies resolve from in-tree relative paths. Their Rust
+source is not downloaded from PyPI or Git during a WOOF build.

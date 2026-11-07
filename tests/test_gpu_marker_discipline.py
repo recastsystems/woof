@@ -653,7 +653,7 @@ def _environ() -> dict:
 # AST detector cannot answer and, until 2026-09-17, nothing did: can this
 # selection be COLLECTED at all on an install that has no cupy?
 #
-# It could not.  Measured on a development machine in a venv with no cupy extra,
+# It could not.  Measured on test host 1 in a venv with no cupy extra,
 # ``-m "not gpu and not slow and not network"`` over the CPU battery lists
 # ended in ``Interrupted: 6 errors during collection`` and ran NOTHING, and
 # seven further tests were collected and failed with ModuleNotFoundError --

@@ -234,6 +234,33 @@ def test_invalid_allocation_names_the_breakage(cells, memory, cards):
         select_card_count(cells, memory, cards)
 
 
+def test_process_admission_refuses_the_budget_that_failed_at_hour_17(monkeypatch):
+    from contextlib import nullcontext
+    from woof.hex import forecast_door as door
+    from woof.hex.device_admission import MIB
+    from woof.hex.drivers import samehost_rank_group_v841 as ranks
+    monkeypatch.setattr(ranks, "executor_choice", lambda requested, devices: (requested, "requested"))
+    cp = SimpleNamespace(cuda=SimpleNamespace(Device=lambda device: nullcontext(),
+        runtime=SimpleNamespace(getDeviceCount=lambda: 1,
+            memGetInfo=lambda: (24_000*MIB, 32_000*MIB),
+            cudaDevAttrMaxThreadsPerMultiProcessor=39,
+            deviceGetAttribute=lambda attribute, device: 1536,
+            getDeviceProperties=lambda device: {"major":12, "minor":0,
+                "name":b"capacity fixture", "multiProcessorCount":170})))
+    monkeypatch.setitem(sys.modules, "cupy", cp)
+    monkeypatch.delenv("GPUWM_NO_LOCAL_GPU", raising=False)
+    monkeypatch.delenv("WOOF_HEX_NO_LOCAL_GPU", raising=False)
+    monkeypatch.setattr(door, "request_configuration", lambda request: "global")
+    request = SimpleNamespace(cells=40962, mesh="capacity-fixture", model=None,
+                              headroom_bytes=None, regional=False)
+    options = dict(devices=(0,0), layouts=[SimpleNamespace(n_local_cells=n) for n in (21445,21449)],
+                   rank_executor="threads")
+    assert samehost.admit_request(request, {}, options, door).admitted
+    options["rank_executor"] = "processes"
+    with pytest.raises(ValueError, match="prevents out of memory"):
+        samehost.admit_request(request, {}, options, door)
+
+
 def test_one_visible_large_mesh_records_automatic_choice(monkeypatch):
     from woof.hex import time_ledger
     events = []

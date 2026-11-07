@@ -144,14 +144,14 @@ def test_parse_static_table_absent_is_none(tmp_path):
 def test_parse_static_table_accepts_and_resolves(tmp_path):
     config = parse_static_table(
         {"highres": {"enabled": True, "cache_root": "hr-cache",
-                     "on_refuse": "fallback-30s"}},
+                     "on_refuse": "error"}},
         source="case.toml", base_dir=tmp_path)
     assert config == HighresStaticConfig(
         enabled=True, cache_root=tmp_path / "hr-cache",
-        on_refuse="fallback-30s")
+        on_refuse="error")
     assert config.echo() == {
         "enabled": "true", "cache_root": str(tmp_path / "hr-cache"),
-        "on_refuse": "fallback-30s", "terrain_source": "auto",
+        "on_refuse": "error", "terrain_source": "auto",
         "fields": "auto", "landcover_source": "auto"}
 
 
@@ -380,28 +380,10 @@ def test_apply_refuses_non_modis21_landuse(tmp_path):
     assert failure.value.reason == "landuse-inventory-mismatch"
 
 
-def test_fallback_30s_returns_identical_baseline_with_receipt(tmp_path):
-    grid = LambertGrid(
-        ref_lat=52.0, ref_lon=-98.0, truelat1=30.0, truelat2=60.0,
-        stand_lon=-98.0, dx=3000.0, dy=3000.0, e_we=41, e_sn=41)
-    baseline = _baseline(40, 40)
-    frozen = {name: value.copy() for name, value in baseline.items()}
-    config = HighresStaticConfig(enabled=True, cache_root=tmp_path,
-                                 on_refuse="fallback-30s",
-                                 terrain_source="usgs-3dep-13as")
-    fields, receipt = apply_highres_statics(
-        baseline, grid, config=config, domain_id=2,
-        case_date=date(2021, 5, 15), landuse_attrs=MODIS21_ATTRS)
-    assert fields is baseline
-    for name, value in frozen.items():
-        np.testing.assert_array_equal(fields[name], value)
-    assert receipt["status"] == "REFUSED"
-    assert receipt["refusal"]["reason"] == "outside-source-coverage"
-    written = Path(receipt["receipt_path"])
-    assert written.is_file()
-    payload = json.loads(written.read_text(encoding="utf-8"))
-    assert payload["status"] == "REFUSED"
-    assert payload["grid"]["domain_id"] == 2
+def test_retired_fallback_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="retired"):
+        parse_static_table({"highres": {"enabled": True, "cache_root": str(tmp_path),
+                           "on_refuse": "fallback-30s"}}, source="case.toml", base_dir=tmp_path)
 
 
 # ---------------------------------------------------------------------------

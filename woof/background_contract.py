@@ -106,8 +106,17 @@ def capability(source: str) -> dict:
     # "automatic" there sent the local DA door into its refusal ("needs a
     # supplied native time inventory rather than a fabricated forecast
     # ladder") on every model-table row.
+    # Nor does a route whose object names need a parameter only the user
+    # can supply (HAFS's storm id, fetch_routes "requires STORM=VALUE"):
+    # with no inputs supplied plan() cannot name a single object, so the
+    # local DA door refused every HAFS rung after offering it.
+    unsupplied = sorted(key for key, row in ((route.parameters or {}) if route is not None else {}).items()
+                        if row.get("default") is None)
     automatic = (operation in preparation_chains() and grid is not None
-                 and axis in ("forecast_leads", "analysis_times"))
+                 and axis in ("forecast_leads", "analysis_times") and not unsupplied)
+    if unsupplied:
+        obligations.append("Supply the source parameters the published object names carry: "
+                           + ", ".join(f"{key}=VALUE" for key in unsupplied) + ".")
     if axis == "analysis_times" and grid is None:
         obligations.append("Supply an inspected native time inventory; no analysis publication window is declared.")
     return dict(source=adapter.source_id, label=adapter.display_title, preparable=preparable,
@@ -381,7 +390,7 @@ def plan(source: str, *, init: datetime, now: datetime, run_seconds: float,
             # handoff can address invariant-only dependency closures.
             # The prefix opens at the route's first published lead: a
             # retrospective row with no f000 (the GEFSv12 reforecast,
-            # first_lead = 3, lane/cap-gefs-archive) has no invariant frame
+            # first_lead = 3, development branch) has no invariant frame
             # before it, and asking for f000 refused every window.
             fetch_leads = (_leads(adapter, route, candidate, route.first_lead, end, cadence)
                            if route else leads)

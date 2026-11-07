@@ -49,7 +49,7 @@ def provider():
         # CuPy 14.2 accepts device arrays here, not a NumPy host allocation.
         assert isinstance(value, DeviceArray)
         return np.array(value,copy=True,order='C').view(DeviceArray)
-    cp=SimpleNamespace(asarray=lambda a:np.asarray(a).view(DeviceArray),
+    cp=SimpleNamespace(asarray=lambda a, **kw:np.asarray(a, **kw).view(DeviceArray),
                        ascontiguousarray=contiguous)
     return NativeDevicePoolViews(SimpleNamespace(native=Native(),layout=layout),cp)
 
@@ -93,6 +93,31 @@ def test_microphysics_level_and_prepared_fortran_views_preserve_halos():
     assert p.native.fields['state','q',1].tolist()==[[1,2,3,888]]
     assert p.native.fields['state','q',2].tolist()==[[8,5,6,888]]
     assert p.native.variables['u_p'][0][2,1,0]==np.float32(29)
+
+
+def test_adopted_tendency_keeps_words_halos_and_replaces_old_owner():
+    import weakref
+    p = provider()
+    p.session.layout.fields.append(dict(pool='tend', name='scalars_tend',
+        pool_name='scalars_tend', dimensions=['nVertLevels', 'nCells']))
+    original = np.array([[1., -0., 3., 999.]], np.float32)
+    p.native.fields['tend', 'scalars_tend', 1] = original
+    p.resident = True
+    value = np.array([[4., -0., 8.]], np.float32)
+    assert p.adopt_tendency('scalars_tend', value) is value
+    assert p.field('tend', 'scalars_tend') is value
+    host, packed, selection = p.resident_buffers['tend', 'scalars_tend', 1]
+    host[selection] = packed
+    assert np.array_equal(host.view(np.uint32),
+                          np.array([[4., -0., 8., 999.]], np.float32).view(np.uint32))
+    old = weakref.ref(value)
+    del packed, value
+    p.adopt_tendency('scalars_tend', np.zeros((1, 3), np.float32))
+    assert old() is None
+    for invalid in (np.zeros((1, 4), np.float32), np.zeros((1, 3), np.float64),
+                    np.zeros((1, 6), np.float32)[:, ::2]):
+        with pytest.raises(ValueError, match='shape/dtype/layout'):
+            p.adopt_tendency('scalars_tend', invalid)
 
 
 def test_native_scalar_and_constant_aliases_keep_rkind():
@@ -231,7 +256,7 @@ def test_rrfs_resident_halo_transaction_commits_before_exchange_and_refreshes():
     class Transfer(np.ndarray):
         def get(self):
             return np.array(self, copy=True)
-    p.cp.asarray = lambda x: np.asarray(x).view(Transfer)
+    p.cp.asarray = lambda x, **kw: np.asarray(x, **kw).view(Transfer)
     p.cp.ascontiguousarray = lambda x: np.array(x, copy=True, order='C').view(Transfer)
     p.cp.cuda = SimpleNamespace(get_current_stream=lambda: SimpleNamespace(
         synchronize=lambda: events.append('sync')))
@@ -274,7 +299,7 @@ def extent_provider(*, persistent, entity='nCells', owned=3, padded=True):
     class Device(np.ndarray):
         def get(self, order='C'):
             return np.array(self, order=order, copy=True)
-    p.cp.asarray = lambda value: np.array(value, copy=True).view(Device)
+    p.cp.asarray = lambda value, **kw: np.array(value, copy=True, **kw).view(Device)
     p.cp.ascontiguousarray = lambda value: np.ascontiguousarray(value).copy().view(Device)
     p.cp.ndarray = Device
     p.cp.float32, p.cp.int32, p.cp.uint32 = np.float32, np.int32, np.uint32

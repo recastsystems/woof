@@ -126,7 +126,30 @@ def test_default_and_default_valued_sets_preserve_both_loader_source_routes():
             raw = default_unit.read_text(encoding="utf-8")
         if wrf_exact.ENABLED and module == "noah":
             raw = "#define NOAH_WRF_SCALAR_RCT 1\n" + raw   # kernels._unit_text
+            if wrf_exact.referee_glibc() >= (2, 43):
+                raw = "#define NOAH_WRF_MODERN_LOG10 1\n" + raw
+        # The remaining mode-selected unit texts of kernels._unit_text.
+        from woof.numerics import is_strict
+        if module == "gsfcsw" and not is_strict():
+            raw = (KDIR / "gsfcsw_fast.cuh").read_text(encoding="utf-8")
+        if module == "slab":
+            raw = f"#define GPUWM_SLAB_STRICT {int(is_strict())}\n" + raw
+        if module == "ishmael":
+            if wrf_exact.ENABLED:
+                log10 = KDIR.parents[1] / "hydro/noahowp/log10.cu"
+                raw = (log10.read_text(encoding="utf-8")
+                       + "\n#define gfk_log10 owp_log10\n" + raw)
+            else:
+                raw = "#define ISHMAEL_FAST_NUMERICS 1\n" + raw
+        if module == "trajectory" and wrf_exact.ENABLED:
+            raw = "#define WRF_EXACT 1\n" + raw
         expected = kernels._preamble() + kernels._extra_header_text(module) + raw
+        # kernels.module_source's own prefixes, ahead of the preamble.
+        if module == "pxsfclay":
+            from woof.core.pxsfclay import source_constant_prefix
+            expected = source_constant_prefix() + expected
+        if module in ("mskf", "mskf_aerosol_replay") and not is_strict():
+            expected = "#define GPUWM_MSKF_FAST 1\n" + expected
         if module in kernels._URBAN_NO_FTZ_MODULES:
             # The SLUCM/BEP units retain subnormals through a source marker
             # (woof/cuda_subnormals.py); no other unit's source moves.
@@ -138,7 +161,8 @@ def test_default_and_default_valued_sets_preserve_both_loader_source_routes():
         tier = "#define PHYSICS_PARAMS_SOURCE_CONTROL 1\n"
         # Goddard (golden/ports-rad) sizes its band headers from the same tier
         # (kernels._HEADERS_NEED_INT_DEFINES), so its tier precedes them too.
-        if module == "thompson_column" or module in kernels._HEADERS_NEED_INT_DEFINES:
+        # RCON and UDM size their generated headers from the tier as thompson_column does.
+        if module in ("thompson_column", "rcon", "udm") or module in kernels._HEADERS_NEED_INT_DEFINES:
             # thompson-v44 (effc0a99a): the integer tier sizes the generated
             # header's arrays, so it precedes that header as well as the
             # unit (tests/test_thompson_generation_selector.py pins it).

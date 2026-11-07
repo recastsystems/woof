@@ -39,7 +39,7 @@ merge is `rla_mynn_gsd41` in `woof/core/kernels/rrtmg_legacy_adapter.cu`.
 | P23 | Closure level 2.5 (the fork's levflag 2): only TKE is predicted; tsq, qsq and cov are diagnosed from their production with the start-of-call qkw, v4.1.21 :2232-2253 (v4.6.1's closure 2.6 predicts qsq). mym_turbulence already ran level 2.5 under gsd_41. | Eight 12-level columns with nonzero variance production against the unmodified predictor: qke, tsq, qsq and cov as FP32 bits (`variance-gsd41.csv`). |
 | P11 | Density-free mass flux, local transport and surface forcing; no EDMF K floors, v4.1.21 :2044-2114, :2835-3114, :5633-5729. | Full plume oracle and eight clear transport columns. Ten-class workspace sizes are priced and allocated only for gsd_41. |
 
-## Exactness (lane/mynn-exact)
+## Exactness (development branch)
 
 `tools/mynn_pbl_gsd41_oracle/run_driver_families_gsd41.F90` runs the fork's
 own `mynn_bl_driver` with HRRR's namelist identity over six column families

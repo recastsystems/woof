@@ -132,6 +132,12 @@ def collect(job):
             if name == 'refl10cm':
                 surface['composite_reflectivity'] = value.max(axis=-1)
     np.savez(output / 'surface.npz', **surface)
+    if job.get('ocean_bounds') is not None:
+        import importlib.util
+        helper=Path(__file__).resolve().parents[1]/'reduce_coupled_ocean_history.py'
+        spec=importlib.util.spec_from_file_location('ocean_reduction',helper)
+        reducer=importlib.util.module_from_spec(spec);spec.loader.exec_module(reducer)
+        reducer.reduce((path,output,job['ocean_bounds']))
     rendering = None
     if job['render']:
         member = job['member']
@@ -183,6 +189,8 @@ def main():
     parser.add_argument('--every-hours', type=float, default=6)
     parser.add_argument('--workers', type=int, default=2)
     parser.add_argument('--fixed', action='store_true', help='track closed fixed-run frames before collection')
+    parser.add_argument('--ocean-bounds', type=float, nargs=4, metavar=('W','E','S','N'),
+                        help='retain compact ocean profiles/diagnostics inside these degree bounds')
     args = parser.parse_args()
     root = args.run.resolve()
     args.out.mkdir(parents=True, exist_ok=True)
@@ -249,7 +257,7 @@ def main():
                 job = dict(history=path, root=str(root),
                     output=str(args.out / f"s{frame['segment']:03d}-t{int(frame['model_seconds']):07d}"),
                     frame=frame, member=state['members'][frame['member']],
-                    start_time=case['start_time'], render=render, window=args.window)
+                    start_time=case['start_time'], render=render, window=args.window, ocean_bounds=args.ocean_bounds)
                 pending[path] = pool.submit(collect, job)
             for path, future in list(pending.items()):
                 if not future.done():

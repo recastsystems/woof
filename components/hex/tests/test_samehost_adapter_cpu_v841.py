@@ -146,7 +146,8 @@ def test_door_iau_and_balance_keywords_reach_the_rank_executor(tmp_path, monkeyp
     monkeypatch.setattr(scope, "scoped_physics_resources", no_resources)
     forecast = SimpleNamespace(proof=SimpleNamespace(), execute_forecast=lambda **kwargs: None)
     kwargs = _forecast_kwargs(tmp_path)
-    kwargs.update(grid_path=tmp_path / "grid.nc", iau=None, balance_series=False)
+    kwargs.update(grid_path=tmp_path / "grid.nc", iau=None, balance_series=False,
+                  tc_climate=None)
     with adapter.installed(forecast, devices=(0, 0), layouts_path=Path("unused.npz"), part_path=Path("unused.part.2")):
         with pytest.raises(Reached):
             forecast.execute_forecast(**kwargs)
@@ -159,6 +160,18 @@ def test_door_iau_and_balance_keywords_reach_the_rank_executor(tmp_path, monkeyp
     kwargs.update(iau=None, balance_series=True)
     with adapter.installed(forecast, devices=(0, 0), layouts_path=Path("unused.npz"), part_path=Path("unused.part.2")):
         with pytest.raises(ValueError, match="no balance-series sampler"):
+            forecast.execute_forecast(**kwargs)
+
+
+def test_enabled_tc_climate_refuses_before_physics_allocation(tmp_path, monkeypatch):
+    from woof.hex.drivers import samehost_physics_scope_v841 as scope
+    monkeypatch.setattr(scope, "scoped_physics_resources",
+                        lambda: pytest.fail("unsupported TC diagnostics reached physics allocation"))
+    forecast = SimpleNamespace(proof=SimpleNamespace(), execute_forecast=lambda **kwargs: None)
+    kwargs = _forecast_kwargs(tmp_path)
+    kwargs.update(grid_path=tmp_path / "grid.nc", tc_climate=tmp_path / "tc.toml")
+    with adapter.installed(forecast, devices=(0, 0), layouts_path=Path("unused.npz"), part_path=Path("unused.part.2")):
+        with pytest.raises(ValueError, match="TC|tc-climate"):
             forecast.execute_forecast(**kwargs)
 
 

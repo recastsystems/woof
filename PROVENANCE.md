@@ -192,24 +192,26 @@ bytes are outside the numerical oracle.
   `-ftz=true` to whatever the caller passed, at
   `cupy.cuda.compiler` line 585 (`options += ('-ftz=true',)`), after the
   caller's options, and NVRTC honours the last occurrence.
-  The inventory records 13 distinct caller-supplied option tuples across the
-  209 compile sites in the shipped package, each listed here with a site
+  The inventory records 14 distinct caller-supplied option tuples across the
+  255 compile sites in the shipped package, each listed here with a site
   that supplies it:
-  - no caller options -- `woof/core/attribute_tracking.py:99`
-    (xp.ElementwiseKernel), and 157 other site(s)
-  - `-std=c++17` -- `woof/core/acoustic_fusion.py:403` (cp.RawModule), and
-    13 other site(s)
+  - no caller options -- `woof/backend/__init__.py:28` (self.xp.RawModule),
+    and 192 other site(s)
   - `--std=c++17` -- `woof/ensemble/batch_perturbation.py:51`
-    (xp.RawModule), and 11 other site(s)
+    (xp.RawModule), and 18 other site(s)
+  - `-std=c++17` -- `woof/core/acoustic_fusion.py:405` (cp.RawModule), and
+    15 other site(s)
   - `--std=c++11` -- `woof/hex/cuda_courant_fullstep_lts.py:52`
     (cp.RawKernel), and 5 other site(s)
   - `-std=c++17` `--ftz=false` -- `woof/core/chem_plumerise_cache.py:37`
     (compiler.compile_using_nvrtc), and 5 other site(s)
-  - `-fmad=false` -- `woof/core/dycore.py:306` (cp.ElementwiseKernel), and 2
+  - `-fmad=false` -- `woof/core/dycore.py:308` (cp.ElementwiseKernel), and 2
     other site(s)
   - `--fmad=false` -- `woof/hex/moving_vertical_cuda.py:21` (cp.RawKernel),
     and 1 other site(s)
-  - `-std=c++17` `--fmad=false` -- `woof/core/kernels/__init__.py:689`
+  - `--std=c++17` `--use_fast_math` -- `woof/hex/waves.py:486`
+    (cp.RawModule), and 1 other site(s)
+  - `-std=c++17` `--fmad=false` -- `woof/core/kernels/__init__.py:1230`
     (cp.RawModule), and 1 other site(s)
   - `-std=c++17` `--fmad=false` `--ftz=false` --
     `woof/core/thompson_fork.py:109` (compiler.compile_using_nvrtc), and 1
@@ -218,11 +220,11 @@ bytes are outside the numerical oracle.
     (cp.RawModule)
   - `--std=c++17` a target flag built from the device architecture at run
     time -- `woof/ocean/waves/model.py:73` (cp.RawModule)
-  - `-std=c++17` `--ftz=false` `--fmad=false` --
-    `woof/core/kernels/__init__.py:805` (compiler.compile_using_nvrtc)
+  - `-std=c++17` `--maxrregcount=112` --
+    `woof/core/kernels/__init__.py:1202` (cp.RawModule)
   - a target flag built from the device architecture at run time a target
     flag built from the device architecture at run time --
-    `woof/hex/mpasphys/surface_update_v842.py:148`
+    `woof/hex/mpasphys/surface_update_v842.py:150`
     (compiler.compile_using_nvrtc)
   `R5` and `R1` are kernels inside ONE compiled object -- same device, same
   flags, one compile -- and they did not measure alike, so on this device
@@ -319,12 +321,12 @@ each file's size and SHA-256 against those pins before installing it into
   `28c12192251969cd79a02e08e3174f26113de51490689f728cfc44af9cf76b2c`;
   `thompson_aux_tables.dat` 6,164,536
   `13d304911e5322fb5bcc2a0639effc20ad5381c59f076ced2386b56f2fb441ae`.
-- **Reproduction**: a development machine's receipt
+- **Reproduction**: the first build host's receipt
   (`tools/thompson_fork_oracle/PROVENANCE-node2.txt`) recorded these four
-  digests; on 2026-10-06 two independent `build.sh` runs on a development machine (same
+  digests; on 2026-10-06 two independent `build.sh` runs on a second host (same
   compiler and libc, kernel 7.0.0-31) from a fresh download of the two
   fork sources produced byte-identical tables with the same four digests.
-  The generator binaries' own digests differ from a development machine's receipt; the
+  The generator binaries' own digests differ from the first receipt's; the
   tables do not.  `woof.thompson_fork_build` repeats this
   build from the same pinned sources when no release answers, and its
   output must equal the same pins or it is refused.

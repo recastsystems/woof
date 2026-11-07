@@ -2965,7 +2965,7 @@ tests/test_satmedmf_transcription.py
 tests/test_wrf_options_page.py
 tests/test_wrf_unported_scheme_reasons.py
 tests/test_strict_theta_carrier.py
-tests/test_strict_streamed_base_refusal.py
+tests/test_strict_streamed_base.py
 
 # 2.9.2 compose (integrate/2.9.2): the new suites of the 2.9.2 lanes, which
 # no list named, so no gate ran them: the hex-to-ArWen parent profile
@@ -3015,4 +3015,20 @@ tests/test_prep_host_parallel.py
 
 # Refuse missing store writers and prevent partial or duplicate native history snapshots.
 tests/test_output_formats.py
+
+# The MRF PBL (bl_pbl_physics=99, WRF v4.6.1 MRFSCHEME): the packaged
+# oracle fixture's pins and coverage, the WRF constants and workspace
+# geometry in the kernel, and every admission door (RunConfig, the WRF
+# matrix cells, namelist import, registry option, dispatch row, checkpoint
+# identity, vertical contract).  CPU-only; the card rows are in
+# gpu_pin_set.txt.
+tests/test_mrf_port.py
+# The GFS nonlocal PBL (bl_pbl_physics=3, WRF v4.6.1 module_bl_gfs.F).  Its
+# doors, refusals, dispatch row, identity and workspace geometry; the packaged
+# oracle records' pins, the generated constants header and the NumPy
+# reference against all 468,864 oracle words (glibc hosts).  CPU-only; the
+# card rows are in gpu_pin_set.txt.
+tests/test_gfs_pbl_integration.py
+tests/test_gfs_pbl_wrf461_parity.py
 tests/test_hex_mpas_route_imports.py
+tests/test_wheel_packed_data.py

@@ -2656,6 +2656,19 @@ pub(crate) fn wrf_run_origin(
     start_date: Option<i64>,
     simulation_start: Option<i64>,
 ) -> Result<Option<i64>, String> {
+    // `rw_wrfbatch --forecast-start` (RUSTWX_FORECAST_START): a tree whose
+    // head grid began earlier than the forecast (a DA cycle that hands its
+    // analysis to the forecast inside one WRF tree) labels every frame from
+    // the tree start ("Init 10/07 18Z F018" for a forecast made at 10/08
+    // 00Z).  The caller who knows the forecast start names it.
+    if let Ok(text) = std::env::var("RUSTWX_FORECAST_START") {
+        let text = text.trim();
+        if !text.is_empty() {
+            return parse_utc_timestamp(text).map(Some).ok_or_else(|| {
+                format!("RUSTWX_FORECAST_START {text:?} is not a UTC timestamp (YYYY-MM-DD_HH:MM:SS)")
+            });
+        }
+    }
     match (start_date, simulation_start) {
         (Some(start), Some(simulation)) if start < simulation => Err(format!(
             "conflicting WRF references START_DATE={} and SIMULATION_START_DATE={}: the domain starts before its simulation, which no WRF writer produces, so one stamp is wrong and every lead, the Init label and the run's store key would be measured from a guessed origin",

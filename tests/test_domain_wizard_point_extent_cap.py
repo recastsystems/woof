@@ -76,6 +76,14 @@ def _stderr_beyond_the_banner(err: str) -> str:
 
     banner = provenance.resolve().banner()
     lines = err.splitlines()
+    # ... and the check door's planning-time model-top verdict, which goes
+    # to stderr so `--json` stdout stays one document (8f7e4c27247).  Only
+    # the PASS form is a healthy notice, as tests/test_go_chain.py reads it.
+    top_pass = "woof check: model-top check PASS: source "
+    for index, line in enumerate(lines):
+        if line.startswith(top_pass):
+            del lines[index]
+            break
     for index, line in enumerate(lines):
         door, sep, text = line.partition(": ")
         if sep and text == banner and door.startswith("woof "):

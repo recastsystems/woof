@@ -1,0 +1,73 @@
+{
+  "columns": 64,
+  "levels": 25,
+  "points": 1174,
+  "old_points": 121,
+  "new_points": 1053,
+  "gas_values_order": [
+    "umco2",
+    "umch4",
+    "umn2o",
+    "umo2",
+    "umno",
+    "umso2",
+    "umno2",
+    "umch3cl",
+    "umco",
+    "umcfc11",
+    "umcfc12"
+  ],
+  "switch_order": [
+    "no2s",
+    "nco2s",
+    "nso2s",
+    "nch4s",
+    "nnol",
+    "nno2l",
+    "nso2l",
+    "nch3cll",
+    "ncos",
+    "nn2os",
+    "nh2ocs",
+    "nh2os",
+    "no3s",
+    "nh2ol",
+    "no3l",
+    "nco2l",
+    "nn2ol",
+    "nch4l",
+    "ncfc11l",
+    "ncfc12l"
+  ],
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "source_sha256": "c4977cdf2ddf3f2279c9be7e1fc659ef23bbb37376e5cf11f9a98a73d33b0266",
+  "fixture_sha256": "ecdb047880b2174c04da58dc73eb1743f90b65bfd75c3d8cbb1073d0f9affbc1",
+  "fields": {
+    "optical_depth": {
+      "shape": [
+        64,
+        1174,
+        24
+      ],
+      "sha256": "6ede443cb6144e618951105d92bdf242a48b9f32d8b0ab007055e2b6c9e82d1d",
+      "finite": true
+    },
+    "weights": {
+      "shape": [
+        64,
+        1174
+      ],
+      "sha256": "cd108ed8646570257567b8991563df44735c090814c90af803da9aff7774f77f",
+      "finite": true
+    },
+    "temperature_out": {
+      "shape": [
+        64,
+        1174,
+        25
+      ],
+      "sha256": "c66139d05ff9f3376ac2f800b0b7eed2eb5c72e2464119dcbfa351798f0e25d7",
+      "finite": true
+    }
+  }
+}

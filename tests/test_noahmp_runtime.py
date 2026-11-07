@@ -30,12 +30,18 @@ grid to make the assertions look better.
 """
 
 from __future__ import annotations
+from woof.core.noahmp_tile_drain import shapes as tile_shapes
 
 import dataclasses
+
+from woof.core.noahmp_soil_cadence import shapes as cadence_shapes
+from woof.core.noahmp_soil_cadence import ACCUMULATORS
 
 from datetime import datetime, timedelta
 import hashlib
 
+from woof.core.noahmp_groundwater_slab import CARRIERS as GW_CARRIERS
+from woof.core.noahmp_output import shapes as output_shapes
 import numpy as np
 import pytest
 
@@ -43,6 +49,8 @@ from conftest import requires_gpu
 
 import cupy as cp
 
+from woof.core.noahmp_soil_options import soil_input_shapes
+from woof.core.noahmp_irrigation_slab import STATE as IRR_STATE, COUNTERS as IRR_COUNTERS, STATIC as IRR_STATIC
 from woof.config import RunConfig
 from woof.core.noahmp_runtime import (NOAHMP_DIAGNOSTICS_2D,
                                        NOAHMP_STATE_2D,
@@ -85,13 +93,18 @@ def _build(*, nx: int = 8, ny: int = 6, nz: int = 40, vegtyp: int = _GRASSLAND,
            snow_depth_m: float = 0.0, xice=0.0, radiation=None,
            ra_physics: int = 0, radt_minutes: float = 12.0,
            mp_physics: int = 6, sf_sfclay_physics: int = 1,
-           bl_pbl_physics: int = 1, **config_overrides):
+           bl_pbl_physics: int = 1, dt: float = 12.0,
+           dx: float = 3000.0, dy: float = 3000.0,
+           grid_id: int = 1, nested: bool = False, **config_overrides):
     from woof.core.grid import make_base_state, make_vertical_coord
     from woof.core.moist import init_moist_balanced
     from woof.core.physics import initialize_physics
 
-    cfg = RunConfig(nx=nx, ny=ny, nz=nz, dx=3000.0, dy=3000.0, ztop=16000.0,
-                    dt=12.0, run_seconds=0.0, time_step_sound=4, moist=True,
+    if config_overrides.get("opt_gla")==2:
+        vegtyp=_ICE;soiltyp=16;snow_mm=100.;snow_depth_m=.4
+    cfg = RunConfig(nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, ztop=16000.0,
+                    dt=dt, grid_id=grid_id, nested=nested,
+                    run_seconds=0.0, time_step_sound=4, moist=True,
                     mp_physics=mp_physics,
                     sf_sfclay_physics=sf_sfclay_physics,
                     sf_surface_physics=4,
@@ -134,6 +147,19 @@ def _build(*, nx: int = 8, ny: int = 6, nz: int = 40, vegtyp: int = _GRASSLAND,
     latitude = np.full((cfg.ny, cfg.nx), _LATITUDE, np.float64)
     longitude = np.full((cfg.ny, cfg.nx), _LONGITUDE, np.float64)
 
+    crop_inputs=None
+    if cfg.opt_crop:
+        fractions=np.zeros((5,cfg.ny,cfg.nx),np.float32)
+        fractions[0,:,::2]=.8;fractions[1,:,1::2]=.8;fractions[4]=.8
+        crop_inputs=dict(croptype=fractions,planting=np.full((cfg.ny,cfg.nx),100.,np.float32),harvest=np.full((cfg.ny,cfg.nx),300.,np.float32),season_gdd=np.full((cfg.ny,cfg.nx),1770.,np.float32))
+    groundwater_inputs=None
+    if cfg.opt_run==5:
+        groundwater_inputs=dict(FDEPTH=np.full((cfg.ny,cfg.nx),20.,np.float32),
+            EQZWT=np.full((cfg.ny,cfg.nx),-3.,np.float32),
+            RECHCLIM=np.full((cfg.ny,cfg.nx),50.,np.float32),
+            RIVERBED=np.full((cfg.ny,cfg.nx),-4.,np.float32),
+            HGT=np.zeros((cfg.ny,cfg.nx),np.float32),
+            MAPFAC_MX=np.ones((cfg.ny,cfg.nx),np.float32),MAPFAC_MY=np.ones((cfg.ny,cfg.nx),np.float32))
     driver = initialize_physics(
         state, cfg, landmask=landmask, tsk=tsk,
         soil_temperature=soil_t, soil_moisture=soil_m,
@@ -143,7 +169,27 @@ def _build(*, nx: int = 8, ny: int = 6, nz: int = 40, vegtyp: int = _GRASSLAND,
         vegfra=60.0, tmn=288.0, swdown=700.0, glw=340.0, pblh=500.0,
         snow=snow_mm, snow_depth=snow_depth_m, xice=xice,
         noahmp_start_time=_START, noahmp_latitude=latitude,
-        noahmp_longitude=longitude, radiation=radiation)
+        noahmp_longitude=longitude, radiation=radiation,
+        **({"noahmp_crop_inputs":crop_inputs} if cfg.opt_crop else {}),
+        **({"noahmp_groundwater_inputs":groundwater_inputs} if cfg.opt_run==5 else {}))
+    if int(cfg.opt_soil)==2:
+        for k in range(1,5):
+            driver.fields[f"soilcl{k}"][...]=soiltyp if k<3 else 4
+    if int(cfg.opt_soil)==4:
+        from woof.core.noahmp_soil_options import SOIL_PROPERTIES
+        p=driver.noahmp_params.transferred(vegtyp=vegtyp,soiltyp=(soiltyp,)*4,slopetype=1,soilcolor=4)
+        for name in SOIL_PROPERTIES:
+            driver.fields[name+"_3d"][...]=cp.asarray(p.values[name.upper()],cp.float32)[:,None,None]
+    if int(cfg.opt_soil)==3:
+        driver.fields["soilcomp"][:4]=40.0
+        driver.fields["soilcomp"][4:]=18.0
+    if int(cfg.opt_tdrn):
+        driver.fields["td_fraction"][...] = cp.asarray(np.where(land, 0.75, 0.0),dtype=cp.float32)
+    if int(cfg.opt_irr):
+        driver.fields["ivgtyp"][...]=cp.where(cp.asarray(land),cp.int32(12),driver.fields["ivgtyp"])
+        for name,value in (("irfract",.8),("sifract",.25),("mifract",.25),("fifract",.5),("planting",1.),("harvest",365.)):
+            driver.fields[name][...]=cp.where(cp.asarray(land),cp.float32(value),cp.float32(0.))
+        for name in ("smois","sh2o"):driver.fields[name][...]=cp.where(cp.asarray(land)[None,:,:],cp.float32(.1),driver.fields[name])
     return state, cfg, driver
 
 
@@ -237,13 +283,12 @@ def test_device_leaves_preserve_the_six_step_carried_state(
 
 #: The smallest perturbation of one output word of each batched leaf that the
 #: six-step carried-state digest can see, measured on the current default
-#: physics. One ULP of BARE_FLUX TGB is visible with the WRF 4.8 solar
-#: generation and current surface layer. The former two-ULP threshold and
-#: its one-ULP absorption guard described the older integration arithmetic.
+#: physics. Two ULPs of BARE_FLUX TGB survive the current surface arithmetic;
+#: a one-ULP perturbation can round away before the carried-state store.
 #: The leaf itself is still held to max_ulp 0 by test_noahmp_bareflux_cuda.py.
 _SMALLEST_VISIBLE_NUDGE = (
     ("vege_flux", "TV", 1),
-    ("bare_flux", "tgb", 1),
+    ("bare_flux", "tgb", 2),
     ("water", "runsrf", 1),
 )
 
@@ -768,20 +813,23 @@ def test_a_glacier_column_dispatches_to_the_ported_glacier_path():
 # ---------------------------------------------------------------------------
 
 @requires_gpu
-def test_a_noahmp_restart_round_trips_and_reproduces_the_next_step(tmp_path):
+@pytest.mark.parametrize("options", [{}, {"opt_btr": 2, "opt_rsf": 2},
+    {"opt_alb": 1, "opt_btr": 3, "opt_rsf": 3}, {"opt_rsf":4},
+    *({"opt_snf":v} for v in (2,3,4,5)), *({"dveg":v} for v in (1,3)), {"opt_inf":2}, {"opt_run":4}, {"opt_inf":2,"opt_run":4}, {"opt_run":6}, {"opt_inf":2,"opt_run":6}, {"opt_run":7}, {"opt_inf":2,"opt_run":7}, {"opt_rad":2}, {"opt_rad":2,"opt_alb":1}, {"opt_rad":1}, {"opt_rad":1,"opt_alb":1}, {"opt_frz":2}, {"opt_frz":2,"opt_inf":2}, {"opt_stc":2}, {"opt_tbot":1}, {"opt_stc":3}, {"opt_stc":2,"opt_tbot":1}, {"opt_crs":2}, {"opt_crs":2,"opt_stc":2}, {"opt_sfc":2}, {"opt_sfc":2,"opt_crs":2,"opt_stc":2}, *({"dveg":v} for v in (7,8,9)), *(dict(opt_run=v) for v in (1,2)), *(dict(opt_run=v,opt_inf=2) for v in (1,2)), dict(opt_soil=2), dict(opt_soil=3), pytest.param(dict(opt_soil=4),id="direct-soil-4"), *(dict(dveg=v) for v in (2,5,6)), *(dict(opt_run=8,opt_infdv=v) for v in (1,2,3)), dict(soiltstep=24.0), dict(soiltstep=48.0), dict(soiltstep=12.0), dict(opt_tdrn=1), dict(opt_tdrn=2), dict(noahmp_output=3,noahmp_acc_dt=0.4), pytest.param(dict(opt_irr=1,opt_irrm=0),id="irrigation-1-0"),pytest.param(dict(opt_irr=2,opt_irrm=1),id="irrigation-2-1"),pytest.param(dict(opt_irr=3,opt_irrm=1),id="irrigation-3-1"),pytest.param(dict(opt_irr=1,opt_irrm=1),id="irrigation-1-1"),pytest.param(dict(opt_irr=1,opt_irrm=2),id="irrigation-1-2"),pytest.param(dict(opt_irr=1,opt_irrm=3),id="irrigation-1-3"),pytest.param(dict(opt_crop=1),id="crop-1"),pytest.param(dict(opt_gla=2),id="glacier-2"),pytest.param(dict(opt_run=5,wtddt=0.2),id="groundwater-5")])
+def test_a_noahmp_restart_round_trips_and_reproduces_the_next_step(tmp_path, options):
     from woof.core.dycore import step
     from woof.io.restart import restore_restart, write_restart
 
-    state, cfg, driver = _build(nx=6, ny=4)
+    state, cfg, driver = _build(nx=6, ny=4, **options)
     for _ in range(6):
         step(state, cfg)
 
     path = tmp_path / "noahmp.npz"
     write_restart(path, state, cfg)
-    fresh_state, fresh_cfg, fresh_driver = _build(nx=6, ny=4)
+    fresh_state, fresh_cfg, fresh_driver = _build(nx=6, ny=4, **options)
     restore_restart(path, fresh_state, fresh_cfg)
 
-    for name in _CARRIED:
+    for name in (*_CARRIED, *((*GW_CARRIERS,"smoiseq") if options.get("opt_run")==5 else ()), *(("croptype","cropcat","grainxy","gddxy","planting","harvest","season_gdd") if options.get("opt_crop") else ()), *((*IRR_STATE,*IRR_COUNTERS,*IRR_STATIC) if options.get("opt_irr") else ()), *output_shapes(options.get("noahmp_output",1),(cfg.ny,cfg.nx)), *cadence_shapes(options.get("soiltstep",0.0),(cfg.ny,cfg.nx)), *tile_shapes(options.get("opt_tdrn",0),(cfg.ny,cfg.nx)), *(("zwtxy", "wtxy") if options.get("opt_run") in (1,2) else ()), *soil_input_shapes(options.get("opt_soil",1),(cfg.ny,cfg.nx)), *(("lfmassxy","rtmassxy","stmassxy","woodxy","stblcpxy","fastcpxy","neexy","gppxy","nppxy") if options.get("dveg") in (2,5,6) or options.get("opt_crop") else ())):
         np.testing.assert_array_equal(
             cp.asnumpy(fresh_driver.fields[name]),
             cp.asnumpy(driver.fields[name]), err_msg=name)
@@ -789,7 +837,7 @@ def test_a_noahmp_restart_round_trips_and_reproduces_the_next_step(tmp_path):
     # Storage identity is not trajectory identity.  Step both and compare.
     step(state, cfg)
     step(fresh_state, fresh_cfg)
-    for name in _CARRIED:
+    for name in (*_CARRIED, *((*GW_CARRIERS,"smoiseq") if options.get("opt_run")==5 else ()), *(("croptype","cropcat","grainxy","gddxy","planting","harvest","season_gdd") if options.get("opt_crop") else ()), *((*IRR_STATE,*IRR_COUNTERS,*IRR_STATIC) if options.get("opt_irr") else ()), *output_shapes(options.get("noahmp_output",1),(cfg.ny,cfg.nx)), *cadence_shapes(options.get("soiltstep",0.0),(cfg.ny,cfg.nx)), *tile_shapes(options.get("opt_tdrn",0),(cfg.ny,cfg.nx)), *(("zwtxy", "wtxy") if options.get("opt_run") in (1,2) else ()), *soil_input_shapes(options.get("opt_soil",1),(cfg.ny,cfg.nx)), *(("lfmassxy","rtmassxy","stmassxy","woodxy","stblcpxy","fastcpxy","neexy","gppxy","nppxy") if options.get("dveg") in (2,5,6) or options.get("opt_crop") else ())):
         np.testing.assert_array_equal(
             cp.asnumpy(fresh_driver.fields[name]),
             cp.asnumpy(driver.fields[name]), err_msg=f"after/{name}")
@@ -900,7 +948,10 @@ def test_four_registry_carriers_do_not_reach_the_next_step(
 # ---------------------------------------------------------------------------
 
 @requires_gpu
-def test_a_real_wrfout_carries_the_noahmp_state_and_reads_back(tmp_path):
+@pytest.mark.parametrize("options", [{}, {"opt_btr": 2, "opt_rsf": 2},
+    {"opt_alb": 1, "opt_btr": 3, "opt_rsf": 3}, {"opt_rsf":4},
+    *({"opt_snf":v} for v in (2,3,4,5)), *({"dveg":v} for v in (1,3)), {"opt_inf":2}, {"opt_run":4}, {"opt_inf":2,"opt_run":4}, {"opt_run":6}, {"opt_inf":2,"opt_run":6}, {"opt_run":7}, {"opt_inf":2,"opt_run":7}, {"opt_rad":2}, {"opt_rad":2,"opt_alb":1}, {"opt_rad":1}, {"opt_rad":1,"opt_alb":1}, {"opt_frz":2}, {"opt_frz":2,"opt_inf":2}, {"opt_stc":2}, {"opt_tbot":1}, {"opt_stc":3}, {"opt_stc":2,"opt_tbot":1}, {"opt_crs":2}, {"opt_crs":2,"opt_stc":2}, {"opt_sfc":2}, {"opt_sfc":2,"opt_crs":2,"opt_stc":2}, *({"dveg":v} for v in (7,8,9)), *(dict(opt_run=v) for v in (1,2)), *(dict(opt_run=v,opt_inf=2) for v in (1,2)), dict(opt_soil=2), dict(opt_soil=3), pytest.param(dict(opt_soil=4),id="direct-soil-4"), *(dict(dveg=v) for v in (2,5,6)), *(dict(opt_run=8,opt_infdv=v) for v in (1,2,3)), dict(soiltstep=24.0), dict(soiltstep=48.0), dict(soiltstep=12.0), dict(opt_tdrn=1), dict(opt_tdrn=2), dict(noahmp_output=3,noahmp_acc_dt=0.4), pytest.param(dict(opt_irr=1,opt_irrm=0),id="irrigation-1-0"),pytest.param(dict(opt_irr=2,opt_irrm=1),id="irrigation-2-1"),pytest.param(dict(opt_irr=3,opt_irrm=1),id="irrigation-3-1"),pytest.param(dict(opt_irr=1,opt_irrm=1),id="irrigation-1-1"),pytest.param(dict(opt_irr=1,opt_irrm=2),id="irrigation-1-2"),pytest.param(dict(opt_irr=1,opt_irrm=3),id="irrigation-1-3"),pytest.param(dict(opt_crop=1),id="crop-1"),pytest.param(dict(opt_gla=2),id="glacier-2"),pytest.param(dict(opt_run=5,wtddt=0.2),id="groundwater-5")])
+def test_a_real_wrfout_carries_the_noahmp_state_and_reads_back(tmp_path, options):
     """Write the file with the production writer, then read it with netCDF4.
 
     ``state_frame`` returning the names is not the claim; the claim is that a
@@ -912,7 +963,8 @@ def test_a_real_wrfout_carries_the_noahmp_state_and_reads_back(tmp_path):
     from woof.core.dycore import step
     from woof.io.wrfout import WrfoutWriter, state_frame
 
-    state, cfg, driver = _build(nx=6, ny=4, snow_mm=40.0, snow_depth_m=0.20)
+    state, cfg, driver = _build(nx=6, ny=4, snow_mm=40.0, snow_depth_m=0.20,
+                                **options)
     for _ in range(3):
         step(state, cfg)
     frame = state_frame(state)
@@ -940,8 +992,41 @@ def test_a_real_wrfout_carries_the_noahmp_state_and_reads_back(tmp_path):
             "Time", "snow_layers_stag", "south_north", "west_east")
         assert ds.variables["ZSNSO"].dimensions == (
             "Time", "snso_layers_stag", "south_north", "west_east")
+        if options.get("noahmp_output")==3:
+            from woof.core.noahmp_output import ACCUMULATORS as budget_fields,CARRIERS
+            from woof.io.wrf_output_schema import NOAHMP_OUTPUT_FIELDS
+            for field in budget_fields:
+                name=NOAHMP_OUTPUT_FIELDS[CARRIERS[field]].netcdf_name
+                np.testing.assert_array_equal(ds.variables[name][0],host[name])
+        if options.get("soiltstep", 0.0) > 0:
+            assert ds.variables["ACC_ETRANI"].dimensions == (
+                "Time", "soil_layers_stag", "south_north", "west_east")
+            for external in ACCUMULATORS.values():
+                name = external.replace("xy", "").upper()
+                np.testing.assert_array_equal(ds.variables[name][0], host[name])
+        if options.get("opt_run")==5:
+            from woof.io.wrf_output_schema import NOAHMP_OUTPUT_FIELDS
+            for field in (*GW_CARRIERS,"smoiseq"):
+                external=NOAHMP_OUTPUT_FIELDS[field].netcdf_name
+                assert external in ds.variables, field
+                np.testing.assert_array_equal(ds.variables[external][0],cp.asnumpy(driver.fields[field]),err_msg=external)
+            assert ds.variables["SMOISEQ"].dimensions == ("Time","soil_layers_stag","south_north","west_east")
+        if options.get("opt_crop"):
+            for carrier in ("croptype","cropcat","grainxy","gddxy","planting","harvest","season_gdd"):
+                from woof.io.wrf_output_schema import SCHEME_OUTPUT_FIELDS
+                name=SCHEME_OUTPUT_FIELDS[carrier].netcdf_name
+                assert name in ds.variables
+                np.testing.assert_array_equal(ds.variables[name][0],cp.asnumpy(driver.fields[carrier]))
+        if options.get("opt_irr"):
+            from woof.io.wrf_output_schema import NOAHMP_OUTPUT_FIELDS
+            for field in (*IRR_STATE, *IRR_COUNTERS, *IRR_STATIC[:4]):
+                external = NOAHMP_OUTPUT_FIELDS[field].netcdf_name
+                assert external in host
+                np.testing.assert_array_equal(ds.variables[external][0], host[external], err_msg=external)
+                if field in IRR_COUNTERS:
+                    assert ds.variables[external].dtype == np.int32
         assert ds.variables["ISNOW"].dtype == np.int32
-        for name in ("TV", "TG", "ZSNSO", "SNICE", "FSA", "ISNOW"):
+        for name in ("TV", "TG", "ZSNSO", "SNICE", "FSA", "ISNOW", *(("QTDRAIN","ZWT") if options.get("opt_tdrn") else ()), *(("ZWT", "WT", "WA") if options.get("opt_run") in (1,2) else ()), *(("LFMASS","RTMASS","STMASS","WOOD","STBLCP","FASTCP","NEE","GPP","NPP") if options.get("dveg") in (2,5,6) or options.get("opt_crop") else ())):
             stored = np.asarray(ds.variables[name][0])
             np.testing.assert_array_equal(stored, host[name], err_msg=name)
 
@@ -1091,7 +1176,8 @@ def test_the_write_back_comparison_can_see_a_misrouted_column(monkeypatch):
     import woof.core.noahmp_runtime as runtime_module
 
     accurate = _all_written_digest(
-        _six_steps(monkeypatch, staged=True, nx=6, ny=4, water_columns=1))
+        _six_steps(monkeypatch, staged=True, nx=6, ny=4, water_columns=1,
+                   vegtyp=np.tile([1, 10, 16, 1, 10, 17], (4, 1))))
 
     real = runtime_module._write_back_batch
 
@@ -1103,7 +1189,8 @@ def test_the_write_back_comparison_can_see_a_misrouted_column(monkeypatch):
 
     monkeypatch.setattr(runtime_module, "_write_back_batch", rolled)
     moved = _all_written_digest(
-        _six_steps(monkeypatch, staged=True, nx=6, ny=4, water_columns=1))
+        _six_steps(monkeypatch, staged=True, nx=6, ny=4, water_columns=1,
+                   vegtyp=np.tile([1, 10, 16, 1, 10, 17], (4, 1))))
     assert moved != accurate, (
         "rolling every column's result onto its neighbour left the whole "
         "written slab unchanged; the write-back gate cannot see a misroute")
@@ -1178,7 +1265,8 @@ def test_the_slab_write_back_comparison_can_see_a_misrouted_column(
     import woof.core.noahmp_runtime as runtime_module
 
     accurate = _all_written_digest(
-        _six_steps(monkeypatch, nx=6, ny=4, water_columns=1))
+        _six_steps(monkeypatch, nx=6, ny=4, water_columns=1,
+                   vegtyp=np.tile([1, 10, 16, 1, 10, 17], (4, 1))))
 
     real = runtime_module._write_back_slab
 
@@ -1189,7 +1277,8 @@ def test_the_slab_write_back_comparison_can_see_a_misrouted_column(
 
     monkeypatch.setattr(runtime_module, "_write_back_slab", rolled)
     moved = _all_written_digest(
-        _six_steps(monkeypatch, nx=6, ny=4, water_columns=1))
+        _six_steps(monkeypatch, nx=6, ny=4, water_columns=1,
+                   vegtyp=np.tile([1, 10, 16, 1, 10, 17], (4, 1))))
     assert moved != accurate, (
         "rolling every column's slab answer onto its neighbour left the "
         "whole written slab unchanged; the slab write-back gate cannot see "

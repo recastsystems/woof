@@ -1,0 +1,2 @@
+direct br chs chs2 cpm cqs2 flhc flqc gz1oz0 hfx lh psim psih qfx qgh qsfc u10 v10 wspd znt ust
+wrapper br chs chs2 cpm cqs2 flhc flqc gz1oz0 hfx lh psim psih qfx qgh qsfc u10 v10 wspd znt ust chs_sea chs2_sea cpm_sea cqs2_sea flhc_sea flqc_sea hfx_sea lh_sea qfx_sea qgh_sea qsfc_sea ust_sea znt_sea sst tsk_sea

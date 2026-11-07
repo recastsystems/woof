@@ -25,8 +25,8 @@ _ARMS = [(scheme, strict)
 #: WRF 4.6.1's advance_w on the upper-damping fixture it differs in this
 #: many of its 153,600 words, measured per compute capability after the
 #: damp_opt=3 coefficient took WRF's float32 product in the default build
-#: (117,651 before it): sm_89 on the RTX 4090 (a development machine), sm_120 on the RTX
-#: 5070 Ti (a development machine).  The count is the card's: NVRTC contracts the default
+#: (117,651 before it): sm_89 on the RTX 4090 (test host 1), sm_120 on the RTX
+#: 5070 Ti (test host 4).  The count is the card's: NVRTC contracts the default
 #: arithmetic per architecture.  The arm asserts the declared count rather
 #: than dropping out, so a change in either direction means the default
 #: acoustic arithmetic moved and must be declared again; the strict arm

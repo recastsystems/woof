@@ -1,0 +1,44 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# cpu:       AMD EPYC 9R14
+# cpu fma:  fma
+# WRF:      d66e442fccc04111067e29274c9f9eaccc3cef28 (clean: phys/module_sf_qnsesfc.F, share/module_model_constants.F)
+# -O2 -fno-fast-math -ffp-contract=off undefined symbols (THE REFERENCE):
+#   U _gfortran_st_write
+#   U _gfortran_st_write_done
+#   U _gfortran_transfer_character_write
+#   U _gfortran_transfer_real_write
+#   U atanf
+#   U expf
+#   U free
+#   U logf
+#   U malloc
+#   U memcpy
+#   U memset
+#   U powf
+# -O0 undefined symbols (integer powers through __powisf2):
+#   U __powisf2
+#   U _gfortran_st_write
+#   U _gfortran_st_write_done
+#   U _gfortran_transfer_character_write
+#   U _gfortran_transfer_real_write
+#   U atanf
+#   U expf
+#   U free
+#   U logf
+#   U malloc
+#   U powf
+# -O2 -ftree-vectorize -funroll-loops undefined symbols:
+#   U _gfortran_st_write
+#   U _gfortran_st_write_done
+#   U _gfortran_transfer_character_write
+#   U _gfortran_transfer_real_write
+#   U atanf
+#   U expf
+#   U free
+#   U logf
+#   U malloc
+#   U memcpy
+#   U memset
+#   U powf
+# FMA instructions in any object: 0

@@ -1,0 +1,19 @@
+--- a/phys/module_cu_mskf.F
++++ b/phys/module_cu_mskf.F
+@@ -2199,7 +2199,7 @@
+                  (qc(i,k-1)*mskf_gamma(pgam(k-1)+1._r8)))**(1._r8/3._r8)
+ 
+ ! lammin, 50 micron diameter max mean size
+-              lammin = (pgam(k)+1._r8)/50.e-6_r8
++              lammin = (pgam(k-1)+1._r8)/50.e-6_r8
+               lammax = (pgam(k-1)+1._r8)/2.e-6_r8
+ 
+               if (lamc(k-1).lt.lammin) then
+@@ -4734,6 +4734,7 @@
+                  cmei(1,JK) =0.0
+                  oldTU(kq) = t0(kq)
+                  oldQU(kq) = Q0(kq)
++                 QSATu(kq) = 0.0
+                 End do
+               Miter = 0
+       END IF

@@ -210,6 +210,7 @@ CLEAR_AIR_FLOOR_DBZ: dict[int, float] = {
     # No standalone DA route is added here; its native field is available
     # through the output-due WSM-family runner.
     24: -35.0,
+    7: -35.0,
     1: -35.0,
     # WSM3 runs refl10cm_wsm6's kernel on its phase-split qr
     # (woof.core.refl.wsm3_precipitation_phases), which floors every cell
@@ -228,9 +229,22 @@ CLEAR_AIR_FLOOR_DBZ: dict[int, float] = {
     # selector compute_refl_10cm dispatches that this table lacked; the
     # absence was drift, not a decision (audit R-015).
     16: -35.0,
+    # SBU-YLin's Z is woof.core.refl's refl10cm_wsm6 operator over the
+    # scheme's snow/graupel partition, so it takes that kernel's floor.
+    13: -35.0,
+    # Stock refl10cm_wdm5 and refl10cm_wdm7 clamp every cell to -35 dBZ.
+    # CUDA: wdm_family_refl.cuh:560 and wdm7_refl.cu:901; the committed
+    # strict native replays compare these diagnostic words as well.
+    14: -35.0,
+    26: -35.0,
     10: -35.0,
+    40: -35.0,
     18: 0.0,
+    38: -35.0,
     28: -35.0,
+    # Goddard GCE: refl10cm_gsfc stores MAX(-35., dBZ) in every cell
+    # (module_mp_gsfcgce.F:2899; kernels/gsfcgce_refl.cu), one number.
+    97: -35.0,
     # Milbrandt-Yau reports ONE clear-air number and it is not -35.  Its Z
     # block (module_mp_milbrandt2mom.F:3400-3466, transcribed at
     # woof/core/kernels/milbrandt2_zet.cu) sums five species terms, takes
@@ -256,14 +270,24 @@ CLEAR_AIR_FLOOR_DBZ: dict[int, float] = {
     # no-hydrometeor skip (:3972) never diagnoses; that sentinel is not a
     # reflectivity, and the OPERATOR does not reproduce it, which is what
     # gives P3 one floor.  Not interchangeable with the -35 family in one
-    # obs array, as for NSSL's 0 and Milbrandt-Yau's -99.
+    # obs array, as for NSSL's 0 and Milbrandt-Yau's -99.  mp=51 is the
+    # same Z (rain and ice only; the predicted droplet number does not enter
+    # it, :4722-4895), so the same operator and the same floor.
     50: -36.98970031738281,
+    53: -36.98970031738281,
     # Ferrier-Aligo: EGCP01COLUMN initialises every level's DBZ_col to
     # DBZmin = -20 (module_mp_fer_hires.F:1191, :1279) and replaces it only
     # where Zrain+Zsnow exceeds Zmin = 0.01 mm6 m-3 (:2496), so clear air
     # reads -20 exactly (kernels/fer_hires.cu writes the same word).
     5: -20.0,
+    51: -36.98970031738281,
+    52: -36.98970031738281,
+    # NTU (mp=56): WOOF's own 10 cm operator over the scheme's predicted
+    # distributions (woof/core/kernels/ntu.cu ntu_refl_cell) floors at
+    # the -35 dBZ family value in every cell.
+    56: -35.0,
 }
+CLEAR_AIR_FLOOR_DBZ[15] = -20.0
 
 #: Schemes whose H(x) has NO single clear-air value, and the paragraph that
 #: says why for each.
@@ -876,10 +900,11 @@ def _host_reflectivity(state, cfg, temperature, pressure):
             "nothing about the scheme: mp=9 has a floor "
             "(CLEAR_AIR_FLOOR_DBZ) and a device operator, and a CuPy state "
             "is answered")
-    elif mp == 16:
+    elif mp in (14, 16, 26):
+        label = {14: "WDM5", 16: "WDM6", 26: "WDM7"}[mp]
         raise NotImplementedError(
             "the host reflectivity fallback covers mp_physics 1, 6 and 10; "
-            "mp_physics=16 (WDM6) has no float64 column mirror in "
+            f"mp_physics={mp} ({label}) has no float64 column mirror in "
             "woof.verify.npref, so it is only available on the CUDA path, "
             "through woof.core.refl.launch_refl10cm_wdm6")
     else:
@@ -943,13 +968,32 @@ NATIVE_Z_NOT_SEPARABLE_FROM_THE_STEP: dict[int, str] = {
         "REFL_10CM (the scheme's own DBZ_col, stashed by "
         "woof/core/fer_hires.py) is the field, and woof.da.hotstart "
         "accepts it through simulated_dbz=."),
+    55: ("mp_physics=55: ISHMAEL forms its reflectivity inside the column "
+         "update -- the rain term at module_mp_jensen_ishmael.F:2094-2095 and "
+         "the three ice categories' reflectivity moments from its "
+         "sedimentation pass at :2646-2649 -- so the native REFL_10CM is a "
+         "product of the step.  woof.core.ishmael.reflectivity reads the "
+         "state without advancing it, but this public radar operator has no "
+         "bound route or clear-air floor for it yet; use the "
+         "forecast-produced REFL_10CM."),
+    7: ("mp_physics=7: NU-WRF DBZ is formed inside saticel_s "
+        "(module_mp_gsfcgce_4ice_nuwrf.F:4313-4317, written to refl_10cm at "
+        ":4498) from process-local slopes and intercept factors after its "
+        "state update; replaying that update as H(x) would change the "
+        "analyzed moisture. The standalone refl10cm_gsfc (:4781-4950) is not "
+        "the mp7 active diagnostic. Use the forecast-produced REFL_10CM."),
 }
+NATIVE_Z_NOT_SEPARABLE_FROM_THE_STEP[15] = NATIVE_Z_NOT_SEPARABLE_FROM_THE_STEP[5].replace("mp_physics=5:", "mp_physics=15:")
 
 #: Schemes whose H_Z(x) is the scheme's own state-reading diagnostic and
 #: which take BOTH a device and a host state themselves, dispatched ahead
 #: of the host/device split.  A row, not a branch: ``module:function``.
 STATE_REFLECTIVITY_OPERATORS: dict[int, str] = {
     50: "woof.core.p3_device:reflectivity",
+    51: "woof.core.p3_device:reflectivity",
+    52: "woof.core.p3_device:reflectivity",
+    53: "woof.core.p3_device:reflectivity",
+    56: "woof.core.ntu:reflectivity",
 }
 
 
@@ -993,12 +1037,10 @@ def _refuse_unrouted_reflectivity(mp_physics: int) -> None:
     reason = row.get("reflectivity_route_reason") or (
         "woof/physics_registry_v2.json records no route for it")
     raise NotImplementedError(
-        f"mp_physics={mp_physics} produces REFL_10CM, and this operator "
-        f"has no H(x) route to it: {reason}.  The scheme's own field is "
-        "on the state -- its adapter stashes it into the DomainState "
-        "'refl_10cm' scratch slot on every output-due microphysics step, "
-        "and woof.da.hotstart accepts it through simulated_dbz=.  Use "
-        "that field, or assimilate velocity only for this scheme.")
+        f"mp_physics={mp_physics} has no H(x) route for reflectivity: "
+        f"{reason}.  Supply an independently verified field through "
+        "woof.da.hotstart simulated_dbz=, or assimilate velocity only "
+        "for this scheme.")
 
 
 def simulated_reflectivity(state, cfg, *, temperature=None, pressure=None,
@@ -1066,6 +1108,14 @@ def simulated_reflectivity(state, cfg, *, temperature=None, pressure=None,
         module_name, function_name = operator.split(":")
         return getattr(importlib.import_module(module_name), function_name)(
             state, temperature=temperature, pressure=pressure)
+    from woof.core.mp_column_schemes import MP_COLUMN_SCHEMES
+    if int(cfg.mp_physics) in MP_COLUMN_SCHEMES:
+        # A table-admitted scheme's H_Z(x) is its own refl routine on the
+        # state's columns (the row names it), ahead of the host/device
+        # split because the routine is device-only and says so itself.
+        from woof.core.mp_column_schemes import reflectivity
+        return reflectivity(state, cfg, temperature=temperature,
+                            pressure=pressure)
     _refuse_unrouted_reflectivity(int(cfg.mp_physics))
 
     xp = _array_module(state.p)
@@ -1078,7 +1128,7 @@ def simulated_reflectivity(state, cfg, *, temperature=None, pressure=None,
                 "the NSSL radardd02 diagnostic diagnoses its own density "
                 "and reads pressure off the state; it does not take the "
                 "t1d/p1d microphysics-time pair the 1/6/8/10 routes do")
-        return _nssl_reflectivity(state, temperature, pressure)
+        return _nssl_reflectivity(state, temperature, pressure, cfg)
 
     if int(cfg.mp_physics) == 9:
         # Milbrandt-Yau owns REFL_10CM natively and its Z block updates
@@ -1542,10 +1592,24 @@ def _require_agreement_with_the_registry() -> None:
         "microphysics", "radar_da", observed, project=project,
         cited_absences={
             0: "no microphysics, no reflectivity operator",
+            11: ("CAMMGMP never writes REFL_10CM; initialized zeros are "
+                 "retained by woof.core.refl, and no radar H(x) is bound"),
             30: ("FAST_SBM writes no REFL_10CM (woof.core.fast_sbm_runtime."
                  "apply refuses a due frame), so radar DA has no H(x) on "
                  "mp_physics=30 until a reflectivity operator over the bin "
                  "spectra is wired"),
+            95: "WRF module_mp_etanew.F has no REFL_10CM producer or radar operator",
+            # 3.0.0 port folds: each scheme keeps its own native field (or
+            # none) and no standalone radar H(x) is bound for it yet.
+            27: ("UDM writes REFL_10CM inside udm_step (woof.core.refl."
+                 "SCHEME_NATIVE_REFL_10CM[27]); no standalone radar H(x) or "
+                 "clear-air floor is bound for mp_physics=27"),
+            29: ("RCON computes REFL_10CM inside rcon_step (woof.core.refl."
+                 "SCHEME_NATIVE_REFL_10CM[29]); no standalone radar H(x) or "
+                 "clear-air floor is bound for mp_physics=29"),
+            96: ("WRF's MADWRF_MP arm is empty and never writes REFL_10CM "
+                 "(woof.core.refl.SCHEME_ABSENT_REFL_10CM[96]); there is no "
+                 "reflectivity to assimilate"),
         })
 
 

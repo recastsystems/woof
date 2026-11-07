@@ -22,7 +22,12 @@ This is a DIAGNOSTIC: nothing here writes any model-evolution array, and
 tests pin that nothing in the package reads the accumulator back into the
 trajectory.
 
-Ratified divergences from WRF, recorded here and in the STEP17 handoff:
+The WRF 4.7.1 NWP driver in ``nwp_diagnostics.py`` samples the first RK
+state and resets in the native end-of-step routine. Its published window
+therefore follows native timing. Completed-step tracking windows retain
+their independent cadence and history resets. The historical STEP17
+sampling divergences below describe those tracking windows and the older
+direct epilogue API, rather than the current NWP history producer:
 
 1. Sampling instant.  WRF samples the START-of-step state (cal_helicity
    runs inside the first RK step) and resets on the FIRST step AFTER a
@@ -200,7 +205,8 @@ def _phb3(phb, ny, nx):
 
 def cal_helicity_uh_columns_np(u, v, w, ph, phb, msfu, msfv, ht,
                                dn, dnw, fnm, fnp, cf1, cf2, cf3,
-                               rdx, rdy):
+                               rdx, rdy, *, bottom_m=UH_LAYER_BOTTOM_M,
+                               top_m=UH_LAYER_TOP_M):
     """WRF cal_helicity through the column integration (:7206-7511).
 
     Inputs are gpuwm-shaped float32 arrays -- u (nz,ny,nx+1), v (nz,ny+1,nx),
@@ -211,6 +217,10 @@ def cal_helicity_uh_columns_np(u, v, w, ph, phb, msfu, msfv, ht,
     Returns ``(uh, use_column)`` on the mass-indexed (ny, nx) grid; the
     corner values live at [1:, 1:] exactly as WRF stores corner-point uh
     into mass-indexed arrays, and the never-written row/column 0 is 0.
+
+    ``bottom_m``/``top_m`` default to WRF's fixed 2-5 km band; the low
+    bands of :mod:`woof.core.uh_layers` pass their own (the HRRR fork's
+    cal_helicity is the same integration with other bounds).
     """
     nzf, ny, nx = w.shape
     nz = nzf - 1
@@ -339,7 +349,7 @@ def cal_helicity_uh_columns_np(u, v, w, ph, phb, msfu, msfv, ht,
     rv_k = None
     for km in range(nz):
         zu = agl(km + 1)
-        band = (zl >= UH_LAYER_BOTTOM_M) & (zu <= UH_LAYER_TOP_M)
+        band = (zl >= np.float32(bottom_m)) & (zu <= np.float32(top_m))
         if band.any():
             if wa_k is None:
                 wa_k = wavg(km)
@@ -428,11 +438,15 @@ def update_up_heli_max(state, cfg) -> None:
         raise ValueError(
             "the updraft-helicity stencil needs nx, ny >= 4 and nz >= 3; "
             f"got nx={nx} ny={ny} nz={nz}")
+    # The 0-1/0-2/0-3 km maxima (uh_layers = 1; off allocates and launches
+    # nothing).  Their own slots only, so the 2-5 km fold below is unchanged.
+    from woof.core.uh_layers import update as update_uh_layers
+    update_uh_layers(state, cfg)
     # Literal slot names: the preflight completeness scanner classifies
     # every scratch(...) call site statically.
     windows = _tracker_windows(state)
-    if cfg.gsd_diagnostics:
-        # GSD owns the published start-of-step diagnostic. Keep tracker
+    if cfg.gsd_diagnostics or getattr(state, "_native_nwp_prepared", False):
+        # The native driver or GSD owns the published start-of-step diagnostic. Keep tracker
         # consumers on their existing completed-step sample and cadence.
         if not windows:
             return
@@ -565,10 +579,14 @@ def reset_up_heli_max(state) -> None:
     history-interval reset, module_diag_nwp.F:246-269, moved to the write
     itself -- ratified divergence 1 in the module docstring)."""
     existing = getattr(state, "existing_scratch", lambda slot: None)
-    if existing("gsd_step_count") is None:
+    if existing("gsd_step_count") is None and not getattr(state, "_native_nwp_prepared", False):
         _zero_domain_slot(state, UP_HELI_MAX_SLOT)
+    from woof.core.uh_layers import reset as reset_uh_layers
+    reset_uh_layers(state)
     from woof.core.hail import reset_window
     reset_window(state)
+    from woof.core.avgflx import history_written
+    history_written(state)
 
 
 def _zero_domain_slot(state, slot: str) -> None:

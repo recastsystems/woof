@@ -119,7 +119,7 @@ def test_doctor_reports_unstaged_resources_without_writes_or_fetch(tmp_path, mon
     # Check the real collector calls this probe, without unrelated import/device probes.
     for name in ('check_interpreter', 'check_python_dependencies', 'check_physics_seam',
                  'check_gpu_runtime', 'check_gpu_architecture', 'check_engines', 'check_assets',
-                 'check_on_demand_assets'):
+                 'check_on_demand_assets', 'check_kernel_pack', 'check_geography'):
         monkeypatch.setattr(doctor, name, lambda: [])
     assert [row.subject for row in doctor.collect()] == [row.subject for row in rows]
 

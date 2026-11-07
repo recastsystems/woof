@@ -353,8 +353,7 @@ class ResidentHydroDriver:
             raise RuntimeError("hydro routing clock already published its forecast end")
         start = self.elapsed_seconds
         end = start + dt if self.variable_interval else (self.steps + 1) * self.interval_seconds
-        # Tolerance is floating clock roundoff, not a fraction of a model step.
-        tol = 16 * math.ulp(max(end, self._clock_duration, self._clock_period))
+        tol = self._clock_tolerance(end)
         final = end >= self._clock_duration - tol
         boundary = (self._clock_routed + 1) * self._clock_period
         accumulated = self.routing_clock["accumulated_parent"]
@@ -367,10 +366,24 @@ class ResidentHydroDriver:
         self._clock_finalized = final
         self._pending = False
 
+    def _clock_tolerance(self, end):
+        """The most floating roundoff the running parent clock can hold, in seconds.
+
+        ``elapsed_seconds`` is a sum of the parent's steps: each addition may round
+        by half a unit in the last place, so the error grows with the step count.
+        Breakage it prevents: 13,441 adaptive steps of exact tick fractions, 48 h in
+        all, summed to 1.8e-8 s past 172,800 s, 38 times a fixed 16 ulp. That sliver
+        opened a 577th routing step, the final capture fell outside the 48-frame
+        history, and publication stopped on "history buffer exhausted", while a run
+        whose sum ended below the end published. A real step is never this short:
+        ticks are 1/900 s at their finest, against about 4e-7 s here.
+        """
+        return (16 + self.steps + 1) * math.ulp(max(end, self._clock_duration, self._clock_period))
+
     def _sample_clock(self, start, end, *, final, stream=None):
         span = end - start
         self._launch_clock("exchange", span, stream=stream)
-        tol = 16 * math.ulp(max(end, self._clock_duration, self._clock_period))
+        tol = self._clock_tolerance(end)
         cursor = start
         while cursor < end - tol:
             boundary = (self._clock_routed + 1) * self._clock_period
@@ -382,8 +395,10 @@ class ResidentHydroDriver:
             terminal = final and cursor >= end - tol
             if cursor >= boundary - tol or terminal:
                 self._launch_clock("routing", self._clock_period, stream=stream)
+                # A forecast that ends on its boundary publishes the boundary: the
+                # writer refuses a final time past its frame (nextgen_output series.rs).
                 self._launch_clock("history", self._clock_period, stream=stream, final=terminal,
-                       time_seconds=end if terminal else boundary)
+                       time_seconds=end if terminal and abs(end - boundary) > tol else boundary)
                 self._clock_routed += 1
         self._clock_exchange_time = end
 
@@ -399,16 +414,18 @@ class ResidentHydroDriver:
         if self._pending:
             raise RuntimeError("cannot finish hydro between parent and routing launches")
         end = self.elapsed_seconds
-        if self.routing_clock['accumulated_parent'] and self._clock_exchange_time < end:
+        tol = self._clock_tolerance(end)
+        routed_time = self._clock_routed * self._clock_period
+        if self.routing_clock['accumulated_parent'] and self._clock_exchange_time < end - tol:
             self._sample_clock(self._clock_exchange_time, end, final=True, stream=stream)
-        elif end > self._clock_routed * self._clock_period:
+        elif end > routed_time + tol:
             self._launch_clock("routing", self._clock_period, stream=stream)
             self._launch_clock("history", self._clock_period, stream=stream,
                                final=True, time_seconds=end)
             self._clock_routed += 1
         else:
             self._launch_clock("history", self._clock_period, stream=stream,
-                               final=True, time_seconds=end, recapture=True)
+                               final=True, time_seconds=routed_time, recapture=True)
         self._clock_finalized = True
 
     def _launch_clock(self, name, span, *, stream=None, **kwargs):

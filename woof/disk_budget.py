@@ -67,7 +67,7 @@ MEASURED = (
 
 GIB = 1024 ** 3
 
-#: Lossless compressed history frames (the default since woof 2.9.10:
+#: Lossless compressed history frames (the default since gpuwm 2.9.10:
 #: :func:`woof.io.wrfout.resolve_history_compression` ``deflate``, byte
 #: shuffle + zlib 4) are priced at this fraction of the frame's classic
 #: layout.  Measured on all 105 frames of a 12-3-1 km GFS run
@@ -390,7 +390,8 @@ def projected_run_bytes(exp, *, keep_checkpoints: int | None,
                         fetch: Mapping[str, Any] | None, chain: str | None,
                         render: bool, render_products: str = "all",
                         download_present_bytes: int = 0,
-                        resume_seconds: float | None = None) -> dict[str, Any]:
+                        resume_seconds: float | None = None,
+                        stop_seconds: float | None = None) -> dict[str, Any]:
     """Every byte ``exp`` will write: download, preparation, history, checkpoints and pictures.
 
     The domain with the lowest grid id is the outermost grid.
@@ -425,6 +426,15 @@ def projected_run_bytes(exp, *, keep_checkpoints: int | None,
     from woof import download_budget
 
     run_seconds = float(exp.run_seconds)
+    if stop_seconds is not None:
+        # A bounded restart cycle writes only through its stop. Keep the
+        # experiment intact: its full horizon still owns trajectory identity.
+        stop = float(stop_seconds)
+        if not math.isfinite(stop) or not 0 < stop <= run_seconds:
+            raise ValueError("output stop must be within the configured run")
+        if resume_seconds is not None and stop < float(resume_seconds):
+            raise ValueError("output stop precedes the restart")
+        run_seconds = stop
     restart = float(getattr(exp, "restart_interval_s", 0.0) or 0.0)
     written = int(math.floor(run_seconds / restart + 1e-9)) if restart > 0 else 0
     resumed = resume_seconds is not None and float(resume_seconds) > 0.0
@@ -459,7 +469,7 @@ def projected_run_bytes(exp, *, keep_checkpoints: int | None,
         h = frame_bytes * regular
         if selection.subhourly and regular:
             # Frames between full-history leads carry only the 2-D subset
-            # (lane/upp-history-subset). Breakage it prevents: the HRRR
+            # (development branch). Breakage it prevents: the HRRR
             # recipe's 15-minute cadence priced every frame as full history,
             # 147.7 GiB for a 2 h full-CONUS run that writes about a third of
             # that, and refused on a disk it fits (2.9.7 straggler fold, box J).

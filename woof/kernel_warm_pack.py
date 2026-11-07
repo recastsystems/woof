@@ -120,11 +120,19 @@ class WarmImages:
         from woof.kernel_dependencies import header_dependencies, include_tree_dependencies, include_roots
         source = arguments.get("source", "")
         options = list(arguments.get("options", ()))
+        from woof.hip_backend import active, header_identity, compiler_dependencies, toolchain_identity
         if include_roots(options):
             from woof.kernel_dependencies import forced_include
             if forced_include(options) or re.search(r'["<](?:/|\.\./)', source + ' '.join(options)):
                 raise ValueError("header dependency may escape the include roots")
-            dependencies = include_tree_dependencies(options, snapshots if snapshots is not None else {})
+            if active():
+                # The HIP compiler binding already hashes its entire trusted
+                # ROCm tree. Reuse that boundary rather than repeatedly
+                # treating compiler config path macros as escaping includes.
+                dependencies = [compiler_dependencies(toolchain_identity()[0]),
+                                *header_identity(options)]
+            else:
+                dependencies = include_tree_dependencies(options, snapshots if snapshots is not None else {})
         else:
             dependencies = header_dependencies(source, options, arguments.get("filename", "kern.cu"), portable=True)
         request = dict(arguments, options=_portable_options(options), source=hashlib.sha256(source.encode()).hexdigest())
@@ -137,7 +145,15 @@ class WarmImages:
             request = _digest(arguments)
             with self.lock:
                 if request not in self.request_keys:
-                    self.request_keys[request] = self.key(arguments, self.header_snapshots)
+                    try:
+                        self.request_keys[request] = self.key(arguments, self.header_snapshots)
+                    except ValueError:
+                        # A refusal is immutable for this compiler session,
+                        # just like a successful include-tree snapshot. Never
+                        # serve/store an unbound image, but do not rescan its
+                        # headers on every get/put or wait behind that scan.
+                        self.request_keys[request] = None
+                        raise
                 return self.request_keys[request]
         except (OSError, ValueError) as error:
             with self.lock:

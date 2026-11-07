@@ -380,6 +380,9 @@ def test_refl_stash_has_no_trajectory_or_restart_reader():
         # Lightning consumes only to clear a diagnostic-only handoff when
         # history is not due; its flash diagnostics read the native field.
         "woof/core/lightning.py",
+        # NWP diagnostics clear a held handoff after a non-history step;
+        # it is not fed back into the model state.
+        "woof/core/dycore.py",
     }
 
     # Prevent a direct attribute read or constant-name getattr from bypassing
@@ -387,8 +390,16 @@ def test_refl_stash_has_no_trajectory_or_restart_reader():
     # legitimate exception; assignment elsewhere is a Store context.
     reader_paths = [
         path for path in woof.rglob("*.py")
-        if path != woof / "core" / "refl.py"
+        if path not in (woof / "core" / "refl.py", woof / "simulated_radar.py")
     ]
+    # The radar history snapshot reads the held diagnostic without advancing physics.
+    radar = ast.parse((woof / "simulated_radar.py").read_text())
+    direct = [node for node in ast.walk(radar) if isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Name) and node.func.id == "getattr"
+              and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+              and node.args[1].value == "refl_10cm"]
+    snapshot = next(n for n in radar.body if isinstance(n, ast.FunctionDef) and n.name == "_snapshot_history")
+    assert len(direct) == 1 and direct[0] in list(ast.walk(snapshot))
     for path in reader_paths:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         readers = [
@@ -406,6 +417,20 @@ def test_refl_stash_has_no_trajectory_or_restart_reader():
         if path == woof / "core" / "lightning.py":
             assert len(readers) == 1
             assert ast.unparse(readers[0]) == "state.physics.refl_10cm"
+            continue
+        if path == woof / "core" / "dycore.py":
+            # Only the two step epilogues may inspect the held reference.
+            # Their branch discards it through the public consume API.
+            assert len(readers) == 2
+            for reader in readers:
+                guards = [n for n in ast.walk(tree) if isinstance(n, ast.If)
+                          and reader in list(ast.walk(n.test))]
+                assert len(guards) == 1
+                guard = guards[0]
+                assert ast.unparse(guard.test) == (
+                    "not refl_10cm_due and getattr(state.physics, 'refl_10cm', None) is not None")
+                assert ast.unparse(guard.body[-1]) == "consume_refl_10cm(state)"
+                assert len(guard.body) == 2 and not guard.orelse
             continue
         assert not readers, f"package code reads REFL_10CM: {path}"
 
@@ -687,7 +712,7 @@ def test_p3_refuses_by_name_rather_than_being_absent_from_the_gate():
     # pin is on the table's keys rather than on a literal tuple in the
     # source, and the source is asserted to read the table.
     from woof.core.refl import REFL_10CM_INPUT_SPECIES
-    assert set(REFL_10CM_INPUT_SPECIES) == {1, 2, 3, 4, 6, 8, 10, 16, 28, 106}
+    assert set(REFL_10CM_INPUT_SPECIES) == {1, 2, 3, 4, 6, 8, 10, 13, 14, 16, 26, 28, 38, 40, 106}
     import woof.core.refl as refl_module
     source = Path(refl_module.__file__).read_text(encoding="utf-8")
     assert "cfg.mp_physics not in REFL_10CM_INPUT_SPECIES" in source
@@ -698,7 +723,7 @@ def test_native_reflectivity_table_is_the_consumer_minus_producer_set():
     RECORDED reason, and the table cannot drift from the consumer census.
 
     ``tests/test_mp28_runtime_reachability.py`` asserts the arithmetic
-    ``REFL_ADMISSION - {1, 6, 8, 10, 16, 28} == {9, 18, 50}``.  That is the
+    ``REFL_ADMISSION - {1, 6, 8, 10, 16, 28, 38} == {9, 18, 50}``.  That is the
     same statement, bound to the constant a reader of woof/core/refl.py
     actually reaches, so a scheme joining the consumer set without a
     recorded reason fails here instead of reaching a user as an omission.
@@ -706,7 +731,7 @@ def test_native_reflectivity_table_is_the_consumer_minus_producer_set():
     from woof import runtime
     from woof.core.refl import SCHEME_NATIVE_REFL_10CM
 
-    producer = frozenset({1, 2, 3, 4, 6, 8, 10, 16, 28, 106})
+    producer = frozenset({1, 2, 3, 4, 6, 8, 10, 13, 14, 16, 26, 28, 38, 40, 106})
     consumer = frozenset(runtime.REFL_10CM_MICROPHYSICS)
     # FAST_SBM (30) is recorded here without being a consumer: it writes no
     # REFL_10CM at all (woof.core.fast_sbm_runtime.apply refuses a due

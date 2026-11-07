@@ -214,6 +214,43 @@ fn write_record_history(path: &Path) {
     writer.finish().expect("finish");
 }
 
+#[test]
+fn stored_record_preserves_words_and_rejects_unproven_axes() {
+    use netcdf_writer::{NcFormat, NcType, NcWriter, Schema, VarData};
+    let dir = scratch("stored-record");
+    let path = dir.join("surface.nc");
+    let mut schema = Schema::new(NcFormat::Offset64);
+    let time = schema.def_dim("Time", 0, true).unwrap();
+    let x = schema.def_dim("west_east", 4, false).unwrap();
+    let chars = schema.def_dim("DateStrLen", 19, false).unwrap();
+    let values = schema.def_var("Q2_NDG_OLD", NcType::Float, &[time, x]).unwrap();
+    let times = schema.def_var("Times", NcType::Char, &[time, chars]).unwrap();
+    let fixed = schema.def_var("fixed", NcType::Float, &[x]).unwrap();
+    let mut writer = NcWriter::create(&path, schema).unwrap();
+    writer.write_var(fixed, VarData::F32(&[1.; 4])).unwrap();
+    let words = [0x80000000u32, 0x7fc01234, 1, 0x3f800001];
+    let floats = words.map(f32::from_bits);
+    for record in 0..3 {
+        writer.write_record(record, values, VarData::F32(if record == 1 { &floats } else { &[17.; 4] })).unwrap();
+        writer.write_record(record, times, VarData::Char(if record == 1 { b"2026-11-01_01:00:00" } else { b"2026-11-01_00:00:00" })).unwrap();
+    }
+    writer.finish().unwrap();
+    let out = dir.join("out");
+    let result = run(&["stored-words-record", "1", path.to_str().unwrap(), out.to_str().unwrap(), "Q2_NDG_OLD", "Times"]);
+    assert!(result.status.success(), "{}", stderr(&result));
+    let bytes = std::fs::read(out.join("0.bin")).unwrap();
+    assert_eq!(bytes, words.into_iter().flat_map(u32::to_le_bytes).collect::<Vec<_>>());
+    assert_eq!(std::fs::read(out.join("1.bin")).unwrap(), b"2026-11-01_01:00:00");
+    let metadata: serde_json::Value = serde_json::from_slice(&std::fs::read(out.join("metadata.json")).unwrap()).unwrap();
+    assert_eq!(metadata["record"], 1);
+    assert_eq!(metadata["variables"][0]["shape"], serde_json::json!([1, 4]));
+    for (record, variable) in [("3", "Q2_NDG_OLD"), ("-1", "Q2_NDG_OLD"), ("0", "fixed")] {
+        let result = run(&["stored-words-record", record, path.to_str().unwrap(), out.to_str().unwrap(), variable]);
+        assert!(!result.status.success(), "record={record}, variable={variable}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// A classic file cut short keeps its header and still opens; the C
 /// library then reads the missing values as zeros.  The inventory is
 /// where the cut is caught, whatever part of the data it took.

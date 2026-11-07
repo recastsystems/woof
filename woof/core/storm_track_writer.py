@@ -142,7 +142,7 @@ TRACK_CONTRACT = "gpuwm-storm-track.v1"
 
 #: Keys of ``[relocation.track]``.  ``path`` is required; unknown keys
 #: refuse by name, as everywhere else in this config surface.
-TRACK_KEYS = frozenset({"path", "interval_seconds", "output_level"})
+TRACK_KEYS = frozenset({"path", "interval_seconds", "output_level", "storm_id"})
 
 #: ``output_level`` for the SURFACE block -- the deep-layer-mean centre,
 #: the central pressure and the peak wind.  Zero is the same spelling
@@ -331,8 +331,13 @@ class TrackConfig:
     #: tuple by __post_init__ so every consumer sees one shape, and
     #: reported in the order the config names it.
     output_level: "float | tuple[float, ...] | None" = None
+    storm_id: str | None = None
 
     def __post_init__(self) -> None:
+        if self.storm_id is not None:
+            import re
+            if not isinstance(self.storm_id, str) or not re.fullmatch(r"[A-Z]{2}[0-9]{6}", self.storm_id):
+                raise ValueError("storm_id must be an ATCF basin, number and year (BBNNYYYY)")
         if not str(self.path).strip():
             raise ValueError(
                 "[relocation.track] path must name a file to write the "
@@ -376,6 +381,8 @@ class TrackConfig:
             out["interval_seconds"] = float(self.interval_seconds)
         if self.output_level is not None:
             out["output_level"] = [float(v) for v in self.output_level]
+        if self.storm_id is not None:
+            out["storm_id"] = self.storm_id
         return out
 
 
@@ -435,7 +442,7 @@ def build_track_config(table, source: str) -> TrackConfig:
         output_level = tuple(float(v) for v in seq)
     try:
         return TrackConfig(path=path, interval_seconds=interval,
-                           output_level=output_level)
+                           output_level=output_level, storm_id=table.get("storm_id"))
     except ValueError as err:
         raise ValueError(f"[relocation.track] of {source}: {err}") from None
 
@@ -837,7 +844,8 @@ class TrackWriter:
     # -- the seam ----------------------------------------------------------
 
     def emit(self, fix, *, t: float, parent_state, refine_state=None,
-             parent_grid=None, refine_grid=None, mover_grid=None
+             parent_grid=None, refine_grid=None, mover_grid=None,
+             diagnostic_nodes=None, swath_grid=None, force=False
              ) -> dict | None:
         """Render one consultation, if this one is due.
 
@@ -860,7 +868,7 @@ class TrackWriter:
             self.termination = {"status": "ended", "reason": str(reason), "t": float(t)}
             return {"contract": TRACK_CONTRACT, "t": float(t), "emitted": False,
                     **self.termination}
-        if not stream.due(float(t)):
+        if not force and not stream.due(float(t)):
             return None
         stamp = self.valid_time(t)
         no_signal = fix is None or fix.found is None
@@ -879,9 +887,16 @@ class TrackWriter:
                                   refine_state=refine_state,
                                   parent_grid=parent_grid,
                                   refine_grid=refine_grid,
-                                  mover_grid=mover_grid)
+                                  mover_grid=mover_grid,
+                                  diagnostic_nodes=diagnostic_nodes,
+                                  swath_grid=swath_grid)
+            field_fix = sample.pop("field_fix", None)
             stream.write(format_row(valid_time=stamp,
                                     surface=self.surface, **sample), t)
+            if field_fix is not None:
+                from woof.tc.field_products import publish
+                publish(stream.path, field_fix, storm_id=stream.config.storm_id,
+                        initial_time=self.initial_time, valid_time=stamp)
         except Exception as error:                       # noqa: BLE001
             stream.skipped += 1
             stream.faults.append(f"{stamp:%Y-%m-%d_%H:%M:%S}: {error}")
@@ -904,7 +919,8 @@ class TrackWriter:
         return row
 
     def _sample(self, fix, *, parent_state, refine_state,
-                parent_grid, refine_grid, mover_grid=None) -> dict:
+                parent_grid, refine_grid, mover_grid=None,
+                diagnostic_nodes=None, swath_grid=None) -> dict:
         """Every quantity in a row, all from ONE grid.
 
         The grid that LOCATED the centre is the grid every quantity is
@@ -968,9 +984,41 @@ class TrackWriter:
         out = {"lat": lat, "lon": lon,
                "levels": self._level_columns(fix, grid)}
         if self.surface:
-            out["mslp_mb"] = central_pressure_mb(fix, state,
-                                                 on_refine_grid=on_refine)
-            out["vmax_m_s"] = peak_wind_m_s(state)
+            from woof.tc.field_products import diagnose
+            candidates = ([(n.state, n.grid, n.cfg.grid_id) for n in diagnostic_nodes]
+                          if diagnostic_nodes else [(state, grid, fix.refined_on)])
+            selected = None
+            for candidate, candidate_grid, gid in candidates:
+                x, y = candidate_grid.latlon_to_ij(lat, lon)
+                if not (1 <= float(x) <= candidate_grid.e_we-1
+                        and 1 <= float(y) <= candidate_grid.e_sn-1):
+                    continue
+                field_fix = diagnose(candidate, candidate_grid, (lat, lon), swath=swath_grid)
+                field_fix['grid_id'] = gid
+                selected = (candidate, candidate_grid)
+                break
+            if selected is None:
+                raise TrackRefusal("no active grid contains the tracked centre")
+            field_centre = [field_fix['latitude_deg'], field_fix['longitude_deg']]
+            field_fix['radii_grid_id'] = {k: [field_fix['grid_id']]*4 for k in ('34','50','64')}
+            # A fine core may not contain R34. Each censored quadrant takes
+            # the next coarser complete radius, about the SAME field centre.
+            for candidate, candidate_grid, gid in candidates:
+                if candidate is selected[0]:
+                    continue
+                if not any(any(v) for v in field_fix['radii_reach_grid_edge'].values()):
+                    break
+                outer = diagnose(candidate, candidate_grid, field_centre, radii_centre=field_centre)
+                for threshold in ('34','50','64'):
+                    for quadrant in range(4):
+                        if (field_fix['radii_reach_grid_edge'][threshold][quadrant]
+                                and not outer['radii_reach_grid_edge'][threshold][quadrant]):
+                            field_fix['radii_nm'][threshold][quadrant] = outer['radii_nm'][threshold][quadrant]
+                            field_fix['radii_reach_grid_edge'][threshold][quadrant] = False
+                            field_fix['radii_grid_id'][threshold][quadrant] = gid
+            out.update(lat=field_fix['latitude_deg'], lon=field_fix['longitude_deg'],
+                       mslp_mb=field_fix['mslp_hpa'], vmax_m_s=field_fix['vmax10_m_s'],
+                       field_fix=field_fix)
         return out
 
     def _level_columns(self, fix, grid) -> list:

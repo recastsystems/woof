@@ -254,9 +254,29 @@
     "label": "WDM 6-class scheme"
    },
    {
+    "value": 17,
+    "package": null,
+    "label": "Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18"
+   },
+   {
     "value": 18,
     "package": "nssl_2mom",
     "label": "NSSL 2-moment 4-ice scheme with predicted (unactivated) CCN (or activated CCN)"
+   },
+   {
+    "value": 19,
+    "package": null,
+    "label": "Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18"
+   },
+   {
+    "value": 21,
+    "package": null,
+    "label": "Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18"
+   },
+   {
+    "value": 22,
+    "package": null,
+    "label": "Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18"
    },
    {
     "value": 24,
@@ -671,6 +691,11 @@
   ],
   "sf_urban_physics": [
    {
+    "value": 0,
+    "package": null,
+    "label": "no urban canopy model"
+   },
+   {
     "value": 1,
     "package": "noahucmscheme",
     "label": "Single-layer, UCM"
@@ -688,6 +713,11 @@
   ],
   "sf_ocean_physics": [
    {
+    "value": 0,
+    "package": null,
+    "label": "no ocean model"
+   },
+   {
     "value": 1,
     "package": "omlscheme",
     "label": "1-D ocean mixed layer"
@@ -699,6 +729,11 @@
    }
   ],
   "ra_lw_physics": [
+   {
+    "value": 0,
+    "package": null,
+    "label": "no longwave radiation"
+   },
    {
     "value": 1,
     "package": "rrtmscheme",
@@ -746,6 +781,11 @@
    }
   ],
   "ra_sw_physics": [
+   {
+    "value": 0,
+    "package": null,
+    "label": "no shortwave radiation"
+   },
    {
     "value": 1,
     "package": "swradscheme",
@@ -836,8 +876,60 @@
   ],
   "icloud": [
    {
+    "value": 0,
+    "label": "no cloud optical effect"
+   },
+   {
+    "value": 1,
+    "label": "Xu-Randall cloud fraction"
+   },
+   {
+    "value": 2,
+    "label": "threshold cloud fraction"
+   },
+   {
     "value": 3,
-    "label": "Thompson-Eidhammer cloud fraction (cal_cldfra3)"
+    "label": "Sundqvist cloud fraction (cal_cldfra3)"
+   }
+  ],
+  "aer_opt": [
+   {
+    "value": 0,
+    "label": "no aerosol optical effect"
+   },
+   {
+    "value": 1,
+    "label": "Tegen six-type aerosol climatology"
+   },
+   {
+    "value": 2,
+    "label": "user aerosol optical properties"
+   },
+   {
+    "value": 3,
+    "label": "Thompson water/ice friendly aerosol"
+   }
+  ],
+  "lightning_option": [
+   {
+    "value": 0,
+    "label": "off"
+   },
+   {
+    "value": 1,
+    "label": "PR92 maximum vertical velocity"
+   },
+   {
+    "value": 2,
+    "label": "PR92 20 dBZ echo top"
+   },
+   {
+    "value": 3,
+    "label": "lightning potential index"
+   },
+   {
+    "value": 11,
+    "label": "PR92 convective equilibrium level"
    }
   ]
  }

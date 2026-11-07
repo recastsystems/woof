@@ -2,7 +2,7 @@
 
 THE BREAKAGE.  A GFS preparation's main thread spent most of its
 initialization at 100 % of one core while every other core sat idle
-(ml-probs T1, V8X 224 cores, 2026-10-27: ``woof.gfs_direct`` at
+(shared host 224 cores, 2026-10-27: ``woof.gfs_direct`` at
 PREPARING_INITIALIZE_ALL_TIMES 98-101 % of one core for 70-190 s per
 3 km nest).  Profiled with an in-process frame sampler on a desktop host (3 km
 376x362x50 nest, 13 GFS leads, CPU backend): reading each decoded lead
@@ -67,9 +67,12 @@ def _shared_pool(threads: int) -> ThreadPoolExecutor:
             from woof.ingest.cpu_backend import automatic_workers
             size = max(threads, automatic_workers())
             # A pool from before a fork has no threads in this process, and
-            # a smaller one is replaced; the old one finishes its queue.
-            if _pool is not None and _pool_pid == os.getpid():
-                _pool.shutdown(wait=False)
+            # a smaller one is replaced.  The replaced pool is NOT shut down: a
+            # shared_executor block still running holds it and submits to it,
+            # and a shut pool refuses ("cannot schedule new futures after
+            # shutdown": an HRRR mean prep on a 96-core box, OK-WOFS
+            # 2026-11-02 20:40Z).  It finishes its queue, and its idle threads
+            # exit once nothing references it.
             _pool = ThreadPoolExecutor(max_workers=size,
                                        thread_name_prefix="gpuwm-host",
                                        initializer=_mark_worker)

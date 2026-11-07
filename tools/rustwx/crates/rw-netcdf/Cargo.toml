@@ -33,8 +33,11 @@ path = "src/main.rs"
 chrono = { version = "0.4", default-features = false, features = ["std", "alloc", "serde"] }
 serde.workspace = true
 serde_json.workspace = true
+rayon.workspace = true
 netcrust = { path = "../../vendor/netcrust" }
 netcdf-writer = { path = "../netcdf-writer" }
+obs-regrid = { path = "../obs-regrid" }
+sha2 = "0.10"
 
 # The workspace's own classic-format writer, so the suite BUILDS its
 # classic fixtures at test time instead of checking in bytes nobody can
@@ -44,3 +47,5 @@ netcdf-writer = { path = "../netcdf-writer" }
 # built this way (nothing in the Rust stack writes HDF5, by design) and
 # are checked in under tests/fixtures with the Python script that
 # regenerates them.
+
+wrf-surface = { path = "../../../rw_wps/crates/wrf-surface" }

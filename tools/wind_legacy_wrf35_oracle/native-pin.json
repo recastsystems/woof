@@ -1,0 +1,55 @@
+{
+  "native_ref": "98953e87c71ff8be232d7f56a1f9f8fa007efd84",
+  "native_version": "WRF V3.5",
+  "driver_version": "WRF v4.7.1",
+  "base_sources": {
+    "phys/module_wind_fitch.F": "83247add74780608e798bb62424533b18abf31f3da5aba6374de6fe2550060c3",
+    "phys/module_pbl_driver.F": "42ff53571ba1fb926fa6063108806d9a2f8ff5fdd1fa2ecfc1fdde60f2bf65fb",
+    "Registry/Registry.EM_COMMON": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a"
+  },
+  "sources": [
+    {
+      "path": "README",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/98953e87c71ff8be232d7f56a1f9f8fa007efd84/README",
+      "sha256": "b3db1969b6f42394b4a02e3f51b25cea637d08c4769fe97235b494bb3c879a91",
+      "licence": "public domain, licence inspected first"
+    },
+    {
+      "path": "README.windturbine",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/98953e87c71ff8be232d7f56a1f9f8fa007efd84/README.windturbine",
+      "sha256": "2139c90f6dd3c00dda7d7e836c47d70af137e37f542b30c7a40f22d975bed0e2",
+      "licence": "WRF V3.5 README public domain statement read before download"
+    },
+    {
+      "path": "phys/module_wind_fitch.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/98953e87c71ff8be232d7f56a1f9f8fa007efd84/phys/module_wind_fitch.F",
+      "sha256": "c2167a164e780212dcbe16f0fc29777fc4b94d7969a5e70e2143d24b29c35170",
+      "licence": "WRF V3.5 README public domain statement read before download"
+    },
+    {
+      "path": "phys/module_wind_generic.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/98953e87c71ff8be232d7f56a1f9f8fa007efd84/phys/module_wind_generic.F",
+      "sha256": "a3b04ed695330760d92fdaecb3bd66223a8ec636a5968cd68d70bff1f323388e",
+      "licence": "WRF V3.5 README public domain statement read before download"
+    },
+    {
+      "path": "test/em_seabreeze2d_x/namelist.input.windspec",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/98953e87c71ff8be232d7f56a1f9f8fa007efd84/test/em_seabreeze2d_x/namelist.input.windspec",
+      "sha256": "2388abbf1aa0e292224d9c515fcc63d23303f7381a216c0df5d043f20e35c7c4",
+      "licence": "WRF V3.5 README public domain statement read before download"
+    },
+    {
+      "path": "test/em_seabreeze2d_x/windspec.in",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/98953e87c71ff8be232d7f56a1f9f8fa007efd84/test/em_seabreeze2d_x/windspec.in",
+      "sha256": "11056c1a9a046016cd610dac15ce9c805dd891435a61714c8f1f5774ee552d38",
+      "licence": "WRF V3.5 README public domain statement read before download"
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/98953e87c71ff8be232d7f56a1f9f8fa007efd84/Registry/Registry.EM_COMMON",
+      "sha256": "9cfec3fb1cf13e53d0745b46cc298e64086506e2a39ac6f4dafb4b259f05ee6b",
+      "licence": "WRF V3.5 README public domain statement read before download"
+    }
+  ],
+  "adaptation": "Distinct module name, V3.5 registry keys and initialization/call in the 4.7.1 driver. First-call capture only; no physics expressions changed."
+}

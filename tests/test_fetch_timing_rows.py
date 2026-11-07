@@ -1,7 +1,6 @@
 """The publisher timing facts a fetch runs on are table rows, and they hold.
 
-Three defects measured on 2026-09-29/30 against the live publishers
-(the all-sources check):
+Three defects measured on 2026-09-29/30 against the live publishers:
 
 * ``--cycle latest`` started its walk at one publication lag per
   producer, too long for all of them: IFS 12 h against a measured
@@ -479,7 +478,7 @@ def test_a_catalog_case_opened_past_the_coarsening_lead_fetches_six_hourly(tmp_p
 
 
 # The latest posting seen and the earliest, per cycle hour and lead:
-# Last-Modified on each route's ladder head, read from a development machine at
+# Last-Modified on each route's ladder head, read from test host 4 at
 # 2026-09-30 05:26Z (and the earlier listings the rows name).
 _POSTINGS = [
     # (source, cycle hour, lead, earliest seen, latest seen), in hours

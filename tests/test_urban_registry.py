@@ -184,9 +184,9 @@ def test_land_surface_constraints(option):
 def test_pbl_constraints(option):
     row = physics_registry()["components"]["urban"]["options"][option]
     allowed = row["constraints"]["requires_components"]["pbl"]
-    assert set(allowed) == {"ysu", "myj"}
+    assert set(allowed) == {"ysu", "myj", "keps", "boulac"}
     assert not set(allowed) & {"mynn", "shinhong", "sase", "off"}
-    for pbl in ("ysu", "myj", "mynn", "shinhong", "sase", "off"):
+    for pbl in ("ysu", "myj", "keps", "boulac", "mynn", "shinhong", "sase", "off"):
         assert bool(_urban_dependency(option, pbl=pbl)) is (pbl not in allowed)
 
 

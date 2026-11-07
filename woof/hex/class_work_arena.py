@@ -10,7 +10,7 @@ classes' smaller arrays as soon as it is free, so the next class step finds no c
 although most of the card is idle.
 
 THE BREAKAGE THIS PREVENTS (hex 48/3 km Milton storm-following, 353,352 cells, four rate
-classes, one RTX 5090, V5090 2026-10-27): with the scalar limiter already one species per pass
+classes, one RTX 5090, reference system 2026-10-27): with the scalar limiter already one species per pass
 (cuda_fullstep_lts_active._Exchanger.fct_scale_parts), the run stopped at base step 88 in
 Grell-Freitas with "Out of memory allocating 2,807,562,240 bytes (allocated so far:
 31,356,196,352 bytes)" while 20.7 GiB was live: 8.5 GiB of the pool was free in pieces no

@@ -661,7 +661,7 @@ _REFL_TPB = 32
 
 
 def launch_aa_refl10cm(qv, qr, nr, qs, qg, graupel_number, temperature,
-                       pressure, refl, *, melting: bool = True) -> None:
+                       pressure, refl, *, melting: bool = True, graupel_volume=None) -> None:
     """calc_refl10cm (:5710-6028) and mp_gt_driver's MAX(-35., dBZ).
 
     ``melting=False`` leaves out the melting-snow (Blahak) term, as
@@ -685,7 +685,7 @@ def launch_aa_refl10cm(qv, qr, nr, qs, qg, graupel_number, temperature,
     blocks = (ny * nx + _REFL_TPB - 1) // _REFL_TPB
     _kernel("thompson_aa_refl10cm")(
         (blocks,), (_REFL_TPB,),
-        (qv, qr, nr, qs, qg, graupel_number, temperature, pressure,
+        (qv, qr, nr, qs, qg, graupel_number, graupel_volume, temperature, pressure,
          _device_tables(), refl, np.int32(1 if melting else 0),
          np.int32(nz), np.int32(ny), np.int32(nx)))
 
@@ -783,3 +783,89 @@ def launch_wrf39_start_emission(nwfa, nwfa2d, *, dx, dy) -> None:
     _, size = validate_fields({"lowest_ccn": nwfa[0], "emission": nwfa2d})
     _launch("thompson_aa_wrf39_start_emission", size,
             (nwfa, nwfa2d, np.float32(dx), np.float32(dy), np.int32(size)))
+
+
+# ---------------------------------------------------------------------------
+# The hail-aware graupel state (mp_physics = 38), thompson_aerosol_state.cu
+# under THOMPSON_AA_HAIL.
+# ---------------------------------------------------------------------------
+
+def _require_hail(what: str) -> None:
+    from woof.core.thompson_aerosol_launch import active_hail_aware
+    if not active_hail_aware():
+        raise RuntimeError(
+            f"{what} is the hail-aware (mp_physics=38) kernel; the active "
+            "call is not hail aware")
+
+
+def launch_hail_graupel_entry(qg, ng, qb) -> None:
+    """WRF's entry rewrite of the hail-aware graupel, :1915-1949.
+
+    Zeroes qg/ng/qb wherever qg is at or below R1 and clamps the volume so
+    the bulk density lies in [50, 800] kg m-3 elsewhere, in place.
+    """
+    _require_hail("launch_hail_graupel_entry")
+    _, size = validate_fields({"qg": qg, "ng": ng, "qb": qb})
+    _launch("thompson_aa_hail_graupel_entry", size,
+            (qg, ng, qb, np.int32(size)))
+
+
+def launch_hail_graupel_terminal(qg, ng, qb, qgten, ngten, qbten, rho,
+                                 micro_columns, dt) -> None:
+    """Apply the hail-aware graupel accumulators once, :4058-4078.
+
+    ``rho`` is the terminal density; a column
+    :func:`launch_aerosol_micro_columns` marked 0 keeps its entry state.
+    """
+    _require_hail("launch_hail_graupel_terminal")
+    shape, size = validate_fields({
+        "qg": qg, "ng": ng, "qb": qb, "qgten": qgten, "ngten": ngten,
+        "qbten": qbten, "rho": rho})
+    if len(shape) != 3 or micro_columns.shape != shape[1:]:
+        raise ValueError(f"micro_columns must have shape {shape[1:]}, "
+                         f"got {micro_columns.shape}")
+    _, ncol = validate_fields({"micro_columns": micro_columns})
+    _launch("thompson_aa_hail_graupel_terminal", size,
+            (qg, ng, qb, qgten, ngten, qbten, rho, micro_columns,
+             DTYPE(dt), np.int32(ncol), np.int32(size)))
+
+
+def launch_hail_exner(pressure, theta, pii, temperature):
+    """WRF's float32 Exner and temperature, shared by the hail oracle."""
+    _require_hail("launch_hail_exner")
+    _, size = validate_fields(dict(pressure=pressure, theta=theta,
+                                  pii=pii, temperature=temperature))
+    _launch("thompson_aa_hail_exner", size,
+            (pressure, theta, pii, temperature, np.int32(size)))
+
+
+def launch_hail_size(qg, ng, qb, density, mvd_mm):
+    """Output-only median volume diameter and bulk graupel-hail density."""
+    _require_hail("launch_hail_size")
+    _, size = validate_fields(dict(qg=qg, ng=ng, qb=qb,
+                                  density=density, mvd_mm=mvd_mm))
+    _launch("thompson_aa_hail_size", size,
+            (qg, ng, qb, density, mvd_mm, np.int32(size)))
+
+
+def launch_hail_size_maximum(mvd_mm, column_maximum):
+    """Column maximum of the same diagnosed median volume diameter."""
+    _require_hail("launch_hail_size_maximum")
+    shape, _ = validate_fields(dict(mvd_mm=mvd_mm))
+    nz, ny, nx = shape
+    if tuple(column_maximum.shape) != (ny, nx):
+        raise ValueError("graupel size maximum needs the column surface shape")
+    _launch("thompson_aa_hail_size_maximum", ny * nx,
+            (mvd_mm, column_maximum, np.int32(nz), np.int32(ny * nx)))
+
+
+def stash_hail_size(state):
+    """Publish the hail distribution diagnostics before the first history."""
+    from woof.core.thompson_aerosol_launch import hail_aware_scope
+    nz, ny, nx = state.qg.shape
+    density = state.scratch((nz, ny, nx), "mp_thompson_graupel_density")
+    mvd = state.scratch((nz, ny, nx), "mp_thompson_graupel_mvd")
+    maximum = state.scratch((ny, nx), "mp_thompson_graupel_mvd_max")
+    with hail_aware_scope(True):
+        launch_hail_size(state.qg, state.ng, state.qvolg, density, mvd)
+        launch_hail_size_maximum(mvd, maximum)

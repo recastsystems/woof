@@ -808,7 +808,9 @@ def relocatable_attrs(state=None) -> tuple[str, ...]:
         rebuilt = {CHEM_DIAG_PREFIX + alloc.name
                    for alloc in (*DUST_STATIC_ALLOCATIONS, *SOLAR_ALLOCATIONS)}
         chem = tuple(name for name in chem if name not in rebuilt)
-    return tuple(STATE_SERIALIZED_ATTRS) + chem
+    thermal = (("thp0",) if getattr(state, "use_theta_m", 0)
+               or isinstance(state, HostStateSnapshot) and "thp0" in names else ())
+    return tuple(STATE_SERIALIZED_ATTRS) + thermal + chem
 
 
 def _bit_mismatches(actual, expected) -> int:
@@ -1305,7 +1307,7 @@ def relocate_child(child_node, *, i_parent_start: int, j_parent_start: int,
                    static_provenance: str | None = None,
                    reground_descendant=None,
                    earth_fixed_descendants=frozenset(),
-                   reconstruction=None
+                   reconstruction=None, restoring_checkpoint: bool = False
                    ) -> dict[str, object]:
     """Move a live child domain to a new placement, in place on the node.
 
@@ -1324,6 +1326,11 @@ def relocate_child(child_node, *, i_parent_start: int, j_parent_start: int,
     The parent is not written at any point.  ``parent_state_sha256`` in the
     returned receipt is taken before and after and compared, so that is a
     measured claim rather than an architectural one.
+
+    ``restoring_checkpoint`` rebuilds geometry before the caller restores
+    the complete checkpoint tree. Its descendants need no overlap with
+    their cold-start footprints: none of that temporary state is integrated.
+    Live moves retain the disjoint-descendant refusal.
 
     ``child_node`` must be at rest: relocation is a cycle-boundary
     operation, and calling it with the parent leading the child would leave
@@ -1462,7 +1469,7 @@ def relocate_child(child_node, *, i_parent_start: int, j_parent_start: int,
         placement_from=placement_from, placement_to=placement_to,
         parent_grid_ratio=int(old_dc.parent_grid_ratio),
         child_nx=int(old_dc.run.nx), child_ny=int(old_dc.run.ny))
-    if plan.disjoint:
+    if plan.disjoint and not restoring_checkpoint:
         raise RelocationRefusal(
             f"the new placement {placement_to.position} shares no cell with "
             f"the old one {placement_from.position}; that is a new domain, "
@@ -1533,24 +1540,26 @@ def relocate_child(child_node, *, i_parent_start: int, j_parent_start: int,
     # instrument is scoped to where it IS defined and stays bitwise there.
     alignment_frame = int(
         getattr(initializer, "donor_alignment_frame_width", 0) or 0)
-    alignment = donor_alignment_check(
-        source_state=source_state, target_state=initialized.state,
-        plan=plan, frame_width=alignment_frame)
-    if not alignment["pass"]:
+    alignment = ({"pass": None, "reason": "checkpoint reconstruction; no state carried"}
+                 if restoring_checkpoint else donor_alignment_check(
+                     source_state=source_state, target_state=initialized.state,
+                     plan=plan, frame_width=alignment_frame))
+    if not restoring_checkpoint and not alignment["pass"]:
         raise RelocationRefusal(
             "the relocated child's SINT-derived base state does not match "
             "the outgoing child's on the overlap, so the two placements do "
             f"not share donor cells: {alignment}")
 
-    transplant = transplant_overlap(
-        source_state=source_state, target_state=initialized.state,
-        plan=plan)
+    transplant = ({"checkpoint_reconstruction": True, "fields": {}}
+                  if restoring_checkpoint else transplant_overlap(
+                      source_state=source_state, target_state=initialized.state,
+                      plan=plan))
     # THE PROBE, in two halves (see overlap_prognostic_mismatches): the
     # stamp on its own, then the same check after the hook below.  A
     # field that is clean here and dirty there was perturbed by the hook,
     # which is the distinction no receipt could previously draw.
     probe = None
-    if relocation_probe_enabled():
+    if not restoring_checkpoint and relocation_probe_enabled():
         probe = {"after_transplant": overlap_prognostic_mismatches(
             source_state, initialized.state, plan)}
     # The initializer's post-transplant hook: the real-data route rebases
@@ -1563,7 +1572,7 @@ def relocate_child(child_node, *, i_parent_start: int, j_parent_start: int,
     if reconstruction is not None:
         post_receipt = reconstruction.post_transplant(
             source_state=source_state, target_state=initialized.state, plan=plan)
-    elif post_transplant is not None:
+    elif post_transplant is not None and not restoring_checkpoint:
         post_receipt = post_transplant(
             source_state=source_state, target_state=initialized.state,
             plan=plan)
@@ -1598,7 +1607,7 @@ def relocate_child(child_node, *, i_parent_start: int, j_parent_start: int,
     # state; after the stamp the current fields have changed, so the seeds
     # must be taken again or the first substep would read the cold-start
     # values over ground the transplant just corrected.
-    seeded = (seed_rk_time_t_copies(initialized.state) if reconstruction is None
+    seeded = (seed_rk_time_t_copies(initialized.state, preserve_thermal=True) if reconstruction is None
               else reconstruction.rk_seeds)
 
     # Everything that reads the parent has now run.  Check the parent
@@ -1685,7 +1694,7 @@ def relocate_child(child_node, *, i_parent_start: int, j_parent_start: int,
             dplan = plan_descendant_reground(
                 node.cfg, delta_i, delta_j,
                 generation=placement_from.generation)
-            if dplan.disjoint:
+            if dplan.disjoint and not restoring_checkpoint:
                 raise RelocationRefusal(
                     f"the move carries descendant "
                     f"d{int(node.cfg.grid_id):02d} entirely off its own "
@@ -1697,7 +1706,9 @@ def relocate_child(child_node, *, i_parent_start: int, j_parent_start: int,
                     "inside the FINEST descendant's overlap, not just its "
                     "own -- the same move is a larger fraction of a finer "
                     "domain.")
-            receipt = reground_descendant(
+            reground = (getattr(reground_descendant, "restore_checkpoint", reground_descendant)
+                        if restoring_checkpoint else reground_descendant)
+            receipt = reground(
                 node=node, plan=dplan,
                 delta_parent_cells=(int(delta_i), int(delta_j)))
             # The descendant's placement never changed, so its donor
@@ -1929,7 +1940,7 @@ def relocating_child_initializer(source_state, *, placement_from: Placement,
         transplant = transplant_overlap(
             source_state=source_state, target_state=initialized.state,
             plan=plan)
-        seeded = seed_rk_time_t_copies(initialized.state)
+        seeded = seed_rk_time_t_copies(initialized.state, preserve_thermal=True)
         receipts.append({
             "contract": RELOCATION_CONTRACT,
             "plan": plan.to_json(),

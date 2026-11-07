@@ -34,7 +34,7 @@ CONTINUATION_ENV = "WOOF_CONTINUATION_PREFIX"
 #: --restart`` binds it at its pinned head (stage_cli.resolve_bundle) and its
 #: continuation re-prepares an identical head.  Callers that store prefixes
 #: for a resume (the WOOF worker's checkpoint inputs) read this marker:
-#: before it (woof <= 2.9.8, run_515470d250a1060a) a stored prefix could
+#: before it (gpuwm <= 2.9.8, run_515470d250a1060a) a stored prefix could
 #: never be resumed, so they store sealed inputs only.
 PREFIX_BINDS_AT_HEAD = True
 PRODUCER_LOCK_ENV = "WOOF_CONTINUATION_PRODUCER_LOCK_FILE"

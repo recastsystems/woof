@@ -35,7 +35,7 @@ def test_an_ordinary_install_still_walks_nomads_first(monkeypatch):
     assert fetch_endpoints.serving_ladder("hrrr", cycle=cycle, now=cycle)[0].name == "nomads"
     assert go_cli.pinned_transport({"source": "hrrr"}) == (None, None)
     assert fetch_pool.host_worker_cap("nomads.ncep.noaa.gov", 6) == 2
-    # Since the GFS archive lane (32dea003f45, lane/cap-gfs-archive) the S3
+    # Since the GFS archive lane (32dea003f45, development branch) the S3
     # host declares dated layouts, and pinning a layout host makes the fetch
     # take whole objects itself (fetch._fetch_main), so the pin is admitted;
     # the crop host, which has no whole-object layout, is still refused.

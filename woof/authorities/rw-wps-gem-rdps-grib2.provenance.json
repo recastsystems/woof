@@ -1,0 +1,15 @@
+{
+ "schema": "gpuwm-rdps-analysis-invariant-surface-provenance-v1",
+ "source": "MSC Datamart RDPS 10 km rotated lat-lon GRIB2 product",
+ "field": "terrain_height",
+ "selector": {
+  "format": "grib2",
+  "discipline": 0,
+  "category": 3,
+  "parameter": 5,
+  "level_type": 1
+ },
+ "time_policy": "RDPS publishes its invariant surface identities in the analysis (PT000H) files only; terrain is decoded there, proven invariant across every supplied time, and bound to all primary valid times by the composition's cycle_invariant_broadcast alignment. The land mask and ice analysis ride the primary inputs the same way, as cycle_invariant mapped fields.",
+ "member_policy": "RDPS is deterministic; no member identity exists",
+ "input_identity": "dynamic file paths and SHA-256 values are owned by gpuwm-mapped-composition-inputs-v1"
+}

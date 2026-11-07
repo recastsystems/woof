@@ -99,6 +99,20 @@ def graphs_enabled(cells: int | None = None) -> bool:
     ``auto`` replays below :data:`GRAPH_EAGER_FROM_CELLS` cells (and always
     when the caller does not say how many).
     """
+    from woof.hip_backend import supports_graphs
+    try:
+        capture = supports_graphs()
+    except ModuleNotFoundError as error:
+        # No CuPy means no HIP runtime either; the policy below is the CUDA one.  THE BREAKAGE THIS
+        # PREVENTS (hex 0.4.12 final gate, public CI battery): the AMD fold made this policy query import
+        # CuPy, so the CPU battery could no longer read the graph policy at all.
+        if error.name != "cupy":
+            raise
+        capture = True
+    if not capture:
+        if os.environ.get("WOOF_HEX_CUDA_GRAPHS") == "1":
+            raise RuntimeError("CuPy ROCm has no stream capture; use WOOF_HEX_CUDA_GRAPHS=0")
+        return False
     value = os.environ.get("WOOF_HEX_CUDA_GRAPHS", "auto")
     if value != "auto":
         return value == "1"

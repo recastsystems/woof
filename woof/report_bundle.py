@@ -999,7 +999,7 @@ def _nvidia_driver_version() -> str | None:
 
     try:
         completed = subprocess.run(
-            ["nvidia-smi", "--query-gpu=driver_version",
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=driver_version",
              "--format=csv,noheader"],
             capture_output=True, text=True, timeout=20, check=False)
     except (OSError, subprocess.SubprocessError):
@@ -1021,6 +1021,17 @@ def _gpu_environment() -> dict:
     sharing the card.
     """
 
+    from woof.gpu_smi import is_amd, inventory
+    if is_amd():
+        block = {"probe": "rocm-smi", "backend": "hip", "devices": [], "note": None}
+        try:
+            block["devices"] = [{"index": int(row["index"]), "name": row["name"],
+                "total_memory_bytes": int(row["memory.total"])*1048576,
+                "driver_version": row["driver_version"], "pci_bus_id": row["pci.bus_id"]}
+                for row in inventory()]
+        except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+            block["note"] = f"ROCm inventory unavailable: {type(error).__name__}: {error}"
+        return block
     block: dict = {"probe": None, "devices": [], "note": None}
     try:
         import cupy  # noqa: PLC0415 - optional at report time by design
@@ -1059,7 +1070,7 @@ def _gpu_environment() -> dict:
                              f"{type(error).__name__}: {error}")
     try:
         completed = subprocess.run(
-            ["nvidia-smi",
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(),
              "--query-gpu=name,memory.total,driver_version,compute_cap",
              "--format=csv,noheader"],
             capture_output=True, text=True, timeout=20, check=False)

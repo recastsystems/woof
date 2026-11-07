@@ -84,6 +84,7 @@ def main():
     parser.add_argument("--compile", action="append", default=[])
     args = parser.parse_args()
     from woof.core import kernels, terrain_drag
+    from tools.mp8_freeze_receipt import kernel_source_path
     from tools.kernel_ptx_identity.compare import compile_ptx, ptx_functions
 
     sources = {}
@@ -91,6 +92,15 @@ def main():
         if name not in sources:
             sources[name] = kernels.module_source(name)
         return sources[name]
+
+    def physical_module_digest(name):
+        if name == "rrtmg_lw_chain_coalesced":
+            # The production loader generates this retired duplicate from
+            # rrtmg_lw_chain.cu; use the same authority as the per-module gate.
+            from woof.core.rrtmg_lw import _LW_COALESCED_HEADER, _lw_coalesced_source
+            chain = (KDIR / "rrtmg_lw_chain.cu").read_text(encoding="utf-8")
+            return digest((_LW_COALESCED_HEADER + _lw_coalesced_source(chain)).encode())
+        return digest((KDIR / f"{name}.cu").read_bytes())
 
     readings = []
     pending = []
@@ -100,7 +110,7 @@ def main():
 
     record(ROOT / "tests/test_mp8_frozen.py", {
         "FROZEN_MODULE_DIGESTS": lambda name: (
-            digest((KDIR / f"{name}.cu").read_bytes()), digest(source(name).encode()))}, {
+            digest(kernel_source_path(name).read_bytes()), digest(source(name).encode()))}, {
         "THOMPSON_CU_SHA256": digest((KDIR / "thompson.cu").read_bytes()),
         "THOMPSON_COMPILED_SOURCE_SHA256": digest(source("thompson").encode()),
         "THOMPSON_COMPILED_SOURCE_LEN": len(source("thompson")),
@@ -114,7 +124,7 @@ def main():
                     *(header for headers in kernels.EXTRA_HEADERS.values()
                       for header in headers)}
     record(ROOT / "tests/test_kernel_source_freeze_per_module.py", {
-        "BASELINE_PINNED": lambda name: digest((KDIR / f"{name}.cu").read_bytes()),
+        "BASELINE_PINNED": physical_module_digest,
         "PINNED_HEADERS": lambda name: (digest((KDIR / name).read_bytes())
                                         if name in live_headers else None),
     }, {})
@@ -150,13 +160,16 @@ def main():
         ROOT / "tests/test_mp8_frozen.py", "FROZEN_MODULE_DIGESTS")}
     closure = {name: dictionary_keys(freeze_path, name)
                for name in ("BASELINE_PINNED", "PINNED_HEADERS", "COMPOSED_HEADERS")}
+    extension_path = ROOT / "tests/data/kernel_source_pins.json"
+    extension_pins = json.loads(extension_path.read_text())
     additions = {
         "COMPOSED_HEADERS": {name: digest((KDIR / name).read_bytes())
             for name in ("rrtmgp_planck_common_default.cuh", "ysu_topo_default.cuh")
             if name not in closure["COMPOSED_HEADERS"]},
         "BASELINE_PINNED": {p.stem: digest(p.read_bytes()) for p in KDIR.glob("*.cu")
             if p.stem not in frozen["FROZEN_MODULE_DIGESTS"]
-            and p.stem not in closure["BASELINE_PINNED"]},
+            and p.stem not in closure["BASELINE_PINNED"]
+            and p.stem not in extension_pins["modules"]},
         "PINNED_HEADERS": {name: digest((KDIR / name).read_bytes())
             for name in live_headers if name not in closure["PINNED_HEADERS"]},
     }

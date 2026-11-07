@@ -176,7 +176,7 @@ def _start_beside(argv):
     """Start the leg's reads that depend on nothing the door writes, on host threads, at the leg's start.
 
     Breakage it prevents (single-core law, 2026-10-29: DA member legs on
-    woof 2.9.9 spent ~26 s at ~1 core before the engine started): the door and then its worker read and
+    gpuwm 2.9.9 spent ~26 s at ~1 core before the engine started): the door and then its worker read and
     hashed the leg's inputs one after another on the main thread while the card waited.  The worker runs
     in this process, so these reads are its reads, done earlier; nothing else about the leg changes:
 

@@ -120,6 +120,14 @@
 # 12 lib + 19 round-trip + 1 doctest.
 cpu  tools/rustwx  netcdf-writer  32
 
+# The cu_physics=99 launch planner library behind
+# woof/core/cu99_launch.py: it tiles the cumulus columns and plans each
+# step's launches, so a regression mis-sizes or skips cumulus work on every
+# cu_physics=99 forecast. A 3.0.0 workspace member with no row, so the
+# battery never compiled or tested it. Floor is its first green run on
+# rel/3.0.0 (4 unit tests).
+cpu  tools/rustwx  rw-cu99-launch  4
+
 # The observation battery's REMAP.  `woof/verify/obs/regrid.py` puts a
 # scattered observation swath and a model field on one grid, and every
 # score the battery reports is read off the result, so a wrong neighbour
@@ -473,9 +481,9 @@ cpu  tools/rustwx  static-fields  1  --test lane1_goldens -- portable_sampling_s
 cpu  tools/rustwx  static-fields  1  --test lane1_goldens -- sampling_surfaces_bit_equal --exact
 cpu  tools/rustwx  static-fields  1  --test lane1_goldens -- portable_arrays_remain_bounded_by_numpy --exact
 cpu  tools/rustwx  static-fields  1  --test lane1_goldens -- corridor_crop_bit_equal_and_refuses_off_corridor --exact
-# Complete unchanged Windows-reference lane1 comparisons, including both
-# functional controls above. The dedicated CI qualification job runs these
-# on Windows and Linux, retains every result, and labels Linux UNQUALIFIED.
+# Complete native-platform lane1 comparisons, including the functional
+# controls above. The dedicated CI job first runs the independent Python
+# extractor, retains every result, and requires every comparison to pass.
 qualification  tools/rustwx  static-fields  16  --test lane1_goldens -- --test-threads=1 --show-output
 
 # THE FIXTURE-DEPENDENT HALF OF rw-sat, LISTED AND NOT RUN BY DEFAULT.
@@ -600,3 +608,15 @@ cpu  tools/zarr_bridge  rw-zarr  3
 # Fire danger (cap-fire-indices, 2026-10-20): FWI, KBDI and NFDRS 2016 with carried state,
 # rw_fire_indices. Unit tests plus tests/restart.rs (state carried across a restart).
 cpu  tools/rustwx  fire-indices  9
+
+# History-field projections and IEEE packing.
+cpu  tools/rustwx  rw-history-grib2  1
+
+
+# P3 startup must retain Fortran table column order and float words, refuse
+# damaged records and reject invalid C ABI buffers before writing any output.
+cpu  tools/rustwx  rw-p3  3
+
+# The active surface helper must keep soil-layer state and flux conversion
+# coherent with its WRF contract; omission left all three controls unrun.
+cpu  tools/rw_wps  wrf-surface  3

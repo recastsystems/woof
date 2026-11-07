@@ -46,6 +46,7 @@ KERNEL_DIR = REPO / "woof" / "core" / "kernels"
 SITE_FILES = (
     "woof/core/spp_kernel_sources.py",
     "woof/core/kernels/__init__.py",
+    "woof/core/kernels/no_ftz.py",
     "woof/core/nest_interp.py",
     "woof/core/noahmp_driver_gpu.py",
     "woof/core/noahmp_energy_gpu.py",
@@ -75,7 +76,7 @@ SITE_FILES = (
     "woof/ensemble/batch_physics_init.py",
     "woof/ensemble/batch_product_output.py",
     "woof/ensemble/batch_products.py",
-    # 3fa941d96, lane/ensemble-nested-pack delivered at ff238b1d9, adds
+    # 3fa941d96, development branch delivered at ff238b1d9, adds
     # the native member RUC unit. Audit its actual source/options recording.
     "woof/ensemble/batch_ruc.py",
     "woof/ensemble/surface_recipe.py",
@@ -97,9 +98,9 @@ SITE_FILES = (
 #: (``_load_module_without_fmad``, 2.8.5), which records in its own function.
 # The surface-state recipe records its seeded preparation unit at the
 # compiler call too, so the same source/options audit covers that site.
-# 3fa941d96, lane/ensemble-nested-pack: the one recorded member RUC
+# 3fa941d96, development branch: the one recorded member RUC
 # constructor joins the 28 retained sites; no compiler source is changed.
-# lane/mynn-exact: the integer-define tier of a no-FMA unit
+# development branch: the integer-define tier of a no-FMA unit
 # (``_load_module_int_defines_without_fmad``, the gsd_41 MYNN build) records
 # in its own function beside its compile, as the lake's site does.
 # The recorded LETKF member-count loader joins the 30 retained sites.
@@ -140,6 +141,15 @@ RAWMODULE_CONSTRUCTORS_OUTSIDE_THE_MANIFEST = {
     "woof/doctor.py": (
         "a one-kernel self-contained probe inside a subprocess source string, "
         "compiled to prove the toolchain works; not a forecast translation unit"),
+    "woof/hip_doctor.py": (
+        "the AMD backend doctor's one-kernel warp ballot and shuffle probe, "
+        "compiled from a literal string to prove the HIP toolchain and the "
+        "32-lane grouping work; not a forecast translation unit"),
+    "woof/core/mynn471_gpu.py": (
+        "the MYNN 4.7.1 input gather (mynn471_pack): one kernel that copies "
+        "each input field, at its own strides, into the packed slab as the "
+        "same float or int value; it computes no forecast arithmetic, and the "
+        "MYNN column itself compiles through the recorded nvcc image route"),
     "woof/core/mynn_pbl_gpu.py": (
         "a one-kernel finiteness and range check over the MYNN inputs, built "
         "from a predicate string at call time; it reads the arrays and sets "
@@ -194,7 +204,7 @@ RAWMODULE_CONSTRUCTORS_OUTSIDE_THE_MANIFEST = {
         "urban canopy, --fmad=false); each records through record_module in "
         "the same function under its own key, as the BEP+BEM composed unit above "
         "does"),
-    # The compiled WRF v4.7.1 oracle harnesses (2.8.2, lane/282-oracle-*).
+    # The compiled WRF v4.7.1 oracle harnesses (2.8.2, development branch-*).
     "woof/verify/advect_oracle.py": (
         "the compiled WRF advection oracle's harness: it compiles control "
         "variants of advection.cu to compare output words with WRF Fortran "
@@ -226,7 +236,8 @@ RAWMODULE_CONSTRUCTORS_OUTSIDE_THE_MANIFEST = {
 # site (woof/core/ieee_module.py, golden/wrf-fixes) and the lightning unit
 # (golden/ports-rad), which compiles through its own direct no-FTZ, no-FMA
 # site in kernels.load_module and records it (record_module).
-EXPECTED_NVRTC_SITE_COUNT = 9
+EXPECTED_NVRTC_SITE_COUNT = 10
+
 
 # These direct-NVRTC transforms precede forecast construction. They bind
 # compiler options and source bytes in their own preparation receipts.

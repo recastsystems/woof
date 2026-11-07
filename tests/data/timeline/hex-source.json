@@ -1,4 +1,4 @@
-﻿{
+{
     "schema":  "gpuwm.timeline.sources.v1",
     "boundaries":  {
                        "proxy.start":  {
@@ -7,7 +7,7 @@
                                        },
                        "proxy.end":  {
                                          "at":  312.92529845237732,
-                                         "evidence":  "startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:587"
+                                         "evidence":  "verification-results/historical-forecast/receipts/sk-base-cold.trace.jsonl:587"
                                      }
                    },
     "intervals":  [
@@ -15,8 +15,8 @@
                           "card":  0,
                           "stage":  "legacy.forecast.sampled_steps",
                           "evidence":  [
-                                           "startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:365",
-                                           "startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:422"
+                                           "verification-results/historical-forecast/receipts/sk-base-cold.trace.jsonl:365",
+                                           "verification-results/historical-forecast/receipts/sk-base-cold.trace.jsonl:422"
                                        ],
                           "basis":  "only_steps_1_to_5_of_15_retained",
                           "start":  126.03983759880066,

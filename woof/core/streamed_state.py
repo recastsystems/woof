@@ -51,6 +51,8 @@ class CanonicalStoreState(_CanonicalView):
     error before publication. ``scratch_allocator`` is the route's bounded
     device allocator for coupler tables; no full state is allocated here.
     """
+    _tslist_output = None
+    _tslist_resume = None
     def __init__(self, template, cfg, *, store, geography, scalars,
                  inventory, geography_inventory, scratch_allocator=None):
         arrays = {}
@@ -68,6 +70,9 @@ class CanonicalStoreState(_CanonicalView):
         self._scratch = {key[8:]: value for key, value in store.items() if key.startswith("scratch/")}
         self._scratch_allocator = scratch_allocator
         self.elapsed_seconds = float(scalars.get("elapsed_seconds", 0.))
+        if ("wrf_mass_carriers_cold" in scalars
+                or hasattr(template, "_wrf_mass_carriers_cold")):
+            self._wrf_mass_carriers_cold = bool(scalars.get("wrf_mass_carriers_cold", False))
 
     def __getattr__(self, name):
         store = self.__dict__.get("_canonical_store", {})

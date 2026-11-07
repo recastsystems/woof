@@ -189,3 +189,85 @@ def test_five_minute_cycle_accepts_the_public_float_hours_representation():
         history_every_minutes=5), TEXT)
     assert route.resolve_schedule(Fraction(str(5/60))*3600, 60, []) == 300
     assert route.checkpoint_due(5, 60)
+
+
+def test_same_mesh_moving_resume_continues_the_segment_that_sealed_it(tmp_path, monkeypatch):
+    """THE BREAKAGE THIS GUARDS (fix0414/resume): a moving segment resumed on its own member (crash recovery, a stay
+    on the carrier member) resumed as a native MPAS restart: its carrier held neither the sfc_input words, the
+    schemes' persistent words nor the continuation, and the physics clock began again, so same-mesh stop/resume on
+    the MPAS physics moving route was not bit for bit (x-build-moving-mpasphys)."""
+    from woof.hex.mpasphys.checkpoint_v842 import CheckpointRoute
+    from woof.hex.mpasphys.moving_v842 import MovingRoute
+    inputs, layout, session, dycore = member()
+    carrier = tmp_path / 'boundary.pkl'
+    for name in [key for key in __import__('os').environ if key.startswith('WOOF_HEX_MOVING_')]:
+        monkeypatch.delenv(name)
+    monkeypatch.setenv('WOOF_HEX_MOVING_CHECKPOINT_OUT', str(carrier))
+    sealing, _ = resolve_route(SimpleNamespace(history_every_minutes=6), TEXT)
+    assert type(sealing) is MovingRoute
+    sealing.begin('2026-10-17_00:00:00')
+    sealing.finish(step=6, session=session, dycore=dycore, mesh=inputs[0], vertical=inputs[1].vertical_grid,
+                   names=inputs[6], layout=layout, dt=60)
+    from woof.hex.mpasphys.moving_v842 import load_carrier
+    sealed = load_carrier(carrier)['physics']
+    assert {'sfc_input.sst', 'sfc_input.xland'} <= set(sealed['fields'])
+    assert 'continuation' in sealed and sealed['manager_elapsed'] == '360'
+
+    monkeypatch.delenv('WOOF_HEX_MOVING_CHECKPOINT_OUT')
+    monkeypatch.setenv('WOOF_HEX_MOVING_CHECKPOINT_IN', str(carrier))
+    route, text = resolve_route(SimpleNamespace(history_every_minutes=6), TEXT)
+    assert type(route) is CheckpointRoute and route.moving_resume and not route.fixed_mesh
+    assert namelist_option(text, 'nhyd_model', 'config_start_time') == '2026-10-17_00:06:00'
+    # A moving segment's --hours is its own length, never the original end.
+    assert route.resolve_schedule(Fraction(360), Fraction(60), []) == 360
+    route.bind_inputs(inputs, SimpleNamespace(receipt=CONFIG.receipt, mode='correct'))
+    assert route.resume_continues and route.physics_clock_offset(60) == (6, 360.0)
+    before = {key: value.copy() for key, value in session.native.data.items()}
+    for key in session.native.data:
+        session.native.data[key].fill(0)
+    route.restore_physics(session, layout, None, inputs[0])
+    for name in ('sst', 'xland', 'xice', 'isltyp', 'ivgtyp'):
+        np.testing.assert_array_equal(session.native.data['sfc_input', name, 1], before['sfc_input', name, 1])
+
+
+def test_correct_mode_native_restart_resumes_the_continuation_beside_its_file(tmp_path, monkeypatch):
+    """THE BREAKAGE THIS GUARDS (fix0414/resume): a native MPAS restart restarts itimestep at 1, so the hrrrv5 suite
+    re-ran its first-step blocks (MYNN-SFC, RUC) and hex restarted from its own +24 h restart differed from the
+    uninterrupted run in 22.4 M of 36.4 M diag words one hour later.  Correct mode seals a continuation beside every
+    restart file it writes and resumes it on config_do_restart; exact mode keeps native's restart."""
+    from woof.hex.mpasphys.checkpoint_v842 import (CONTINUATION_SUFFIX, native_restart_continuation,
+                                                  restart_output)
+    for name in [key for key in __import__('os').environ if key.startswith('WOOF_HEX_MOVING_')]:
+        monkeypatch.delenv(name)
+    streams = tmp_path / 'streams.atmosphere'
+    streams.write_text('<streams><immutable_stream name="restart" type="input;output" '
+                       'filename_template="restart.$Y-$M-$D_$h.$m.$s.nc" input_interval="initial_only" '
+                       'output_interval="01:00:00"/></streams>')
+    assert restart_output(streams) == (Fraction(3600), 'restart.$Y-$M-$D_$h.$m.$s.nc')
+    streams.write_text(streams.read_text().replace('output_interval="01:00:00"', 'output_interval="none"'))
+    assert restart_output(streams) is None
+    # A correct-mode run whose deck writes restarts seals each one's continuation beside it.
+    route, _ = resolve_route(SimpleNamespace(streams=str(tmp_path / 'deck.xml')), TEXT,
+                             config=SimpleNamespace(mode='correct'))
+    assert route is None
+    deck = tmp_path / 'deck.xml'
+    deck.write_text('<streams><immutable_stream name="restart" type="input;output" '
+                    'filename_template="restart.$Y-$M-$D_$h.$m.$s.nc" output_interval="01:00:00"/></streams>')
+    route, _ = resolve_route(SimpleNamespace(streams=str(deck), history_every_minutes=6), TEXT,
+                             config=SimpleNamespace(mode='correct', receipt=CONFIG.receipt))
+    route.origin_time = '2026-10-17_00:00:00'
+    assert route.resolve_schedule(Fraction(7200), Fraction(60), []) == 7200
+    assert route.checkpoint_due(60, 60) and not route.checkpoint_due(30, 60)
+    assert route.checkpoint_target(60, 60, tmp_path).name == 'restart.2026-10-17_01.00.00.nc' + CONTINUATION_SUFFIX
+    exact, _ = resolve_route(SimpleNamespace(streams=str(deck)), TEXT, config=SimpleNamespace(mode='exact'))
+    assert exact is None
+    # A restart resumes the continuation beside its file in correct mode only.
+    restart = tmp_path / 'restart.2026-10-17_01.00.00.nc'
+    restart.write_bytes(b'')
+    correct = SimpleNamespace(mode='correct')
+    assert native_restart_continuation(SimpleNamespace(), correct, 'restart', restart) is None
+    sidecar = Path(str(restart) + CONTINUATION_SUFFIX)
+    sidecar.write_bytes(b'')
+    assert native_restart_continuation(SimpleNamespace(), correct, 'restart', restart) == sidecar
+    assert native_restart_continuation(SimpleNamespace(), SimpleNamespace(mode='exact'), 'restart', restart) is None
+    assert native_restart_continuation(SimpleNamespace(), correct, 'input', restart) is None

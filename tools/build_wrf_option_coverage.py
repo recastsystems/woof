@@ -18,6 +18,11 @@ key is a probe defect, and the build fails on it rather than publishing it.
 Usage:
   python tools/build_wrf_option_coverage.py            # write the page
   python tools/build_wrf_option_coverage.py --check    # exit 1 if stale
+  python tools/build_wrf_option_coverage.py --check --audit-json audit.json
+
+The audit probes every ARW Registry key at its default in the same fixture.
+It records consumed-but-dropped keys and unrelated fixture failures separately.
+It is an admission check only, never a substitute for a real forecast.
 """
 from __future__ import annotations
 
@@ -25,6 +30,12 @@ import json
 import re
 import sys
 import tempfile
+import argparse
+import hashlib
+import subprocess
+import tomllib
+from collections import Counter
+from dataclasses import asdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,19 +82,54 @@ PARTNERS: dict[tuple[str, object], dict[str, object]] = {
     ("sf_surface_physics", 5): {"num_soil_layers": 10},
     ("sf_surface_physics", 7): {"num_soil_layers": 2, "sf_sfclay_physics": 7,
                                 "bl_pbl_physics": 7},
-    ("sf_surface_physics", 8): {"num_soil_layers": 3},
+    ("sf_surface_physics", 8): {"num_soil_layers": 3, "fractional_seaice": 1},
     # KIAPS SAS shallow convection runs only beside KSAS (README.namelist).
     ("shcu_physics", 4): {"cu_physics": 14},
     # Deng works with MYJ (README.namelist).
-    ("shcu_physics", 5): {"bl_pbl_physics": 2, "sf_sfclay_physics": 2},
+    ("shcu_physics", 5): {"bl_pbl_physics": 2, "sf_sfclay_physics": 2,
+                           "icloud_bl": 0},
     ("sf_ocean_physics", 2): {},
     # WRF's cumulus-to-radiation feedback is defined for GF, G3, GD and KF.
     ("cu_rad_feedback", True): {"cu_physics": 3},
+    # The candidate's Fitch coupling injects TKE through MYNN only.
+    # WRF module_physics_init.F: windfarm initialization accepts MYNN;
+    # namelist_import.py enforces this narrower runtime contract.
+    ("windfarm_opt", 1): {"bl_pbl_physics": 5, "sf_sfclay_physics": 5},
+    ("windfarm_opt", 2): {"bl_pbl_physics": 5, "sf_sfclay_physics": 5,
+                          "windfarm_ij": 2},
+    # With no radiative forcing the land-energy solver has no GLW input.
+    ("ra_lw_physics", 0): {"sf_surface_physics": 0, "num_soil_layers": 5},
+    ("ra_sw_physics", 0): {"sf_surface_physics": 0, "num_soil_layers": 5},
+    ("aer_opt", 3): {"mp_physics": 28},
+    ("lightning_option", 1): {"do_radar_ref": 1},
+    ("lightning_option", 2): {"do_radar_ref": 1},
+    ("lightning_option", 11): {"cu_physics": 5},
+    # Clear-sky optics are admitted on the RRTM/Dudhia pair, not RRTMGP.
+    ("icloud", 0): {"ra_lw_physics": 1, "ra_sw_physics": 1},
 }
 
 #: Selectors probed as a longwave/shortwave pair when WRF declares the value
 #: for both; a value declared for one side only is probed beside RRTMG.
 _RADIATION = ("ra_lw_physics", "ra_sw_physics")
+
+# A synthetic, explicitly labelled input for schema admission. Native WRF
+# turbine text additionally needs rw-wind-table and is a separate IO check.
+# The production reader accepts JSON by content, including at this filename.
+WIND_INPUT = {
+    "schema": "gpuwm-wind-farm.v1",
+    "types": {"probe": {"curve": [[0, 0, 0], [10, 0.8, 0.4], [30, 0, 0]]}},
+    "turbines": [{"id": "probe", "type": "probe", "hub_height_m": 100,
+                  "rotor_diameter_m": 100, "latitude": 35, "longitude": -97}],
+}
+
+# Synthetic MAV admission input in WRF's native geographic and curve formats.
+# This exercises the real Rust decoder; it is not forecast or native parity proof.
+MAV_INPUT = "35 -97 1 1\n"
+MAV_CURVE = "3\n100 100 0.1 2\n4 0.8 50\n10 0.8 1000\n25 0.05 2000\n"
+
+# WRF 4.7.1 share/module_check_a_mundo.F:3401,3410. These are source
+# expectations, independent of the candidate's 4.6.1 compatibility table.
+NATIVE_NSSL_CCN = {17: 1, 22: 1}
 
 
 def _fmt(value) -> str:
@@ -95,6 +141,11 @@ def _fmt(value) -> str:
 
 
 def _pair(tmp: Path, physics: dict) -> tuple[Path, Path]:
+    if physics.get("windfarm_opt", 0) == 2:
+        (tmp / "windturbines-ll.txt").write_text(MAV_INPUT, encoding="utf-8")
+        (tmp / "wind-turbine-1.tbl").write_text(MAV_CURVE, encoding="utf-8")
+    elif physics.get("windfarm_opt", 0):
+        (tmp / "windturbines.txt").write_text(json.dumps(WIND_INPUT), encoding="utf-8")
     levels = 40
     eta = ", ".join(f"{1.0 - i / levels:.17g}" for i in range(levels + 1))
     wps = """&share
@@ -174,8 +225,8 @@ def probe(key: str, value) -> dict:
     for options in ({}, {"rrtmg_variant": "rrtmg_legacy"}):
         with tempfile.TemporaryDirectory() as tmp:
             try:
-                _, report = import_namelists(*_pair(Path(tmp), physics), **options)
-            except Exception as error:  # every refusal the door can raise
+                text, report = import_namelists(*_pair(Path(tmp), physics), **options)
+            except (ValueError, NotImplementedError) as error:
                 message = str(error)
                 result = {"imports": False, "message": message,
                           "reason": _reason(message, probe_keys),
@@ -193,8 +244,23 @@ def probe(key: str, value) -> dict:
         swapped = [f"{sub.wrf_name} -> {sub.gpuwm_name}"
                    for sub in getattr(report, "substitutions", ())
                    if set(str(sub.key).split("/")) & set(probe_keys)]
+        resolved = tomllib.loads(text)
+        differences = []
+        if key == "mp_physics" and value in NATIVE_NSSL_CCN:
+            actual = resolved.get("shared", {}).get("nssl_ccn_on")
+            if actual != NATIVE_NSSL_CCN[value]:
+                differences.append({"key": "nssl_ccn_on", "candidate": actual,
+                                    "native_wrf471": NATIVE_NSSL_CCN[value],
+                                    "source": "share/module_check_a_mundo.F:3397-3416"})
         return {"imports": True, "physics": physics, "options": options,
-                "substituted": swapped}
+                "substituted": swapped,
+                "native_differences": differences,
+                "resolved": {"shared": resolved.get("shared", {}),
+                             "domains": resolved.get("domain", [])},
+                "report": {kind: [asdict(entry) for entry in getattr(report, kind)
+                                  if set(str(entry.key).split("/")) & set(probe_keys)]
+                           for kind in ("substitutions", "fixed", "dropped",
+                                        "defaults_applied", "translated")}}
     return first
 
 
@@ -220,7 +286,7 @@ def _clean(reason: str) -> str:
     return reason.replace("|", "/").strip()
 
 
-def build() -> tuple[str, list[str]]:
+def build(records: list | None = None) -> tuple[str, list[str]]:
     table = json.loads(OPTIONS.read_text(encoding="utf-8"))
     problems: list[str] = []
     out = [
@@ -232,12 +298,18 @@ def build() -> tuple[str, list[str]]:
         "switches below was put through `woof import-namelist` on a",
         "one-domain namelist, beside the partner settings WRF itself requires",
         "(for example MYJ with its Eta surface layer). **Imports** means the",
-        "importer writes a configuration that runs that option. **Refused** means",
+        "importer writes a configuration and validates its schema. It does not",
+        "prove GPU execution, numerical agreement, a forecast, restart or speed.",
+        "**Refused** means",
         "the importer stops and names the option; the reason is the importer's own",
         "message. A refused option never runs as a different scheme; an option",
         "that imports as a different scheme says so on its row. Other WRF",
-        "namelist options (gravity-wave drag, lightning, aerosol and the",
-        "rest) are not on this page.",
+        "namelist options (gravity-wave drag and the",
+        "rest) are inventoried separately by `--audit-json` at their Registry",
+        "defaults. A default probe is not a claim about every possible value.",
+        "The JSON receipt retains the exact companion settings, resolved",
+        "selectors, substitutions, and refusal messages. Forecast qualification",
+        "and per-stage speed require separate receipts from the scheme lanes.",
         "",
         f"WRF source: {table['wrf']['url']} at {table['wrf']['tag']} "
         f"({table['wrf']['commit'][:12]}).",
@@ -254,6 +326,9 @@ def build() -> tuple[str, list[str]]:
                 if (key, value) in LABEL_NOTES:
                     label = f"{label}: {LABEL_NOTES[(key, value)]}"
                 result = probe(key, value)
+                if records is not None:
+                    records.append({"key": key, "value": value, "label": label,
+                                    **result})
                 if result["imports"]:
                     status = ("imports with `--rrtmg-variant rrtmg_legacy` "
                               "(WRF's own RRTMG)" if result["options"]
@@ -264,6 +339,25 @@ def build() -> tuple[str, list[str]]:
                         if key in _RADIATION and not result["options"]:
                             status += ("; `--rrtmg-variant rrtmg_legacy` "
                                        "runs WRF's own RRTMG")
+                    if key == "mp_physics" and value in (17, 19, 21, 22):
+                        status += "; legacy NSSL spelling, rewritten to 18 plus variant flags"
+                    for difference in result["native_differences"]:
+                        status += (f"; **differs from WRF 4.7.1**: "
+                                   f"`{difference['key']}={difference['candidate']}` "
+                                   f"(native: `{difference['native_wrf471']}`)")
+                    if key == "windfarm_opt" and value == 1:
+                        status += ("; synthetic JSON turbine input fixture; native WRF "
+                                   "turbine text needs `rw-wind-table` (not checked here)")
+                    if key == "windfarm_opt" and value == 2:
+                        status += ("; synthetic native MAV turbine input decoded by "
+                                   "`rw-wind-table`; no forecast proof")
+                    if key == "aer_opt" and value:
+                        variant = result["resolved"]["shared"]["ra_rrtmg_variant"]
+                        status += f"; resolves `ra_rrtmg_variant={variant}`"
+                    partners = PARTNERS.get((key, value), {})
+                    if partners:
+                        status += "; companions: " + ", ".join(
+                            f"`{k}={_fmt(v)}`" for k, v in partners.items())
                     ok.append(value)
                 elif result["reason"] is None:
                     problems.append(
@@ -283,12 +377,195 @@ def build() -> tuple[str, list[str]]:
     return "\n".join(out[:split] + head + out[split:]) + "\n", problems
 
 
+def registry_audit() -> list[dict]:
+    """One default probe per Registry row, through the real translation.
+
+    No inferred support for untested values or pairings. In particular a key
+    consumed and dropped is not reported as an executable feature.
+    """
+    from copy import deepcopy
+    from woof.fortran_namelist import parse_namelist
+    from woof.namelist_contract import _registry_column
+    from woof.namelist_import import import_parsed_namelists
+    from woof.wrf_namelist_registry import REGISTRY_TABLE, wrf_namelist_table
+
+    source_lines = {}
+    section = None
+    for number, line in enumerate(REGISTRY_TABLE.read_text().splitlines(), 1):
+        if '"section":' in line:
+            section = json.loads(line.split(":", 1)[1].strip().rstrip(","))
+        if '"key":' in line:
+            key = json.loads(line.split(":", 1)[1].strip().rstrip(","))
+            source_lines[(section, key)] = number
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = _pair(Path(tmp), BASE)
+        base = tuple(parse_namelist(p) for p in paths)
+    # A broken fixture must stop the audit, not poison 1,115 support rows.
+    path_options = {"wps_path": Path("namelist.wps"),
+                    "input_path": Path("namelist.input")}
+    import_parsed_namelists(*base, **path_options)
+    out = []
+    for declaration in wrf_namelist_table()["keys"]:
+        group, key = declaration["section"], declaration["key"]
+        row = {**declaration, "source": str(REGISTRY_TABLE.relative_to(ROOT)),
+               "line": source_lines[(group, key)]}
+        try:
+            column = _registry_column(declaration, 1)
+        except (ValueError, OverflowError) as error:
+            row.update(status="unparseable-default", message=str(error))
+            out.append(row)
+            continue
+        wps, inp = deepcopy(base)
+        inp.setdefault(group, {})[key] = column
+        row["probed"] = column
+        if group == "time_control" and key.startswith("start_"):
+            # WPS and WRF must describe the same six-hour case. Moving a
+            # Registry start default alone tests a contradictory fixture,
+            # rather than whether the importer consumes that option.
+            from datetime import datetime, timedelta
+            parts = ("year", "month", "day", "hour", "minute", "second")
+            clock = inp[group]
+            start = datetime(*(int(clock.get(f"start_{part}", [0])[0])
+                               for part in parts))
+            end = start + timedelta(hours=6)
+            companions = {}
+            for part in parts:
+                clock[f"end_{part}"] = [getattr(end, part)]
+                companions[f"end_{part}"] = clock[f"end_{part}"]
+            for name, value in (("start_date", start), ("end_date", end)):
+                wps["share"][name] = [value.strftime("%Y-%m-%d_%H:%M:%S")]
+                companions[f"share/{name}"] = wps["share"][name]
+            row["fixture_companions"] = companions
+        try:
+            _, report = import_parsed_namelists(wps, inp, **path_options)
+        except (ValueError, NotImplementedError) as error:
+            message = str(error)
+            # Structured refusal identity takes precedence over mere mention.
+            keys = getattr(error, "keys", ())
+            named = ((group, key) in keys if keys else
+                     re.search(rf"\b{re.escape(key)}\b", message) is not None)
+            section_refused = ("unknown section(s)" in message and
+                               repr(group) in message.split("; known:", 1)[0])
+            status = ("section-refused" if section_refused else
+                      "default-refused" if named else "fixture-blocked")
+            row.update(status=status,
+                       message=_clean(message))
+        else:
+            classifications = [kind for kind in ("translated", "fixed", "dropped")
+                               if any(entry.section == group and entry.key == key
+                                      for entry in getattr(report, kind))]
+            row.update(status="/".join(classifications) or "unclassified",
+                       report={kind: [asdict(entry) for entry in getattr(report, kind)
+                                      if entry.section == group and entry.key == key]
+                               for kind in classifications})
+        out.append(row)
+    return out
+
+
+def gate_conflicts() -> list[str]:
+    """Find named unported guards that contradict implemented Registry rows.
+
+    Pairing refusals are retained in the probes, rather than guessed to be
+    stale. A conflict is a handoff to the owning lane, not permission to
+    remove a gate without its replay and forecast.
+    """
+    from woof.config import unported_scheme_reasons
+    registry = json.loads((ROOT / "woof/physics_registry_v2.json").read_text())
+    conflicts = []
+    for component, spec in registry["components"].items():
+        for option, declaration in spec["options"].items():
+            if not declaration.get("implemented"):
+                continue
+            for key, value in declaration.get("selectors", {}).items():
+                reason = unported_scheme_reasons(key).get(value)
+                if reason:
+                    conflicts.append(f"{component}/{option}: implemented registry row "
+                                     f"still has {key}={value} unported guard: {reason}")
+    return conflicts
+
+
+def audit_document(records: list[dict], problems: list[str]) -> dict:
+    paths = ("woof/namelist_import.py", "woof/config.py",
+             "woof/physics_registry_v2.json",
+             "woof/data/wrf_namelist/registry_v4.7.1.json",
+             "woof/data/wrf_namelist/physics_options_v4.7.1.json",
+             "tools/build_wrf_option_coverage.py")
+    rows = registry_audit()
+    conflicts = gate_conflicts()
+    return {
+        "schema": "gpuwm.wrf-option-admission-audit.v1",
+        "wrf": json.loads(OPTIONS.read_text())["wrf"],
+        "candidate": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "source_sha256": {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest()
+                          for p in paths},
+        "scope": "Import and emitted-config validation only. No GPU execution, "
+                 "module replay, forecast, restart, nest, ensemble or timing proof.",
+        "base_physics": BASE,
+        "wind_input_fixture": {
+            "fitch": {"format": "synthetic woof JSON, not native WRF text",
+                      "data": WIND_INPUT},
+            "mav": {"format": "synthetic native WRF MAV text through rw-wind-table",
+                    "windturbines-ll.txt": MAV_INPUT,
+                    "wind-turbine-1.tbl": MAV_CURVE}},
+        "selector_counts": dict(Counter("imports" if r["imports"] else "refused"
+                                        for r in records)),
+        "registry_counts": dict(Counter(r["status"] for r in rows)),
+        "selectors": records, "registry_defaults": rows,
+        "probe_problems": problems, "gate_conflicts": conflicts,
+        "native_contract_differences": [
+            {"key": r["key"], "value": r["value"],
+             "differences": r["native_differences"]}
+            for r in records if r.get("native_differences")],
+    }
+
+
 def main(argv: list[str]) -> int:
-    text, problems = build()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--audit-json", type=Path)
+    parser.add_argument("--require-native", action="store_true",
+                        help="Fail on observed selector rewrites that differ from WRF 4.7.1")
+    parser.add_argument("--baseline-json", type=Path,
+                        help="Prior audit; list newly importing rows for forecast follow-up")
+    parser.add_argument("--speed-csv", type=Path,
+                        help="Write admitted rows with timing explicitly unmeasured")
+    args = parser.parse_args(argv[1:])
+    if args.baseline_json and not args.audit_json:
+        parser.error("--baseline-json requires --audit-json")
+    records: list[dict] = []
+    text, problems = build(records)
+    if args.require_native:
+        problems.extend(f"{r['key']}={r['value']}: {r['native_differences']}"
+                        for r in records if r.get("native_differences"))
+    if args.audit_json:
+        document = audit_document(records, problems)
+        if args.baseline_json:
+            previous = json.loads(args.baseline_json.read_text())
+            old = {(r["key"], _fmt(r["value"])) for r in previous["selectors"]
+                   if r["imports"]}
+            document["newly_importing"] = [
+                {"key": r["key"], "value": r["value"],
+                 "forecast": "pending scheme receipt"}
+                for r in records if r["imports"] and (r["key"], _fmt(r["value"])) not in old]
+        args.audit_json.write_text(json.dumps(document, indent=2, default=str) + "\n")
+        problems.extend(document["gate_conflicts"])
+    if args.speed_csv:
+        import csv
+        with args.speed_csv.open("w", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(("selector", "value", "companions", "import_options",
+                             "qualification", "stage_ms", "nearest_scheme", "ratio"))
+            for row in records:
+                if row["imports"]:
+                    writer.writerow((row["key"], _fmt(row["value"]),
+                                     json.dumps(row["physics"], sort_keys=True),
+                                     json.dumps(row["options"], sort_keys=True),
+                                     "not measured in admission audit", "", "", ""))
     if problems:
         print("\n".join(problems), file=sys.stderr)
         return 2
-    if "--check" in argv:
+    if args.check:
         current = PAGE.read_text(encoding="utf-8") if PAGE.is_file() else ""
         if current != text:
             print(f"{PAGE.relative_to(ROOT)} is stale: run "

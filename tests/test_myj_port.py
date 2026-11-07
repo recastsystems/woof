@@ -744,7 +744,9 @@ def test_a_half_myj_suite_is_refused_at_load(sfclay, pbl):
 #: SASE (900) is not here: it states its own moist requirement, for its own
 #: reason (saturated-N2 stability and condensate rows), at plan review and
 #: again at the driver, and it is its own audit item.
-_DRY_PBL_SLOT = ((1, 1), (2, 2), (5, 5), (9, 1), (11, 1))
+#: ACM2 (7) joined the slot with 9dcd39c55be; it is paired with the revised
+#: MM5 layer as WRF's ACM2 runs with sf_sfclay_physics=1 or 7.
+_DRY_PBL_SLOT = ((1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (7, 1), (8, 1), (9, 1), (10, 10), (11, 1), (17, 1), (99, 1))
 
 
 def test_a_dry_pbl_config_is_admitted_by_both_config_doors():
@@ -767,6 +769,10 @@ def test_a_dry_pbl_config_is_admitted_by_both_config_doors():
     The property here is symmetry for the existing dry-capable PBL slot.
     CCPP requires moist buoyancy inputs, so its admission gate is outside
     this dry capability claim.
+    GBM is excluded from dry admission because its WRF F_QC/F_QI contract
+    requires condensate species; tests/test_gbmpbl_door.py checks that refusal.
+    EEPS transports PEK_ADV/PEP_ADV as moist-state scalars; its separate
+    moist requirement is covered by tests/test_eeps_door.py.
     """
     from woof.config import (CCPP_TKE_EDMF_PBL_SCHEME, PBL_SCHEMES,
                               validate_run_config)
@@ -775,14 +781,14 @@ def test_a_dry_pbl_config_is_admitted_by_both_config_doors():
                               moist=False))
     for pbl in PBL_SCHEMES:
         # Preserve the existing SASE exclusion and the CCPP moist-input gate.
-        if pbl in (900, CCPP_TKE_EDMF_PBL_SCHEME):
+        if pbl in (900, 12, 16, CCPP_TKE_EDMF_PBL_SCHEME):
             continue
-        sfclay = 2 if pbl == 2 else 1
+        sfclay = dict(_DRY_PBL_SLOT).get(pbl, 1)
         validate_run_config(_cfg(sf_sfclay_physics=sfclay,
                                  bl_pbl_physics=pbl, moist=False))
     assert {pbl for pbl, _ in _DRY_PBL_SLOT} == {
         pbl for pbl in PBL_SCHEMES
-        if pbl not in (0, 900, CCPP_TKE_EDMF_PBL_SCHEME)}, (
+        if pbl not in (0, 900, 12, 16, CCPP_TKE_EDMF_PBL_SCHEME)}, (
         "a scheme joined the PBL slot without joining the dry run below")
 
 
@@ -817,8 +823,20 @@ def test_a_dry_pbl_run_reaches_the_driver_and_mixes(pbl, sfclay):
                sf_surface_physics=2, num_soil_layers=4, bldt=0.0, radt=0.0,
                cu_physics=0, mp_physics=0, km_opt=4, c_s=0.25)
     coord = make_vertical_coord(cfg.nz)
+    def theta_profile(z):
+        z = np.asarray(z, np.float64)
+        if pbl == 10:
+            # TEMF requires negative potential-temperature gradients at
+            # both of its first two levels, as well as positive HFX
+            # (module_bl_temf.F:570-579). A warm skin over the old stable
+            # +3 K/km column did not supply the second gradient. Give
+            # this coupling test an unstable layer capped at 2 km; keep
+            # its nonzero heating bar and require active mass flux too.
+            return (300.0 - 0.001 * np.minimum(z, 2000.0)
+                    + 0.003 * np.maximum(z - 2000.0, 0.0))
+        return 300.0 + 0.003 * z
     base = make_base_state(
-        coord, lambda z: 300.0 + 0.003 * np.asarray(z, np.float64),
+        coord, theta_profile,
         p_surf=cfg.p_surf, ztop=cfg.ztop)
     state = init_at_rest(cfg, coord, base)
     assert state.qv is None, "the fixture is not dry"
@@ -841,9 +859,25 @@ def test_a_dry_pbl_run_reaches_the_driver_and_mixes(pbl, sfclay):
     for name in ("exch_h", "pblh", "hfx", "ust"):
         values = cp.asnumpy(driver.fields[name])
         assert np.all(np.isfinite(values)), name
-    # Coupled, not merely called: the diffusivity left the cold state and
-    # the PBL top is a depth rather than the first interface.
-    assert float(np.max(cp.asnumpy(driver.fields["exch_h"]))) > 0.0
+    # Coupled, not merely called.  A scheme whose WRF driver arm publishes
+    # EXCH_H must move it off the cold state.  GFS (3), TEMF (10) and MRF
+    # (99) have no EXCH_H argument in WRF's PBL driver (the registry's
+    # scalar_diffusion_exchange rows say so, citing module_pbl_driver.F), so
+    # their EXCH_H stays WRF's initialized zero; for them the bar is the
+    # scheme's own heating tendency, which a sunlit dry column must carry.
+    from woof.config import scalar_pblmix_exchange
+    exchange = scalar_pblmix_exchange(cfg)
+    exch_h = float(np.max(cp.asnumpy(driver.fields["exch_h"])))
+    if exchange is not None and exchange["writes_exch_h"]:
+        assert exch_h > 0.0
+    else:
+        assert exch_h == 0.0, "a scheme WRF gives no EXCH_H wrote one"
+        heating = cp.asnumpy(driver.pbl_tendencies.rtheta)
+        assert np.all(np.isfinite(heating))
+        assert float(np.max(np.abs(heating))) > 0.0, "the PBL never mixed"
+    if pbl == 10:
+        assert float(cp.max(driver.fields["mf_temf"])) > 0.0, "TEMF mass flux never started"
+    # The PBL top is a depth rather than the first interface.
     assert float(np.max(cp.asnumpy(driver.fields["pblh"]))) > 0.0
     assert np.all(np.isfinite(cp.asnumpy(state.thp)))
 
@@ -970,7 +1004,8 @@ def test_the_pair_is_selectable_per_domain_and_only_as_a_pair():
     eta = registry["components"]["surface_layer"]["options"]["eta-similarity"]
     assert myj["constraints"]["requires_components"]["surface_layer"] == [
         "eta-similarity"]
-    assert eta["constraints"]["requires_components"]["pbl"] == ["myj"]
+    assert eta["constraints"]["requires_components"]["pbl"] == [
+        "myj", "eeps", "boulac"]
 
 
 def test_a_namelist_naming_myj_imports_it_natively():

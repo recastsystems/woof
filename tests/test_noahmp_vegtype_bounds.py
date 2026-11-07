@@ -2,7 +2,7 @@
 
 WHY THIS FILE EXISTS
 --------------------
-Driving a generated MPAS mesh through the dycore on a development machine's 5090 stopped in
+Driving a generated MPAS mesh through the dycore on test host 2's 5090 stopped in
 `noahmp_cold_start` with:
 
     File "woof/core/noahmp_runtime.py", line 863, in veg_value

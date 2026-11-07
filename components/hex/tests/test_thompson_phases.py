@@ -51,7 +51,9 @@ def test_carry_size_includes_partial_warp(monkeypatch):
     monkeypatch.setattr(numerics, 'mode', lambda: 'strict')
     original = port.workspace_bytes(port.workspace_layout(), 'mpas_thompson_step', 55, 33)
     monkeypatch.setattr(numerics, 'mode', lambda: 'fast')
-    assert port.workspace_bytes(port.workspace_layout(), 'mpas_thompson_step', 55, 33) == 2*original+128*CARRY_BYTES_PER_COLUMN
+    fast = port.workspace_bytes(port.workspace_layout(), 'mpas_thompson_step', 55, 33)
+    assert fast < 2*original
+    assert fast == 128*(56*(43*8+91*4+6)+CARRY_BYTES_PER_COLUMN)
 
 
 def test_aerosol_keeps_column_method(monkeypatch):
@@ -241,3 +243,29 @@ def test_auto_tile_is_capped_by_the_workspace_budget(monkeypatch):
     assert len(allocations) == 1 and allocations[0] <= 256 << 20
     stride = port.budget_tile_columns('mpas_thompson_step', 55)
     assert stride % 128 == 0 and starts == list(range(0, columns, stride))
+
+
+def test_workspace_compaction_preserves_distinct_planes_and_prefix_layouts():
+    source = """#define TC_WS_MPAS_THOMPSON_STEP_ND 7
+#define TC_WS_MPAS_THOMPSON_RADAR_ND 3
+#define TC_WS_MPAS_THOMPSON_STEP_NF 5
+TcCol<double> a=ws.dd(0);TcCol<double> b=ws.dd(4);
+TcCol<double> c=m.ws.dd(6);TcCol<double> alias=ws.dd(4);
+TcCol<float> f=ws.ff(3);
+"""
+    compact = port._compact_workspace_source(source)
+    assert 'STEP_ND 3' in compact and 'RADAR_ND 1' in compact
+    assert 'STEP_NF 1' in compact
+    assert 'a=ws.dd(0)' in compact and 'b=ws.dd(1)' in compact
+    assert 'c=m.ws.dd(2)' in compact and 'alias=ws.dd(1)' in compact
+    assert 'f=ws.ff(0)' in compact
+
+
+def test_numerical_modes_keep_separate_workspace_layouts(monkeypatch):
+    monkeypatch.setattr(numerics, 'mode', lambda: 'strict')
+    strict = port.workspace_layout()
+    monkeypatch.setattr(numerics, 'mode', lambda: 'fast')
+    fast = port.workspace_layout()
+    assert strict['mpas_thompson_step'] == dict(double=64, float=93, bool=7)
+    assert fast['mpas_thompson_step'] == dict(double=43, float=91, bool=6)
+    assert strict['mpas_thompson_radar'] == fast['mpas_thompson_radar']

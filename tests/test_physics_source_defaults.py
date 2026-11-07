@@ -37,7 +37,15 @@ def test_retained_clone_namelist_imports_the_fork(tmp_path, name):
 def test_unnamed_namelist_keeps_the_global_default(tmp_path):
     from woof.namelist_import import import_namelists
     namelist = tmp_path / "namelist.input"
-    namelist.write_bytes((FIXTURE / "hrrr_wrf.nl.c18c").read_bytes())
+    # Unnamed and without fork-only keys this reads as a stock WRF 4
+    # namelist, and stock WRF stops on output_diagnostics = 1 with no
+    # auxhist3_interval (CLWRF, ported in 39c203139fb).  The climate
+    # statistics are not what this pin covers (its importer dropped them),
+    # so the request is left out rather than turned into the fork's.
+    source = (FIXTURE / "hrrr_wrf.nl.c18c").read_bytes()
+    marker = b" output_diagnostics                  = 1\n"
+    assert source.count(marker) == 1
+    namelist.write_bytes(source.replace(marker, b""))
     text, report = import_namelists(FIXTURE / "hrrr_namelist.wps.c18", namelist)
     # The staged sea-ice importer change predates this surface generation.
     # This pin was emitted by that committed importer, not this module.
@@ -58,13 +66,24 @@ def test_unnamed_namelist_keeps_the_global_default(tmp_path):
     # The pin also predates the capabilities campaign's three import lines.
     from capability_campaign_import import without_campaign_import_lines
     historical = without_campaign_import_lines(historical)
-    # ... and the HRRR v4 climate statistics this namelist turns on
-    # (output_diagnostics = 1), imported since lane/hrrr-v4-clwrf ported them
-    # (3aec2abd31; the pinned importer dropped them as not ported).
+    # The climate statistics request is left out above, so none is emitted.
     climate = ("output_diagnostics = 1\n", "diag_int = 15\n", "wind_int = 5\n")
-    assert all(historical.count(line) == 1 for line in climate)
-    historical = "".join(line for line in historical.splitlines(keepends=True)
-                         if line not in climate)
+    assert not any(line in historical for line in climate)
+    # 5c995111329 carries the namelist's do_radar_ref = 1.
+    assert historical.count("do_radar_ref = 1\n") == 1
+    historical = historical.replace("do_radar_ref = 1\n", "")
+    # A stock WRF 4 namelist that omits use_theta_m runs moist theta, its
+    # Registry default, since bfc7f4d09db ported it; the pinned importer
+    # integrated dry theta and booked that as a substitution.  Same pin,
+    # with the run's one setting and its header line put back.
+    assert historical.count("use_theta_m = 1\n") == 1
+    historical = historical.replace("use_theta_m = 1\n", "")
+    radiation = ("#   ra_lw_physics/ra_sw_physics 4 (RRTMG) -> ra_physics 4 "
+                 "(RTE+RRTMGP)\n")
+    assert historical.count(radiation) == 1
+    historical = historical.replace(radiation, radiation + (
+        "#   use_theta_m 1 (moist potential temperature (theta_m) "
+        "prognostic) -> use_theta_m 0 (dry potential temperature)\n"))
     # The namelist omits &dynamics top_lid: the pinned importer resolved the
     # rigid lid, this one reads WRF's open top (2026-10-12).  That one line
     # put back, the pinned hash holds.
@@ -155,13 +174,18 @@ def test_non_source_requests_keep_the_same_bytes_and_default():
     baseline = json.loads((FIXTURE / "identity-7260e48f4.json").read_text())
     # The one attributed move since 7260e48f4: a RUC suite authored from any
     # source writes the RUC air cold start (physics_source_defaults.
-    # AUTHORED_RUC_DEFAULTS, fix/ruc-qvg-authoring-air). Every other byte holds.
+    # AUTHORED_RUC_DEFAULTS, fix/ruc-qvg-authoring-air), and feat/uh-layers
+    # (3.0.0): the wizard writes the 0-1/0-2/0-3 km UH maxima on beside
+    # nwp_diagnostics = 1. Every other byte holds.
     ruc_line = 'ruc_qvg_cold_start = "air"\n'
+    uh_line = "uh_layers = 1\n"
     for source in ("gfs", "era5", "rrfs"):
         assert recipe_physics_defaults(source) == {}
         text = _recipe(source)
         assert text.count(ruc_line) == 1
-        pinned = text.replace(ruc_line, "", 1)
+        assert text.count(uh_line) == 1
+        assert tomllib.loads(text)["shared"]["nwp_diagnostics"] == 1
+        pinned = text.replace(ruc_line, "", 1).replace(uh_line, "", 1)
         from woof_engine_spelling import engine_spelling
         assert hashlib.sha256(engine_spelling(pinned).encode()).hexdigest() == baseline["recipes"][source]
         assert "mynn_sfclay_variant" not in tomllib.loads(text)["shared"]
@@ -445,7 +469,7 @@ def test_the_loader_rule_carries_all_four_generation_selectors():
     fork Thompson with WRF v4.6.1's snow fall on every bare door (WOOF-FIX-PROGRAM-2026-10-06, hrrr-all-fixes)."""
     from woof.physics_source_defaults import (GENERATION_SELECTORS, MP_SCOPED_RECIPE_SETTINGS,
                                                omitted_generation_selectors)
-    # The MYNN generation joined in lane/mynn-exact (tests/test_mynn_generation_door.py).
+    # The MYNN generation joined in development branch (tests/test_mynn_generation_door.py).
     assert GENERATION_SELECTORS == ("mynn_sfclay_variant", "thompson_version", "thompson_fork_snow_fall",
                                     "bl_mynn_version")
     # both Thompson keys are read under the aerosol-aware scheme alone, so the fill scopes them alike

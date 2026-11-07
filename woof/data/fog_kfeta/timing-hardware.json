@@ -1,0 +1,15 @@
+{
+  "started_at": 1793618549.343265,
+  "host_load_start": [
+    20.1005859375,
+    30.1318359375,
+    39.46240234375
+  ],
+  "gpus_at_start": "0, GPU-169ff4d4-b68b-2a52-86ab-3c9aa72f56f2, NVIDIA RTX PRO 6000 Blackwell Server Edition, 96692 MiB, 1 %\n1, GPU-7e7487ff-bb4f-193b-29d2-1b60c982f5a1, NVIDIA RTX PRO 6000 Blackwell Server Edition, 97248 MiB, 0 %\n",
+  "finished_at": 1793618676.689528,
+  "host_load_end": [
+    22.7451171875,
+    28.33447265625,
+    37.65478515625
+  ]
+}

@@ -25,7 +25,7 @@
 // 2.0), integer powers are products, expf and logf are glibc's (gfk_exp,
 // gfk_log), sinf is glibc's (glibc_sinf).  atan2f is td_atan2f below, WOOF's
 // own float32 atan2f, whose words are the reference platform's (Ubuntu 24.04,
-// glibc 2.39, box W1): see its comment.  The oracles that hold these kernels
+// glibc 2.39, x86-64): see its comment.  The oracles that hold these kernels
 // to WRF are tools/terrain_drag_wrf471_oracle
 // (tests/test_terrain_drag_wrf471_parity.py) and, for gwd_opt = 1 on the
 // reference platform, tools/gwdo_kim_wrf461_oracle
@@ -54,7 +54,7 @@ __device__ __forceinline__ float td_min(float a, float b)
 // platform).  The reference platform of this verification (Ubuntu 24.04,
 // glibc 2.39; the MYNN, YSU and Kessler oracles' platform) returns the
 // classic atanf-based atan2f instead, 1 ULP off the correctly rounded angle
-// on 16% of random wind pairs (measured on box W1), and on a sector
+// on 16% of random wind pairs (measured on x86-64), and on a sector
 // boundary that 1 ULP picks the other sector: in the WRF v4.6.1 column
 // oracle (tests/data/oracles/gwdo_kim) one sector-boundary column per grid
 // took idir 1 under WRF and 8 under the double atan2 (50 levels), 5 and 4

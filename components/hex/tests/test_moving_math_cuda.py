@@ -14,11 +14,13 @@ def test_device_powers_and_evaporation_preserve_numpy_words(monkeypatch):
     heat=rng.uniform(20.,500.,zz.shape)
     dz,dh=cp.asarray(zz),cp.asarray(heat)
     exner,pressure=exner_pressure(dz,dh)
-    expected=(zz*(DRY_RGAS/1.e5)*heat)**(DRY_RGAS/(DRY_CP-DRY_RGAS))
+    # The device ports glibc pow. np.float_power is the platform libm pow on every CPU; `**` takes
+    # numpy's AVX-512 SIMD pow where present and differs in the last place (woof.hex.libm_identity).
+    expected=np.float_power(zz*(DRY_RGAS/1.e5)*heat,DRY_RGAS/(DRY_CP-DRY_RGAS))
     assert cp.asnumpy(exner).tobytes()==expected.tobytes()
-    assert cp.asnumpy(pressure).tobytes()==(1.e5*expected**(DRY_CP/DRY_RGAS)).tobytes()
+    assert cp.asnumpy(pressure).tobytes()==(1.e5*np.float_power(expected,DRY_CP/DRY_RGAS)).tobytes()
     balance_pressure(dz,dh,pressure)
-    assert cp.asnumpy(pressure).tobytes()==(1.e5*(287*zz*heat/1.e5)**1.4).tobytes()
+    assert cp.asnumpy(pressure).tobytes()==(1.e5*np.float_power(287*zz*heat/1.e5,1.4)).tobytes()
     rho=rng.uniform(.2,1.2,zz.shape)
     vapor=rng.uniform(0.,.015,zz.shape)
     cloud=rng.uniform(0.,.002,zz.shape)

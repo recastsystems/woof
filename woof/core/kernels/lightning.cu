@@ -1,42 +1,107 @@
 // WRF v4.6.1 module_lightning_driver and module_ltng_*.
-// Float32 operations in source order, using WOOF's own float32 math.
-// A single thread defines patch/domain reduction order. No reduction atomics.
-extern "C" __global__ void lightning_patch(
- const float* refl,const float* w,const float* t,const float* z,
- const float* ht,const float* land,int nz,int ny,int nx,int option,
- int i0,int i1,int j0,int j1,float* summary) {
- if(blockIdx.x || threadIdx.x) return;
- int n=ny*nx,kmax=0,ktop=0; float maxcount=0.f,wmax=__int_as_float(0xff800000u);
- for(int k=0;k<nz;k++) {
-   float count=0.f;
-   for(int j=j0;j<j1;j++) for(int i=i0;i<i1;i++) {
-     int p=k*n+j*nx+i;
-     if(refl[p]>20.f) count=count+1.f;
-     if(w[p]>wmax) wmax=w[p];
+// Strict replay retains the scalar source's float32 arithmetic. The fast
+// runtime permits contraction and uses CUDA's float32 power function.
+__device__ inline float lightning_pow(float x,float y) {
+#ifdef GPUWM_WRF_EXACT
+ return gfk_pow(x,y);
+#else
+ return powf(x,y);
+#endif
+}
+// One cooperative block per level, then one cooperative patch reduction.
+// Counts are integers until conversion back to WRF's REAL counter. Native
+// repeated +1 stops advancing at 2**24, so retain that saturation explicitly.
+extern "C" __global__ void lightning_levels(
+ const float* refl,const float* w,int nz,int ny,int nx,
+ int i0,int i1,int j0,int j1,float* levels) {
+ int k=blockIdx.x,tid=threadIdx.x,n=ny*nx,width=i1-i0;
+ int area=width*(j1-j0),count=0;
+ float maximum=__int_as_float(0xff800000u);
+ __shared__ int counts[256];
+ __shared__ float maxima[256];
+ for(int a=tid;a<area;a+=blockDim.x) {
+   int c=(j0+a/width)*nx+i0+a%width,p=k*n+c;
+   count+=(refl[p]>20.f);
+   if(w[p]>maximum) maximum=w[p];
+ }
+ counts[tid]=count;maxima[tid]=maximum;__syncthreads();
+ for(int stride=blockDim.x/2;stride;stride/=2) {
+   if(tid<stride) {
+     counts[tid]+=counts[tid+stride];
+     if(maxima[tid+stride]>maxima[tid]) maxima[tid]=maxima[tid+stride];
    }
+   __syncthreads();
+ }
+ if(tid==0) {
+   levels[k]=(float)min(counts[0],16777216);
+   levels[nz+k]=maxima[0];
+ }
+}
+extern "C" __global__ void lightning_patch(
+ const float* refl,const float* t,const float* z,
+ const float* ht,const float* land,const float* levels,
+ int nz,int ny,int nx,int option,int i0,int i1,int j0,int j1,float* summary) {
+ int tid=threadIdx.x,n=ny*nx,kmax=0,ktop=0;
+ float maxcount=0.f,wmax=__int_as_float(0xff800000u);
+ __shared__ float counts[256],maxima[256],heights[256],lands[256];
+ __shared__ int tops[256],indices[256],coldcounts[256];
+ for(int k=tid;k<nz;k+=blockDim.x) {
+   float count=levels[k];
    if(count>0.f) ktop=k;
    if(count>maxcount) {maxcount=count;kmax=k;}
+   if(levels[nz+k]>wmax) wmax=levels[nz+k];
  }
- float total=0.f;
- if(maxcount!=0.f) {
-   if(option==1) total=5.7e-6f*gfk_pow(wmax,4.5f);
-   else {
-     float zmax=0.f,mostlyland=0.f; int count=0;
-     // WRF's loop is I then J here, unlike countCells' J,K,I.
-     for(int i=i0;i<i1;i++) for(int j=j0;j<j1;j++) {
-       int c=j*nx+i,p=ktop*n+c;
-       if(refl[p]>20.f && t[p]<273.15f) {
-         if(z[p]-ht[c]>zmax) zmax=z[p]-ht[c];
-         count=count+1;mostlyland=mostlyland+land[c];
-       }
+ counts[tid]=maxcount;maxima[tid]=wmax;tops[tid]=ktop;indices[tid]=kmax;
+ __syncthreads();
+ for(int stride=blockDim.x/2;stride;stride/=2) {
+   if(tid<stride) {
+     int other=tid+stride;
+     if(counts[other]>counts[tid] ||
+        (counts[other]==counts[tid] && indices[other]<indices[tid])) {
+       counts[tid]=counts[other];indices[tid]=indices[other];
      }
-     mostlyland=mostlyland/(float)count;
-     zmax=zmax*1.e-3f;
-     total=(mostlyland<1.5f ? 3.44e-5f:6.57e-6f)*gfk_pow(zmax,4.9f);
+     tops[tid]=max(tops[tid],tops[other]);
+     if(maxima[other]>maxima[tid]) maxima[tid]=maxima[other];
    }
-   total=total/maxcount/60.f;
+   __syncthreads();
  }
- summary[0]=total;summary[1]=(float)kmax;
+ ktop=tops[0];
+ float zmax=0.f,mostlyland=0.f;int coldcount=0;
+ if(option==2 && counts[0]!=0.f) {
+   int width=i1-i0,area=width*(j1-j0);
+   for(int a=tid;a<area;a+=blockDim.x) {
+     int c=(j0+a/width)*nx+i0+a%width,p=ktop*n+c;
+     if(refl[p]>20.f && t[p]<273.15f) {
+       if(z[p]-ht[c]>zmax) zmax=z[p]-ht[c];
+       coldcount++;mostlyland+=land[c];
+     }
+   }
+ }
+ heights[tid]=zmax;lands[tid]=mostlyland;coldcounts[tid]=coldcount;
+ __syncthreads();
+ for(int stride=blockDim.x/2;stride;stride/=2) {
+   if(tid<stride) {
+     if(heights[tid+stride]>heights[tid]) heights[tid]=heights[tid+stride];
+     lands[tid]+=lands[tid+stride];coldcounts[tid]+=coldcounts[tid+stride];
+   }
+   __syncthreads();
+ }
+ if(tid==0) {
+   float total=0.f;
+   if(counts[0]!=0.f) {
+     if(option==1) total=5.7e-6f*lightning_pow(maxima[0],4.5f);
+     else {
+       // XLAND is WRF's categorical 1/2 field. The sum is exact while
+       // its total is <= 2**24 (at most 2**23 all-water points).
+       // Native's 0/0 on a warm top is deliberately retained.
+       mostlyland=lands[0]/(float)coldcounts[0];
+       zmax=heights[0]*1.e-3f;
+       total=(mostlyland<1.5f ? 3.44e-5f:6.57e-6f)*lightning_pow(zmax,4.9f);
+     }
+     total=total/counts[0]/60.f;
+   }
+   summary[0]=total;summary[1]=(float)indices[0];
+ }
 }
 extern "C" __global__ void lightning_columns(
  const float* refl,const float* w,const float* t,const float* z,
@@ -59,7 +124,10 @@ extern "C" __global__ void lightning_columns(
      int p=k*n+c;
      float oldheight=height;height=height+dz[p];
      float delz=height-oldheight;
-     float temperature=theta[p]*pi[p]-273.16f;
+     // A contraction here changes which side of the 0/-20 C gates a
+     // native-rounded temperature occupies. Keep the branch authority
+     // rounded as WRF even in the fast runtime.
+     float temperature=__fsub_rn(__fmul_rn(theta[p],pi[p]),273.16f);
      if(temperature<=0.f && temperature>-20.f) {
        float deni=qi[p]+qg[p],dens=qs[p]+qg[p],ni=0.f,ns=0.f;
        if(qs[p]<=1.e-10f||qg[p]<=1.e-10f) dens=10000.f;
@@ -82,10 +150,10 @@ extern "C" __global__ void lightning_columns(
  float total=0.f; int kt=0;
  if(option==11) {
    kt=top[c]-1; // WRF cloud top uses one-based levels.
-   if(kt < -1 || kt>=nz) {atomicExch(invalid,1);return;}
+   if(kt < -1 || kt>=nz) {atomicOr(invalid,1);return;}
    if(kt>=0 && t[kt*n+c]<273.15f) {
      float zkm=(z[kt*n+c]-ht[c])/1.e3f+adjust;
-     if(zkm>0.f) total=(land[c]<1.5f ? 3.44e-5f:6.57e-6f)*gfk_pow(zkm,4.9f)/60.f;
+     if(zkm>0.f) total=(land[c]<1.5f ? 3.44e-5f:6.57e-6f)*lightning_pow(zkm,4.9f)/60.f;
    }
    float area=dx*dy/1.e6f;
    total=total*area/1296.f;
@@ -113,7 +181,7 @@ extern "C" __global__ void lightning_columns(
      }
      int kfreeze=kt;
      while(t[kfreeze*n+c]<273.15f && kfreeze>0) kfreeze--;
-     if(option==11 && t[kfreeze*n+c]<273.15f) {atomicExch(invalid,2);return;}
+     if(option==11 && t[kfreeze*n+c]<273.15f) {atomicOr(invalid,2);return;}
      float depth=(z[kt*n+c]-z[kfreeze*n+c])*1.e-3f;
      if(option==11) depth=depth+adjust;
      depth=fmaxf(5.5f,fminf(14.f,depth));
@@ -126,7 +194,7 @@ extern "C" __global__ void lightning_columns(
    if(inputden[p]==0.f) cr=total;
    else {
      float ratio=inputnum[p]/inputden[p];
-     if(ratio==-1.f) {atomicExch(invalid,3);return;}
+     if(ratio==-1.f) {atomicOr(invalid,4);return;}
      cr=total*(1.f/(ratio+1.f));
    }
    ir=total-cr;

@@ -8,6 +8,12 @@ inputs), checks that every recipe value equals the plan's job (paths and provena
 aside), runs them through the given rw_mpas_init_v831 and compares every stored value of
 the init with the native reference (rw_mpas_static --compare). No tolerance, no exclusion.
 
+The native referee is the fork as shipped, which leaves rain, cloud and ice number at zero
+where the first guess has none. The door's default fills them from mass (the row's
+absent_numbers, docs/rrfs-init.md), so every job here runs absent_numbers=zero: without it
+the replay of public 0.4.11 on the 2.9.11 worker reports 2,116,275 values different, all of
+them nr, nc and ni. The hydrometeor switches come from the plan's row, which names them.
+
 usage: python rrfs_init_door_replay.py --plan PLAN --references DIR --worker BIN \
            --comparer BIN --work DIR --receipt JSON [--row ID ...]
 DIR holds <row id>/init.nc (the fork's strict native init for that row).
@@ -23,7 +29,7 @@ from pathlib import Path
 from woof.hex.mpasphys.rrfs import cold_start_rrfs as cs
 
 PATH_KEYS = {"static_path", "output_path", "met_path", "gocart_path", "capsule_path", "reference_path",
-             "out_path", "specified_levels_path", "provenance", "lineage"}
+             "out_path", "specified_levels_path", "provenance", "lineage", "absent_numbers"}
 DEFAULT_ROWS = ("x1.2562-2023-03-31-workflow-specified-canonical-off",
                 "x1.2562-2022-12-22-workflow-specified-canonical-off",
                 "x1.10242-2023-03-31-workflow-specified-canonical-off",
@@ -74,6 +80,7 @@ def main() -> int:
                              nfgsoillevels=p7["n_fg_soil_levels"], artifact=work / "artifact.nc",
                              out=work / "init.nc", levels_file=levels, aerosols=Path(p7["gocart_path"]),
                              regional=regional, version="door-replay")
+        jobs[1]["config"]["absent_numbers"] = "zero"
         built = {j["stage"]: j for j in jobs}
         recipe_equal = {stage: strip(built[stage]) == strip(planned[stage]) for stage in ("prepare", "case7")}
         started = time.monotonic()
@@ -114,7 +121,8 @@ def main() -> int:
         jobs = cs.case9_jobs(producer, init=init, start_time=p9["start_time"], intervals=intervals,
                              nfglevels=p9["n_fg_levels"], out_dir=work / "lbc", carrier=work / "carrier.nc",
                              aerosols=Path(p9["gocart_path"]))
-        jobs[1]["config"].update(hydrometeors_rrfs=p9["hydrometeors_rrfs"], hydrometeors_gfs=p9["hydrometeors_gfs"])
+        jobs[1]["config"].update(hydrometeors_rrfs=p9["hydrometeors_rrfs"], hydrometeors_gfs=p9["hydrometeors_gfs"],
+                                 absent_numbers="zero")
         built = {j["stage"]: j for j in jobs}
         recipe_equal = {"case9": strip({k: v for k, v in built["case9"]["config"].items()
                                         if k not in ("grid_path", "out_dir", "intervals")})

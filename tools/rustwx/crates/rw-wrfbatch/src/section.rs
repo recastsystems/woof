@@ -41,10 +41,14 @@
 //! `--section FILE.json` (`{"start": [lat, lon], "end": [lat, lon]}` or a
 //! polyline `{"points": [[lat, lon], ...], "extend_km": 20}` whose first
 //! and last points are the line, extended by `extend_km` past each end).
+//! A radius-height scalar mean uses a JSON section with `center: [lat, lon]`,
+//! `radius_km` and optional `azimuths` (default 72). Every bearing must be
+//! inside the grid and vertically defined. Vector components are not rotated.
 //! Every PNG is named the way the batch lane names its panels, so the
 //! Python placement files it under `<domain>/xsec_<slug>/<valid-day>/`.
 
 use std::collections::BTreeMap;
+use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
 use rustwx_cross_section as xs;
@@ -739,6 +743,8 @@ impl Isotherms {
 /// The section line: two endpoints and a label for the headline.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SectionLine {
+    /// Equal-angle scalar mean at each radius; None retains ordinary line cuts.
+    pub azimuths: Option<usize>,
     pub start: xs::GeoPoint,
     pub end: xs::GeoPoint,
     pub label: Option<String>,
@@ -747,6 +753,12 @@ pub struct SectionLine {
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SectionFile {
+    #[serde(default)]
+    center: Option<[f64; 2]>,
+    #[serde(default)]
+    radius_km: Option<f64>,
+    #[serde(default)]
+    azimuths: Option<usize>,
     #[serde(default)]
     start: Option<[f64; 2]>,
     #[serde(default)]
@@ -780,6 +792,23 @@ impl SectionLine {
             .map_err(|err| format!("read section file {}: {err}", path.display()))?;
         let file: SectionFile = serde_json::from_str(&text)
             .map_err(|err| format!("section file {}: {err}", path.display()))?;
+        if file.center.is_some() || file.radius_km.is_some() || file.azimuths.is_some() {
+            let center = file.center.ok_or("radial section needs center")?;
+            let radius = file.radius_km.ok_or("radial section needs radius_km")?;
+            let azimuths = file.azimuths.unwrap_or(72);
+            if !(radius.is_finite() && radius >= 1.0 && radius <= 2000.0)
+                || !(12..=720).contains(&azimuths)
+                || file.start.is_some() || file.end.is_some() || !file.points.is_empty()
+                || file.extend_km.is_some() {
+                return Err("radial section needs radius 1..2000 km, 12..720 azimuths and no line endpoints".into());
+            }
+            let start = point(center[0], center[1])?;
+            let end = destination_point(start, 0.0, radius)?;
+            let mut line = Self::from_endpoints(start, end,
+                Some(file.label.unwrap_or_else(|| format!("Azimuthal mean, {azimuths} bearings"))))?;
+            line.azimuths = Some(azimuths);
+            return Ok(line);
+        }
         let (start, end) = match (file.start, file.end, file.points.as_slice()) {
             (Some(a), Some(b), _) => (point(a[0], a[1])?, point(b[0], b[1])?),
             (None, None, points) if points.len() >= 2 => (
@@ -812,7 +841,7 @@ impl SectionLine {
         if xs::haversine_distance_km(start, end) < 1.0 {
             return Err("--section endpoints are less than 1 km apart".to_string());
         }
-        Ok(Self { start, end, label })
+        Ok(Self { start, end, label, azimuths: None })
     }
 
     pub fn length_km(&self) -> f64 {
@@ -842,7 +871,9 @@ fn forward_bearing_at_end(start: xs::GeoPoint, end: xs::GeoPoint) -> f64 {
 
 /// Spherical destination point.
 fn destination_point(from: xs::GeoPoint, bearing_deg: f64, distance_km: f64) -> Result<xs::GeoPoint, String> {
-    const EARTH_RADIUS_KM: f64 = 6_371.0088;
+    // Match rustwx_cross_section::haversine_distance_km and intermediate_point,
+    // which construct the section's distance ladder on this same sphere.
+    const EARTH_RADIUS_KM: f64 = 6_371.0;
     let delta = distance_km / EARTH_RADIUS_KM;
     let theta = bearing_deg.to_radians();
     let lat1 = from.lat_deg.to_radians();
@@ -1132,7 +1163,8 @@ fn column_on_ladder(z: &[f64], v: &[f64], ladder: &[f64], out: &mut [f32]) {
 /// The sampled columns of one frame: weights per section point, the
 /// heights of each contributing column, the terrain height per point.
 struct SampledColumns {
-    weights: Vec<Option<[(usize, f64); 4]>>,
+    weights: Vec<Option<Vec<(usize, f64)>>>,
+    full_ring: bool,
     heights: Native3D,
     terrain_m: Vec<f64>,
 }
@@ -1167,7 +1199,7 @@ impl SampledColumns {
                 }
             }
             for k in 0..n_levels {
-                if weight_sum[k] > 0.0 {
+                if weight_sum[k] > 0.0 && (!self.full_ring || weight_sum[k] >= 1.0 - 1.0e-9) {
                     values[k * n_points + p] = (accum[k] / weight_sum[k]) as f32;
                 }
             }
@@ -1180,12 +1212,26 @@ fn sample_columns(
     file: &WrfFile,
     time_index: usize,
     points: &[xs::GeoPoint],
+    radial: Option<(&SectionLine, &[f64])>,
 ) -> Result<SampledColumns, String> {
     let locator = GridLocator::new(file, time_index)?;
-    let weights: Vec<Option<[(usize, f64); 4]>> = points
-        .iter()
-        .map(|p| locator.weights(p.lat_deg, p.lon_deg))
-        .collect();
+    let weights: Vec<Option<Vec<(usize, f64)>>> = if let Some((line, radii)) = radial {
+        let angles = line.azimuths.unwrap();
+        // Equal angular sampling, then native-column interpolation to a common
+        // MSL height before averaging. An incomplete circle remains missing.
+        radii.par_iter().map(|radius| {
+            let mut weights = Vec::with_capacity(angles * 4);
+            for angle in 0..angles {
+                let p = destination_point(line.start, 360.0 * angle as f64 / angles as f64, *radius).ok()?;
+                for (cell, weight) in locator.weights(p.lat_deg, p.lon_deg)? {
+                    weights.push((cell, weight / angles as f64));
+                }
+            }
+            Some(weights)
+        }).collect()
+    } else {
+        points.par_iter().map(|p| locator.weights(p.lat_deg, p.lon_deg).map(|w| w.to_vec())).collect()
+    };
     let inside = weights.iter().filter(|w| w.is_some()).count();
     if inside < 2 {
         return Err(format!(
@@ -1207,6 +1253,7 @@ fn sample_columns(
         })
         .collect();
     Ok(SampledColumns {
+        full_ring: radial.is_some(),
         weights,
         heights,
         terrain_m,
@@ -1764,6 +1811,12 @@ pub fn render_sections(
     config: &SectionRenderConfig<'_>,
     mut emit: impl FnMut(SectionOutcome),
 ) -> Result<(usize, usize), String> {
+    if config.line.azimuths.is_some() {
+        if config.across_km.is_some() || products.iter().any(|p|
+            std::iter::once(&p.fill).chain(&p.overlays).any(|term| term.cold_only)) {
+            return Err("azimuthal sections do not support across cuts or cold-only masks".into());
+        }
+    }
     let (frames, origin_unix, model) = enumerate_frames(config.inputs)?;
     let frames: Vec<&FrameRef> = match config.frame {
         None => frames.iter().collect(),
@@ -1818,7 +1871,7 @@ pub fn render_sections(
                 .map_err(|err| format!("section sampling: {err}"))?;
             let points: Vec<xs::GeoPoint> = sampled.samples.iter().map(|s| s.point).collect();
             let distances: Vec<f64> = sampled.samples.iter().map(|s| s.distance_km).collect();
-            let columns = match sample_columns(&file, frame.time_index, &points) {
+            let columns = match sample_columns(&file, frame.time_index, &points, line.azimuths.map(|_| (&line, distances.as_slice()))) {
                 Ok(columns) => columns,
                 Err(err) => {
                     for product in products {
@@ -1982,6 +2035,7 @@ pub fn render_sections(
                         ),
                     };
                     let headline = product.alias.clone().unwrap_or_else(|| fill.label.clone());
+                    let headline = if line.azimuths.is_some() { format!("{headline} azimuthal mean") } else { headline };
                     // A fill with no finite value anywhere (a tracer before
                     // its release, a field that is zero on this line) still
                     // draws: the panel goes out blank under its overlays and
@@ -2019,12 +2073,15 @@ pub fn render_sections(
                         .sourced_from(section_source_label(config.theme, &config.source_label))
                         .with_attribute(
                             "start_label",
-                            format!("{:.2}, {:.2}", line.start.lat_deg, line.start.lon_deg),
+                            if line.azimuths.is_some() { "Storm centre".into() }
+                            else { format!("{:.2}, {:.2}", line.start.lat_deg, line.start.lon_deg) },
                         )
                         .with_attribute(
                             "end_label",
-                            format!("{:.2}, {:.2}", line.end.lat_deg, line.end.lon_deg),
+                            if line.azimuths.is_some() { format!("360-degree mean, {} bearings", line.azimuths.unwrap()) }
+                            else { format!("{:.2}, {:.2}", line.end.lat_deg, line.end.lon_deg) },
                         )
+                        .with_attribute("distance_label", if line.azimuths.is_some() { "Radius (km)" } else { "Distance (km)" })
                         .with_attribute("domain", domain.clone())
                         .with_attribute("init_label", init_label.clone())
                         .with_attribute("forecast_hour", lead_label.clone())
@@ -2858,4 +2915,29 @@ mod tests {
         assert_eq!(dark.page_background_top, xs::Color::rgba(0, 0, 0, 255));
         assert_ne!(dark.text_color, stock.text_color);
     }
+    #[test]
+    fn radial_mean_interpolates_each_column_before_averaging() {
+        let heights = Native3D { data: vec![0., 0., 1000., 2000.], nz: 2, cells: 2, units: "m".into() };
+        let mut columns = SampledColumns { weights: vec![Some(vec![(0, 0.5), (1, 0.5)])],
+            full_ring: true, heights, terrain_m: vec![0.] };
+        let field = Native3D { data: vec![0., 10., 1000., 2010.], nz: 2, cells: 2, units: "K".into() };
+        let mean = columns.section(&field, &[500., 1500.]);
+        assert!((mean[0] - 505.).abs() < 1.0e-5);
+        assert!(mean[1].is_nan(), "a missing bearing must not become a partial-ring mean");
+        columns.full_ring = false;
+        assert!((columns.section(&field, &[1500.])[0] - 1510.).abs() < 1.0e-5);
+    }
+
+    #[test]
+    fn radial_json_preserves_geodesic_radius_and_rejects_mixed_modes() {
+        let path = std::env::temp_dir().join(format!("radial-section-{}.json", std::process::id()));
+        std::fs::write(&path, r#"{"center":[22,-93],"radius_km":200,"azimuths":72}"#).unwrap();
+        let line = SectionLine::parse(path.to_str().unwrap()).unwrap();
+        assert_eq!(line.azimuths, Some(72));
+        assert!((line.length_km() - 200.).abs() < 1.0e-6);
+        std::fs::write(&path, r#"{"center":[22,-93],"radius_km":200,"start":[20,-90]}"#).unwrap();
+        assert!(SectionLine::parse(path.to_str().unwrap()).is_err());
+        std::fs::remove_file(path).unwrap();
+    }
+
 }

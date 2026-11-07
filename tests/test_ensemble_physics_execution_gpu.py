@@ -32,12 +32,26 @@ def _snapshot(state, cfg, driver):
         collect(getattr(driver, name, None), "driver/" + name)
     result["call_counts"] = dict(driver.call_counts)
     result["microphysics_updates"] = driver.microphysics_updates
+    if cfg.cu_physics == 10:
+        for name in ("w0avg", "cup_held", "cup_iheld", "cup_levels"):
+            collect(getattr(driver.cumulus_callable, name), "cumulus/" + name)
     return result
 
 
 @pytest.mark.parametrize("members", [1, 4])
 @pytest.mark.parametrize("mp,pbl,sfclay,cumulus", [
     (8, 1, 1, 0), (6, 5, 5, 0), (8, 9, 1, 0), (10, 1, 91, 1),
+    (10, 1, 1, 10),
+    (6, 10, 10, 0),
+    (52, 1, 1, 0),
+    (7, 1, 1, 0),
+    (6, 1, 91, 2),
+    (6, 1, 91, 95),
+    (1, 1, 91, 93),
+    (6, 3, 3, 0),
+    (6, 4, 4, 0),
+
+    (8, 9, 7, 0), (8, 7, 1, 0), (8, 7, 7, 0), (8, 7, 91, 0),
 ])
 def test_member_local_real_driver_and_microphysics_match_each_independent_call(members, mp, pbl, sfclay, cumulus):
     import cupy as cp
@@ -50,17 +64,32 @@ def test_member_local_real_driver_and_microphysics_match_each_independent_call(m
     for member in range(members):
         pair = []
         for _ in range(2):
-            state, cfg, driver = _full_state(nx=6, ny=5, nz=24, dt=6.0,
+            state, cfg, driver = _full_state(
+                nx=12 if cumulus == 93 else 6,
+                ny=12 if cumulus == 93 else 5, nz=24, dt=6.0,
                 mp_physics=mp, bl_pbl_physics=pbl, sf_sfclay_physics=sfclay,
                 cu_physics=cumulus, bldt=0.0, radt=0.0)
             state.u[...] = cp.float32(6.0 + member * 0.25)
             state.v[...] = cp.float32(0.5 - member * 0.125)
+            if mp == 52:
+                state.nc[...] = cp.float32(1.e8 + member * 1.e7)
+                state.qi2[...] = cp.float32(1.e-4 + member * 1.e-5)
+                state.ni2[...] = cp.float32(1.e5 + member * 1.e4)
+            if mp == 7:
+                # The four-ice package must keep each member's hail and
+                # accumulated freezing heat through the original driver.
+                state.qh.fill(cp.float32((member + 1) * 1.e-4))
+                state.acphysf.fill(cp.float32((member + 1) * 0.125))
             # Separate domains may be at different cadence positions.
             state.elapsed_seconds = float(member * 6)
             pair.append((state, cfg, driver))
         originals.append(pair[0])
         state, cfg, driver = pair[1]
         bindings.append(MemberPhysicsBinding(state, cfg, driver, member))
+    if cumulus == 93:
+        # GD excludes four cells on each nonperiodic edge. The ordinary
+        # 6 by 5 fixture has no interior column and cannot exercise GD.
+        assert bool(cp.any(bindings[0].driver.fields["gd_band"] == 2))
     executor = MemberPhysicsExecutor(bindings)
     for _ in range(2):
         held = executor.compute()

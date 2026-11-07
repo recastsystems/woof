@@ -6,6 +6,8 @@ Source identity is pinned by tests/mpas_rrfs_mynnsfc/audit.py. The shared
 v8.4.2 module stays independently selectable. RRFS table registration selects
 this sibling; there is no suite-name or fork-pin branch in the launcher.
 """
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 from importlib.resources import files
 import numpy as np
@@ -52,7 +54,7 @@ def module():
     if dev not in _MODULES:
         binary,_=compiler.compile_using_nvrtc(cuda_source(),options=_hex_numerics.options(('--std=c++17','--fmad=false',
             '--ftz=false','--prec-div=true','--prec-sqrt=true')),
-            arch=cp.cuda.Device(dev).compute_capability,cache_in_memory=True)
+            arch=_compilation_target(dev, xp=cp),cache_in_memory=True)
         obj=function.Module();obj.load(binary);_MODULES[dev]=obj
     return _MODULES[dev]
 

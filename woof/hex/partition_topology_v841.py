@@ -53,7 +53,7 @@ def discover_topology(devices: Sequence[int]) -> tuple[tuple[tuple[str, ...], ..
         import cupy as cp
         buses = [cp.cuda.Device(device).pci_bus_id for device in devices]
         def query(arguments):
-            return subprocess.run(["nvidia-smi", *arguments], capture_output=True,
+            return subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), *arguments], capture_output=True,
                                   text=True, check=True, timeout=15).stdout
         links = parse_topology(query(["topo", "-m"]),
                                query(["--query-gpu=index,pci.bus_id", "--format=csv,noheader,nounits"]), buses)

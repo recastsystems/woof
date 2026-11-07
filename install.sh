@@ -20,8 +20,9 @@
 #      installed in ~/.cargo with that version as its default (same
 #      consent; system Rust and PATH unchanged), or stops naming it;
 #   3. creates .venv if absent on free-threaded CPython 3.14t (see
-#      "Interpreter" below), installs the checkout's recast-woof-data
-#      companion, then installs -e '.[gpu-cuNN,render]' into it,
+#      "Interpreter" below), installs the checkout's recast-woof-data,
+#      gpuwm-kernels and gpuwm-kernels-startup companions, then
+#      installs -e '.[gpu-cuNN,render]' into it,
 #      where NN is the CUDA major this box's driver reports (CuPy
 #      ships one wheel per major and the wrong one dies at its first
 #      cuBLAS load); --cuda overrides the detection, and an
@@ -175,7 +176,7 @@ fi
 # The minimum is not a constant here: it is the newest `rust-version`
 # the workspaces below declare in their tools/<name>/Cargo.toml, the
 # same field cargo enforces, so this check and cargo cannot disagree.
-RUST_WORKSPACES='grib1_bridge rustwx arwen-tui zarr_bridge rw_wps region_global_dealias nextgen_hydrofabric nextgen_forcing nextgen_verify hydro_world hydro_world_params nextgen_reservoir_prepare hydro_world_init ocean_prepare rw-bathy wind-table nextgen_output rw_icechunk'
+RUST_WORKSPACES='grib1_bridge rustwx arwen-tui zarr_bridge rw_wps region_global_dealias nextgen_hydrofabric nextgen_forcing nextgen_verify hydro_world hydro_world_params nextgen_reservoir_prepare hydro_world_init ocean_prepare rw-bathy wind-table nextgen_output rw_icechunk cam_tables waves_data dfi-runtime tslist_bridge aerosol_grid storm_merge tc_vitals tc_frames_io tc-verify'
 rust_minimum() {
     for ws in $RUST_WORKSPACES; do
         [ -f "tools/$ws/Cargo.toml" ] || continue
@@ -556,9 +557,14 @@ install_python_packages() {
         # shellcheck disable=SC2086
         "$VENV_PY" -m pip uninstall -y $CUPY_HAVE || return 1
     fi
-    say "installing the matching recast-woof-data companion from this checkout (editable)"
+    # The engine pins its three companions (recast-woof-data, gpuwm-kernels,
+    # gpuwm-kernels-startup) to its own exact version, which PyPI does not
+    # carry before that version is published: all three come from this
+    # checkout, as ci.yml installs them, or an unpublished checkout cannot
+    # install at all (2.9.12 R11: the kernel companions resolved from PyPI).
+    say "installing the matching recast-woof-data, gpuwm-kernels and gpuwm-kernels-startup companions from this checkout (editable)"
     # shellcheck disable=SC2086
-    "$VENV_PY" -m pip install $PREFER_BINARY -e recast-woof-data || return 1
+    "$VENV_PY" -m pip install $PREFER_BINARY -e recast-woof-data -e gpuwm-kernels -e gpuwm-kernels-startup || return 1
     say "installing woof with the [$GPU_EXTRA,render] extras (editable)"
     # shellcheck disable=SC2086
     "$VENV_PY" -m pip install $PREFER_BINARY -e ".[$GPU_EXTRA,render]" || return 1
@@ -635,7 +641,7 @@ say "building the velocity dealiasing library (offline, locked)"
 ( cd tools/region_global_dealias && cargo build --release --locked --offline )
 # nextgen_output (librw_nextgen_output) writes a default-on hydro forecast's history, restart and
 # products; its crates.io dependencies resolve to the vendored rustwx sources.
-for workspace in nextgen_hydrofabric nextgen_forcing nextgen_verify hydro_world hydro_world_params nextgen_reservoir_prepare hydro_world_init ocean_prepare rw-bathy wind-table nextgen_output; do
+for workspace in nextgen_hydrofabric nextgen_forcing nextgen_verify hydro_world hydro_world_params nextgen_reservoir_prepare hydro_world_init ocean_prepare rw-bathy wind-table nextgen_output cam_tables waves_data dfi-runtime tslist_bridge aerosol_grid storm_merge tc_vitals tc_frames_io tc-verify; do
     # These workspaces include locked registry dependencies not all vendored
     # with rustwx. Populate Cargo's cache before the offline build.
     say "fetching locked NextGen dependencies in tools/$workspace"

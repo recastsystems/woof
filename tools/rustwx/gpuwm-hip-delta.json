@@ -1,0 +1,35 @@
+{
+  "base": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+  "files": [
+    {
+      "file": "vendor/crates-io/cudarc-0.19.8/src/gpuwm_hip.rs",
+      "sha256": "5f66193d05c698a970d3739867fc530f4590866335d46a4f55e74d0ad186e272",
+      "upstream_sha256": null,
+      "license": "Apache-2.0"
+    },
+    {
+      "file": "vendor/crates-io/cudarc-0.19.8/src/lib.rs",
+      "sha256": "aebd84e1cf874b492c594a73dcd78d7af53b0815a7a81b32b935d7cdd00ee06f",
+      "upstream_sha256": "be0a1c64064bc931e382662517c301e559e8778a4ec1b22275cd58e08581b42e",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "file": "vendor/crates-io/cudarc-0.19.8/src/driver/sys/mod.rs",
+      "sha256": "f34e509139a3362c8e395c5c1c60ac23691678c943c26b31a66a769ab31b147a",
+      "upstream_sha256": "eeb701bfe54beb83779819101b05d880545a86c05ea7d10cdd7b651da00aab12",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "file": "vendor/crates-io/cudarc-0.19.8/src/nvrtc/safe.rs",
+      "sha256": "cb594e87a2ce7690001805898188ce96a1acd72bbd21b9bff64f6377e3dd6077",
+      "upstream_sha256": "299a9510debad8cc9ac832d2449df72c2e989a228baab178b7b6f2ed761dea29",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "file": "vendor/bowecho/crates/simradar_cuda/kernels/p3_lut_segments.cu",
+      "sha256": "7f1294c9194fde701c05ee039e014f04c62a7cfb64962fa5bae5d33067fb53c3",
+      "upstream_sha256": "ba6ab252e1402f5afc7ff9dba6e5f5fc1f3b539b3d903e29c3da1830efb84780",
+      "license": "Apache-2.0"
+    }
+  ]
+}

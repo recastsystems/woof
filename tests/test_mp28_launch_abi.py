@@ -70,6 +70,8 @@ def test_production_network_tuple_matches_the_compiled_parameter_order(monkeypat
             values[name] = _table(cold.ICE_PARTITION_SHAPE)
         elif name in ("rain_cloud_efficiency", "snow_cloud_efficiency"):
             values[name] = _table((100, 100))
+        elif name in ("graupel_volume", "qbten"):
+            values[name] = None
         elif name in ("qsten", "qgten", "ngten") and not frozen:
             values[name] = None
         else:
@@ -80,7 +82,7 @@ def test_production_network_tuple_matches_the_compiled_parameter_order(monkeypat
     arguments = captured[0]
     parameters = _parameters(module, kernel)
     assert len(arguments) == len(parameters), (kernel, len(arguments), len(parameters))
-    assert parameters[-5:] == ["qsten", "qgten", "ngten", "dt", "size"]
+    assert parameters[-7:] == ["qsten", "qgten", "ngten", "graupel_volume", "qbten", "dt", "size"]
     for name in ("qsten", "qgten", "ngten"):
         assert arguments[parameters.index(name)] is values[name]
     if family == "cold":
@@ -114,6 +116,8 @@ def test_sedimentation_tuple_matches_serial_and_parallel_cuda_abis(monkeypatch, 
             values[name] = 20.0
         elif name in ("snow_precipitation", "graupel_precipitation", "active_columns"):
             values[name] = np.zeros((1, 1), dtype=np.float32)
+        elif name in ("graupel_volume", "qbten"):
+            values[name] = None
         elif name in ("qsten", "qgten", "ngten") and not frozen:
             values[name] = None
         else:
@@ -184,8 +188,9 @@ def test_production_adapter_zeroes_and_forwards_the_frozen_carriers():
                          "launch_aerosol_warm_source_network_from_owner")]
     assert len(network_calls) == 2
     for call in network_calls:
-        assert any(keyword.arg is None and isinstance(keyword.value, ast.Name)
-                   and keyword.value.id == "frozen_tendencies" for keyword in call.keywords)
+        assert any(keyword.arg is None and any(isinstance(node, ast.Name)
+                   and node.id == "frozen_tendencies" for node in ast.walk(keyword.value))
+                   for keyword in call.keywords)
     accumulator_loops = [node for node in ast.walk(tree) if isinstance(node, ast.For)
                         and isinstance(node.target, ast.Name) and node.target.id == "accumulator"]
     assert any({"qsten", "qgten", "ngten"} <= {

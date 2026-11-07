@@ -64,7 +64,7 @@ establish identity for every GPU or compiler.
 | GPU | NVIDIA GeForce RTX 5090 (cc 12.0), CUDA runtime 13.0, cupy 14.1.1, nvrtc defaults (`--fmad=true`) |
 | host | Ubuntu 24.04.4 LTS on WSL2, Python 3.12.3, NumPy 2.5.1 |
 | aerosol table | `CCN_ACTIVATE.BIN`, 35,288 bytes, sha256 `f2b8d391…c82a3dbd`, **redistributed with WOOF** since 2026-08-01 (deviation D9i in `PROVENANCE.md`; it stays outside the classic mp=8 table set, §7) |
-| date of measurement | mostly 2026-08-01; sections 5 and 6.1 on 2026-09-28; wp08-freeze and the classic-path comparison on 2026-09-23; per-card rows and the stripped section 6.1 run on 2026-09-30; section 6.1 on 2026-10-05 (RTX 5090, a development machine: Ubuntu, Python 3.13, cupy 14.2.0, NumPy 2.5.3, NVRTC 13.4.92) |
+| date of measurement | mostly 2026-08-01; sections 5 and 6.1 on 2026-09-28; wp08-freeze and the classic-path comparison on 2026-09-23; per-card rows and the stripped section 6.1 run on 2026-09-30; section 6.1 on 2026-10-05 (RTX 5090, test host 2: Ubuntu, Python 3.13, cupy 14.2.0, NumPy 2.5.3, NVRTC 13.4.92) |
 | §5 and §6.1 | re-measured 2026-09-28 on the same RTX 5090, now on Linux (Ubuntu, Python 3.12, cupy 14.2.0, NumPy 2.5.3), once on NVRTC 13.0.48 and once on 13.4.92: every value bitwise identical between the two |
 
 Arithmetic is float32 on the GPU and REAL(4) in the Fortran reference, which
@@ -469,7 +469,7 @@ the three effective radii and the seven surface accumulations.  153 columns
 of 49 levels (42 real convective columns, eight synthetic regimes raw and
 after WRF's own 10- and 45-step spin-up, 15 edge cases), 121,023 words per
 run.  RTX PRO 6000 Blackwell (sm_120), NVRTC 12.9, measured 2026-10-07 at
-lane/mp28-exact.
+the development branch.
 
 | run | strict 20 s | default 20 s | strict 5 s | default 5 s |
 |---|---:|---:|---:|---:|
@@ -792,7 +792,7 @@ profile to 1.967 mm and the run without it to 3.258 mm. Rain collecting
 graupel is the largest single difference: the collision rates now come from
 the table slab WRF built rather than from four rain-intercept bins away.
 
-Re-measured again 2026-10-07 for lane/mp28-exact, same card class, same
+Re-measured again 2026-10-07 for development branch, same card class, same
 script: the four fix lanes merged, WRF's snow and graupel accumulators
 applied once, the phase cleanup's latent heat on WRF's own ocp(k)/lvap(k)
 and twet above the melting level moved the run with the profile to

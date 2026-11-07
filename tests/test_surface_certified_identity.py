@@ -1,9 +1,9 @@
 """Certified Noah profiles must remain byte-identical to their capture.
 
-RE-PINNED 2026-09-17 (lane/2.7.6-pin-gates) ON ONE CARD.  The fixture was
+RE-PINNED 2026-09-17 (the 2.7.6 verification change) ON ONE CARD.  The fixture was
 captured on 2026-07-30 (d63e2e2fc) against the certified v1.1.2 commit as
 one change's before/after harness and nothing ran it before a cut; on
-a development machine's RTX 4090 (compute capability 8.9, driver 610.57.04) at fc639c51f
+test host 1's RTX 4090 (compute capability 8.9, driver 610.57.04) at fc639c51f
 its reading is: field_inventory_sha256 MOVED for all four profiles
 (77a004176d274621b918e5f083b67a4c1a819d9cba605797d4b419ef099ae9a9 to
 217f1bd3fadfab1669ee802cdbe4bd4202bf329014b971e2ccfc16ccf4db568b: the

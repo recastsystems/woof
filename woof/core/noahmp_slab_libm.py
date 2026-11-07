@@ -57,6 +57,43 @@ THREADS = 128
 
 _ADD_PRODUCT_KERNELS = {}
 
+# WRF-lineage Noah-MP 848f54ad ENERGY :2195-2197, opt_rsf=4.
+# Original notice: licenses/LICENSE-WRF-public-domain.txt. No Noah-MP 5 source.
+RSURF_SNOW_SOURCE = r'''extern "C" __global__ void noahmp_rsurf_snow(
+const float* soil,const float* fsno,const float* snow,float* out,int n){
+int i=blockDim.x*blockIdx.x+threadIdx.x;if(i>=n)return;
+float r=soil[i]>0.001f?soil[i]:0.001f;
+float a=__fmul_rn(fsno[i],__fdiv_rn(1.0f,snow[i]));
+float b=__fmul_rn(__fsub_rn(1.0f,fsno[i]),__fdiv_rn(1.0f,r));
+out[i]=__fdiv_rn(1.0f,__fadd_rn(a,b));
+}'''
+_RSURF_SNOW_KERNELS = {}
+
+
+def snow_surface_resistance(soil, fsno, snow):
+    """Native RSF=4 harmonic blend, before the dry/urban resistance caps.
+
+    Inputs are actual f32 soil resistance, snow fraction and transferred
+    RSURF_SNOW slabs. One thread per element, no host field arithmetic.
+    """
+    import cupy as cp
+
+    arrays = cp.broadcast_arrays(cp.asarray(soil, dtype=cp.float32),
+                                 cp.asarray(fsno, dtype=cp.float32),
+                                 cp.asarray(snow, dtype=cp.float32))
+    values = tuple(cp.ascontiguousarray(a) for a in arrays)
+    out = cp.empty(arrays[0].shape, dtype=cp.float32)
+    n = int(out.size)
+    if n:
+        key = cp.cuda.runtime.getDevice()
+        kernel = _RSURF_SNOW_KERNELS.get(key)
+        if kernel is None:
+            kernel = compile_generated_slab_kernel(RSURF_SNOW_SOURCE,
+                                                   "noahmp_rsurf_snow")
+            _RSURF_SNOW_KERNELS[key] = kernel
+        kernel((_blocks(n),), (THREADS,), (*values, out, np.int32(n)))
+    return out
+
 
 def slab_add_product(a, b, c):
     """Two binary32 roundings for a + b*c, retaining subnormal words."""
@@ -184,9 +221,40 @@ def slab_logf(x):
     return _unary("nmp_slab_logf", x)
 
 
-def slab_tanhf(x):
-    """WOOF's float32 hyperbolic tangent over arrays, elementwise."""
-    return _unary("nmp_slab_tanhf", x)
+_SELECTED_TANH_KERNELS = {}
+
+
+def slab_tanhf(x, *, profile="glibc_2_39"):
+    """Explicit native tanhf generation; existing oracle remains the default.
+
+    The newer native proof uses the existing MIT CORE-MATH implementation.
+    Selection never follows the execution host or the field values.
+    """
+    if profile == "glibc_2_39":
+        return _unary("nmp_slab_tanhf", x)
+    if profile != "glibc_2_43":
+        raise ValueError("unknown Noah-MP tanh profile")
+    import cupy as cp
+    from woof.core.noahmp_kernel_sources import KERNEL_DIR
+    x = _contiguous(x)
+    out = cp.empty_like(x)
+    n = int(x.size)
+    if n:
+        key = cp.cuda.runtime.getDevice()
+        kernel = _SELECTED_TANH_KERNELS.get(key)
+        if kernel is None:
+            source = (KERNEL_DIR / "sfire_libm.cuh").read_text(encoding="ascii")
+            source += r'''
+extern "C" __global__ void noahmp_tanhf_glibc243(
+const float* x, float* out, int n) {
+int i=blockIdx.x*blockDim.x+threadIdx.x;
+if(i<n) out[i]=sfire_tanhf(x[i]);
+}
+'''
+            kernel = compile_generated_slab_kernel(source, "noahmp_tanhf_glibc243")
+            _SELECTED_TANH_KERNELS[key] = kernel
+        kernel((_blocks(n),), (THREADS,), (x, out, np.int32(n)))
+    return out
 
 
 def slab_sqrtf(x):
@@ -316,7 +384,7 @@ def split_slab_slots(matrix, specs):
 _SCATTER_SLOT_KERNELS = {}
 
 
-def scatter_slab_fields(j, i, blocks):
+def scatter_slab_fields(j, i, blocks, *, active=None):
     """Store independent land-column outputs together without floating arithmetic."""
     import cupy as cp
 
@@ -325,11 +393,13 @@ def scatter_slab_fields(j, i, blocks):
         return
     j = cp.ascontiguousarray(j, dtype=cp.int64)
     i = cp.ascontiguousarray(i, dtype=cp.int64)
+    if active is not None and any(target.dtype.itemsize != 4 for target, _ in blocks):
+        raise TypeError("masked Noah-MP scatter requires 32-bit carriers")
     arrays, layout = [], []
     for target, value in blocks:
         value = cp.asarray(value, dtype=target.dtype)
-        if target.dtype.itemsize != 4:
-            # Wider carriers retain the original typed assignment conversion.
+        if target.dtype.itemsize != 4 and active is None:
+            # Wider unmasked carriers retain the typed assignment conversion.
             for destination, source in blocks:
                 if destination.ndim == 2:
                     destination[j, i] = source
@@ -346,7 +416,7 @@ def scatter_slab_fields(j, i, blocks):
         # no prebuilt kernel pack can cover (x1.163842 split in two, 2026-10-16).
         layout.append((width, row, col))
         arrays.extend((target, value, np.int64(plane), np.int64(ys), np.int64(xs)))
-    key = (cp.cuda.runtime.getDevice(), tuple(layout))
+    key = (cp.cuda.runtime.getDevice(), tuple(layout), active is not None)
     kernel = _SCATTER_SLOT_KERNELS.get(key)
     if kernel is None:
         args = ", ".join(f"unsigned int* o{k}, const unsigned int* v{k}, "
@@ -360,10 +430,14 @@ def scatter_slab_fields(j, i, blocks):
         source = (f'extern "C" __global__ void noahmp_scatter_fields('
                   f'const long long* j, const long long* i, int n, {args}) {{ '
                   'int c = blockDim.x*blockIdx.x+threadIdx.x; if(c>=n) return; '
+                  + ("if(!active[c])return;" if active is not None else "")
                   + "\n".join(lines) + '}')
+        if active is not None:
+            source = source.replace("int n,", "int n, const bool* active,", 1)
         kernel = compile_generated_slab_kernel(source, "noahmp_scatter_fields")
         _SCATTER_SLOT_KERNELS[key] = kernel
-    kernel((_blocks(n),), (THREADS,), (j, i, np.int32(n), *arrays))
+    mask_args = () if active is None else (active,)
+    kernel((_blocks(n),), (THREADS,), (j, i, np.int32(n), *mask_args, *arrays))
 
 
 _GATHER_SLOT_KERNELS = {}
@@ -461,7 +535,7 @@ def take_slab_rows(index, sources, n):
 _WRITE_ARITHMETIC_KERNELS = {}
 
 
-def write_slab_arithmetic(fields, j, i, values, *, nsoil, dt):
+def write_slab_arithmetic(fields, j, i, values, *, nsoil, dt, active=None):
     """Preserve the separate CuPy roundings while reducing arithmetic launches."""
     import cupy as cp
 
@@ -484,7 +558,7 @@ def write_slab_arithmetic(fields, j, i, values, *, nsoil, dt):
     i = cp.ascontiguousarray(i, dtype=cp.int64)
     isnow = cp.ascontiguousarray(values["isnow"], dtype=cp.int32)
     nx = fields["qfx"].shape[1]
-    key = (cp.cuda.runtime.getDevice(), nsoil)  # nx is an argument, not source
+    key = (cp.cuda.runtime.getDevice(), nsoil, active is not None)
     kernel = _WRITE_ARITHMETIC_KERNELS.get(key)
     if kernel is None:
         args = (", ".join(f"float* o_{name}" for name in outputs) + ", "
@@ -530,10 +604,14 @@ o_soilenergy[p]=soil;o_snowenergy[p]=snow;
 }'''
         source = (source.replace("ARGS", args).replace("NSOIL", str(nsoil))
                   .replace("NLAY", str(nsoil + 3)))
+        if active is not None:
+            source = source.replace("int n,long long nx,", "int n,long long nx,const bool* active,")
+            source = source.replace("if(c>=n)return;", "if(c>=n || !active[c])return;", 1)
         kernel = compile_generated_slab_kernel(source, "noahmp_write_arithmetic")
         _WRITE_ARITHMETIC_KERNELS[key] = kernel
     kernel((_blocks(n),), (THREADS,),
            (j, i, isnow, fields["rainbl"], np.float32(dt), np.int32(n), np.int64(nx),
+            *((active,) if active is not None else ()),
             *(fields[name] for name in outputs), *arrays))
     return True
 
@@ -620,8 +698,12 @@ o_ssoil_avg[c]=D(accum,steps);o_dt_soil[c]=M(s_dt[c],steps);
 _ROOT_FRACTION_KERNELS = {}
 
 
-def root_fraction_slabs(s, nsnow, nsoil, mpe):
+def root_fraction_slabs(s, nsnow, nsoil, mpe, *, opt_btr=1):
     """Accumulate root fractions in layer order with explicit FP32 rounding."""
+    if type(opt_btr) is not int or opt_btr not in (1, 2, 3):
+        raise ValueError("ENERGY opt_btr must be scalar int in (1, 2, 3)")
+    if opt_btr != 1:
+        return _selected_root_fraction_slabs(s, nsnow, nsoil, mpe, opt_btr)
     import cupy as cp
 
     inputs = tuple(cp.ascontiguousarray(s[name], dtype=cp.float32)
@@ -663,3 +745,83 @@ for(int layer=0;layer<NSOIL;layer++){
     kernel((_blocks(n),), (THREADS,),
            (*inputs, roots, np.int32(n), np.float32(mpe), total, fractions))
     return total, fractions
+
+
+_SELECTED_ROOT_FRACTION_KERNELS = {}
+
+
+def _selected_root_fraction_slabs(s, nsnow, nsoil, mpe, opt_btr):
+    """WRF CLM/SSiB BTRAN with device-resident soil and root carriers.
+
+    Fast CUDA math is the default. GPUWM_WRF_EXACT=1 selects the existing
+    native-libm transcription and separate FP32 rounding for proof. Neither
+    path reads a device value on the host or iterates over columns in Python.
+    """
+    import cupy as cp
+    from woof.core.kernels import _preamble
+    from woof.core.noahmp_kernel_sources import KERNEL_DIR
+
+    inputs = tuple(cp.ascontiguousarray(s[name], dtype=cp.float32)
+                   for name in ("sh2o", "psisat", "smcmax", "bexp",
+                                "zsoil", "dzsnso"))
+    roots = cp.ascontiguousarray(s["nroot"], dtype=cp.int32)
+    n = int(roots.size)
+    total = cp.empty(n, dtype=cp.float32)
+    fractions = cp.empty((n, nsoil), dtype=cp.float32)
+    if not n:
+        return total, fractions
+    key = (cp.cuda.runtime.getDevice(), nsnow, nsoil, opt_btr)
+    kernel = _SELECTED_ROOT_FRACTION_KERNELS.get(key)
+    if kernel is None:
+        # Reuse the audited math source. Do not fork its tables or alter the
+        # established BTR1 unit. The compiler records the assembled source
+        # and applies the process's strict options to the image-cache key.
+        source = (_preamble() + f"#define NMP_BT_NSNOW {int(nsnow)}\n"
+                  f"#define NMP_BT_NSOIL {int(nsoil)}\n"
+                  f"#define NMP_BT_NLAY {int(nsnow + nsoil)}\n"
+                  f"#define NMP_BT_OPTION {opt_btr}\n"
+                  + (KERNEL_DIR / "noahmp_leaves.cu").read_text(encoding="ascii")
+                  + "\n" + (KERNEL_DIR / "noahmp_btran_options.cuh").read_text(
+                      encoding="ascii"))
+        kernel = compile_generated_slab_kernel(
+            source, "noahmp_root_fractions_selected")
+        _SELECTED_ROOT_FRACTION_KERNELS[key] = kernel
+    kernel((_blocks(n),), (THREADS,),
+           (*inputs, roots, np.int32(n), np.float32(mpe), total, fractions))
+    return total, fractions
+
+
+_SELLERS_RESISTANCE_KERNELS = {}
+
+
+def sellers_surface_resistance(water, smcmax, fsno, *, opt_rsf):
+    """Native Sellers/adjusted Sellers resistance, before dry/urban caps.
+
+    BEVAP has a lower bound of zero and no upper bound in WRF. Snow cover
+    blends resistance linearly. The harmonic RSF4 blend is a separate branch.
+    """
+    if type(opt_rsf) is not int or opt_rsf not in (2, 3):
+        raise ValueError("Sellers opt_rsf must be scalar int 2 or 3")
+    import cupy as cp
+    from woof.core.kernels import _preamble
+    from woof.core.noahmp_kernel_sources import KERNEL_DIR
+
+    arrays = cp.broadcast_arrays(*(cp.asarray(v, dtype=cp.float32)
+                                   for v in (water, smcmax, fsno)))
+    output = cp.empty(arrays[0].shape, dtype=cp.float32)
+    n = int(output.size)
+    if not n:
+        return output
+    key = (cp.cuda.runtime.getDevice(), opt_rsf)
+    kernel = _SELLERS_RESISTANCE_KERNELS.get(key)
+    if kernel is None:
+        coefficient = "4.225f" if opt_rsf == 2 else "6.0f"
+        source = (_preamble() + f"#define NMP_SELLERS_COEFF {coefficient}\n"
+                  + (KERNEL_DIR / "noahmp_leaves.cu").read_text(encoding="ascii")
+                  + "\n" + (KERNEL_DIR / "noahmp_sellers_options.cuh").read_text(
+                      encoding="ascii"))
+        kernel = compile_generated_slab_kernel(source, "noahmp_sellers_resistance")
+        _SELLERS_RESISTANCE_KERNELS[key] = kernel
+    kernel((_blocks(n),), (THREADS,),
+           (*(cp.ascontiguousarray(v) for v in arrays), output, np.int32(n)))
+    return output

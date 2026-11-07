@@ -23,7 +23,7 @@ DATA = Path(__file__).resolve().parents[1] / "woof" / "data" / "spp"
 # The native captures ship in the recast-woof-data companion since 2.8.7
 # (woof.data_assets.COMPANION_TREES); the ULP receipts stay in DATA.
 NATIVE_ZIP = "spp/native-wrf461.zip"
-# Rebuilt by lane/verify-spp-stochastic on the program's oracle platform
+# Rebuilt by development branch on the program's oracle platform
 # (gfortran 13.3.0, glibc 2.39, the toolchain of every other WRF column
 # oracle) with tools/spp_wrf461_oracle/build.py and package.py.  The previous
 # archive (9bc14a88...) was built with gfortran 15.2.0 on glibc 2.43; its
@@ -90,14 +90,14 @@ def _gate(label, actual, expected):
         assert np.isfinite(actual[name]).all(), (label, name)
     # Every MYNN PBL label is 0 ULP against the capture rebuilt on the oracle
     # platform, CPU and GPU, default and strict arithmetic (measured on W1,
-    # RTX PRO 6000, by lane/verify-spp-stochastic).  The budgets this gate
+    # RTX PRO 6000, by development branch).  The budgets this gate
     # used to read for them measured the old capture's foreign libm words,
     # so a regression of up to 18 ULP in the SPP cloud diagnosis could pass.
     if not label.split(".", 1)[1].startswith("surface"):
         assert {name: value for name, value in metrics.items() if value} == {}, label
         return
     # The MYNN surface layer keeps one measured bound per element: on this
-    # base its kernel is not yet WRF-exact.  lane/verify-mynn-sfclay-wrf461
+    # base its kernel is not yet WRF-exact.  development branch
     # makes it 0 ULP with spp_pbl=1 on the same platform; this budget
     # retires when that fix lands (woof/data/spp/*-ulp.json "why").
     with np.load(DATA / (label.split(".",1)[0] + "-ulp.npz"), allow_pickle=False) as budget:
@@ -164,7 +164,7 @@ def test_mynn_driver_spp_native(oracle, backend, step):
 
 
 def test_mynn_surface_spp_native(oracle, backend):
-    # The gpu.surface budget was re-measured by lane/verify-mynn-sfclay-wrf461
+    # The gpu.surface budget was re-measured by development branch
     # (gpu-ulp.json "gpu.surface_remeasured"; no other label moved).  This
     # capture was built with gfortran 15.2.0 on glibc 2.43; on the program's
     # oracle platform (gfortran 13.3.0, glibc 2.39) the CUDA kernel is 0 ULP
@@ -201,7 +201,7 @@ def test_spp_specializations_leave_default_compiler_sources_frozen():
     from woof.core.kernels import module_source
     from woof.core.spp_kernel_sources import specialized_source
     pins = {
-            # RE-PINNED for 2.9.0 (lane/290-A5-fixes 0e7c7f03d, exact chain
+            # RE-PINNED for 2.9.0 (development branch 0e7c7f03d, exact chain
             # 7cdf42951): CUP_gf keeps descending after a valid
             # downdraft-origin adjustment, as WRF does; the same change
             # re-pinned gf in tests/test_kernel_source_freeze_per_module.py.
@@ -209,17 +209,19 @@ def test_spp_specializations_leave_default_compiler_sources_frozen():
             # RE-PINNED for 2.9.1 (the WRF exact chain): float32-widened GFS
             # constants, the PBL closure bound, the lower-face W and the FMA exp
             # form are default-on GF corrections. Previously ada52295.
-            # Re-pinned for the WOOF 1.0.0 text scrub: comments only (punctuation, host
-            # labels), proven equal with comments stripped; the preprocessor drops
-            # comments, so the compiled binary does not move.
-            "gf": "def595abad6b216b052a38c05bceab230fbe9018467774b92adfc354e035cb3f",
+            # RE-PINNED for 3.0.0, default compiled program unchanged:
+            # 6d79b6e9c5d dropped gf.cu's GPUWM_WRF_EXACT-only normalizer
+            # branch and reworded its header comment (the default #else arm
+            # is the retained code), and 51bb93111ee reworded two comments in
+            # glibc_flt32.cuh. Previously b5b0d38c.
+            "gf": "704111403acd51eeae88e0715108bf8633cf3830f8a606d12cfec721bc81aa19",
             # Accepted staging adds source-selected GSD41 entry points.
             # This pins the actual default compiler string and checks that
             # constructing an SPP specialization leaves that string intact.
             # It does not claim unchanged default PTX from the older source.
-            # P23 (lane/ec-mynn-p23) adds MYNN_GSD41 arms only; the default
+            # P23 (development branch) adds MYNN_GSD41 arms only; the default
             # PTX is byte-identical (test_mp8_frozen's mynn_pbl row).
-            # RE-PINNED by lane/mynn-exact (the YSU recipe on MYNN), MOVES ANSWERS
+            # RE-PINNED by development branch (the YSU recipe on MYNN), MOVES ANSWERS
             # for bl_pbl_physics = 5: --fmad=false, glibc 2.39 expf/log10f and the
             # FMA-ifunc logf/powf/expf in the unit, fdlibm tanhf at every site;
             # under MYNN_GSD41 the fork's a2den algebra and 0.608 thetav.  Reading
@@ -233,15 +235,21 @@ def test_spp_specializations_leave_default_compiler_sources_frozen():
             # test_mp8_frozen.FROZEN_MODULE_DIGESTS. This does not establish new PTX or
             # numerical replay identity for the assembled MYNN source.
             # Slimming recorder follows the reviewed R1 export-arm fold.
-            "mynn_pbl": '1f5e6f64a206f602e4281d0d38bc8295b897a13050826f62d487ff5f0e61d871',
+            # RE-PINNED for 3.0.0, synchronized with test_mp8_frozen:
+            # 6d79b6e9c5d adds MYNN_GSD41-only DMP cloud-base outputs and
+            # GRIMS diagnostics, off in the default string. Previously
+            # 1f5e6f64.
+            "mynn_pbl": 'cf6678981492e29c5d58e8c269f6cf247d5b00118cffa47e97d71014cd471342',
             # Match test_mp8_frozen's accepted staging source: selectable
             # GSL WRF 3.9 stability solver plus explicitly rounded ordinary
             # mynn_table interpolation. The SPP construction remains inert
             # for the default compiler string; the table source has changed.
-            # lane/cap-waves-couple (8cd59d74c15) adds the OCEAN_WAVE_ROUGHNESS
+            # development branch (8cd59d74c15) adds the OCEAN_WAVE_ROUGHNESS
             # block, off in the default string; synchronized with
             # test_mp8_frozen.FROZEN_MODULE_DIGESTS.
-            "mynn_surface": "5b294157fb4224d0aa2ce11ce4856dafeb9e9f0a0e8145694dd6e0c48acfe64f"}
+            # RE-PINNED for 3.0.0: 51bb93111ee reworded one comment.
+            # Previously 5b294157.
+            "mynn_surface": "a9abd5020db8a204e3f538e9af69ebb903c2b329c56c258d5286bfdf18cc5ddf"}
     for name, pin in pins.items():
         baseline = module_source(name)
         assert hashlib.sha256(baseline.encode()).hexdigest() == pin

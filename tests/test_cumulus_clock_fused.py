@@ -11,6 +11,7 @@ held volumes whose columns do and do not expire.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from _run_config_fake import run_config_fake
 
 import numpy as np
 import pytest
@@ -89,17 +90,18 @@ def _written(cp, driver):
 
 @pytest.mark.gpu
 @requires_gpu
+@pytest.mark.parametrize("scheme", [1, 99])
 @pytest.mark.parametrize("land", [False, True])
 @pytest.mark.parametrize("coupled", [_COUPLED, ("rtheta", "rqv", "rqc"), ()])
 @pytest.mark.parametrize("dt", [15.0, 24.0, 60.0])
 def test_fused_clock_is_bitwise_the_array_expressions(monkeypatch, land,
-                                                       coupled, dt):
+                                                       coupled, dt, scheme):
     cp = pytest.importorskip("cupy")
     from woof.core import cumulus_clock
 
     rng = np.random.default_rng(20260930)
     inputs = _inputs(rng, 37, 53, 7, dt)
-    cfg = SimpleNamespace(dt=dt, clock_dt=0.0)
+    cfg = run_config_fake(dt=dt, clock_dt=0.0, cu_physics=scheme, cudt_minutes=5.0)
     state = SimpleNamespace(elapsed_seconds=0.0)
 
     fused = _driver(cp, *inputs, land=land, coupled=coupled)

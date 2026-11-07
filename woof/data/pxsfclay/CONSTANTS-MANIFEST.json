@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "assets": [
+    {
+      "filename": "constants.json",
+      "bytes": 1486,
+      "sha256": "98383ff4ad9f694dde50b98482778d3abfe9eec155f8061253a4730f49f015fc"
+    }
+  ],
+  "authority": [
+    "phys/module_sf_pxsfclay.F:5-15",
+    "share/module_model_constants.F",
+    "gpuwm/core/kernels/noahmp_fluxprep.cu:306-355"
+  ]
+}

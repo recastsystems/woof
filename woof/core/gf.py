@@ -375,7 +375,8 @@ def gf_tile_columns(fn, ncol: int) -> int:
     try:
         from cupy_backends.cuda.api import driver
 
-        resident = driver.occupancyMaxActiveBlocksPerMultiprocessor(
+        from woof.backend import active_blocks_per_multiprocessor
+        resident = active_blocks_per_multiprocessor(
             fn.kernel.ptr, GF_BLOCK, 0)
         # Never launch more blocks than the card can hold resident: those
         # columns would wait while their workspace slots stayed allocated.
@@ -495,18 +496,40 @@ class GrellFreitas:
                 raise ValueError(
                     f"driver {name} must be [nz, ny, nx]={nz, ny, nx}, "
                     f"got {lane.shape}")
+            # Moist-theta RTHFTEN is already dry and uncoupled: the
+            # RK epilogue converts it before the microphysics adjustment.
             owned = {"gf_rthdynten": "rthften", "gf_rqvdynten": "rqvften"}
             if (WRF_EXACT and name in owned
                     and lane is getattr(state, owned[name], None)
-                    and cfg.cu_physics == 3):
+                    and cfg.cu_physics == 3
+                    and not (name == "gf_rthdynten" and cfg.use_theta_m)):
                 if forcing_mass is None:
-                    from woof.state_serialization_contract import WRF_MUTS_SLOT
-                    mut = state.existing_scratch(WRF_MUTS_SLOT)
+                    from woof.state_serialization_contract import carried_wrf_muts
+                    mut = carried_wrf_muts(state)
                     if mut is None:
                         mut = state.total_mu()
                     forcing_mass = (state.c1h[:, None, None] * mut[None]
                                     + state.c2h[:, None, None])
-                return cols(lane / forcing_mass)
+                lane = lane / forcing_mass
+            if (name == "gf_rthdynten" and getattr(state, "use_theta_m", 0)
+                    and not (cfg.cu_physics == 3
+                             and lane is getattr(state, "rthften", None))):
+                from woof.core.theta_m_physics import dry_cumulus_theta_tendency
+                vapour = getattr(self._driver, "gf_rqvdynten", None)
+                if vapour is None:
+                    vapour = cp.zeros_like(lane)
+                elif (WRF_EXACT and cfg.cu_physics == 3
+                      and vapour is getattr(state, "rqvften", None)):
+                    if forcing_mass is None:
+                        from woof.state_serialization_contract import WRF_MUTS_SLOT
+                        mut = state.existing_scratch(WRF_MUTS_SLOT)
+                        if mut is None:
+                            mut = state.total_mu()
+                        forcing_mass = (state.c1h[:, None, None] * mut[None]
+                                        + state.c2h[:, None, None])
+                    vapour = vapour / forcing_mass
+                lane = lane.copy()
+                dry_cumulus_theta_tendency(state, lane, vapour)
             return cols(lane)
 
         lvin = cp.empty((n, len(_IN_LEV), nz), dtype=DTYPE)
@@ -625,10 +648,322 @@ class GrellFreitas:
             sca[:, _OUT_SCA.index("raincv")].reshape(ny, nx))
         _mask_output_support(rainc, cfg)
 
+        if cfg.cu_rad_feedback:
+            from woof.core.g3 import run_g3_diag
+            from woof.core.physics_inventory import cumulus_state_layout
+            for key, (field_shape, dtype) in cumulus_state_layout(cfg).items():
+                if key not in fields:
+                    fields[key] = cp.zeros(field_shape, dtype=dtype)
+            averages = {key:fields[key] for key in
+                ('gd_cloud_a','qc_cu','gd_cloud2_a','qi_cu','gd_cldfr','raincv_a','raincv_b')}
+            averages['clock'] = fields['g3_diag_clock']
+            run_g3_diag(averages, cloud=grid(_OUT_LEV.index('gdc')),
+                ice=grid(_OUT_LEV.index('gdc2')), rain=rainc,
+                temperature=atmosphere['temperature'], pressure=atmosphere['pressure'],
+                qv=atmosphere['qv'], qc=atmosphere['qc'], qi=atmosphere['qi'],
+                fqi=int(getattr(state,'qi',None) is not None),
+                dt=float(_model_clock_dt(cfg)), curr_secs=float(state.elapsed_seconds),
+                avg_minutes=float(cfg.convtrans_avglen_m), adaptive=cfg.use_adaptive_time_step)
+
         return _native_result_type()(
             owner=self,
             rthcuten=rthcuten, rqvcuten=rqvcuten, rqccuten=rqc,
-            rqicuten=rqi, rainc=rainc, history_rates=history_rates)
+            rqicuten=rqi, rainc=rainc, history_rates=history_rates,
+            # GFDRV's native bounds include its .001 level marker.
+            cloud_base=(sca[:, _OUT_SCA.index('hbot')].reshape(ny, nx)
+                        if 99 in (cfg.ra_lw_physics, cfg.ra_sw_physics) else None),
+            cloud_top=(sca[:, _OUT_SCA.index('htop')].reshape(ny, nx)
+                       if 99 in (cfg.ra_lw_physics, cfg.ra_sw_physics) else None))
 
 
-__all__ = ["GrellFreitas"]
+# ===========================================================================
+# Grell-Devenyi ensemble, cu_physics = 93
+# ===========================================================================
+# The older Grell ensemble (WRF v4.6.1 phys/module_cu_gd.F, GRELLDRV) lives
+# in this module beside Grell-Freitas because it is the same family -- the
+# maxiens/maxens/maxens2/maxens3 ensemble, the same advective/radiative/PBL
+# forcing lanes, the same cu_diag fields -- and a scheme is admitted by its
+# registry row and the cumulus dispatch table, not by an adapter file of its
+# own.  The kernel is woof/core/kernels/gd.cu, graded word for word against
+# WRF's own compiled module_cu_gd.o by tests/test_gd_cu93.py.
+#
+# What this seam hands the kernel, against WRF's cumulus_driver call
+# (module_cumulus_driver.F:1095-1130):
+#   * W is grid%w_2, the STAGGERED vertical velocity: GRELLDRV reads w(i,k,j)
+#     for k = kts..ktf, the face below mass level k (omeg = -g*rho*w).  So
+#     this adapter passes state.w[:-1], not the mass-level average the GF
+#     adapter uses (its recorded deviation 3 does not apply here).
+#   * P and P8W are p_hyd and p_hyd_w: atmosphere["pressure"] and
+#     atmosphere["p_interface"] are exactly those (physics.py phy_prep).
+#   * RTHFTEN/RQVFTEN are the dycore's pure advective rates; GRELLDRV folds
+#     RTHRATEN + RTHBLTEN (times pi) and RQVBLTEN in itself
+#     (module_cu_gd.F:219-224), which the kernel does, so the export stays
+#     pure advection exactly as for GF.
+#   * GSW is the radiation-written net surface shortwave (cap_max is 25 hPa
+#     where gsw < 1, i.e. at night); XLAND is 1 land / 2 water.
+#   * The edge band: GRELLDRV writes no convection in the four outermost
+#     mass columns of a non-periodic domain (module_cu_gd.F:181-194,
+#     310-327).  The band is derived from the call's own (ny, nx).  On a
+#     tile-streamed run that is the tile buffer, and it is still right: a
+#     clamped edge tile's buffer edge IS the domain edge, and an interior
+#     seam's band columns are halo, which the scatter replaces with the
+#     neighbour's interior (the halo radius is far wider than 4).
+#
+# Cadence and rain follow WRF's driver: the scheme runs when the cumulus
+# step is due (any cudt -- GD has no NCA and WRF lets cudt hold its rates),
+# its tendencies and PRATEC persist between calls, and RAINC accumulates
+# PRATEC*DT every step (module_physics_addtendc.F:2141).  That is the
+# driver's persistent-PRATEC contract with an all-zero NCA: every column is
+# eligible on every due call and no hold ever expires.
+
+GD_BLOCK = 64
+#: The no-FTZ route: NVRTC directly, without CuPy's appended -ftz=true, and
+#: without FMA contraction.  The kernel spells every operation with an _rn
+#: intrinsic anyway; this keeps subnormal intermediates (small moisture
+#: tendencies, the closure ensemble's tails) as gfortran keeps them.
+GD_MODULE_OPTIONS = ("-std=c++17", "-fmad=false", "--ftz=false")
+GD_MODULE_KEY = "woof.core.kernels:gd"
+#: gd.cu's GD_NSLOT and GD_ENS: level slots and ensemble words per column.
+GD_NSLOT = 76
+GD_ENS = 144
+#: gd.cu's input/output enum orders.
+GD_IN_LEV = ("u", "v", "w", "t", "qv", "p", "pi", "rho", "rthften",
+             "rqvften", "rthraten", "rthblten", "rqvblten")
+GD_APR = ("apr_gr", "apr_w", "apr_mc", "apr_st", "apr_as", "apr_capma",
+          "apr_capme", "apr_capmi")
+GD_IN_SCA = ("p8w1", "ht", "xland", "gsw", "dt", "htop", "hbot") + GD_APR
+GD_OUT_LEV = ("rthcuten", "rqvcuten", "rqccuten", "rqicuten", "gd_cloud",
+              "gd_cloud2")
+GD_OUT_SCA = ("raincv", "pratec", "htop", "hbot") + GD_APR + ("pret",)
+GD_OUT_ISCA = ("ktop_deep", "kbcon", "ktop", "ierr", "k22")
+#: WRF's module_model_constants as the cumulus driver hands them to
+#: GRELLDRV: XLV, CP = 7*R_D/2, G, R_V (all float32).
+from woof.core.constants import CP as _GD_CP, G as _GD_G, RV as _GD_RV, XLV as _GD_XLV
+
+GD_XLV = np.float32(_GD_XLV)
+GD_CP = np.float32(_GD_CP)
+GD_G = np.float32(_GD_G)
+GD_RV = np.float32(_GD_RV)
+#: Blocks per SM a tile is sized for (the GF measurement; same shape).
+GD_TILE_BLOCKS_PER_SM = 8
+
+
+def gd_module_source() -> str:
+    """The exact source NVRTC compiles for gd.cu (preamble + math header)."""
+    from woof.core.kernels import module_source
+
+    return module_source("gd")
+
+
+def _gd_module():
+    """gd.cu through the shared loader's cached no-FTZ route."""
+    from woof.core.kernels import load_module
+
+    return load_module("gd")
+
+
+def gd_workspace_floats(nz: int, columns: int) -> int:
+    """Workspace floats for ``columns`` columns in flight at ``nz`` levels."""
+    blocks = (int(columns) + GD_BLOCK - 1) // GD_BLOCK
+    return blocks * GD_BLOCK * (GD_NSLOT * (int(nz) + 2) + 2 * GD_ENS)
+
+
+def gd_workspace_bytes(nz: int, columns: int) -> int:
+    return 4 * gd_workspace_floats(nz, columns)
+
+
+def gd_tile_columns(ncol: int, sms: int) -> int:
+    """Columns kept in flight: enough to fill the card, no more."""
+    return int(min(int(ncol), int(sms) * GD_TILE_BLOCKS_PER_SM * GD_BLOCK))
+
+
+def gd_band_flags(ny: int, nx: int, periodic_x: bool,
+                  periodic_y: bool) -> np.ndarray:
+    """GRELLDRV's write window per mass column, (ny, nx) int32.
+
+    2 inside both bands, 1 inside the j band but in the i edge band (WRF
+    writes ktop_deep and zero tendencies there), 0 in the j edge band (WRF
+    writes nothing).  ibeg = ids+4, iend = ide-5 unless periodic
+    (module_cu_gd.F:181-194): with ide = nx+1, 0-based columns 4..nx-5.
+    """
+    i = np.arange(int(nx))
+    j = np.arange(int(ny))
+    iin = (np.ones(nx, bool) if periodic_x
+           else (i >= 4) & (i <= int(nx) - 5))
+    jin = (np.ones(ny, bool) if periodic_y
+           else (j >= 4) & (j <= int(ny) - 5))
+    return np.where(jin[:, None], np.where(iin[None, :], 2, 1),
+                    0).astype(np.int32)
+
+
+def gd_launch(lvin, scin, iin, *, nz: int, wrf_closure_count: int = 1,
+              ens=None):
+    """Run gd_grelldrv over every column of packed inputs; returns outputs.
+
+    ``lvin`` (ncol, 13, nz), ``scin`` (ncol, 15) float32 and ``iin``
+    (ncol, 2) int32 device arrays in gd.cu's orders.  ``wrf_closure_count``
+    = 1 reproduces WRF's closure-count arithmetic and is the forecast
+    default. The corrected-count experiment is available only to the oracle
+    through an explicit zero argument.
+    """
+    import cupy as cp
+
+    ncol = int(lvin.shape[0])
+    lev = cp.empty((ncol, len(GD_OUT_LEV), nz), dtype=DTYPE)
+    sca = cp.empty((ncol, len(GD_OUT_SCA)), dtype=DTYPE)
+    isc = cp.empty((ncol, len(GD_OUT_ISCA)), dtype=cp.int32)
+    fn = _gd_module().get_function("gd_grelldrv")
+    sms = cp.cuda.Device().attributes["MultiProcessorCount"]
+    tile = max(1, gd_tile_columns(ncol, sms))
+    ws = cp.empty(gd_workspace_floats(nz, tile), dtype=DTYPE)
+    null = np.uintp(0)
+    for lo in range(0, ncol, tile):
+        hi = min(lo + tile, ncol)
+        fn((((hi - lo) + GD_BLOCK - 1) // GD_BLOCK,), (GD_BLOCK,),
+           (lvin[lo:hi], scin[lo:hi], iin[lo:hi], lev[lo:hi], sca[lo:hi],
+            isc[lo:hi], null if ens is None else ens[lo:hi], ws,
+            GD_XLV, GD_CP, GD_G, GD_RV, np.int32(wrf_closure_count),
+            np.int32(hi - lo), np.int32(nz)))
+    del ws
+    return lev, sca, isc
+
+
+class GrellDevenyi:
+    """Stateless-per-call ``cu_physics=93`` callable for :class:`PhysicsDriver`.
+
+    Returns the driver's persistent-PRATEC result (``pratec`` with an
+    all-zero ``nca_seconds``), so held rates and RAINC accumulation follow
+    WRF's cumulus driver at any cudt.  ``cu_diag`` carries the per-call
+    cu_diag fields GRELLDRV writes -- GD_CLOUD, GD_CLOUD2, ktop_deep,
+    HTOP/HBOT and the eight APR_* closure-family precipitation accumulators
+    -- for the cu_diag consumers. All views belong to driver.fields, whose
+    inventory covers restart and checkpoint. Diagnostics remain local to
+    each nest, as in the WRF Registry.
+    """
+
+    def __init__(self):
+        self._driver = None
+
+    @property
+    def cu_diag(self):
+        fields = {} if self._driver is None else self._driver.fields
+        if "gd_lev" not in fields:
+            return {}
+        return {
+            "gd_cloud": fields["gd_lev"][4],
+            "gd_cloud2": fields["gd_lev"][5],
+            "htop": fields["gd_sfc"][2], "hbot": fields["gd_sfc"][3],
+            "ktop_deep": fields["gd_isfc"][0],
+            **{name: fields["gd_sfc"][4 + n] for n, name in enumerate(GD_APR)},
+        }
+
+    def bind_driver(self, driver) -> None:
+        self._driver = driver
+
+    def release(self) -> int:
+        """Drop the driver back-reference (the GF cycle; nothing to free)."""
+        self._driver = None
+        return 0
+
+    def __call__(self, *, atmosphere, fields, state, cfg, **_ignored):
+        import cupy as cp
+
+        from woof.core.physics import CumulusResult
+
+        nz, ny, nx = state.p.shape
+        ncol = ny * nx
+
+        def cols(a):
+            return cp.asarray(a, dtype=DTYPE).reshape(nz, ncol).T
+
+        zeros_lev = cp.zeros((ncol, nz), dtype=DTYPE)
+
+        def held_lane(name):
+            lane = (None if self._driver is None
+                    else getattr(self._driver, name, None))
+            if lane is None:
+                return zeros_lev
+            if lane.shape != (nz, ny, nx):
+                raise ValueError(
+                    f"driver {name} must be [nz, ny, nx]={nz, ny, nx}, "
+                    f"got {lane.shape}")
+            return cols(lane)
+
+        if self._driver is not None:
+            total = getattr(self._driver, "radiation_theta_forcing", None)
+            rthraten = (total() if total is not None else
+                        self._driver.rthratenlw + self._driver.rthratensw)
+        else:
+            rthraten = cp.zeros((nz, ny, nx), dtype=DTYPE)
+        lvin = cp.empty((ncol, len(GD_IN_LEV), nz), dtype=DTYPE)
+        lvin[:, 0, :] = cols(atmosphere["u"])
+        lvin[:, 1, :] = cols(atmosphere["v"])
+        lvin[:, 2, :] = cols(state.w[:-1])
+        lvin[:, 3, :] = cols(atmosphere["temperature"])
+        lvin[:, 4, :] = cols(atmosphere["qv"])
+        lvin[:, 5, :] = cols(atmosphere["pressure"])
+        lvin[:, 6, :] = cols(atmosphere["exner"])
+        lvin[:, 7, :] = cols(atmosphere["rho"])
+        lvin[:, 8, :] = held_lane("gf_rthdynten")
+        lvin[:, 9, :] = held_lane("gf_rqvdynten")
+        lvin[:, 10, :] = cols(rthraten)
+        lvin[:, 11, :] = held_lane("gf_rthblten")
+        lvin[:, 12, :] = held_lane("gf_rqvblten")
+
+        diag = self.cu_diag
+        if not diag or diag["htop"].shape != (ny, nx):
+            diag = {name: cp.zeros((ny, nx), dtype=DTYPE) for name in GD_APR}
+            diag["htop"] = cp.zeros((ny, nx), dtype=DTYPE)
+            diag["hbot"] = cp.zeros((ny, nx), dtype=DTYPE)
+        clock_dt = DTYPE(_model_clock_dt(cfg))
+        gsw = fields.get("gsw")
+        scin = cp.empty((ncol, len(GD_IN_SCA)), dtype=DTYPE)
+        scin[:, 0] = atmosphere["p_interface"][0].reshape(ncol)
+        scin[:, 1] = state.ht.reshape(ncol)
+        scin[:, 2] = fields["xland"].reshape(ncol)
+        scin[:, 3] = (0.0 if gsw is None else gsw.reshape(ncol))
+        scin[:, 4] = clock_dt
+        scin[:, 5] = diag["htop"].reshape(ncol)
+        scin[:, 6] = diag["hbot"].reshape(ncol)
+        for n, name in enumerate(GD_APR):
+            scin[:, 7 + n] = diag[name].reshape(ncol)
+        iin = cp.empty((ncol, 2), dtype=cp.int32)
+        iin[:, 0] = fields["gd_band"].reshape(ncol)
+        has_qi = getattr(state, "qi", None) is not None
+        iin[:, 1] = np.int32(1 if has_qi else 0)
+
+        lev, sca, isc = gd_launch(lvin, scin, iin, nz=nz)
+
+        def grid(j):
+            return cp.ascontiguousarray(lev[:, j, :].T.reshape(nz, ny, nx))
+
+        def surf(j, a=sca):
+            return cp.ascontiguousarray(a[:, j].reshape(ny, nx))
+
+        rqi = grid(3) if has_qi else None
+        fields["gd_lev"][...] = lev.transpose(1, 2, 0).reshape(6, nz, ny, nx)
+        fields["gd_sfc"][...] = sca.T.reshape(len(GD_OUT_SCA), ny, nx)
+        fields["gd_isfc"][...] = isc.T.reshape(len(GD_OUT_ISCA), ny, nx)
+        from woof.core.g3 import run_g3_diag
+        averages = {key: fields[key] for key in
+            ('gd_cloud_a', 'qc_cu', 'gd_cloud2_a', 'qi_cu', 'gd_cldfr',
+             'raincv_a', 'raincv_b')}
+        averages['clock'] = fields['g3_diag_clock']
+        shape = (nz, ny, nx)
+        run_g3_diag(averages,
+            cloud=self.cu_diag['gd_cloud'], ice=self.cu_diag['gd_cloud2'],
+            rain=surf(0), temperature=atmosphere['temperature'],
+            pressure=atmosphere['pressure'], qv=atmosphere['qv'],
+            qc=atmosphere['qc'],
+            qi=atmosphere['qi'] if has_qi else cp.zeros(shape, dtype=DTYPE),
+            fqi=int(has_qi), dt=float(_model_clock_dt(cfg)),
+            curr_secs=float(state.elapsed_seconds),
+            avg_minutes=float(cfg.convtrans_avglen_m),
+            adaptive=cfg.use_adaptive_time_step)
+        return CumulusResult(
+            rthcuten=grid(0), rqvcuten=grid(1), rqccuten=grid(2),
+            rqicuten=rqi, pratec=surf(1),
+            nca_seconds=cp.zeros((ny, nx), dtype=DTYPE))
+
+
+__all__ = ["GrellFreitas", "GrellDevenyi"]

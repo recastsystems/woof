@@ -1,0 +1,206 @@
+{
+  "wrf": {
+    "tag": "v4.7.1",
+    "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+    "license": "public domain",
+    "notice": "LICENSE-WRF.txt"
+  },
+  "sources": [
+    {
+      "path": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "bytes": 1027,
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "bytes": 437707,
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a"
+    },
+    {
+      "path": "run/README.namelist",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/run/README.namelist",
+      "bytes": 163060,
+      "sha256": "3d526a45f0184dbcb8ebecfcaa637ea9a0853992bf11bb79e8c3d77a3a97ea67"
+    },
+    {
+      "path": "phys/module_diag_nwp.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_diag_nwp.F",
+      "bytes": 30586,
+      "sha256": "b4b5a6a713fd525a2887e192bee176b17945f2a3c313758f98cbebb08dbd03f1"
+    },
+    {
+      "path": "phys/module_diag_afwa.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_diag_afwa.F",
+      "bytes": 116802,
+      "sha256": "c1e87739334987c20b143cd1136f9614040f475fb746feee96ee3e304ded0835"
+    },
+    {
+      "path": "phys/module_diag_pld.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_diag_pld.F",
+      "bytes": 12460,
+      "sha256": "c2f8ba637909529ba33137858501cd9dc79d34b98461b764e0e5b94c02c48f2f"
+    },
+    {
+      "path": "phys/module_diag_zld.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_diag_zld.F",
+      "bytes": 8633,
+      "sha256": "cbf1332046d120b33e2e47f4862758d5b59fe85764273556c4d42ede1d096952"
+    },
+    {
+      "path": "phys/module_diag_misc.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_diag_misc.F",
+      "bytes": 34775,
+      "sha256": "edf7026b721a1836ebafca02517e979b1a924203e610ff54f6720c23dff818c2"
+    },
+    {
+      "path": "phys/module_diag_refl.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_diag_refl.F",
+      "bytes": 2906,
+      "sha256": "bf750f2a552e525496ef960c51534c79ba8ba10695bb122ca263008387f9e23e"
+    },
+    {
+      "path": "phys/module_diagnostics_driver.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_diagnostics_driver.F",
+      "bytes": 74592,
+      "sha256": "4422264f6382a30d3df76fb1620d40e2dfc5405becca26e6f07159bfcb57cb07"
+    },
+    {
+      "path": "Registry/registry.diags",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/registry.diags",
+      "sha256": "c0c648a5c1f15008431ca0fe5f7928255ecd0c74e51f4bd9d361e741dbade3d4",
+      "bytes": 5467
+    },
+    {
+      "path": "Registry/registry.afwa",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/registry.afwa",
+      "sha256": "ea7861b2ebe0001144ae5a6f5542e5b8e8d7b4f028a2564cc9986187a994d372",
+      "bytes": 14061
+    },
+    {
+      "path": "Registry/registry.trad_fields",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/registry.trad_fields",
+      "sha256": "f90ccd0c06bfbf00b1f117e65c9517b4da9cedd37f3834b9d9ce68030367dfd1",
+      "bytes": 2141
+    },
+    {
+      "path": "Registry/Registry.EM",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM",
+      "sha256": "2bcaf5871914ad7f4683f2bc0a5f8ada5b1199915f3263d1e4c5b1d3986bdff8",
+      "bytes": 4724
+    },
+    {
+      "path": "share/module_model_constants.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/share/module_model_constants.F",
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "bytes": 8280
+    },
+    {
+      "path": "Registry/registry.em_shared_collection",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/Registry/registry.em_shared_collection",
+      "sha256": "4182c38d265289b6a82c6da18c6e4c1365a3f0e3fda80e383e7fe5eccec9ae11",
+      "bytes": 820
+    },
+    {
+      "path": "Registry/registry.sbm",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/Registry/registry.sbm",
+      "sha256": "9882f8612c30111c5cee9ae50a7d379fd5154c6c939e6c37bde040137fbcf288",
+      "bytes": 47723
+    },
+    {
+      "path": "phys/module_diag_functions.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_diag_functions.F",
+      "sha256": "2a0fef330fe08eb0598e4521467a04c55adf1f884ebce8ffa9ef1210e2d8eb3e",
+      "bytes": 72191
+    },
+    {
+      "path": "Registry/registry.io_boilerplate",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/Registry/registry.io_boilerplate",
+      "sha256": "2b0a6877b10c6ebdd4d502d098ce3f5dabfcf792db3ecb2cb69bab7903922270",
+      "bytes": 14914
+    },
+    {
+      "path": "tools/registry.c",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/tools/registry.c",
+      "sha256": "e1183e7de7ece5364feb6dff27e9fd6b82d5d764b986d08bc09c233ab65e125a",
+      "bytes": 9305
+    },
+    {
+      "path": "tools/gen_streams.c",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/tools/gen_streams.c",
+      "sha256": "8e625e04b511d5f1f5bbaec10dc29b9e3cb85ecfcc0cfc25e9362a73451197ce",
+      "bytes": 32514
+    },
+    {
+      "path": "dyn_em/module_big_step_utilities_em.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/dyn_em/module_big_step_utilities_em.F",
+      "bytes": 233867,
+      "sha256": "bd177b6b5ba7949cf9e694d7ad654fd9ae2f07d39d85802f0716c5318889a815"
+    },
+    {
+      "path": "dyn_em/module_diffusion_em.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/dyn_em/module_diffusion_em.F",
+      "bytes": 302368,
+      "sha256": "a7d4570c97e51c635e86a0dbd628c6846457ac5b93d5a7af798b118c7d8d2d54"
+    },
+    {
+      "path": "dyn_em/start_em.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/dyn_em/start_em.F",
+      "sha256": "4b6c98a06fb2b2c4472af73415099e311502747dc5543d9e9b1323497d83ddb4",
+      "bytes": 123365
+    },
+    {
+      "path": "share/module_check_a_mundo.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/share/module_check_a_mundo.F",
+      "sha256": "c66b3ef802da58e2a453b62fc00a04542c66ea93d752aa49bbd981fe00d40784",
+      "bytes": 179370
+    },
+    {
+      "path": ".gitmodules",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/.gitmodules",
+      "repository": "wrf-model/WRF",
+      "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "local_path": "upstream/.gitmodules",
+      "bytes": 281,
+      "sha256": "9cc82071604517b0714a8b9aafddd42191618ff5a3f3dd52df282643f8b68a44",
+      "license": "WRF public-domain distribution at f52c197ed39d12e087d02c50f412d90d418f6186; no file-specific restriction or separate licence file in the distributed Noah-MP revision"
+    },
+    {
+      "path": "README.md",
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/e5c0859874407859936739e8be8741f9aed369ee/README.md",
+      "repository": "NCAR/noahmp",
+      "commit": "e5c0859874407859936739e8be8741f9aed369ee",
+      "local_path": "upstream/noahmp/README.md",
+      "bytes": 232,
+      "sha256": "bb734f7c3dd396e8d16d4d80d55d0511ed6019290a477bad0398f52ccbf802c2",
+      "license": "WRF public-domain distribution at f52c197ed39d12e087d02c50f412d90d418f6186; no file-specific restriction or separate licence file in the distributed Noah-MP revision"
+    },
+    {
+      "path": "drivers/wrf/module_sf_noahmpdrv.F",
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/e5c0859874407859936739e8be8741f9aed369ee/drivers/wrf/module_sf_noahmpdrv.F",
+      "repository": "NCAR/noahmp",
+      "commit": "e5c0859874407859936739e8be8741f9aed369ee",
+      "local_path": "upstream/noahmp/module_sf_noahmpdrv.F",
+      "bytes": 213629,
+      "sha256": "29f16622740d7388a17ff9ba6c2f4640487e44f3f26b8c4bdd47aad42e0a4572",
+      "license": "WRF public-domain distribution at f52c197ed39d12e087d02c50f412d90d418f6186; no file-specific restriction or separate licence file in the distributed Noah-MP revision"
+    },
+    {
+      "path": "Registry/registry.noahmp",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/Registry/registry.noahmp",
+      "repository": "wrf-model/WRF",
+      "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "local_path": "upstream/registry.noahmp",
+      "bytes": 38937,
+      "sha256": "1d4c0e0dfb94d67b9ec2cc1044860f038d0096d5d8bb8ea73d6d82eeaff3b019",
+      "license": "WRF public-domain distribution at f52c197ed39d12e087d02c50f412d90d418f6186; no file-specific restriction or separate licence file in the distributed Noah-MP revision"
+    },
+    {
+      "path": "phys/module_surface_driver.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_surface_driver.F",
+      "bytes": 396530,
+      "sha256": "a653965f9ffd1db5e4c42aa79e41b4d111755b6fca0f1a3b91f3a93455813ffd"
+    }
+  ]
+}

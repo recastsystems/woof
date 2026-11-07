@@ -22,7 +22,7 @@
     0      25672   C+G      -      -      -      -      -      -      0      0    ScreenToGif.exe
     0      25960   C+G      -      -      -      -      -      -      0      0    ApplicationFram
     0      26796   C+G      -      -      -      -      -      -      0      0    brave.exe
-    0      27220   C+G      -      -      -      -      -      -      0      0    ChatGPT.exe
+    0      27220   C+G      -      -      -      -      -      -      0      0    Application.exe
     0      36432   C+G      -      -      -      -      -      -      0      0    chrome.exe
     0      37832   C+G      -      -      -      -      -      -      0      0    chrome.exe
     0      39444     C     25      0      -      -      -      -      0      0    python.exe

@@ -131,9 +131,12 @@ convection_permitting with every scheme on the GPU, 2 h, one 357 km move at 1 h)
 - Across the move, dry mass held to 2.5e-11 and every water species to 4.5e-10.
 - MSLP, 10 m wind and reflectivity maps on one fixed lattice across the move show one continuous
   storm and no seam at the region edge.
-- A stop and resume on the same mesh, physics carried, follows the uninterrupted run: the largest
-  surface-pressure tendency and vertical velocity over the next 15 minutes agree within 0.4 % (not
-  bit for bit).
+- A stop and resume on the same mesh (crash recovery, a stay on the carrier member) continues the
+  uninterrupted run bit for bit in correct mode, the default: the resumed segment continues the sealing
+  segment's physics clock, scheme flags and output accumulators. Measured on x1.2562
+  convection_permitting, 600 s step, a seal at 13:10 resumed to 14:00: every history and diag word after
+  the seal equals the uninterrupted run, on one card and on two same-host ranks (31.6 M words each,
+  0 different). Exact mode keeps native MPAS's restart (its physics clock starts again).
 - `woof hex moving check` (the same remap and dycore) passes: worst jolt 1.017.
 - Post-move jolt against a fixed-region run of the same case, per 225 s step: the largest surface
   pressure tendency is 1.38 times the fixed run's over the first 15 minutes and 0.69 times over
@@ -302,3 +305,14 @@ an overlap or relaxes either gate. Incompatible component totals still refuse.
 Operator receipts record the original floor, accepted CG updates, final errors,
 FP32 constant reproduction and reconciliation wall time. Progress goes to stderr;
 the `moving operator` command keeps one final JSON document on stdout.
+
+
+For the opt-in native TC surface exchange, set `"preserve_lake_mask": true`
+in the moving case before preparation. This asks the source-built
+`rw_mpas_static --preserve-lake-mask` for an independent `tc_lakemask` field
+from dominant with-lakes MODIS classification. The native 20-class land use
+and Noah water treatment stay unchanged. Init carries the mask in target
+mesh order; each moved member binds its own mask. Old prepared 20-class
+inputs without this field are refused for TC exchange because lake
+identity cannot be reconstructed from category 17. Use identical prepared
+inputs for the TC ON/OFF comparison.

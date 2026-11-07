@@ -48,6 +48,9 @@ def _plain(value):
         return {str(key): _plain(item) for key, item in sorted(value.items(), key=lambda row: str(row[0]))}
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted((_plain(item) for item in value), key=lambda item:
+                      json.dumps(item, sort_keys=True, separators=(",", ":"), allow_nan=False))
     if isinstance(value, Path):
         return str(value.resolve())
     if isinstance(value, datetime):

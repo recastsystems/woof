@@ -153,8 +153,9 @@ def test_the_kf_phase_contract_admits_28_as_separate_ice_snow():
     assert kf_phase_mode_for_microphysics(1) == KFPhaseMode.WARM_RAIN
     assert kf_phase_mode_for_microphysics(0) == \
         KFPhaseMode.NO_SEPARATE_SNOW
+    # mp 95 (old Eta Ferrier) is not ported; 7 joined with its port.
     with pytest.raises(ValueError):
-        kf_phase_mode_for_microphysics(7)
+        kf_phase_mode_for_microphysics(95)
 
     cfg = _mp_only_cfg(mp_physics=28, cu_physics=1)
     assert _cumulus_optional_tendency_components(cfg) == ("rqr", "rqi", "rqs")

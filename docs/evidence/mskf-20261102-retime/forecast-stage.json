@@ -1,0 +1,95 @@
+{
+  "source": "<reports>/WRF-PORTS-2026-11-01/evidence/spd-retime-rad-cu/evidence/timing-summary.json",
+  "source_sha256": "9622172933db0a2aecc1157e5c2ee7c4d928a673ef60a1b16818e4dc3457a93a",
+  "command": "scripts/timing-all.sh",
+  "configuration": "cases/cu11/namelist.input",
+  "frozen_report": "spd-retime-rad-cu.md",
+  "scope": "Same-card complete forecast stage ratio. Separate from the active-input column-kernel deck. All timing samples and whole forecast logs retained in the lane evidence.",
+  "measurement": {
+    "row": "cu11",
+    "scope": "cumulus",
+    "baseline_scope": "cumulus",
+    "commit": "6a3e6ea15e60594499f310894d9b1966f50884e6",
+    "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
+    "warm_policy": "first actual forecast step retained separately; steps 2 onward for stage ratios",
+    "stage_ratio": 3.0303820420637178,
+    "median_stage_ratio": 3.230901202072076,
+    "amortized_stage_ratio": 3.0303820420637178,
+    "active_whole_forecast_wall_ratio": 0.7424218269370221,
+    "active_whole_forecast_seconds": {
+      "baseline": 74.77569703385234,
+      "candidate": 55.51510960236192
+    },
+    "whole_forecast_warm_step_ratio": 1.158205550045608,
+    "arms": {
+      "baseline": {
+        "cumulus": {
+          "calls": 59,
+          "median_ms": 2.7771520614624023,
+          "mean_ms": 2.9726741718033614,
+          "sum_ms": 175.38777613639832,
+          "mean_host_ms": 1.8450970745692818
+        },
+        "step": {
+          "calls": 59,
+          "median_ms": 22.87059211730957,
+          "mean_ms": 28.14930809150308,
+          "sum_ms": 1660.8091773986816,
+          "mean_host_ms": 25.24066577523442
+        },
+        "radiation": {
+          "calls": 11,
+          "median_ms": 34.80070495605469,
+          "mean_ms": 36.97047008167613,
+          "sum_ms": 406.6751708984375,
+          "mean_host_ms": 36.97052462534471
+        }
+      },
+      "candidate": {
+        "cumulus": {
+          "calls": 59,
+          "median_ms": 8.97270393371582,
+          "mean_ms": 9.008338427139542,
+          "sum_ms": 531.4919672012329,
+          "mean_host_ms": 3.363108357130471
+        },
+        "step": {
+          "calls": 59,
+          "median_ms": 23.90140724182129,
+          "mean_ms": 32.60268486152261,
+          "sum_ms": 1923.558406829834,
+          "mean_host_ms": 28.612496615466426
+        },
+        "radiation": {
+          "calls": 11,
+          "median_ms": 32.63593673706055,
+          "mean_ms": 33.22733636335893,
+          "sum_ms": 365.50069999694824,
+          "mean_host_ms": 33.227206969803035
+        }
+      }
+    },
+    "nonfinite_heating": {
+      "baseline": 0,
+      "candidate": 0
+    },
+    "cold_first_step": {
+      "baseline": {
+        "label": "step",
+        "step": 1,
+        "gpu_ms": 22641.833984375,
+        "host_seconds": 22.641907710582018
+      },
+      "candidate": {
+        "label": "step",
+        "step": 1,
+        "gpu_ms": 593.087158203125,
+        "host_seconds": 0.5931687615811825
+      }
+    },
+    "forecasts": {
+      "baseline": "/workspace/runs/spd-retime-rad-cu/logs/cu11-baseline.log",
+      "candidate": "/workspace/runs/spd-retime-rad-cu/logs/cu11-candidate.log"
+    }
+  }
+}

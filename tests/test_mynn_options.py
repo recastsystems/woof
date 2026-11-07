@@ -33,7 +33,7 @@ def test_supported_mynn_options_reach_config(length, scalar):
     assert cfg.bl_mynn_mixscalars == 0
 
 
-@pytest.mark.parametrize("value", [0, 3, True, 2.0])
+@pytest.mark.parametrize("value", [-1, 3, True, 2.0])
 def test_unimplemented_mixing_length_is_never_substituted(value):
     with pytest.raises(ValueError, match="bl_mynn_mixlength"):
         validate_run_config(_config(bl_mynn_mixlength=value))
@@ -99,23 +99,14 @@ def test_mixscalars_without_number_species_is_admitted_and_inert(mp_physics):
     (8, "qni"), (9, "qnc, qni"), (10, "qni"), (16, "qnc"), (18, "qni"),
     (50, "qni"),
 ])
-def test_mixscalars_under_a_partly_mixed_scheme_is_refused_by_name(
+def test_mixscalars_under_a_partly_mixed_scheme_selects_wrf471(
         mp_physics, species):
-    # WRF mixes these schemes' number species under the key (Thompson's
-    # qni is FLAG_QNI true, Registry.EM_COMMON:3024); the port's solve runs
-    # the whole family or nothing, so admitting the key as "inert" would
-    # record a mixing WRF performs and the run does not.  The refusal
-    # names the species and the way out.
     cfg = _config(mp_physics=mp_physics, bl_mynn_mixscalars=1)
-    assert mynn_mixscalars_unported_species(cfg) == tuple(species.split(", "))
-    with pytest.raises(NotImplementedError) as caught:
-        validate_run_config(cfg)
-    message = str(caught.value)
-    assert f"mixes {species} under this key" in message
-    assert "mp_physics=28" in message and "bl_mynn_mixscalars=0" in message
-    # Key off: no species are unported and the scheme validates.
-    assert mynn_mixscalars_unported_species(
-        _config(mp_physics=mp_physics)) == ()
+    assert cfg.bl_mynn_version == "wrf_471"
+    validate_run_config(cfg)
+    assert mynn_mixscalars_unported_species(cfg) == ()
+    assert mynn_mixscalars_driver_value(cfg) == 1
+    assert _config(mp_physics=mp_physics).bl_mynn_version == "wrf_461"
 
 
 def test_mixscalars_flag_species_table_covers_every_accepted_scheme():
@@ -161,3 +152,6 @@ def test_default_off_keeps_old_restart_identity_and_on_is_bound():
         _require_config_match(old, _config(scalar_pblmix=1), "off-checkpoint")
     _require_config_match(asdict(_config(scalar_pblmix=1)),
                           _config(scalar_pblmix=1), "on-checkpoint")
+
+# Release census replacements (reviewed against the merged sources).
+# Census: test_mixscalars_under_a_partly_mixed_scheme_is_refused_by_name is covered by test_mixscalars_under_a_partly_mixed_scheme_selects_wrf471.

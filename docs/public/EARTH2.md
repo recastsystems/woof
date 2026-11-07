@@ -87,7 +87,7 @@ the map displays wind speed in knots.
 
 <!-- earth2-models:begin -->
 Generated from `woof/authorities/earth2-models.v1.json`.
-Authority SHA-256: `6b5087de93d9240cadf7f595a87f1543ec356f9fce6ce5490cf0c8f1e6d88477`.
+Authority SHA-256: `774e56548edd6cff296d707d590380102508312a9a8385feb9e551a950ef81ee`.
 
 These are authority declarations, not a list of measured forecasts.
 Gated rows declared here: none.

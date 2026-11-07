@@ -57,6 +57,52 @@ def test_restart_carries_embryos_duration_and_run_max(monkeypatch,tmp_path):
     assert all(off.existing_scratch(s) is None for s in hail.PERSISTENT)
 
 
+def test_resume_keeps_the_checkpoints_stone_model(monkeypatch,tmp_path):
+    """fix/hailcast-resume: the HAILCAST generation follows the run, not the
+    resume.  A 2.9.10 checkpoint (no hailcast_version: WRF 4.6.1's stone
+    model) resumed under the 2.9.11 default keeps wrf_461, says so loudly,
+    and the next checkpoint records it; a wrf_39_noaa checkpoint resumed
+    under a wrf_461 configuration keeps wrf_39_noaa.  Never refused."""
+    import json
+    import woof.core.kernels as kernels
+    import woof.explain as explain
+    launched=[];notices=[]
+    monkeypatch.setattr(kernels,'get_kernel',
+                        lambda module,name:lambda *args:launched.append(name))
+    monkeypatch.setattr(explain,'warn',
+                        lambda action,why='',**kw:notices.append(action))
+    def stone_model(state,cfg):
+        launched.clear();state.elapsed_seconds=0.0
+        hail.update(state,cfg)
+        return [name for name in launched if name.startswith('hailcast_columns')]
+    def checkpoint(cfg,name):
+        state=_shim_state(cfg,monkeypatch);_fill_setup(state)
+        return restart.write_restart(tmp_path/name,state,cfg)
+    def resume(path,cfg):
+        state=_shim_state(cfg,monkeypatch);_fill_setup(state)
+        restart.restore_restart(path,state,cfg)
+        return state
+    new=_cfg(mp_physics=6,moist=True)
+    old=replace(new,hailcast_version='wrf_461')
+    assert new.hailcast_version=='wrf_39_noaa' and hail.enabled(new)
+    # gpuwm 2.9.10's file: the same members, a header without the key.
+    with np.load(checkpoint(old,'w461.npz')) as archive:
+        members={key:archive[key] for key in archive.files}
+    header=json.loads(members[restart._HEADER_KEY].tobytes())
+    header.pop('hailcast_version',None)
+    members[restart._HEADER_KEY]=np.frombuffer(json.dumps(header).encode(),dtype=np.uint8)
+    np.savez(tmp_path/'v2910.npz',**members)
+    resumed=resume(tmp_path/'v2910.npz',new)
+    assert stone_model(resumed,new)==['hailcast_columns']
+    assert any('wrf_461' in note and 'KEPT' in note for note in notices)
+    following=restart.write_restart(tmp_path/'next.npz',resumed,new)
+    assert restart.read_restart_header(following)['hailcast_version']=='wrf_461'
+    notices.clear()
+    back=resume(checkpoint(new,'w39.npz'),old)
+    assert stone_model(back,old)==['hailcast_columns_wrf39']
+    assert any('wrf_39_noaa' in note and 'KEPT' in note for note in notices)
+
+
 def test_generated_stone_routines_are_reproducible():
     root=Path(__file__).resolve().parents[1]
     spec=importlib.util.spec_from_file_location('hail_translate',root/'tools/hail_wrf461/translate.py')

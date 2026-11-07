@@ -14,7 +14,7 @@ expressions as WRF v4.6.1 (fork module_sf_ruclsm.F:845 and :1127 against
 wiring against WRF 4.6.1. It does not establish complete column identity
 against the older fork.
 
-Rebuilt on box W1 (lane/verify-ruc-lsm) with the toolchain ``lsmruc.csv``
+Rebuilt on test host (development branch) with the toolchain ``lsmruc.csv``
 was pinned on -- GNU Fortran 13.3.0 on glibc 2.39, the C library every WOOF
 float32 libm word is graded against -- by ``build_lsmruc_frac.sh`` against
 pristine WRF v4.6.1.  The earlier copy was built on glibc 2.43, whose

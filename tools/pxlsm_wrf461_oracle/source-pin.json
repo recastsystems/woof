@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "revisions": {
+    "v4.6.1": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+    "v4.7.1": "f52c197ed39d12e087d02c50f412d90d418f6186"
+  },
+  "license_url": "https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt",
+  "retained_notice": "licenses/LICENSE-WRF-public-domain.txt",
+  "files": {
+    "phys/module_sf_pxlsm.F": {
+      "sha256": "d26b663d087a5414b0639d6c5725283b1d74f2643496afd8ac516f96581ecf10",
+      "bytes": 98695,
+      "license": "WRF public domain notice in LICENSE.txt",
+      "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_sf_pxlsm.F",
+      "review": "No additional license or sale restriction in this file."
+    },
+    "phys/module_sf_pxlsm_data.F": {
+      "sha256": "c89d7b9fa4a925539189dadb0174c593ffc69cfbedc3a128b3ea94de39f2fa0d",
+      "bytes": 45222,
+      "license": "WRF public domain notice in LICENSE.txt",
+      "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_sf_pxlsm_data.F",
+      "review": "No additional license or sale restriction in this file."
+    },
+    "share/module_model_constants.F": {
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "bytes": 8280,
+      "license": "WRF public domain notice in LICENSE.txt",
+      "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_model_constants.F",
+      "review": "No additional license or sale restriction in this file."
+    },
+    "frame/module_wrf_error.F": {
+      "sha256": "2ed7dc6e90e0fe442ffee84512b4998d31c8ec3400d3a7ab6078404065f784a6",
+      "bytes": 11694,
+      "license": "WRF public domain notice in LICENSE.txt",
+      "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/frame/module_wrf_error.F",
+      "review": "No additional license or sale restriction in this file."
+    },
+    "LICENSE.txt": {
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027,
+      "license": "WRF public domain notice in LICENSE.txt",
+      "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "review": "Public domain for any purpose; retain this notice."
+    }
+  }
+}

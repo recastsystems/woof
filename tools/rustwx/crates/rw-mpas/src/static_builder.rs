@@ -127,10 +127,12 @@ pub struct StaticStageOptions {
     pub landuse_label: Option<String>,
     /// Emit MPAS init_atmosphere's package-dependent static stream.
     pub native_init: bool,
+    /// Optional with-lakes geography, kept separate from native land-use voting.
+    pub lake_mask_geog: Option<PathBuf>,
 }
 impl Default for StaticStageOptions {
     fn default() -> Self {
-        Self { vegetation_ncep: false, albedo_ncep: false, snow_ncep: false, noahmp: true, gwd: true, landuse_label: None, native_init: false }
+        Self { vegetation_ncep: false, albedo_ncep: false, snow_ncep: false, noahmp: true, gwd: true, landuse_label: None, native_init: false, lake_mask_geog: None }
     }
 }
 
@@ -682,8 +684,8 @@ fn identity_ids(file: &netcrust::File, name: &str, len: usize) -> MpasResult<Vec
     Ok((1..=len as i32).collect())
 }
 
-fn zero_based(raw: Vec<i32>, upper: usize, name: &str, allow_zero_padding: bool) -> MpasResult<Vec<usize>> {
-    raw.into_iter()
+fn zero_based(raw: &[i32], upper: usize, name: &str, allow_zero_padding: bool) -> MpasResult<Vec<usize>> {
+    raw.iter().copied()
         .enumerate()
         .map(|(k, v)| {
             if allow_zero_padding && v == 0 {
@@ -750,24 +752,20 @@ impl Mesh {
                 rkindv(&f, name)
             }
         };
-        let mut x_cell = readv("xCell")?;
-        let mut y_cell = readv("yCell")?;
-        let mut z_cell = readv("zCell")?;
-        let mut x_edge = readv("xEdge")?;
-        let mut y_edge = readv("yEdge")?;
-        let mut z_edge = readv("zEdge")?;
-        let mut x_vertex = readv("xVertex")?;
-        let mut y_vertex = readv("yVertex")?;
-        let mut z_vertex = readv("zVertex")?;
-        let mut dc_edge = readv("dcEdge")?;
-        let mut dv_edge = readv("dvEdge")?;
-        let mut area_cell = readv("areaCell")?;
-        let mut area_triangle = readv("areaTriangle")?;
-        let mut kite_areas_on_vertex = readv("kiteAreasOnVertex")?;
-        let mut nominal = readv("nominalMinDc")?
-            .first()
-            .copied()
-            .ok_or_else(|| MpasError::Refusal("grid nominalMinDc is empty".to_string()))?;
+        // Each variable is an independent byte range. Decode them beside
+        // one another instead of spending the first large-mesh stage on one
+        // core. The indexed collect preserves the original variable order.
+        let names = ["xCell", "yCell", "zCell", "xEdge", "yEdge", "zEdge",
+                     "xVertex", "yVertex", "zVertex", "dcEdge", "dvEdge",
+                     "areaCell", "areaTriangle", "kiteAreasOnVertex", "nominalMinDc"];
+        let decoded: Vec<MpasResult<Vec<f64>>> = names.par_iter().map(|name| readv(name)).collect();
+        let values: Vec<Vec<f64>> = decoded.into_iter().collect::<MpasResult<_>>()?;
+        let [mut x_cell, mut y_cell, mut z_cell, mut x_edge, mut y_edge, mut z_edge,
+             mut x_vertex, mut y_vertex, mut z_vertex, mut dc_edge, mut dv_edge,
+             mut area_cell, mut area_triangle, mut kite_areas_on_vertex, nominal_values]: [Vec<f64>; 15] =
+            values.try_into().map_err(|_| MpasError::Refusal("coordinate inventory changed".into()))?;
+        let mut nominal = nominal_values.first().copied()
+            .ok_or_else(|| MpasError::Refusal("grid nominalMinDc is empty".into()))?;
 
         let sample = x_cell
             .iter()
@@ -797,22 +795,13 @@ impl Mesh {
                     ((v as f32) * ((r as f32) * (r as f32))) as f64
                 }
             };
-            for v in x_cell.iter_mut().chain(y_cell.iter_mut()).chain(z_cell.iter_mut())
-                .chain(x_edge.iter_mut()).chain(y_edge.iter_mut()).chain(z_edge.iter_mut())
-                .chain(x_vertex.iter_mut()).chain(y_vertex.iter_mut()).chain(z_vertex.iter_mut())
-            {
-                *v = length(*v);
-            }
-            for v in dc_edge.iter_mut().chain(dv_edge.iter_mut()) {
-                *v = length(*v);
-            }
-            for v in area_cell
-                .iter_mut()
-                .chain(area_triangle.iter_mut())
-                .chain(kite_areas_on_vertex.iter_mut())
-            {
-                *v = area(*v);
-            }
+            [&mut x_cell, &mut y_cell, &mut z_cell, &mut x_edge, &mut y_edge, &mut z_edge,
+             &mut x_vertex, &mut y_vertex, &mut z_vertex].into_par_iter()
+                .for_each(|values| values.par_iter_mut().for_each(|v| *v = length(*v)));
+            [&mut dc_edge, &mut dv_edge].into_par_iter()
+                .for_each(|values| values.par_iter_mut().for_each(|v| *v = length(*v)));
+            [&mut area_cell, &mut area_triangle, &mut kite_areas_on_vertex].into_par_iter()
+                .for_each(|values| values.par_iter_mut().for_each(|v| *v = area(*v)));
             nominal = length(nominal);
         }
 
@@ -820,7 +809,7 @@ impl Mesh {
         if neoc_i32.len() != n_cells {
             return Err(MpasError::Refusal("nEdgesOnCell shape mismatch".to_string()));
         }
-        let n_edges_on_cell: Vec<usize> = neoc_i32.into_iter().map(|v| v as usize).collect();
+        let n_edges_on_cell: Vec<usize> = neoc_i32.into_par_iter().map(|v| v as usize).collect();
         let cells_on_cell_raw = i32v(&f, "cellsOnCell")?;
         let edges_on_cell_raw = i32v(&f, "edgesOnCell")?;
         let vertices_on_cell_raw = i32v(&f, "verticesOnCell")?;
@@ -851,13 +840,13 @@ impl Mesh {
         // outermost-ring cells (bdyMaskCell == 7). Those slots become
         // ABSENT_NEIGHBOR so every stencil that reads them has to decide, and
         // can never silently read cell 0.
-        let normalize_padded = |raw: Vec<i32>,
+        let normalize_padded = |raw: &[i32],
                                 upper: usize,
                                 name: &str,
                                 absent_ok: Option<&[i32]>|
          -> MpasResult<Vec<usize>> {
             let mut out = vec![0usize; raw.len()];
-            for c in 0..n_cells {
+            let error = out.par_chunks_mut(max_edges).enumerate().map(|(c, row)| -> MpasResult<()> {
                 let used = n_edges_on_cell[c];
                 if used > max_edges {
                     return Err(MpasError::Refusal(format!(
@@ -871,7 +860,7 @@ impl Mesh {
                         if v == 0 {
                             if let Some(mask) = absent_ok {
                                 if mask[c] == REGIONAL_OUTERMOST_MASK {
-                                    out[k] = ABSENT_NEIGHBOR;
+                                    row[s] = ABSENT_NEIGHBOR;
                                     continue;
                                 }
                                 return Err(MpasError::Refusal(format!(
@@ -889,29 +878,31 @@ impl Mesh {
                                 "grid {name}[cell={c},slot={s}]={v} is outside 1..={upper}"
                             )));
                         }
-                        out[k] = v as usize - 1;
+                        row[s] = v as usize - 1;
                     }
                 }
-            }
+                Ok(())
+            }).find_first(|result| result.is_err());
+            if let Some(error) = error { error?; }
             Ok(out)
         };
 
-        let raw_cells_on_cell = cells_on_cell_raw.clone();
-        let raw_edges_on_cell = edges_on_cell_raw.clone();
-        let raw_vertices_on_cell = vertices_on_cell_raw.clone();
+        let raw_cells_on_cell = cells_on_cell_raw;
+        let raw_edges_on_cell = edges_on_cell_raw;
+        let raw_vertices_on_cell = vertices_on_cell_raw;
         let cells_on_cell =
-            normalize_padded(cells_on_cell_raw, n_cells, "cellsOnCell", Some(&bdy_mask_cell))?;
-        let edges_on_cell = normalize_padded(edges_on_cell_raw, n_edges, "edgesOnCell", None)?;
+            normalize_padded(&raw_cells_on_cell, n_cells, "cellsOnCell", Some(&bdy_mask_cell))?;
+        let edges_on_cell = normalize_padded(&raw_edges_on_cell, n_edges, "edgesOnCell", None)?;
         let vertices_on_cell =
-            normalize_padded(vertices_on_cell_raw, n_vertices, "verticesOnCell", None)?;
+            normalize_padded(&raw_vertices_on_cell, n_vertices, "verticesOnCell", None)?;
 
         let coe_raw = i32v(&f, "cellsOnEdge")?;
         let voe_raw = i32v(&f, "verticesOnEdge")?;
         if coe_raw.len() != 2 * n_edges || voe_raw.len() != 2 * n_edges {
             return Err(MpasError::Refusal("edge-pair topology shape mismatch".to_string()));
         }
-        let raw_cells_on_edge = coe_raw.clone();
-        let raw_vertices_on_edge = voe_raw.clone();
+        let raw_cells_on_edge = coe_raw;
+        let raw_vertices_on_edge = voe_raw;
         // A rim edge of a regional mesh has ONE cell; the culler stores 0 in
         // the other slot, and only on outermost (mask 7) edges.
         let mut coe = vec![0usize; 2 * n_edges];
@@ -940,9 +931,11 @@ impl Mesh {
                 coe[2 * e + s] = v as usize - 1;
             }
         }
-        let voe = zero_based(voe_raw, n_vertices, "verticesOnEdge", false)?;
-        let cells_on_edge = (0..n_edges).map(|e| [coe[2 * e], coe[2 * e + 1]]).collect();
-        let vertices_on_edge = (0..n_edges).map(|e| [voe[2 * e], voe[2 * e + 1]]).collect();
+        let voe = zero_based(&raw_vertices_on_edge, n_vertices, "verticesOnEdge", false)?;
+        let cells_on_edge = coe.par_chunks_exact(2).map(|row| [row[0], row[1]]).collect();
+        let vertices_on_edge = voe.par_chunks_exact(2).map(|row| [row[0], row[1]]).collect();
+        drop(coe);
+        drop(voe);
 
         // The mesh DUAL, read verbatim. A static that omits it leaves the
         // dycore with no vertex triangles: `cellsOnVertex` and
@@ -1137,8 +1130,11 @@ impl Mesh {
 
     /// MPAS: mpas_init_atm_static.F:314-329,2241-2289.
     fn max_search_distance2(&self) -> f64 {
-        let mut max_r = 0.0f32;
-        for c in 0..self.n_cells {
+        // Each arc keeps the native binary32 arithmetic. A maximum over
+        // nonnegative distances has the same words in any reduction order;
+        // avoid a whole-mesh trigonometric pass on the protocol thread.
+        let max_r = (0..self.n_cells).into_par_iter().map(|c| {
+            let mut max_r = 0.0f32;
             for s in 0..self.n_edges_on_cell[c] {
                 let v = self.vertices_on_cell[c * self.max_edges + s];
                 let arc = crate::static_native::sphere_distance(
@@ -1147,7 +1143,8 @@ impl Mesh {
                     self.sphere_radius as f32);
                 max_r = max_r.max(arc);
             }
-        }
+            max_r
+        }).reduce(|| 0.0f32, f32::max);
         let diameter = 2.0 * max_r;
         (2.0 * (diameter * diameter)) as f64
     }
@@ -1219,20 +1216,34 @@ fn kd_build(points: &[[f64; 3]], order: &mut [u32], axis: &mut [u8], lo: usize, 
 }
 /// MPAS: mpas_kd_tree.F:64-159 (recursive cyclic-axis construction).
 fn kd_build_axis(points: &[[f64; 3]], order: &mut [u32], axis: &mut [u8], lo: usize, hi: usize, ax: usize) {
-    if hi <= lo { return; }
-    let mid = lo + (hi - lo - 1) / 2;
-    order[lo..hi].select_nth_unstable_by(mid-lo, |&a,&b| {
+    kd_build_slice(points, &mut order[lo..hi], &mut axis[lo..hi], ax);
+}
+
+fn kd_build_slice(points: &[[f64; 3]], order: &mut [u32], axis: &mut [u8], ax: usize) {
+    if order.is_empty() { return; }
+    let mid = (order.len() - 1) / 2;
+    order.select_nth_unstable_by(mid, |&a,&b| {
         (points[a as usize][ax] as f32).total_cmp(&(points[b as usize][ax] as f32))
     });
     axis[mid] = ax as u8;
-    kd_build_axis(points, order, axis, lo, mid, (ax+1)%3);
-    kd_build_axis(points, order, axis, mid+1, hi, (ax+1)%3);
+    let parallel = order.len() >= 16_384;
+    let (left, rest) = order.split_at_mut(mid);
+    let (left_axis, rest_axis) = axis.split_at_mut(mid);
+    let right = &mut rest[1..];
+    let right_axis = &mut rest_axis[1..];
+    if parallel {
+        rayon::join(|| kd_build_slice(points, left, left_axis, (ax+1)%3),
+                    || kd_build_slice(points, right, right_axis, (ax+1)%3));
+    } else {
+        kd_build_slice(points, left, left_axis, (ax+1)%3);
+        kd_build_slice(points, right, right_axis, (ax+1)%3);
+    }
 }
 
 impl KdTree {
     /// MPAS: mpas_kd_tree.F:64-159 (mpas_kd_build_tree).
     fn new(mesh: &Mesh) -> Self {
-        let points: Vec<[f64; 3]> = (0..mesh.n_cells)
+        let points: Vec<[f64; 3]> = (0..mesh.n_cells).into_par_iter()
             .map(|c| [mesh.x_cell[c], mesh.y_cell[c], mesh.z_cell[c]])
             .collect();
         let mut order: Vec<u32> = (0..mesh.n_cells as u32).collect();
@@ -2768,6 +2779,7 @@ pub fn declared_variables() -> &'static [&'static str] {
 /// Grouped rather than passed as nineteen arguments because the writer's job
 /// is to lay this out, not to remember which of nineteen slices was which.
 struct GeographyFields {
+    tc_lakemask: Option<Vec<i32>>,
     ter: Vec<f32>,
     landmask: Vec<i32>,
     ivgtyp: Vec<i32>,
@@ -3003,6 +3015,14 @@ fn write_static(
             .with_attrs(vec![NcAttr::text("units", "unitless"), NcAttr::text("long_name", "Index category for water")]),
     ]);
 
+    if geo.tc_lakemask.is_some() {
+        if !cfg.stages.native_init {
+            return Err(MpasError::Refusal("TC lake mask requires the native static stream".into()));
+        }
+        vars.push(int("tc_lakemask", vec![d_c],
+            "lake exclusion mask from unfurled dominant with-lakes land use; 1 lake, 0 otherwise"));
+    }
+
     // MPAS: Registry.xml:498-585,882-903. Native init's immutable static
     // stream follows active packages and has no WRF aliases or SW weights.
     if cfg.stages.native_init {
@@ -3195,6 +3215,7 @@ fn write_static(
     }
     mminlu[..label.len()].copy_from_slice(label);
     w.put("mminlu", NcData::Chars(&mminlu))?;
+    if let Some(mask) = &geo.tc_lakemask { w.put("tc_lakemask", NcData::Ints(mask))?; }
     w.put("ivgtyp", NcData::Ints(&geo.ivgtyp))?;
     w.put("isltyp", NcData::Ints(&geo.isltyp))?;
     w.put("snoalb", NcData::Floats(&geo.snoalb))?;
@@ -3499,7 +3520,7 @@ pub fn build_static_reporting(
     let cache = TileMapCache::new(plan.tile_map_cache_bytes);
     let pool = if plan.workers > 1 {
         Some(
-            rayon::ThreadPoolBuilder::new()
+            rayon::ThreadPoolBuilder::new().stack_size(crate::execution::BRIDGE_STACK_BYTES)
                 .num_threads(plan.workers)
                 .thread_name(|i| format!("rw-mpas-tile-{i}"))
                 .build()
@@ -3612,6 +3633,18 @@ pub fn build_static_reporting(
         landuse_ds_opt = Some(ds);
         Ok((pb, (ivgtyp.len() * 4) as u64))
     })?;
+    let mut tc_lakemask = None;
+    if let Some(path) = &cfg.stages.lake_mask_geog {
+        time_field("tc_lakemask", path, cfg.supersample_landuse, &mut || {
+            // Independently retain the original classification. Native's pixel-wise
+            // lake-to-water vote and its landmask remain byte-for-byte unchanged.
+            let (v, _, _, ds) = categorical(&ctx, path, cfg.supersample_landuse)?;
+            let lake = ds.index.islake.filter(|&x| x > 0).ok_or_else(||
+                MpasError::Refusal("lake-mask geography must declare a positive islake class".into()))?;
+            tc_lakemask = Some(v.into_iter().map(|x| i32::from(x as i64 == lake)).collect());
+            Ok((ds.plane_bytes(), (mesh.n_cells * 4) as u64))
+        })?;
+    }
     let landuse_ds = landuse_ds_opt.take().expect("landuse populated");
     let iswater_lu = landuse_ds.index.iswater.unwrap_or(17) as i32;
     let isice_lu = landuse_ds.index.isice.unwrap_or(15) as i32;
@@ -3843,6 +3876,7 @@ pub fn build_static_reporting(
         .map_err(|e| MpasError::Refusal(format!("cannot serialise the provenance: {e}")))?;
 
     let geo = GeographyFields {
+        tc_lakemask,
         ter,
         landmask,
         ivgtyp,
@@ -3863,7 +3897,7 @@ pub fn build_static_reporting(
     memory.event("write", None, "static fsync complete", None, None, None, vec![]);
 
     let output_bytes = std::fs::metadata(&cfg.out_path)?.len();
-    let generated_fields = vec![
+    let mut generated_fields: Vec<String> = vec![
         "cell_gradient_coef_x", "cell_gradient_coef_y", "defc_a", "defc_b",
         "deriv_two", "fEdge", "fVertex", "ter", "landmask", "lu_index", "ivgtyp",
         "soilcat_top", "isltyp", "greenfrac", "albedo12m", "shdmin", "shdmax",
@@ -3874,6 +3908,8 @@ pub fn build_static_reporting(
     .filter(|name| !cfg.stages.native_init || native_static_field_enabled(name,&cfg.stages))
     .map(str::to_string)
     .collect();
+
+    if geo.tc_lakemask.is_some() { generated_fields.push("tc_lakemask".into()); }
 
     let operator_provenance = BTreeMap::from([
         (
@@ -4075,7 +4111,7 @@ pub fn build_terrain_reporting(
     let tree = KdTree::new(&mesh);
     let cache = TileMapCache::new(plan.tile_map_cache_bytes);
     let pool = if plan.workers > 1 {
-        Some(rayon::ThreadPoolBuilder::new().num_threads(plan.workers).build()
+        Some(rayon::ThreadPoolBuilder::new().stack_size(crate::execution::BRIDGE_STACK_BYTES).num_threads(plan.workers).build()
             .map_err(|e| MpasError::Refusal(format!("cannot start terrain tile workers: {e}")))?)
     } else { None };
     let ctx = GeogContext {
@@ -4833,6 +4869,7 @@ mod tests {
         iswater_lu: i32,
     ) -> GeographyFields {
         GeographyFields {
+            tc_lakemask: None,
             ter,
             landmask,
             ivgtyp,
@@ -5050,7 +5087,7 @@ mod tests {
         let cache = TileMapCache::new(cache_bytes);
         let pool = if workers > 1 {
             Some(
-                rayon::ThreadPoolBuilder::new()
+                rayon::ThreadPoolBuilder::new().stack_size(crate::execution::BRIDGE_STACK_BYTES)
                     .num_threads(workers)
                     .build()
                     .expect("pool"),
@@ -5177,6 +5214,25 @@ mod tests {
             assert_eq!(file.read_f64("Time").unwrap(),[0.0]);
             std::fs::remove_file(path).unwrap();
         }}
+    }
+
+    #[test]
+    fn explicit_lake_mask_keeps_native_landuse_words() {
+        let case = SyntheticCase::build("native-lake-mask");
+        let mesh = synthetic_mesh(8);
+        let mut geo = fixture_geography(vec![0.0;8],vec![0;8],vec![17;8],vec![14;8],
+            vec![0.0;96],vec![8.0;96],vec![0.0;8],vec![0.0;8],vec![0.0;64],
+            std::array::from_fn(|_|vec![1;8]),17);
+        let path = std::env::temp_dir().join(format!("rw-mpas-lake-mask-{}.nc",std::process::id()));
+        let mut cfg = case.config(path.clone(),1);
+        cfg.stages.native_init = true;
+        geo.tc_lakemask = Some(vec![1,0,0,1,0,0,0,0]);
+        write_static(&cfg,&mesh,&zero_operators(&mesh),&geo,&flat_gwd(&mesh),1.0,"{}").unwrap();
+        let file = netcrust::File::open(&path).unwrap();
+        assert_eq!(file.read_f64("tc_lakemask").unwrap(), [1.,0.,0.,1.,0.,0.,0.,0.]);
+        assert_eq!(file.read_f64("ivgtyp").unwrap(), vec![17.;8]);
+        assert_eq!(file.read_f64("landmask").unwrap(), vec![0.;8]);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -5715,7 +5771,7 @@ mod tests {
         let cache = TileMapCache::new(0);
         let pool = if workers > 1 {
             Some(
-                rayon::ThreadPoolBuilder::new()
+                rayon::ThreadPoolBuilder::new().stack_size(crate::execution::BRIDGE_STACK_BYTES)
                     .num_threads(workers)
                     .build()
                     .expect("pool"),
@@ -5778,7 +5834,7 @@ mod tests {
         let cache = TileMapCache::new(budget);
         let pool = if workers > 1 {
             Some(
-                rayon::ThreadPoolBuilder::new()
+                rayon::ThreadPoolBuilder::new().stack_size(crate::execution::BRIDGE_STACK_BYTES)
                     .num_threads(workers)
                     .build()
                     .expect("pool"),
@@ -5851,6 +5907,65 @@ mod tests {
         }
         assert_eq!(total,18944);
         assert!(mismatch.is_empty(), "native KD word mismatches: {mismatch:?}");
+    }
+
+    #[test]
+    #[ignore = "real large-mesh startup stage; requires RW_MPAS_REAL_GRID"]
+    fn real_startup_search_radius_keeps_serial_words() {
+        let mesh = Mesh::read(&real_path("RW_MPAS_REAL_GRID")).unwrap();
+        let started = Instant::now();
+        let parallel = mesh.max_search_distance2();
+        let parallel_seconds = started.elapsed().as_secs_f64();
+        let started = Instant::now();
+        let mut max_r = 0.0f32;
+        for c in 0..mesh.n_cells {
+            for s in 0..mesh.n_edges_on_cell[c] {
+                let v = mesh.vertices_on_cell[c * mesh.max_edges + s];
+                let arc = crate::static_native::sphere_distance(
+                    mesh.lat_cell[c] as f32, mesh.lon_cell[c] as f32,
+                    mesh.lat_vertex[v] as f32, mesh.lon_vertex[v] as f32,
+                    mesh.sphere_radius as f32);
+                max_r = max_r.max(arc);
+            }
+        }
+        let diameter = 2.0 * max_r;
+        let serial = (2.0 * (diameter * diameter)) as f64;
+        assert_eq!(serial.to_bits(), parallel.to_bits());
+        println!("startup radius: cells={} workers={} serial_seconds={} parallel_seconds={} words={:016x}",
+                 mesh.n_cells, rayon::current_num_threads(), started.elapsed().as_secs_f64(),
+                 parallel_seconds, parallel.to_bits());
+    }
+
+    #[test]
+    #[ignore = "10 km startup stage; run explicitly on a shared host with room"]
+    fn ten_km_parallel_kd_keeps_serial_words_without_stack_environment() {
+        fn serial(points: &[[f64; 3]], order: &mut [u32], axes: &mut [u8], ax: usize) {
+            if order.is_empty() { return; }
+            let mid = (order.len() - 1) / 2;
+            order.select_nth_unstable_by(mid, |&a, &b|
+                (points[a as usize][ax] as f32).total_cmp(&(points[b as usize][ax] as f32)));
+            axes[mid] = ax as u8;
+            let (left, rest) = order.split_at_mut(mid);
+            let (la, ra) = axes.split_at_mut(mid);
+            serial(points, left, la, (ax+1)%3);
+            serial(points, &mut rest[1..], &mut ra[1..], (ax+1)%3);
+        }
+        let n = 5_898_242usize;
+        let points: Vec<_> = (0..n).map(|i| [
+            (i.wrapping_mul(17)%100003) as f64,
+            (i.wrapping_mul(71)%100019) as f64,
+            (i.wrapping_mul(37)%100043) as f64]).collect();
+        let mut expected: Vec<u32> = (0..n as u32).collect();
+        let mut expected_axes = vec![0; n];
+        serial(&points, &mut expected, &mut expected_axes, 0);
+        let mut actual: Vec<u32> = (0..n as u32).collect();
+        let mut actual_axes = vec![0; n];
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(8)
+            .stack_size(crate::execution::BRIDGE_STACK_BYTES).build().unwrap();
+        pool.install(|| kd_build(&points, &mut actual, &mut actual_axes, 0, n));
+        assert_eq!(actual, expected);
+        assert_eq!(actual_axes, expected_axes);
+        println!("10km KD: {n} cells, 8 workers, serial words match");
     }
 
     #[test]

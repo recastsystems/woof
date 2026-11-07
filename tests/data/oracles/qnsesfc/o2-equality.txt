@@ -1,0 +1,1 @@
+receipt: -O2 -ftree-vectorize -funroll-loops outputs byte-identical to the -O2 -fno-fast-math -ffp-contract=off reference on every set

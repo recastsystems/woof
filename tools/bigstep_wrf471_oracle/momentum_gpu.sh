@@ -12,9 +12,9 @@ mutex=$(realpath -m "$5")
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 mkdir -p "$task_receipts"
 cd "$task_source"
-flock "$mutex" sh -c 'printf "%s %s start pid %s bounded 3 min (compiled WRF momentum oracle; shared)\n" "sol-oracle-bigstep-momentum" "$(date -u +%FT%TZ)" "'"$$"'" >> "'"$owner"'"'
+flock "$mutex" sh -c 'printf "%s %s start pid %s bounded 3 min (compiled WRF momentum oracle; shared)\n" "oracle-bigstep-momentum" "$(date -u +%FT%TZ)" "'"$$"'" >> "'"$owner"'"'
 release() {
-    flock "$mutex" sh -c 'printf "%s %s release\n" "sol-oracle-bigstep-momentum" "$(date -u +%FT%TZ)" >> "'"$owner"'"'
+    flock "$mutex" sh -c 'printf "%s %s release\n" "oracle-bigstep-momentum" "$(date -u +%FT%TZ)" >> "'"$owner"'"'
     touch "$task_receipts/gpu.done"
 }
 trap release EXIT

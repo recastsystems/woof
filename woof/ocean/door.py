@@ -14,7 +14,7 @@ def read_config(path):
     path=Path(path).resolve()
     doc=tomllib.loads(path.read_text())
     cfg=doc.get('ocean',doc)
-    unknown=set(cfg)-{'solvers','prepared','interval_seconds','factories','options'}
+    unknown=set(cfg)-{'solvers','prepared','interval_seconds','factories','options','roughness_feedback','coarsening'}
     if unknown:raise ValueError(f"unknown ocean config keys: {sorted(unknown)}")
     cfg.setdefault('solvers',['waves','surge']);cfg.setdefault('interval_seconds',60.)
     if not isinstance(cfg['solvers'],list) or not cfg['solvers'] or len(set(cfg['solvers']))!=len(cfg['solvers']):raise ValueError("ocean solvers must be a nonempty unique list")
@@ -23,13 +23,15 @@ def read_config(path):
     cfg['prepared']=str((path.parent/cfg['prepared']).resolve())
     return cfg
 
-def upload(path,shape):
+def upload(path,shape,*,dtype="float32"):
     """Raw Rust-produced FP32 bytes go straight through the CUDA driver."""
     import cupy as cp
     import ctypes
     path=Path(path);expected=4*math.prod(shape)
     if path.stat().st_size!=expected:raise ValueError(f"prepared bytes differ for {path}")
-    out=cp.empty(tuple(shape),dtype=cp.float32)
+    if dtype not in ("float32","int32","<f4","<i4"):
+        raise ValueError("prepared ocean upload requires float32 or int32")
+    out=cp.empty(tuple(shape),dtype=dtype)
     with path.open('rb') as f:
         with mmap.mmap(f.fileno(),0,access=mmap.ACCESS_COPY) as view:
             ptr=ctypes.addressof(ctypes.c_char.from_buffer(view))
@@ -76,20 +78,62 @@ def prepare_coupler(cfg):
             raise RuntimeError(f"real {name} solver factory {spec} is unavailable; deliver {rows()['solvers'][name]['report_lane']} before this coupled run") from exc
         selected[name]=fn(grid,bathy,config=cfg.get('options',{}).get(name,{}))
         validate_fields(selected[name].outputs,grid)
-    return DeviceCoupler(grid,bathy,**selected,interval=cfg['interval_seconds'])
+    return DeviceCoupler(grid,bathy,**selected,interval=cfg['interval_seconds'],
+                         roughness_feedback=cfg.get('roughness_feedback',False))
 
-def attach_atmosphere(driver,cfg,*,latitude=None,longitude=None):
-    if not getattr(cfg,"ocean_config",""):return
-    config=read_config(cfg.ocean_config)
-    driver.ocean=prepare_coupler(config)
-    if driver.fields['psfc'].shape!=driver.ocean.grid.shape:raise ValueError("ocean and atmosphere must share the prepared mass grid")
+def attach_atmosphere(driver,cfg,*,latitude=None,longitude=None,state=None,start_time=None):
+    from .settings import resolve
+    enabled,options=resolve(cfg)
+    legacy=getattr(cfg,"ocean_config","")
+    if not enabled and not legacy:return
+    # A stationary parent owns the waves. Moving children retain their normal
+    # surface physics; inheriting a parent's prepared indices would relocate
+    # water and spectral action to the wrong coast after every child move.
+    if int(getattr(cfg,'grid_id',1))!=1:return
     import cupy as cp
-    if latitude is None or longitude is None:raise ValueError("ocean coupling needs atmosphere latitude and longitude to verify the shared grid")
-    for name,source,target in (("latitude",latitude,driver.ocean.grid.latitude),("longitude",longitude,driver.ocean.grid.longitude)):
-        a=cp.asarray(source,dtype=cp.float32).reshape(target.shape)
-        if not bool(cp.allclose(a,target,atol=1.e-5,rtol=0.)):raise ValueError(f"ocean {name} differs from atmosphere grid")
-    # The existing driver currently accepts only common-grid coupling. A
-    # remapped ocean grid requires a Rust conservative map, never reshaping.
+    if latitude is None or longitude is None:raise ValueError("ocean coupling needs atmosphere latitude and longitude")
+    geometry=getattr(driver,'hydro_parent_geometry',None)
+    shape=driver.fields['psfc'].shape
+    latitude=cp.ascontiguousarray(cp.broadcast_to(cp.asarray(latitude,dtype=cp.float32),shape))
+    longitude=cp.ascontiguousarray(cp.broadcast_to(cp.asarray(longitude,dtype=cp.float32),shape))
+    if enabled:
+        if geometry is None or start_time is None:
+            raise ValueError("automatic waves preparation needs the forecast grid and UTC initialization time")
+        from .automatic import prepare_atmosphere
+        # Rust owns acquisition, bathymetry, masks, spectral partitions and
+        # grid aggregation. Python passes the run's actual geometry and clock.
+        driver.ocean=prepare_atmosphere(grid=geometry,latitude=latitude,longitude=longitude,
+            state=state,physics=driver,start_time=start_time,run_seconds=float(cfg.run_seconds),
+            options=options)
+        factor=options['coarsening']
+        driver.ocean.roughness_feedback=options['roughness_feedback']
+    else:
+        config=read_config(legacy)
+        driver.ocean=prepare_coupler(config)
+        factor=config.get('coarsening',1)
+    ocean=driver.ocean
+    if geometry is not None:
+        sina,cosa=geometry.rotation_m()
+        sina=cp.ascontiguousarray(cp.asarray(sina,dtype=cp.float32))
+        cosa=cp.ascontiguousarray(cp.asarray(cosa,dtype=cp.float32))
+    elif factor==1:
+        sina,cosa=ocean.grid.sinalpha,ocean.grid.cosalpha
+    else:
+        raise ValueError("coarsened ocean coupling needs the atmosphere grid rotation")
+    from .exchange import BlockExchange
+    weights=(cp.ones(shape,cp.float32) if state is None else
+             cp.ascontiguousarray(1/cp.asarray(state.msft,dtype=cp.float32)**2))
+    ocean.exchange=BlockExchange(shape,ocean.grid,factor=factor,cosalpha=cosa,sinalpha=sina,
+                                area_weight=weights,xland=driver.fields['xland'])
+    if factor==1:
+        for name,source,target in (("latitude",latitude,ocean.grid.latitude),("longitude",longitude,ocean.grid.longitude)):
+            if not bool(cp.allclose(source,target,atol=1.e-5,rtol=0.)):
+                raise ValueError(f"ocean {name} differs from atmosphere grid")
+    ocean.output_interval=float(cfg.output_interval_s)
+    ocean.run_end=float(cfg.run_seconds)
+    from .cost import WaveCost
+    ocean.cost=WaveCost(atmosphere_dt=float(cfg.dt),output_interval=ocean.output_interval,
+                        coupling_interval=ocean.interval)
 
 def native_binary():
     from woof import bridges
@@ -116,8 +160,10 @@ def render_main(args):render_ocean(args.request);return 0
 def register_cli(subparsers):
     p=subparsers.add_parser('ocean',help='prepare and run coupled atmosphere, waves and surge')
     commands=p.add_subparsers(dest='ocean_command',required=True)
+    from .waves.cli import register_ocean_cli
+    wave_commands=register_ocean_cli(commands)
     from .waves.data import register_cli as register_wave_data_cli
-    register_wave_data_cli(commands)
+    register_wave_data_cli(wave_commands)
     for name in ('prepare','extract'):
         s=commands.add_parser(name,help='Rust bathymetry or atmosphere field preparation')
         s.add_argument('request',type=Path);s.set_defaults(func=native_main)

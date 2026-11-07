@@ -312,6 +312,15 @@ fn processing_name(selector: FieldSelector) -> String {
                 top_m: 5000,
             },
         ) => "updraft_helicity_2to5km".into(),
+        (F::UpdraftHelicity, V::HeightAboveGroundLayerMeters { bottom_m: 0, top_m: 1000 }) => {
+            "updraft_helicity_0to1km".into()
+        }
+        (F::UpdraftHelicity, V::HeightAboveGroundLayerMeters { bottom_m: 0, top_m: 2000 }) => {
+            "updraft_helicity_0to2km".into()
+        }
+        (F::UpdraftHelicity, V::HeightAboveGroundLayerMeters { bottom_m: 0, top_m: 3000 }) => {
+            "updraft_helicity_0to3km".into()
+        }
         (F::TotalPrecipitation, V::Surface) => "apcp".into(),
         _ => selector.key(),
     }

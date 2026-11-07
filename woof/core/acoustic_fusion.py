@@ -102,6 +102,8 @@ def acoustic_source() -> str:
 @lru_cache(maxsize=None)
 def _audit_options():
     """The options the acoustic module compiles with, plus CuPy's arch flag."""
+    from woof.hip_backend import active
+    if active(): return ("-std=c++17",)
     from cupy.cuda import compiler
     helper = getattr(compiler, "_get_arch_for_options_for_nvrtc", None)
     if helper is None:

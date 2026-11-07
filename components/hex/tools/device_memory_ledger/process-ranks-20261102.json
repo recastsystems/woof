@@ -1,0 +1,43 @@
+{
+  "measured": {
+    "whole_device_peak_mib": 22524,
+    "sampling_seconds": 5,
+    "ranks": 2,
+    "devices": [
+      0,
+      0
+    ],
+    "local_cells": [
+      21445,
+      21449
+    ],
+    "card_sm": 170,
+    "threads_per_sm": 1536,
+    "levels": 55,
+    "hours": 24,
+    "steps": 144,
+    "physics": "fast ArWen column suite",
+    "cycle": "2026-11-01T00:00:00Z",
+    "layouts_sha256": "2994287c37aaafd6a02a01f8a98c5d4abd7af6c18e4ab4bd1fbd887967284d61"
+  },
+  "sources": {
+    "engine": "1be81b8cb6dcdc362ebff2d4f8c66a803bb6ba05",
+    "hex_baseline": "8868a90978d9bb92ba9181fc6e4892fc8a8a72c4",
+    "hex_host_memory": "ec96043b18ee830f859edb854894a2953a4d2fd1"
+  },
+  "derivation": "Equal per-rank split of a whole-device peak at one mesh size. Raise the fixed term through the smaller local-cell count, retain the existing positive slope and tiled growth. The per-rank split and larger-mesh extrapolation are derived, not measured.",
+  "radiation_request": {
+    "columns": 8192,
+    "gpoints": 112,
+    "arrays": 16,
+    "levels_with_bounds": 57,
+    "word_bytes": 4,
+    "bytes": 3347054592
+  },
+  "evidence": {
+    "pool-whole-pair-history.log": "3f53717ad2d6ea77fbc7338f917417342ef42d3b5882514683c17e6907272787",
+    "whole-forecast-comparison.json": "60ed81adaf92dc270306e51d43f6d11ea1241c549f05b4ae6c96cdca8917f741",
+    "forecast-whole-before-native-receipt.json": "d32209988a2ba93c2cd66f6e5f1ee2baed8f4739783668ea4a986ae31fa4f2b1",
+    "forecast-whole-after-native-receipt.json": "77bb91c504b81250c749a06d0806b6c18e7fd39365da554437558b6b1a0efabd"
+  }
+}

@@ -134,6 +134,61 @@ def test_a_rank_process_frame_reads_like_a_pending_snapshot():
     assert group._Ready(arrays).result() is arrays
 
 
+def test_rank0_failure_reaps_its_waiting_child_before_releasing_halo_flags():
+    """A real hour-17 OOM waited forever for a child already waiting on rank 0's next GPU halo round."""
+    import socket
+    import subprocess
+    import threading
+    from woof.hex.rank_processes import Link, RankProcesses
+
+    ranks = RankProcesses((0, 0), {0: [1], 1: [0]}, module="unused", timeout=60, job="unused")
+    ranks.rank0_grace = None
+    local, remote = socket.socketpair()
+    ranks.step_links[1] = Link(local, timeout=60, name="step-0-1")
+    child = subprocess.Popen([sys.executable, "-c", "import signal; signal.pause()"],
+                             pass_fds=(remote.fileno(),))
+    ranks.processes[1] = child
+    remote.close()
+    unrelated = subprocess.Popen([sys.executable, "-c", "import signal; signal.pause()"])
+    executor = group.ProcessRankGroup.__new__(group.ProcessRankGroup)
+    executor.group, executor.size = ranks, 2
+    executor.failed, executor.failure = False, None
+    executor.sync_seconds, executor.sync_calls = [0., 0.], [0, 0]
+    released, errors = [], []
+    executor.ctx = SimpleNamespace(transport=SimpleNamespace(
+        abort=lambda reason: released.append((reason, child.poll(), unrelated.poll()))))
+    original = MemoryError("rank-zero allocation failed")
+
+    def fail(*args):
+        raise original
+
+    executor._local = fail
+
+    def call():
+        try:
+            executor.call("advance")
+        except BaseException as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=call, daemon=True)
+    try:
+        thread.start()
+        thread.join(5)
+        assert not thread.is_alive(), "rank zero waited for its child instead of stopping it"
+        assert errors == [original]
+        assert released == [("rank 0: MemoryError: rank-zero allocation failed", -9, None)]
+        assert ranks.failure == released[0][0]
+        assert ranks._rank0_responded.is_set()
+        assert executor.failed
+    finally:
+        ranks.kill()
+        child.wait(5)
+        ranks.close()
+        unrelated.kill()
+        unrelated.wait(5)
+        thread.join(5)
+
+
 def test_iau_increment_is_formed_once_and_any_rank_set_built_from_it(monkeypatch):
     import woof.hex.iau_native as iau_native
 

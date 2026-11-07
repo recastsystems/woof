@@ -116,6 +116,10 @@ def options(strict: Iterable[str], *, keep_ftz: bool = False, numerics: str | No
         return strict
     kept = tuple(option for option in strict if not _is_numeric_flag(option) and option not in FAST_DEFINES)
     flags = tuple("--ftz=false" if keep_ftz and flag.startswith("--ftz") else flag for flag in FAST_FLAGS)
+    # A wordwise producer/validator boundary needs one rounding after each
+    # operation in either forecast mode. Match the shared engine marker.
+    if "-DGPUWM_PREPARATION_IDENTITY=1" in strict:
+        flags = tuple("--fmad=false" if flag.startswith("--fmad") else flag for flag in flags)
     return (*kept, *flags, *FAST_DEFINES)
 
 

@@ -278,6 +278,9 @@ def test_select_downloads_only_matching_family(estate, server):
 
 def test_staged_resolution_memoises_hash(estate, monkeypatch):
     source, name, pins, identity = estate
+    # The asset was written a moment ago; the racy-version rule is not what this test is about.
+    from woof.hex import file_digest
+    monkeypatch.setattr(file_digest, 'RACY_SECONDS', 0.0)
     assets.fetch_one(name, pins, from_directory=source)
     assets._VERIFIED.clear()
     original = hashlib.file_digest
@@ -327,7 +330,7 @@ def test_a_pin_row_may_name_its_own_release():
 
 
 def test_a_pack_the_box_image_holds_is_used_by_a_run_with_its_own_cache(estate, monkeypatch, tmp_path):
-    """THE BREAKAGE (an RTX 5090 host and V8X6000, 2026-10-29): packs staged on the box were invisible to a run with its
+    """THE BREAKAGE (an RTX 5090 host and eight-card system, 2026-10-29): packs staged on the box were invisible to a run with its
     own cache root; the run fetched an unpublished tag, got a 404 and compiled every kernel through NVRTC."""
     source, name, pins, identity = estate
     no_network(monkeypatch)

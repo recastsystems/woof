@@ -330,6 +330,11 @@ class CaseFrameWriter:
                     out[name] = self.phb3
                 elif name == "T":
                     dst = self._scratch("T", (self.nz, self.ny, self.nx))
+                    if getattr(self.cfg, "use_theta_m", 0) and "state/qv" in store:
+                        from tilestream.output import derive_dry_t
+                        out[name] = derive_dry_t(self.thb, _arr(store["state/thp"]),
+                                                _arr(store["state/qv"]), dst)
+                        continue
                     # The device computes (thb + thp) - 300.  Keep that order.
                     np.add(self.thb, _arr(store["state/thp"]), out=dst)
                     np.subtract(dst, np.float32(300.0), out=dst)

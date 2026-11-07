@@ -172,7 +172,7 @@ def _expanded_headers(operand, macros):
 def box_roots(primary):
     """Read-only stores a run reads after its own: the box's default store and an image-baked one.
 
-    THE BREAKAGE THIS ENDS (V8X6000 and an RTX 5090 host, 2026-10-29): a run that isolates its cache root
+    THE BREAKAGE THIS ENDS (eight-card system and an RTX 5090 host, 2026-10-29): a run that isolates its cache root
     (WOOF_HEX_CACHE_ROOT or WOOF_HEX_KERNEL_CACHE_ROOT, as lanes and members do) found none of the
     box's compiled images and compiled every module again.  Entries are content-addressed and every read
     checks the entry's own digest and request key, so another store can only serve the identical request;
@@ -204,9 +204,10 @@ class Store:
         # keyed by the run's argv (the plan tag), so every new storm-following member (a new --mesh/--grid)
         # missed every artifact and recompiled the MPAS suite's fast-mode kernels inline, 15 s at the start of
         # each moving segment on an RTX 4090 host (MPAS-ROUTE-SPEED-2026-10-24).
-        self.directory = (self.root / ("cuda" + str(identity["nvrtc"][0])) /
+        family = identity.get("backend") or ("cuda" + str(identity["nvrtc"][0]))
+        self.directory = (self.root / family /
                           _digest(identity) / "content")
-        self.fallbacks = [Path(fallback) / ("cuda" + str(identity["nvrtc"][0])) / _digest(identity) / "content"
+        self.fallbacks = [Path(fallback) / family / _digest(identity) / "content"
                           for fallback in fallbacks]
         try:
             cores = len(os.sched_getaffinity(0))
@@ -378,7 +379,7 @@ class Store:
     def _stored_tree(self, token, listing):
         """A header tree's binding from an earlier process, when every file in it is the same file.
 
-        THE COST THIS REMOVES (V5090 box, 2026-10-27): every forecast process read and regex-parsed
+        THE COST THIS REMOVES (reference system box, 2026-10-27): every forecast process read and regex-parsed
         each file of every bound include tree (the CUDA/CCCL headers: thousands of files) on the
         hex-warm-io pool.  The parse is Python and holds the GIL, so for 4-18 s of each start the
         pool starved the main thread's host preparation (a 3 km region's dycore inputs took 7.7 s

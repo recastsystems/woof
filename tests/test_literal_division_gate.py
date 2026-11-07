@@ -134,7 +134,7 @@ def test_no_production_line_becomes_a_reciprocal_multiply_on_compute_120():
 
 
 #: (NVRTC major, minor) -> whether it constant-folds ``tgammaf(4.0f)`` on
-#: compute_120 (A174, measured on a development machine's CPU with CUDA hidden): 13.4.92
+#: compute_120 (A174, measured on test host 4's CPU with CUDA hidden): 13.4.92
 #: divides by the folded 6.0 under either flush mode, 12.9.86 calls tgammaf.
 _GAMMA_FOLDED_ON_COMPUTE_120 = {(12, 9): False, (13, 4): True}
 
@@ -341,9 +341,21 @@ def test_compute_120_still_rewrites_and_fdiv_rn_still_holds():
     # unit with (p3_device's -fmad=false among them), since each unit's
     # reference is built with that unit's own options.
     from tools.literal_division_census import production_units
-    option_sets = {tuple(u.options) for u in production_units(REPO_ROOT)}
+    units = production_units(REPO_ROOT)
+    option_sets = {tuple(u.options) for u in units}
     assert ("-std=c++17",) in option_sets, option_sets
+    # A unit compiled with --prec-div=false has opted out of IEEE division
+    # for EVERY quotient, not only constant ones (x / 3.0f is div.full), so
+    # A146 has nothing to hold it to and no div.rn reference exists for it.
+    # Only the named fast-division units may do so: EEPS's default runtime
+    # (ea830c91a3, fast numerics; its strict replay keeps precise division
+    # and is censused under the default option set).  Another unit turning
+    # up here needs its own named reason.
+    fast_division = {u.key for u in units if "--prec-div=false" in u.options}
+    assert fast_division <= {"kernels:eeps"}, fast_division
     for options in sorted(option_sets):
+        if "--prec-div=false" in options:
+            continue
         ref = compile_ptx(src, options + ("-ftz=false", "-arch=compute_120"))
         ref_body = ref[ref.index(".entry k("):]
         assert re.search(r"div\.rn\.f32\s+%\w+,\s*%\w+,\s*0f40400000;",

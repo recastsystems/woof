@@ -1,0 +1,35 @@
+{
+  "repository": "https://github.com/polyanskiy/refractiveindex.info-database",
+  "commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+  "ice_path": "database/data/main/H2O/nk/Warren-2008.yml",
+  "black_carbon": {
+    "refractive_index": [
+      1.95,
+      0.79
+    ],
+    "radius_um": 0.1,
+    "density_kg_m3": 1700,
+    "source": "10.1080/02786820500421521; reference inclusion in 10.1175/JCLI-D-17-0300.1"
+  },
+  "dust": {
+    "source": "https://doi.org/10.5281/zenodo.14171144",
+    "archive": "https://zenodo.org/records/14171144/files/GroupRefInd.tar.gz",
+    "member": "GroupRefInd/CoarseModeRefInd.dat",
+    "authors": "Zhang, Z.; Saito, M.; Yang, P.; Schuster, G.; Trepte, C. (2024), Mineral spectral refractive index and bulk optical property dataset for aerosol studies, v1.3",
+    "license": "CC-BY-4.0",
+    "changes": "Use first three columns only; interpolate refractive indices; self-written Mie calculation for lognormal Re=1um, sigma_g=1.5, rho=2500 kg/m3. No bulk optical table used."
+  },
+  "solar": {
+    "source": "https://www.nlr.gov/grid/solar-resource/spectra-am1.5",
+    "archive": "https://www.nlr.gov/media/docs/libraries/grid/zip/astmg173.zip?sfvrsn=1ef05e45_5",
+    "credit": "U.S. Department of Energy (DOE)/NLR/ALLIANCE",
+    "notice": "licenses/LICENSE-NLR-solar.txt",
+    "changes": "Trapezoidal bin integration of direct normal and global-minus-projected-direct irradiance; 11.19-degree reference incidence."
+  },
+  "sha256": {
+    "ice.yml": "a8577eaa1fabb9245957397344ce23efb20dd4c57cd7f442710d2d2373e0bbd6",
+    "dust-ri.dat": "3ddcd7b7cab3997d0866c2bb2424b7bf7e53e976cd876baf5cd0d90b5d151a55",
+    "solar.csv": "b48a6635ce398f7e0fa392150d68b5793ed7f2a65d9e2406bec7e6be9fb20954"
+  },
+  "generated_sha256": "0e0a377955e78f6762d6d1a3318d9715fc8fffbd213b9645be88523e1fa2bce8"
+}

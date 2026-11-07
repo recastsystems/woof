@@ -76,7 +76,8 @@ def _required_state_shape(state) -> tuple[int, int, int]:
 def make_nssl2_default_runtime_hooks(
         state, dt_s: float, fused_gs: NSSL2RuntimeStageCallback, *,
         validate_values: bool = True,
-        mode: NSSL2Mode = DEFAULT_MODE) -> NSSL2RuntimeHooks:
+        mode: NSSL2Mode = DEFAULT_MODE,
+        nssl_cccn: float = 0.5e9, shapes=(0.0, 1.0)) -> NSSL2RuntimeHooks:
     """Bind the production default NUCOND+QVEXCESS stage to ``state``.
 
     ``fused_gs`` is the separately admitted shared-limiter GS implementation.
@@ -143,6 +144,7 @@ def make_nssl2_default_runtime_hooks(
             supersaturation_scratch=supersaturation_scratch,
             concentration_space=True,
             predicted_ccn=mode.predicted_ccn,
+            nssl_cccn=nssl_cccn, shapes=shapes,
             validate_values=validate_values,
             frozen=(
                 workspace.field("qg"),
@@ -172,6 +174,8 @@ class NSSL2ProductionBinding:
     hooks: NSSL2RuntimeHooks
     nucond_scratch: object
     mode: NSSL2Mode = DEFAULT_MODE
+    nssl_cccn: float = 0.5e9
+    shapes: tuple[float, float] = (0.0, 1.0)
 
     def validate(self, state, dt_s: float, /) -> None:
         """Fail before mutation if ownership, structure, or step drifted."""
@@ -200,6 +204,8 @@ class NSSL2ProductionBinding:
                 "NSSL fused hook hail switch differs from the resolved "
                 "variant mode")
 
+        if getattr(self.fused_gs, "shapes", (0.0, 1.0)) != self.shapes:
+            raise NSSL2ProductionConfigurationError("NSSL fused hook shape coefficients differ from binding")
         validate_nssl2_driver_workspace(self.workspace, self.shape)
         pool = getattr(state, "_scratch", None)
         if not isinstance(pool, dict):
@@ -216,6 +222,14 @@ class NSSL2ProductionBinding:
                 self.fused_gs.primary_ice_target_m3, self.shape),
             NSSL2_NUCOND_SCRATCH: (self.nucond_scratch, self.shape),
         }
+        from woof.core.nssl2_shape import requires_cd_carry
+        if requires_cd_carry(self.shapes):
+            if self.workspace.drag_cd is None:
+                raise NSSL2ProductionConfigurationError(
+                    "NSSL gathered CD scratch was not prepared")
+            nz, ny, nx = self.shape
+            expected["nssl2_drag_cd_carry"] = (
+                self.workspace.drag_cd, (7, nz + 1, ny, nx))
         for name, (value, shape) in expected.items():
             if pool.get(name) is not value:
                 raise NSSL2ProductionConfigurationError(
@@ -243,7 +257,7 @@ class NSSL2ProductionBinding:
         fused_gs = replace(self.fused_gs, dt_s=step)
         hooks = make_nssl2_default_runtime_hooks(
             self.state, step, fused_gs, validate_values=False,
-            mode=self.mode)
+            mode=self.mode, nssl_cccn=self.nssl_cccn, shapes=self.shapes)
         binding = replace(self, dt_s=step, fused_gs=fused_gs, hooks=hooks)
         binding.validate(self.state, step)
         return binding
@@ -251,7 +265,8 @@ class NSSL2ProductionBinding:
 
 def make_nssl2_production_binding(
         state, dt_s: float, *,
-        mode: NSSL2Mode = DEFAULT_MODE) -> NSSL2ProductionBinding:
+        mode: NSSL2Mode = DEFAULT_MODE,
+        nssl_cccn: float = 0.5e9, shapes=(0.0, 1.0)) -> NSSL2ProductionBinding:
     """Build the one persistent MP18 binding for a domain.
 
     ``mode`` is the resolved NSSL variant from
@@ -262,7 +277,12 @@ def make_nssl2_production_binding(
     domain starts on, and :meth:`NSSL2ProductionBinding.with_step` moves
     the binding to any later one.
     """
+    if not mode.two_moment:
+        from woof.core.nssl1 import make_binding
+        return make_binding(state,dt_s,mode,nssl_cccn=nssl_cccn,shapes=shapes)
     require_ported_nssl2_mode(mode)
+    from woof.core.nssl2_shape import resolved_shapes, requires_cd_carry
+    shapes = resolved_shapes(*shapes)
     step = _step32(dt_s)
     shape = _required_state_shape(state)
     nz, ny, nx = shape
@@ -286,16 +306,18 @@ def make_nssl2_production_binding(
         category_surface_export=surface_export,
         shape=shape,
         ignored_accumulator=ignored_accumulator,
+        drag_cd=(state.scratch((7,nz+1,ny,nx),"nssl2_drag_cd_carry")
+                 if requires_cd_carry(shapes) else None),
     )
     from woof.core.nssl2_fused_gs import NSSL2FusedGS
     fused_gs = NSSL2FusedGS(
         temperature_k=fused_temperature,
         primary_ice_target_m3=primary_ice_target,
         dt_s=step,
-        hail_on=mode.hail,
+        hail_on=mode.hail, shapes=shapes,
     )
     hooks = make_nssl2_default_runtime_hooks(
-        state, step, fused_gs, validate_values=False, mode=mode)
+        state, step, fused_gs, validate_values=False, mode=mode, nssl_cccn=nssl_cccn, shapes=shapes)
     binding = NSSL2ProductionBinding(
         state=state,
         shape=shape,
@@ -305,6 +327,7 @@ def make_nssl2_production_binding(
         hooks=hooks,
         nucond_scratch=state._scratch[NSSL2_NUCOND_SCRATCH],
         mode=mode,
+        nssl_cccn=nssl_cccn, shapes=shapes,
     )
     binding.validate(state, step)
     return binding

@@ -1,6 +1,6 @@
 """A generated grid's static holds the binary64 coordinates it declares.
 
-THE BREAKAGE (2026-10-15).  woof 2.9.0's
+THE BREAKAGE (2026-10-15).  gpuwm 2.9.0's
 ``rw_mpas_static``, and every build of woof integrate/hex-mpas before
 46c8a71513e (24b6f08c among them), reads every grid through binary32.  A
 grid the point door GENERATES asks its static for binary64 coordinates
@@ -11,7 +11,7 @@ spherical cell-center arc length", 2.6e-4 against 9.5e-7) and, past it,
 ``rw_mpas_mesh --cull-parent`` refused the static's cut ("provenance grid
 latCell differs"), so no 3 km regional mesh could be built.
 
-The fix is in the engine (woof 46c8a71513e reads a binary64 grid at
+The fix is in the engine (gpuwm 46c8a71513e reads a binary64 grid at
 binary64) and the wheel bundles that builder.  What runs here:
 
 * the door's own check, :func:`woof.hex.mesh_point.static_coordinate_errors`,
@@ -121,7 +121,7 @@ def _generated_grid(directory: Path, mesh: Mesh) -> Path:
 def _static(directory: Path, name: str, mesh: Mesh, *, binary32_read: bool) -> Path:
     """A static as rw_mpas_static writes one for a generated grid.
 
-    ``binary32_read`` is woof 2.9.0's / 24b6f08c's arithmetic: every value
+    ``binary32_read`` is gpuwm 2.9.0's / 24b6f08c's arithmetic: every value
     rounded to binary32 on read and carried to the sphere in binary32, then
     stored as binary64 under the binary64 declaration.  Without it, the fixed
     builder's: the grid's binary64 values times the radius in binary64.
@@ -212,7 +212,7 @@ def test_the_wheel_bundles_a_static_builder_that_holds_binary64() -> None:
 
     pins = json.loads(PINS.read_text(encoding="utf-8"))
     row = pins["bridges"]["rw_mpas_static"]
-    assert row["source"] == "tools/rustwx/crates/rw-mpas/src/bin/rw_mpas_static/main.rs"  # a bin directory since woof 2.9.7
+    assert row["source"] == "tools/rustwx/crates/rw-mpas/src/bin/rw_mpas_static/main.rs"  # a bin directory since gpuwm 2.9.7
     assert row["builder_source"] == "tools/rustwx/crates/rw-mpas/src/static_builder.rs"
     assert len(row["builder_source_sha256"]) == 64
     assert "binary64" in row["holds"]

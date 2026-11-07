@@ -431,6 +431,25 @@ def _ms_per_column(work, counts=_COST_COUNTS, repeats: int = 5) -> list[float]:
     return [min(samples[n]) for n in counts]
 
 
+def _width_trend(costs, counts=_COST_COUNTS) -> float:
+    """Fitted per-column cost ratio across ``counts`` (>= 1, either direction).
+
+    Least-squares slope of log(cost) against log(n), carried across the whole
+    width range: 1.0 is flat, 16.0 is a fixed per-call cost amortized over
+    48 -> 768 columns.  This is the quantity the projection to production
+    width depends on.  ``max/min`` over the points is not: one point delayed
+    by the scheduler moves it by the whole delay (2.9.12 pass 19 R5, a development machine at
+    load ~150: 48: 0.845, 96: 0.785, 192: 1.037, 384: 0.663, 768: 0.653 read
+    1.59 by max/min with no trend -- the middle point was the slow one; the
+    fitted ratio of those numbers is 1.32 and the same test passed 3/3 at
+    ~1.0x load), while the fit moves by a fraction of it.
+    """
+    x = np.log(np.asarray(counts, dtype=float))
+    y = np.log(np.asarray(costs, dtype=float))
+    slope = float(np.polyfit(x, y, 1)[0])
+    return float(np.exp(abs(slope) * (x[-1] - x[0])))
+
+
 def _land_surface_call(n: int) -> None:
     values, ivgtyp, isltyp = _columns(n, snow=False)
     _run(values, ivgtyp, isltyp)
@@ -460,22 +479,24 @@ def test_the_host_column_cost_is_still_flat_after_the_conversion() -> None:
     # best-of round can only lower a point toward its true cost; a real loss
     # of flatness survives every round.  (2.9.4 passes e3aa36d0 and 35a19528:
     # 40-slot Stage-1 hosts read 1.60-1.65 here while the unloaded file read
-    # flat.)
+    # flat.)  The statistic is the fitted trend across the widths, not
+    # max/min over the points: see ``_width_trend``.
     for _round in range(3):
-        if max(costs) / min(costs) < 1.5:
+        if _width_trend(costs) < 1.5:
             break
         costs = [min(a, b) for a, b in zip(costs, _ms_per_column(_land_surface_call))]
-    spread = max(costs) / min(costs)
+    spread = _width_trend(costs)
     report = ", ".join(f"{n}: {c:.3f}" for n, c in zip(_COST_COUNTS, costs))
     assert spread < 1.5, (
         f"RUC's per-column cost is no longer flat over {_COST_COUNTS} "
-        f"({report}); the projection to production width assumes it is")
+        f"({report}; fitted ratio {spread:.2f}x); the projection to "
+        "production width assumes it is")
 
     # The control.  Hold the work FIXED at the smallest count and divide by n
     # anyway: that is what a call whose cost is NOT per-column looks like
     # through this same statistic, and it must be rejected.
     control = _ms_per_column(lambda _n: _land_surface_call(_COST_COUNTS[0]))
-    control_spread = max(control) / min(control)
+    control_spread = _width_trend(control)
     assert control_spread > 8.0, (
         "the flatness statistic did not reject constant work "
         f"(spread {control_spread:.1f}x), so it cannot tell per-column work "

@@ -85,11 +85,12 @@ extern "C" __global__ void rp_probe(const float* x, float* y) {
 extern "C" __global__ void rp_prep(
     int ncol, int nk, int nl, int sw, int icloud, int warm,
     int fqc, int fqr, int fqi, int fqs, int hc, int hi, int hs,
-    int inflg, int iceflg, int o3input, int ferrier, float g,
+    int inflg, int iceflg, int o3input, int ferrier, int cam, float g,
     const float* p, const float* pw, const float* t, const float* tw,
     const float* dz, const float* qv, const float* qc, const float* qr,
     const float* qi, const float* qs, const float* cf, const float* oz,
     const float* rc, const float* ri, const float* rs,
+    const float* cam_lradius, const float* cam_iradius,
     const float* land, const float* ice, const float* snow,
     const float* retab, const float* pp, const float* tp,
     const float* ow, const float* ph,
@@ -167,9 +168,17 @@ extern "C" __global__ void rp_prep(
             }
             if (fqi) qice = rp_max(0.0f, qi[j]);
             if (fqs) qsnow = rp_max(0.0f, qs[j]);
+            // ETAMPNEW carries total ice in QS, without a QI species.
+            // WRF 4.7.1 module_ra_rrtmg_lw/sw split it 10/90 for optics.
+            if (ferrier == 2) {
+                qice = rp_max(0.0f, RP_MU(0.1f, qs[j]));
+                qsnow = RP_MU(0.9f, qs[j]);
+                qcl = rp_max(0.0f, qc[j]);
+            }
         }
-        // FER_MP_HIRES remaps total ice outside ICLOUD in both wrappers.
-        if (ferrier) {
+        // WRF FER_MP_HIRES / FER_MP_HIRES_ADVECT remap is outside ICLOUD
+        // (module_ra_rrtmg_lw.F:12135, module_ra_rrtmg_sw.F:10736).
+        if (ferrier == 1) {
             qice = rp_max(0.0f, qi[j]);
             qsnow = 0.0f;
             qcl = rp_max(0.0f, qc[j]);
@@ -211,6 +220,14 @@ extern "C" __global__ void rp_prep(
         if (inflg>=3) rliq=rec;
         if (iceflg>=4) rice=ric;
         if (iceflg==3) rice=rp_min(140.0f, RP_MU(rice,1.0315f));
+        // WRF module_ra_rrtmg_lw.F:12607-12625 and sw.F:11156-11175.
+        // CAM overrides the fallback after its Fu diameter conversion.
+        if (cam) {
+            rice = (qice > 1.e-20f || qsnow > 1.e-20f) ? cam_iradius[j] : 25.0f;
+            rice = rp_max(5.0f, rp_min(140.0f, rice));
+            rliq = qcl > 1.e-20f ? cam_lradius[j] : 10.0f;
+            rliq = rp_max(2.5f, rp_min(60.0f, rliq));
+        }
         rel[b+k]=rliq; rei[b+k]=rice;
         if (inflg==5) res[b+k]=rsc;
     }

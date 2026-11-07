@@ -111,7 +111,7 @@ def _allocate_result(shape, *, znt, ust, ustm, mol, hfx, qfx, qsfc, zol):
 def launch_sfclay(u, v, t, qv, p, dz8w, psfc, tsk, pblh, mavail, xland,
                    lakemask, result: SFClayResult, *, option: int, dx: float,
                    isfflx: bool = True, isftcflx: int = 0,
-                   iz0tlnd: int = 0) -> None:
+                   iz0tlnd: int = 0, dx_field=None) -> None:
     """Launch into a preallocated :class:`SFClayResult`.
 
     All inputs and result fields must be contiguous FP32 arrays with the same
@@ -130,10 +130,13 @@ def launch_sfclay(u, v, t, qv, p, dz8w, psfc, tsk, pblh, mavail, xland,
                              "float32 surface arrays")
     n = int(np.prod(shape))
     blocks = (n + _TPB - 1) // _TPB
-    kernel = get_kernel("sfclay", "sfclay_column")
+    if dx_field is not None:
+        if dx_field.shape != shape or dx_field.dtype != DTYPE or not dx_field.flags.c_contiguous:
+            raise ValueError("dx_field must be a contiguous float32 surface plane")
+    kernel = get_kernel("sfclay_dx2d" if dx_field is not None else "sfclay", "sfclay_column")
     # Kernel order: 12 read-only inputs; 8 inout fields; remaining outputs.
     kernel((blocks,), (_TPB,), arrays + (
-        DTYPE(dx), np.int32(option), np.int32(bool(isfflx)),
+        dx_field if dx_field is not None else DTYPE(dx), np.int32(option), np.int32(bool(isfflx)),
         np.int32(isftcflx), np.int32(iz0tlnd), np.int32(n)))
 
 

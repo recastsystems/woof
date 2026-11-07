@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -398,7 +399,7 @@ def test_without_distinct_leads_the_render_keeps_a_store_per_frame(monkeypatch, 
 
 
 def test_the_default_product_stage_draws_maps_when_the_point_tool_is_absent(monkeypatch, tmp_path, capsys):
-    # woof 2.9.0 builds rw_hex_points standalone, so a pip install can lack
+    # gpuwm 2.9.0 builds rw_hex_points standalone, so a pip install can lack
     # it. The forecast's automatic stage must still draw the maps (they never
     # need it) and name what it skipped; before, the whole stage refused.
     from woof.hex import forecast_door, products_door, render_door
@@ -1100,3 +1101,62 @@ def test_the_context_box_is_converted_at_its_pictures_pixels():
     # the converter's own region window: near the equator (lat-lon there), and where a pixel is finer than the core
     assert products_door.context_window(5.0, -60.0, 6850.0, "1400x1000", 3000.0) == ("region:5.000,-60.000,6850,4795", None)
     assert products_door.context_window(34.0, -97.0, 1500.0, "1400x1000", 3000.0)[1] is None
+
+
+def _wide_core(monkeypatch):
+    """The stand-in converter frames the core as a 240 -> 60 km zoom globe's (Iowa, 800 km radius): a 5,886 km wide
+    refined window, and refuses a region past half a meridian, as rw_mpas_convert does."""
+    fake = render_door._run
+
+    def run(command, *, log_prefix, env=None):
+        command = [str(c) for c in command]
+        if log_prefix == "CONVERT":
+            window = command[command.index("--window") + 1]
+            if window.startswith("region:"):
+                width, height = (float(v) for v in window.split(":", 1)[1].split(",")[2:4])
+                if max(width, height) > 20012.0:
+                    refused = type("Refused", (), {"returncode": 1, "stdout": "", "stderr": (
+                        "rw_mpas_convert: a region window's width and height must be positive and at most 20012 km")})
+                    return refused()
+        result = fake(command, log_prefix=log_prefix, env=env)
+        if log_prefix == "CONVERT" and command[command.index("--window") + 1] == "mesh":
+            report = Path(command[command.index("--json") + 1])
+            doc = json.loads(report.read_text(encoding="utf-8"))
+            doc["window_spec"] = {"kind": "lambert", "centre_lat": 41.499, "centre_lon": -92.997,
+                                  "dx_metres": 30000.0, "nx": 283, "ny": 196,
+                                  "truelat1": 36.499, "truelat2": 46.499, "stand_lon": -92.997}
+            report.write_text(json.dumps(doc), encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(render_door, "_run", run)
+
+
+def test_a_wide_core_gets_a_context_view_the_converter_accepts(monkeypatch, tmp_path, capsys):
+    """both-routes matrix, woof hex 0.4.14 candidate (2026-11-06): on a 240 -> 60 km zoom globe the context box came out
+    23,547 x 16,483 km, rw_mpas_convert refused it (at most 20,012 km) and the door exited 1 after a finished forecast,
+    on both physics routes. The box is capped where its corners stay within a quarter turn of the core."""
+    seen: list = []
+    _stand_in_engines(monkeypatch, tmp_path, uniform=False, seen=seen)
+    _points_stand_in(monkeypatch, seen)
+    _wide_core(monkeypatch)
+    args = _arguments(tmp_path, _histories(tmp_path), case="wide-core")
+    args.no_points = True
+    assert products_door.run_products(args) == 0
+    manifest = json.loads((tmp_path / "out" / "wide-core" / "products-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["failed_views"] == []
+    context = next(v for v in manifest["views"] if v["view"] == "refined-context")
+    assert context["rc"] == 0 and context["refusal"] is None
+    width, height = (float(v) for v in context["window"].split(":", 1)[1].split(",")[2:4])
+    assert width == pytest.approx(products_door.CONTEXT_MAX_EXTENT_KM, abs=1.0) and height < width
+    assert "capped at 16394 km" in capsys.readouterr().out
+    assert (tmp_path / "out" / "wide-core" / "refined-context" / "total_qpf" / "2026-10-03").is_dir()
+
+
+def test_the_context_extent_is_four_core_widths_up_to_the_quarter_turn():
+    assert products_door.context_extent_km(100.0) == (1500.0, None)               # the floor
+    assert products_door.context_extent_km(856.0) == (6848.0, None)               # an Arizona 800 km core
+    extent, why = products_door.context_extent_km(2940.0)                         # a 240 -> 60 km zoom globe
+    assert round(extent) == 16394 and "23520 km" in why
+    corner = 0.5 * extent * (1.0 + 0.7 ** 2) ** 0.5
+    assert corner == pytest.approx(0.5 * math.pi * 6370.0)                         # the corner at a quarter turn
+    assert extent < 20012.0                                                        # inside the converter's limit

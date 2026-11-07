@@ -4,7 +4,7 @@
     python tools/release_hygiene.py dist/gpuwm_hex-*.whl dist/gpuwm_hex-*.tar.gz
     python tools/release_hygiene.py --tree .          # the files git tracks here
 
-THE BREAKAGE THIS GATE PREVENTS (verify-hex-r2, 2026-10-13): the 0.4.0
+THE BREAKAGE THIS GATE PREVENTS (release review, 2026-10-13): the 0.4.0
 candidate wheel and sdist carried the owner's name in 16 and 18 files, home
 directory paths in 23, internal cloud host names in 76, private workstation
 folders, and the live root-ssh address of a rented GPU box in 9 sdist files.
@@ -32,6 +32,13 @@ import sys
 import tarfile
 import zipfile
 from pathlib import Path
+import importlib.util
+
+_content_spec = importlib.util.spec_from_file_location("hex_export_content", Path(__file__).with_name("export_content.py"))
+_content = importlib.util.module_from_spec(_content_spec)
+sys.modules[_content_spec.name] = _content
+_content_spec.loader.exec_module(_content)
+content_scan = _content.scan
 from typing import Iterable, Iterator
 
 # Generic rules: (name, pattern).  Each names a class of private material.
@@ -45,7 +52,20 @@ RULES: tuple[tuple[str, re.Pattern[bytes]], ...] = (
     ("lab-host-name", re.compile(rb"\bweather" rb"-node-\d+\b")),
     ("workstation-folder", re.compile(rb"\bcodex" rb"-\d{3,4}\b")),
     ("workstation-folder", re.compile(rb"\bagent" rb"-scratch\b")),
+    ("private-case", re.compile(rb"(?i)\b" rb"u" rb"ae\b")),
+    ("private-da-name", re.compile(rb"(?i)\bcuda\s+" rb"je" rb"di\b")),
+    ("private-da-name", re.compile(rb"(?i)\bsyn" rb"radar\b")),
+    ("private-da-name", re.compile(rb"(?i)\bsynthetic-radar\s+da\s+cycle\b")),
+    ("private-worktree", re.compile(rb"(?i)\.claude[/\\]worktrees")),
+    ("private-host", re.compile(rb"(?i)\bno" rb"de-2\b")),
+    ("private-pool", re.compile(rb"(?i)\bpool-" rb"v3\b")),
+    ("private-ruling-file", re.compile(rb"(?i)\bd" rb"rew-ruling\.json\b")),
 )
+
+# Apply the same private-name rules to embedded strings in binary members.
+RULES += tuple((kind, re.compile(pattern.pattern.encode(), re.I))
+               for kind, pattern in _content.RULES
+               if kind in {"private assimilation name", "private assimilation tooling"})
 
 IPV4 = re.compile(rb"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.])")
 
@@ -64,15 +84,23 @@ def identity_tokens(extra: Iterable[str], where: Path) -> list[str]:
             value = ""
         if value:
             tokens.add(value)
-    for value in (os.environ.get("USER"), os.environ.get("USERNAME"), Path.home().name):
+    for value in (os.environ.get("USER"), os.environ.get("USERNAME")):
         if value:
             tokens.add(value)
+    # THE BREAKAGE (hex 0.4.12 publish.yml dry run 42033510796, 2026-11-05): a GitHub container job runs with
+    # HOME=/github/home, so the home folder's NAME was "home" and the capitalised rule refused every "HOME"
+    # (os.environ["HOME"], $HOME, the Rust standard library's home_dir) as the owner's name: 14 wheel and
+    # 6 sdist false hits, none of them private.  Only a per-user home (/home/<name>, /Users/<name>,
+    # C:/Users/<name>) names a person.
+    home = Path.home()
+    if home.parent.name.lower() in {"home", "users"}:
+        tokens.add(home.name)
     try:
         tokens.add(getpass.getuser())
     except Exception:  # noqa: BLE001 - no login name is not a hit
         pass
     # A login such as "root" or a one-letter name is not an identity.
-    return sorted(t for t in tokens if len(t) >= 3 and t.lower() not in {"root", "runner", "user", "admin"})
+    return sorted(t for t in tokens if len(t) >= 3 and t.lower() not in {"root", "runner", "user", "admin", "home"})
 
 
 def identity_rules(tokens: Iterable[str]) -> list[tuple[str, re.Pattern[bytes]]]:
@@ -87,7 +115,7 @@ def identity_rules(tokens: Iterable[str]) -> list[tuple[str, re.Pattern[bytes]]]
             # The capitalised form only: a lower-case login name is often an
             # English word ("drew" the verb), and paths are caught above.
             shown = part[:1].upper() + part[1:]
-            rules.append(("owner-name", re.compile(rb"\b" + re.escape(shown).encode() + rb"\b")))
+            rules.append(("owner-name", re.compile(rb"\b" + (b"(?:" + re.escape(shown).encode() + b"|" + re.escape(shown.upper()).encode() + b")") + rb"\b")))
     return rules
 
 
@@ -132,12 +160,20 @@ def tree_members(root: Path) -> Iterator[tuple[str, bytes]]:
                 yield raw.decode(), path.read_bytes()[:TEXT_LIMIT]
 
 
-def scan(items: Iterable[tuple[str, bytes]],
-         rules: list[tuple[str, re.Pattern[bytes]]]) -> list[tuple[str, str, str]]:
+def _scan_member(arguments):
+    item, rules = arguments
     hits: list[tuple[str, str, str]] = []
-    for member, data in items:
+    for member, data in [item]:
+        hits.extend((member, kind, f"line {line}: {context}")
+                    for _, line, kind, context in content_scan(member, data))
         seen: set[tuple[str, bytes]] = set()
         for rule, pattern in rules:
+            # A short case token occurs by chance in compressed image bytes.
+            # Other rules still inspect binaries for embedded paths.
+            if rule == "private-case" and b"\0" in data[:8192]:
+                continue
+            if _content.sealed_exception(member, rule):
+                continue
             for match in pattern.finditer(data):
                 key = (rule, match.group(0))
                 if key not in seen:
@@ -151,8 +187,91 @@ def scan(items: Iterable[tuple[str, bytes]],
     return hits
 
 
+
+def scan(items: Iterable[tuple[str, bytes]],
+         rules: list[tuple[str, re.Pattern[bytes]]]) -> list[tuple[str, str, str]]:
+    rows = list(items)
+    arguments = [(item, rules) for item in rows]
+    if len(rows) > 8 and sum(len(data) for _, data in rows) > 1024 * 1024:
+        from concurrent.futures import ProcessPoolExecutor
+        from multiprocessing import get_context
+        with ProcessPoolExecutor(max_workers=8, mp_context=get_context("fork")) as pool:
+            groups = pool.map(_scan_member, arguments, chunksize=8)
+            return [hit for group in groups for hit in group]
+    return [hit for argument in arguments for hit in _scan_member(argument)]
+
+
+from functools import lru_cache
+
+@lru_cache(maxsize=8)
+def _export_rules(root: Path):
+    return list(RULES) + identity_rules(identity_tokens([], root))
+
+
+def export_findings(name: str, data: bytes, root: Path):
+    findings = content_scan(name, data)
+    covered = {hit[1] for hit in findings}
+    for path, kind, context in scan([(name, data)], _export_rules(root)):
+        if context.startswith("line "):
+            continue
+        offset = data.find(context.encode())
+        line = data[:max(0, offset)].count(b"\n") + 1
+        if line not in covered:
+            findings.append((path, line, kind, context))
+            covered.add(line)
+    return findings
+
+
+def _export_member(arguments):
+    name, data, root = arguments
+    return export_findings(name, data, root)
+
+
+def export_tree_findings(root: Path):
+    from concurrent.futures import ProcessPoolExecutor
+    from multiprocessing import get_context
+    rows = [(p.relative_to(root).as_posix(), p.read_bytes(), root)
+            for p in sorted(root.rglob("*")) if p.is_file()
+            and ".git" not in p.relative_to(root).parts]
+    if len(rows) <= 8:
+        return [hit for row in rows for hit in _export_member(row)]
+    with ProcessPoolExecutor(max_workers=8, mp_context=get_context("fork")) as pool:
+        return [hit for group in pool.map(_export_member, rows, chunksize=8) for hit in group]
+
+
+def fix_export(root: Path, engine_source: Path) -> dict:
+    """Apply the engine cut's recorded hygiene rules to this proposed export."""
+    import tempfile
+    spec = importlib.util.spec_from_file_location('hex_cut_hygiene',
+        engine_source / 'tools/release/cut/hygiene.py')
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    findings = export_tree_findings(root)
+    blobs = {name: (root / name).read_bytes() for name in {hit[0] for hit in findings}}
+    with tempfile.TemporaryDirectory(prefix='export-hygiene-', dir=root.parent) as scratch:
+        repo = Path(scratch)
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        oids = {name: module.write_blob(repo, data) for name, data in blobs.items()}
+        rewrites, refused = module.plan(blobs, oids,
+            hits=[module.Hit(path, line, kind) for path, line, kind, _ in findings])
+        expected = module.apply(repo, {name: ('100644', oid) for name, oid in oids.items()}, blobs, rewrites)
+        for name in blobs:
+            path = root / name
+            if name not in expected:
+                path.unlink()
+            else:
+                data = subprocess.check_output(['git', '-C', str(repo), 'cat-file', 'blob', expected[name][1]])
+                path.write_bytes(data)
+    remaining = export_tree_findings(root)
+    return {'hits_before': findings, 'rewrites': [item.to_json() for item in rewrites],
+            'unrewritable': refused, 'remaining': remaining}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--fix-export", type=Path, help="rewrite the proposed export inside the current cut")
+    parser.add_argument("--engine-source", type=Path, help="engine checkout supplying the cut hygiene rules")
     parser.add_argument("artifacts", nargs="*", type=Path)
     parser.add_argument("--tree", type=Path, help="scan the files git tracks under this folder")
     parser.add_argument("--owner", action="append", default=[],
@@ -160,6 +279,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allow-address", action="append", default=[],
                         help="a public IPv4 address that is meant to ship (repeatable)")
     args = parser.parse_args(argv)
+    if args.fix_export is not None:
+        if args.engine_source is None:
+            parser.error('--fix-export requires --engine-source')
+        import json
+        report = fix_export(args.fix_export.resolve(), args.engine_source.resolve())
+        print(json.dumps(report, indent=2))
+        return 1 if report['remaining'] or report['unrewritable'] else 0
     if not args.artifacts and args.tree is None:
         parser.error("give artifacts or --tree")
     where = args.tree or Path(__file__).resolve().parent

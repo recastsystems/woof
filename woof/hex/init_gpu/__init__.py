@@ -21,6 +21,8 @@ setting changes.  The caller also reserves the card; on a shared host that is
 its card queue's grant (``Kernels`` does not look for one).
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 from dataclasses import dataclass
 from pathlib import Path
@@ -107,7 +109,7 @@ class Kernels:
         from cupy.cuda.compiler import compile_using_nvrtc
         from cupy.cuda.function import Module
         binary,_=compile_using_nvrtc(source,options=self.options,
-            arch=self.cp.cuda.Device().compute_capability,cache_in_memory=True)
+            arch=_compilation_target(xp=self.cp),cache_in_memory=True)
         module=Module();module.load(binary)
         return module
     def module(self,cap=256):

@@ -183,7 +183,7 @@ def _redeclare(text, name, old, new):
 # ------------------------------------------------------------------------------------------ the device graph
 _MP_AERO_EMISSION = f'''// SMOKE 5d2c71e2 module_mp_aero_emissions.F90:20-78 (new at this pin). fact_wfa/fact_ifa are constant
 // expressions of named constants: GNU Fortran 15.2 folds them at compile time (strict and -O0 alike, 0x57007A45 and
-// 0x5006B7F3, a development machine 2026-10-29); the words are kept, not re-derived through device exp/log.
+// 0x5006B7F3, 2026-10-29); the words are kept, not re-derived through device exp/log.
 SIGNATURE {{
 ArenaScope scope(arena);
 em_dust.bind(ims,ime,jms,jme);

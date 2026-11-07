@@ -46,6 +46,10 @@ pub const NAMELIST_SUPPORT_SCHEMA: &str = "rw-wps.namelist-support.v1";
 /// dimensions, so mp=50 satisfies the field-shape invariant enforced below
 /// as well as the id check here.
 ///
+/// mp=51 adds scalar qnc (QNCLOUD) to that inventory, as declared by
+/// p3_1category_nc at Registry.EM_COMMON:3039. The same rank and dtype
+/// rules apply.
+///
 /// mp=28 and mp=18 joined on audit R-054.  Both had been RECORDED here as
 /// refusals rather than left as omissions, and neither reason survived
 /// examination:
@@ -78,12 +82,30 @@ pub const NAMELIST_SUPPORT_SCHEMA: &str = "rw-wps.namelist-support.v1";
 ///     bulk condensate at the first step instead
 ///     (gpuwm/core/fast_sbm_bulk_start.py).
 ///
+/// mp=13 (SBU-YLin), 15 (Ferrier-Aligo advected rime), 40 (Morrison
+/// aerosol), 52 (P3 two-category), 53 (P3 three-moment ice), 55 (ISHMAEL),
+/// 56 (NTU) and 97 (Goddard GCE) joined when their engine ports landed: the
+/// paired engine derives each package from Registry.EM_COMMON like every
+/// row above, and every member of all eight is float32 on the 3-D or 2-D
+/// stock shape the check below enforces, so none had an obstacle -- the
+/// frontend had only never ruled on them, which is an omission, not a
+/// refusal.
+///
+/// mp=27 (UDM), 29 (RCON), 95 (Eta Ferrier) and 96 (MAD-WRF) joined the same
+/// way when the 3.0 port folds inventoried them (b2817cdc11a, 9846f70556b, 74abec86b8f, 13a5a66c5bc):
+/// every wrfinput member of the four is float32 on the 3-D stock shape, or
+/// the 2-D `ij` shape for RCON's qnwfa2d/qnifa2d pair exactly as mp=28's,
+/// so the frontend had no obstacle to cite.  mp=29's open speed proof
+/// (gpuwm/config.py RCON-SPEED-01) refuses an ArWen FORECAST with it; it is
+/// not a reason to refuse the stock-WRF initialization file this frontend
+/// certifies, which an unchanged WRF reads.
+///
 /// A new engine package arrives as a new id here plus whatever its members'
 /// shapes require, never as a silently narrowed export.
 ///
 /// Public so `tests/engine_stock_inventory.rs` can hold it to the engine's
 /// own inventory (gpuwm/physics_consumer_export_v1.json).
-pub const STOCK_WRF_INVENTORIED_MP_PHYSICS: &[u16] = &[2, 4, 5, 6, 8, 10, 18, 24, 28, 50, 106];
+pub const STOCK_WRF_INVENTORIED_MP_PHYSICS: &[u16] = &[2, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 18, 24, 26, 27, 28, 29, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamelistSupportRequest {
@@ -430,7 +452,7 @@ mod tests {
             fields.push(field("QNICE", Some("scalar")));
             fields.push(field("QNRAIN", Some("scalar")));
         }
-        if mp_physics == 50 {
+        if matches!(mp_physics, 50 | 51) {
             // Registry.EM_COMMON:3038, package p3_1category:
             // moist:qv,qc,qr,qi and scalar:qni,qnr,qir,qib.  QSNOW and
             // QGRAUP are absent on purpose -- P3 carries one ice category
@@ -441,6 +463,9 @@ mod tests {
             for name in ["QNICE", "QNRAIN", "QIR", "QIB"] {
                 fields.push(field(name, Some("scalar")));
             }
+        }
+        if mp_physics == 51 {
+            fields.push(field("QNCLOUD", Some("scalar")));
         }
         json!({
             "schema": NAMELIST_SUPPORT_SCHEMA,
@@ -472,6 +497,7 @@ mod tests {
                     "microphysics": match mp_physics {
                         8 => "Thompson",
                         50 => "P3 one-category two-moment ice",
+                        51 => "P3 one-category two-moment ice, predicted droplet number",
                         _ => "WSM6",
                     },
                     "bl_pbl_physics": 1, "sf_sfclay_physics": 91,
@@ -528,6 +554,16 @@ mod tests {
             .collect();
         assert!(members.contains(&"QIR") && members.contains(&"QIB"));
         assert!(!members.contains(&"QSNOW") && !members.contains(&"QGRAUP"));
+    }
+
+    #[test]
+    fn p3_predicted_droplet_stock_export_carries_qncloud() {
+        let report: NamelistSupportReport = serde_json::from_value(valid_json(51)).unwrap();
+        validate_namelist_support_report(&report).unwrap();
+        let fields = &report.required_state.stock_wrf_export.domains[0].wrfinput_fields;
+        assert!(fields.iter().any(|entry| entry.netcdf_name == "QNCLOUD"));
+        assert!(fields.iter().any(|entry| entry.netcdf_name == "QIR"));
+        assert!(!fields.iter().any(|entry| entry.netcdf_name == "QSNOW"));
     }
 
     #[test]

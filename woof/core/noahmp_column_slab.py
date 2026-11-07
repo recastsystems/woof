@@ -70,7 +70,8 @@ from woof.core.noahmp_energy_slab import (energy_seg1, energy_seg2,
                                            energy_seg3, energy_seg4)
 from woof.core.noahmp_flux_slab import (evaluate_bare_flux_slab,
                                          evaluate_vege_flux_masked_slab)
-from woof.core.noahmp_radiation_gpu import PARAMETER_SLOTS as _RAD_PARAMETERS
+from woof.core.noahmp_radiation_gpu import (BATS_PARAMETER_NAMES,
+                                           PARAMETER_SLOTS as _RAD_PARAMETERS)
 from woof.core.noahmp_sflx import NSNOW_DEFAULT, NSOIL_DEFAULT
 from woof.core.noahmp_sflx_post_slab import sflx_post_seg1, sflx_post_seg2
 from woof.core.noahmp_sflx_pre_slab import evaluate_sflx_pre_slab
@@ -122,6 +123,67 @@ if tuple(name for name in _RAD_PARAMETERS if name not in PARAMETER_WIDTHS):
     raise AssertionError("a RADIATION parameter slot has no row entry")
 
 
+def _selected_options(opt_alb, opt_stc, opt_rsf, opt_btr=1, opt_snf=1, dveg=4,
+                      opt_inf=1, opt_run=3, opt_rad=3, opt_frz=1, opt_tbot=2, opt_crs=1, opt_sfc=1, opt_soil=1, opt_infdv=0, opt_tdrn=0, opt_irr=0, opt_irrm=0):
+    """Validate domain-wide branch metadata without reading device fields.
+
+    These are the implemented slab branches, not full forecast admission.
+    Config/scalar/runtime guards remain until their native replay is complete.
+    """
+    for name, value, allowed in (("opt_alb", opt_alb, (1, 2, 3)),
+                                 ("opt_stc", opt_stc, (1, 2, 3)),
+                                 ("opt_rsf", opt_rsf, (1, 2, 3, 4)),
+                                 ("opt_btr", opt_btr, (1, 2, 3)),
+                                 ("opt_snf", opt_snf, (1, 2, 3, 4, 5)),
+                                 ("dveg", dveg, (1, 2, 3, 4, 5, 6, 7, 8, 9)),
+                                 ("opt_inf", opt_inf, (1, 2)),
+                                 ("opt_infdv", opt_infdv, (0, 1, 2, 3)),
+                                 ("opt_tdrn",opt_tdrn,(0,1,2)),
+                                 ("opt_irr",opt_irr,(0,1,2,3)),
+                                 ("opt_irrm",opt_irrm,(0,1,2,3)),
+                                 ("opt_run", opt_run, (1, 2, 3, 4, 5, 6, 7, 8)),
+                                 ("opt_rad", opt_rad, (1, 2, 3)),
+                                 ("opt_frz", opt_frz, (1, 2)),
+                                 ("opt_tbot", opt_tbot, (1, 2)),
+                                 ("opt_crs", opt_crs, (1, 2)),
+                                 ("opt_sfc", opt_sfc, (1, 2)),
+                                 ("opt_soil", opt_soil, (1, 2, 3, 4))):
+        if type(value) is not int or value not in allowed:
+            raise ValueError(f"land slab {name} must be scalar int in {allowed}")
+
+
+def slab_parameter_widths(*, opt_alb=2, opt_rsf=1, opt_run=3, opt_rad=3, opt_crs=1, opt_sfc=1, dveg=4, opt_tdrn=0, opt_irr=0, opt_crop=0) -> dict[str, int]:
+    """Required parameter slabs for the explicitly selected land branches.
+
+    CLASS/RSF1 retain the original resident inventory. BATS and RSF4 require
+    their actual transferred values; no placeholder/default is inserted.
+    """
+    _selected_options(opt_alb, 1, opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr)
+    widths = dict(PARAMETER_WIDTHS)
+    if opt_irr:
+        from woof.core.noahmp_irrigation_slab import PARAMETERS
+        widths.update(dict.fromkeys(PARAMETERS,1))
+    if opt_tdrn:
+        from woof.core.noahmp_tile_drain import PARAMETERS
+        widths.update(dict.fromkeys(PARAMETERS,1))
+    if opt_alb == 1:
+        widths.update({name: 1 for name in BATS_PARAMETER_NAMES})
+    if opt_rsf == 4:
+        widths["rsurf_snow"] = 1
+    if opt_run in (1,2): widths.update(fsatmx=1,timean=1)
+    if opt_run==5:widths.update(fsatmx=1)
+    if opt_run == 8: widths.update({name:1 for name in ("bbvic","bdvic","gdvic")})
+    if opt_run == 6: widths["bvic"] = 1
+    if opt_run == 7: widths.update({name: 1 for name in ("axaj", "bxaj", "xxaj")})
+    if opt_rad == 1: widths["rc"] = 1
+    if opt_crs == 2: widths.update({name:1 for name in ("RGL","RSMIN","RSMAX","TOPT","HS")})
+    if opt_sfc == 2: widths["CZIL"] = 1
+    if dveg in (2,5,6) or opt_crop:
+        from woof.core.noahmp_carbon_slab import CARBON_PARAMETERS
+        widths.update({name:1 for name in CARBON_PARAMETERS})
+    return widths
+
+
 def parameter_row(parameters) -> dict:
     """One ``SflxParameters`` handle as ``{name: numpy value}``.
 
@@ -142,7 +204,8 @@ def parameter_row(parameters) -> dict:
         "saim": np.asarray(p.saim, np.float32),
         "mfsno": e.mfsno, "scffac": e.scffac, "z0sno": e.z0sno,
         "z0mvt": e.z0mvt, "cwpvt": e.cwpvt, "snow_emis": e.snow_emis,
-        "rsurf_exp": e.rsurf_exp, "eg": np.float32(e.eg[0]),
+        "rsurf_exp": e.rsurf_exp, "rsurf_snow": e.rsurf_snow,
+        "eg": np.float32(e.eg[0]),
         "smcmax": np.asarray(e.smcmax, np.float32),
         "smcref": np.asarray(e.smcref, np.float32),
         "smcwlt": np.asarray(e.smcwlt, np.float32),
@@ -169,10 +232,14 @@ def parameter_row(parameters) -> dict:
     }
     row.update({name: np.float32(getattr(e.vege, name))
                 for name in _vege.PARAMETER_NAMES})
+    if e.bats is not None:
+        if len(e.bats) != len(BATS_PARAMETER_NAMES):
+            raise ValueError("BATS needs all seven actual transferred parameters")
+        row.update(zip(BATS_PARAMETER_NAMES, e.bats))
     return row
 
 
-def parameter_fields(rows, index) -> dict:
+def parameter_fields(rows, index, *, opt_alb=2, opt_rsf=1, opt_run=3, opt_rad=3, opt_crs=1, opt_sfc=1, dveg=4, opt_tdrn=0, opt_irr=0, opt_crop=0) -> dict:
     """Per-column parameter slabs from per-identity rows and an index.
 
     ``rows`` is a sequence of :func:`parameter_row` results, one per distinct
@@ -181,13 +248,19 @@ def parameter_fields(rows, index) -> dict:
     here is proportional to the number of parameter names and never to the
     number of columns.
     """
-    import cupy as cp
-
     if not rows:
         raise ValueError("parameter_fields needs at least one identity row")
+    widths = slab_parameter_widths(opt_alb=opt_alb, opt_rsf=opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr,opt_crop=opt_crop)
+    for row in rows:
+        missing = set(widths).union(PARAMETER_INTS).difference(row)
+        if missing:
+            raise ValueError("parameter_fields lacks actual transferred values: "
+                             + ", ".join(sorted(missing)))
+    import cupy as cp
+
     idx = cp.asarray(np.ascontiguousarray(index, dtype=np.int32))
     out = {}
-    for name, width in PARAMETER_WIDTHS.items():
+    for name, width in widths.items():
         table = np.array([np.broadcast_to(
             np.asarray(row[name], np.float32), (width,)) for row in rows],
             dtype=np.float32)
@@ -327,7 +400,12 @@ def _shaped(cp, fields, name, n, width):
     return cp.ascontiguousarray(value, dtype=cp.float32)
 
 
-def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> dict:
+def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470",
+                       opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1, opt_snf=1, dveg=4,
+                       opt_inf=1, opt_run=3, opt_rad=3, opt_frz=1, opt_tbot=2, opt_crs=1, opt_sfc=1, opt_soil=1, opt_infdv=0, opt_tdrn=0, opt_irr=0, opt_irrm=0, opt_crop=0, opt_gla=1,
+                       soil_update_steps=1, calculate_soil=True, carry_soil_accumulators=False,
+                       snicar_options=None, module_trace=None, tanh_profile="glibc_2_39", log10_profile="glibc_2_39",
+                       atan_profile="glibc_2_39") -> dict:
     """One NOAHMP_SFLX land-surface call for ``n`` columns, on the device.
 
     ``fields`` carries, each as one CuPy (or uploadable) array over the column
@@ -340,12 +418,23 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
       :func:`parameter_fields` produces;
     * ``wslake`` ``(n,)`` and ``ficeold`` ``(n, NSNOW)``.
 
+    Selected land branches ALB1/2, STC1/2/3, RSF1/2/3/4 and BTR1/2/3 are
+    explicit host scalar metadata. ALB1 needs all seven BATS parameters, RSF4 needs
+    ``rsurf_snow``; :func:`parameter_fields` prepares only the selected slabs.
+    Glacier remains a separate entry point. Full forecast option admission
+    and real captured replay of the new combination are separate work.
+
     Returns :data:`OUTPUT_NAMES`, each ``(n,)`` float32 unless it is column
     state (layer axis last) or ``isnow`` (int32).  Raises exactly where the
     scalar column raises: the glacier/lake refusals, the emitted-longwave
     check, and the three balance aborts, each naming the first offending
     column.
     """
+    _selected_options(opt_alb, opt_stc, opt_rsf, opt_btr, opt_snf, dveg, opt_inf, opt_run, opt_rad, opt_frz, opt_tbot, opt_crs, opt_sfc, opt_soil, opt_infdv,opt_tdrn,opt_irr,opt_irrm)
+    if type(soil_update_steps) is not int or soil_update_steps<1 or type(calculate_soil) is not bool:
+        raise ValueError("soil cadence requires a positive native step count and logical calculate_soil")
+    cadence_on=carry_soil_accumulators or soil_update_steps!=1 or not calculate_soil
+    widths = slab_parameter_widths(opt_alb=opt_alb, opt_rsf=opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr,opt_crop=opt_crop)
     import cupy as cp
 
     n = int(n)
@@ -363,12 +452,24 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
         return out
 
     def par(name):
-        return _shaped(cp, fields, name, n, PARAMETER_WIDTHS[name])
+        return _shaped(cp, fields, name, n, widths[name])
+
+    # Reject an incomplete selected parameter inventory before launching any
+    # of the column prefix. Do not substitute a CLASS table or snow constant.
+    missing = set(widths).difference(fields)
+    if missing:
+        raise ValueError("evaluate_sflx_slab lacks selected parameter fields: "
+                         + ", ".join(sorted(missing)))
 
     urban = cp.ascontiguousarray(cp.asarray(fields["urban_flag"]) != 0)
 
     # ---- NOAHMP_SFLX's first half, 806-946 --------------------------------
-    pre = evaluate_sflx_pre_slab(fields, n)
+    pre_options = {}
+    if opt_snf != 1: pre_options["opt_snf"] = opt_snf
+    if dveg != 4: pre_options["dveg"] = dveg
+    if opt_irr: pre_options.update(opt_irr=opt_irr,opt_irrm=opt_irrm,calculate_soil=calculate_soil)
+    if opt_crop:pre_options["opt_crop"]=opt_crop
+    pre = evaluate_sflx_pre_slab(fields, n, **pre_options)
 
     def c(name):
         return pre["call." + name]
@@ -393,20 +494,26 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
         "smcmax": par("smcmax"), "smcref": par("smcref"),
         "smcwlt": par("smcwlt"), "psisat": par("psisat"),
         "bexp": par("bexp"), "eg": par("eg"),
-        "soil_update_steps": PINNED_OPTIONS.soil_update_steps,
+        "soil_update_steps": soil_update_steps,
     }
+    if opt_rsf == 4:
+        s["rsurf_snow"] = par("rsurf_snow")
 
     # ---- ENERGY seg1, then the two thermal-side leaves --------------------
-    g = energy_seg1(s)
+    g = energy_seg1(s, tanh_profile=tanh_profile)
 
     thermo = evaluate_thermoprop_slab({
         "dzsnso": c("dzsnso"), "snice": c("snice"), "snliq": c("snliq"),
         "smc": c("smc"), "sh2o": c("sh2o"), "stc": c("stc"),
         "snowh": c("snowh"), "dt": c("dt"),
         "smcmax": s["smcmax"], "csoil": par("csoil"), "quartz": par("quartz"),
-        "isnow": c("isnow"), "ist": c("ist"), "urban_flag": urban}, n)
+        "isnow": c("isnow"), "ist": c("ist"), "urban_flag": urban}, n,log10_profile=log10_profile)
 
     rad_fields = {name: par(name) for name in _RAD_PARAMETERS}
+    if opt_rad == 1:
+        rad_fields.update({name: par(name) for name in ("rc", "hvt", "hvb")})
+    if opt_alb == 1:
+        rad_fields.update({name: par(name) for name in BATS_PARAMETER_NAMES})
     rad_fields.update({
         "dt": c("dt"), "cosz": c("cosz"), "elai": c("elai"),
         "esai": c("esai"), "tg": c("tg"), "tv": c("tv"),
@@ -415,10 +522,18 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
         "fveg": c("fveg"), "smc": c("smc"), "albold": c("albold"),
         "tauss": c("tauss"), "solad": c("solad"), "solai": c("solai"),
         "ist": c("ist")})
-    rad = evaluate_radiation_slab(rad_fields, n, noahmp_snow_age=noahmp_snow_age)
+    if opt_alb == 3:
+        rad_fields["snicar_layers"] = cp.stack((c("snice"), c("snliq"),
+            c("dzsnso")[:, :NSNOW], c("stc")[:, :NSNOW]), axis=2)
+        rad_fields["snicar_state"] = fields.get("snicar_state")
+        rad_fields["snicar_options"] = snicar_options
+        rad_fields["snicar_air_temperature"] = c("sfctmp")
+    rad = evaluate_radiation_slab(rad_fields, n,
+                                  noahmp_snow_age=noahmp_snow_age,
+                                  opt_alb=opt_alb, opt_rad=opt_rad)
 
     # ---- ENERGY seg2, then the two flux leaves -----------------------------
-    e = energy_seg2(s, g)
+    e = energy_seg2(s, g, opt_rsf=opt_rsf, opt_btr=opt_btr)
     tile_veg = e["tile_veg"]
 
     # VEGE_FLUX answers the vegetated subset, exactly as the scalar column
@@ -442,7 +557,30 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
                       "dzsnso": c("dzsnso"),
                       "stc": c("stc"),
                       "df": thermo["df"]})
-    vf = evaluate_vege_flux_masked_slab(vf_sources, n, tile_veg)
+    if opt_stc == 3 or opt_crs == 2 or opt_sfc == 2:
+        vf_sources["fsno"] = g["fsno"]
+    vf_sources["opt_stc"] = opt_stc
+    if opt_crs == 2:
+        vf_sources["opt_crs"] = opt_crs
+        vf_sources.update({name:par(name) for name in ("RGL","RSMIN","RSMAX","TOPT","HS")})
+    if opt_sfc == 2:
+        vf_sources.update(opt_sfc=2, thair=c("thair"), CZIL=par("CZIL"))
+    from woof.core.noahmp_surface_device import active_probe, column_mask
+    gecros_state={}
+    if opt_crop==2:
+        from woof.core.noahmp_gecros_slab import STATE,evaluate
+        from woof.core.noahmp_slab_libm import copy_slab_slots,split_slab_slots
+        gs=cp.empty((n,60),cp.float32)
+        copy_slab_slots(gs,[(k,fields[name])for k,name in enumerate(STATE)])
+        vf=evaluate(vf_sources,n,active_probe(tile_veg),gs,{"julian":fields["julian"],"swdown":pre["swdown"],"prcp":pre["prcp"],"fb":pre["fb"],"croptype":fields["croptype"],"sh2o":c("sh2o"),"smcwlt":par("smcwlt")},atan_profile=atan_profile)
+        gecros_state=split_slab_slots(gs,{name:(k,1)for k,name in enumerate(STATE)})
+        # Native ENERGY receives GECROS radiation by reference before BARE_FLUX.
+        for name,upper in (("sav","SAV"),("sag","SAG"),("fsr","FSR")):
+            rad[name]=cp.where(tile_veg,vf[upper],rad[name])
+        rad["fsa"]=rad["sav"]+rad["sag"]
+    else:
+        vf = evaluate_vege_flux_masked_slab(vf_sources, n, active_probe(tile_veg),
+                                          atan_profile=atan_profile)
 
     v = {}
     for name, upper in _VEGE_TO_ENERGY.items():
@@ -472,7 +610,9 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
         "dzsnso": c("dzsnso"), "stc": c("stc"), "df": thermo["df"],
         "isnow": c("isnow"), "ivgtyp": c("vegtyp"),
         "iloc": np.int32(1), "jloc": np.int32(1),
-        "urban_flag": urban}, n)
+        "urban_flag": urban, "opt_stc": opt_stc,
+        "active": column_mask(),
+        **({"opt_sfc": 2, "CZIL": par("CZIL")} if opt_sfc == 2 else {})}, n)
     b = dict(bf)
     b["cmb"] = b.pop("cm")
     b["chb"] = b.pop("ch")
@@ -483,18 +623,35 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
                for name in ("laisun", "laisha", "parsun", "parsha")})
     seg3 = energy_seg3(s3, g, e, v, b)
 
-    tsn = evaluate_tsnosoi_slab({
+    thermal_fields = {
         "zsnso": c("zsnso"), "stc": c("stc"), "df": thermo["df"],
         "hcpct": thermo["hcpct"], "tbot": c("tbot"),
         "ssoil": seg3["ssoil_avg"], "dt": seg3["dt_soil"],
-        "snowh": c("snowh"), "zbot": par("zbot"), "isnow": c("isnow")}, n)
+        "snowh": c("snowh"), "zbot": par("zbot"), "isnow": c("isnow")}
+    if opt_alb == 3:
+        thermal_fields["snicar_heating"] = rad["snicar_heating"]
+    if calculate_soil:
+        tsn = evaluate_tsnosoi_slab(thermal_fields, n,
+            opt_stc=opt_stc, opt_tbot=opt_tbot)
+    else:
+        tsn={"stc":c("stc"),"eflxb":cp.zeros(n,dtype=cp.float32)}
+    if opt_stc == 2 and n:
+        from woof.core.noahmp_kernel_sources import selected_kernel
+        selected_kernel("noahmp_thermal", "noahmp_energy_stc2_snow")(
+            ((n+127)//128,), (128,),
+            (cp.ascontiguousarray(c("snowh")), cp.ascontiguousarray(s["fveg"]),
+             cp.ascontiguousarray(v["tv"]), cp.ascontiguousarray(tile_veg),
+             seg3["tg"], seg3["ts"], seg3["tgv"], b["tgb"], np.int32(n)))
 
     pc = evaluate_phasechange_slab({
         "fact": thermo["fact"], "dzsnso": c("dzsnso"), "stc": tsn["stc"],
         "snice": c("snice"), "snliq": c("snliq"), "smc": c("smc"),
         "sh2o": c("sh2o"), "sneqv": c("sneqv"), "snowh": c("snowh"),
         "dt": c("dt"), "smcmax": s["smcmax"], "psisat": s["psisat"],
-        "bexp": s["bexp"], "isnow": c("isnow"), "ist": c("ist")}, n)
+        "bexp": s["bexp"], "isnow": c("isnow"), "ist": c("ist")}, n, opt_frz=opt_frz)
+    if opt_alb == 3:
+        from woof.core.snow_papers import refreeze
+        refreeze(rad["snicar_state"], c("snice"), pc["snice"], pc["snliq"])
 
     seg4 = energy_seg4(s, g, {**e, **seg3}, {
         "eflxb": tsn["eflxb"], "hcpct": thermo["hcpct"], "imelt": pc["imelt"],
@@ -509,12 +666,38 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
         "snowh": pc["snowh"], "sneqv": pc["sneqv"],
         "fgev": seg3["fgev"], "latheag": e["latheag"]})
 
-    # The ten ACC_* accumulators are zero on entry to every call under the
-    # pinned soiltstep = 0 -- see NOAHMP_RUNTIME_RESTRICTIONS -- and every
-    # consumer below only reads them, so one zero buffer per shape serves all.
+    # The native driver clears these accumulators every call at soiltstep=0.
+    # Positive cadence carries their resident values through skipped calls.
     acc_zero = cp.zeros(n, dtype=cp.float32)
     acc_zero_soil = cp.zeros((n, NSOIL), dtype=cp.float32)
+    def acc(name,width=1):
+        return _shaped(cp,fields,name,n,width) if cadence_on else (acc_zero if width==1 else acc_zero_soil)
+    water_options = {"soil_update_steps":soil_update_steps,"calculate_soil":calculate_soil} if cadence_on else {}
+    if opt_inf != 1: water_options["opt_inf"] = opt_inf
+    if opt_run != 3: water_options["opt_run"] = opt_run
+    if opt_infdv: water_options["opt_infdv"] = opt_infdv
+    if opt_tdrn: water_options["opt_tdrn"]=opt_tdrn
+    if opt_irr: water_options["opt_irr"]=opt_irr
+    water_parameters = {}
+    if opt_irr:
+        from woof.core.noahmp_irrigation_slab import PARAMETERS
+        water_parameters.update({name:par(name) for name in PARAMETERS})
+        water_parameters.update(smcref=par("smcref"),**{name:fields[name] for name in ("pltday","hsday","croplu")},**{name:pre[name] for name in ("mifac","fifac","iramtmi","iramtfi")})
+    if opt_tdrn:
+        from woof.core.noahmp_tile_drain import PARAMETERS
+        water_parameters.update({name:par(name) for name in PARAMETERS})
+        water_parameters.update(smcref=par("smcref"),**{name:_shaped(cp,fields,name,n,1) for name in ("zwt","tdfracmp","dx")})
+    if opt_run in (1,2):
+        water_parameters.update({name:par(name) for name in ("fsatmx","timean","psisat")})
+        water_parameters.update({name:_shaped(cp,fields,name,n,1) for name in ("zwt","wa","wt")})
+    if opt_run==5:
+        water_parameters.update(fsatmx=par("fsatmx"),psisat=par("psisat"),smceq=_shaped(cp,fields,"smceq",n,NSOIL),**{name:_shaped(cp,fields,name,n,1)for name in ("zwt","wa","smcwtd","deeprech","rech")})
+    if opt_run == 8: water_parameters.update({name:par(name) for name in ("bbvic","bdvic","gdvic")})
+    if opt_run == 6: water_parameters["bvic"] = par("bvic")
+    if opt_run == 7:
+        water_parameters.update({name: par(name) for name in ("smcref", "axaj", "bxaj", "xxaj")})
     wat = evaluate_water_slab({
+        **water_parameters,
         "smcmax": s["smcmax"], "smcwlt": s["smcwlt"], "bexp": s["bexp"],
         "dksat": par("dksat"), "dwsat": par("dwsat"),
         "kdt": par("kdt"), "frzx": par("frzx"), "slope": par("slope"),
@@ -531,36 +714,77 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
         "snowhin": pre["snowhin"], "ponding": pc["ponding"],
         "canliq": c("canliq"), "canice": c("canice"), "tv": v["tv"],
         "wslake": _shaped(cp, fields, "wslake", n, 1),
-        "acc_qinsur": acc_zero, "acc_qseva": acc_zero,
+        "acc_qinsur": acc("acc_qinsur"), "acc_qseva": acc("acc_qseva"),
         "zsoil": c("zsoil"), "btrani": seg4["btrani"],
-        "acc_etrani": acc_zero_soil, "smc": p1["smc"],
+        "acc_etrani": acc("acc_etrani",NSOIL), "smc": p1["smc"],
         "ficeold": _shaped(cp, fields, "ficeold", n, NSNOW),
         "isnow": c("isnow"), "urban_flag": urban, "nroot": s["nroot"],
         "ist": c("ist"), "frozen_canopy": e["frozen_canopy"],
         "frozen_ground": e["frozen_ground"],
-        "imelt": seg4["imelt"][:, :NSNOW]}, n)
+        "imelt": seg4["imelt"][:, :NSNOW]}, n, **water_options)
 
+    carbon = {}
+    if dveg in (2,5,6):
+        from woof.core.noahmp_carbon_slab import evaluate_carbon_slab,CARBON_PARAMETERS,CARBON_POOLS
+        carbon=evaluate_carbon_slab({
+            **{name:par(name) for name in (*CARBON_PARAMETERS,"tmin","smcmax")},
+            **{name:fields[name] for name in ("vegtyp","nroot","iswater","isbarren","isice","urban_flag","foln",*CARBON_POOLS)},
+            "dt":c("dt"),"tv":wat["tv"],"psn":seg3["psn"],"btran":e["btran"],
+            "igs":pre["igs"],"lai":pre["lai"],"sai":pre["sai"],
+            "smc":wat["smc"],"dzsnso":wat["dzsnso"],"stc":wat["stc"],"zsoil":c("zsoil")})
+
+    if opt_crop==1:
+        from woof.core.noahmp_crop_slab import evaluate_crop
+        from woof.core.noahmp_carbon_slab import CARBON_POOLS
+        carbon=evaluate_crop({**fields,"dt":c("dt"),"tv":wat["tv"],"psn":seg3["psn"],"btran":e["btran"],"lai":pre["lai"],"sai":pre["sai"],"smc":wat["smc"],"dzsnso":wat["dzsnso"],"stc":wat["stc"],"zsoil":c("zsoil"),"smcmax":s["smcmax"],"t2m":cp.where((pre["elai"]+pre["esai"]>np.float32(0))&(pre["fveg"]>np.float32(0)),pre["fveg"]*v["t2mv"]+(np.float32(1)-pre["fveg"])*b["t2mb"],b["t2mb"])},carbon)
+
+    post_prcp=pre["prcp"];post_fsh=seg3["fsh"];irrigation_post={}
+    if opt_irr:
+        applied=(fields["croplu"]!=0)&(fields["irrfra"]>=par("irr_frac"))
+        post_prcp=cp.where(applied,pre["prcp"]+(pre["irsirate"]*np.float32(1000.0)/c("dt")),pre["prcp"])
+        post_fsh=cp.where(applied,seg3["fsh"]-pre["firr"],seg3["fsh"])
+        irrigation_post={"firr":pre["firr"],"irmirate":wat["irmirate"],"irfirate":wat["irfirate"]}
     p2 = sflx_post_seg2({
+        **irrigation_post,
         "edir": p1["edir"],
         "fsa": rad["fsa"], "fsr": rad["fsr"], "fira": seg3["fira"],
-        "fsh": seg3["fsh"], "fcev": seg3["fcev"], "fgev": seg3["fgev"],
+        "fsh": post_fsh, "fcev": seg3["fcev"], "fgev": seg3["fgev"],
         "fctr": seg3["fctr"], "ssoil": seg3["ssoil"], "sav": rad["sav"],
         "sag": rad["sag"], "pah": seg3["pah"], "canhs": canhs,
         "qsfc": b["qsfc"], "q2b": b["q2b"], "ch": seg3["ch"],
         "swdown": pre["swdown"], "beg_wb": pre["beg_wb"],
-        "prcp": pre["prcp"], "rhoair": pre["rhoair"], "qair": pre["qair"],
+        "prcp": post_prcp, "rhoair": pre["rhoair"], "qair": pre["qair"],
         "canliq": wat["canliq"], "canice": wat["canice"],
         "ecan": wat["ecan"], "etran": wat["etran"], "runsrf": wat["runsrf"],
         "runsub": wat["runsub"], "qtldrn": wat["qtldrn"], "smc": wat["smc"],
         "sneqv": wat["sneqv"], "snowh": wat["snowh"],
         "dzsnso": wat["dzsnso"],
-        "wa": _shaped(cp, fields, "wa", n, 1), "dt": c("dt"),
-        "acc_dwater": acc_zero, "acc_prcp": acc_zero,
-        "acc_ecan": acc_zero, "acc_etran": acc_zero, "acc_edir": acc_zero,
-        "ist": c("ist"), "urban_flag": urban})
+        "wa": wat["wa"] if opt_run in (1,2,5) else _shaped(cp, fields, "wa", n, 1), "dt": c("dt"),
+        "acc_dwater": acc("acc_dwater"), "acc_prcp": acc("acc_prcp"),
+        "acc_ecan": acc("acc_ecan"), "acc_etran": acc("acc_etran"), "acc_edir": acc("acc_edir"),
+        **({"calculate_soil":cp.full(n,calculate_soil,dtype=cp.int32)} if cadence_on else {}),
+        "ist": c("ist"), "urban_flag": urban}, carbon=carbon)
 
+    # The native module oracle also observes diagnostics which the WRF
+    # driver does not carry. Keep their existing device results available to
+    # that opt-in observer without adding any forecast arithmetic or copies.
+    if module_trace is not None:
+        module_trace.update(pre=pre, geometry=g, energy=e, radiation=rad,
+                            vegetation_raw=vf,
+                            vegetation=v, bare=b, energy3=seg3, energy4=seg4,
+                            phasechange=pc, water=wat, post1=p1, post2=p2, carbon=carbon)
+
+    output_terms={"sag":rad["sag"],"sav":rad["sav"],"irg":v["irg"],"shg":v["shg"],"evg":v["evg"],"ghv":v["ghv"],"irc":v["irc"],"shc":v["shc"],"evc":v["evc"],"tr":v["tr"],"irb":b["irb"],"shb":b["shb"],"evb":b["evb"],"ghb":b["ghb"],"pahg":pre["pahg"],"pahb":pre["pahb"],"pahv":pre["pahv"],"qints":pre["qints"],"qintr":pre["qintr"],"qdrips":pre["qdrips"],"qdripr":pre["qdripr"],"qthros":pre["qthros"],"qthror":pre["qthror"],"qsnsub":wat["qsnsub"],"qsnfro":wat["qsnfro"],"qsubc":wat["qsubc"],"qfroc":wat["qfroc"],"qevac":wat["qevac"],"qdewc":wat["qdewc"],"qfrzc":wat["qfrzc"],"qmeltc":wat["qmeltc"],"rainin":pre["rain"],"snowin":pre["snow"]}
     # ---- the answer, under the SflxResult names ----------------------------
     return {
+        **output_terms,
+        **gecros_state,
+        **({**{name:pre[name] for name in ("ircntsi","ircntmi","ircntfi","iramtsi","irsirate","firr","eirr")},**{name:wat[name] for name in ("iramtmi","iramtfi","irmirate","irfirate")}} if opt_irr else {}),
+        **({"acc_ssoil":seg3["acc_ssoil"],**{name:wat[name] for name in ("acc_qinsur","acc_qseva","acc_etrani")},**{name:p2[name] for name in ("acc_dwater","acc_prcp","acc_ecan","acc_etran","acc_edir")}} if cadence_on else {}),
+        **carbon,
+        **({"zwt":wat["zwt"],"qtldrn":wat["qtldrn"]} if opt_tdrn else {}),
+        **({name:wat[name] for name in ("wa","wt","zwt")} if opt_run in (1,2) else {}),
+        **({name:wat[name]for name in ("zwt","wa","smcwtd","deeprech","rech")}if opt_run==5 else {}),
         "trad": seg3["trad"], "fsh": p2["fsh"], "ecan": wat["ecan"],
         "edir": p1["edir"], "etran": wat["etran"], "fcev": seg3["fcev"],
         "fgev": seg3["fgev"], "fctr": seg3["fctr"], "ssoil": seg3["ssoil"],
@@ -574,7 +798,7 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
         "eah": v["eah"], "tah": tah, "cm": seg3["cm"], "ch": seg3["ch"],
         "fwet": wat["fwet"], "sneqvo": p1["sneqvo"], "albold": rad["albold"],
         "qsnow": c("qsnow"), "qrain": pre["qrain"], "wslake": wat["wslake"],
-        "lai": pre["lai"], "sai": pre["sai"], "tauss": rad["tauss"],
+        "lai": carbon.get("lai",pre["lai"]), "sai": carbon.get("sai",pre["sai"]), "tauss": rad["tauss"],
         "z0wrf": seg3["z0wrf"], "t2mv": v["t2mv"], "t2mb": b["t2mb"],
         "q2v": v["q2v"], "q2b": p2["q2b"], "fveg": pre["fveg"],
         "fsa": rad["fsa"], "fira": seg3["fira"], "rssun": seg3["rssun"],
@@ -588,6 +812,7 @@ def evaluate_sflx_slab(fields: dict, n: int, *, noahmp_snow_age="wrf_470") -> di
         "hcpct": seg4["hcpct"],
         "errwat": p2["errwat"], "end_wb": p2["end_wb"],
         "errsw": p2["errsw"], "erreng": p2["erreng"], "beg_wb": pre["beg_wb"],
+        **({"snicar_state": rad["snicar_state"]} if opt_alb == 3 else {}),
     }
 
 
@@ -598,4 +823,5 @@ __all__ = [
     "evaluate_sflx_slab",
     "parameter_fields",
     "parameter_row",
+    "slab_parameter_widths",
 ]

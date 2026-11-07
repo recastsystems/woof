@@ -247,7 +247,7 @@ def test_retained_historic_regional_fraction_and_ensemble_wall():
     assert report["legacy_ff"] is None  # preparation is inside the member spans
 
 
-@pytest.mark.parametrize("name", ["hex-source.json", "da-source.json"])
+@pytest.mark.parametrize("name", ["hex-source.json", "cycle-source.json"])
 def test_retained_historic_incomplete_step_boundaries_stay_unknown(name):
     from pathlib import Path
     report = Timeline().read(Path(__file__).parent / "data" / "timeline" / name).report()

@@ -163,7 +163,7 @@ def install_shape() -> dict:
     editable install puts no package in ``site-packages`` -- a ``.pth``
     redirects the import -- so ``locate_file`` names a file that is not
     there and the match fails.  Measured on the reference box: an
-    editable ``woof 1.8.7`` pointing at its own source tree was
+    editable ``gpuwm 1.8.7`` pointing at its own source tree was
     reported as "no installed distribution provides it", which dropped
     the version from the headline of the one command whose job is to
     print it.

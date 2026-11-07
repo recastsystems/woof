@@ -14,6 +14,8 @@ persistent state. The namelist selector is bl_ysu_gwdo; the integration-owned
 seam binds run_bl_ysu_gwdo_cuda_v842 as the hex-cuda implementation.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from collections.abc import Mapping, MutableMapping
@@ -492,7 +494,7 @@ def _artifact_module(nlev: int, device_id: int, native_dx: bool,
     # (the public CPU tier has no CuPy and checks the refusals).
     import cupy as cp
     with cp.cuda.Device(device_id):
-        architecture = cp.cuda.Device(device_id).compute_capability
+        architecture = _compilation_target(device_id, xp=cp)
         if options != (*_hex_numerics.options(COMPILE_OPTIONS), f"--gpu-architecture=sm_{architecture}"):
             raise ValueError("YSU compiled artifact needs strict options and the current device target")
         module = cp.cuda.function.Module()

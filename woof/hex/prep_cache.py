@@ -712,7 +712,7 @@ def call_key(label: str, function: Callable[..., Any], args: tuple, kwargs: Mapp
     needed = frozenset(encoder.skipped & reads) - frozenset(independent_of)
     if needed:
         # Reached code names a provenance field: key on that field after all, and only on that one.  THE COST
-        # THIS REMOVES (RRFS hrrrv5 limited area, same-host rank processes, mv3km 4 ranks on V8X6000,
+        # THIS REMOVES (RRFS hrrrv5 limited area, same-host rank processes, mv3km 4 ranks on eight-card system,
         # 2026-10-29): one read name re-encoded every provenance field, so a rank mesh's call was keyed on the
         # whole mesh it was cut from (``partition_source_mesh``): every rank process hashed all of it (2.0 GB on
         # mv3km, 23.9 GB on NOAA's conus3km) and held it resident.

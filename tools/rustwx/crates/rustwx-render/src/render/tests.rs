@@ -2502,6 +2502,32 @@ fn empty_filled_map_gets_a_note_and_a_drawn_one_does_not() {
     assert_ne!(bare.as_raw(), noted.as_raw());
 }
 
+/// A mesh panel draws its values on the cells over a 2x2 NaN placeholder
+/// raster: a coloured cell means the map is not empty, while a mesh whose
+/// cells have no value, or only masked values, still carries the note.
+#[test]
+fn mesh_cells_with_values_suppress_the_empty_note() {
+    let mut opts = sample_projected_opts();
+    opts.cmap = sample_masked_cmap();
+    opts.colorbar = true;
+    let ring = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
+    let style = crate::mesh_cells::MeshDrawStyle::from_theme(crate::theme::active_theme().mesh, 1);
+    let layer = |values: &[Option<f64>]| MeshCellsOverlay {
+        cells: values
+            .iter()
+            .map(|value| crate::mesh_cells::MeshCell { ring: ring.clone(), value: *value })
+            .collect(),
+        style,
+    };
+    let placeholder = [f64::NAN; 4];
+    opts.mesh_cells = Some(layer(&[None, Some(5.0), Some(15.0)]));
+    assert_eq!(empty_map_note(&placeholder, &opts), None);
+    opts.mesh_cells = Some(layer(&[None, Some(5.0), Some(f64::NAN)]));
+    assert_eq!(empty_map_note(&placeholder, &opts).as_deref(), Some(EMPTY_MAP_NOTE));
+    opts.mesh_cells = Some(layer(&[None, None]));
+    assert_eq!(empty_map_note(&placeholder, &opts).as_deref(), Some(EMPTY_MAP_NOTE));
+}
+
 /// Dimensionless units label nothing; real units are kept as given.
 #[test]
 fn dimensionless_units_carry_no_colorbar_label() {

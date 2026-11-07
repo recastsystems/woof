@@ -460,10 +460,10 @@ def prepare_dry_boundary_values(state, cfg, tables, clock):
         return lambda: None
     _state_check(state, cfg, tables)
     selection, evaluated = tables.evaluate(tables.select(clock))
-    from woof.boundary_fields import SCALAR_ARRAY_BOUNDARY_FIELDS
+    from woof.boundary_fields import scalar_array_boundary_fields
     scalar_names = [name for name in tables.fields
                     if name in original.COUPLED_SCALAR_STATE_FIELDS
-                    and (cfg.nested or name not in SCALAR_ARRAY_BOUNDARY_FIELDS)]
+                    and (cfg.nested or name not in scalar_array_boundary_fields(cfg))]
     if state.members == 1:
         scalar = _BoundaryScalarState(state, tables)
         names = ["u", "v"] + (["w"] if cfg.nested or original.specified_relaxes_w(cfg) else []) + ["theta", "phi"] + scalar_names

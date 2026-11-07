@@ -13,10 +13,19 @@ extern "C" __global__ void pack_fields(
  const float *thp,const float *thb,const float *p,const float *php,const float *phb,
  const float *ht,const float *pbl,float *temp,float *oldt,float *phi,float *oldphi,
  float *zu,float *zv,float *zt,float *zf,float *bu,float *bv,float *bt,float *bf,
+#ifdef GPUWM_THETA_M
+ const float *qv,float *oldq,
+#endif
  int nz,int ny,int nx,int terrain,int potential) {
  int q=blockDim.x*blockIdx.x+threadIdx.x;
  if(q<nz*ny*nx){int k=q/(nx*ny), j=q/nx%ny, i=q%nx;
+#ifdef GPUWM_THETA_M
+  oldq[q]=qv[q];
+  float dry=(thp[q]+thb[terrain?q:k])/(1.f+(461.6f/287.f)*qv[q]);
+  oldt[q]=temp[q]=dry*(potential ? 1.f : powf(p[q]/100000.f,287.f/1004.5f));
+#else
   oldt[q]=temp[q]=(thp[q]+thb[terrain?q:k])*(potential ? 1.f : powf(p[q]/100000.f,287.f/1004.5f));
+#endif
   zt[q]=zm(php,phb,ht,k,j,i,ny,nx,terrain);
  }
  if(q<(nz+1)*ny*nx){int k=q/(nx*ny), j=q/nx%ny, i=q%nx;
@@ -30,9 +39,19 @@ extern "C" __global__ void pack_fields(
  if(q<(ny+1)*nx){int i=q%nx,j=q/nx;bv[q]=fmaxf(pbl[max(0,j-1)*nx+i],pbl[min(ny-1,j)*nx+i]);}
 }
 extern "C" __global__ void unpack_fields(float *thp,float *php,const float *p,
- const float *temp,const float *oldt,const float *phi,const float *oldphi,int nz,int ny,int nx,int potential){
+ const float *temp,const float *oldt,const float *phi,const float *oldphi,
+#ifdef GPUWM_THETA_M
+ const float *qv,const float *oldq,
+#endif
+ int nz,int ny,int nx,int potential){
  int q=blockDim.x*blockIdx.x+threadIdx.x;
+#ifdef GPUWM_THETA_M
+ if(q<nz*ny*nx){float d=temp[q]-oldt[q],dq=qv[q]-oldq[q];
+  if(d!=0.f || dq!=0.f){float pi=potential ? 1.f : powf(p[q]/100000.f,287.f/1004.5f);
+   thp[q]+=((1.f+(461.6f/287.f)*qv[q])*d+(461.6f/287.f)*oldt[q]*dq)/pi;}}
+#else
  if(q<nz*ny*nx){float d=temp[q]-oldt[q];if(d!=0.f) thp[q]+=d/(potential ? 1.f : powf(p[q]/100000.f,287.f/1004.5f));}
+#endif
  if(q<(nz+1)*ny*nx){float d=phi[q]-oldphi[q];if(d!=0.f) php[q]+=d;}
 }
 

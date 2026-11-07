@@ -88,7 +88,7 @@ TAIL_WAIT_DEFAULT_SECONDS = 120.0
 
 def _card_free_bytes(visible):
     try:
-        text = subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits",
+        text = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=memory.free", "--format=csv,noheader,nounits",
                                "-i", str(visible)], capture_output=True, text=True, timeout=20).stdout
         return float(text.strip().splitlines()[0]) * 2**20
     except (OSError, ValueError, IndexError, subprocess.SubprocessError):
@@ -560,6 +560,8 @@ def _run_member(member, cli):
             lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
             refused = any((line.startswith("ADMISSION ") and "REFUSED" in line)
                           or "the driver's own device-memory floor refused this run" in line
+                          # forecast_door.py also reports a floor refusal this way (P11-30m mem022, 2026-11-02)
+                          or "the card's free device memory fell between the door's admission and the driver's floor" in line
                           for line in lines)
         except OSError:
             refused = False

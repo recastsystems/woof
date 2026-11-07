@@ -1,0 +1,172 @@
+{
+  "scope": "WRF-v4 selected ALB1, BTR2/3, RSF2/3/4, SNF2-5, DVEG1/2/3/5/6/7/8/9, INF2, RUN1/2/4/6/7/8 with INFDV1/2/3, SOIL2/3, RAD1/2, FRZ2, STC2/3, TBOT1, CRS2 and SFC2; strict real native module replays and complete forecast qualification; per-row limits in README.md; native soil cadence and its nine persisted accumulators; native TDRN1/2 with complete simple and Hooghoudt drainage; full module_diag_misc Noah-MP output accumulator block; complete native CROP1 growth/calendar, IRR1/2/3 and every IRRM method, and selected GLA2 real Greenland qualification; complete RUN5 Miguez-Macho/Fan groundwater cold initialization, eight-neighbor flow, WTABLE/UPDATEWTD and native WTDDT cadence",
+  "wrf_pin": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "wrf_noahmp_pin": "848f54ad3d28c4303151fe5ad83724e232694422",
+  "licence": {
+    "basis": "WRF public-domain distribution",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/LICENSE.txt",
+    "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+    "retained_notice": "licenses/LICENSE-WRF-public-domain.txt",
+    "audit": "The pinned v4 tree has no separate license and no restrictive notice in the inspected source/table files. The source and tables are distributed by WRF. Separate NCAR/noahmp v5 code is excluded."
+  },
+  "files": [
+    {
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/848f54ad3d28c4303151fe5ad83724e232694422/drivers/wrf/module_sf_noahmpdrv.F",
+      "bytes": 213680,
+      "sha256": "9010a757da994ed8796c63ca97da354eaf60c5c732df4ea9acad5bc62a973890",
+      "git_blob": "8ffec2c75e7e478300af030e1ef79fdb55225d4e",
+      "upstream_path": "drivers/wrf/module_sf_noahmpdrv.F"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/848f54ad3d28c4303151fe5ad83724e232694422/parameters/GENPARM.TBL",
+      "bytes": 261,
+      "sha256": "9c02832a0e4a2ecaf47fcee485539aad95cd732c379c5c258161a88eb3d25ea2",
+      "git_blob": "17fc9172ba276dffbbb9dfa90cdcbc4eecc1070c",
+      "upstream_path": "parameters/GENPARM.TBL"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/848f54ad3d28c4303151fe5ad83724e232694422/parameters/MPTABLE.TBL",
+      "bytes": 56140,
+      "sha256": "7fae6a77660c90ad80845565ecfb057093c100de41f35f25a7ffa63f41c19e5d",
+      "git_blob": "83f68f76e1af21d333801b2502d1836dd3f9ce65",
+      "upstream_path": "parameters/MPTABLE.TBL"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/848f54ad3d28c4303151fe5ad83724e232694422/parameters/SOILPARM.TBL",
+      "bytes": 6557,
+      "sha256": "1e2275a32d8cd3b48ca693d22c0816df0013f83b6594ac632716361db337d58f",
+      "git_blob": "c5a97c95c738dd5b955d3ccae015c0f602a219e8",
+      "upstream_path": "parameters/SOILPARM.TBL"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/848f54ad3d28c4303151fe5ad83724e232694422/src/module_sf_noahmp_glacier.F",
+      "bytes": 137313,
+      "sha256": "bf94f3522c3b9c2c9cfbb34fa7e485ff58519106db434520968793409a520579",
+      "git_blob": "5ec65e589523be095508eb868b1e354993dfbc75",
+      "upstream_path": "src/module_sf_noahmp_glacier.F"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/848f54ad3d28c4303151fe5ad83724e232694422/src/module_sf_noahmp_groundwater.F",
+      "bytes": 24027,
+      "sha256": "ff4b2d7bcb4e948d43af2797e29cbec1e3bb2875b3e9bbf2421c39a6f840cf50",
+      "git_blob": "298003957015f2f982db635ac328e62c28d89e9d",
+      "upstream_path": "src/module_sf_noahmp_groundwater.F"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/NCAR/noahmp/848f54ad3d28c4303151fe5ad83724e232694422/src/module_sf_noahmplsm.F",
+      "bytes": 577175,
+      "sha256": "bd592a5b7db29000e715250e3a7c779ffb5e0dcc356f6b5a7d9e1c9f69c55282",
+      "git_blob": "3ec4ade132acaadf58e3e05eaf196817210d0b15",
+      "upstream_path": "src/module_sf_noahmplsm.F"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/Registry/registry.noahmp",
+      "bytes": 38937,
+      "sha256": "1d4c0e0dfb94d67b9ec2cc1044860f038d0096d5d8bb8ea73d6d82eeaff3b019",
+      "upstream_path": "Registry/registry.noahmp"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/Registry/Registry.EM_COMMON",
+      "bytes": 436138,
+      "sha256": "28cf7a2d369e898217d7231f4ed19310af7f0bec920f3cb57831e3dc4c80beec",
+      "upstream_path": "Registry/Registry.EM_COMMON"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/share/interp_fcn.F",
+      "bytes": 220644,
+      "sha256": "680881db48904396f38856ca1dd2578a84e8eb0a9cdd05d49f4c63cd8ce9bdaa",
+      "upstream_path": "share/interp_fcn.F"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_diag_misc.F",
+      "bytes": 34621,
+      "sha256": "1a6429debc72d2d9092d66e1d6cd4dbc04978bc1a21673eb48adcf15e2d60952",
+      "upstream_path": "phys/module_diag_misc.F",
+      "licence_audit": "WRF public-domain notice; source inspected, no separate restrictive licence"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_diagnostics_driver.F",
+      "bytes": 74592,
+      "sha256": "4422264f6382a30d3df76fb1620d40e2dfc5405becca26e6f07159bfcb57cb07",
+      "upstream_path": "phys/module_diagnostics_driver.F",
+      "licence_audit": "WRF public-domain notice; source inspected, no separate restrictive licence"
+    }
+  ],
+  "existing_math_dependency_audit": {
+    "file": "woof/core/kernels/glibc_trig_flt32.cuh",
+    "sha256": "bbdb54c85d361d208ea9b1a7cb49a33132026d17694ad0f42c8b0bf5460baaf0",
+    "basis": "Already shipped Arm optimized-routines and CORE-MATH MIT transcriptions; complete source notice inspected before reuse. No LGPL glibc integration wrappers or SunPro code.",
+    "notices": [
+      "licenses/LICENSE-Arm-optimized-routines-MIT.txt",
+      "licenses/LICENSE-CORE-MATH-MIT.txt",
+      "woof/core/kernels/LICENSE-third-party.txt"
+    ]
+  },
+  "native_tanh_profile_source": {
+    "path": "woof/core/kernels/sfire_libm.cuh",
+    "sha256": "22f44144a81d60fbbd767cfcb33d260e4d1f08fdc759d962165bae70bb603ee3",
+    "licence": "MIT; complete original notice retained in source lines 5-29; read before reuse",
+    "upstream": "https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/ieee754/flt-32/s_tanhf.c;hb=0e0be3ed803714285831b14a0032bc91b93e9027",
+    "scope": "Explicit newer-native tanh proof profile; existing default retained"
+  },
+  "native_log10_profile_source": {
+    "path": "woof/core/kernels/noahmp_log10_profile.cuh",
+    "sha256": "713ad8806154eeff2c15b7c03a0a647a422aeb9d8da56208fc94befafd906e98",
+    "reused_from": "woof/core/kernels/noah_mosaic.cu",
+    "reused_source_sha256": "8dab69ae3a7cb90ad41436b97ade1f4728e4030d3fc0b86fced12089ff21f791",
+    "licence": "CORE-MATH MIT, complete original notice inspected before reuse; source lines 3-28 and licenses/LICENSE-CORE-MATH-MIT.txt",
+    "scope": "Explicit newer-native THERMOPROP LOG10 proof profile; existing default retained"
+  },
+  "dynamic_vic": {
+    "source": "src/module_sf_noahmplsm.F:8133-8684",
+    "licence": "Pinned WRF v4 public-domain distribution; no new source or tables. Actual BBVIC/BDVIC/GDVIC from transferred native MPTABLE.",
+    "translation": "Complete DYNAMIC_VIC, RR1, RR2, Philip, Green-Ampt and Smith-Parlange; offline expression-tree generator; native iteration bounds and labels retained.",
+    "undefined_residue": "Native YD is read before assignment in two input-dependent RR1 calls. A retained sNaN-initialized native harness traps at the read. GPU uses a named quiet-NaN residue for those paths; no invented hydrologic value. Real captured formal outputs exclude no words.",
+    "generator": "tools/noahmp_options_wrf461_oracle/generate_dynamic_vic.py"
+  },
+  "soil_cadence": {
+    "driver": "drivers/wrf/module_sf_noahmpdrv.F:649-678",
+    "column": "src/module_sf_noahmplsm.F:2356-2373,7360-7531,1696-1713",
+    "registry": "Registry/registry.noahmp:204-214",
+    "licence": "Existing pinned WRF public-domain v4 sources and Registry; no additional code or tables.",
+    "clock": "Binary32 division and native positive NINT; absolute timestep determines reset and update. All nine native accumulators persist through checkpoint, restart, feedback and optional extended history.",
+    "default": "soiltstep=0 adds no arrays or selector identity; default CUDA sources unchanged."
+  },
+  "tile_drainage": {
+    "source": "src/module_sf_noahmplsm.F:8688-9160; drivers/wrf/module_sf_noahmpdrv.F:1230",
+    "licence": "Pinned WRF v4 public-domain distribution; source and MPTABLE original notice inspected before reuse; no new physics table",
+    "translation": "Complete TILE_DRAIN, TILE_HOOGHOUDT, TD_EQUIVALENT_DEPTH and TD_FINDZWAT, including all six layer-selection branches and native bounds",
+    "math": {
+      "reused_from": "gpuwm/core/kernels/noahmp_bareflux.cu:78-100,231-269",
+      "source_sha256": "54fb5065e95b24d4cf676e2deda29bae44b3e9305d3d98cbc1abf5ed55f444ce",
+      "licence": "Arm optimized-routines MIT; complete original notice reread before reuse",
+      "notice": "licenses/LICENSE-Arm-optimized-routines-MIT.txt"
+    },
+    "state": "TD_FRACTION, QTDRAIN, ZWT; conditional resident state, native cold initialization, both feedback modes, checkpoint/restart/history and independent ensembles",
+    "undefined_local": "Native equivalent-depth I is unassigned outside the X>.5 series; it is read only if the computed equivalent depth is negative. Published positive tables in the qualified calls produce positive depth; no undefined formal word is excluded.",
+    "signed_zero": "Strict real capture found one QSUBC word: native MIN(CANICE/DT,QSUBC) chooses its second operand on equal signed zero. Complete selected CANWATER retains that native tie; default source is untouched."
+  },
+  "crop": {
+    "source": "src/module_sf_noahmplsm.F:10302-10978; drivers/wrf/module_sf_noahmpdrv.F:2164-2227",
+    "licence": "Existing pinned WRF-v4 public-domain distribution; source and all consumed table notices inspected before reuse, no new restrictive code or tables",
+    "implementation": "Complete GROWING_GDD, CO2FLUX_CROP and CARBON_CROP; actual transferred crop/photo table; all persistent pools and calendar state"
+  },
+  "irrigation": {
+    "source": "src/module_sf_noahmplsm.F:878-936,9235-9511",
+    "licence": "Existing pinned WRF-v4 public-domain distribution; source and all consumed table notices inspected before reuse, no new restrictive code or tables",
+    "implementation": "Complete native trigger, sprinkler evaporation, canopy interception and drip/flood injection; integer counters and conditional native carriers"
+  },
+  "glacier2": {
+    "source": "src/module_sf_noahmp_glacier.F:1; drivers/wrf/module_sf_noahmpdrv.F:269,1709",
+    "licence": "Existing pinned WRF-v4 public-domain distribution; source and all consumed table notices inspected before reuse, no new restrictive code or tables",
+    "implementation": "Complete resident GLA2 path; actual Greenland module calls and all 39 formal outputs"
+  },
+  "groundwater": {
+    "source": "src/module_sf_noahmp_groundwater.F:1-625; drivers/wrf/module_sf_noahmpdrv.F:2394-2818; src/module_sf_noahmplsm.F:9773-9880",
+    "licence": "Existing pinned WRF-v4 public-domain sources and original tables; notices inspected before reuse, no additional external physics library or restrictive table",
+    "implementation": "Complete cold groundwater initialization, native eight-neighbor transmissivity/head/river exchange and UPDATEWTD; SHALLOWWATERTABLE and all RUN5 water/soil branches; no host field reads in the step path",
+    "geography": "FDEPTH, EQZWT, RECHCLIM and RIVERBED are required real input fields; official WPS reference geography retained only as hashed test input, not shipped with product",
+    "generator": "tools/noahmp_options_wrf461_oracle/generate_groundwater.py",
+    "native_feedback": "Only ZWT, terrain and four geography fields have native feedback flags; other groundwater state remains parent-owned during child feedback"
+  }
+}

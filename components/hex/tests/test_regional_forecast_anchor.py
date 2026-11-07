@@ -94,7 +94,7 @@ def test_the_named_forecast_pair_is_masked_digest_identical(receipts):
 SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     "src/hexcore/cuda_driver.py": {
         "recorded": "cb6477ef2fd02ad551e9b6c8af0724c94fc4d90bdc712fff1378d218662f5d04",
-        "current": "e8d3c8484928c85f126dfce6bacb35ba215cf59dc7005ded780b96aa639f0f42",
+        "current": "f453eee1152aa33392b09ecfde1d16ee33ec53cf17d754ecd076736088630fea",
         "why": (
             "convection ruling, 2026-08-26: _v841_physics_cadences reports "
             "convection: None when no cumulus scheme is selected instead of "
@@ -145,7 +145,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_regional_forecast_v841.py": {
         "recorded": "3aa30ec3c3a11c1152a67d1fcbc8b2d470fd8ac2446ec8f7ec34906873421e88",
-        "current": "9a87cd6b3456c2edf2e290de70b9eee8b4b0235d1102c11b80fab154f912a9c2",
+        "current": "45af7bda15a3794b3a1af5b2363513c3f899784ada8aaab4c1dfddf4ff8ed031",
         "why": (
             "Integration 2026-10-04 adds explicit rank constructor dispatch "
             "and preserves the ordinary constructor. The twelve arithmetic "
@@ -213,7 +213,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_backend/runtime.py": {
         "recorded": "4deab4b3a37467491a531750e8618705c6884c19c0395891bc426fce2ea6ba5a",
-        "current": "3e6f445f42763fdf808a1ca043f495c849921230176c93776a04f8debd809cce",
+        "current": "f85dc5fa4075e34c002bbe86b375bf556d211f4e6e2d259404f157f528819fc4",
         "why": (
             "2026-10-15: require_cuda's default runtime floor 13000 -> 12000 "
             "(CUDA 12 support) and one docstring paragraph; host Python "
@@ -342,7 +342,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_horizontal_v841.py": {
         "recorded": "3fc0b860ebd67dfed453617c348810964ea1110e782fe85db10283afb406e2fe",
-        "current": "37714ab89935af5b02d79eeea4c06cfad038de457502116c9dad27a8bdd55465",
+        "current": "1a5fae3d6055a710de7d7ce216dddb9bee7c2e4ee72cf4e6a959e2401dfe0cb7",
         "why": (
             "2026-10-19 current-source refresh after f65ab11c: immutable "
             "kernel dimensions are specialized and cache keys include shape. "
@@ -362,7 +362,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_regional_v841.py": {
         "recorded": "b9f1dbdbbd123066f1fec2ebebbb664da7b4d5b62bce06a15f42dc96193a4ab5",
-        "current": "b7692e79ddc1297b8f7ca1b0d05e2bf545a103b8e5ffbfe067e315074c7674da",
+        "current": "b33d522a13ab359713683dd8354a60452c68840bd9a5981027a6ff377b1bdfc7",
         "why": (
             "0.2.0 package rename, 2026-08-28: the token mpas_port became "
             "hexcore. This file is byte-identical to the copy these receipts "
@@ -393,7 +393,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_transport_v841.py": {
         "recorded": "55c66759d9c81f65ed71ce77570897c102fd64661da6ad6c37b438b27771ab23",
-        "current": "178246f5032b512717edf764edaa6d1ddec6f04241f329e6cb6acffe9112acb6",
+        "current": "5bf88077aeb7f63f66c83d997ec9a1e4af8f1d9e64ce19741efa63cfd1addb87",
         "why": (
             "2026-10-28 level-parallel integer zero classification: cells then "
             "levels preserve uint32 OR exactly; fast and strict device "

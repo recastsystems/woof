@@ -40,6 +40,32 @@ def scanned_tree(tmp_path):
     for path in list(kernels.glob("*.cu")) + list(kernels.glob("*.cuh")):
         text = path.read_text(encoding="utf-8")
         path.write_text(text + "\n" + MARKER + "\n", encoding="utf-8")
+    # Copy the exact declared coefficient headers and their authority.
+    from woof.core.kernels import EXTRA_HEADERS, _TABLE_HEADERS
+    for relative, _size, _digest in _TABLE_HEADERS.values():
+        target = root / "woof" / "data" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO_ROOT / "woof" / "data" / relative, target)
+    for headers in EXTRA_HEADERS.values():
+        for header in headers:
+            if header.startswith("../../data/"):
+                target = (kernels / header).resolve()
+                relative = target.relative_to(root.resolve())
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(REPO_ROOT / relative, target)
+                shutil.copyfile((REPO_ROOT / relative).parent / "MANIFEST.json",
+                                target.parent / "MANIFEST.json")
+    # Parameter headers are source inputs too; copy the registered assets.
+    from woof.table_assets import kernel_parameter_source_pieces
+    for unit in kernels.glob("*.cu"):
+        for label, _ in kernel_parameter_source_pieces(unit.stem):
+            target = root / label
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(REPO_ROOT / label, target)
+    # pxsfclay's constant prefix is part of its unit (kernels.module_source).
+    target = root / "woof" / "data" / "pxsfclay" / "constants.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO_ROOT / "woof" / "data" / "pxsfclay" / "constants.json", target)
     return root.resolve()
 
 
@@ -95,6 +121,11 @@ def test_the_census_builds_every_unit_from_the_scanned_tree(
 
 def test_the_scans_report_and_read_only_the_scanned_tree(
         monkeypatch, scanned_tree):
+    # This gate measures scan-root isolation. The separate source gate
+    # judges each production finding. Preserve them here while requiring
+    # the planted defect to appear from this tree as well.
+    reference_kernel = scan.kernel_file_offenders(REPO_ROOT)
+    reference_inline = scan.inline_kernel_offenders(REPO_ROOT)
     kernels = scan.kernel_dir(scanned_tree)
     (kernels / "planted_a193.cu").write_text(
         'extern "C" __global__ void k(float* y)\n'
@@ -103,10 +134,12 @@ def test_the_scans_report_and_read_only_the_scanned_tree(
         'BODY = r"""\nextern "C" __global__ void k(float* y)\n'
         '{ y[0] = y[1] / 7.0f; }\n"""\n', encoding="utf-8")
     opened = _record_reads(monkeypatch)
-    assert scan.kernel_file_offenders(scanned_tree) == [
-        "woof/core/kernels/planted_a193.cu:2 divides by 3.0f"]
-    assert scan.inline_kernel_offenders(scanned_tree) == [
-        "woof/planted_a193.py:1 (string line 3) divides by 7.0f"]
+    assert sorted(scan.kernel_file_offenders(scanned_tree)) == sorted([
+        *reference_kernel,
+        "woof/core/kernels/planted_a193.cu:2 divides by 3.0f"])
+    assert sorted(scan.inline_kernel_offenders(scanned_tree)) == sorted([
+        *reference_inline,
+        "woof/planted_a193.py:1 (string line 3) divides by 7.0f"])
     assert not _outside(opened, scanned_tree), _outside(opened, scanned_tree)
     assert scan.kernel_dir(scanned_tree) / "common.cuh" in opened
 

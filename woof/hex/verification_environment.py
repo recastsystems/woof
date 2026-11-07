@@ -187,7 +187,7 @@ def capture(numerics, command=()):
         pins['nvrtc'] = list(nvrtc.getVersion())
         device = runtime.getDevice()
         bus = cp.cuda.Device(device).pci_bus_id
-        info = subprocess.run(['nvidia-smi', '--id=' + bus,
+        info = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), '--id=' + bus,
                                '--query-gpu=uuid,driver_version', '--format=csv,noheader'],
                               capture_output=True, text=True, check=True)
         uuid, driver = info.stdout.strip().split(',')

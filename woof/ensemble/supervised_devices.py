@@ -67,8 +67,9 @@ def input_device_lease(request, *, gpu_uuid, reservation_bytes, allow_shared_gpu
             requested_uuid=gpu_uuid, visibility=os.environ.get("CUDA_VISIBLE_DEVICES"))
         selected, mask = lease.locked, lease.cuda_mask
     with ExitStack() as locks:
-        for gpu in sorted(selected, key=lambda item: item.uuid):
-            locks.enter_context(supervisor.GPUFileLock(gpu.uuid, run_id=run_id))
+        if not allow_shared_gpu:
+            for gpu in sorted(selected, key=lambda item: item.uuid):
+                locks.enter_context(supervisor.GPUFileLock(gpu.uuid, run_id=run_id))
         for gpu in selected:
             supervisor.preflight_exclusive_gpu(gpu.uuid, approved_pids={os.getpid()},
                 allow_shared_gpu=allow_shared_gpu, reservation_bytes=reservation_bytes)

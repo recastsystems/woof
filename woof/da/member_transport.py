@@ -66,7 +66,7 @@ def _timing_card(visible):
     try:
         import subprocess
         rows = subprocess.run(
-            ["nvidia-smi", "--id=" + visible,
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--id=" + visible,
              "--query-gpu=index,uuid", "--format=csv,noheader"],
             capture_output=True, text=True, timeout=2, check=True).stdout
         for row in rows.splitlines():

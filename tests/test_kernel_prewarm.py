@@ -185,8 +185,28 @@ def test_composed_inventory_uses_runtime_factory_not_nonexistent_file(monkeypatc
     assert calls == [(n, (tables,) if n == 'rrtmg_sw_legacy' else ()) for n in selected]
 
 
+@pytest.mark.parametrize("aerosol_options, expected", [
+    ((0,), {(("GPUWM_MSKF_NO_AEROSOL", 1),)}),
+    ((1,), {()}),
+    ((0, 1), {(), (("GPUWM_MSKF_NO_AEROSOL", 1),)}),
+])
+def test_mskf_warms_only_selected_runtime_specializations(monkeypatch, aerosol_options, expected):
+    from woof.core.kernels.no_ftz import load_module_no_ftz
+
+    experiment = SimpleNamespace(domains=tuple(
+        SimpleNamespace(run=SimpleNamespace(cu_physics=11, aercu_opt=value))
+        for value in aerosol_options))
+    monkeypatch.setattr(kernel_prewarm, "static_modules", lambda experiment: ("mskf",))
+    jobs = [(factory, args) for label, factory, args in kernel_prewarm.static_jobs(experiment)
+            if label.split("[")[0] == "mskf"]
+    assert {args[1] for _, args in jobs} == expected
+    assert len(jobs) == len(expected)
+    assert all(factory is load_module_no_ftz.__wrapped__ and args[0] == "mskf"
+               for factory, args in jobs)
+
+
 def test_the_forecast_column_is_open_so_the_helicity_diagnostic_runs(monkeypatch):
-    # Breakage it prevents (2.9.4 landing, V58 2026-10-20): the synthetic forecast column was periodic, the run's
+    # Breakage it prevents (2.9.4 landing, test host 2026-10-20): the synthetic forecast column was periodic, the run's
     # nwp_diagnostics=1 helicity refused it ("WRF's cal_helicity periodic branch is not transcribed"), and the HRRR
     # forecast's step 1 compiled 51 s cold.
     import dataclasses
@@ -218,6 +238,7 @@ def test_the_forecast_column_is_open_so_the_helicity_diagnostic_runs(monkeypatch
     # radiative open boundaries is not wired", hrrr_v4_gsd41, 2026-10-21).
     cfg = warm_kernels.forecast_column_config(Run())
     assert cfg.nwp_diagnostics == 1 and _supported_boundary_geometry(cfg)
+    assert cfg.output_interval_s == Run.output_interval_s
     assert cfg.specified and not cfg.nested and not (cfg.open_x or cfg.open_y)
     assert cfg.nx == cfg.ny == 2 * Run.spec_bdy_width + 4
     # A run with no lateral forcing keeps the open column.
@@ -225,6 +246,19 @@ def test_the_forecast_column_is_open_so_the_helicity_diagnostic_runs(monkeypatch
     assert cfg.nwp_diagnostics == 1 and _supported_boundary_geometry(cfg)
     assert not cfg.specified and cfg.open_x and cfg.open_y
     assert (cfg.nx, cfg.ny) == (warm_kernels._NX, warm_kernels._NY)
+
+
+def test_forecast_column_keeps_the_native_nwp_averaging_window():
+    from woof.config import RunConfig, validate_run_config
+    from woof.warm_kernels import forecast_column_config
+
+    run = validate_run_config(RunConfig(
+        nx=40, ny=32, nz=49, dx=3000., dy=3000., ztop=20000.,
+        dt=12., run_seconds=120., output_interval_s=60., nwp_diagnostics=1))
+    column = forecast_column_config(run)
+    assert column.run_seconds == 24.
+    assert column.output_interval_s == 60.
+    assert column.nwp_diagnostics == 1
 
 
 def _column_layer_temperatures(nz, ztop):
@@ -239,7 +273,7 @@ def _column_layer_temperatures(nz, ztop):
 
 
 def test_fcn3_nest_column_stays_inside_the_radiation_tables():
-    # The Earth-2 FCN3 nest (V58 2026-10-20, repro-e2 g.toml): nz 49, ztop
+    # The Earth-2 FCN3 nest (test host 2026-10-20, repro-e2 g.toml): nz 49, ztop
     # 20 km, p_top 50 hPa.  The constant-N column's top layer was 159.2 K,
     # below RRTMG's 160 K floor, and the pre-warm child exited 1.
     temperature = _column_layer_temperatures(49, 20000.0)
@@ -270,6 +304,8 @@ def _loader_route_exists(factory, args) -> bool:
         module, function = kernel_prewarm._COMPOSED_LOADERS[args[0]]
     elif factory is kernel_prewarm._warm_device_loader:
         module, function = kernel_prewarm._DEVICE_LOADERS[args[0]]
+    elif factory is kernel_prewarm._warm_kf:
+        module, function = "kf", "_kf_module"
     elif factory is kernels.load_module.__wrapped__:
         source = "mynn_pbl" if args[0] == "mynn_dmp_sibling" else args[0]
         return (kernels._KDIR / f"{source}.cu").exists()
@@ -279,7 +315,7 @@ def _loader_route_exists(factory, args) -> bool:
 
 
 def test_every_static_job_of_the_hrrr_recipe_has_a_loader_route():
-    # V59 8x5090, 2026-10-21: the hrrr_v4_gsd41 plan named terrain_drag_composed (gwd_opt = 3), load_module looked
+    # test host 8x5090, 2026-10-21: the hrrr_v4_gsd41 plan named terrain_drag_composed (gwd_opt = 3), load_module looked
     # for terrain_drag_composed.cu, and the pre-warm child exited 1 with FileNotFoundError.
     from woof.core import kernels
     from woof.core.preflight import CHAINED_TRANSLATION_UNIT_FRAMES
@@ -288,10 +324,36 @@ def test_every_static_job_of_the_hrrr_recipe_has_a_loader_route():
     assert "terrain_drag_composed" in {label for label, _factory, _args in jobs}
     for label, factory, args in jobs:
         assert _loader_route_exists(factory, args), label
-    # Every chained unit preflight prices has a route; none is a file.
+    # Every chained unit uses its production factory. Eta has a source file,
+    # but its factory also supplies the required composed math header.
     for name in CHAINED_TRANSLATION_UNIT_FRAMES:
+        if name in kernel_prewarm._KF_TRIGGERS:
+            assert _loader_route_exists(
+                kernel_prewarm._warm_kf, (kernel_prewarm._KF_TRIGGERS[name],)), name
+            continue
         assert name in kernel_prewarm._COMPOSED_LOADERS or name in kernel_prewarm._DEVICE_LOADERS, name
-        assert not (kernels._KDIR / f"{name}.cu").exists()
+        factory = (kernel_prewarm._warm_composed
+                   if name in kernel_prewarm._COMPOSED_LOADERS
+                   else kernel_prewarm._warm_device_loader)
+        assert _loader_route_exists(factory, (name,)), name
+
+
+@pytest.mark.parametrize("name,trigger", [("kf", 1), ("kf_trigger2", 2), ("kf_trigger3", 3)])
+def test_kf_prewarm_uses_the_production_trigger_variant(monkeypatch, name, trigger):
+    from woof.core import kf
+
+    monkeypatch.setattr(kernel_prewarm, "static_modules", lambda _experiment: (name,))
+    monkeypatch.setattr(kernel_prewarm, "_inline_jobs", lambda _modules: [])
+    monkeypatch.setattr(kernel_prewarm, "_variant_jobs", lambda *_args: [])
+    monkeypatch.setitem(sys.modules, "cupy", SimpleNamespace(
+        cuda=SimpleNamespace(runtime=SimpleNamespace(getDevice=lambda: 7))))
+    calls = []
+    monkeypatch.setattr(kf, "_kf_module", lambda *args: calls.append(args))
+    jobs = kernel_prewarm.static_jobs(_experiment())
+    assert len(jobs) == 1
+    _label, factory, args = jobs[0]
+    factory(*args)
+    assert calls == [(7, trigger)]
 
 
 def test_parallel_plan_covers_selected_physics_and_code_dependent_shapes():
@@ -313,7 +375,7 @@ def test_parallel_plan_covers_selected_physics_and_code_dependent_shapes():
 def test_hrrr_recipe_prewarm_receipt_says_first_step_ready(monkeypatch):
     # The whole warm_static pass on the hrrr_v4_gsd41 recipe with the compiler stubbed: every static loader route
     # is resolved and called, the preparation and forecast-column groups run, and the receipt says
-    # first_step_ready.  A job without a loader route fails the way V59's did (FileNotFoundError).
+    # first_step_ready.  A job without a loader route fails the way test host's did (FileNotFoundError).
     from woof import kernel_plan
     from woof.ingest import preparation_prewarm
 

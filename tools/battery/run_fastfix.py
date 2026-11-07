@@ -102,15 +102,16 @@ def unexecuted_suites(report, selected):
 
 SOURCE_PROBE = r'''
 import importlib.metadata as md, json, pathlib, sys
-import woof, woof_data
+import woof, woof_data, gpuwm_kernels, gpuwm_kernels_startup
 root = pathlib.Path(sys.argv[1]).resolve()
-for module, directory in ((woof, root / "woof"), (woof_data, root / "recast-woof-data/woof_data")):
+for module, directory in ((woof, root / "woof"), (woof_data, root / "recast-woof-data/woof_data"),
+                          (gpuwm_kernels, root / "gpuwm-kernels/gpuwm_kernels"), (gpuwm_kernels_startup, root / "gpuwm-kernels-startup/gpuwm_kernels_startup")):
     if pathlib.Path(module.__file__).resolve().parent != directory:
         raise RuntimeError("test environment imports another source tree: " + str(module.__file__))
-for name in ("woof", "recast-woof-data"):
+for name in ("woof", "recast-woof-data", "gpuwm-kernels", "gpuwm-kernels-startup"):
     if md.version(name) != sys.argv[2]:
         raise RuntimeError("test environment has mismatched metadata: " + name + " " + md.version(name))
-print(json.dumps({"python": sys.executable, "engine": woof.__file__, "companion": woof_data.__file__, "version": sys.argv[2], "packages": sorted((d.metadata.get("Name", ""), d.version) for d in md.distributions())}))
+print(json.dumps({"python": sys.executable, "engine": woof.__file__, "companion": woof_data.__file__, "kernels": gpuwm_kernels.__file__, "version": sys.argv[2], "packages": sorted((d.metadata.get("Name", ""), d.version) for d in md.distributions())}))
 '''
 
 
@@ -119,30 +120,33 @@ print(json.dumps({"python": sys.executable, "engine": woof.__file__, "companion"
 # missed by a stale handwritten list. Parsing --help never runs a handler.
 INSTALLED_SWEEP = r'''
 import argparse, contextlib, hashlib, importlib.metadata as md, io, json, pathlib, subprocess, sys, zipfile
-import woof, woof_data
+import woof, woof_data, gpuwm_kernels, gpuwm_kernels_startup
 from woof.cli import build_parser
 from woof import bridge_assets, tui_cli
 prefix = pathlib.Path(sys.prefix).resolve()
-for module in (woof, woof_data):
+for module in (woof, woof_data, gpuwm_kernels, gpuwm_kernels_startup):
     if not pathlib.Path(module.__file__).resolve().is_relative_to(prefix):
         raise RuntimeError("expected a wheel installed in this environment: " + str(module.__file__))
-for name in ("woof", "recast-woof-data"):
+for name in ("woof", "recast-woof-data", "gpuwm-kernels", "gpuwm-kernels-startup"):
     direct = md.distribution(name).read_text("direct_url.json")
     if direct and json.loads(direct).get("dir_info", {}).get("editable"):
         raise RuntimeError("editable installation is not an installed artifact check: " + name)
-if md.version("woof") != md.version("recast-woof-data") or md.version("woof") != sys.argv[2]:
+if any(md.version(name) != sys.argv[2] for name in ("woof", "recast-woof-data", "gpuwm-kernels", "gpuwm-kernels-startup")):
     raise RuntimeError("engine and companion versions disagree")
 proof = json.loads(pathlib.Path(sys.argv[5]).read_text())
 if proof.get("schema") != "gpuwm-release-artifact-proof-v2" or proof.get("status") != "PASS" or proof.get("mode") != "cut" or proof.get("source_rev") != sys.argv[1]:
     raise RuntimeError("artifact proof does not qualify this revision")
 wheel_records = [proof["wheel"], *proof.get("distributions", [])]
 engine_wheel = pathlib.Path(sys.argv[3])
-for wheel in (engine_wheel, pathlib.Path(sys.argv[4])):
+kernels_wheel = engine_wheel.parent / ("gpuwm_kernels-" + sys.argv[2] + "-py3-none-any.whl")
+startup_wheel = engine_wheel.parent / ("gpuwm_kernels_startup-" + sys.argv[2] + "-py3-none-any.whl")
+for wheel in (engine_wheel, pathlib.Path(sys.argv[4]), kernels_wheel, startup_wheel):
     wheel_sha = hashlib.sha256(wheel.read_bytes()).hexdigest()
     if not any(r.get("filename") == wheel.name and r.get("sha256") == wheel_sha for r in wheel_records):
         raise RuntimeError("wheel does not match artifact proof: " + str(wheel))
 wheel_checks = []
-for name, package, wheel in (("woof", "woof", engine_wheel), ("recast-woof-data", "woof_data", pathlib.Path(sys.argv[4]))):
+for name, package, wheel in (("woof", "woof", engine_wheel), ("recast-woof-data", "woof_data", pathlib.Path(sys.argv[4])),
+                             ("gpuwm-kernels", "gpuwm_kernels", kernels_wheel), ("gpuwm-kernels-startup", "gpuwm_kernels_startup", startup_wheel)):
     distribution = md.distribution(name)
     checked = 0
     with zipfile.ZipFile(wheel) as archive:

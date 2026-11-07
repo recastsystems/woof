@@ -4,6 +4,8 @@ Numerical text is generated from c6d08709, including the complete MPAS wrapper.
 Shared device maths is supplied by the caller. Forecast acceptance is separate.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target, image_target as _image_target
 from woof.hex import numerics as _hex_numerics
 from typing import Mapping
 
@@ -11,12 +13,15 @@ from typing import Mapping
 # IEEE quotients and roots, so ptxas optimisation changes no word (module replay of real hrrrv5 calls, strict, old
 # -O0 image vs this one: 0 different words, rrfs/mynn-speed 2026-10-28). The -O0 image ran the PBL at 242 ms of a
 # 322 ms strict step.
-# Split compilation (rrfs/speed2-mynn-edmf, 2026-10-28): the image holds one kernel per lane width (LANE_WIDTHS), and
-# NVRTC + ptxas otherwise build them on one core (fast 70-126 s on a loaded RTX 5090 host, strict several minutes). Split
-# across the host's cores: fast 35 s. It changes only how the compiler schedules its work; every word is the same
-# (module replays, fast and strict).
+# ptxas splits its work across the host's cores; NVRTC does not.  THE BREAKAGE (woof hex 0.4.14 memory lane,
+# 2026-11-06): with NVRTC's own --split-compile=0 (rrfs/speed2-mynn-edmf, 2026-10-28) every compile of this unit gave a
+# different machine code -- five compiles of the same source and options (pack builder and runtime route, 8 and 48
+# cores, and two on 8 cores) gave five different .text sections -- so a run that compiled it (no matching pack)
+# differed from its own rerun on the pack image by 228,559 words at step 1 (8 ranks, fast).  Measured on box-4x with
+# NVRTC 13.4.59 (fast): NVRTC split alone, 8 vs 48 cores: two different cubins; ptxas split alone: the same cubin
+# byte for byte at 8 and 48 cores (105 s); no split: the same cubin (177 s).  So only ptxas splits.
 CUDA_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true",
-                "--split-compile=0", "--ptxas-options=--split-compile=0")
+                "--ptxas-options=--split-compile=0")
 
 ARRAY_SUPPORT = r'''
 // Stack frame (rrfs/mynn-speed, 2026-10-28): the generator inlines the two once-per-column entry routines
@@ -10884,7 +10889,7 @@ errmsg = " ";
 errflg = 0;
 }
 };
-#ifdef HEX_NUMERICS_FAST
+#if defined(HEX_NUMERICS_FAST) && !defined(__HIP_PLATFORM_AMD__)
 #define MYNN_L4_REGS __maxnreg__(160)
 #else
 #define MYNN_L4_REGS
@@ -11338,7 +11343,8 @@ def lanes_per_column(kernels, ncols: int) -> int:
     sms = int(cp.cuda.Device().attributes['MultiProcessorCount'])
     fast = _hex_numerics.mode() == 'fast'
     for width in ((16,) if fast else sorted(LANE_WIDTHS, reverse=True)):
-        capacity = sms * max(int(driver.occupancyMaxActiveBlocksPerMultiprocessor(kernels[width].ptr, 32, 0)), 1)
+        from woof.backend import active_blocks_per_multiprocessor
+        capacity = sms * max(int(active_blocks_per_multiprocessor(kernels[width].ptr, 32, 0)), 1)
         if -(-ncols * width // 32) <= capacity:
             return width
     return 4 if fast else 1
@@ -11477,16 +11483,22 @@ class MynnEdmfCuda:
             self._module.load(self.compiled_image)
             self._load_kernels()
             return
-        options = _hex_numerics.options(CUDA_OPTIONS) + ('--gpu-architecture=sm_' + cp.cuda.Device().compute_capability,)
-        program = nvrtc.createProgram(source, 'rrfs_mynnedmf.cu', (), ())
-        try:
+        from woof.hip_backend import active
+        if active():
+            from woof.hex.cuda_backend.aot import raw_image
+            ptx = raw_image(source, _hex_numerics.options(CUDA_OPTIONS),
+                            _compilation_target(xp=cp), filename='rrfs_mynnedmf.cu')
+        else:
+            options = _hex_numerics.options(CUDA_OPTIONS) + ('--gpu-architecture=sm_' + cp.cuda.Device().compute_capability,)
+            program = nvrtc.createProgram(source, 'rrfs_mynnedmf.cu', (), ())
             try:
-                nvrtc.compileProgram(program, options)
-            except Exception as exc:
-                raise RuntimeError(nvrtc.getProgramLog(program)) from exc
-            ptx = nvrtc.getCUBIN(program)
-        finally:
-            nvrtc.destroyProgram(program)
+                try:
+                    nvrtc.compileProgram(program, options)
+                except Exception as exc:
+                    raise RuntimeError(nvrtc.getProgramLog(program)) from exc
+                ptx = nvrtc.getCUBIN(program)
+            finally:
+                nvrtc.destroyProgram(program)
         self._module = cp.cuda.function.Module()
         self._module.load(ptx)
         self._load_kernels()
@@ -11662,7 +11674,7 @@ def prepare_pbl(backend: MynnEdmfCuda, common_arguments: Mapping, fields: Mappin
         source = CUDA_FTZ_HELPERS + backend.shared_math_source + PBL_GEOMETRY_CUDA
         # The same raw NVRTC compile, through the box's warm store and the pack (woof.hex.cuda_backend.aot).
         module = cp.cuda.function.Module(); module.load(raw_image(source, _hex_numerics.options(CUDA_OPTIONS),
-            cp.cuda.Device().compute_capability, filename='rrfs_mynn_geometry.cu'))
+            _compilation_target(xp=cp), filename='rrfs_mynn_geometry.cu'))
         backend._geometry_module = module
         backend._geometry = module.get_function('rrfs_mynnedmf_dx')
     n = (ite-its+1)*(jte-jts+1)
@@ -11760,9 +11772,16 @@ def load_cuda_packet(packet, device):
     from woof.hex.mynn_glibc_math import mynn_glibc_source
     image = Path(packet['image']).read_bytes()
     metadata = json.loads(Path(packet['metadata']).read_text())
+    from woof.hex.cuda_backend.source_identity import mynn_source_matches
     source = CUDA_FTZ_HELPERS + mynn_glibc_source() + ARRAY_SUPPORT + MODULE_CUDA
-    options = list(_hex_numerics.options(CUDA_OPTIONS)) + ['--gpu-architecture=sm_' + device.cuda.Device().compute_capability]
-    if (metadata['source_sha256'] != hashlib.sha256(source.encode()).hexdigest()
+    from woof.hip_backend import requested,compile_source
+    if requested() == 'hip':
+        if (not mynn_source_matches(source, metadata['source_sha256'])
+                or metadata['image_sha256'] != hashlib.sha256(image).hexdigest()):
+            raise RuntimeError('MYNN resource source or image digest differs')
+        return compile_source(source,_hex_numerics.options(CUDA_OPTIONS),filename='rrfs_mynnedmf.cu')[0]
+    options = list(_hex_numerics.options(CUDA_OPTIONS)) + ['--gpu-architecture=' + _image_target(xp=device)]
+    if (not mynn_source_matches(source, metadata['source_sha256'])
             or metadata['image_sha256'] != hashlib.sha256(image).hexdigest()
             or metadata['options'] != options):
         raise RuntimeError('MYNN CUDA resource differs from the strict source, image or device architecture')

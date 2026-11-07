@@ -1,0 +1,64 @@
+{
+  "schema": "gpuwm.fddaobs-source-pin.v1",
+  "wrf_tag": "v4.7.1",
+  "source_files": [
+    {
+      "path": "README",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/README",
+      "bytes": 17722,
+      "sha256": "077da78ac41e9d6dfb7e94de1c3a5adb129aaf89a29470f26be92d9cd33929f6",
+      "license": "WRF public domain notice, README lines 4-24; no overriding notice found in the three observation modules"
+    },
+    {
+      "path": "phys/module_fddaobs_rtfdda.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_fddaobs_rtfdda.F",
+      "bytes": 131560,
+      "sha256": "1ca4065b3aba0f926a7ded65f9eb92e1c6a7da678401271c9441bc93dda946c0",
+      "license": "WRF public domain notice, README lines 4-24; no overriding notice found in the three observation modules"
+    },
+    {
+      "path": "phys/module_fddaobs_driver.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_fddaobs_driver.F",
+      "bytes": 30931,
+      "sha256": "fb7c6a73a443555a7cd2b0dd51a4269a0a9541d239a3a216a2e2385d99fa182a",
+      "license": "WRF public domain notice, README lines 4-24; no overriding notice found in the three observation modules"
+    },
+    {
+      "path": "share/wrf_fddaobs_in.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/wrf_fddaobs_in.F",
+      "bytes": 80320,
+      "sha256": "65d89c5bb0a7d9d808d56618c765da4a90fa57541543a807595778988ff80abb",
+      "license": "WRF public domain notice, README lines 4-24; no overriding notice found in the three observation modules"
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "bytes": 437707,
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+      "license": "WRF public domain notice, README lines 4-24; no overriding notice found in the three observation modules"
+    },
+    {
+      "path": "share/module_llxy.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_llxy.F",
+      "bytes": 75173,
+      "sha256": "0c777e66ffbb0602479cadcc0ab484769a140c4cb2b3e9a8f757597086f0c76b",
+      "license": "WRF public domain notice in pinned README lines 4-24; reviewed module header and full file, no overriding notice; WRF-distributed NCEP-derived projection routines."
+    },
+    {
+      "path": "phys/module_surface_driver.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_surface_driver.F",
+      "bytes": 396530,
+      "sha256": "a653965f9ffd1db5e4c42aa79e41b4d111755b6fca0f1a3b91f3a93455813ffd",
+      "license": "WRF public domain notice in pinned README lines 4-24; reviewed header and complete file: no overriding licence notice."
+    },
+    {
+      "path": "share/module_model_constants.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_model_constants.F",
+      "bytes": 8280,
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "license": "WRF public domain notice in pinned README lines 4-24; reviewed header and complete file: no overriding licence notice."
+    }
+  ],
+  "tables": [],
+  "competitor_code_used": false
+}

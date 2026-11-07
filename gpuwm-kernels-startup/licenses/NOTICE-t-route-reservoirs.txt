@@ -1,0 +1,18 @@
+WOOF NextGen reservoir kernels are adapted from NOAA-OWP/t-route,
+commit 12a8eae0cdfed437143c590659fa7077605a5e70, under Apache License 2.0.
+The complete licence is retained in LICENSE-t-route.txt.
+
+Source files:
+src/kernel/reservoir/Level_Pool/module_levelpool.F
+src/troute-routing/troute/routing/fast_reach/reservoir_hybrid_da.py
+src/troute-routing/troute/routing/fast_reach/reservoir_RFC_da.py
+src/model_reservoir.py (dispatch, units and carried-state contract)
+
+These files contain no separate copyright/licence notice. The pinned TERMS.md
+disclaims NOAA/Department of Commerce endorsement. This adaptation does not
+imply endorsement by NOAA, DOC or the United States Government.
+
+Changes: CUDA scalar device functions and batched resident kernels; file
+discovery and filename tables supplied by Rust; Python launch orchestration.
+No source, fixture or implementation is copied from the withdrawn WRF-Hydro
+port. All source reads for this adaptation use the t-route pin above.

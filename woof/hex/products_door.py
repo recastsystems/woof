@@ -100,6 +100,21 @@ REGIONAL_EXTRA_PRODUCTS = (
     "925mb_height_winds",
     "mucape",
     "cloud_cover_levels",
+    # 1 km AGL reflectivity and running-max updraft helicity (woof.hex.uh_layers), alone and over composite and
+    # 1 km reflectivity.  A run without the UH fields names each UH map unavailable ("not stored"); none is drawn.
+    "1km_reflectivity",
+    "uh_0to1km",
+    "uh_0to2km",
+    "uh_0to3km",
+    "uh_2to5km",
+    "composite_reflectivity_uh0to1km",
+    "composite_reflectivity_uh0to2km",
+    "composite_reflectivity_uh0to3km",
+    "composite_reflectivity_uh",
+    "1km_reflectivity_uh0to1km",
+    "1km_reflectivity_uh0to2km",
+    "1km_reflectivity_uh0to3km",
+    "1km_reflectivity_uh2to5km",
 )
 GLOBAL_PRODUCTS = BASE_GLOBAL_PRODUCTS + WINDOWED_PRODUCTS
 REGIONAL_PRODUCTS = GLOBAL_PRODUCTS + REGIONAL_EXTRA_PRODUCTS
@@ -1124,6 +1139,34 @@ def global_window(mesh, size: str) -> tuple[str, str | None]:
     return window, why
 
 
+#: The widest context box, in km (its height is 0.7 of its width). THE BREAKAGE THIS PREVENTS (both-routes matrix,
+#: woof hex 0.4.14 candidate, 2026-11-06): a 240 -> 60 km zoom globe's refined window is 5,886 km across, so the
+#: context box at 8 x its half-extent was 23,547 x 16,483 km; rw_mpas_convert refuses a region wider than half a
+#: meridian (pi x 6,370 km = 20,012 km), the view failed and the whole mesh-plan --run door exited 1 after a finished
+#: forecast, on both physics routes. The cap is not the converter's own 20,012 km: at that width the box's corners lie
+#: 12,200 km from its centre, past the quarter turn (10,006 km) where a Lambert cone stretches without bound and the
+#: converter selects no cells (rw-mpas MESH_FOCUS_MAX_ANGULAR_RADIUS_RAD), so the picture's corners are stretched or
+#: blank. At 16,394 km the corners sit at the quarter turn: the widest box whose every pixel is real ground on a
+#: usable cone, still about three core widths for the widest core it frames. Not the global view instead: that view
+#: is already drawn, on lat-lon, with the core off centre; the context's job is the core in its surroundings,
+#: centred, on the same conformal cone as the core view, and the WOOF tree files it as its own view.
+CONTEXT_MAX_EXTENT_KM = math.pi * 6370.0 / math.sqrt(1.0 + 0.7 ** 2)
+#: The context box is this many times the core window's half-extent (four core widths), and never under 1,500 km.
+CONTEXT_EXTENT_PER_HALF = 8.0
+CONTEXT_MIN_EXTENT_KM = 1500.0
+
+
+def context_extent_km(half_km: float) -> tuple[float, str | None]:
+    """The context box's width around a core window of half-extent ``half_km``, and why when it was capped."""
+
+    wanted = max(CONTEXT_MIN_EXTENT_KM, CONTEXT_EXTENT_PER_HALF * half_km)
+    if wanted <= CONTEXT_MAX_EXTENT_KM:
+        return wanted, None
+    return CONTEXT_MAX_EXTENT_KM, (f"{wanted:.0f} km ({CONTEXT_EXTENT_PER_HALF:g} x the core's {half_km:.0f} km "
+                                   f"half-extent) capped at {CONTEXT_MAX_EXTENT_KM:.0f} km, the widest box whose "
+                                   f"corners stay within a quarter turn of the core")
+
+
 #: Below this |latitude| the converter frames a region on lat-lon, not Lambert (rw-mpas
 #: MESH_FOCUS_MIN_LAMBERT_LATITUDE_DEG); the context view there keeps the converter's own region window.
 REGION_MIN_LAMBERT_LATITUDE = 10.0
@@ -1307,7 +1350,8 @@ def live_drawn(receipt: Path | str | None, out_case: Path, histories: list[Path]
             frames.append(path)
     if not frames:
         return None
-    return {"receipt": str(receipt), "frames": frames, "products": {str(p) for p in doc.get("products") or ()}}
+    return {"receipt": str(receipt), "frames": frames, "products": {str(p) for p in doc.get("products") or ()},
+            "windowed_live": doc.get("windowed_live") is True}
 
 
 def _merge_views(parts: list[tuple[int, dict | None, str | None]]) -> tuple[int, dict | None, str | None]:
@@ -1339,7 +1383,8 @@ def _merge_views(parts: list[tuple[int, dict | None, str | None]]) -> tuple[int,
 def _render_view(*, histories, mesh, init, start, out_case, scratch_root, view,
                  window, products, size, model_label, remap, exes, basemap_dir,
                  keep_scratch, frame_jobs=1, source_label=None, part="",
-                 tiles="none", grid_label=None, frame_cache=None) -> tuple[int, dict | None, str | None]:
+                 tiles="none", grid_label=None, frame_cache=None, draw_latest=False,
+                 preserve_leads=None, incremental_import=False) -> tuple[int, dict | None, str | None]:
     """One view through the render door in standard-set mode."""
 
     args = argparse.Namespace(
@@ -1352,7 +1397,9 @@ def _render_view(*, histories, mesh, init, start, out_case, scratch_root, view,
         nc_format="cdf5", scratch=str(Path(scratch_root) / f"render-{view}{part}"),
         keep_scratch=keep_scratch, basemap_dir=basemap_dir,
         convert_exe=exes[0], renderer_exe=exes[1], remap=remap,
-        standard_set=True, series=True, frame_jobs=frame_jobs, tiles=tiles, frame_cache=frame_cache)
+        standard_set=True, series=True, frame_jobs=frame_jobs, tiles=tiles, frame_cache=frame_cache,
+        draw_latest=draw_latest, preserve_leads=preserve_leads, incremental_import=incremental_import,
+        minimum_window_hours={p: spec[1] for p, spec in WINDOWED_REQUIREMENTS.items()})
     print(f"PRODUCTS view={view} window={window}", flush=True)
     try:
         rc = render_door.run_render(args)
@@ -1557,6 +1604,10 @@ def write_columns_index(out_case: Path, views: list[dict]) -> Path | None:
         files = sorted(f for f in folder.glob("d[0-9][0-9]/*.wcol") if f.stat().st_size > 0)
         if not files:
             continue
+        # The view is finished: fold its hourly files into each grid's point-forecast series (column_store.py).
+        from .column_store import write_series
+        series = write_series(folder)
+        series_files = sorted(folder.glob("d[0-9][0-9]/series.wser"))
         spec = _window_spec(record, out_case) or {}
         spacing = None
         try:
@@ -1584,6 +1635,9 @@ def write_columns_index(out_case: Path, views: list[dict]) -> Path | None:
             "valid_times": [f"{f.stem[0:4]}-{f.stem[4:6]}-{f.stem[6:8]}T{f.stem[9:11]}:{f.stem[11:13]}:{f.stem[13:15]}Z"
                             for f in files],
             "bytes": sum(f.stat().st_size for f in files),
+            "series": ["/".join((name, "columns", s.parent.name, s.name)) for s in series_files],
+            "series_receipt": {k: series.get(k) for k in ("files", "bytes", "seconds", "skipped", "error")
+                               if series.get(k) is not None},
         })
     if not rows:
         return None
@@ -1713,7 +1767,7 @@ def run_products(args) -> int:
     redraw = [p for p in histories if p.name not in live_names]
     if live is not None:
         print(f"PRODUCTS live: {len(live_names)} of {len(histories)} frames already drawn while the forecast ran; "
-              f"this pass draws the whole-run maps over every frame and the maps of {len(redraw)} frame(s)", flush=True)
+              f"this pass keeps completed maps and fills missing products for {len(redraw)} frame(s)", flush=True)
     # The opening maps (first_maps): the reflectivity scan reads frames beside the views, off their path.
     opening: dict = {}
     opening_scan = threading.Thread(
@@ -1737,7 +1791,15 @@ def run_products(args) -> int:
                       basemap_dir=args.basemap_dir, keep_scratch=args.keep_scratch, frame_jobs=frame_jobs,
                       source_label=getattr(args, "source_label", None), tiles=tiles,
                       frame_cache=frame_cache)
-        if live is None:
+        if getattr(args, "draw_latest", False) or (live is not None and live.get("windowed_live")):
+            preserve = None if live is None else [render_door.lead_token(
+                int((_parse_stamp(frame_stamp(p)) - _parse_stamp(start)).total_seconds()), p.name)
+                for p in live["frames"]]
+            rc, manifest, refusal = _render_view(histories=histories,
+                products=tuple(dict.fromkeys((*products, *WINDOWED_PRODUCTS))) + chemistry_products,
+                draw_latest=getattr(args, "draw_latest", False), preserve_leads=preserve,
+                incremental_import=True, **common)
+        elif live is None:
             rc, manifest, refusal = _render_view(
                 histories=histories, products=tuple(products) + chemistry_products, **common)
         else:
@@ -1851,8 +1913,12 @@ def run_products(args) -> int:
         # into this tree, its window is on disk, so the context starts beside the core's whole-run maps instead of
         # after them. THE BREAKAGE THIS PREVENTS (an Arizona zoom globe, 8 x RTX PRO 6000, woof hex 0.4.10,
         # 2026-10-30): after the forecast the context view, the slowest, waited for the core view's 37 conversions
-        # and its renders before its own first conversion began.
-        drawn_core = live_view_manifest(out_case, "refined-core") if live is not None else None
+        # and its renders before its own first conversion began. A live draw of one frame (--history) has the same
+        # window on disk from the frame before it. THE BREAKAGE THAT PREVENTS (Arizona 800 km core, 12 h, four cards,
+        # run_69fad83444ce2a34): every frame's context waited for its core, so a draw took 85 s beside a forecast hour's
+        # 38 s, and the box sat 86 s with four cards idle after the last step for the last frame's draw.
+        drawn_core = (live_view_manifest(out_case, "refined-core")
+                      if live is not None or getattr(args, "history", None) else None)
         if drawn_core is not None:
             pending.append(core_future)
             rc, manifest, refusal = 0, drawn_core, None
@@ -1874,7 +1940,9 @@ def run_products(args) -> int:
                 mesh_uniform = False
             if refined_centre is not None and not limited_area:
                 lat, lon, half = refined_centre
-                extent = max(1500.0, 8.0 * half)
+                extent, capped = context_extent_km(half)
+                if capped:
+                    print(f"PRODUCTS context box {capped}", flush=True)
                 core_spec = (manifest.get("convert") or {}).get("window_spec") if manifest else None
                 core_dx = core_spec.get("dx_metres") if isinstance(core_spec, dict) else None
                 regions["refined-context"], context_why = context_window(
@@ -2029,6 +2097,12 @@ def run_products(args) -> int:
                   f"({opening['reflectivity_peak_dbz']} dBZ)", flush=True)
         print(f"PRODUCTS opening maps: {', '.join(opening['maps']) or 'none'}", flush=True)
     failed_views = [v["view"] for v in views if v.get("rc") not in (0, None)]
+    from .wave_products import render as render_waves
+    # Wave frames live in the forecast directory (<forecast>/waves/native). A products run
+    # given only --history files has no forecast directory and so no wave frames.
+    wave_products = None if forecast_dir is None else render_waves(forecast_dir, mesh, out_case,
+        domain="mesh" if limited_area else "global",
+        bounds=None if limited_area else (-180,180,-89.5,89.5))
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "generated_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
@@ -2044,6 +2118,7 @@ def run_products(args) -> int:
         "views": views,
         "points": points_record,
         "chemistry_products": list(chemistry_products),
+        "wave_products": wave_products,
         "windows_not_requested": windows_not_requested,
         "maps_rendered": rendered,
         "first_maps": opening or None,
@@ -2067,7 +2142,8 @@ def run_products(args) -> int:
           f"failed_views={','.join(failed_views) or 'none'} manifest={path}", flush=True)
     if failed_views or (points_record is not None and points_record.get("rc")):
         return 1
-    return 0 if rendered > 0 else 1
+    preserved = sum((v.get("counts") or {}).get("preserved", 0) for v in views)
+    return 0 if rendered + preserved + soundings > 0 else 1
 
 
 def add_products_arguments(parser) -> None:
@@ -2134,9 +2210,11 @@ def add_products_arguments(parser) -> None:
     parser.add_argument("--no-global", action="store_true")
     parser.add_argument("--no-mesh-view", action="store_true")
     parser.add_argument("--no-points", action="store_true")
+    parser.add_argument("--draw-latest", action="store_true",
+                        help="import this history prefix incrementally and draw only its latest frame, including windows")
     parser.add_argument("--live-frames", default=None, metavar="FILE",
                         help="the first look's live-frames.json: frames it rendered into this tree keep their maps; "
-                             "this pass draws the whole-run maps, the other frames and the points (the doors pass it)")
+                             "this pass draws missing maps and the points (the doors pass it)")
     parser.add_argument("--scratch", default=None, metavar="DIR")
     parser.add_argument("--keep-scratch", action="store_true")
     parser.add_argument("--keep-frame-cache", action="store_true",

@@ -77,7 +77,7 @@ def test_exactly_one_grib_core_crate_is_tracked() -> None:
 
     # TRACKED files, as the name says, not a filesystem walk: the MAIN
     # checkout hosts other checkouts inside ignored directories (every
-    # agent worktree under .claude/worktrees, ~130 parked codex clones
+    # agent worktrees, ~130 parked clones
     # under .worktrees), and each carries the pre-convergence layout of
     # whatever ref it has checked out.  A walk finds those and turns the
     # gate red in the one checkout the release battery actually runs in,

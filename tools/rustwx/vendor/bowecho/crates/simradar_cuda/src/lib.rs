@@ -42,11 +42,15 @@ pub struct CudaDeviceInfo {
 impl CudaDeviceInfo {
     #[must_use]
     pub fn supports_p3_kernel(&self) -> bool {
+        if cudarc::gpuwm_hip::requested() {return true;}
         (self.compute_capability_major, self.compute_capability_minor) >= MINIMUM_COMPUTE_CAPABILITY
     }
 
     #[must_use]
     pub fn compute_capability_label(&self) -> String {
+        if cudarc::gpuwm_hip::requested() {
+            return format!("HIP {}",cudarc::gpuwm_hip::architecture(self.ordinal).unwrap_or_else(|_|"unknown ISA".into()));
+        }
         format!(
             "{}.{}",
             self.compute_capability_major, self.compute_capability_minor

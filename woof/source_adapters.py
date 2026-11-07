@@ -128,6 +128,8 @@ class SourceAdapter:
     #: is the arbitrary-acceptance seam -- adding a model whose mapping can
     #: be written is three JSON documents plus this row.
     packaged_profile: str | None = None
+    # Canonical preparation row for transforms that require a complete state.
+    canonical_preparation_source: str | None = None
     #: Row in data/hydro/forcing-sources.v1.json. This declares catchment
     #: forcing independently of atmospheric initialization capability.
     hydro_forcing_profile: str | None = None
@@ -438,6 +440,7 @@ def _adapter(
     runnable: bool = False,
     runner: str | None = None,
     packaged_profile: str | None = None,
+    canonical_preparation_source: str | None = None,
     hydro_forcing_profile: str | None = None,
     default_physics_profile: str | None = None,
     convection_permitting_physics_profile: str | None = None,
@@ -509,6 +512,7 @@ def _adapter(
         runnable=runnable,
         runner=runner,
         packaged_profile=packaged_profile,
+        canonical_preparation_source=canonical_preparation_source,
         hydro_forcing_profile=hydro_forcing_profile,
         default_physics_profile=default_physics_profile,
         convection_permitting_physics_profile=(
@@ -784,10 +788,10 @@ _RAP_NATIVE_ARCHIVE = ArchiveWindow(
     early_start="2021-02-22T00", early_hours=tuple(range(9)),
 )
 _RRFS_OPS_ARCHIVE = ArchiveWindow(
-    "aws", "2026-08-13T00",
-    "The operational RRFS bucket begins on 2026-08-13, the day after the "
-    "prototype feed stopped; the prototype's objects are not read.",
-    ("https://noaa-rrfs-ops-pds.s3.amazonaws.com/?list-type=2&max-keys=5&prefix=rrfs.20260813/00/rrfs.t00z.prslev",),
+    "aws", "2026-08-12T00",
+    "The operational RRFS bucket begins on 2026-08-12; the old rrfs_a/ "
+    "prefix is gone and the prototype bucket holds retro output and samples.",
+    ("https://noaa-rrfs-ops-pds.s3.amazonaws.com/?list-type=2&max-keys=5&prefix=rrfs.20260812/00/rrfs.t00z.prslev",),
     checked_at="2026-09-25",
 )
 
@@ -1041,6 +1045,88 @@ _ADAPTERS = (
         ),
     ),
     _adapter(
+        "gem-hrdps",
+        archives=(_MSC_DATAMART_DOOR,),
+        name="GEM HRDPS (Canadian high-resolution, 2.5 km)",
+        aliases=("hrdps", "gem-hrdps-continental", "hrdps-continental"),
+        upstream_model_id="gem",
+        file_family="GRIB2",
+        decoder=(
+            "packaged HRDPS pressure-level profile + "
+            "vendored rusty-weather GRIB2 bridges"
+        ),
+        default_product="continental-2.5km-rlatlon0.0225",
+        required_products=("continental-2.5km-rlatlon0.0225",),
+        max_hour=48,
+        upstream_ingest="declarative_mapping_v1_over_packaged_profile",
+        status=AdapterStatus.RUNNABLE_NOT_CERTIFIED,
+        field_mapping="packaged-rw-wps-gem-hrdps-grib2-v1",
+        level_mapping="28-pressure-level-to-explicit-wrf-eta-v2",
+        cadence_mapping="uniform-hourly-forecast-series-v1",
+        stock_wrf_gate="live-unchanged-stock-wrf-gate-pending",
+        runnable=True,
+        runner="mapped_composition_v1",
+        packaged_profile="gem-hrdps-grib2-v1",
+        forcing_interval_seconds=3600.0,
+        notes=(
+            "ECCC's HRDPS (GEM continental 2.5 km, Canada and the "
+            "northern United States) through the GENERIC mapped route: MSC "
+            "Datamart's rotated lat-lon GRIB2 product (GDT 3.1, 2540 x "
+            "1290 at 0.0225 degree), one single-message JPEG2000 file per "
+            "variable-level, hourly to 48 h, four cycles a day.  The "
+            "rotated lattice, its grid-relative wind rotation, 28 pressure "
+            "levels (1015..50 hPa), surface/2 m/10 m state, in-band "
+            "terrain, snow water equivalent and depth, and the single "
+            "0-10 cm soil layer are declared in the packaged mapping/"
+            "composition documents -- there is no HRDPS decode code on "
+            "this route.  Land mask and ice analysis exist at the analysis "
+            "lead only and are broadcast as once-per-cycle invariants.  "
+            "Covers only HRDPS's continental domain; a target outside it is "
+            "refused by the coverage check.  Data: ECCC Data Server End-use "
+            "Licence (commercial use allowed, attribution 'Data Source: "
+            "Environment and Climate Change Canada').  Not yet accepted by "
+            "unchanged stock WRF."
+        ),
+    ),
+    _adapter(
+        "gem-rdps",
+        archives=(_MSC_DATAMART_DOOR,),
+        name="GEM RDPS (Canadian regional, 10 km)",
+        aliases=("rdps", "gem-regional"),
+        upstream_model_id="gem",
+        file_family="GRIB2",
+        decoder=(
+            "packaged RDPS pressure-level profile + "
+            "vendored rusty-weather GRIB2 bridges"
+        ),
+        default_product="10km-rlatlon0.09",
+        required_products=("10km-rlatlon0.09",),
+        max_hour=84,
+        upstream_ingest="declarative_mapping_v1_over_packaged_profile",
+        status=AdapterStatus.RUNNABLE_NOT_CERTIFIED,
+        field_mapping="packaged-rw-wps-gem-rdps-grib2-v1",
+        level_mapping="33-pressure-level-to-explicit-wrf-eta-v2",
+        cadence_mapping="uniform-hourly-forecast-series-v1",
+        stock_wrf_gate="live-unchanged-stock-wrf-gate-pending",
+        runnable=True,
+        runner="mapped_composition_v1",
+        packaged_profile="gem-rdps-grib2-v1",
+        forcing_interval_seconds=3600.0,
+        notes=(
+            "ECCC's RDPS (GEM regional 10 km, North America) through the "
+            "GENERIC mapped route: MSC Datamart's rotated lat-lon GRIB2 "
+            "product (GDT 3.1, 1140 x 1045 at 0.090298 degree), GDPS's "
+            "file naming and 33-level field set, hourly to 84 h, four "
+            "cycles a day.  The rotated lattice and its grid-relative wind "
+            "rotation are declared in the packaged mapping; orography, land "
+            "mask and ice analysis exist at the analysis lead only and are "
+            "broadcast as once-per-cycle invariants.  Data: ECCC Data "
+            "Server End-use Licence (commercial use allowed, attribution "
+            "'Data Source: Environment and Climate Change Canada').  Not "
+            "yet accepted by unchanged stock WRF."
+        ),
+    ),
+    _adapter(
         "icon-global",
         name="ICON global 13 km (DWD)",
         aliases=("icon", "icon-13km", "dwd-icon", "dwd-icon-global"),
@@ -1180,7 +1266,7 @@ _ADAPTERS = (
             "wrf-v4.6.1-pass-gfs-20260720-00z-250x200x49-f000-f003"
         ),
         runnable=True,
-        runner="gfs_pgrb2_0p25_v1",
+        runner="gfs_pgrb2_0p25_v1", canonical_preparation_source="gfs-pressure",
         forcing_interval_seconds=10800.0,
         # The certified 21-level pgrb2 ladder stops at 100 hPa.  The
         # product publishes every field up to 0.01 hPa, and the fetch
@@ -1217,6 +1303,46 @@ _ADAPTERS = (
             "least d06; that broader envelope is runnable but remains "
             "separately stock-WRF gated."
         ),
+    ),
+    _adapter(
+        "gfs-pressure", name="GFS canonical pressure initialization", aliases=(),
+        default_product="pgrb2.0p25", max_hour=120,
+        status=AdapterStatus.RUNNABLE_NOT_CERTIFIED, runnable=True,
+        runner="mapped_composition_v1", packaged_profile="gfs-pressure-grib2-v1",
+        forcing_interval_seconds=10800., certified_source_top_pa=100.,
+        cycles=CycleGrid(hours=(0,6,12,18), search_hours=48, usual_delay_hours=6.,
+            basis="Same operational GFS cycle and product; full canonical field inventory"),
+        archives=(ArchiveWindow("aws", "2021-02-26T00", "NOAA public GFS archive",
+            ("https://registry.opendata.aws/noaa-gfs-bdp-pds/",)),),
+        notes="Canonical pressure representation for source-independent transforms; the default GFS runner is unchanged."
+    ),
+    _adapter(
+        "hafs-a", name="HAFS-A pressure-level parent or storm nest", aliases=("hfsa",),
+        default_product="atm.grb2", max_hour=126,
+        status=AdapterStatus.RUNNABLE_NOT_CERTIFIED, runnable=True,
+        runner="mapped_composition_v1", packaged_profile="hafs-pressure-grib2-v1",
+        forcing_interval_seconds=10800.0,
+        archives=(ArchiveWindow("aws", "2023-06-19T00", "Storm-keyed NOAA NODD archive; verify exact cycle and storm objects.",
+            ("https://registry.opendata.aws/noaa-nws-hafs/",), checked_at="2026-10-24"),),
+        cycles=CycleGrid(hours=(0, 6, 12, 18), search_hours=48,
+            usual_delay_hours=8.0, basis="Conservative allowance; exact object publication is probed, timing unmeasured"),
+        notes="Regional coverage from each GRIB grid. STORM and DOMAIN are acquisition table parameters. "
+              "Five hydrometeor mass species; no published number moments. Same-cycle GDAS soil donor. "
+              "Snow and sea ice use the declared GDAS donor; forecast acceptance pending.",
+    ),
+    _adapter(
+        "hafs-b", name="HAFS-B pressure-level parent or storm nest", aliases=("hfsb",),
+        default_product="atm.grb2", max_hour=126,
+        status=AdapterStatus.RUNNABLE_NOT_CERTIFIED, runnable=True,
+        runner="mapped_composition_v1", packaged_profile="hafs-pressure-grib2-v1",
+        forcing_interval_seconds=10800.0,
+        archives=(ArchiveWindow("aws", "2023-06-19T00", "Storm-keyed NOAA NODD archive; verify exact cycle and storm objects.",
+            ("https://registry.opendata.aws/noaa-nws-hafs/",), checked_at="2026-10-24"),),
+        cycles=CycleGrid(hours=(0, 6, 12, 18), search_hours=48,
+            usual_delay_hours=8.0, basis="Conservative allowance; exact object publication is probed, timing unmeasured"),
+        notes="Regional coverage from each GRIB grid. STORM and DOMAIN are acquisition table parameters. "
+              "Five hydrometeor mass species; no published number moments. Same-cycle GDAS soil donor. "
+              "Snow and sea ice use the declared GDAS donor; forecast acceptance pending.",
     ),
     _adapter(
         "gdas",
@@ -2003,9 +2129,9 @@ _ADAPTERS = (
             "this route.  NOT reachable today and not claimed by this "
             "row: the natlev native-level product, the 3 km "
             "North-America rotated grid and the thinned subset files "
-            "exist only in the frozen "
-            "prototype bucket noaa-rrfs-pds (halted 2026-08-12 by "
-            "design) with no live front door; the relocatable firewx "
+            "are not exposed by this route. The older prototype bucket "
+            "noaa-rrfs-pds has retrospective data; its rrfs_a prefix "
+            "was empty when checked on 2026-10-31. The relocatable firewx "
             "nest changes grid daily. The public rrfsens member subset "
             "has its own rrfs-ens row; its 250 hPa top and missing land "
             "state do not replace this full-column route. "
@@ -2071,8 +2197,9 @@ _ADAPTERS = (
         name="RRFS-A (frozen prototype feed)", aliases=("rrfsa",),
         default_product="prs-conus", max_hour=60,
         upstream_ingest="full",
-        notes="Frozen prototype feed (noaa-rrfs-pds, halted 2026-08-12 by "
-              "design); the live operational feed is the `rrfs` row.  "
+        notes="The noaa-rrfs-pds bucket contains retrospective data; its "
+              "rrfs_a prefix was empty when checked on 2026-10-31. "
+              "The operational feed is the `rrfs` row.  "
               "rusty-weather ingest is mature; WRF state/soil mapping "
               "remains gated.",
     ),
@@ -2153,7 +2280,12 @@ _ADAPTERS = (
             search_hours=168,
             basis="ERA5T preliminary is published about five days "
                   "behind real time, on the 6-hourly analysis grid "
-                  "this row's forcing_interval_seconds declares"),
+                  "this row's forcing_interval_seconds declares",
+            # ERA5 HRES has an analysis every hour (CDS reanalysis and
+            # ARCO full_37-1h both hourly; fetch._era5_times takes any
+            # exact hour), so a window may start at 16Z and take its
+            # 6 h boundaries at 22Z and 04Z.  ``latest`` stays 6-hourly.
+            analysis_hours=tuple(range(24))),
         notes=(
             "Certified slice: one specified Lambert domain, WSM6, YSU, "
             "classic MM5 surface layer (option 91), Noah, an explicit "

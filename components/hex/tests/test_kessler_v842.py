@@ -1,9 +1,9 @@
 """Direct strict MPAS oracle tests (build products are outside the checkout).
 
-Prepare: python tests/test_kessler_v842.py --emit /lane/scratch
-Build: make -j4 -C /lane/scratch -f .../kessler_oracle/Makefile SUPPORT=... MPAS_REF=...
-CPU: KESSLER_ORACLE_DIR=/lane/scratch python -m pytest tests/test_kessler_v842.py -q
-CUDA: the GPU queue run --minutes 10 -- ... python tests/test_kessler_v842.py --gpu /lane/scratch --receipt ...
+Prepare: python tests/test_kessler_v842.py --emit /tmp/kessler-scratch
+Build: make -j4 -C /tmp/kessler-scratch -f .../kessler_oracle/Makefile SUPPORT=... MPAS_REF=...
+CPU: KESSLER_ORACLE_DIR=/tmp/kessler-scratch python -m pytest tests/test_kessler_v842.py -q
+CUDA: the GPU queue run --minutes 10 -- ... python tests/test_kessler_v842.py --gpu /tmp/kessler-scratch --receipt ...
 CUDA uses the unchanged shared engine glibc header and hex native_powf.
 Their results are qualified against this host's strict native oracle.
 """

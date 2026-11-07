@@ -72,10 +72,10 @@ def test_single_domain_500x500_benchmark_geometry_and_physics_are_frozen():
     vertical = VerticalConfig(
         eta_levels=tuple(float(value) for value in ETA),
         p_top=10_000.0, hybrid_opt=2, etac=0.2)
-    # 4193eb0da, lane/286-fork-mynn: named HRRR defaults now select the
+    # 4193eb0da, development branch: named HRRR defaults now select the
     # MP28/GSD/MYNN/RUC suite. This historical 500x500 benchmark keeps its
     # explicit MP8/YSU/MM5/Noah full-radiation profile across route changes.
-    # 3e5245839, lane/ruc-evap-gap: monthly source defaults now cover Noah
+    # 3e5245839, development branch: monthly source defaults now cover Noah
     # as well as RUC. This frozen benchmark keeps both prescribed fields off.
     exp = benchmark_experiment(
         vertical, run_seconds=300.0,

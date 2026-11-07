@@ -1,6 +1,7 @@
 import math
 from pathlib import Path
 from types import SimpleNamespace
+from _run_config_fake import run_config_fake
 
 import numpy as np
 import pytest
@@ -373,7 +374,7 @@ def test_invalid_geopotential_order_applies_vertical_terms_before_raise(
         rotational=False,
         total_theta=lambda: np.zeros((2, 1, 1), dtype=np.float32),
     )
-    cfg = SimpleNamespace(dx=1.0, dy=1.0, h_sca_adv_order=3,
+    cfg = run_config_fake(dx=1.0, dy=1.0, h_sca_adv_order=3,
                           open_x=False, open_y=False, specified=False)
     for name in ("launch_flux_div_scalar", "launch_flux_div_u",
                  "launch_flux_div_v", "launch_flux_div_w",

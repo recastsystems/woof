@@ -441,7 +441,7 @@ def test_the_tiling_the_rates_were_measured_on_is_quoted_the_rates():
 #: settled seconds per 15 s step).
 #:
 #: * RTX 5070 Ti under Linux, ``[tiles] max_redundancy = false`` with 3.98
-#:   GiB free (a development machine, 2026-09-27): 598 tiles of 9x8 + halo 18, one
+#:   GiB free (test host 4, 2026-09-27): 598 tiles of 9x8 + halo 18, one
 #:   buffer, settled at 20.18 s a step (33.55 s the first).  Auto on the
 #:   same card ran the forecast resident at a median 0.053 s a step.
 _INDEPENDENT_STEPS = [

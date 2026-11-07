@@ -71,7 +71,8 @@ def test_thompson_selected_shallow_frames_bound_the_production_exports():
         # runs its own column unit (preflight's thompson_fork_unit row),
         # gated in tests/test_thompson_fork_column_gpu.py.
         shallow = [name for name in symbols
-                   if "_256" not in name and "_wrf39_" not in name]
+                   if "_256" not in name and "_wrf39_" not in name
+                   and "_hail_" not in name]
         assert shallow
         measured = {name: int(get_kernel(module, name).attributes["local_size_bytes"])
                     for name in shallow}
@@ -166,7 +167,7 @@ def test_the_wsm6_tier_frame_is_what_the_driver_reports_at_both_rungs():
     nz = 72 run (the six shipped tornado-LES configs) was under-priced by
     1,792 B/thread.
 
-    Since lane/verify-wsm6-mp6 (the WRF-exact rewrite) every sm_120 build
+    Since development branch (the WRF-exact rewrite) every sm_120 build
     reads 6,448 B at 64 and 8,048 B at 80 (100 B per level); the sm_86 and
     sm_89 recordings still carry the 7,216 B of the previous source until
     those cards are read again, and the ceiling (7,216 B + 112 B per level)
@@ -222,7 +223,7 @@ def test_the_unspecialized_source_still_compiles_to_the_recorded_ceiling():
     assert int(get_kernel("wdm6", "wdm6_column")
                .attributes["local_size_bytes"]
                ) == pf.KERNEL_MAX_LOCAL_SIZE_BYTES["wdm6"] == 9264
-    # WSM6's row is a ceiling over platforms since lane/verify-wsm6-mp6
+    # WSM6's row is a ceiling over platforms since development branch
     # (sm_120 reads 6,448 B; the older sm_86/sm_89 readings are 7,216 B).
     wsm6 = int(get_kernel("wsm6", "wsm6_column")
                .attributes["local_size_bytes"])
@@ -363,7 +364,7 @@ def test_the_production_launchers_compile_to_the_field_not_the_ceiling():
         morrmod.get_kernel = real_morrison_plain
 
     # Morrison's reflectivity is WRF's refl10cm_hm in the scheme's own
-    # unit since lane/parity-mp-libm (morrison.cu mo_refl10cm, a 0-byte
+    # unit since development branch (morrison.cu mo_refl10cm, a 0-byte
     # frame), so the refl.cu column kernel and its REFL_KMAX-sized frame
     # are not reached at all.
     assert ("plain", "morrison", "mo_refl10cm") in requested
@@ -479,3 +480,27 @@ def test_the_acoustic_ceiling_is_still_refused_above_the_top_tier():
 
     with pytest.raises(ValueError, match="exceeds the in-thread solve limit"):
         acmod.wphi_level_tier(acmod.MAX_ACOUSTIC_LEVELS + 1)
+
+
+
+def test_hail_frames_bound_the_actual_production_image():
+    import cupy as cp
+    import re
+    from woof.core.kernels import module_source
+    from woof.core.thompson_aerosol_launch import aerosol_kernel, hail_aware_scope
+
+    with hail_aware_scope(True):
+        for module, (deep, shallow) in pf.THOMPSON_HAIL_KERNEL_FRAMES.items():
+            symbols = re.findall(
+                r'extern\s+"C"\s+__global__\s+void\s+(\w+)\s*\(',
+                module_source(module))
+            symbols = [name for name in symbols if "_wrf39_" not in name]
+            assert any("_hail_" in name for name in symbols)
+            measured = {
+                name: int(cp.cuda.driver.funcGetAttribute(
+                    cp.cuda.driver.CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES,
+                    aerosol_kernel(module, name).ptr))
+                for name in symbols}
+            assert max(measured.values()) <= deep, measured
+            assert max(v for n, v in measured.items()
+                       if "_256" not in n) <= shallow, measured

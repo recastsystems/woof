@@ -1017,7 +1017,8 @@ def _external_door_streams(exp, initialization, refusal):
     [tiles] is configured, on the tree or on a domain, and when the refusal
     carries no card reading.
     """
-    if initialization is None or refusal.free_bytes is None:
+    if (initialization is None or refusal.free_bytes is None
+            or exp.root.run.dfi_opt):
         return None
     options = getattr(exp, "tiles", None) or streaming.OFF
     if options.enabled or any(getattr(dc, "tiles", None) is not None
@@ -3228,6 +3229,9 @@ def run_prepared_tree(
     schedule_dispatch=None,
     restored_callback=None,
     columns=None,
+    completed_callback=None,
+    history_callback=None,
+    stop_at_restart_seconds=None,
 ) -> dict[str, object]:
     """Restore the prepared domains and execute the existing tree engine.
 
@@ -3245,6 +3249,24 @@ def run_prepared_tree(
     nest taking 36 substeps inside one root step prints 36 lines, as
     WRF does -- plus ``progress.jsonl`` and a frame-ready marker per
     durable history file.
+
+    ``completed_callback`` receives the live model after final health and
+    source validation, with durable history paths and checkpoint publication
+    complete. A cycling caller can export that state without another model
+    restoration. It is never invoked for a failed forecast.
+
+    ``history_callback`` optionally receives the live ``model``, due ``node``,
+    ``ticks``, expected ``history_path`` and a ``wait_history`` callable after
+    a scheduled history submission. Call ``wait_history`` before reading that
+    file. Copy any retained arrays before returning; never mutate the model.
+    The callback runs only at existing history alarms, not at every step.
+    Absent callbacks add no durability waits. This requires history output.
+
+    ``stop_at_restart_seconds`` stops at an existing synchronized restart
+    alarm within the configured horizon. Keep the same complete experiment
+    and forcing for each cycle; its exact restart identity is preserved.
+    The receipt records both the configured horizon and the cycle endpoint.
+
     """
 
     from woof.ensemble.runtime_context import current_session
@@ -3258,10 +3280,21 @@ def run_prepared_tree(
             first_products=first_products, ensemble_bootstrap=ensemble_bootstrap,
             health_retry_products=health_retry_products,
             **({} if restored_callback is None else {"restored_callback": restored_callback}),
+            **({} if completed_callback is None else {"completed_callback": completed_callback}),
+            **({} if history_callback is None else {"history_callback": history_callback}),
+            **({} if stop_at_restart_seconds is None else {"stop_at_restart_seconds": stop_at_restart_seconds}),
             **({} if schedule_dispatch is None else {"schedule_dispatch": schedule_dispatch}))
+
+    if stop_at_restart_seconds is not None:
+        if schedule_dispatch is not None or sealed_forcing_extension:
+            raise ValueError("cycle stops require the ordinary exact-setup scheduler")
+        from woof.core.restart_boundary import dispatch_at_restart
+        schedule_dispatch = dispatch_at_restart(stop_at_restart_seconds)
 
     if io_mode not in {"history", "none"}:
         raise ValueError("io_mode must be 'history' or 'none'")
+    if history_callback is not None and io_mode != "history":
+        raise ValueError("history_callback requires history output")
     if io_mode == "none" and inputs.experiment.simulated_radar.enabled:
         raise ValueError("simulated radar requires io_mode='history': virtual beams read durable atmospheric columns")
     # Every regional route reaches this runner: compile the configuration's
@@ -3275,7 +3308,9 @@ def run_prepared_tree(
 
     require_output_space(
         inputs.experiment, output_directory, restart=restart, io_mode=io_mode,
-        render_products=renderer_products(first_products, observer))
+        render_products=renderer_products(first_products, observer),
+        **({} if stop_at_restart_seconds is None else
+           {"stop_seconds": stop_at_restart_seconds}))
     _verify_thompson_assets(inputs.experiment)
     if initialization is not None:
         initialization.verify_inputs(inputs)
@@ -3290,6 +3325,15 @@ def run_prepared_tree(
     # routes) reach the tree here without the preflight, so the
     # derivation is asked again; inputs that carry it pass unchanged.
     inputs = _with_terrain_acoustics(inputs)
+
+    if inputs.experiment.root.run.dfi_opt and restart is None:
+        # Both signed passes keep the complete tree on the GPU. A tile
+        # store cannot supply those carriers; choose the ordinary resident
+        # road before pricing/restoring, so insufficient VRAM is reported
+        # by the existing admission instead of failing in the DFI graph.
+        resident_exp = replace(inputs.experiment,tiles=streaming.OFF,
+            domains=tuple(replace(dc,tiles=None) for dc in inputs.experiment.domains))
+        inputs = replace(inputs,experiment=resident_exp)
 
     import cupy as cp
 
@@ -3349,6 +3393,17 @@ def run_prepared_tree(
 
     outdir = Path(output_directory).resolve()
     evidence = outdir / "evidence"
+    from woof.ensemble.runtime_context import current_capture
+    resuming_output = restart is not None or bool(
+        getattr(current_capture(), "resuming", False))
+    if resuming_output and evidence.exists():
+        # Ensemble roster continuation also restarts pending members from
+        # their initial state, reusing each member's directory.
+        # Preserve the original attempt's receipts while giving this restore
+        # its own progress and failure records. Fresh runs still refuse a
+        # destination whose evidence already exists.
+        import uuid
+        evidence = evidence / f"restart-{uuid.uuid4().hex}"
     evidence.mkdir()
     progress_path = evidence / "progress.json"
     runtime._preparation_progress(observer, "restore-prepared-domain-tree")
@@ -3933,6 +3988,8 @@ def run_prepared_tree(
                 "execution_plan": inputs.execution_plan,
             }, heartbeat=True)
             compile_notice = None
+        if domain.run.dfi_opt:
+            restored.initial_result.state._dfi_remember_physics = True
         if store_bundle is not None:
             driver = store_bundle.template.physics
         elif initialized is None:
@@ -3956,6 +4013,19 @@ def run_prepared_tree(
             coupler=None,
         )
         node._started = starts_at_t0
+        from woof.core.trajectory_contract import active as trajectory_active
+        if trajectory_active(domain.run):
+            if store_bundle is not None:
+                raise ValueError("native trajectories need resident global acoustic fluxes; the streamed particle gather is not implemented")
+            from woof.core.trajectory import Trajectories
+            if initialization is None:
+                raise ValueError("native trajectories require the native WRF projection and point-input authority")
+            trajectory = Trajectories(node.state,domain.run,bundle.restored,
+                start_time=exp.start_time,end_time=exp.start_time+timedelta(seconds=exp.run_seconds),
+                domain_id=domain.grid_id,output_directory=outdir)
+            node.state._trajectory=trajectory
+            if restart is None and not getattr(initialization,"warm_start_clocks",None):
+                trajectory.cold_start()
         if parent is not None:
             node.coupler = NestCoupler(node, feedback=exp.feedback,
                                        smooth_option=exp.smooth_option)
@@ -3999,7 +4069,8 @@ def run_prepared_tree(
                 keep_interval_check(boundary_source.intervals, clock_guard)
         if parent is not None:
             parent.children.append(node)
-            if exp.feedback == 1 and starts_at_t0:
+            if (exp.feedback == 1 and starts_at_t0
+                    and not getattr(initialization, "warm_start_clocks", None)):
                 # WRF initialization is part of the two-way activation
                 # contract, not an optional sweep: med_nest_initial runs
                 # med_nest_feedback on each nest as it is built
@@ -4011,6 +4082,9 @@ def run_prepared_tree(
                 # nests were initialized from input files.  Parent-first
                 # restore order makes each parent live before its child
                 # feeds back, matching build_experiment's ordering.
+                # A native restart already contains that transaction and
+                # every subsequent feedback. Repeating it changes the
+                # restored parent before its first resumed step.
                 from woof.core.model import FeedbackScratch
 
                 initial = FeedbackScratch()
@@ -4032,6 +4106,9 @@ def run_prepared_tree(
             # The WRF-file door's own grid words, which history writes
             # (woof.io.history_layout.WRF_FILE_GRID_HISTORY_FIELDS).
             wrf_file_grid=MappingProxyType(wrf_file_grid_history_fields(bundle, domain.run)),
+            **({'dfi_input_template':getattr(getattr(bundle,'restored',None),'path',None),
+                'dfi_prepared_bundle':bundle}
+               if domain.run.dfi_opt else {}),
         )
         drivers[domain.grid_id] = driver
     # The loop's names for its LAST domain would otherwise live as long as
@@ -4294,11 +4371,19 @@ def run_prepared_tree(
     if restored_callback is not None:
         restored_callback(model=model, nodes=nodes, start_time=exp.start_time,
                           run_seconds=float(exp.run_seconds), restart=restart)
+    if model.root.cfg.run.dfi_opt and restart is None and not getattr(initialization,"warm_start_clocks",None):
+        from woof.core.dfi_initialization import initialize_tree
+        initialize_tree(model,start_time=exp.start_time,output_directory=outdir)
     # Same ruling as the case-data route: a restore point that IS the
     # stop tick is a finished run, and the schedule executor refuses a
     # start period at the end of the schedule, so this route decides it
     # here rather than handing a user a bare ValueError.
     already_complete = runtime._restart_is_complete(restart_info)
+    for node in nodes.values():
+        trajectory=getattr(node.state,"_trajectory",None)
+        if trajectory is not None:
+            trajectory.attach_output(checkpoint=getattr(node.state,"_trajectory_checkpoint",None),
+                                     warm=bool(getattr(initialization,"warm_start_clocks",None)))
 
     initial_health = {}
     for grid_id, node in nodes.items():
@@ -4356,15 +4441,19 @@ def run_prepared_tree(
             # `output = {...}` overrides it inside the writer set.
             history_selection=exp.output,
             simulated_radar=exp.simulated_radar, radar_output_dir=outdir,
+            restored_checkpoint=restart is not None,
         )
         if io_mode == "history"
         else None
     )
     model._io_manager = writers
     forecast_started = time.perf_counter()
+    from woof.core import misc_diag_print as native_print
+    print_rows, print_token = native_print.begin()
 
 
     def history_handler(_tree, node, ticks):
+        native_print.drain(print_rows, outdir / "diagnostic-timeseries.json")
         # ASKED OF THE STEPPER, per grid.  ``steppers`` is bound below and
         # read at CALL time.  Under ``[tiles] store = "host"`` the domain
         # is in a pinned host store and ``node.state`` is the copy taken at
@@ -4385,6 +4474,13 @@ def run_prepared_tree(
         history.append(_strict_json(sample))
         if writers is not None:
             runtime._submit_tree_history_frame(writers, node, ticks)
+            if history_callback is not None:
+                from woof.io.wrfout import wrfout_filename
+                valid = exp.start_time + timedelta(seconds=node.clock.elapsed_seconds)
+                history_callback(
+                    model=model, node=node, ticks=ticks,
+                    history_path=outdir / "wrfout" / wrfout_filename(valid, node.cfg.grid_id),
+                    wait_history=writers.drain)
         memory_watch.sample()
 
     checkpoint_publisher = prepared_single._CheckpointPublisher()
@@ -4400,6 +4496,7 @@ def run_prepared_tree(
                                 start_time=model.schedule.clock.start_time,
                                 run_ticks=model.schedule.clock.run_ticks,
                                 restart_ticks=model.root.clock.spec.restart_ticks,
+                                restart_origin_ticks=model.root.clock.dfi_start_ticks,
                                 tick_den=model.schedule.clock.tick_den))
 
     def restart_handler(tree, ticks):
@@ -4630,7 +4727,7 @@ def run_prepared_tree(
                 # The leg walk: dormant nests are born mid-run, follow their
                 # storm, retire on their own and re-arm (docs/nest-lifecycle.md).
                 return runtime.walk_spawn_legs(
-                    model, active_experiment, None,
+                    model, active_experiment, None, output_directory=outdir,
                     spawn_runner=spawn_runner, writers=writers,
                     lbc_interval_s=float(inputs.boundary_interval_seconds),
                     relocation_runner=relocation_runner,
@@ -4650,7 +4747,7 @@ def run_prepared_tree(
                     delayed_child_initializer=initialize_delayed_child,
                     **({} if schedule_dispatch is None else {"schedule_dispatch": schedule_dispatch}))
             return execute_experiment(
-                model, history_handler=None if writers is None else history_handler,
+                model, output_directory=outdir, history_handler=None if writers is None else history_handler,
                 restart_handler=restart_handler, progress_callback=progress_callback,
                 validate_state=True, health_debug=health_debug,
                 skip_feedback_path=(int(exp.feedback) == 0),
@@ -4671,9 +4768,22 @@ def run_prepared_tree(
     step_forcings = (None if attach_step_forcings is None
                      else attach_step_forcings(nodes, steppers))
     nudging_forcings = None
-    if not already_complete and getattr(exp, 'nudging', None) is not None:
+    if not already_complete and (getattr(exp, 'nudging', None) is not None or
+            any(d.run.sf_surface_physics == 7 and d.run.pxlsm_soil_nudge for d in exp.domains)):
         from woof.spectral_nudging.prepared import PreparedTreeNudging
         nudging_forcings = PreparedTreeNudging(model, nodes, inputs, steppers)
+
+    def finish_dfi_checkpoint():
+        # Native DFL alarms move to the filtered midpoint. An explicit
+        # product request for the final checkpoint is still honored at
+        # the synchronized model end, even between those native alarms.
+        clock = model.root.clock
+        if (not already_complete and clock.dfi_start_ticks
+                and checkpoint_selection is not None
+                and checkpoint_selection.keeps(clock.ticks)
+                and clock.ticks == model.schedule.clock.run_ticks
+                and not clock.restart_due()):
+            restart_handler(model,clock.ticks)
     try:
         memory_watch.start()
         if already_complete:
@@ -4687,6 +4797,7 @@ def run_prepared_tree(
             execution = (
                 _completed_execution_report(model) if already_complete
                 else recovery.run(execute_leg))
+            finish_dfi_checkpoint()
             checkpoint_publisher.wait()
             wrfout_paths = ()
         else:
@@ -4694,6 +4805,7 @@ def run_prepared_tree(
                 execution = (
                     _completed_execution_report(model) if already_complete
                     else recovery.run(execute_leg))
+                finish_dfi_checkpoint()
                 # The last checkpoint is durable, or its failure is raised,
                 # before anything below reports the run.
                 checkpoint_publisher.wait()
@@ -4752,7 +4864,12 @@ def run_prepared_tree(
         # durable and carries its marker, so run_end is true when read.
         step_log.close(status="SUCCESS")
     finally:
+        native_print.drain(print_rows, outdir / "diagnostic-timeseries.json")
+        native_print.end(print_token)
         memory_watch.stop()
+        for node in nodes.values():
+            trajectory=getattr(node.state,"_trajectory",None)
+            if trajectory is not None:trajectory.close()
         if step_forcings is not None:
             step_forcings.detach()
         if nudging_forcings is not None:
@@ -4774,9 +4891,13 @@ def run_prepared_tree(
     final_health = {}
     final_stability = {}
     final_digests = {}
+    observation_fdda = {}
     # The LIVE tree: a spawned nest still integrating at the end is checked
     # beside the startup grids; a retired one was detached at its boundary.
     for grid_id, node in dict(model.nodes_by_grid_id).items():
+        if node.cfg.run.obs_nudge_opt:
+            from woof.fddaobs.forecast import receipt as observation_receipt
+            observation_fdda[f"d{grid_id:02d}"] = observation_receipt(node.state)
         validator = health_validator_for_domain(model, node)
         runtime._finalizing_progress(observer, f"final-health-d{grid_id:02d}",
             work_bytes=getattr(validator, "host_scan_bytes", None))
@@ -4844,6 +4965,15 @@ def run_prepared_tree(
     if moved is not None:
         raise RuntimeError(
             f"forecast implementation changed during execution: {moved}")
+    if stop_at_restart_seconds is not None:
+        if any(float(node.clock.elapsed_seconds) != float(stop_at_restart_seconds)
+               for node in model.walk_parent_first()):
+            raise RuntimeError("forecast did not reach the requested cycle boundary")
+    if completed_callback is not None:
+        completed_started = time.perf_counter()
+        completed_callback(model=model, inputs=inputs, histories=tuple(wrfout_paths),
+                           steppers=steppers, output_directory=outdir)
+        timing["completed_callback"] = time.perf_counter() - completed_started
     outputs = runtime._frame_records(
         wrfout_paths, completed_records=getattr(writers, "completed_records", ()),
         progress_callback=observer)
@@ -4860,6 +4990,7 @@ def run_prepared_tree(
     from woof.free_threading import host_threads_report as _host_threads_report
     from woof.smoke_receipts import receipt as smoke_execution_receipt
     report = {
+        **({"observation_fdda": observation_fdda} if observation_fdda else {}),
         **smoke_execution_receipt(exp.root.run),
         "hydro_activation": activation_receipt(_hydro_settings()),
         # Read by the release gate's defaults-active leg (R15); see the
@@ -4920,6 +5051,8 @@ def run_prepared_tree(
                 "domains": initial_perturbation_receipts,
             }),
         "restart_contract": {
+            **({} if stop_at_restart_seconds is None else
+               {"cycle_stop_seconds": float(stop_at_restart_seconds)}),
             "mode": ("sealed-forcing-extension"
                      if sealed_forcing_extension else "exact-setup"),
             "restart_input": (
@@ -5064,6 +5197,11 @@ def run_prepared_tree(
                              and final_identity["git_commit"] is not None),
         },
     }
+    snow_domains = [f"d{dc.grid_id:02d}" for dc in exp.domains
+                    if dc.run.sf_surface_physics == 4 and dc.run.opt_alb == 3]
+    if snow_domains:
+        from woof.core.snow_papers import identity as snow_identity
+        report["snow_papers"] = dict(snow_identity(), domains=snow_domains)
     # Join the existing daemon render before a standalone process can exit.
     # Absent/none leaves the previous receipt unchanged, as on the single arm.
     if first_products is not None:
@@ -5113,6 +5251,13 @@ def run_prepared_tree(
     initialization_blocks = getattr(initialization, "run_report_blocks", None)
     if callable(initialization_blocks):
         report.update(initialization_blocks(model))
+    monthly_aerosol = {
+        f"d{int(node.cfg.grid_id):02d}": dict(node.state.aerosol_forcing)
+        for node in model.walk_parent_first()
+        if getattr(node.state, "aerosol_forcing", None) is not None
+    }
+    if monthly_aerosol:
+        report["monthly_aerosol"] = monthly_aerosol
     wind = {str(gid): physics.wind_farm.receipt() for gid, physics in drivers.items()
             if getattr(physics, "wind_farm", None) is not None}
     if wind:
@@ -5125,10 +5270,27 @@ def run_prepared_tree(
     from woof.hydro.cost import receipt as _hydro_cost_receipt
     from woof.hydro.forecast_products import publish as _hydro_products
     _parent_physics = drivers.get(1)
+    from woof.tc.receipt import receipt as _tc_receipt
+    # A dormant nest that was never born (its window still pending at the
+    # end, or a cycle leg stopped before it) has no node and no TC receipt.
+    # Breakage: a the storm carrier leg with the 1 km storm slot pending died
+    # here with KeyError 3 after its run and background export had passed.
+    _tc_blocks = {str(domain.grid_id): block for domain in exp.domains
+        if domain.grid_id in model.nodes_by_grid_id
+        and (block := _tc_receipt(getattr(model.nodes_by_grid_id[domain.grid_id].state, "physics", None),
+            steps=int(round(float(exp.run_seconds)/float(domain.run.dt))))) is not None}
+    if _tc_blocks:
+        report["tc"] = _tc_blocks
     _parent_run = exp.domains[0].run
     report["hydro_cost"] = _hydro_cost_receipt(
         _parent_physics, forecast_seconds=timing.get("forecast_execution", 0.0),
         atmosphere_steps=int(round(float(exp.run_seconds) / float(_parent_run.dt))))
+    from woof.ocean.cost import receipt as _wave_cost_receipt
+    report["wave_cost"] = _wave_cost_receipt(
+        _parent_physics, forecast_seconds=timing.get("forecast_execution", 0.0),
+        atmosphere_steps=int(round(float(exp.run_seconds) / float(_parent_run.dt))))
+    from woof.ocean.products import publish as _wave_products
+    report["wave_products"] = _wave_products(_parent_physics,outdir=outdir)
     report["hydro_products"] = _hydro_products(
         _parent_physics, _hydro_settings(), outdir=outdir, dx_m=float(_parent_run.dx))
     _atomic_json(evidence / "run-receipt.json", report)
@@ -5178,7 +5340,8 @@ def run_prepared_tree(
         {
             "schema": PROGRESS_SCHEMA,
             "status": "PASS",
-            "model_elapsed_seconds": float(exp.run_seconds),
+            "model_elapsed_seconds": (float(exp.run_seconds) if stop_at_restart_seconds is None
+                                      else float(model.root.clock.elapsed_seconds)),
             "requested_run_seconds": float(exp.run_seconds),
             "run_receipt": str((evidence / "run-receipt.json").resolve()),
             "frame_count": len(outputs),

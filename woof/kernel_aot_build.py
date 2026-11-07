@@ -18,6 +18,8 @@ from woof.kernel_aot import (ARCHITECTURES, Pack, compiler_identity, local_optio
                               recipe, source_hash)
 from woof.kernel_pack import read, write
 
+_HEADER_SNAPSHOTS = {}
+
 
 def cached_program_filename(row, options, target):
     """Reproduce CuPy's program name, including headers used only in its key.
@@ -75,6 +77,12 @@ def compile_entry(row, arch):
     if not isinstance(blob, bytes) or blob[:4] != b"\x7fELF":
         raise ValueError("AOT worker did not produce an ELF cubin")
     shipped = {key: value for key, value in row.items() if key != "source"}
+    from woof.kernel_dependencies import include_roots, include_tree_dependencies
+    if include_roots(options):
+        # What this compile can open (the source and the headers it may name),
+        # so the image also applies beside unnamed CUDA library headers.
+        shipped["include_trees"] = include_tree_dependencies(options, _HEADER_SNAPSHOTS,
+                                                             source=row["source"])
     return {**shipped, "arch": arch, "cubin_sha256": hashlib.sha256(blob).hexdigest(),
             "cubin_xz_base64": base64.b64encode(lzma.compress(blob)).decode("ascii"),
             "name_mapping": mapping, "nvrtc_banner": nvrtc_banner(),

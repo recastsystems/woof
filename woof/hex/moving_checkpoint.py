@@ -213,7 +213,7 @@ def restore_lane_mailboxes(active, payload):
             cp.cuda.get_current_stream().synchronize()
 
 
-def load_boundary(path):
+def load_boundary(path, *, expected_sha256=None):
     """Read an owned experiment carrier only after its receipt hash matches.
 
     The carrier is a Python pickle and must never come from an untrusted
@@ -221,6 +221,8 @@ def load_boundary(path):
     """
     path = Path(path)
     receipt = json.loads(path.with_suffix(path.suffix + ".json").read_text())
+    if expected_sha256 is not None and receipt['sha256'] != expected_sha256:
+        raise ValueError('moving analysis was made from another checkpoint')
 
     def file_digest():
         digest = hashlib.sha256()
@@ -382,7 +384,8 @@ def resume_remapped_host(host, payload, *, source_grid, target_grid, operator_pa
     print('[moving-remap] reconciling prepared physical areas',flush=True)
     stage=time.perf_counter()
     weights=weights.with_physical_areas(payload['mesh'].arrays['areaCell'],
-                                        host['prepared'].mesh.arrays['areaCell'])
+                                        host['prepared'].mesh.arrays['areaCell'],
+                                        generator_areas=(source.area,target.area), generator_area_scale=source_scale)
     area_seconds=time.perf_counter()-stage
     import os
     height_mode=os.environ.get('WOOF_HEX_MOVING_HEIGHT_REMAP')

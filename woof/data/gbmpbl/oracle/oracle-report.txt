@@ -1,0 +1,11 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# WRF object: 2659cf6e89fd76eecc49711973472287262358b19dd4c563a4347b94be5a3015  <wrf-4.6.1-scalar-build>/phys/module_bl_gbmpbl.o
+# libm symbols, WRF object:
+U expf
+U logf
+U powf
+# libm symbols, -O0 object:
+U expf
+U logf
+U powf

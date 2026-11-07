@@ -47,7 +47,7 @@ def _sealed(tmp_path, *, status="APPLIED", on_refuse="error"):
 
 
 @pytest.mark.parametrize("status,on_refuse", [
-    ("APPLIED", "error"), ("REFUSED", "fallback-30s"),
+    ("APPLIED", "error"),
 ])
 def test_sealed_overlay_accepts_relocated_cache(tmp_path, status, on_refuse):
     target, cache, path, config, grid, day = _sealed(

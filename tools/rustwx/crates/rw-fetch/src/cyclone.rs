@@ -644,7 +644,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let doc = json!({"schema":"gpuwm.tc-tracks.v1","tracker":{"backend":"observed-best-track","source":format,
         "role":"observed setup guidance only; not live nest steering or forecast forcing",
         "wind_definition":"USA/NHC/JTWC 1-minute sustained wind; differs from model instantaneous 10m wind",
-        "sources":table,"acquisition":fetch.receipts,"wall_seconds":began.elapsed().as_secs_f64(),
+        "sources":table,"acquisition":fetch.receipts,
         "parallelism":"bounded HTTP, Rust parsing; one source stream at a time"},
         "members":[{"member_id":"best-track","source":"observed-best-track","init":stamp(start)}],"tracks":tracks});
     let output = Path::new(req["output"].as_str().ok_or("output required")?);
@@ -863,10 +863,23 @@ pub fn score(args: &[String]) -> Result<()> {
         } else {
             Some((errors.iter().map(|x| x * x).sum::<f64>() / errors.len() as f64).sqrt())
         };
+        let intensity_errors = |key: &str| {
+            let values: Vec<f64> = rows.iter().filter_map(|row| row[key].as_f64()).collect();
+            if values.is_empty() {
+                json!({"count":0,"bias":null,"rmse":null})
+            } else {
+                json!({"count":values.len(),
+                    "bias":values.iter().sum::<f64>() / values.len() as f64,
+                    "rmse":(values.iter().map(|x| x*x).sum::<f64>() / values.len() as f64).sqrt()})
+            }
+        };
+        let pressure_errors = intensity_errors("pressure_error_hpa");
+        let wind_errors = intensity_errors("wind_error_ms");
         results.insert(id.into(),json!({"weight":m["weight"],"association":"nearest candidate at first detected common valid time within radius, then fixed track identity; no reassociation",
             "association_max_distance_km":limit,"selected_track_id":selected,"detections":errors.len(),
             "misses":rows.len()-errors.len(),"unobserved_valid_times":unobserved,
             "mean_track_error_km":mean,"rmse_track_error_km":rmse,
+            "pressure_errors_hpa":pressure_errors,"wind_errors_ms":wind_errors,
             "maximum_track_error_km":errors.iter().copied().reduce(f64::max),"common_valid_times":rows}));
     }
     println!("{}", Value::Object(results));

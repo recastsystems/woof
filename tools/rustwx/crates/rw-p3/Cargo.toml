@@ -1,0 +1,18 @@
+[package]
+name = "rw-p3"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "Pinned WRF P3 table input and parallel startup integration"
+
+[lib]
+name = "rw_p3"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lzma-rust2 = { version = "=0.16.1", default-features = false, features = ["std", "xz"] }
+rayon.workspace = true
+rw-libm = { path = "../rw-libm" }
+sha2 = "0.10"

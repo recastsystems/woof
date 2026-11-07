@@ -40,7 +40,7 @@ def compiler(monkeypatch):
 
 def request():
     return dict(route=aot.RAW_ROUTE, source="template<typename T> __global__ void f(T*) {}",
-                options=["--std=c++17", "--ftz=false", "--fmad=false"],
+                options=["--std=c++17", *numerics.STRICT_CONTROLS],
                 filename="original.cu", name_expressions=["f<float>", "f<double>"])
 
 
@@ -73,6 +73,30 @@ def test_raw_builder_keeps_final_flags_filename_and_aliases(compiler, monkeypatc
         "options": tuple(request()["options"]), "arch": "120", "cache_in_memory": False, "method": None}
     assert target == "120" and identity == {"test": 1}
     assert output["name_mapping"] == {"f<float>": "symbol"}
+
+
+def test_builder_binds_header_bytes_and_declines_a_changed_install(compiler, monkeypatch, tmp_path):
+    from woof import kernel_aot_build, kernel_compile_worker
+    from woof.certify import compile_platform
+    headers = tmp_path / 'include'
+    headers.mkdir()
+    header = headers / 'owned.h'
+    header.write_text('#define VALUE 1\n')
+    monkeypatch.setattr(kernel_compile_worker, 'compile_request',
+        lambda *a: ((b'\x7fELFimage', None), {'seconds': 0.01}))
+    monkeypatch.setattr(kernel_aot_build, 'compiler_identity', lambda: {'test': 1})
+    monkeypatch.setattr(kernel_aot_build, '_HEADER_SNAPSHOTS', {})
+    monkeypatch.setattr(compile_platform, 'nvrtc_banner', lambda: 'test')
+    args = request() | {'options': [*request()['options'], '-I' + str(headers)]}
+    entry = kernel_aot_build.compile_entry(aot.recipe(args), 'sm_120')
+    target = tmp_path / 'pack.json'
+    write(target, {'test': 1}, [entry])
+    key = aot.recipe(args)['module_key']
+    assert aot.Pack(target, identity={'test': 1}).select(
+        key, args['source'], args['options'], 'sm_120', metadata=entry['compile_request'])[1] is None
+    header.write_text('#define VALUE 2\n')
+    assert aot.Pack(target, identity={'test': 1}).select(
+        key, args['source'], args['options'], 'sm_120', metadata=entry['compile_request'])[1] == 'header_tree_mismatch'
 
 
 @pytest.mark.parametrize("route", ["worker", "builder"])
@@ -132,7 +156,7 @@ def test_raw_pack_exact_match_and_safe_misses(compiler, tmp_path, monkeypatch):
     assert result == (image, {"f<float>": "symbol_float", "f<double>": "symbol_double"})
     result[1].clear()
     assert raw(**args)[1] and not compiler.calls
-    for changed in (dict(filename="other.cu"), dict(options=list(reversed(args["options"]))),
+    for changed in (dict(filename="other.cu"), dict(options=["--std=c++14", *numerics.STRICT_CONTROLS]),
                     dict(name_expressions=list(reversed(args["name_expressions"]))),
                     dict(arch="89"), dict(method="ptx")):
         assert raw(**(args | changed)) == (b"fallback", None)
@@ -166,6 +190,10 @@ def test_static_capture_precedes_raw_pack_lookup_and_recording(compiler, tmp_pat
             compiler._compile_using_nvrtc_no_warning(**args)
     assert captured.value.arguments["filename"] == "original.cu"
     assert not compiler.calls and not aot._RECORDED and not kernel_plan._requested
+    kernel_plan._state.update(compiler_pool=object(), replay={})
+    def unexpected_compile(*unused):
+        raise AssertionError('shipped raw image bypassed into process compilation')
+    monkeypatch.setattr(kernel_plan, '_submit_and_wait', unexpected_compile)
     assert compiler._compile_using_nvrtc_no_warning(**args)[0] == image
     assert not compiler.calls
     raw = [entry for entry in aot._RECORDED.values() if entry.get("route") == aot.RAW_ROUTE]

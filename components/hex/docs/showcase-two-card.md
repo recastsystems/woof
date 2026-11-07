@@ -1,6 +1,6 @@
 # Independent ensemble and fine-region cards
 
-A two-card deployment can pin the MPAS-JEDI ensemble to one visible device
+A two-card deployment can pin the MPAS forecast ensemble to one visible device
 and the deterministic variable-resolution forecast to the other. Forecast
 throughput, observation age, analysis latency, member count and forecast length
 must be measured separately; a small moving check does not price this service.

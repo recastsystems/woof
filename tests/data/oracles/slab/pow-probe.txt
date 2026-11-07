@@ -1,0 +1,4 @@
+samples 4001
+match (x*x)*(x*x) 4001
+match ((x*x)*x)*x 2573
+match powf(x,4.0) 1982

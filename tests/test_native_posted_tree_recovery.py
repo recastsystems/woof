@@ -87,7 +87,7 @@ def test_a_hierarchy_interrupt_before_its_head_stops_the_waiting_root(
         # The writer checks for a stop before each segment it writes, and
         # the chain starts the hierarchy as soon as the root's head is out.
         # When the chain sees the head before the root reaches the wait
-        # below (a loaded host scheduled it so on a development machine, 2026-10-02: the
+        # below (a loaded host scheduled it so on test host 2, 2026-10-02: the
         # test failed `assert stopped` in 0.03 s), the stop lands between
         # the head and segment 0 and the root stops inside its writer.
         # That is the root being stopped, so it is recorded here too.
@@ -100,7 +100,7 @@ def test_a_hierarchy_interrupt_before_its_head_stops_the_waiting_root(
             raise
         # A real root waits for its stop or its seal with no limit; this
         # deadline only keeps a regression from hanging the suite.  At 5 s
-        # it failed a loaded focused run (a development machine swapping) with this test's
+        # it failed a loaded focused run (test host 4 swapping) with this test's
         # own signature, the interrupt reaching the root after its wait had
         # given up, which a hierarchy delayed by 6 s reproduces every time.
         deadline = time.monotonic() + 60.0

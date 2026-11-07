@@ -1,0 +1,585 @@
+{
+  "strict": true,
+  "environment": "1",
+  "cases": [
+    {
+      "capture": "capture-000060-00002-00002.meta",
+      "nx": 49,
+      "nz": 44,
+      "dt": 180.0,
+      "hail": 0,
+      "ice": 0,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 321.25439453125,
+      "reflectivity_ms": 0.25804799795150757,
+      "sha256": {
+        ".in": "b96a5618e383bcb512368faa12039a0d51b616d3a307c301ac93c400bfecdeee",
+        ".pre": "ca408ed28fb6fcd21f8f4306da9e714fdd079c1ef634bdc2afd490e0ef9f77ca",
+        ".post": "d6cc375612258470e75598379a9d3f20a5856e371e88b08cfb806fa199cb08ee",
+        ".meta": "396701923d89f3e1b0b492ae558f712c2417467b41f0984cf751c37f9ab69b27"
+      }
+    },
+    {
+      "capture": "capture-000060-00002-00051.meta",
+      "nx": 49,
+      "nz": 44,
+      "dt": 180.0,
+      "hail": 0,
+      "ice": 0,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 2156,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 49,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 3.028991937637329,
+      "reflectivity_ms": 44.7907829284668,
+      "sha256": {
+        ".in": "3d110c5a89fa8f982df4544e8ac0801be63a69fb9771dcc253ab0fc403730f3b",
+        ".pre": "02a9d0ff942c84192dc7d5b1f3d60b64856982d76d80f8a3af072b0f16e53dde",
+        ".post": "cdb7f7683c8707b393bf8d0813b7e450827038e314847926dbb8209abc0fbe95",
+        ".meta": "396701923d89f3e1b0b492ae558f712c2417467b41f0984cf751c37f9ab69b27"
+      }
+    },
+    {
+      "capture": "capture-000060-00051-00002.meta",
+      "nx": 48,
+      "nz": 44,
+      "dt": 180.0,
+      "hail": 0,
+      "ice": 0,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.8273919820785522,
+      "reflectivity_ms": 0.11059200018644333,
+      "sha256": {
+        ".in": "ee502e5a10cb1c619f5d044b0875eb31473a9b7466228b4d2e5d477c4cba137e",
+        ".pre": "e2c35dbfebdd4b2c66848a343990f8a3243f8735180e5c4f60ca1067d2c39168",
+        ".post": "2421e15f1f08317792cbf2214d59e828f2c6a6c9fa824e865359c653a0b2b1a9",
+        ".meta": "a21f5bb47676516aeea01f0f017dadf2242c947f4628cfeaafbada6752ab0351"
+      }
+    },
+    {
+      "capture": "capture-000060-00051-00051.meta",
+      "nx": 48,
+      "nz": 44,
+      "dt": 180.0,
+      "hail": 0,
+      "ice": 0,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 2112,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 48,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 2.722815990447998,
+      "reflectivity_ms": 0.4362240135669708,
+      "sha256": {
+        ".in": "c3a864c0d708d935026c4a8cd068f1df9a5dc4509ddabf07e4fd5e44c3383c51",
+        ".pre": "14c85a16ed03d6a8796ca114d8302705e66a743c14625e20ef88181ecd14e8a1",
+        ".post": "e795178595f69bbad57f9b5f309aacb10856d05a2148084651945e76ae519322",
+        ".meta": "a21f5bb47676516aeea01f0f017dadf2242c947f4628cfeaafbada6752ab0351"
+      }
+    }
+  ],
+  "words": 69646,
+  "differing_words": 0,
+  "nonfinite_outputs": 0,
+  "compile": {
+    "enabled": true,
+    "controls": {
+      "diagnostics": true,
+      "advection": true,
+      "diffusion": true,
+      "bigstep": true
+    },
+    "strict_options": [
+      "--fmad=false",
+      "--ftz=false",
+      "--prec-div=true",
+      "--prec-sqrt=true",
+      "-DGPUWM_WRF_EXACT=1",
+      "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+      "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+      "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+      "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+    ],
+    "records": [
+      {
+        "kind": "nvrtc_compile",
+        "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "options": [
+          "-std=c++17",
+          "-arch=compute_120",
+          "--fmad=false",
+          "--ftz=false",
+          "--prec-div=true",
+          "--prec-sqrt=true",
+          "-DGPUWM_WRF_EXACT=1",
+          "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+          "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+          "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+          "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+        ]
+      },
+      {
+        "kind": "nvrtc_compile",
+        "source_sha256": "ebe02476d047dc9b350491af53e5169eac4b73ae816511f6456da736fdff9254",
+        "options": [
+          "-std=c++17",
+          "-arch=sm_120",
+          "--device-as-default-execution-space",
+          "--fmad=false",
+          "--ftz=false",
+          "--prec-div=true",
+          "--prec-sqrt=true",
+          "-DGPUWM_WRF_EXACT=1",
+          "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+          "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+          "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+          "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+        ]
+      },
+      {
+        "kind": "nvrtc_compile",
+        "source_sha256": "ef593dca1778b30a1588016de45472daa396a78d6e2fd65d908d88f78d4f69b6",
+        "options": [
+          "-std=c++17",
+          "-arch=sm_120",
+          "--device-as-default-execution-space",
+          "--fmad=false",
+          "--ftz=false",
+          "--prec-div=true",
+          "--prec-sqrt=true",
+          "-DGPUWM_WRF_EXACT=1",
+          "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+          "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+          "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+          "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+        ]
+      }
+    ]
+  },
+  "pass": true
+}

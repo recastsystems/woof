@@ -19,27 +19,31 @@ class _Parameters(C.Structure):
 
 def _library():
     source = Path(__file__).parent / "kernels" / "device.cu"
-    nvcc = shutil.which("nvcc")
-    if nvcc is None:
-        raise FileNotFoundError("nvcc is required for the surge device library")
-    identity = hashlib.sha256(source.read_bytes() + source.with_name("surge.cu").read_bytes()
-                              + subprocess.check_output([nvcc, "--version"])).hexdigest()[:20]
-    cache = Path(os.environ.get("WOOF_SURGE_DEVICE_CACHE", os.environ.get(
-        "CUPY_CACHE_DIR", str(Path.home() / ".woof" / "cache" / "surge"))))
-    cache.mkdir(parents=True, exist_ok=True)
-    # A process lock prevents another ensemble member loading a partial library.
-    import fcntl
-    with (cache / (identity + ".lock")).open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        library = cache / ("surge-device-" + identity + ".so")
-        if not library.exists():
-            temporary = library.with_suffix(f".{os.getpid()}.so")
-            with (cache / (identity + ".log")).open("w") as log:
-                subprocess.run([nvcc, "-O3", "-std=c++17", "--shared", "--cudart=shared", "-Xcompiler=-fPIC",
-                                "-gencode=arch=compute_80,code=compute_80", str(source),
-                                "-o", str(temporary)], check=True, timeout=180,
-                               stdout=log, stderr=subprocess.STDOUT)
-            temporary.replace(library)
+    from woof.hip_backend import active,compile_shared
+    if active():
+        library=compile_shared(source.read_text())
+    else:
+        nvcc = shutil.which("nvcc")
+        if nvcc is None:
+            raise FileNotFoundError("nvcc is required for the surge device library")
+        identity = hashlib.sha256(source.read_bytes() + source.with_name("surge.cu").read_bytes()
+                                  + subprocess.check_output([nvcc, "--version"])).hexdigest()[:20]
+        cache = Path(os.environ.get("WOOF_SURGE_DEVICE_CACHE", os.environ.get(
+            "CUPY_CACHE_DIR", str(Path.home() / ".woof" / "cache" / "surge"))))
+        cache.mkdir(parents=True, exist_ok=True)
+        # A process lock prevents another ensemble member loading a partial library.
+        import fcntl
+        with (cache / (identity + ".lock")).open("w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            library = cache / ("surge-device-" + identity + ".so")
+            if not library.exists():
+                temporary = library.with_suffix(f".{os.getpid()}.so")
+                with (cache / (identity + ".log")).open("w") as log:
+                    subprocess.run([nvcc, "-O3", "-std=c++17", "--shared", "--cudart=shared", "-Xcompiler=-fPIC",
+                                    "-gencode=arch=compute_80,code=compute_80", str(source),
+                                    "-o", str(temporary)], check=True, timeout=180,
+                                   stdout=log, stderr=subprocess.STDOUT)
+                temporary.replace(library)
     native = C.CDLL(str(library))
     args = [C.POINTER(_Parameters), C.POINTER(C.c_void_p), C.c_void_p]
     native.surge_device_init.argtypes = args

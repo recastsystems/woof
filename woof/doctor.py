@@ -18,7 +18,7 @@ declares, resolves each data route's decoder and byte transport through
 the resolvers the route itself calls, and requires each WPS_GEOG
 dataset's ``index`` file.  No cargo builds, no network; the device work
 is three deliberate short-lived subprocess probes (the CuPy-wheel/box
-cuBLAS pairing, a cold-cache NVRTC compile, and the radar-DA
+cuBLAS pairing, a cold-cache NVRTC compile, and the matrix
 eigensolver), isolated so a wedged runtime cannot poison this process.
 Every gap prints a remedy whose every line is either a command that
 runs as printed in this platform's own shell or a ``#`` comment --
@@ -34,7 +34,7 @@ company.
 Statuses distinguish what was proven: ``verified`` means the deep check
 ran and passed; ``present`` is for the few items where nothing deeper
 than existence can accurately be checked, plus the one deep check that
-can half-pass and says which half (the radar-DA eigensolver);
+can half-pass and says which half (the matrix eigensolver);
 ``untested`` is for a question this module deliberately does not answer
 -- it never runs cargo, so it cannot say whether a build would succeed
 -- and its detail always opens with "not tested"; ``missing`` is a gap
@@ -466,6 +466,8 @@ import json, sys
 out = {}
 try:
     import cupy
+    if cupy.cuda.runtime.is_hip:
+        raise RuntimeError("CUDA is the default; select --backend amd for experimental ROCm checks")
 except Exception as error:
     sys.stdout.write(json.dumps({"cupy": repr(error)}))
     raise SystemExit(0)
@@ -891,6 +893,8 @@ import json, sys
 out = {}
 try:
     import cupy
+    if cupy.cuda.runtime.is_hip:
+        raise RuntimeError("CUDA is the default; select --backend amd for experimental ROCm checks")
 except Exception as error:
     sys.stdout.write(json.dumps({"cupy": repr(error)}))
     raise SystemExit(0)
@@ -1114,7 +1118,7 @@ def _names_missing_cuda_headers(text: object) -> bool:
 #: install is wrong.  Named breakage: on a shared 4-card node whose card 0
 #: another process had filled (96.9 of 97.9 GB), `bash install.sh` exited 1
 #: and doctor printed "MISSING cupy ... -> pip install 'recast-woof[gpu-cu13]'",
-#: "MISSING CUDA kernel headers" and "MISSING radar-DA eigensolver" for a
+#: "MISSING CUDA kernel headers" and "MISSING matrix eigensolver" for a
 #: correct install, because every probe opens the first visible card and
 #: an allocation of 512 bytes failed there.
 _DEVICE_FULL_MARKERS = ("out of memory", "outofmemoryerror",
@@ -1460,6 +1464,8 @@ import json, numpy, sys
 out = {}
 try:
     import cupy
+    if cupy.cuda.runtime.is_hip:
+        raise RuntimeError("CUDA is the default; select --backend amd for experimental ROCm checks")
 except Exception as error:
     sys.stdout.write(json.dumps({"cupy": repr(error)}))
     raise SystemExit(0)
@@ -1499,22 +1505,9 @@ def _eigensolver_probe() -> dict:
     return _json_probe(_EIGENSOLVER_PROBE)
 
 
-def _da_eigensolver_check() -> Check:
-    """Can the radar-DA analysis factor its matrices, and with what?
-
-    This is the one line in the report that exists because of a specific
-    field failure rather than a category of them.  Twice -- once on a box
-    whose NVIDIA wheels were installed but invisible to a compiled extension,
-    once on a rented node whose CUDA install simply shipped without it -- the
-    DA path died inside cuSOLVER, and both times the surrounding evidence
-    said the GPU was healthy, because for everything except the
-    factorisation it was.  ``woof doctor`` now answers the question
-    directly instead of leaving it to be inferred.
-
-    Not blocking: an install that never runs data assimilation never touches
-    either solver, and an install that does has this project's own kernel.
-    """
-    name = "radar-DA eigensolver"
+def _matrix_eigensolver_check() -> Check:
+    """Report matrix factorisation support and the portable solver fallback."""
+    name = "matrix eigensolver"
     # The install spelling is the BOX's property, not a constant: see
     # _cusolver_hint.  Read once, so all four branches agree.
     cusolver_remedy, cusolver_action = _cusolver_hint(_driver_cuda_major())
@@ -1522,7 +1515,7 @@ def _da_eigensolver_check() -> Check:
     if "cupy" in result:
         return Check(
             name, "info",
-            "not judged -- data assimilation runs on the device and cupy is "
+            "not judged -- matrix factorisation runs on the device and cupy is "
             f"unavailable here ({result['cupy']})",
             brief="needs cupy", blocking=False)
     if "probe" in result:
@@ -1623,7 +1616,18 @@ def _canonical(name: str) -> str:
 _IMPORT_NAME = {
     "cupy-cuda12x": "cupy",
     "cupy-cuda13x": "cupy",
+    "cupy-rocm-7-0": "cupy",
+    # [gpu-cu13] narrows the toolkit CuPy installs (NVRTC and nvJitLink below 13.5); both live in the
+    # nvidia namespace package, and the installed version is judged against the declared range.
+    "nvidia-cuda-nvrtc": "nvidia",
+    "nvidia-nvjitlink": "nvidia",
+    # The kernel-image companions (3.0 size split): the AOT images and
+    # the startup subset, imported by the kernel loader when present.
+    "gpuwm-kernels": "gpuwm_kernels",
+    "gpuwm-kernels-startup": "gpuwm_kernels_startup",
     "wrf-rust": "wrf",
+    # (1.1.6) hex global's mesh decoder, which recast-woof declares (gpuwm-hex declares it for the same door)
+    "rapidgzip": "rapidgzip",
     "pyshp": "shapefile",
     "scipy": "scipy",
     "rasterio": "rasterio",
@@ -1893,6 +1897,11 @@ _EXTRA_FACTS: dict[str, _ExtraFacts] = {
         deferred_to="cupy (GPU runtime)", mutually_exclusive=True),
     "gpu-cu13": _ExtraFacts(
         doors=_GPU_DOORS, still_works=_GPU_STILL_WORKS,
+        blocking=True, severity=SEVERITY_UNREACHABLE,
+        deferred_to="cupy (GPU runtime)", mutually_exclusive=True),
+    "rocm": _ExtraFacts(
+        doors=("woof --backend amd (experimental AMD forecasts)",),
+        still_works="CUDA forecasts and every non-GPU door",
         blocking=True, severity=SEVERITY_UNREACHABLE,
         deferred_to="cupy (GPU runtime)", mutually_exclusive=True),
     # wrf-rust and pyshp gate DIFFERENT doors, which is why the old
@@ -2802,6 +2811,19 @@ _OBS_FRONT_DOOR_ACTION = ("build the obs front doors from a clone "
 #: the bundle carries it, rather than waiting for this map to catch up.
 #: ``tests/test_doctor_route_accuracy.py`` fails when they disagree.
 _CHECKED_ARTIFACTS = {
+    "arwen_dfi": "the `DFI initialization library` line",
+    "gpuwm_tslist": "the `station output initialization library` line",
+    "rw_cu99_launch": "the `CU99 initialization library` line",
+    "rw_fddaobs": "the `observation FDDA reader` line",
+    "rw_waves_data": "the `wave data preparation` line",
+    "rw_waves_coupled_prepare": "the `coupled wave preparation` line",
+    "aerosol-grid": "the `public aerosol interpolation` line",
+    "public-aerosol-build": "the `public aerosol climatology` line",
+    "tc_frames_io": "the `TC initialization frames` line",
+    "rw_storm_merge": "the `storm-core merge` line",
+    "rw_tc_vitals": "the `TC vitals decoder` line",
+    "rw_tc_rmw_score": "the `TC radius-of-maximum-wind score` line",
+    "tc-verify": "the `TC verification` line",
     "nextgen_hydrofabric": "the `NextGen nextgen_hydrofabric` line",
     "arwen_nextgen_forcing": "the `NextGen arwen_nextgen_forcing` line",
     "rw_nextgen_verify": "the `NextGen rw_nextgen_verify` line",
@@ -2869,11 +2891,14 @@ _CHECKED_ARTIFACTS = {
     "rw_mpas_init_v831": "the `MPAS binary` lines",
     "rw_mpas_gsl_oro": "the `MPAS binary` lines",
     "rw_tempo": "the `TEMPO initialization library` line",
+    "rw_p3": "the `P3 initialization library` line",
+    "rw_cam_tables": "the `CAM initialization library` line",
     "rw_projected_intermediate": "the `projected MET intermediate` line",
     "rw_mlexport": "the `ML dataset exporter` line",
     "rw_icechunk": "the `Icechunk native history` line",
     "rw_grib2export": "the `GRIB2 exporter` line",
     "rw_verify": "the `observation verification engine` line",
+    "rw_history_grib2": "the `history GRIB2 exporter` line",
     "rw_compare": "the `comparison engine` line",
     "rw_ensbatch": "the `ensemble reducer` line",
     "rw_nowcast_frames": "the `nowcast frames converter` line",
@@ -3917,11 +3942,43 @@ def _grib2_export_check() -> Check:
     from woof import grib2_export
 
     binary = grib2_export.BINARY
+    label = f"GRIB2 exporter ({binary.name})"
+    # On demand since WOOF 1.1.6 (PyPI per-file limit): a fresh install stages it
+    # on first use, so absence reads as on demand, not "its doors cannot run".
+    row = _absent_on_demand_row(label, binary.name, binary.env_var, binary.find,
+                                "woof export-grib2")
+    if row is not None:
+        return row
     return _rustwx_door_check(
-        label=f"GRIB2 exporter ({binary.name})",
+        label=label,
         env_var=binary.env_var, find=binary.find, remedy=binary.remedy(),
         doors=(("woof export-grib2 and a run's live --grib2 output",
                 binary.probe),))
+
+
+def _history_grib2_check() -> Check:
+    """Inspect the shipped raw-history exporter using its declared ABI."""
+    from woof.ml_export import Binary
+    binary = Binary(name="rw_history_grib2", env_var="WOOF_RW_HISTORY_GRIB2",
+                    subject="the native history GRIB2 exporter")
+    def probe(path):
+        marker = bridges.BRIDGE_ABI_MARKERS[binary.name]
+        try:
+            import subprocess
+            result = subprocess.run([str(path), "--abi"], capture_output=True, timeout=60)
+            ok = result.returncode == 0 and marker in result.stdout
+            return ok, "history GRIB2 contract matches" if ok else "history GRIB2 contract is stale"
+        except (OSError, subprocess.SubprocessError) as error:
+            return False, str(error)
+    label = "history GRIB2 exporter (rw_history_grib2)"
+    # On demand since 2.9.12 (PyPI per-file limit, SIZE-01): a fresh install stages it on first use. Breakage
+    # (2.9.12 R12, Windows wheel smoke): the row still read "not staged; its doors cannot run".
+    row = _absent_on_demand_row(label, binary.name, binary.env_var, binary.find, "raw history export")
+    if row is not None:
+        return row
+    return _rustwx_door_check(label=label,
+        env_var=binary.env_var, find=binary.find, remedy=binary.remedy(),
+        doors=(("raw history export", probe),))
 
 
 def _gpu_post_kernels_check() -> Check:
@@ -4095,6 +4152,9 @@ def _tc_fields_check() -> Check:
 #: door each one serves (cap-fire-indices, cap-fzra, cap-waves-couple,
 #: cap-slab-ocean, cap-surge).
 _CAPABILITY_TOOLS = {
+    "rw_fddaobs": ("observation FDDA reader", "observation FDDA ingestion"),
+    "rw_waves_data": ("wave data preparation", "spectral wave input and products"),
+    "rw_waves_coupled_prepare": ("coupled wave preparation", "automatic wave preparation"),
     "rw_fire_indices": ("fire danger indices", "the stateful FWI/KBDI door (woof.fire_danger_state)"),
     "rw_ice_verify": ("ice observation binding", "freezing-rain verification (woof.ensemble.ice_accretion verify)"),
     "rw_ocean": ("ocean preparation", "the coupled ocean door (woof.ocean.door)"),
@@ -4102,6 +4162,15 @@ _CAPABILITY_TOOLS = {
     "rw_ocean_verify": ("ocean SST verification", "ocean SST verification (woof.ocean.mixed_layer.verify)"),
     # labs/windfarm (2.9.11): the turbine-inventory decoder behind --wind-farms.
     "rw-wind-table": ("wind turbine tables", "the wind-farm doors (woof go --wind-farms, woof.wind_inputs)"),
+    # 3.0.0: the public aerosol forcing (opt-in) and the hurricane line (opt-in)
+    # bundled these with no doctor line (test_every_bundled_artifact_is_covered_by_a_check).
+    "aerosol-grid": ("public aerosol interpolation", "the opt-in public aerosol forcing"),
+    "public-aerosol-build": ("public aerosol climatology", "the opt-in public aerosol forcing"),
+    "tc_frames_io": ("TC initialization frames", "the opt-in vortex initialization and storm products (woof.tc)"),
+    "rw_storm_merge": ("storm-core merge", "the opt-in donor storm merge (woof.tc)"),
+    "rw_tc_vitals": ("TC vitals decoder", "the opt-in vortex initialization (woof.tc)"),
+    "rw_tc_rmw_score": ("TC radius-of-maximum-wind score", "TC verification (woof.tc)"),
+    "tc-verify": ("TC verification", "matched TC verification (woof.tc)"),
 }
 
 
@@ -4407,6 +4476,12 @@ def _nexrad_front_door_check() -> Check:
     name = f"radar front door {nexrad.NEXRAD_NAME} (radar observation ingest)"
     blocks = ("blocks ALL radar observation ingest -- every DA nowcast "
               "route, live and archived")
+    # On demand since WOOF 1.1.6 (PyPI per-file limit): the first radar ingest
+    # stages it from this release's bundle, so a fresh install is not missing it.
+    row = _absent_on_demand_row(name, nexrad.NEXRAD_NAME, nexrad.NEXRAD_ENV,
+                                lambda: nexrad.find_nexrad_bin(), "radar observation ingest")
+    if row is not None:
+        return row
     try:
         found = nexrad.find_nexrad_bin()
     except FileNotFoundError as error:
@@ -5001,6 +5076,69 @@ def _tempo_library_check() -> Check | None:
                  brief="staged", group=_GROUP_ENGINES)
 
 
+def _physics_startup_library_checks() -> list[Check]:
+    """Load each selected physics library and check the ABI the real loader uses."""
+    import ctypes
+    rows = []
+    try:
+        from woof.core import p3_rust
+        rows.append(("P3", p3_rust, "P3_BRIDGE_ENV", bridges.RUSTWX_CRATE_RELATIVE,
+                     "gpuwm_p3_abi_version", ("gpuwm_p3_init_2mom", "gpuwm_p3_init_3mom",
+                     "gpuwm_p3_init_table2", "gpuwm_p3_last_error")))
+    except ImportError:
+        pass  # The preparation-only distribution carries no physics executor.
+    try:
+        from woof.core import cam3_tables
+        rows.append(("CAM", cam3_tables, "CAM_TABLES_ENV", "tools/cam_tables",
+                     "gpuwm_cam_tables_abi_version", ("cam_tables_open", "cam_tables_close",
+                     "cam_tables_state", "cam_tables_ozone", "cam_tables_gases",
+                     "cam_tables_copy_state", "cam_tables_error")))
+    except ImportError:
+        pass
+    try:
+        from woof.core import cu99_launch, dfi_runtime
+        from woof import tslist_bridge
+        rows.extend((
+            ("CU99", cu99_launch, "BRIDGE_ENV", bridges.RUSTWX_CRATE_RELATIVE,
+             "gpuwm_cu99_launch_abi_version", ("gpuwm_cu99_launch_tiles", "gpuwm_cu99_plan_step")),
+            ("DFI", dfi_runtime, "BRIDGE_ENV", "tools/dfi-runtime",
+             "aw_dfi_runtime_abi", ("aw_dfi_submit_compiled_pass", "aw_dfi_weights", "aw_dfi_lifecycle")),
+            ("station output", tslist_bridge, "BRIDGE_ENV", "tools/tslist_bridge",
+             "gpuwm_tslist_abi_version", ("gpuwm_tslist_open", "gpuwm_tslist_write",
+             "gpuwm_tslist_close", "gpuwm_tslist_read", "gpuwm_tslist_place",
+             "gpuwm_tslist_validate", "gpuwm_tslist_rewind_initial",
+             "gpuwm_tslist_checkpoint", "gpuwm_tslist_last_error")),
+        ))
+    except ImportError:
+        pass
+    checks = []
+    for scheme, bridge, env, crate, symbol, entries in rows:
+        name = f"{scheme} initialization library"
+        remedy = bridges.artifact_remedy(
+            env_var=getattr(bridge, env), filename=bridge.library_name(),
+            subject=name, crate_relative=crate)
+        path = None
+        try:
+            path = bridge.resolve()
+            library = ctypes.CDLL(str(path))
+            version = getattr(library, symbol)
+            version.restype = ctypes.c_uint32
+            observed = version()
+            if observed != bridge.ABI_VERSION:
+                raise RuntimeError(f"ABI {observed}, expected {bridge.ABI_VERSION}")
+            for entry in entries:
+                getattr(library, entry)
+        except (FileNotFoundError, OSError, RuntimeError, AttributeError) as error:
+            checks.append(Check(
+                name, "missing", f"{path or ''} -- {error} -- {scheme} cannot initialize",
+                remedy, action=_build_action(crate),
+                brief=f"not loadable; {scheme} cannot initialize", group=_GROUP_ENGINES))
+        else:
+            checks.append(Check(name, "verified", f"{path} -- ABI {bridge.ABI_VERSION}",
+                                brief="staged", group=_GROUP_ENGINES))
+    return checks
+
+
 #: The four entries woof hex resolves from the projected MET library.
 _PROJECTED_INTERMEDIATE_ENTRIES = (
     "gpuwm_projected_intermediate_v1", "gpuwm_projected_geometry_v1",
@@ -5298,6 +5436,15 @@ def _radar_superob_check() -> Check:
                      "  pip install --force-reinstall woof",
                      brief="superob_bridge not importable",
                      group=_GROUP_ENGINES)
+    # On demand since WOOF 1.1.6 (PyPI per-file limit): the first radar observation
+    # build stages it from this release's bundle.
+    row = _absent_on_demand_row(
+        name, "rw_superob", superob_bridge.SUPEROB_BRIDGE_ENV,
+        lambda: next((candidate for candidate in superob_bridge.library_candidates()
+                      if candidate.is_file()), None),
+        "radar observation build")
+    if row is not None:
+        return row
     remedy = bridges.artifact_remedy(
         env_var=superob_bridge.SUPEROB_BRIDGE_ENV,
         filename=superob_bridge.library_name(),
@@ -6893,6 +7040,11 @@ def _era5_fetch_path_check() -> Check:
                  ("a credential file or CDSAPI_URL/CDSAPI_KEY pair", credentials)) if not ready))
         + f" ({cds_evidence}); --era5-provider arco: "
         + ("keyless ARCO reader is locally available" if arco else
+           # on demand since WOOF 1.1.6 (PyPI per-file limit)
+           "native rw_zarr reader is not staged yet; the first ARCO fetch stages it "
+           "from this release's bundle" if (
+               arco_evidence == "FileNotFoundError"
+               and bridges.on_demand_fetch_offered("rw_zarr", zarr_bridge.CRATE_RELATIVE)) else
            "native rw_zarr reader is missing or ABI-incompatible")
         + f" ({arco_evidence}); request document fallback is always available. "
           "Credential contents, authorization, provider availability and "
@@ -7292,7 +7444,7 @@ def _collect_checks(sources: tuple[str, ...] | None = None,
     # spawns a short-lived device subprocess (the cuBLAS pairing, a
     # cold-cache NVRTC compile, the eigensolver), and a reader whose
     # driver is wedged waits here longest of all.
-    phase("the GPU runtime (cupy wheel, kernel headers, radar-DA solver)")
+    phase("the GPU runtime (cupy wheel, kernel headers, matrix solver)")
     version = ".".join(str(v) for v in sys.version_info[:3])
     if sys.version_info >= (3, 11):
         checks.append(Check("python", "verified", f"{version} (>= 3.11)",
@@ -7310,7 +7462,7 @@ def _collect_checks(sources: tuple[str, ...] | None = None,
     # three fail in: a wheel that will not load, then a wheel that
     # loads but cannot compile, then a compile that cannot factor.
     checks.append(_cuda_headers_check())
-    checks.append(_da_eigensolver_check())
+    checks.append(_matrix_eigensolver_check())
     # Beside the extras, because they are the same question asked of a
     # different feature: can this install actually run the thing its
     # documentation describes?  This one keeps its own line because
@@ -7341,6 +7493,7 @@ def _collect_checks(sources: tuple[str, ...] | None = None,
     checks.append(_ml_export_check())
     checks.append(_icechunk_check())
     checks.append(_grib2_export_check())
+    checks.append(_history_grib2_check())
     checks.append(_gpu_post_kernels_check())
     checks.append(_verification_engine_check())
     checks.append(_comparison_engine_check())
@@ -7363,6 +7516,7 @@ def _collect_checks(sources: tuple[str, ...] | None = None,
     tempo_check = _tempo_library_check()
     if tempo_check is not None:
         checks.append(tempo_check)
+    checks.extend(_physics_startup_library_checks())
     checks.append(_projected_intermediate_check())
     checks.extend(_nextgen_checks())
     checks.extend(_hydro_door_tool_checks())
@@ -7849,6 +8003,10 @@ def upgrade_note_since(previous: str, installed: str | None = None
 
 
 def doctor_main(args) -> int:
+    from woof.gpu_smi import is_amd
+    if is_amd() or os.environ.get('WOOF_BACKEND')=='hip-nvidia':
+        from woof.hip_doctor import main
+        return main(['--json'])
     since = getattr(args, "since", None)
     if since:
         # A query, not a diagnosis: print the release notes the reader

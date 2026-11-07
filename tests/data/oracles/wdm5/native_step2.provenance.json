@@ -1,0 +1,239 @@
+{
+  "schema": "wdm-real-native-capture-v1",
+  "mp_physics": 14,
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "native_executable_sha256": "7ab414b4be62d08d57e60baa75690edf9b73cd92107f69a20c06a6db8785cca9",
+  "native_case": "2026-10-16T09:00Z Texas 3 km, 300 x 300 x 49 mass cells",
+  "native_mpi_ranks": 4,
+  "native_step": 2,
+  "native_dt_seconds": 15,
+  "capture": "tools/wdm_native_capture.py",
+  "native_compiler": "GNU Fortran 15.2.0, -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+  "oracle": "unmodified stock WRF module; strict standalone driver; reflectivity included",
+  "ncol": 149,
+  "nz": 49,
+  "records": [
+    {
+      "file": "native_step2.in.gz",
+      "bytes": 147391,
+      "sha256": "49297b3cd70f69f76a96ad78f90d75f81f4618e90d57193aa5b6c81841e723ba",
+      "decoded_bytes": 380868,
+      "decoded_sha256": "67a420184007ff90f24cd99eaae1f2c85b3a487c16faab0d4c5b2cebf479ef13"
+    },
+    {
+      "file": "native_step2.stock.out.gz",
+      "bytes": 58327,
+      "sha256": "4568436acad5443c95af56c484e4a43f9c3eabe28c670bb2f9c177ca348deadb",
+      "decoded_bytes": 382632,
+      "decoded_sha256": "c3a9fe43a42046b2c2aa91a73539beac93cc4ab3c163215480d161d70f841b3b"
+    }
+  ],
+  "input_fields": {
+    "th": {
+      "nonzero": 7301,
+      "min": 292.2101745605469,
+      "max": 485.910888671875
+    },
+    "qv": {
+      "nonzero": 7301,
+      "min": 1.7038468058672152e-06,
+      "max": 0.011954433284699917
+    },
+    "qc": {
+      "nonzero": 446,
+      "min": -3.8044273067690086e-17,
+      "max": 3.836244559352053e-06
+    },
+    "qr": {
+      "nonzero": 0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "qi": {
+      "nonzero": 2175,
+      "min": -3.6791772111024154e-23,
+      "max": 1.7217438653460704e-05
+    },
+    "qs": {
+      "nonzero": 0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "nn": {
+      "nonzero": 7301,
+      "min": -1.4722257852554321,
+      "max": 101972952.0
+    },
+    "nc": {
+      "nonzero": 84,
+      "min": -0.18243984878063202,
+      "max": 101898424.0
+    },
+    "nr": {
+      "nonzero": 0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "den": {
+      "nonzero": 7301,
+      "min": 0.08732437342405319,
+      "max": 1.165340781211853
+    },
+    "pii": {
+      "nonzero": 7301,
+      "min": 0.4307411015033722,
+      "max": 1.0000360012054443
+    },
+    "p": {
+      "nonzero": 7301,
+      "min": 5245.140625,
+      "max": 100012.5859375
+    },
+    "delz": {
+      "nonzero": 7301,
+      "min": 17.67633056640625,
+      "max": 749.09716796875
+    }
+  },
+  "comparison": [
+    {
+      "config": "input",
+      "ncol": 149,
+      "nz": 49,
+      "nsteps": 1,
+      "delt": 15.0,
+      "values": 95658,
+      "differ": 0,
+      "max_ulp": 0,
+      "columns_differing": [],
+      "fields": {
+        "th": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "qv": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "qc": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "qr": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "qi": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "qs": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "nn": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "nc": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "nr": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "re_cloud": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "re_ice": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "re_snow": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "refl_10cm": {
+          "values": 7301,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "rain": {
+          "values": 149,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "rainncv": {
+          "values": 149,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "snow": {
+          "values": 149,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "snowncv": {
+          "values": 149,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        },
+        "sr": {
+          "values": 149,
+          "differ": 0,
+          "max_ulp": 0,
+          "max_abs": 0.0,
+          "worst": null
+        }
+      }
+    }
+  ]
+}

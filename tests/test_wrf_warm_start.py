@@ -330,9 +330,12 @@ def _restart_dataset(**changes):
 def _cfg(**overrides):
     base = dict(nx=4, ny=3, nz=2, moist=True, mp_physics=8, cu_physics=16,
                 bl_pbl_physics=2, sf_sfclay_physics=2, sf_surface_physics=2,
-                sf_urban_physics=0, num_soil_layers=4, ifire=0, cycling=False)
+                sf_urban_physics=0, num_soil_layers=4, ifire=0, cycling=False,
+                moist_adv_opt=2, scalar_adv_opt=2)
     base.update(overrides)
-    return SimpleNamespace(**base)
+    from woof.config import RunConfig
+    return RunConfig(dx=1000., dy=1000., ztop=10000., dt=60.,
+                     run_seconds=0., **base)
 
 
 def _expected():
@@ -361,6 +364,18 @@ def test_reader_restores_dry_theta_from_moist_prognostic(fake_bridge):
     assert restored.warm_start.clock.itimestep == 550
     assert restored.warm_start.clock.elapsed_seconds == 39600.0
     assert restored.warm_start.dispositions["U_1"].startswith("time_level")
+
+
+def test_native_surface_history_axis_and_domain_counters(fake_bridge):
+    bank=np.arange(3*150*4,dtype=np.float32).reshape(3,150,4)
+    fake_bridge['ds']=_restart_dataset(
+        TLAG=_Variable('TLAG',('south_north','lagday','west_east'),bank),
+        NDAY=_Variable('NDAY',(),np.asarray(2880,np.float32)),
+        NYEAR=_Variable('NYEAR',(),np.asarray(245,np.int32)))
+    restored=wrfrst.read_wrfrst('wrfrst_d01',expected_dimensions=_expected(),cfg=_cfg(tmn_update=1))
+    np.testing.assert_array_equal(restored.raw['TLAG'],np.swapaxes(bank,0,1))
+    assert restored.raw['NDAY']==2880
+    assert restored.raw['NYEAR']==245
 
 
 def test_restart_variables_decode_in_batches_not_one_run_per_variable(fake_bridge):
@@ -428,12 +443,71 @@ def test_reader_refuses_state_of_a_selected_unmapped_scheme(fake_bridge):
                            cfg=_cfg(sf_urban_physics=1))
 
 
+@pytest.mark.parametrize("surface", [1, 2])
+def test_native_restart_retains_slab_properties_and_evaporation(fake_bridge, surface):
+    values = {"CAPG": 1800000.0, "THC": 0.8, "SFCEVP": 12.5}
+    fake_bridge["ds"] = _restart_dataset(
+        SF_SURFACE_PHYSICS=surface,
+        **{name: _Variable(name, ("south_north", "west_east"),
+                          np.full((3, 4), value, np.float32))
+           for name, value in values.items()})
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                  cfg=_cfg(sf_surface_physics=surface))
+    for name, value in values.items():
+        np.testing.assert_array_equal(restored.raw[name],
+                                      np.full((3, 4), value, np.float32))
+
+
+def test_goddard_restart_retains_gsfc_radius_units_and_names_setup(fake_bridge):
+    # The real 2021-06-27 15Z native restart first exposed nonzero GSFC
+    # radii and SHDAVG. GSFC radii already use microns, unlike RE_CLOUD.
+    dimensions = ("bottom_top", "south_north", "west_east")
+    fields = {}
+    for index, species in enumerate(("CLOUD", "ICE", "RAIN", "SNOW",
+                                     "GRAUPEL", "HAIL")):
+        name = f"RE_{species}_GSFC"
+        value = np.full((2, 3, 4), 10.25 + index, np.float32)
+        fields[name] = _Variable(name, dimensions, value)
+    fields["SHDAVG"] = _Variable("SHDAVG", ("south_north", "west_east"),
+                                np.full((3, 4), 32.5, np.float32))
+    fake_bridge["ds"] = _restart_dataset(**fields)
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                  cfg=_cfg())
+    for name, variable in fields.items():
+        if name == "SHDAVG":
+            assert restored.warm_start.dispositions[name].startswith("setup:")
+            assert name not in restored.raw
+        else:
+            np.testing.assert_array_equal(restored.raw[name], variable[0])
+            assert wrfrst.STATE_SOURCES[name.lower()] == name
+
+
 def test_reader_refuses_a_cut_down_restart(fake_bridge):
     dataset = _restart_dataset()
     del dataset.variables["MU_2"]
     fake_bridge["ds"] = dataset
     with pytest.raises(ValueError, match="MU"):
         wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(), cfg=_cfg())
+
+
+def test_p3_two_category_restart_keeps_ice_and_previous_thermodynamics(fake_bridge):
+    dataset = _restart_dataset(MP_PHYSICS=52)
+    for name in ("QSNOW", "QGRAUP", "QNSNOW", "QNGRAUPEL"):
+        dataset.variables.pop(name, None)
+    names = ("QNICE", "QNRAIN", "QNCLOUD", "QIR", "QIB", "QICE2",
+             "QNICE2", "QIR2", "QIB2", "TH_OLD", "QV_OLD")
+    for i, name in enumerate(names):
+        dataset.variables[name] = _Variable(
+            name, ("bottom_top", "south_north", "west_east"),
+            np.full((2, 3, 4), np.float32((i + 1) * 0.001)))
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                cfg=_cfg(mp_physics=52))
+    for name in names:
+        np.testing.assert_array_equal(restored.raw[name].view("u4"),
+                                      dataset.variables[name]._data[0].view("u4"))
+    assert wrfrst.STATE_SOURCES["th_old"] == "TH_OLD"
+    assert wrfrst.STATE_SOURCES["qv_old"] == "QV_OLD"
 
 
 def test_every_variable_of_ncars_benchmark_restart_has_a_disposition():
@@ -449,14 +523,18 @@ def test_every_variable_of_ncars_benchmark_restart_has_a_disposition():
 
 
 @pytest.mark.parametrize("written,run,admitted", [
-    (6, 16, True), (16, 6, True), (6, 3, True), (1, 16, False), (16, 1, False)])
+    (6, 16, True), (16, 6, True), (6, 3, True), (1, 16, False), (16, 1, False),
+    (2, 16, False), (16, 2, False), (2, 2, True)])
 def test_cumulus_may_change_only_between_stateless_schemes(written, run, admitted):
     files = {"MP_PHYSICS": 8, "BL_PBL_PHYSICS": 2, "SF_SFCLAY_PHYSICS": 2,
              "SF_SURFACE_PHYSICS": 2, "CU_PHYSICS": written}
     cfg = _cfg(cu_physics=run)
     if admitted:
         notes = wrfrst.check_restart_physics(files, cfg, path="wrfrst")
-        assert notes and f"{written} -> {run}" in notes[0]
+        if written == run:
+            assert notes == []
+        else:
+            assert notes and f"{written} -> {run}" in notes[0]
     else:
         with pytest.raises(ValueError, match="CU_PHYSICS"):
             wrfrst.check_restart_physics(files, cfg, path="wrfrst")
@@ -476,10 +554,41 @@ def test_held_rain_starts_cold_for_schemes_that_hold_none(cu_physics):
     assert wrfrst.scratch_restore_plan("cu_rainc", cu_physics) == ("fill", "RAINC")
 
 
-def test_kain_fritsch_keeps_its_held_rain():
+@pytest.mark.parametrize("cu_physics", [1, 99])
+def test_kain_fritsch_keeps_its_held_rain(cu_physics):
     for name, source in (("cu_nca", "NCA"), ("cu_pratec", "PRATEC"),
                          ("cu_raincv", "RAINCV")):
-        assert wrfrst.scratch_restore_plan(name, 1) == ("fill", source)
+        assert wrfrst.scratch_restore_plan(name, cu_physics) == ("fill", source)
+
+
+def test_old_kf_native_restart_diagnostics_are_read():
+    for name in ("UDR_KF", "DDR_KF", "UER_KF", "DER_KF", "TIMEC_KF"):
+        assert wrfrst.WRFRST_DISPOSITIONS[name].kind == "read"
+
+
+def test_bmj_restart_reads_efficiency_clouds_and_held_rain(fake_bridge):
+    dataset = _restart_dataset(CU_PHYSICS=2)
+    expected = {}
+    for name in ("CLDEFI", "CONVCLD", "HTOP", "HBOT", "PRATEC", "RAINCV",
+                 "QCCONV", "QICONV", "CCLDFRA"):
+        dims = (("bottom_top", "south_north", "west_east")
+                if name in ("QCCONV", "QICONV", "CCLDFRA")
+                else ("south_north", "west_east"))
+        shape = tuple(DIMS[dim] for dim in dims)
+        # Distinct nonzero values catch an ignored field or a cold seed.
+        value = np.full(shape, (len(expected) + 1) * 0.03125, np.float32)
+        dataset.variables[name] = _Variable(name, dims, value)
+        expected[name] = value
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                  cfg=_cfg(cu_physics=2))
+    for name, value in expected.items():
+        np.testing.assert_array_equal(restored.raw[name].view(np.uint32),
+                                      value.view(np.uint32))
+        assert wrfrst.fields_restore_plan(name.lower(), restored.raw) == ("fill", name)
+    assert wrfrst.scratch_restore_plan("cu_pratec", 2) == ("fill", "PRATEC")
+    assert wrfrst.scratch_restore_plan("cu_raincv", 2) == ("fill", "RAINCV")
+    assert wrfrst.scratch_restore_plan("cu_nca", 2)[:2] == ("cold", -100.0)
 
 
 def test_correct_mode_settled_cloud_total_starts_at_the_restart():
@@ -489,6 +598,30 @@ def test_correct_mode_settled_cloud_total_starts_at_the_restart():
     for name in ("mp_cloudnc", "mp_cloudncv"):
         plan = wrfrst.scratch_restore_plan(name, 6)
         assert plan[0] == "cold" and plan[1] == 0.0, plan
+
+
+def test_native_hail_restart_reads_duration_and_does_not_invent_missing_embryos(
+        fake_bridge):
+    values = {"HAILCAST_WDUR": 918.0, "HAILCAST_WUP_MASK": 1.0,
+              "HAILCAST_DHAIL1": 25.0, "SWDDIR": 123.5}
+    fake_bridge["ds"] = _restart_dataset(**{
+        name: _Variable(name, ("south_north", "west_east"),
+                        np.full((3, 4), value, np.float32))
+        for name, value in values.items()})
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                  cfg=_cfg())
+    for name, value in values.items():
+        np.testing.assert_array_equal(restored.raw[name],
+                                      np.full((3, 4), value, np.float32))
+    assert wrfrst.scratch_restore_plan("hailcast_wdur", 0, restored.raw) == (
+        "fill", "HAILCAST_WDUR")
+    # A partially present active native package must name the absent member.
+    assert wrfrst.scratch_restore_plan("hailcast_dhail2", 0, restored.raw) == (
+        "fill", "HAILCAST_DHAIL2")
+    assert wrfrst.scratch_restore_plan("hailcast_dhail2", 0, ())[0:2] == (
+        "cold", 0.0)
+    assert wrfrst.scratch_restore_plan("hail_max2d_run", 0, ())[0:2] == (
+        "cold", 0.0)
 
 
 #: The carriers NCAR's documented benchmark warm start named when it exited 2
@@ -531,6 +664,28 @@ def test_exact_chain_history_rows_take_wrfs_rule_when_the_restart_lacks_them():
     assert wrfrst.fields_restore_plan("not_a_carrier", ()) is None
 
 
+def test_inactive_slab_soil_diagnostic_does_not_require_a_noah_restart_field():
+    slab = SimpleNamespace(sf_surface_physics=1)
+    noah = SimpleNamespace(sf_surface_physics=2)
+    assert wrfrst.fields_restore_plan("smcrel", (), slab)[:2] == ("cold", 0.0)
+    assert wrfrst.fields_restore_plan("smcrel", (), noah) is None
+    assert wrfrst.fields_restore_plan("smcrel", {"SMCREL"}, slab) == ("fill", "SMCREL")
+
+
+def test_native_morrison_radii_may_be_rebuilt_only_when_radiation_does_not_use_them():
+    cfg = SimpleNamespace(mp_physics=10, ra_lw_physics=1, ra_sw_physics=1)
+    for name, source in (("effc", "RE_CLOUD"), ("effi", "RE_ICE"),
+                         ("effs", "RE_SNOW"), ("effr", "RE_RAIN")):
+        assert wrfrst._rebuilt_radius_reason(name, {}, cfg)
+        assert wrfrst._rebuilt_radius_reason(name, {source: None}, cfg) is None
+    cfg.ra_lw_physics = 4
+    assert wrfrst._rebuilt_radius_reason("effc", {}, cfg) is None
+    cfg.ra_lw_physics, cfg.ra_sw_physics = 1, 4
+    assert wrfrst._rebuilt_radius_reason("effc", {}, cfg) is None
+    cfg.ra_sw_physics, cfg.mp_physics = 1, 6
+    assert wrfrst._rebuilt_radius_reason("effc", {}, cfg) is None
+
+
 def test_stateful_physics_must_match_the_restart():
     files = {"MP_PHYSICS": 10, "BL_PBL_PHYSICS": 2, "SF_SFCLAY_PHYSICS": 2,
              "SF_SURFACE_PHYSICS": 2, "CU_PHYSICS": 16}
@@ -552,7 +707,7 @@ def test_pbl_carriers_take_the_mass_levels_of_wrfs_staggered_allocation():
         wrfrst._host_field(raw, "TKE_PBL", (1, 1, 2), label="fields/tke_myj")
 
 
-def test_roundoff_negative_species_are_zeroed_and_counted(fake_bridge):
+def test_native_negative_species_are_preserved_and_counted(fake_bridge):
     dataset = _restart_dataset()
     qc = np.full((2, 3, 4), 1e-4, np.float32)
     qc[0, 2, 3] = -4.6e-23
@@ -560,21 +715,171 @@ def test_roundoff_negative_species_are_zeroed_and_counted(fake_bridge):
         "QCLOUD", ("bottom_top", "south_north", "west_east"), qc)
     fake_bridge["ds"] = dataset
     restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
-                                  cfg=_cfg())
-    assert restored.raw["QCLOUD"].min() == 0.0
-    row = restored.warm_start.checks["roundoff_negative_moisture_set_to_zero"]
+                                  cfg=_cfg(tracer_opt=2))
+    assert restored.raw["QCLOUD"].min() == np.float32(-4.6e-23)
+    row = restored.warm_start.checks["signed_native_moisture_preserved"]
     assert row["QCLOUD"]["cells"] == 1
 
 
-def test_negative_species_beyond_roundoff_are_refused(fake_bridge):
+@pytest.mark.parametrize("ulps", [1, 2, 100])
+@pytest.mark.parametrize("strict,tracer", [(False, 0), (True, 0), (False, 2)])
+def test_native_residuals_use_runtime_policy_without_a_relative_sign_cutoff(
+        fake_bridge, monkeypatch, ulps, strict, tracer):
+    monkeypatch.setattr(wrfrst.wrf_exact, "ENABLED", strict)
+    qc = np.full((2, 3, 4), 0.000501, np.float32)
+    qc[0, 2, 3] = -ulps * np.spacing(qc[0, 0, 0])
+    fake_bridge["ds"] = _restart_dataset(QCLOUD=_Variable(
+        "QCLOUD", ("bottom_top", "south_north", "west_east"), qc))
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                 cfg=_cfg(tracer_opt=tracer))
+    expected = qc if strict or tracer else np.maximum(qc, np.float32(0))
+    np.testing.assert_array_equal(restored.raw["QCLOUD"].view("u4"), expected.view("u4"))
+    row = restored.warm_start.checks["native_negative_moisture_policy"]["QCLOUD"]
+    assert row["cells"] == 1
+    assert row["negative_sum"] == float(qc[0, 2, 3])
+
+
+def test_native_signed_transport_residue_is_preserved(fake_bridge):
     dataset = _restart_dataset()
     qc = np.full((2, 3, 4), 1e-4, np.float32)
     qc[0, 2, 3] = -1e-6
     dataset.variables["QCLOUD"] = _Variable(
         "QCLOUD", ("bottom_top", "south_north", "west_east"), qc)
     fake_bridge["ds"] = dataset
-    with pytest.raises(ValueError, match="beyond roundoff"):
-        wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(), cfg=_cfg())
+    restored=wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(), cfg=_cfg(tracer_opt=2))
+    np.testing.assert_array_equal(restored.raw["QCLOUD"], qc)
+
+
+def test_strict_restart_preserves_native_signed_species(fake_bridge, monkeypatch):
+    monkeypatch.setattr(wrfrst.wrf_exact, "ENABLED", True)
+    dataset = _restart_dataset()
+    qc = np.full((2, 3, 4), 0.000179, np.float32)
+    qc[0, 2, 3] = -3.95e-9  # WRF 4.6.1 real-case restart residual.
+    dataset.variables["QCLOUD"] = _Variable(
+        "QCLOUD", ("bottom_top", "south_north", "west_east"), qc)
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                  cfg=_cfg())
+    np.testing.assert_array_equal(restored.raw["QCLOUD"].view(np.uint32),
+                                  qc.view(np.uint32))
+    assert restored.warm_start.checks["native_signed_moisture_preserved"][
+        "QCLOUD"]["cells"] == 1
+
+
+def test_fast_moist_restart_normalizes_native_signed_species(fake_bridge, monkeypatch):
+    monkeypatch.setattr(wrfrst.wrf_exact, "ENABLED", False)
+    dataset = _restart_dataset()
+    dataset.variables["THM_1"] = dataset.variables["THM_2"]
+    qc = np.full((2, 3, 4), 0.000179, np.float32)
+    qc[0, 2, 3] = -3.95e-9
+    dataset.variables["QCLOUD"] = _Variable(
+        "QCLOUD", ("bottom_top", "south_north", "west_east"), qc)
+    fake_bridge["ds"] = dataset
+    cfg = _cfg()
+    cfg.use_theta_m = 1
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(), cfg=cfg)
+    assert restored.raw["QCLOUD"].min() == 0
+    assert "normalize" in restored.warm_start.checks["native_signed_moisture_action"]
+def test_strict_restart_preserves_native_negative_residues(fake_bridge, monkeypatch):
+    from woof import wrf_exact
+    monkeypatch.setattr(wrfrst.wrf_exact, "ENABLED", True)
+    qc = np.full((2, 3, 4), 1e-4, np.float32)
+    qc[0, 2, 3] = -2.19e-9  # witnessed in the strict real P3 native run
+    fake_bridge["ds"] = _restart_dataset(QCLOUD=_Variable(
+        "QCLOUD", ("bottom_top", "south_north", "west_east"), qc))
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(), cfg=_cfg())
+    np.testing.assert_array_equal(restored.raw["QCLOUD"].view("u4"), qc.view("u4"))
+    assert restored.warm_start.checks["strict_native_negative_moisture_retained"]["QCLOUD"]["cells"] == 1
+
+
+def test_native_habit_restart_residues_follow_default_nonnegative_initialization(fake_bridge, monkeypatch):
+    monkeypatch.setattr(wrfrst.wrf_exact, "ENABLED", False)
+    from woof.ingest.wrfinput import active_moisture_map, ALL_MOISTURE_WRFINPUT
+    cfg = _cfg(mp_physics=55)
+    dataset = _restart_dataset(MP_PHYSICS=55)
+    wanted = active_moisture_map(cfg)
+    for name in tuple(dataset.variables):
+        if name in ALL_MOISTURE_WRFINPUT and name not in wanted:
+            del dataset.variables[name]
+    for name in wanted:
+        values = np.full((2, 3, 4), 9.244505e-11, np.float32)
+        values[0, 1, 1] = np.float32(-3.084259e-15)
+        dataset.variables[name] = _Variable(
+            name, ("bottom_top", "south_north", "west_east"), values)
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(), cfg=cfg)
+    rows = restored.warm_start.checks["roundoff_negative_moisture_set_to_zero"]
+    for name in wanted:
+        assert rows[name]["cells"] == 1
+        assert restored.raw[name][0, 1, 1] == 0
+        assert restored.raw[name][1, 1, 1] == np.float32(9.244505e-11)
+
+def test_cam_native_restart_preserves_signed_moments(fake_bridge):
+    dataset = _restart_dataset(MP_PHYSICS=11)
+    dims = ("bottom_top", "south_north", "west_east")
+    dataset.variables["QGRAUP"] = _Variable(
+        "QGRAUP", dims, np.zeros((2, 3, 4), np.float32))
+    for name in ("QNCLOUD", "QNSNOW", "QNRAIN", "QNICE"):
+        value = np.full((2, 3, 4), 1.0e8, np.float32)
+        value[0, 1, 2] = np.float32(-69242.4765625)
+        dataset.variables[name] = _Variable(name, dims, value)
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                cfg=_cfg(mp_physics=11))
+    assert restored.raw["QNCLOUD"][0, 1, 2] == np.float32(-69242.4765625)
+    assert restored.warm_start.checks["native_cam_signed_species_preserved"][
+        "QNCLOUD"]["cells"] == 1
+
+
+def test_restart_discovery_accepts_native_nocolons(tmp_path):
+    instant = datetime(1974, 4, 3, 13)
+    for gid in (1, 2):
+        (tmp_path / f"wrfrst_d{gid:02d}_1974-04-03_13_00_00").touch()
+    found = wrfrst.discover_restart_files(tmp_path, restart_time=instant)
+    assert set(found) == {1, 2}
+    assert all(path.name.endswith("13_00_00") for path in found.values())
+@pytest.mark.parametrize("strict", [False, True])
+def test_native_wsm6_signed_condensate_follows_its_entry_operation(
+        fake_bridge, monkeypatch, strict):
+    from woof import wrf_exact
+    monkeypatch.setattr(wrf_exact, "ENABLED", strict)
+    monkeypatch.setattr(wrfrst.wrf_exact, "ENABLED", strict)
+    dataset = _restart_dataset()
+    qc = np.full((2, 3, 4), 1e-4, np.float32)
+    qc[0, 2, 3] = -1.09e-8  # witnessed in the native three-hour SSiB run
+    dataset.variables["QCLOUD"] = _Variable(
+        "QCLOUD", ("bottom_top", "south_north", "west_east"), qc)
+    for name in ("QNRAIN", "QNICE"):
+        dataset.variables.pop(name, None)
+    # Match the active producer, without changing the surface inventory.
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                 cfg=_cfg(mp_physics=6))
+    expected = qc if strict else np.maximum(qc, np.float32(0.0))
+    np.testing.assert_array_equal(restored.raw["QCLOUD"].view(np.uint32),
+                                  expected.view(np.uint32))
+    key = ("strict_native_signed_moisture_retained" if strict else
+           "wsm6_native_entry_condensate_set_to_zero")
+    assert restored.warm_start.checks[key]["QCLOUD"]["cells"] == 1
+
+
+@pytest.mark.parametrize('strict', [False, True])
+def test_native_standard_advection_signed_species_are_valid(fake_bridge, monkeypatch, strict):
+    from woof import wrf_exact
+    monkeypatch.setattr(wrf_exact, 'ENABLED', strict)
+    dataset = _restart_dataset()
+    qc = np.full((2, 3, 4), 1e-4, np.float32)
+    qc[0, 2, 3] = -4.4329218e-10  # Actual native WDM6 transport residue.
+    dataset.variables['QCLOUD'] = _Variable(
+        'QCLOUD', ('bottom_top', 'south_north', 'west_east'), qc)
+    fake_bridge['ds'] = dataset
+    restored = wrfrst.read_wrfrst('wrfrst', expected_dimensions=_expected(),
+                                  cfg=_cfg(moist_adv_opt=1))
+    want = qc if strict else np.maximum(qc, np.float32(0))
+    assert restored.raw['QCLOUD'].tobytes() == want.tobytes()
+    key = ('native_standard_advection_signed_words_retained' if strict
+           else 'negative_moisture_set_to_zero')
+    assert restored.warm_start.checks[key]['QCLOUD']['cells'] == 1
 
 
 def _counters(cu_physics, cudt_minutes, written_stepcu, *, bl_pbl_physics=2,
@@ -588,7 +893,7 @@ def _counters(cu_physics, cudt_minutes, written_stepcu, *, bl_pbl_physics=2,
            "STEPBL": np.array([1])}
     restored = SimpleNamespace(
         raw=raw, warm_start=SimpleNamespace(clock=SimpleNamespace(itimestep=1200)))
-    report = SimpleNamespace(checks={})
+    report = SimpleNamespace(checks={},filled={})
     wrfrst._warm_start_driver_counters(driver, restored, cfg, report)
     return report.checks
 
@@ -668,3 +973,125 @@ def test_the_readers_cadence_steps_match_the_physics_driver(minutes, dt):
     physics = pytest.importorskip("woof.core.physics")
     assert wrfrst.wrf_interval_steps(minutes, dt) == \
         physics._physics_interval_steps(minutes, dt)
+
+
+def test_cam_native_restart_retires_cuppt_refusal_and_restores_diagnostics():
+    cfg = _cfg(ra_lw_physics=3, ra_sw_physics=3, mp_physics=5)
+    rule = wrfrst.WRFRST_DISPOSITIONS['CUPPT']
+    assert not rule.active(cfg)
+    for name, native in [('lwcf','LWCF'),('swcf','SWCF'),
+                         ('rthratenlwc','RTHRATLWC'),
+                         ('rthratenswc','RTHRATSWC'),
+                         ('taucldc','TAUCLDC'),('taucldi','TAUCLDI')]:
+        assert wrfrst.WRFRST_DISPOSITIONS[native].kind == 'read'
+        assert wrfrst.fields_restore_plan(name, (native,)) == ('fill', native)
+    assert not wrfrst.WRFRST_DISPOSITIONS['MP_RESTART_STATE'].active(cfg)
+    assert wrfrst.STATE_SOURCES['f_rimef'] == 'F_RIMEF_PHY'
+    for name in ('CON','OA1','OL4','CWM','F_RIMEF_PHY'):
+        assert wrfrst.WRFRST_DISPOSITIONS[name].kind == 'read'
+    assert wrfrst.WRFRST_DISPOSITIONS['SHDAVG'].kind == 'setup'
+
+
+def test_cam_native_restart_rebuilds_absorption_without_changing_held_heating():
+    # No CUDA setup is needed to verify WRF's cache policy. The full native
+    # restart continuation exercises this hook through go on the actual GPU.
+    from woof.core.cam3 import Cam3Radiation
+    cam = object.__new__(Cam3Radiation)
+    cam._retained={'abstot_3d': object()}
+    cam._abs_time=1800.;cam.update_count=2;cam._state=object()
+    rebuilt=cam.wrf_warm_start_rebuild()
+    assert set(rebuilt)=={'absorption_clock'}
+    assert cam._retained=={} and cam._abs_time is None
+    assert cam._state is None and cam.update_count==0
+    assert Cam3Radiation.checkpoint_manifest(cam)['absorption_clock'].tolist()==[-1.,0.]
+
+
+def test_reader_accepts_native_nonzero_gf_shallow_output_diagnostics(fake_bridge):
+    dataset = _restart_dataset()
+    names = ("K22_SHALLOW", "KBCON_SHALLOW", "KTOP_SHALLOW", "XMB_SHALLOW")
+    for name in names:
+        dataset.variables[name] = _Variable(
+            name, ("Time", "south_north", "west_east"),
+            np.full((1, 3, 4), 7, dtype=np.float32))
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst_d01", expected_dimensions=_expected(),
+                                 cfg=_cfg(cu_physics=3))
+    for name in names:
+        assert restored.warm_start.dispositions[name].startswith("rebuilt")
+        assert name not in restored.raw
+
+
+def test_roundoff_negative_species_are_zeroed_and_counted(fake_bridge):
+    dataset = _restart_dataset()
+    qc = np.full((2, 3, 4), 1e-4, np.float32)
+    qc[0, 2, 3] = -4.6e-23
+    dataset.variables["QCLOUD"] = _Variable(
+        "QCLOUD", ("bottom_top", "south_north", "west_east"), qc)
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(),
+                                  cfg=_cfg())
+    assert restored.raw["QCLOUD"].min() == 0.0
+    row = restored.warm_start.checks["native_negative_moisture_policy"]
+    assert row["QCLOUD"]["cells"] == 1
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_native_transport_residuals_follow_the_runtime_moisture_representation(fake_bridge, monkeypatch, strict):
+    from woof import wrf_exact
+    monkeypatch.setattr(wrf_exact, "ENABLED", strict)
+    dataset = _restart_dataset()
+    qc = np.full((2, 3, 4), 0.00143, np.float32)
+    qc[0, 2, 3] = -9.8e-10  # captured from a successful WRF MYNN/RUC run
+    dataset.variables["QCLOUD"] = _Variable(
+        "QCLOUD", ("bottom_top", "south_north", "west_east"), qc)
+    fake_bridge["ds"] = dataset
+    restored = wrfrst.read_wrfrst("wrfrst", expected_dimensions=_expected(), cfg=_cfg())
+    expected = qc if strict else np.maximum(qc, np.float32(0))
+    np.testing.assert_array_equal(restored.raw["QCLOUD"].view("u4"), expected.view("u4"))
+    row = restored.warm_start.checks["native_negative_moisture_policy"]["QCLOUD"]
+    assert row["cells"] == 1
+    assert row["action"] == ("preserved" if strict else "set_to_zero")
+
+
+def test_mynn_ruc_restart_maps_real_native_carriers_and_rebuilt_wrapper_buffers():
+    cfg = SimpleNamespace(sf_surface_physics=3, sf_sfclay_physics=5, shcu_physics=0)
+    names = {"QKE", "QVG", "ACRUNOFF", "RAINCV"}
+    for field, native in (("qke", "QKE"), ("qvg", "QVG"), ("acrunoff", "ACRUNOFF"),
+                          ("surface_raincv", "RAINCV")):
+        assert wrfrst.fields_restore_plan(field, names, cfg=cfg) == ("fill", native)
+    for field in ("maxmf", "ustm_sea", "precipfr", "ruc_infiltr"):
+        assert wrfrst.fields_restore_plan(field, names, cfg=cfg)[0] == "rebuilt"
+    for field in ("tsk_save", "tsk_sea"):
+        assert wrfrst.fields_restore_plan(field, names, cfg=cfg)[0] == "copy"
+    assert wrfrst.fields_restore_plan("unmapped_sea", names, cfg=cfg) is None
+    # A different surface wrapper has different inout state ownership.
+    cfg.sf_sfclay_physics = 1
+    assert wrfrst.fields_restore_plan("ustm_sea", names, cfg=cfg) is None
+
+
+@pytest.mark.parametrize("sfclay", (1, 91))
+def test_mm5_ruc_native_restart_initializes_open_water_holds_from_restored_fields(sfclay):
+    # A real YSU/MM5/RUC warm start refused all 15 automatic wrapper buffers.
+    # Native WRF initializes them from the incoming shared fields on every call;
+    # it does not write separate restart variables for them.
+    cfg = SimpleNamespace(sf_surface_physics=3, sf_sfclay_physics=sfclay,
+                          shcu_physics=1)
+    for stem in ("chs2", "chs", "cpm", "cqs2", "flhc", "flqc", "hfx", "lh",
+                 "mol", "qfx", "qgh", "qsfc", "ust", "znt", "zol"):
+        plan = wrfrst.fields_restore_plan(stem + "_sea", set(), cfg=cfg)
+        assert plan[:2] == ("copy", "fields/" + stem)
+    assert wrfrst.fields_restore_plan("unknown_sea", set(), cfg=cfg) is None
+    assert wrfrst.fields_restore_plan("ustm_sea", set(), cfg=cfg) is None
+    cfg.sf_surface_physics = 2
+    assert wrfrst.fields_restore_plan("ust_sea", set(), cfg=cfg) is None
+
+
+def test_inactive_mynn_identity_does_not_refuse_legal_ysu(tmp_path):
+    text, report = _import(tmp_path, physics='''
+        mp_physics=8, ra_lw_physics=4, ra_sw_physics=4,
+        sf_sfclay_physics=1, sf_surface_physics=3, bl_pbl_physics=1,
+        cu_physics=0, bl_mynn_edmf=0, num_soil_layers=9,
+        radt={radt}, bldt=0, cudt=0,
+    ''')
+    assert 'bl_pbl_physics = 1' in text
+    assert any(row.key == 'bl_mynn_edmf' for row in report.dropped)

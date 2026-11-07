@@ -44,6 +44,12 @@
 #     Fixed where it belongs, in pyproject.toml's `include`/`exclude`,
 #     and gated by tests/test_package_data_coverage.py.
 prune recast-woof-data
+prune gpuwm-kernels
+prune gpuwm-kernels-startup
+# The native oracle fixtures (tests/data/oracles, 374 MB) stay in the
+# repository and out of the sdist: carried, the 3.0.0 sdist measured
+# 251,012,258 B against PyPI's 100,000,000 B per-file cap (SIZE-01).
+prune tests/data/oracles
 
 # The staged Rust artifacts are wheel payload, and a SOURCE
 # distribution has no business carrying one platform's executables.
@@ -92,6 +98,7 @@ exclude tests/test_timeline_qualification.py
 
 # The snapshot already excludes these private campaign receipts. Direct
 # sdist builds also inherit configs' package-data, so exclude them here too.
+prune configs/da_rerun_286
 exclude configs/da_rerun_286/recent/active-241/case-plan.json
 exclude configs/da_rerun_286/recent/active-241/authority/authority-receipt.json
 exclude configs/da_rerun_286/recent/large-601-center32p2/case-plan.json
@@ -123,7 +130,10 @@ include docs/2.7.5-development-record.md docs/2.7.6-development-record.md
 include docs/ADAPTIVE-TIMESTEP.md docs/AUTOMATIC-STREAMING-SEARCH.md
 include docs/ENSEMBLE_PROVIDERS.md docs/SFIRE-IDEAL.md docs/SFIRE-STATIC.md
 include docs/adapt-validation-contract.md docs/arbitrary-verified-adapters.md
+include docs/amd-backend.md docs/rocm-license-audit.json
+include tools/amd_qualification.sh
 include docs/benchmark.md docs/cells.md docs/cumulus-new-tiedtke.md
+include docs/public-cumulus-aerosol.md docs/cumulus-mskf.md docs/mp40-aerosol-status.md
 include docs/da-nowcast-quickstart.md docs/da-vs-wofs.md
 include docs/desktop-package-launcher.md
 include docs/dev/a65-preparation-peaks.md docs/dev/mynn-gsd41.md docs/dev/verify-exact.md
@@ -139,3 +149,43 @@ recursive-include docs/integration-kit *.md *.json *.py
 
 # Machine-readable evidence linked by the README measurement page.
 include docs/public/receipts/readme-292-measurements.json
+
+# The exported test runner requires its declared gate manifest.
+include tools/battery/must_run_gates.txt
+
+# 3.0.0 verification oracles (woof.data_assets.VERIFY_ORACLE_TREES).  pyproject's
+# exclude-package-data keeps them out of the woof wheel, and setuptools applies
+# that to the source archive too; these lines keep them IN it, as through 2.9.x,
+# because the archive is the whole source: the in-tree tests and the Rust
+# crates that embed oracle columns read them from woof/data.  A wheel built
+# from this archive still leaves them out (exclude-package-data applies there).
+# tests/test_package_data_coverage.py pins these lines to the tuple.
+recursive-include woof/data/fogdes/oracle *
+recursive-include woof/data/gbmpbl/oracle *
+recursive-include woof/data/gecros/oracle *
+recursive-include woof/data/gfs_pbl/oracle *
+recursive-include woof/data/keps/oracle *
+recursive-include woof/data/lake/oracle *
+recursive-include woof/data/mrf/oracle *
+recursive-include woof/data/mynn/oracle *
+recursive-include woof/data/noah/oracle *
+recursive-include woof/data/noah/seaice_oracle *
+recursive-include woof/data/noah/ua_oracle *
+recursive-include woof/data/nssl2/driver-oracle *
+recursive-include woof/data/nssl2/fused-gs-oracle *
+recursive-include woof/data/nssl2/oracle *
+recursive-include woof/data/pxlsm/oracle *
+recursive-include woof/data/pxsfclay/oracle *
+recursive-include woof/data/ruc/oracle_fork *
+recursive-include woof/data/ruc/spp_oracle *
+recursive-include woof/data/sbu_ylin/oracle *
+recursive-include woof/data/shinhong/oracle *
+recursive-include woof/data/terrain_drag/oracle *
+recursive-include woof/data/thompson/oracle *
+recursive-include woof/data/thompson/oracle-aero *
+recursive-include woof/data/thompson/oracle-hail *
+recursive-include woof/data/ysu/oracle *
+
+# ROCm/HIP backend licence audit and notices (AMD fold).
+include docs/rocm-7.2.4-license-audit.json
+recursive-include docs/rocm-7.2.4-notices *.txt

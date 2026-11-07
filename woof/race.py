@@ -195,7 +195,7 @@ def machine():
     except (OSError, StopIteration):
         pass
     return {"host": platform.node(), "cpu": cpu, "cpu_count": os.cpu_count(),
-            "cards_and_driver": capture(["nvidia-smi", "--query-gpu=index,name,memory.total,driver_version",
+            "cards_and_driver": capture([*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=index,name,memory.total,driver_version",
                                          "--format=csv,noheader"]),
             "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
             "engine_dirty": bool(capture(["git", "-C", str(Path(__file__).resolve().parent), "status", "--porcelain"])),

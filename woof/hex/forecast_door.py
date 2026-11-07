@@ -304,6 +304,7 @@ class AdmissionVerdict:
     stochastic_basis_bytes: int = 0
     stochastic_array_bytes: int = 0
     stochastic_arrays: dict[str, int] | None = None
+    diagnostic_bytes: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         record: dict[str, Any] = {
@@ -331,6 +332,8 @@ class AdmissionVerdict:
             "stochastic_arrays": dict(self.stochastic_arrays or {}),
             "stochastic_allocation_note": "logical array floor; not a measured peak; construction scratch, intermediate expressions, allocator placement and opaque library workspaces excluded",
         }
+        if self.diagnostic_bytes:
+            record["diagnostic_planning_allowance_bytes"] = self.diagnostic_bytes
         if self.model is not None:
             record["footprint_model"] = self.model.as_dict()
             record["margin_terms"] = self.model.margin_terms()
@@ -351,6 +354,7 @@ def admission_verdict(
     registry: Mapping[str, MeshRow],
     model: ShapedFootprintModel | None = None,
     stochastic: str | None = None,
+    diagnostic_bytes: int = 0,
 ) -> AdmissionVerdict:
     """Decide whether this card, as it is right now, holds this mesh."""
 
@@ -359,19 +363,19 @@ def admission_verdict(
     arrays = stochastic_array_ledger(cells, stochastic, levels=model.levels)
     basis_bytes = arrays.get("harmonic_basis", 0)
     array_bytes = sum(arrays.values())
-    predicted = int(round(model.predict_bytes(cells))) + array_bytes
+    predicted = int(round(model.predict_bytes(cells))) + array_bytes + diagnostic_bytes
     # THE one admission sum, shared with the driver's floor: a byte of
     # divergence here is a card that passes one gate and dies on the other.
-    required = required_free_bytes(cells, model, margin) + array_bytes
+    required = required_free_bytes(cells, model, margin) + array_bytes + diagnostic_bytes
     admitted = int(free_bytes) >= required
-    fitted_cells = model.max_cells(int(free_bytes), margin)
+    fitted_cells = model.max_cells(max(0, int(free_bytes) - diagnostic_bytes), margin)
     if array_bytes:
         # The additional allocation grows with the candidate mesh too.
         low, high = 0, fitted_cells
         while low < high:
             middle = (low + high + 1) // 2
             arrays_at_middle = stochastic_array_bytes(max(4, middle), stochastic, levels=model.levels)
-            if required_free_bytes(middle, model, margin) + arrays_at_middle <= int(free_bytes):
+            if required_free_bytes(middle, model, margin) + arrays_at_middle + diagnostic_bytes <= int(free_bytes):
                 low = middle
             else:
                 high = middle - 1
@@ -400,6 +404,7 @@ def admission_verdict(
         model=model,
         stochastic_basis_bytes=basis_bytes,
         stochastic_array_bytes=array_bytes,
+        diagnostic_bytes=diagnostic_bytes,
         stochastic_arrays=arrays,
     )
 
@@ -410,6 +415,14 @@ def require_admitted(verdict: AdmissionVerdict) -> None:
     if verdict.admitted:
         return
     model = verdict.model or FOOTPRINT_MODEL
+    from .compact_memory import CompactFootprintModel
+    if isinstance(model, CompactFootprintModel):
+        raise _refuse(
+            f"Not enough GPU memory for {verdict.mesh} ({verdict.cells:,} columns, "
+            f"{model.route}/{model.suite}): estimated peak {_mib(verdict.predicted_bytes)}, "
+            f"reserve {_mib(verdict.headroom_bytes)}, required {_mib(verdict.required_bytes)}; "
+            f"available now {_mib(verdict.free_bytes)}, short by {_mib(verdict.shortfall_bytes)}. "
+            "Use a smaller mesh or a card with more free memory. Forecast has not started.")
     if verdict.headroom_bytes == model.margin_bytes():
         margin_detail = "; ".join(
             f"{name}: {_mib(term['bytes'])} for {term['absorbs']}"
@@ -437,7 +450,7 @@ def require_admitted(verdict: AdmissionVerdict) -> None:
             "holding the card) or run on a larger device."
         )
     raise _refuse(
-        f"device memory admission refused --mesh {verdict.mesh}: the fitted "
+        f"Not enough GPU memory: device memory admission refused --mesh {verdict.mesh}: the fitted "
         f"footprint for {verdict.cells:,} cells is "
         f"{_mib(verdict.predicted_bytes)} and the decision holds back "
         f"{_mib(verdict.headroom_bytes)}, so it needs "
@@ -450,7 +463,7 @@ def require_admitted(verdict: AdmissionVerdict) -> None:
         f"{margin_detail}.  The row is {verdict.model_provenance}.  If "
         "this card's own ledger has been run, supply its row with "
         f"--device-fixed-mib and --device-bytes-per-cell.  {LEDGER_PROBE} is "
-        "the instrument that measures it."
+        "the instrument that measures it. Forecast has not started."
     )
 
 
@@ -542,6 +555,28 @@ def probe_numeric_route() -> dict[str, Any]:
     return dict(measure_numeric_route())
 
 
+def read_hip_capability() -> dict[str, Any] | None:
+    """Use the run's HIP compile/launch admission on a ROCm installation."""
+    try:
+        import cupy
+    except ImportError:
+        return None
+    if not getattr(cupy.cuda.runtime, "is_hip", False):
+        return None
+    from .cuda_backend.runtime import require_cuda
+
+    try:
+        capability = require_cuda()
+    except Exception as error:
+        raise _refuse(
+            f"HIP compile/launch admission failed ({error}); the forecast's "
+            "kernels cannot run on this installation."
+        ) from None
+    record = capability.as_dict()
+    record.update(admitted=True, basis="HIP compile and launch measured by the run's runtime admission")
+    return record
+
+
 def admit_architecture() -> dict[str, Any]:
     """Answer the architecture half of "will this run?" for this card.
 
@@ -563,6 +598,10 @@ def admit_architecture() -> dict[str, Any]:
     :func:`read_nvrtc_targets` and :func:`probe_numeric_route` is the test
     seam.
     """
+
+    hip = read_hip_capability()
+    if hip is not None:
+        return hip
 
     from .cuda_backend.arch_admission import (
         architecture_status,
@@ -722,6 +761,7 @@ def admit_device(
     registry: Mapping[str, MeshRow],
     model: ShapedFootprintModel | None = None,
     stochastic: str | None = None,
+    diagnostic_bytes: int = 0,
 ) -> AdmissionVerdict:
     """Measure the card NOW, then decide.  Module-level lookup of
     :func:`measure_device_memory` is deliberate: it is the seam a test
@@ -738,6 +778,7 @@ def admit_device(
         registry=registry,
         model=model,
         stochastic=stochastic,
+        diagnostic_bytes=diagnostic_bytes,
     )
 
 
@@ -867,6 +908,7 @@ class ForecastRequest:
     analysis_bundle: Mapping[str, Any] | None = None
     #: Surface-pressure tendency statistics at every macro boundary.
     balance_series: bool = False
+    tc_climate: Path | None = None
     #: ``physics.mode`` (woof.hex.correct_mode): "exact" (the matched
     #: arithmetic, the default) or "correct", and the corrections a
     #: correct-mode arm drops.  Exact hands the driver no flag at all.
@@ -1145,7 +1187,7 @@ class _SuppliedRow:
         )
 
 
-def read_card_profile() -> CardProfile:
+def read_card_profile(device: int = 0) -> CardProfile:
     """The card's shape, read from the driver right now.
 
     Two numbers -- multiprocessor count and maximum resident threads per
@@ -1165,9 +1207,13 @@ def read_card_profile() -> CardProfile:
     try:
         import cupy
 
-        properties = cupy.cuda.runtime.getDeviceProperties(0)
-        threads_per_sm = cupy.cuda.runtime.deviceGetAttribute(
-            cupy.cuda.runtime.cudaDevAttrMaxThreadsPerMultiProcessor, 0)
+        properties = cupy.cuda.runtime.getDeviceProperties(device)
+        if getattr(cupy.cuda.runtime, "is_hip", False):
+            from woof.hip_runtime import device_attribute
+            threads_per_sm = device_attribute(cupy, "MaxThreadsPerMultiProcessor", device)
+        else:
+            threads_per_sm = cupy.cuda.runtime.deviceGetAttribute(
+                cupy.cuda.runtime.cudaDevAttrMaxThreadsPerMultiProcessor, device)
     except Exception as error:  # pragma: no cover - depends on the box
         raise _refuse(
             f"the CUDA driver refused a device-properties query ({error}), so "
@@ -1263,6 +1309,22 @@ def resolve_admission_model(request: "ForecastRequest") -> ShapedFootprintModel:
     levels = 55 if interfaces is None else interfaces - 1
     if isinstance(supplied, _SuppliedRow):
         return replace(supplied.with_card(card, configuration, rollback_armed=armed), levels=levels)
+    from .compact_memory import compact_model
+    from .device_admission import model_for_card
+    qualified = not (getattr(request, 'physics_overrides', ())
+        or getattr(request, 'physics_backend', 'wsm6_column') != 'wsm6_column'
+        or getattr(request, 'local_timestep', False)
+        or getattr(request, 'fullstep_local_timestep', False))
+    model = compact_model(card, configuration, levels, route='arwen',
+        suite=getattr(request, 'physics_suite', None), rollback_armed=armed,
+        cells=getattr(request, 'cells', None)) if qualified else None
+    if model is not None:
+        return model    # a qualified row measured at this column extent
+    # THE BREAKAGE THIS PREVENTS (rel/hex-0.5.0 fix batch, tests/test_high_top_vertical.py): the fallback
+    # used to be model_for_run(..., levels), whose model_for_card(..., levels) relabels the 55-level
+    # measured row with the requested extent but keeps its 55-level per-cell floor and measured=True, so
+    # an 80-level high-top run was priced at 55 levels and the derived scaling below never ran.  The
+    # fallback is the measured row at its own extent, as before the compact rows arrived.
     model = model_for_card(card, configuration, rollback_armed=armed)
     if levels == model.levels:
         return model
@@ -1384,7 +1446,7 @@ def seam_pin_problem(checkout: Path) -> str | None:
     "the seam is the whole physics of this model ... so running against
     moved bytes would be running physics nobody proved".  That sentence
     names missing evidence, not a breakage.  MEASURED on the 8-card RTX PRO 6000 host the same day: a
-    bare 15 km door preflight against woof 2.8.9 answered "pinned to woof
+    bare 15 km door preflight against gpuwm 2.8.9 answered "pinned to woof
     2.8.7, 7 of 16 pinned files have moved" and no forecast could start.
     Physics parity was retired on 2026-08-20; a byte match with a measured
     engine is evidence the receipt records
@@ -1807,7 +1869,7 @@ def resolve_request(
         dt_selection["source"] = "namelist"
     if dt_selection.get("source") == "mesh":
         # YSU (and New Tiedtke) at a long step leave single hot layers at the boundary-layer top on an
-        # engine without their donor bounds (woof 2.9.0 has neither); the default step takes the cap
+        # engine without their donor bounds (gpuwm 2.9.0 has neither); the default step takes the cap
         # woof hex global applies, and runs the mesh's own step on an engine that carries both
         # (woof.hex.global_door.default_step_cap says why and when it retires).
         from .global_door import default_step_cap
@@ -1921,12 +1983,12 @@ def resolve_request(
             "directory outside --out, or omit it for the sibling default."
         )
     if scratch.exists() and not preflight:
-        raise _refuse(
-            f"--scratch {scratch} exists.  The driver builds its kernel cache "
-            "in a fresh directory so a stale cache from another engine pin "
-            "cannot be loaded into this run.  Give an unused path, or remove "
-            "the existing one."
-        )
+        from .run_owner import reclaim_dead_directory
+        from .mpasphys.moving_resident_v842 import owns_prepared_scratch
+        try:
+            reclaim_dead_directory(scratch, reuse_current=owns_prepared_scratch(scratch))
+        except FileExistsError as error:
+            raise _refuse(str(error)) from error
 
     horiz_mixing = getattr(arguments, "horiz_mixing", "2d_smagorinsky")
     local_timestep = bool(getattr(arguments, "local_timestep", False))
@@ -2294,6 +2356,7 @@ def resolve_request(
         iau_route=iau_route,
         analysis_bundle=getattr(arguments, "analysis_receipt", None),
         balance_series=bool(getattr(arguments, "balance_series", False)),
+        tc_climate=getattr(arguments, "tc_climate", None),
         **mode_fields,
         fullstep_local_timestep=fullstep_enabled,
         **fullstep_values,
@@ -2407,7 +2470,7 @@ def microphysics_problems(backend_row, init) -> list[str]:
 
     The init check is a few reads; the table check may acquire TEMPO's pinned
     set, a download of about 930 MB into a fresh home.  THE BREAKAGE THIS
-    PREVENTS (verify-hex-r2 M3, measured in a fresh HOME): the door downloaded
+    PREVENTS (release review M3, measured in a fresh HOME): the door downloaded
     the TEMPO tables and only then refused an init without aerosol fields.
     A run its init cannot start acquires nothing.
     """
@@ -2428,7 +2491,7 @@ def microphysics_init_problem(backend_row, init) -> str | None:
     golden 0.4.0 R2 gate, GFS init).  A plain GFS init carries none
     (no aerosol climatology); only an init built for a TEMPO suite
     (`woof hex init --physics-suite ...`, or `woof preset prepare`, with
-    woof 2.9.0's suite-aware rw_mpas_init) writes them from the WIF
+    gpuwm 2.9.0's suite-aware rw_mpas_init) writes them from the WIF
     climatology.  The refusal is at the door, before the card, with the same
     reason.
     """
@@ -2482,7 +2545,7 @@ def microphysics_table_problem(backend_row) -> str | None:
             from woof.tempo_assets import ensure_tempo_tables
         except ImportError as error:
             return (f"--physics-backend {backend_row.name} needs a woof engine that "
-                    f"carries the TEMPO port (woof 2.8.8 or later): {error}")
+                    f"carries the TEMPO port (gpuwm 2.8.8 or later): {error}")
         # Verify, or acquire and verify, the pinned set before the card: the
         # engine's own TEMPO entry acquires the same way.  THE BREAKAGE: this
         # check only validated, and no `woof fetch-tables` option stages the
@@ -2642,6 +2705,9 @@ def _cycling_argv(arguments: Any) -> tuple[str, ...]:
             argv += [flag, str(Path(value).expanduser().absolute())]
     if getattr(arguments, "jedi_background", False):
         argv.append("--jedi-background")
+    soil_levels = getattr(arguments, "jedi_soil_levels", None)
+    if soil_levels is not None:
+        argv += ["--jedi-soil-levels", str(soil_levels)]
     return tuple(argv)
 
 
@@ -2664,25 +2730,32 @@ def _driver_floor_model(request: ForecastRequest) -> Any:
 
 
 def stochastic_basis_bytes(cells: int, options: str | None) -> int:
-    from .stochastic import StochasticConfig
-    from .device_admission import harmonic_basis_bytes
-    config = StochasticConfig.parse(options)
-    return harmonic_basis_bytes(cells, config.degree) if config.enabled else 0
+    """Stored-basis bytes: zero, the harmonics are synthesised on the fly."""
+    return 0
 
 
 def stochastic_array_ledger(cells: int, options: str | None, *, levels: int = 55) -> dict[str, int]:
-    from .stochastic import StochasticConfig
+    from .stochastic import StochasticConfig, config_max_degree
     from .device_admission import stochastic_array_ledger as ledger
     config = StochasticConfig.parse(options)
     if not config.enabled:
         return {}
-    return ledger(cells, levels, config.degree,
+    return ledger(cells, levels, config_max_degree(config),
                   extra_scales=len(config.sppt_scales) if config.sppt else 0,
                   skeb=config.skeb)
 
 
 def stochastic_array_bytes(cells: int, options: str | None, *, levels: int = 55) -> int:
     return sum(stochastic_array_ledger(cells, options, levels=levels).values())
+
+
+def tc_workspace_bytes(request: ForecastRequest, *, levels: int = 55) -> int:
+    if request.tc_climate is None:
+        return 0
+    from .tc_climate import Recipe, workspace_allowance
+    recipe = Recipe.load(request.tc_climate)
+    samples = int(request.hours / recipe.cadence_hours) + 1
+    return workspace_allowance(request.cells, levels, samples, recipe)
 
 
 def build_driver_argv(request: ForecastRequest) -> list[str]:
@@ -2713,7 +2786,8 @@ def build_driver_argv(request: ForecastRequest) -> list[str]:
         str(required_free_bytes(request.cells, floor_model,
                                 request.headroom_bytes) +
             stochastic_array_bytes(request.cells, request.stochastic,
-                                   levels=floor_model.levels if floor_model is not None else 55)),
+                                   levels=floor_model.levels if floor_model is not None else 55) +
+            tc_workspace_bytes(request, levels=floor_model.levels if floor_model is not None else 55)),
     ]
     if request.stochastic is not None:
         argv += ["--stochastic", request.stochastic]
@@ -2775,6 +2849,10 @@ def build_driver_argv(request: ForecastRequest) -> list[str]:
                  "--iau-route", str(request.iau_route)]
     if request.balance_series:
         argv.append("--balance-series")
+    if request.tc_climate is not None:
+        from .tc_climate import Recipe
+        Recipe.load(request.tc_climate)
+        argv += ["--tc-climate", str(request.tc_climate)]
     from . import correct_mode
 
     # Exact adds nothing: the driver sees the argument vector it always did.
@@ -2872,7 +2950,7 @@ def products_command_for_this_install(request: ForecastRequest,
     """The default product stage's command, without point pictures when this
     install has no ``rw_hex_points``.
 
-    THE BREAKAGE THIS PREVENTS: woof 2.9.0 builds ``rw_hex_points`` as a
+    THE BREAKAGE THIS PREVENTS: gpuwm 2.9.0 builds ``rw_hex_points`` as a
     standalone program, not a wheel tool, and the products door refuses
     before any view when it is absent (so a missing point tool is not found
     after every map).  As the forecast's automatic last stage that refusal
@@ -3002,7 +3080,10 @@ def native_default_products(arguments: argparse.Namespace) -> None:
     if not history:
         return
     plan = json.loads((out / "native-physics-request.json").read_text())
-    start = plan["start"]
+    # A resumed segment (--restart-from) starts at its checkpoint, but its maps belong to the run: titles and
+    # leads count from the run's init.  THE BREAKAGE THIS PREVENTS (IFS-9KM-DEFAULT-2026-11-04): after a restart
+    # from f015 an 18Z run's maps read "Init 2026-11-03 09Z F009".
+    start = plan.get("initial_time") or plan["start"]
     from .fullstep_lts_admission import moving_launch_switches
     if moving_launch_switches() and getattr(arguments, "start_time", None):
         # A moving segment starts at its carrier's time, but its maps belong to the run: the ArWen route labels
@@ -3145,6 +3226,7 @@ def build_receipt(
                      "route": request.iau_route,
                      "window_seconds": request.iau_window_seconds}),
             "balance_series": request.balance_series,
+            **({"tc_climate": str(request.tc_climate)} if request.tc_climate is not None else {}),
             # physics.mode, recorded only when a run asked for correct mode,
             # so an exact receipt is the one written before the key existed.
             **(
@@ -3336,6 +3418,8 @@ def _run_preflight(request: ForecastRequest, registry: Mapping[str, MeshRow],
             headroom_bytes=request.headroom_bytes, registry=registry,
             model=request.model,
             stochastic=request.stochastic,
+            **({"diagnostic_bytes": tc_workspace_bytes(request, levels=request.model.levels)}
+               if request.tc_climate is not None else {}),
         )
         _print_admission(request, admission)
         if not admission.admitted:
@@ -3502,7 +3586,8 @@ def mpas_suite_lts_refusal(arguments: argparse.Namespace, environ=None) -> str |
 
 def run_forecast(arguments: argparse.Namespace) -> int:
     from woof.output_formats import command_scope
-    with command_scope(arguments, engine="woof hex") as scope:
+    from .wave_options import environment as wave_environment
+    with wave_environment(arguments), command_scope(arguments, engine="woof hex") as scope:
         result = _run_forecast_with_outputs(arguments)
         return scope.finish(result) if scope else result
 
@@ -3516,6 +3601,13 @@ def _run_forecast_with_outputs(arguments: argparse.Namespace) -> int:
     if defaulted is not None:
         print(f"woof hex: physics {defaulted['suite']} on the MPAS route (the hex default; "
               f"--physics-suite {physics_default.arwen_suite()} runs WOOF physics)", file=sys.stderr, flush=True)
+    # Resolve the ocean selector once at the door. No new step dispatcher.
+    from .ocean_pwp import forecast_environment
+    with forecast_environment(arguments):
+        return _run_forecast_with_ocean(arguments)
+
+
+def _run_forecast_with_ocean(arguments: argparse.Namespace) -> int:
     if getattr(arguments, "members", None) is not None:
         from .multi_member import run_members
         return run_members(arguments, sys.modules[__name__])
@@ -3526,6 +3618,11 @@ def _run_forecast_with_outputs(arguments: argparse.Namespace) -> int:
         if not Path(triggers).is_file():
             raise ForecastDoorRefusal(f"--nest-triggers {triggers} is not a file")
         os.environ["WOOF_HEX_NEST_TRIGGERS"] = str(Path(triggers).resolve())
+    uh_layers = getattr(arguments, "uh_layers", None)
+    if uh_layers is not None:
+        # Running-max 0-1/0-2/0-3/2-5 km updraft helicity in history (woof.hex.uh_layers), both routes.
+        from .uh_layers import ENV as _UH_ENV
+        os.environ[_UH_ENV] = "1" if uh_layers == "on" else "0"
     time_ledger.configure(getattr(arguments, "out", None))
     time_ledger.emit("prep.door", "begin")
     time_ledger.emit("forecast.construct", "begin")
@@ -3930,11 +4027,169 @@ def bind_native_dynamics(arguments: argparse.Namespace, native_text: str) -> str
                 raise ValueError(f"{flag} {given} and the namelist {option} {named} name two values for one run")
             continue
         options[option] = value
+    if options:
+        print("woof hex: MPAS suite dycore schedule " + ", ".join(f"{k}={v}" for k, v in options.items())
+              + " (explicit flags)", file=sys.stderr, flush=True)
+        native_text = set_namelist_options(native_text, {"nhyd_model": options})
+    return bind_native_dynamics_overrides(arguments, native_text)
+
+
+#: The namelist groups ``--dynamics`` reaches on the MPAS suite route: the dycore's own.  The other groups a
+#: dycore binding names (physics, limited_area, iau, development) each have a door option of their own there.
+NATIVE_DYNAMICS_GROUPS = ("nhyd_model", "damping")
+
+
+def native_dynamics_overrides(arguments: argparse.Namespace) -> dict[str, tuple[str, Any]]:
+    """``--dynamics KEY=VALUE`` on the MPAS suite route: ``{option: (namelist group, value)}``.
+
+    The same parse and the same refusals as the WOOF route (run_cuda_v841_forecast.build_forecast_config): an
+    option with a flag of its own is set there; an option the route's dycore configuration
+    (mpasphys.config_v842.NativeMpasDycoreConfigV842) does not carry is refused by name, because its value would
+    be recorded and not run.  A whole-number value for a real option is held as a real, as the Registry types it.
+    """
+    items = getattr(arguments, "dynamics", None)
+    if not items:
+        return {}
+    import importlib
+    from dataclasses import MISSING, fields
+    from .config import _V841_DYCORE_BINDINGS
+    from .mpasphys.config_v842 import NativeMpasDycoreConfigV842
+
+    driver = importlib.import_module("woof.hex.drivers.run_cuda_v841_forecast")
+    overrides = driver.parse_dynamics_overrides(items)
+    flagged = sorted(set(overrides) & driver._FLAG_CARRIED_DYNAMICS)
+    if flagged:
+        raise ValueError(
+            f"--dynamics sets {flagged}, and each has a flag of its own "
+            f"({[driver._FLAG_CARRIED_DYNAMICS_FLAGS[name] for name in flagged]}); "
+            "set it there, so one option cannot be given two values")
+    carried = {item.name: item for item in fields(NativeMpasDycoreConfigV842) if item.init}
+    resolved: dict[str, tuple[str, Any]] = {}
+    uncarried = []
+    for key, value in overrides.items():
+        binding = _V841_DYCORE_BINDINGS.get(key.casefold())
+        if binding is None or binding.attribute not in carried or binding.group not in NATIVE_DYNAMICS_GROUPS:
+            uncarried.append(key)
+            continue
+        default = carried[binding.attribute].default
+        if (default is not MISSING and isinstance(default, float) and isinstance(value, int)
+                and not isinstance(value, bool)):
+            value = float(value)
+        resolved[binding.attribute] = (binding.group, value)
+    if uncarried:
+        raise ValueError(
+            f"--dynamics sets {sorted(uncarried)}, and the MPAS suite route's dycore carries no such option "
+            f"(its &{'/&'.join(NATIVE_DYNAMICS_GROUPS)} fields, woof.hex.mpasphys.config_v842), so the value "
+            "would be recorded and not run")
+    return resolved
+
+
+def bind_native_dynamics_overrides(arguments: argparse.Namespace, native_text: str) -> str:
+    """``--dynamics KEY=VALUE`` on the MPAS suite route: each option becomes its namelist option.
+
+    THE BREAKAGE THIS PREVENTS (2026-11-04, a run on the hrrrv5 TEMPO host): this route returns before
+    resolve_request, the only reader of ``--dynamics``, so ``--dynamics config_epssm_minimum=0.5 --dynamics
+    config_epssm_maximum=0.5`` was accepted, recorded on the command line and never run: the history was
+    byte-identical to the default run (1,429,037,404 words, 0 differ), and config_coef_3rd_order,
+    config_visc4_2dsmag and every other dycore lever could not reach an MPAS-physics run.  The option now goes
+    into the run's namelist, where the route's dycore configuration is read (runtime_v842, from the decoded
+    Registry configs), and run_forecast checks after the pool decode that each one holds the value asked for.
+    A run with no ``--dynamics`` is untouched.  A namelist naming a different value is refused as two values
+    for one run, as bind_native_step refuses two steps.
+    """
+    resolved = native_dynamics_overrides(arguments)
+    if not resolved:
+        return native_text
+    from .mpasphys.forecast_v842 import namelist_option, set_namelist_options
+
+    options: dict[str, dict[str, Any]] = {}
+    for key, (group, value) in resolved.items():
+        named = namelist_option(native_text, group, key)
+        if named is not None:
+            if _namelist_value_matches(named, value):
+                continue
+            raise ValueError(f"--dynamics {key}={value!r} and the namelist {key} {named!r} name two values "
+                             "for one run")
+        options.setdefault(group, {})[key] = value
+    arguments._native_dynamics_overrides = {key: value for key, (_group, value) in resolved.items()}
     if not options:
         return native_text
-    print("woof hex: MPAS suite dycore schedule " + ", ".join(f"{k}={v}" for k, v in options.items())
-          + " (explicit flags)", file=sys.stderr, flush=True)
-    return set_namelist_options(native_text, {"nhyd_model": options})
+    print("woof hex: MPAS suite dynamics " + ", ".join(
+        f"{key}={value}" for values in options.values() for key, value in values.items())
+          + " (--dynamics)", file=sys.stderr, flush=True)
+    return set_namelist_options(native_text, options)
+
+
+def _namelist_value_matches(named: Any, value: Any) -> bool:
+    """A parsed namelist value against a --dynamics value (Fortran logicals and numbers as text included)."""
+    if isinstance(value, bool):
+        if isinstance(named, bool):
+            return named is value
+        return str(named).strip().strip(".").lower() in (("true", "t") if value else ("false", "f"))
+    if isinstance(value, (int, float)):
+        try:
+            return float(str(named).strip().lower().replace("d", "e")) == float(value)
+        except ValueError:
+            return False
+    return str(named).strip().strip("'").strip('"') == str(value)
+
+
+def admit_native_device(arguments, config) -> AdmissionVerdict:
+    """Price the MPAS route before prewarming or constructing its device pools.
+
+    This route returns before resolve_request, so it must not rely on the
+    WOOF route's later gate. Read the actual input shape and free card now.
+    """
+    try:
+        import cupy as cp
+        hip = bool(cp.cuda.runtime.is_hip)
+    except ModuleNotFoundError as error:
+        # No CuPy, no HIP runtime: the CUDA admission below still answers (and refuses by name).  THE
+        # BREAKAGE THIS PREVENTS (hex 0.4.12 final gate, public CI battery): the AMD fold's HIP check made
+        # every admission refusal on a CPU-only host a bare "No module named 'cupy'".
+        if error.name != 'cupy':
+            raise
+        hip = False
+    if getattr(arguments, 'samehost_devices', None) or hip:
+        # Full-domain one-context pricing refused valid multi-card layouts
+        # before the halo-inclusive rank gate could run. Actual AMD has no
+        # qualified CUDA-fit analogue: record its explicit allocation trial.
+        from .mpasphys.memory_admission import admit
+        return admit(arguments)
+    from netCDF4 import Dataset
+    from dataclasses import replace
+    from .device_admission import model_for_run, route_required_free_bytes
+    with Dataset(arguments.init) as dataset:
+        cells = len(dataset.dimensions['nCells'])
+        levels = len(dataset.dimensions['nVertLevels'])
+    card = read_card_profile()
+    configuration = 'limited-area' if getattr(arguments, 'lbc_dir', None) else 'global'
+    model = model_for_run(card, configuration, levels, route='mpas', suite=config.suite,
+        rollback_armed=bool(getattr(arguments, 'stop_on_refusal', False)), cells=cells,
+        qualified_defaults=not any(getattr(arguments, key, None) for key in
+            ('physics', 'physics_profile', 'physics_namelist', 'physics_default_backend',
+             'local_timestep', 'fullstep_local_timestep')))
+    raw_headroom = getattr(arguments, 'headroom_mib', None)
+    import math
+    if raw_headroom is not None and (not math.isfinite(raw_headroom) or raw_headroom < 0):
+        raise ValueError('--headroom-mib must be finite and nonnegative')
+    margin = None if raw_headroom is None else round(raw_headroom*MIB)
+    free, total = measure_device_memory()
+    verdict = admission_verdict(mesh=str(arguments.mesh), cells=cells, free_bytes=free,
+        total_bytes=total, headroom_bytes=margin, registry={}, model=model,
+        stochastic=getattr(arguments, 'stochastic', None))
+    required = route_required_free_bytes(cells, model, margin, route='mpas') + verdict.stochastic_array_bytes
+    if required != verdict.required_bytes:
+        verdict = replace(verdict, required_bytes=required, admitted=free >= required,
+            predicted_bytes=required-verdict.headroom_bytes,
+            shortfall_bytes=max(0, required-free))
+    out = Path(arguments.out)
+    out.mkdir(parents=True, exist_ok=True)
+    record = verdict.as_dict()
+    record.update(route='mpas', suite=config.suite, before_kernel_prewarm=True)
+    (out/'device-memory-admission.json').write_text(json.dumps(record, indent=2)+'\n')
+    require_admitted(verdict)
+    return verdict
 
 
 def _run_forecast(arguments: argparse.Namespace) -> int:
@@ -3958,6 +4213,14 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
         # --physics-mode exact runs native MPAS v8.4.2 bit for bit; every proof names it.
         native_config, native_text = native_route(arguments, default_mode=PHYSICS_MODE_DEFAULT)
         require_forecast_inputs(arguments, native=native_config is not None)
+        if getattr(arguments, "hosts", None) is not None or os.environ.get("WOOF_HEX_HOSTS"):
+            if native_config is None:
+                raise ValueError("--hosts runs the MPAS-physics route (--physics-backend mpasphys, the hex default "
+                                 "physics); the WOOF-physics route's ranks share one host's memory "
+                                 "(drivers/samehost_forecast_v841), so they cannot span hosts")
+            # Every other host starts now, so its preparation runs beside this host's (woof.hex.multihost).
+            from . import multihost
+            multihost.begin(arguments)
         if native_config is not None:
             from .mpasphys.resident_v842 import ported_route_refusal
             from .mpasphys.forecast_v842 import named_library_route
@@ -3981,6 +4244,8 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
                     "point source and no seam to release one into; the table would be accepted and never read. "
                     "A point source runs on a --physics-backend row that declares one (none of the in-tree rows "
                     "does), without --physics-suite")
+            if getattr(arguments, "tc_climate", None) is not None:
+                raise ValueError("--tc-climate currently requires the WOOF forecast executor")
             # Retired (named gap W1-G2): the suite route applies IAU now (mpasphys.runtime_v842.SuiteIau, MPAS's
             # atm_add_tend_anal_incr once per step).  The door's IAU flags become MPAS's own &iau group and iau
             # stream input, so a flag run and a namelist run execute the same code.
@@ -3992,8 +4257,12 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
             # fork's NOAA GSL physics are not gated (owner ruling 2026-10-14: treated as US Government code).
             from . import licence_gate
             native_config = licence_gate.admit(native_config, arguments)
+            admit_native_device(arguments, native_config)
             announce_physics_mode(native_config, arguments)
             announce_cpu_slots(native_config)
+            from .mpasphys.memory_admission import admit as admit_native_memory
+            admission = admit_native_memory(arguments)
+            print(json.dumps({"native_memory_admission": admission}), file=sys.stderr, flush=True)
             prewarm_native_kernels(native_config)
             native_text = bind_native_step(arguments, native_text)
             native_text = bind_native_dynamics(arguments, native_text)
@@ -4051,6 +4320,8 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
             samehost_options = samehost.automatic_options(arguments, request)
         except (ValueError, OSError, RuntimeError) as error:
             raise _refuse(str(error)) from error
+    if samehost_options is not None and request.tc_climate is not None:
+        raise _refuse("--tc-climate is not wired to the partitioned same-host executor")
     if samehost_options is not None and len(set(samehost_options["devices"])) > 1:
         # Ranks on distinct cards share this process: the engine's land kernels are held per card before
         # any is compiled (woof.hex.engine_per_card names the breakage).
@@ -4100,6 +4371,8 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
             mesh=request.mesh, cells=request.cells, headroom_bytes=request.headroom_bytes,
             registry=registry, model=request.model,
             stochastic=request.stochastic,
+            **({"diagnostic_bytes": tc_workspace_bytes(request, levels=request.model.levels)}
+               if request.tc_climate is not None else {}),
         )
     else:
         admission = samehost.admit_request(request, registry, samehost_options, sys.modules[__name__])
@@ -4120,6 +4393,8 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
                 mesh=request.mesh, cells=request.cells, headroom_bytes=request.headroom_bytes,
                 registry=registry, model=request.model,
                 stochastic=request.stochastic,
+                **({"diagnostic_bytes": tc_workspace_bytes(request, levels=request.model.levels)}
+                   if request.tc_climate is not None else {}),
             )
             return verdict
 
@@ -4136,6 +4411,10 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
             driver_receipt=None, history=[], driver_argv=[],
             seconds=time.monotonic() - started, status="refused_by_admission",
         )
+        # The driver creates its output directory only after admission. A
+        # fresh refused run otherwise loses this receipt because its parent
+        # does not exist. Create it here, where no driver will be launched.
+        request.receipt.parent.mkdir(parents=True, exist_ok=True)
         written = _write_receipt(request, receipt)
         if written is not None:
             print(f"RECEIPT {written}", flush=True)
@@ -4301,6 +4580,8 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
 def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
     from woof.output_formats import add_arguments
     add_arguments(parser)
+    from .wave_options import add_arguments as add_wave_arguments
+    add_wave_arguments(parser)
     parser.add_argument("--fullstep-local-timestep", action=argparse.BooleanOptionalAction, default=False,
                         help="Full-step local time stepping. Mode shadow (the default mode) only measures: "
                              "fixed numerics remain in use. Mode active steps every rate class of a "
@@ -4326,8 +4607,15 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
                         help="N-rank K=3 partition layouts with native regional padding")
     parser.add_argument("--samehost-part", type=Path, default=None,
                         help="partition file whose hash the layouts carry")
-    parser.add_argument("--samehost-transport", choices=("auto", "peer", "staged"), default="auto",
-                        help="same-host halo copy route")
+    parser.add_argument("--samehost-transport", choices=("auto", "peer", "staged", "nccl"), default="auto",
+                        help="same-host halo copy route (nccl: NCCL point-to-point between rank processes, card to "
+                             "card where the box allows it; the route --hosts always takes)")
+    parser.add_argument("--hosts", default=None, metavar="HOST:CARDS[,HOST:CARDS...]",
+                        help="run the MPAS-physics route's ranks on several hosts, one process per listed card: "
+                             "hostA:0-7,hostB:0-7 (cards a-b or joined with +). The command runs on the first host "
+                             "(rank 0, which writes every output); every other host is started with ssh and must "
+                             "read the same inputs at the same paths. local<N> names a virtual host on this "
+                             "machine (its own NCCL host id: halos between virtual hosts take NCCL's network path)")
     parser.add_argument("--samehost-ranks", choices=("auto", "processes", "threads"), default=None,
                         help="run each card's rank as its own process (auto: the default on Linux, on both physics "
                              "routes, so the ranks' host work runs on one core each on any Python) or as threads of "
@@ -4545,11 +4833,36 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--out", type=Path, default=None, metavar="DIR",
         help="fresh directory for history frames and the run receipt")
+    parser.add_argument("--wave-input", type=Path, default=None,
+                        help="Prepared wave pack with explicit analysis or spin-up provenance")
+    parser.add_argument("--wave-options", default=None,
+                        help="JSON wave coupling knobs and source package")
+    parser.add_argument("--ocean-mode", choices=("prescribed", "prognostic", "pwp"), default=None,
+                        help="surface ocean: unchanged default, bulk prognostic, or vertically resolved PWP")
+    parser.add_argument("--pwp-options", default=None, metavar="JSON", help="PWP column parameters")
+    parser.add_argument("--ice-owner", choices=("published", "hex"), default=None,
+                        help="hex uses one ice owner, also for fixed-SST controls; PWP always uses hex")
+    parser.add_argument("--pwp-profile", type=Path, default=None,
+                        help="NPZ columns[nCells,4,nLevels] in native cell order: T(K), S(PSU), u/v(m/s)")
+    parser.add_argument("--pwp-analysis", type=Path, default=None,
+                        help="dated HYCOM/RTOFS/CF NetCDF T/S/current analysis; Rust decode and CUDA layer-mean remapping")
+    parser.add_argument("--pwp-analysis-source", choices=("hycom", "rtofs", "cf"), default="hycom")
     parser.add_argument("--nest-triggers", type=Path, default=None, metavar="TOML",
                         help="arm a [hex_nests] table: the loop looks on the card every cadence_s and "
                              "writes each firing to <out>/nest-triggers.jsonl for `add-nest --watch`")
+    parser.add_argument("--uh-layers", choices=("on", "off"), default=None,
+                        help="running-max updraft helicity (m2 s-2, reset each history frame). Default: the "
+                             "2-5 km maximum (updraft_helicity_max) on both physics routes (MPAS's own on the MPAS "
+                             "route). on: also 0-1, 0-2 and 0-3 km AGL (updraft_helicity_max_01/_02/_03; or "
+                             "WOOF_HEX_UH_LAYERS=1). off: none of these on the WOOF route")
     parser.add_argument("--stochastic", default=None, metavar="JSON",
                         help="per-member SPPT/SKEB configuration, default off; see stochastic.py")
+    parser.add_argument("--sppt", action=argparse.BooleanOptionalAction, default=None,
+                        help="stochastically perturbed parameterization tendencies (Buizza et al. 1999; Palmer et al. 2009); "
+                             "overrides the sppt key of --stochastic")
+    parser.add_argument("--skeb", action=argparse.BooleanOptionalAction, default=None,
+                        help="stochastic kinetic-energy backscatter (Shutts 2005; Berner et al. 2009); "
+                             "overrides the skeb key of --stochastic")
     parser.add_argument("--members", type=Path, default=None, metavar="JSON",
                         help="opt-in roster of 1 to 4 resident point-cull members on one card")
     parser.add_argument("--member-buffers", choices=("auto", "nvme"), default="auto",
@@ -4678,6 +4991,10 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
         "--jedi-background", action="store_true",
         help="at every history frame also write the JEDI background file")
     parser.add_argument(
+        "--jedi-soil-levels", type=int, choices=(4, 9), default=None,
+        help="soil layers in the JEDI background; 4 preserves native Noah/Noah-MP, "
+             "9 selects RUC or the driver-labelled interim mapping")
+    parser.add_argument(
         "--stop-on-refusal", action="store_true",
         help="when the model refuses to publish a step, stop and write the "
              "receipt for the frames already committed instead of aborting "
@@ -4697,6 +5014,9 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
     from .analysis_door import add_analysis_arguments
 
     add_analysis_arguments(parser)
+    parser.add_argument("--tc-climate", type=Path, default=None, metavar="RECIPE",
+                        help="opt-in GPU TC tracker and daily GPI; requires global WOOF history "
+                             "every six hours including hour zero; see demos/tc-climate.md")
     parser.add_argument(
         "--preflight", action="store_true",
         help="resolve, bind and admit without touching the integration")

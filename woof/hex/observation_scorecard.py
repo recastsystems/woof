@@ -48,6 +48,7 @@ SOURCE_CONFIG = "automatic-source-config.json"
 # (every case since 2021: about 1.4 GB streamed for a 2025 globe, nothing kept but the window's rows); then
 # the per-station IGRA2 files (this year's, or the period of record for the stations the run needs).
 SONDE_SOURCES = ("gdas_prepbufr", "igra2_snapshot", "igra2")
+REGIONAL_SONDE_SOURCES = ("gdas_prepbufr", "igra2", "igra2_snapshot")
 IGRA2_ROOT = "https://www.ncei.noaa.gov/data/integrated-global-radiosonde-archive"
 # A period-of-record read downloads each station's whole history (an active station is 10 to 100 MB zipped).
 # Breakage it prevents: the unfiltered read pulled 2,931 files (28 GB zipped, 51 GB on disk) for one 15 h run,
@@ -159,7 +160,7 @@ def binary(name):
                 "or rebuild with GPUWM_HEX_ENGINE_SOURCE=<woof checkout> and cargo on PATH, or set "
                 "WOOF_HEX_OBS_SCORECARD to a built scorer (tools/build_obs_scorecard.py in the source tree)")
         return str(found.resolve())
-    # rw_igra2 ships in this wheel (woof/hex/libexec, data/engine-bridges.json): the published woof 2.9.0
+    # rw_igra2 ships in this wheel (woof/hex/libexec, data/engine-bridges.json): the published gpuwm 2.9.0
     # wheel does not install it, so without the bundled copy every past case scored no radiosondes
     # (daily rehearsal HX7, 2026-10-15).  An explicit WOOF_RW_IGRA2 still wins, as on the engines ladder.
     if not os.environ.get("GPUWM_" + name.upper()):
@@ -171,9 +172,9 @@ def binary(name):
     from woof.rustwx import crate_dir
     env_var, filename = "GPUWM_" + name.upper(), bridges.executable_name(name)
     found = bridges.find_artifact(env_var, filename)
-    # woof 2.9.3 serves rw_asos (and rw_mrms, rw_goes, ...) on demand, out of the wheel; rw_prepbufr
+    # gpuwm 2.9.3 serves rw_asos (and rw_mrms, rw_goes, ...) on demand, out of the wheel; rw_prepbufr
     # has been on demand since 2.9.1.  Without this fetch every ASOS row scored NOT_MEASURED ("rw_asos is
-    # missing from the engine's Rust bridge installation", hex 0.4.1 global run on woof 2.9.3, 2026-10-20),
+    # missing from the engine's Rust bridge installation", hex 0.4.1 global run on gpuwm 2.9.3, 2026-10-20),
     # while MRMS, which goes through woof.obs.frontdoor, staged its bridge.  Same step as frontdoor.require().
     fetch = getattr(bridges, "fetch_on_demand", None)
     if found is None and fetch is not None and fetch(name):
@@ -246,8 +247,8 @@ def discover(run, config=None):
     config.setdefault("prepbufr_url_template", "https://nomads.ncep.noaa.gov/pub/data/nccf/com/obsproc/prod/gdas.{YYYYMMDD}/gdas.t{HH}z.prepbufr.nr")
     # Radiosonde archives, tried in order. NOMADS keeps GDAS prepBUFR about two days, so a past case
     # falls through to IGRA2: the year-to-date snapshot that covers it, else the per-station files.
-    config.setdefault("sonde_sources", list(SONDE_SOURCES))
-    config.setdefault("igra2_fetch_timeout_seconds", 1500)
+    config.setdefault("sonde_sources", list(REGIONAL_SONDE_SOURCES if config.get("region") else SONDE_SOURCES))
+    config.setdefault("igra2_fetch_timeout_seconds", 180)
     config.setdefault("igra2_archive_url", IGRA2_ROOT + "/archive/")
     config.setdefault("igra2_station_list_url", IGRA2_ROOT + "/doc/igra2-station-list.txt")
     config.setdefault("igra2_por_index_url", IGRA2_ROOT + "/access/data-por/")
@@ -345,10 +346,10 @@ def acquire_sondes_igra2(valid, folder, commands, config):
     collection = "y2d" if valid.year == datetime.now(timezone.utc).year else "por"
     shared = Path(getattr(commands, "scratch", None) or folder)
     argv = [binary("rw_igra2"), "fetch", "--collection", collection]
-    if collection == "por":
+    region = config.get("region") or {}
+    if collection == "por" or region:
         # Only the stations whose record spans this year (and that lie in the region the scorer keeps), and
         # only within the byte budget: a whole-archive read is the breakage named at IGRA2_POR_MAX_BYTES.
-        region = config.get("region") or {}
         box = [str(region[k]) for k in ("west", "south", "east", "north")] if region else []
         stations = _once(commands, ("igra2-stations", valid.year, tuple(box)), lambda: commands.run(
             [binary("hex_obs_scorecard"), "--igra2-station-ids", config.get("igra2_station_list_url", IGRA2_ROOT + "/doc/igra2-station-list.txt"),
@@ -357,13 +358,13 @@ def acquire_sondes_igra2(valid, folder, commands, config):
         if not stations.get("stations"):
             raise LookupError(f"the IGRA2 station list has no station reporting in {valid.year}"
                               + (" inside the verification region" if box else ""))
-        if stations["bytes"] > budget:
+        if collection == "por" and stations["bytes"] > budget:
             raise LookupError(f"IGRA2 keeps {valid.year} soundings only in per-station period-of-record files: the "
                               f"{len(stations['stations'])} stations this run needs are {stations['bytes'] / 2**30:.1f} GiB "
                               f"to download, over igra2_por_max_bytes ({budget / 2**30:.1f} GiB); raise it in the "
                               "observation config to read them")
         argv += ["--stations", ",".join(stations["stations"])]
-        archive = shared / f"igra2-por-{valid.year}-{hashlib.sha256(','.join(stations['stations']).encode()).hexdigest()[:12]}"
+        archive = shared / f"igra2-{collection}-{valid.year}-{hashlib.sha256(','.join(stations['stations']).encode()).hexdigest()[:12]}"
     else:
         archive = shared / f"igra2-{collection}"
     record_path = archive / "fetch.json"
@@ -372,7 +373,7 @@ def acquire_sondes_igra2(valid, folder, commands, config):
         if record_path.is_file():
             return json.loads(record_path.read_text(encoding="utf-8"))
         return commands.run([*argv, "--out", str(archive)],
-                            timeout=float(config.get("igra2_fetch_timeout_seconds", 1500)))
+                            timeout=float(config.get("igra2_fetch_timeout_seconds", 180)))
     # Frames run in parallel: one archive walk, never one per 00Z/12Z frame at once.
     record = _once(commands, ("igra2", str(archive)), walk)
     files = [row["path"] for row in record.get("files", []) if row.get("path")]
@@ -411,7 +412,7 @@ def acquire_sondes_igra2_snapshot(valid, folder, commands, config):
         if record_path.is_file():
             return json.loads(record_path.read_text(encoding="utf-8"))
         record = commands.run([binary("hex_obs_scorecard"), "--fetch-igra2-snapshot", url, start, end, str(table)],
-                              timeout=float(config.get("igra2_fetch_timeout_seconds", 1500)))
+                              timeout=float(config.get("igra2_fetch_timeout_seconds", 180)))
         atomic_json(record_path, record)
         return record
     record = _once(commands, ("igra2-snapshot", url, start, end), stream)
@@ -884,7 +885,7 @@ def future_reason(valid_time, ready_at, run):
 SCORING_ENV = "WOOF_HEX_OBSERVATION_SCORING"
 
 
-def forecast_hook(output, *, init, grid, start):
+def forecast_hook(output, *, init, grid, start, config_path=None):
     """Schedule CPU scoring without retaining a forecast's GPU lease."""
     if str(os.environ.get(SCORING_ENV, "")).strip().lower() == "off":
         # `--skip score` on a door: the run asked for no scoring, so no watcher is started and nothing is
@@ -900,7 +901,7 @@ def forecast_hook(output, *, init, grid, start):
         return {"status": "SKIPPED", "path": str(target / "scorecard.json")}
     try:
         output = Path(output)
-        provided = Path(os.environ.get("WOOF_HEX_OBSERVATION_CONFIG") or output / "observation-scorecard.config.json")
+        provided = Path(config_path or os.environ.get("WOOF_HEX_OBSERVATION_CONFIG") or output / "observation-scorecard.config.json")
         source = provided.read_bytes() if provided.is_file() else None
         config = json.loads(source.decode("utf-8")) if source is not None else {}
         config.update(init=str(init), grid=str(grid), start=str(start))
@@ -1123,17 +1124,46 @@ def completed_scorecard(run, config_path):
         return None
 
 
+def door_scorecard(run, config_path):
+    """Every composed door hands scoring to a CPU worker, including older forecasts.
+
+    Some forecast producers do not run forecast_hook. Falling back to the
+    synchronous score command kept the whole door waiting for archive I/O.
+    """
+    joined = join_automatic_scorer(run, config_path) or completed_scorecard(run, config_path)
+    if joined is not None:
+        return joined
+    if str(os.environ.get(SCORING_ENV, "")).strip().lower() == "off":
+        # Nothing to discover for a run that asked for no scoring: the record says SKIPPED and why.
+        scheduled = forecast_hook(run, init=None, grid=None, start=None, config_path=config_path)
+    else:
+        config, _ = discover(run, json.loads(Path(config_path).read_text(encoding="utf-8")))
+        scheduled = forecast_hook(run, init=config["init"], grid=config["grid"], start=config["start"],
+                                  config_path=config_path)
+    if scheduled["status"] == "SKIPPED":
+        # Scoring turned off (WOOF_HEX_OBSERVATION_SCORING=off, a door's --skip score) is an outcome, not a
+        # failure. THE BREAKAGE THIS PREVENTS (both-routes matrix, woof hex 0.4.14 candidate, 2026-11-06): a
+        # country door run with the variable set and its score stage still listed raised here after a finished
+        # forecast, and the door exited 1.
+        return {"joined": "skipped", **scheduled,
+                "note": f"observation scoring SKIPPED ({SCORING_ENV}=off): {scheduled['path']}"}
+    if scheduled["status"] in {"QUEUED", "NOT_YET_OBSERVABLE", "DEFERRED"}:
+        return {"joined": "automatic", **scheduled,
+                "note": f"CPU observation scoring {scheduled['status']}: {scheduled['path']}"}
+    raise RuntimeError(f"could not schedule CPU observation scoring: {scheduled}")
+
+
 def join_automatic_scorer(run, config_path, *, poll_seconds=10.0):
     """Join the forecast's automatic scorer when it was queued with this same config file.
 
-    Returns None when the caller must score itself: no automatic scorer, a different config (an explicit
-    rescore), or its waiter died. A finished scorer's result is returned; a running one is left to its work and
+    Returns None when the composed door must queue a CPU scorer: no automatic scorer, a different config
+    (an explicit rescore), or its waiter died. A finished scorer's result is returned; a running one is left to its work and
     reported at once. Scoring is CPU work, so a door holding a card never waits for it: the door ran ~15 min
     on its card lease for a past case's scoring (2026-10-24). ``poll_seconds`` is kept for callers."""
     root = Path(run) / "observation-scorecard"
     source, receipt, plan = root / SOURCE_CONFIG, root / "automatic-retry-receipt.json", root / "automatic-retry.json"
     config_path = Path(config_path)
-    if not (source.is_file() and receipt.is_file() and plan.is_file() and config_path.is_file()):
+    if not (source.is_file() and receipt.is_file() and config_path.is_file()):
         return None
     if json.loads(source.read_text(encoding="utf-8")).get("sha256") != hashlib.sha256(config_path.read_bytes()).hexdigest():
         return None
@@ -1145,7 +1175,7 @@ def join_automatic_scorer(run, config_path, *, poll_seconds=10.0):
         return {"joined": "automatic", "status": status, "path": str(card_path),
                 "note": f"scored once, by the forecast's automatic scorer: {status}, "
                         f"{card.get('measured_metrics', 0)} measured metrics in {card_path}"}
-    if not _alive(state.get("pid")):
+    if not plan.is_file() or not _alive(state.get("pid")):
         return None
     config = json.loads(plan.read_text(encoding="utf-8"))
     _, frames = discover(run, config)

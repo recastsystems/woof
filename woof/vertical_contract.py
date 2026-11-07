@@ -52,7 +52,7 @@ def planned_source_top_pressure_pa(source: str) -> float | None:
         return None
     # A composition whose companion extends the column above the primary top
     # (the RRFS ensemble member's 250 hPa column and its deterministic RRFS
-    # companion, lane/leftovers-295): the composed atmosphere reaches the
+    # companion, development branch): the composed atmosphere reaches the
     # companion's top, so the plan reads that one.  Breakage: every rrfs-ens
     # plan at the default 50 hPa model top was refused before acquisition.
     from woof.source_authorities import (packaged_composition,

@@ -725,7 +725,7 @@ comparison scripts in the delivery; none is renamed to imply a CUDA module
 replay or regenerated forecast. New parity door commands must select
 `--physics-mode exact`.
 
-The 2026-10-14 07:45Z ruling record (`DREW-RULING.json` in each derivative publication) is kept in
+The 2026-10-14 07:45Z ruling record (`REFERENCE-RULING.json` in each derivative publication) is kept in
 the reference store, not in this tree; `ruled_reference.py` reads it from `RRFS_SOURCE_AUTHORITY_RULING`
 and still binds its exact bytes by SHA-256. Recorded labels in published receipts are unchanged.
 
@@ -743,7 +743,37 @@ x1.2562 hrrrv5), so an N-rank hex claim compares hex on N same-host ranks with n
    (`0,0` runs two rank threads on one card for testing).
 4. Compare, native first: `rank_compare.py NATIVE_RUN HEX_RUN receipt.json`.
 
-Measured 2026-10-28 (x1.2562, 2023-03-31 12Z, strict, rank threads sharing one RTX 5090): 1 h at N=2 and N=4, and
-6 h at N=2 and N=4 (survey probe), differ from native at the same N only in `tsnav`, a RUC local native leaves
-uninitialised (it differs on 1 rank too). An init whose nwfa is zero on one rank's cells checks the TEMPO aerosol
-init's global extrema: 37 of 45,947,194 words differ (all `tsnav`) at N=2 over 2 steps.
+History, against the pristine native build (measured 2026-10-28, x1.2562, 2023-03-31 12Z, strict, rank threads
+sharing one RTX 5090): 1 h at N=2 and N=4, and 6 h at N=2 and N=4 (survey probe), differed from native at the same N
+only in `tsnav`, which pristine native computes from the uninitialised RUC local `ilnb` (it differed on 1 rank too).
+An init whose nwfa is zero on one rank's cells checks the TEMPO aerosol init's global extrema: 37 of 45,947,194 words
+differed (all `tsnav`) at N=2 over 2 steps. N-rank claims are now made against the patched referee below, where no
+word is excluded.
+
+### RRFS 44c0849 reference of record: the patched referee
+
+Claims against RRFS-MPAS 44c0849 use the **patched** referee, always labelled patched, never pristine: the pinned
+source and strict recipe plus exactly four owner-approved lines, each where native reads a value it never set.
+
+| lines | file | ruling | why |
+|---|---|---|---|
+| 2 x `nullify(smoke_fine_fg, dust_fine_fg, dust_coarse_fg)` | `src/core_init_atmosphere/mpas_init_atm_cases.F` | 2026-10-14 (fork 1d6e370e), carried to 44c0849 2026-10-29 | native's case-7/9 init tests optional smoke/dust pointers it never nullified and crashes |
+| `ilnb = 0` before `call snowsoil (` | `.../physics_noaa/RUCLSM/MPAS/module_ruc_land.F90` | 2026-11-06 | for snow thinner than `snth` (about 10 mm water equivalent) native reads the unset local `ilnb` to pick the `tsnav` formula; `tsnav` feeds the next step's snow compaction |
+| `ilnb = 0` before `call snowseaice` | `.../physics_noaa/RUCLSM/MPAS/module_ruc_ice.F90` | 2026-11-06 | the same read on sea ice |
+
+Witness for the `ilnb` lines (x1.40962, hrrrv5, strict, 1 rank): pristine native against patched native reproduces
+the hex-vs-pristine divergence word for word (127,564 against 127,565 words at step 8); patched native is 0 different
+run to run; hex, which sets `ilnb = 0` (`tests/ruc_lsm_oracle/translate.py`), matches it in every diag word. With it
+the 2026-10-28 restart-word `tsnav` exclusion is retired: no word is excluded.
+
+Build it with the recipe here, never by hand:
+
+    RRFS_44C0849_REFEREE=patched MPAS_LANES=... RRFS_FORK_CPU_OPT=...       bash tools/rrfs_44c0849_reference/rebuild.sh REF NEW_WORK atmosphere        # and init_atmosphere
+
+`prepare.py` applies the four lines (refusing if any location moved), writes them to `source-correction.diff` and
+labels `SOURCE-PINS.json` (`referee: patched`, `pristine: false`, `source_correction`, `patches`). The default
+(`RRFS_44C0849_REFEREE` unset or `pristine`) builds the unchanged pinned source; `rrfs/publish_build.py` still refuses
+to publish a source-corrected binary as a primary (pristine) build. Rebuilt 2026-11-06 on the build host from fresh clones:
+`atmosphere_model` sha256 `a128a1e86806c089ffe6d65b9f5b1c0ab18d30c32cb6ee1f1885b9899ebfb400`, the same binary the
+5-day 8-rank bitwise run used, and `init_atmosphere_model` sha256 `fdfff07df75b280df2baae7bd317a5ba39e20faf4071d6d540829f1fd2616582`,
+the published two-NULLIFY init derivative.

@@ -1,0 +1,20 @@
+{
+  "schema": "gpuwm.waves.spectral-contract/v1",
+  "implementation_status": "interface_frozen_implementation_in_progress",
+  "state": {"quantity": "action_per_hz_per_radian", "conversion": "N=E/(2*pi*f)", "dtype": "float32", "layout": ["wet_cell", "frequency", "direction"], "order": "C"},
+  "exchange": {"quantity": "variance_density", "units": "m2 Hz-1 rad-1", "dtype": "float32", "layout": ["point", "frequency", "direction"]},
+  "spectral": {"frequencies": 36, "directions": 36, "first_hz": 0.035, "ratio": 1.1, "frequency_width": "f*(sqrt(ratio)-1/sqrt(ratio))", "theta": "2*pi*j/nd", "theta_convention": "toward_counterclockwise_from_local_east", "from_degrees": "(270-360*j/nd)%360"},
+  "wet_order": "ascending_full_cell_index",
+  "partition_input": {"layout": ["point", 4, 4], "fields": ["hs_m", "tp_s", "dp_from_degree", "kind"], "kind": {"windsea": 0, "swell": 1}, "absent": "hs=0", "table": "partition_shapes.v1.json", "normalization": "discrete_variance=hs*hs/16"},
+  "boundary": {"layout": ["boundary_cell", "frequency", "direction"], "interpolation": "linear_in_E_at_substep_midpoint", "extrapolation": "error", "coast": "absorbing_no_incoming", "open": "prescribed_incident_free_outgoing"},
+  "backend_protocol": "gpuwm.ocean.waves.backend.GridBackend",
+  "backend_advection": {"input": "action[ncell,nf,nd]", "group_velocity": "m/s[ncell,nf]", "return": "distinct_persistent_scratch_same_shape", "stream": "caller_CuPy_stream", "host_sync": false},
+  "source_packs": ["st4", "janssen"],
+  "default_pack_status": "pending_buoy_comparison",
+  "products": ["hs", "tp", "tm01", "tm02", "dp", "dir", "dspr", "ws_hs", "ws_tp", "ws_dp", "sw1_hs", "sw1_tp", "sw1_dp", "sw2_hs", "sw2_tp", "sw2_dp", "sw3_hs", "sw3_tp", "sw3_dp", "ustar", "charnock", "z0", "direction"],
+  "extra_device_outputs": ["tau_wave_east", "tau_wave_north"],
+  "station_file": {"name": "points.nc", "efth_layout": ["station", "time", "frequency", "direction"], "direction_coordinate": "from_nautical_unsorted"},
+  "restart_schema": "gpuwm.waves.restart/v1",
+  "required_restart_arrays": ["action", "depth", "water_level", "depth_previous", "surface_iteration", "shelter_iteration", "wind_input_iteration", "clock", "steps"],
+  "restart_match": ["spectral", "source_pack", "source_parameter_sha256", "backend", "geometry_sha256", "wet_order_sha256", "partition_shapes_sha256"]
+}

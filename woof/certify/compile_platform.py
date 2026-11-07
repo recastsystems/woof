@@ -29,6 +29,8 @@ plausible value.
 
 from __future__ import annotations
 
+from woof.backend import compilation_target as _compilation_target
+
 import hashlib
 import os
 import re
@@ -179,6 +181,8 @@ def compile_platform_fingerprint() -> dict[str, str]:
     host libraries that feed it.  Values are strings so the dict survives a
     JSON round trip into a receipt and still compares equal.
     """
+    from woof.hip_backend import active, compile_fingerprint
+    if active(): return compile_fingerprint()
     banner = nvrtc_banner()
     library = nvrtc_library()
     fingerprint = {
@@ -218,7 +222,7 @@ def _driver_version() -> str:
 def _compute_capability() -> str:
     try:
         import cupy
-        return str(cupy.cuda.Device().compute_capability)
+        return str(_compilation_target(xp=cupy))
     except Exception:
         return UNRESOLVED
 

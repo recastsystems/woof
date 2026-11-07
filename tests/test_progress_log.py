@@ -860,7 +860,7 @@ def test_the_observer_costs_a_measurable_and_small_fraction(monkeypatch,
         return time.perf_counter() - started, report.steps
 
     # The best of three paired readings: a shared Stage-1 host takes whole cores away for a moment (2.9.11
-    # pass 9: 1.41 ms per step with 20 test parts and the cut's battery on a development machine's 24 cores, where the same
+    # pass 9: 1.41 ms per step with 20 test parts and the cut's battery on test host 2's 24 cores, where the same
     # tree read under the bound in the pass before); the observer's own cost is the least of them.
     readings = []
     for attempt in range(3):

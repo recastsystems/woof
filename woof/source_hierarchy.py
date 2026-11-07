@@ -367,9 +367,7 @@ def _validate_source_orography(
 def _projection_identity(snapshot) -> object:
     """A comparable form of a snapshot's source-grid declaration.
 
-    ``None`` for a geographic source.  Only used to check that the whole
-    forcing series declares ONE source grid, alongside the axis-array
-    equality beside it.
+    ``None`` for a geographic source.  Retained for callers comparing projection declarations.
     """
 
     projection = getattr(snapshot, "projection", None)
@@ -417,20 +415,41 @@ def _spatial_coverage_receipt(
         raise ValueError(
             f"{source_name} hierarchy source axes are not finite 1-D donor "
             "coordinates")
-    first_projection = _projection_identity(first)
-    for index in range(1, len(snapshots) if metadata_positions is None
+    # Initialization transforms and moving source nests may change their
+    # lattice. Certify every distinct lattice against every target staggering;
+    # equality with the first lead is neither necessary nor a coverage proof.
+    import json
+    groups = {}
+    for index in range(len(snapshots) if metadata_positions is None
                        else metadata_positions):
-        snapshot = snapshot_metadata(snapshots, index)
-        latitude = np.asarray(
-            getattr(snapshot, "latitude", ()), dtype=np.float64)
-        longitude = np.asarray(
-            getattr(snapshot, "longitude", ()), dtype=np.float64)
-        if (not np.array_equal(latitude, first_latitude)
-                or not np.array_equal(longitude, first_longitude)
-                or _projection_identity(snapshot) != first_projection):
-            raise ValueError(
-                f"{source_name} hierarchy source grid changes between "
-                "forcing times")
+        metadata = snapshot_metadata(snapshots, index)
+        axes = tuple(np.asarray(a, dtype=np.float64) for a in
+                     (metadata.latitude, metadata.longitude))
+        key = tuple((a.shape, a.tobytes()) for a in axes) + (
+            json.dumps(metadata.projection, sort_keys=True, default=dict),)
+        groups.setdefault(key, []).append(index)
+    if len(groups) > 1:
+        class OneGrid:
+            def __init__(self, index):
+                self.index = index
+            def __len__(self):
+                return 1
+            def __getitem__(self, index):
+                if index != 0:
+                    raise IndexError(index)
+                return snapshots[self.index]
+            def snapshot_metadata(self, index):
+                if index != 0:
+                    raise IndexError(index)
+                return snapshot_metadata(snapshots, self.index)
+        receipts = []
+        for indices in groups.values():
+            receipt = _spatial_coverage_receipt(
+                OneGrid(indices[0]), grids, exp, source_name)
+            receipts.append({"forcing_indices": indices, "coverage": receipt})
+        return {"schema": "gpuwm-regular-source-hierarchy-coverage-v3",
+                "status": "PASS", "source": source_name,
+                "source_grids": receipts}
 
     # ONE pairing rule, taken from the source descriptor and shared with
     # the interpolation this receipt certifies

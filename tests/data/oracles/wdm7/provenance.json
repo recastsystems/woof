@@ -1,0 +1,7 @@
+{
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "fixture": "synthetic, 120 columns, 50 levels, dt20, one call",
+  "native_flags": "-O0 -ffp-contract=off -fno-tree-vectorize",
+  "module_sha256": "384aa324dc3664af1a8d0e6244f671a76ef888a0018feb50f511803b7732edbb",
+  "native_output_sha256": "28ae17ae54a54ec31f920c76426851f3e334aa43c64a5018f811ba90e6544a8f"
+}

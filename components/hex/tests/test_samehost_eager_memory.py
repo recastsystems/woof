@@ -80,3 +80,30 @@ def test_unknown_and_supplied_rows_are_not_repriced():
     assert samehost_rank_model(custom) is custom
     older = _row_model("global/170sm")
     assert samehost_rank_model(older) is older
+
+
+def test_process_rank_row_covers_the_whole_24h_peak_and_failed_24gb_grant():
+    model = samehost_rank_model(model_for_card(KNOWN_CARDS["32gib-170sm"]),
+                                process_ranks=True)
+    peak = sum(model.predict_bytes(n) for n in (21_445, 21_449))
+    assert peak >= 22_524 * MIB
+    assert peak + model.margin_bytes() > 24_000 * MIB
+    assert peak + model.margin_bytes() < 31_000 * MIB
+    assert model.margin_terms()["arena_placement"]["bytes"] == 3_347_054_592
+    assert not model.measured and model.derived_from == "process-ranks-20261102/170sm"
+    assert "derived equal split" in model.provenance
+    assert model.predict_bytes(83_946) > model.predict_bytes(21_449)
+    # An already priced row remains stable if a caller selects it twice.
+    again = samehost_rank_model(model, process_ranks=True)
+    assert again.predict_bytes(21_445) == model.predict_bytes(21_445)
+
+
+def test_process_row_keeps_unmeasured_shapes_and_the_thread_row():
+    for card, levels, configuration in ((KNOWN_CARDS["32gib-170sm"], 40, "global"),
+                                         (KNOWN_CARDS["96gib-188sm"], 55, "global"),
+                                         (KNOWN_CARDS["32gib-170sm"], 55, "limited-area")):
+        model = model_for_card(card, configuration, levels=levels)
+        before = samehost_rank_model(model)
+        assert samehost_rank_model(model, process_ranks=True) == before
+    model = model_for_card(KNOWN_CARDS["32gib-170sm"])
+    assert samehost_rank_model(model, ranks=1, process_ranks=True) == samehost_rank_model(model, ranks=1)

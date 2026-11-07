@@ -1,0 +1,12 @@
+{
+  "native_source_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "tracked_modified_paths": [
+    "phys/module_cu_mskf.F"
+  ],
+  "pristine_mskf_sha256": "4bca54b294def08ffc98ef69a30650c943e2c394f34802e75e50c7f1a2896fcb",
+  "commands": [
+    "git rev-parse HEAD",
+    "git diff --name-only",
+    "git show HEAD:phys/module_cu_mskf.F | sha256sum"
+  ]
+}

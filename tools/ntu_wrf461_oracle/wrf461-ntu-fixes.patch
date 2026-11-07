@@ -1,0 +1,83 @@
+--- module_mp_ntu.pristine.F	2026-10-08 00:42:01.575226764 +0000
++++ module_mp_ntu.fixed.F	2026-10-08 00:49:34.562325501 +0000
+@@ -1614,7 +1614,7 @@
+       DO J = JTS,JTF
+          DO I = ITS,ITF
+             K_PBL = 1
+-            DO K = KTS,KTE
++            DO K = KTS,KTE-1
+                IV = 1
+                DO IA = 1,NAER
+                   QAERO(I,K,J,IV) = XMASS(IA)/RHO(I,K,J)                ! dry aerosol [kg/kg]
+@@ -3030,8 +3030,8 @@
+       QNDvi = NNDvi*MI0
+       VNDvi = QNDvi*iRHOI0
+       FNDvi = QNDvi*1.*iAMI0                                            ! ISOMETRIC
+-      ANDvi = (KCIMIN*NNDvi*INDvi**2.)**THRD
+       INDvi = QNDvi*iAMI0
++      ANDvi = (KCIMIN*NNDvi*INDvi**2.)**THRD
+       QNIN  = MAX(0.,QNIN-NNDvi)
+       QV1D  = MAX(0.,QV1D-QNDvi)
+       QI1D  = MAX(0.,QI1D+QNDvi)
+@@ -3969,8 +3969,8 @@
+             ENDIF
+             IF (QVDvg.LT.0.) THEN
+                QSBgv = MIN(QVDvg,0.)
+-               QVDvg = 0.
+                VSBgv = MIN(QVDvg/RHOG,0.)
++               QVDvg = 0.
+                VVDvg = 0.
+                IF (AG1D.GE.ASMALL) THEN
+                   ASBgv = MIN(AVDvg*DNGVD/RHOG,0.)
+@@ -4655,7 +4655,7 @@
+          GR4   = EXP(GAMLN(AFAR+4.)-GAMLN(AFAR+1.)-3.*LOG(LAMR))
+          GR5   = EXP(GAMLN(AFAR+5.)-GAMLN(AFAR+1.)-4.*LOG(LAMR))
+          GR6   = EXP(GAMLN(AFAR+6.)-GAMLN(AFAR+1.)-5.*LOG(LAMR))
+-         GR7   = EXP(GAMLN(AFAR+6.)-GAMLN(AFAR+1.)-6.*LOG(LAMR))
++         GR7   = EXP(GAMLN(AFAR+7.)-GAMLN(AFAR+1.)-6.*LOG(LAMR))
+          MVRR  = MIN(MAX((QR1D/NR1D/C4PI3W)**THRD,RRMIN),RRMAX)
+          LMVRR = LOG(MVRR)
+          GUR   = EXP(EXP(AFU+BFU*LMVRR**3.+CFU*SQRT(RHO)**3.))
+@@ -4672,7 +4672,7 @@
+          ELSEIF (LIQ_VTR.EQ.1) THEN
+             VTQR = EXP(CQR1+CQR2*LOG(NR1D)+CQR3*LOG(MVRR))*GUR/QR1D
+             VTNR = EXP(CNR1+CNR2*LOG(NR1D)+CNR3*LOG(MVRR))*GUR/NR1D
+-            VTAR = VTQR**(3./4.)*VTNR*(1./4.)
++            VTAR = VTQR**(3./4.)*VTNR**(1./4.)
+          ELSEIF (LIQ_VTR.EQ.2) THEN
+             VTQR = EXP(AVTR+BVTR/MVRR+CVTR/(MVRR**2.))*GUR
+             VTNR = EXP(AVTR+BVTR/MVRR+CVTR/(MVRR**2.))*GUR
+@@ -5694,7 +5694,6 @@
+             VTNRG = SQRT(VTN0*VTN0+0.04*VTNR*VTNG)
+             VTARG = SQRT(VTAX*VTAX+0.04*VTAR*VTAG)
+             RHOGW = (QG1D+QR1D)/(QG1D/RHOG+QR1D/RHOW+ISMALL)
+-            RATIO = (RHOGW/DNGRM)**THRD
+             STOKE = (RHOW*ABS(VTQ0)*MVDR**2.)/(9.*MUA*MVDG)
+             STOKE = MAX(1.5,MIN(10.,STOKE))
+             ERG   = 5.5E-1*LOG10(2.51*STOKE)                            ! parameterization based on Cober and List, 1993 [JAS]
+@@ -5707,6 +5706,7 @@
+                DNGRM = 3.E2*(-5.E5*MVDR*0.6*VTQRG/TC1D)**0.44
+             ENDIF
+             DNGRM = MIN(MAX(DNGRM,RHOIMIN),RHOG0)
++            RATIO = (RHOGW/DNGRM)**THRD
+             IF (MVDG.GE.2.E-4.AND.MVDG.GE.MVDR) THEN
+                QRMrg = QRMR1*ERG*VTQRG*NG1D*(GG3*GR4+2.*GG2*GR5+GR6)
+                NRMrg = NRMR1*ERG*VTNRG*NG1D*(GG3+2.*GG2*GR2+GR3)
+@@ -6437,7 +6437,7 @@
+                IF (AG1D.GE.ASMALL) THEN
+                   MVDX  = MAX((MVDC**3.+MVDG**3.)**THRD,MVDG)
+                   RMcga = (MVDX**2.-MVDG**2.)*NRMC1*VTQGC*NG1D*(GG3+   &
+-                          2.*GG2*GR2+GR3)
++                          2.*GG2*GC2+GC3)
+                   RMcga = MAX(0.,MIN(RMcga,QC1D*iDT*iAPW/MVDC))
+                ENDIF
+             ENDIF
+@@ -6512,7 +6512,7 @@
+                IF (AH1D.GE.ASMALL) THEN
+                   MVDX  = MAX((MVDC**3.+MVDH**3.)**THRD,MVDH)
+                   RMcha = (MVDX**2.-MVDH**2.)*NRMC1*VTQHC*NH1D*(GH3+   &
+-                          2.*GH2*GR2+GR3)
++                          2.*GH2*GC2+GC3)
+                   RMcha = MAX(0.,MIN(RMcha,QC1D*iDT*iAPW/MVDC))
+                ENDIF
+             ENDIF

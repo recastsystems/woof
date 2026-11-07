@@ -1,0 +1,60 @@
+{
+  "scope": "Diagnostic inclusive clock64 cycles, block0/thread0 per module, whole real forecast. Nested times overlap; these are not matched speed measurements or a lower bound.",
+  "commit": "6bc418637bdda39ab7c3928463eb88348498bdb9",
+  "functions": [
+    "flgc_rad_all",
+    "flg_gases",
+    "flg_gases_new",
+    "flgc_comscp_aero_cld",
+    "flgs_qfts",
+    "flgs_qfti",
+    "flgs_qftsts",
+    "flgs_qftisf",
+    "flgs_qcfe",
+    "flgs_qcfel"
+  ],
+  "images": [
+    {
+      "flgc_rad_all": {
+        "selected_thread_cycles": 2793928292,
+        "selected_thread_calls": 12
+      },
+      "flg_gases": {
+        "selected_thread_cycles": 102109976,
+        "selected_thread_calls": 1236
+      },
+      "flg_gases_new": {
+        "selected_thread_cycles": 0,
+        "selected_thread_calls": 0
+      },
+      "flgc_comscp_aero_cld": {
+        "selected_thread_cycles": 267209823,
+        "selected_thread_calls": 1236
+      },
+      "flgs_qfts": {
+        "selected_thread_cycles": 1048570846,
+        "selected_thread_calls": 432
+      },
+      "flgs_qfti": {
+        "selected_thread_cycles": 0,
+        "selected_thread_calls": 0
+      },
+      "flgs_qftsts": {
+        "selected_thread_cycles": 0,
+        "selected_thread_calls": 0
+      },
+      "flgs_qftisf": {
+        "selected_thread_cycles": 635938165,
+        "selected_thread_calls": 804
+      },
+      "flgs_qcfe": {
+        "selected_thread_cycles": 907324292,
+        "selected_thread_calls": 432
+      },
+      "flgs_qcfel": {
+        "selected_thread_cycles": 640849974,
+        "selected_thread_calls": 432
+      }
+    }
+  ]
+}

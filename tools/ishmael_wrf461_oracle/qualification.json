@@ -1,0 +1,131 @@
+{
+  "schema": "gpuwm.ishmael-native-qualification.v1",
+  "date": "2026-11-01",
+  "selector": 55,
+  "status": "supported",
+  "scientific_evidence": "none",
+  "evidence_directory": "<reports>/WRF-PORTS-2026-11-01/evidence/port-mp55-ishmael",
+  "replay": {
+    "compared_words": 213156,
+    "total_words": 0,
+    "nonfinite_words": 0,
+    "passed": true,
+    "strict_numerics": true,
+    "input_sha256": "d50072ec9d3dc3a39a4bbf66f81560d2e4ecdeebb82eb3341f3262d2cff6b398",
+    "expected_sha256": "c2b110e7452d4f1caee4db8b7febab30ff6c3d0b22661c28ad3c04119cda82ae",
+    "output_sha256": "c2b110e7452d4f1caee4db8b7febab30ff6c3d0b22661c28ad3c04119cda82ae",
+    "kernel_source_sha256": "5dab363afa3f1112e343b5a9f67a16ffac4b0daee6f737bdfaed7e5a0bb2a1be",
+    "kernel_options": [
+      "-std=c++17",
+      "--ftz=false",
+      "--fmad=false"
+    ]
+  },
+  "capture": {
+    "source": "real native WRF run, monitor tile center row, native step 60",
+    "columns": 124,
+    "levels": 49,
+    "dt_seconds": 60,
+    "output_volume_fields": 35,
+    "output_surface_fields": 4,
+    "native_executable_sha256": "b74895604ea504a2b3247bcc280940d083a92dc9f1d4acbb971f8934b8c80c3e",
+    "compiler": "gfortran REAL32 -O0 -ffp-contract=off -fno-tree-vectorize -fno-unsafe-math-optimizations; Intel MPI wrapper; 4 MPI ranks, OMP_NUM_THREADS=1; make <=8 jobs",
+    "receipts": [
+      "native-build-v2.log",
+      "capture-instrumentation-v2.json",
+      "native-replay-final.json",
+      "native-capture-packets.tar.gz"
+    ]
+  },
+  "forecast": {
+    "route": "gpuwm go --wrfinput case-gpu --run-seconds 10800",
+    "start": "1974-04-03T12:00:00Z",
+    "end": "1974-04-03T15:00:00Z",
+    "shape_mass": [
+      49,
+      200,
+      250
+    ],
+    "dx_m": 12000,
+    "dt_seconds": 60,
+    "steps": 180,
+    "numerics": "default fast; declared rain-riming limiter correction enabled",
+    "physics": {
+      "mp_physics": 55,
+      "bl_pbl_physics": 1,
+      "sf_sfclay_physics": 91,
+      "sf_surface_physics": 2,
+      "ra_lw_physics": 4,
+      "ra_sw_physics": 4,
+      "cu_physics": 1
+    },
+    "maps_viewed": [
+      "13:00",
+      "14:00",
+      "15:00"
+    ],
+    "products": [
+      "2 m temperature with station observations",
+      "accumulated rain",
+      "three-habit integrated ice"
+    ],
+    "receipts": [
+      "gpu-forecast-corrected.command.json",
+      "gpu-forecast-corrected.log",
+      "native-forecast.command.json",
+      "native-forecast.log",
+      "visual-review.md",
+      "map-words-final.log"
+    ]
+  },
+  "timing": {
+    "device": "shared RTX 5090",
+    "steps": 180,
+    "warmup_excluded": 6,
+    "timed_steps": 174,
+    "method": "CUDA events; synchronization after complete forecast; inclusive sections, shared hardware",
+    "mp55_gpu_ms_per_step": 110.27078575923525,
+    "mp10_gpu_ms_per_step": 183.3117157947058,
+    "total_ratio": 0.6015479440644675,
+    "mp55_microphysics_ms_per_step": 17.438223460624958,
+    "mp10_microphysics_ms_per_step": 52.7973389351505,
+    "receipts": [
+      "profile-55-corrected.json",
+      "profile-10-v2.json",
+      "profile_real.py"
+    ]
+  },
+  "lifecycle": {
+    "nests": "same-scheme; feedback=0 and feedback=1; nonzero all three habits; real production executor",
+    "checkpoint": {
+      "compared_history_words": 83325438,
+      "differing_words": 0,
+      "receipt": "checkpoint-words-final.log"
+    },
+    "native_restart": "actual 2-minute WRF wrfrst imported, then 2 full GPU steps; all 16 transported fields admitted",
+    "native_restart_negative_policy": "mp55 active negative transport residues normalize to zero under the default nonnegative initializer; counts recorded; nonfinite/inactive guards remain",
+    "ensemble": "two real-input members, 2 complete steps and exact Rust history hashes against separate ordinary references; native column and whole physics also compared",
+    "receipts": [
+      "nonzero-habit-nests-ensemble.log",
+      "native-restart-import-clean.log",
+      "native-restart-moment-residue-v2.log",
+      "native-restart-host-final-v2.log",
+      "ensemble-whole-physics-final.log",
+      "ensemble-complete-graph-sequential-reference.log"
+    ]
+  },
+  "option_off": {
+    "selector": 10,
+    "comparison": "All four complete history files at 12/13/14/15 UTC have identical SHA-256 against the candidate; the final frame also compares 207 logical variable payloads / 71075438 words with zero differences.",
+    "compared_words": 71075438,
+    "differing_words": 0,
+    "receipt": "option-off-word-identity.log",
+    "complete_files_byte_identical": 4,
+    "file_hash_receipt": "option-off-file-hashes.json"
+  },
+  "scope_limits": [
+    "one captured native module call and one paired real case; no general forecast-skill claim",
+    "mixed-scheme nest edges require an unimplemented closure for all habit volume moments and remain explicitly refused",
+    "one wrfinput trajectory cannot create meaningful ensemble spread; the existing CLI guard remains"
+  ]
+}

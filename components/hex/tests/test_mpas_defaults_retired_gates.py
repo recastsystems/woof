@@ -179,7 +179,7 @@ def bounded_engine(monkeypatch):
 
     The default step on a YSU run is capped at 300 s on an engine without them (woof.hex.global_door.
     default_step_cap, hex 0.4.0 recut); the test below reads MPAS-A's own defaults, which is what the door
-    runs once the cap retires.  The installed-pair G0 on PyPI woof 2.9.0 (no bounds) found it asserting 360 s
+    runs once the cap retires.  The installed-pair G0 on PyPI gpuwm 2.9.0 (no bounds) found it asserting 360 s
     on the 60 km row while the door took 300 s."""
     from woof.hex import global_door
 

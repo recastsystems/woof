@@ -160,7 +160,7 @@ def main():
     # lines kept in sorted path order, so SHA256SUMS is byte-identical to
     # the serial pass.  Breakage it prevents: the serial pass hashed an
     # ~11 GB 24 h bridge tree on ONE core for 100+ s inside every HRRR
-    # preparation (single-core sentinel, Vast V8X, 2026-10-27).
+    # preparation (single-core sentinel, shared host, 2026-10-27).
     from concurrent.futures import ThreadPoolExecutor
     workers = max(1, min(32, len(os.sched_getaffinity(0))
                          if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)))

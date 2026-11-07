@@ -1001,7 +1001,7 @@ def test_the_registry_row_is_accurate_about_the_oracle() -> None:
     row = registry["components"]["radiation"]["options"]["wrf-rrtm-dudhia"]
     assert row["implemented"] is True
     assert row["maturity"] == "implemented-unverified"
-    assert row["reachability"]["state"] == "component-override"
+    assert row["reachability"]["state"] == "template"
     assert row["selectors"] == {"ra_lw_physics": 1, "ra_sw_physics": 1}
     warnings = " ".join(row["warnings"])
     assert "NO ORACLE COMPARISON" not in warnings

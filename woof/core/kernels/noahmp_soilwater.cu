@@ -499,7 +499,11 @@ __device__ void d_canwater(float ch2op, float dt, float fcev, float fctr,
         qfroc = f_abs(f_min(FDIV(fcev, K_HSUB), K_ZERO));
     }
 
-    qevac = f_min(FDIV(canliq, dt), qevac);                          // :6344
+    // The strict native MIN at :6344 selects the second operand on a
+    // signed-zero tie. Real WRF captures retain -0 here when FCEV is -0
+    // and CANLIQ is +0; the generic first-on-tie helper loses that word.
+    float canopy_rate = FDIV(canliq, dt);
+    qevac = (canopy_rate < qevac) ? canopy_rate : qevac;            // :6344
     canliq = f_max(K_ZERO, FADD(canliq, FMUL(FSUB(qdewc, qevac), dt)));
     if (canliq <= K_1EM6_LIQ) canliq = K_ZERO;                       // :6346
 

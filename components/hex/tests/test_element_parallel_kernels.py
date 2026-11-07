@@ -56,6 +56,10 @@ UNITS = {
             "regional_bdy_set_scalars_v841",
             "acoustic_ru_regional_v841",
             "acoustic_rs_ts_regional_v841",
+            "acoustic_rs_ts_slot_regional_v841",
+            "acoustic_column_pre_regional_v841",
+            "acoustic_column_post_w_regional_v841",
+            "acoustic_column_post_rt_regional_v841",
             "transport_edge_values_regional_v841",
             "transport_standard_finish_regional_v841",
         ),
@@ -216,15 +220,42 @@ def test_the_column_solve_keeps_its_per_column_form():
     )
     assert "REGIONAL_ELEMENT_LOOP(" not in text
     assert "if (cell >= ncells) return;" in text
+    # Its split form keeps the recurrence the same way: the sweep is the one
+    # split kernel left on one thread per column.
+    sweep = _kernel_text(
+        cuda_regional_v841.CUDA_REGIONAL_SOURCE,
+        "acoustic_column_sweep_regional_v841",
+    )
+    assert "REGIONAL_ELEMENT_LOOP(" not in sweep
+    assert "if (cell >= ncells) return;" in sweep
 
 
 def test_the_regional_kernel_set_is_unchanged_by_the_remap():
-    """No entrypoint was added or renamed: every deck still names a kernel
-    and every kernel still has a deck."""
+    """No entrypoint was renamed: every deck still names a kernel and every
+    kernel still has a deck.  The four split column-solve kernels are the
+    only additions, and the acoustic deck covers them."""
 
     defined = set(re.findall(r"__global__ void (\w+)", cuda_regional_v841.CUDA_REGIONAL_SOURCE))
     assert defined == set(cuda_regional_v841.REGIONAL_KERNELS)
-    assert len(cuda_regional_v841.REGIONAL_KERNELS) == 22
+    assert len(cuda_regional_v841.REGIONAL_KERNELS) == 27
+
+
+def test_the_slot_major_rs_ts_is_the_cell_major_kernel_with_two_reads_moved():
+    """acoustic_rs_ts_slot_regional_v841 is derived from the cell-major
+    kernel's text: undo its three substitutions and the bytes are equal."""
+
+    source = cuda_regional_v841.CUDA_REGIONAL_SOURCE
+    cell = _kernel_text(source, "acoustic_rs_ts_regional_v841")
+    slot = _kernel_text(source, "acoustic_rs_ts_slot_regional_v841")
+    restored = slot.replace(
+        "edges_on_cell[RSLOT(slot, cell, ncells)]",
+        "edges_on_cell[RCES(cell, slot, max_edges)]").replace(
+        "edge_sign_on_cell[RSLOT(slot, cell, ncells)]",
+        "edge_sign_on_cell[RCES(cell, slot, max_edges)]").replace(
+        "void acoustic_rs_ts_slot_regional_v841(",
+        "void acoustic_rs_ts_regional_v841(")
+    assert restored == cell
+    assert "#define RSLOT(s,c,nc) ((s)*(nc) + (c))" in source
 
 
 def test_the_momentum_kernel_gathers_the_reference_wind_it_used_to_compute():
@@ -253,6 +284,11 @@ FORECAST = (SRC / "cuda_regional_forecast_v841.py").read_text(encoding="utf-8")
         ("acoustic_ru_regional_v841", "nlev * nedges"),
         ("acoustic_rs_ts_regional_v841", "nlev * ncells"),
         ("acoustic_column_solve_regional_v841", "ncells"),
+        ("acoustic_rs_ts_slot_regional_v841", "nlev * ncells"),
+        ("acoustic_column_pre_regional_v841", "nlev * ncells"),
+        ("acoustic_column_sweep_regional_v841", "ncells"),
+        ("acoustic_column_post_w_regional_v841", "(nlev - 1) * ncells"),
+        ("acoustic_column_post_rt_regional_v841", "nlev * ncells"),
         ("transport_edge_values_regional_v841", "group * nlev * nedges"),
         ("transport_standard_finish_regional_v841", "group * nlev * ncells"),
         ("regional_relaxzone_filter_cell_v841", "max(nlev * masks.n_relax_cells, 1)"),

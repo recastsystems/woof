@@ -51,6 +51,12 @@ def kernel_dir(root) -> Path:
 #: constant division there is still ``div.rn``.  A file moving onto a
 #: ``-ftz=true`` route must leave this list.
 FTZ_FALSE_SOURCES = frozenset({
+    "afwa_buoyancy.cu", "afwa_severe.cu", "misc_diag_print.cu", "snow_papers.cu",
+    # FARMS already uses the solar direct-NVRTC no-FTZ route.
+    "farms.cu",
+    'pxsfclay.cu', 'ssib.cu', 'trajectory.cu', 'tslist.cu', 'wrf_stock_aer3.cu',
+    # New direct NVRTC ports; production routes are exercised by the gate.
+    'afwa_diagnostics.cu', 'dfi_reset.cu', 'global_advection.cu', 'global_geometry.cu', 'global_hydrostatic.cu', 'global_polar.cu', 'level_diagnostics.cu', 'nwp_windows.cu', 'nssl2_shape_gs.cu', 'clwrf.cu', 'mskf.cu', 'mskf_aerosol.cuh', 'ntu.cu', 'ntu_parallel.cuh', 'native_surface_diagnostics.cu', 'wind_legacy.cu', 'wind_mav.cu',
     "rrtmg_sw.cu", "rrtmg_lw_chain.cu", "rrtmg_lw_chain_coalesced.cu",
     "rrtmg_lw_taugb02_10_11_12.cu", "rrtmg_lw_taugb03_05.cu",
     "rrtmg_lw_taugb06_09.cu", "rrtmg_lw_taugb13_16.cu",
@@ -70,6 +76,27 @@ FTZ_FALSE_SOURCES = frozenset({
     # hydro.reservoirs._module composes this header and uses ieee_module
     # exclusively; test_nextgen_reservoir_divisions_use_non_ftz pins the route.
     "nextgen_reservoirs.cuh",
+    # WRF port units: these files are included only in direct NVRTC
+    # no-FTZ units. Both the ordinary and integer-tier runtime dispatch and
+    # effective options are checked by the source gate's port-route test.
+    "cam3_emissivity.cu", "eeps.cu", "gfdleta_co2_init.cuh",
+    "gfdleta_column.cuh", "gsfcgce4ice_aux.cu", "qnsepbl.cu", "sas.cu",
+    "sstskin.cu", "temf.cu",
+    # Existing no-FTZ port routes, now inventoried by the source gate.
+    "gsfcsw.cu", "gsfcsw_fast.cuh", "ishmael.cu", "kfcup.cu", "km5.cu",
+    # 3.0.0 port units on direct no-FTZ routes in every mode, each tied to
+    # its route by test_3_0_port_source_exceptions_keep_non_ftz_routes:
+    # pxsfclay, mskf and mskf_aerosol_replay through compile_noftz_module;
+    # wind_mav, wind_legacy and clwrf through _NO_FTZ_MODULES;
+    # native_surface_diagnostics through load_module's direct NVRTC site;
+    # ntu (and the ntu_parallel.cuh it appends) through woof.core.ntu's
+    # direct NVRTC with MODULE_OPTIONS; dfi_reset through woof.core.dfi's
+    # compile_module_preserving_subnormals; the global_* units through
+    # kernels.load_module_no_ftz.
+    "pxsfclay.cu", "mskf.cu", "mskf_aerosol.cuh", "wind_mav.cu",
+    "wind_legacy.cu", "clwrf.cu", "native_surface_diagnostics.cu", "ntu.cu",
+    "ntu_parallel.cuh", "dfi_reset.cu", "global_advection.cu",
+    "global_geometry.cu", "global_hydrostatic.cu", "global_polar.cu",
 })
 
 _NUMBER = r"(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?"

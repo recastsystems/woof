@@ -23,6 +23,11 @@ DT = 60.0
 ZTOP = 20000.0
 START = datetime.datetime(2026, 10, 3, 18, 0)
 P_TOP = float(101325.0 * np.exp(-ZTOP / 8000.0))
+#: The ICAO standard atmosphere's pressure at ZTOP (the seam's nominal
+#: eta, woof.core.mpas_column_suite._nominal_znu), floored to whole Pa.
+P_TOP_STANDARD = float(np.floor(
+    101325.0 * (216.65 / 288.15) ** 5.25588
+    * np.exp(-(ZTOP - 11000.0) / 6341.62)))
 
 #: The partner settings WRF's own pairing rules require beside one option
 #: (each is the remedy the engine's refusal text names).  Test data: a
@@ -35,7 +40,35 @@ PARTNERS = {
     "surface_layer.mynn": {"bl_pbl_physics": 5},
     "surface_layer.off": {"bl_pbl_physics": 0, "sf_surface_physics": 0},
     "cumulus.grell-freitas": {"ishallow": 1},
+    # The pairings the ported schemes' own admission names (woof.config):
+    # GFS, QNSE and TEMF each run only with their own surface layer and the
+    # reverse; CAM deep convection reads MYJ's TKE through get_tpert; SSiB
+    # runs with fractional sea ice on its three-layer column.
+    "pbl.gfs": {"sf_sfclay_physics": 3},
+    "surface_layer.gfs": {"bl_pbl_physics": 3},
+    "pbl.qnse": {"sf_sfclay_physics": 4},
+    "surface_layer.qnse": {"bl_pbl_physics": 4},
+    "pbl.temf": {"sf_sfclay_physics": 10},
+    "surface_layer.temf": {"bl_pbl_physics": 10},
+    "cumulus.cam-deep": {"bl_pbl_physics": 2, "sf_sfclay_physics": 2},
+    "land_surface.ssib": {"fractional_seaice": 1, "num_soil_layers": 3},
+    # The PX surface layer runs with the ACM2 PBL (WRF pairs them).
+    "surface_layer.pleim-xiu": {"bl_pbl_physics": 7},
+    # The idealized SCM surface scheme admits no PBL: WRF 4.7.1 assigns
+    # IDEALSCMSFCSCHEME no isfc before its PBL compatibility checks
+    # (woof.config's refusal names bl_pbl_physics=0 as the remedy), and
+    # its prescribed-flux surface admits no land surface model (nothing
+    # else would produce UST/CHS/CHS2/CQS2: sf_surface_physics=0).
+    "surface_layer.ideal-scm": {"bl_pbl_physics": 0,
+                                "sf_surface_physics": 0},
 }
+
+
+def _one_hot(index, count, ncol=NCOL):
+    """Category fractions with every column wholly in ``index`` (1-based)."""
+    out = np.zeros((count, ncol), np.float32)
+    out[index - 1] = 1.0
+    return out
 
 #: ``surface`` keywords an option needs declared, again the engine's own
 #: named remedy: with no longwave scheme nothing computes GLW (and with no
@@ -44,7 +77,51 @@ PARTNERS = {
 #: one.
 SURFACE_PARTNERS = {
     "radiation.dudhia-shortwave": {"glw": 350.0},
+    "radiation.gsfc-shortwave": {"glw": 350.0},
     "radiation.off": {"glw": 350.0, "swdown": 400.0},
+    # The slab reads THC (LANDUSE.TBL THERIN/100); the refusal names
+    # thermal_inertia= as the remedy (0.04 as the other slab fixtures).
+    "land_surface.slab": {"thermal_inertia": 0.04},
+    # PX land weights the land-use and bottom-soil category FRACTIONS
+    # (VEGELAND, SOILPROP); these match the dominant categories the
+    # surface() columns declare: MODIS 21-category land use wholly
+    # category 10 (ivgtyp) and the 16 STATSGO soils wholly category 6
+    # (isltyp).
+    "land_surface.pleim-xiu": {"landusef": _one_hot(10, 21),
+                               "soilcbot": _one_hot(6, 16)},
+}
+
+
+def _held_suarez_binding(ncol=NCOL):
+    """A bound RK-stage edge-momentum binding over the test columns.
+
+    ra_lw_physics=31 damps edge momentum at every RK stage, a caller
+    obligation the seam refuses to start without (HeldSuarezMeshMomentum).
+    The columns are joined in a ring (edge i links cells i and i+1), with
+    the profile's own base pressure.
+    """
+    import cupy as cp
+    from woof.core.held_suarez_mesh import HeldSuarezMeshMomentum
+    z_mid = 0.5 * (np.linspace(0.0, ZTOP, NZ + 1)[:-1]
+                   + np.linspace(0.0, ZTOP, NZ + 1)[1:])
+    cells = np.stack([np.arange(ncol), (np.arange(ncol) + 1) % ncol],
+                     axis=1).astype(np.int32)
+    pressure = np.repeat((101325.0 * np.exp(-z_mid / 8000.0))[:, None],
+                         ncol, 1).astype(np.float32)
+    binding = HeldSuarezMeshMomentum()
+    binding.bind(cp.ascontiguousarray(cp.asarray(cells)),
+                 cp.ascontiguousarray(cp.asarray(pressure)))
+    return binding
+
+
+#: Construction partners a selection's own refusal names (factories, so
+#: each seam gets its own).
+CONSTRUCTION_PARTNERS = {
+    "radiation.relaxation-31": {"rk_momentum": _held_suarez_binding},
+    # GFDL-Eta reads the seam's nominal eta pair, which needs p_top_pa at
+    # or below the standard-atmosphere pressure of the nominal top (the
+    # seam's refusal); P_TOP's 8 km scale height puts it above that.
+    "radiation.wrf-gfdleta": {"p_top_pa": lambda ncol: P_TOP_STANDARD},
 }
 
 #: Selectors the engine accepts that are not registry components.
@@ -165,16 +242,22 @@ def statics(plan, ncol=NCOL, seed=1) -> dict:
 
 def build_named(name, **kwargs):
     """The seam of one ``selections()`` row, with its declared partners."""
+    ncol = kwargs.get("ncol", NCOL)
+    construct = {key: factory(ncol) for key, factory
+                 in CONSTRUCTION_PARTNERS.get(name, {}).items()}
     return build(selections()[name],
-                 extra_surface=SURFACE_PARTNERS.get(name), **kwargs)
+                 extra_surface=SURFACE_PARTNERS.get(name), **construct,
+                 **kwargs)
 
 
-def build(physics, ncol=NCOL, radiation_seconds=120.0, extra_surface=None):
+def build(physics, ncol=NCOL, radiation_seconds=120.0, extra_surface=None,
+          **construct):
     plan = suite.column_physics_plan(
         physics, n_levels=NZ, dt=DT, radiation_seconds=radiation_seconds,
         surface_pbl_seconds=DT)
     surf = surface(plan, ncol)
     surf.update(extra_surface or {})
+    p_top = construct.pop("p_top_pa", P_TOP)
     rng = np.random.default_rng(2)
     seam = suite.run_mpas_column_physics(
         physics=physics, n_levels=NZ, n_columns=ncol, dt=DT,
@@ -183,9 +266,9 @@ def build(physics, ncol=NCOL, radiation_seconds=120.0, extra_surface=None):
         latitude_deg=np.full(ncol, 38.0), longitude_deg=np.full(ncol, -100.0),
         terrain_height_m=rng.uniform(0.0, 50.0, ncol).astype(np.float32),
         z_interface_nominal_m=np.linspace(0.0, ZTOP, NZ + 1),
-        p_top_pa=P_TOP, dx_m=12000.0,
+        p_top_pa=p_top, dx_m=12000.0,
         cell_area_m2=np.full(ncol, 1.44e8),
-        surface=surf, statics=statics(plan, ncol))
+        surface=surf, statics=statics(plan, ncol), **construct)
     return seam
 
 
@@ -243,7 +326,7 @@ def sweep(components=None, steps=3) -> list:
     for name, physics in selections(components).items():
         row = {"option": name, "physics": physics}
         try:
-            seam = build(physics, extra_surface=SURFACE_PARTNERS.get(name))
+            seam = build_named(name)
             frames = run(cp, seam, steps)
             bad = _finite(frames)
             row.update(

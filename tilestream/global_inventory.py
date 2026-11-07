@@ -26,8 +26,13 @@ def global_keys(keys):
     # sf_ocean_physics = 2 every store-direct and streamed forecast (full
     # CONUS HRRR on [devices] or --tiles) refused its start with "carrier
     # 'fields/_pwp_status' has shape (1,): no horizontal extent, so it is not
-    # a field this store can hold" (V59 run 2a, V60 r1b/r1d, 2026-10-21).
+    # a field this store can hold" (test host run 2a, test host r1b/r1d, 2026-10-21).
     found.update(key for key in keys if key == 'fields/_pwp_status')
+    # Native precipitation reset origin is a two-word split real64 domain
+    # clock. Every column reads the same immutable origin. Treating shape
+    # (2,) as a spatial tile carrier refuses the streamed forecast before
+    # its first step (it has no horizontal extent).
+    found.update(key for key in keys if key in ('scratch/prec_acc_epoch','scratch/bucket_epoch','scratch/tendency_epoch','scratch/noahmp_output_epoch'))
     ledger = {key for key in keys if key.startswith('state/chemdiag_ledger_')}
     if ledger - set(GLOBAL_KEYS):
         raise ValueError('unknown chemistry ledger carrier would bypass tile transport')

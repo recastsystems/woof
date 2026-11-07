@@ -274,7 +274,7 @@ def test_launch_ledger_does_not_prepopulate_forecast_output(tmp_path, monkeypatc
     # launch does, and the delenv calls above record nothing to restore when
     # the variables were unset; without ledger_environment every later test
     # in the worker wrote its timeline here (test_obs_prepare_parallel found
-    # no timeline.jsonl when it followed this file on a development machine).
+    # no timeline.jsonl when it followed this file on test host 4).
     with ledger_environment():
         ledger = bind_ledger(root)
         assert ledger.emit("prep.inputs", "begin")

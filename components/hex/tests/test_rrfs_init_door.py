@@ -75,6 +75,7 @@ def test_case7_jobs_carry_the_hrrrv5_namelist(tmp_path):
     assert case7["landuse_table"] == "MODIFIED_IGBP_MODIS_NOAH_15s" and case7["tempo_rap"] is False
     assert case7["tsk_seaice_threshold"] == 271.4 and case7["frac_seaice"] is True
     assert case7["capsule_path"] == case7["reference_path"] == str(tmp_path / "a.nc")
+    assert case7["absent_numbers"] == "from-mass"
 
 
 def test_a_limited_area_mesh_takes_the_levels_inline_with_the_halo(tmp_path):
@@ -93,6 +94,9 @@ def test_case9_jobs_make_the_carrier_from_the_init(tmp_path):
     artifact, case9 = (j["config"] for j in jobs)
     assert artifact["template"] == str(tmp_path / "init.nc") and artifact["dimensions"]["nSoilLevels"] == 9
     assert case9["hydrometeors_rrfs"] is True and case9["hydrometeors_gfs"] is False
+    # Only this switch writes the number fields, and from-mass fills them: NOAA's GFS switch (gfs true, rrfs
+    # false) leaves the model zero rain, cloud and ice number, an echo ring on every edge (docs/rrfs-init.md).
+    assert case9["absent_numbers"] == "from-mass"
     assert (case9["start_time"], case9["stop_time"]) == ("2023-07-08_13:00:00", "2023-07-08_14:00:00")
 
 

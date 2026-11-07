@@ -83,6 +83,28 @@ _TINY = dict(nx=8, ny=6, nz=4, dx=1000.0, dy=1000.0, ztop=10000.0,
              dt=1.0, run_seconds=10.0)
 
 
+def test_cam_frame_pricing_follows_selected_depths_and_marks_unmeasured_ones():
+    """The default 32-level frame under-priced a real 34-level CAM run."""
+    cfg = RunConfig(**{**_TINY, "nz": 34}, moist=True, mp_physics=8,
+                    ra_lw_physics=3, ra_sw_physics=3)
+    exp = experiment_from_run_config(cfg, datetime(1974, 4, 3, 12))
+    assert pf.kernel_local_frame_bytes(exp)["cam3_emissivity"] == 34848
+    default = dataclasses.replace(exp, domains=tuple(
+        dataclasses.replace(dc, run=dataclasses.replace(dc.run, nz=32))
+        for dc in exp.domains))
+    assert pf.kernel_local_frame_bytes(default)["cam3_emissivity"] == 33872
+    unmeasured = dataclasses.replace(exp, domains=tuple(
+        dataclasses.replace(dc, run=dataclasses.replace(dc.run, nz=33))
+        for dc in exp.domains))
+    # The split CAM source uses its ABI automatic-array bound at every
+    # depth, including depths absent from the old compiler measurement.
+    assert pf.kernel_local_frame_bytes(unmeasured)["cam3_emissivity"] == 65136
+    basis = pf.non_pool_basis(pf.MEASURED_LOCAL_MEMORY_PROFILE, unmeasured)
+    assert "CAM_LEVELS=[33]" in basis
+    assert "these CAM specializations have no measured frame" in basis
+    assert "reserved bound 65136 B per thread" in basis
+
+
 @pytest.fixture(scope="module")
 def d01_cfg() -> RunConfig:
     return load_config(CONFIG_D01)
@@ -145,6 +167,7 @@ def test_state_manifest_matches_restart_classification(d01_cfg):
     # plus their RK time-t copies.  Without this arm they would be
     # classified in the restart manifest and unaccounted for in the VRAM
     # projection, which is exactly the drift this equality exists to catch.
+    morrison_aero_cfg = dataclasses.replace(d01_cfg, mp_physics=40)
     p3_cfg = dataclasses.replace(d01_cfg, mp_physics=50)
     # Milbrandt-Yau owns nh/nh0 and WDM6 owns nn/nn0; both joined the
     # classification sets at 1.9.1 (D1's class), so both join the union
@@ -173,11 +196,14 @@ def test_state_manifest_matches_restart_classification(d01_cfg):
                                      bl_mynn_tkeadvect=True)
     # The carried CCPP energy and its time-t copy belong to this full union.
     ccpp_cfg = dataclasses.replace(d01_cfg, bl_pbl_physics=CCPP_TKE_EDMF_PBL_SCHEME)
+    sbu_cfg = dataclasses.replace(d01_cfg, mp_physics=13)
     names = (set(pf.state_array_shapes(d01_cfg))
+             | set(pf.state_array_shapes(sbu_cfg))
              | set(pf.state_array_shapes(tkeadv_cfg))
              | set(pf.state_array_shapes(nssl_cfg))
              | set(pf.state_array_shapes(les_cfg))
              | set(pf.state_array_shapes(aerosol_cfg))
+             | set(pf.state_array_shapes(morrison_aero_cfg))
              | set(pf.state_array_shapes(sase_cfg))
              | set(pf.state_array_shapes(p3_cfg))
              | set(pf.state_array_shapes(my2_cfg))
@@ -187,10 +213,14 @@ def test_state_manifest_matches_restart_classification(d01_cfg):
              | set(pf.state_array_shapes(tempo_cfg))
              | set(pf.state_array_shapes(ccpp_cfg)))
     # Strict WRF arithmetic attaches its own carriers at first write, outside
-    # DomainState's allocation list (c501f4d34, lane/wrf-exact-start); they
+    # DomainState's allocation list (c501f4d34, development branch); they
     # are classified, so they join the union by name.
-    assert restart.STRICT_LAZY_STATE_ATTRS <= restart.STATE_REBUILT_ATTRS
+    assert restart.STRICT_LAZY_STATE_ATTRS <= (restart.STATE_REBUILT_ATTRS | frozenset(restart.CHECKPOINT_ONLY_STATE))
     names |= set(restart.STRICT_LAZY_STATE_ATTRS)
+    # Parent pre-feedback theta is lazy and serialized for RASM.
+    names.add("_wrf_th_phy_m_t0")
+    # Native NWP attaches step metadata at the domain-clock seam.
+    names |= {"_native_nwp_prepared", "_nwp_itimestep"}
     # aer_opt = 1 (golden/ports-rad) attaches the monthly aerosol climatology
     # ``aerodm`` at its first radiation call, outside DomainState's allocation
     # list: it is classified as derived setup (rebuilt, never in a checkpoint)
@@ -200,21 +230,48 @@ def test_state_manifest_matches_restart_classification(d01_cfg):
     assert "radiation/aerodm" in pf.physics_array_shapes(aer1_cfg)
     assert "radiation/aerodm" not in pf.physics_array_shapes(d01_cfg)
     names.add("aerodm")
-    # Analysis nudging (labs/nudging, 2.9.11) attaches its held FDDA
-    # tendencies at setup (woof.spectral_nudging.prepared
-    # .allocate_held_tendencies), outside DomainState's allocation list, and
-    # serializes them so a resume keeps them: they join the union by name.
-    names |= {"nudging_tendency_u", "nudging_tendency_v",
-              "nudging_tendency_temperature", "nudging_tendency_geopotential",
-              "nudging_tendency_qv"}
+    # The selected-domain nudging inventory prices its restart carriers too.
+    from woof.spectral_nudging.config import NudgingConfig
+    from woof.spectral_nudging.memory import memory_inventory
+    names |= {name.removeprefix("nudging/") for name, *_ in memory_inventory(
+        d01_cfg, NudgingConfig(enabled=True, gq=0.001))
+        if name.startswith("nudging/nudging_tendency_")}
     # Added packages join the allocation census; old configurations remain.
-    for mp in (5,):
+    for mp in (5, 7, 11, 15, 38, 51, 52, 53, 55, 56, 95, 96):
         names |= set(pf.state_array_shapes(dataclasses.replace(d01_cfg, mp_physics=mp)))
+    # MSKF aerosol feedback owns three held fields across checkpoints.
+    names |= set(pf.state_array_shapes(dataclasses.replace(
+        d01_cfg, cu_physics=11, mp_physics=40, aercu_opt=1)))
+    names |= set(pf.state_array_shapes(dataclasses.replace(d01_cfg, km_opt=5)))
+    # Final tuning knobs retain LES stresses and MAD-WRF transported tracers.
+    names |= set(pf.state_array_shapes(dataclasses.replace(d01_cfg, m_opt=1)))
+    names |= set(pf.state_array_shapes(dataclasses.replace(d01_cfg, madwrf_opt=2)))
+    # EEPS and K-epsilon transport energy/dissipation across steps.
+    for pbl in (16, 17):
+        names |= set(pf.state_array_shapes(dataclasses.replace(d01_cfg, bl_pbl_physics=pbl)))
+    # Native tracer and trajectory allocations (device_inventory.py) and
+    # Morrison aerosol cumulus carry are separate conditional inventories.
+    names |= set(pf.state_array_shapes(dataclasses.replace(
+        d01_cfg, tracer_opt=2, traj_opt=1, num_traj=1,
+        mp_physics=40, aercu_opt=1)))
+    # Lazy native observation state is allocated in fddaobs/forecast.py:70-83.
+    names |= {"fddaobs_rko", "fddaobs_varobs", "fddaobs_errf",
+              "fddaobs_savwt", "fddaobs_clock", "fddaobs_frame",
+              "fddaobs_uratx", "fddaobs_vratx", "fddaobs_tratx"}
+    # SurfaceForecast.allocate owns these held arrays, including FASDAS.
+    from woof.spectral_nudging.surface_forecast import HELD, FASDAS_HELD
+    names |= set(HELD) | set(FASDAS_HELD) | {"hfx_fdda"}
+    # Runtime-owned print windows and RASM call bindings are rebuilt.
+    names |= {"_misc_print_window", "_misc_print_origin", "_misc_print_records",
+              "_rasm_theta_bound", "_rasm_bound_calls"}
+    # global_state.initialize attaches the native radiation tendency.
+    names.add("global_rthraten")
     classified = (set(restart.STATE_SERIALIZED_ATTRS)
                   | set(restart.STATE_REBUILT_ATTRS)
                   | set(restart.CHECKPOINT_ONLY_STATE)
                   | set(restart.STATE_SETUP_ARRAYS)
-                  | set(restart.STATE_DERIVED_SETUP_ARRAYS))
+                  | set(restart.STATE_DERIVED_SETUP_ARRAYS)
+                  | set(restart.STATE_OPTIONAL_SETUP_ARRAYS))
     assert names == classified
     # The derived setup arrays are priced like every other allocation and
     # classified like every other attribute, but they are deliberately
@@ -288,7 +345,7 @@ def test_shared_dycore_state_symbols_are_restart_rebuilt_source(exp4):
 def test_strict_pressure_perturbation_is_never_shared_between_domains():
     """Strict rk_step 1 and every history P read the previous step's
     p_perturbation (core/dycore.py:_wrf_reuse_diagnostics).  Shared, a
-    two-domain strict run read the other domain's pressure: a 9 km/3 km pair's
+    two-domain strict run read the other domain's pressure: the nested-domain pair's
     d01 history P differed from wrf.exe 4.6.1 in 527,901 of 528,000 words
     at 45 s."""
     assert "p_perturbation" in restart.STATE_REBUILT_ATTRS
@@ -441,7 +498,7 @@ def test_physics_manifest_groups_cover_restart_driver_attrs(d01_cfg):
                     # checkpoint HEADER, no array of its own.  The carrier
                     # FIELDS ride the serialized surface inventory, which
                     # is where their shapes are already accounted for.
-                    "carriers"}
+                    "carriers", "_swdd_from_scheme"}
     ozone = pf.physics_array_shapes(d01_cfg, cam_ozone=True)
     assert ozone["radiation/o33d_grid"] == (d01_cfg.nz, d01_cfg.ny, d01_cfg.nx)
     groups.add("o3rad")  # direct owner retains the historical radiation/o33d_grid key
@@ -449,7 +506,10 @@ def test_physics_manifest_groups_cover_restart_driver_attrs(d01_cfg):
     # It is priced by the table-selected provider in the forecast envelope,
     # including checkpoint work. The functional nonzero allocation and actual
     # restart-array cross-checks live in test_hydro_memory_contract.
-    dynamic_attrs = {"hydro"}
+    # The coupled ocean/wave state (driver.ocean, woof.ocean.checkpoint) is
+    # sized by the prepared wave grid and spectrum, not RunConfig; the run
+    # prices it from its live allocations (woof.ocean.cost.receipt).
+    dynamic_attrs = {"hydro", "ocean"}
     assert dynamic_attrs <= set(restart.DRIVER_SERIALIZED_ATTRS)
     assert "hydro_memory" in {f.name for f in dataclasses.fields(pf.ExperimentMemoryEstimate)}
     assert set(restart.DRIVER_SERIALIZED_ATTRS) - scalar_attrs - dynamic_attrs <= groups
@@ -587,27 +647,18 @@ def test_scratch_registry_feature_matrix(d01_cfg):
     assert pf._CUMULUS_KERNEL_MODULES[1] == ("kf", "kf_validation")
 
 
-def test_nwp_diagnostics_prices_exactly_the_uh_planes(d01_cfg):
-    """The UP_HELI_MAX lane costs FIVE (ny, nx) FP32 planes and nothing
-    else; the flagship (nwp_diagnostics = 0) registry is untouched.
-
-    Three were the diagnostic's own (the accumulator plus two per-launch
-    work planes).  The other two are the consumer-owned tracking windows
-    added 2026-08-07: same running-max operator, folded in the same pass,
-    but reset by the consumer that reads them instead of by the history
-    writer, so a storm-following nest's placement stopped depending on
-    the output cadence.  They are priced on this gate because that is the
-    gate that allocates them.
-    """
+def test_nwp_diagnostics_prices_native_windows_and_work(d01_cfg):
+    """All native persistent windows and time-t work enter admission."""
+    from woof.core.nwp_diagnostics import scratch_shapes
     base = pf.scratch_slot_registry(d01_cfg, n_lbc_intervals=2)
     on_cfg = dataclasses.replace(d01_cfg, nwp_diagnostics=1)
     on = pf.scratch_slot_registry(on_cfg, n_lbc_intervals=2)
-    added = {"up_heli_max", "uh_diag_col", "uh_diag_use",
-             "uh_follow_window", "uh_spawn_window"}
-    assert set(on) - set(base) == added
-    assert not added & set(base)
-    for slot in added:
-        assert on[slot] == (d01_cfg.ny, d01_cfg.nx)
+    expected = scratch_shapes(on_cfg)
+    expected.update({slot: (d01_cfg.ny, d01_cfg.nx) for slot in
+        ("uh_diag_col", "uh_diag_use", "uh_follow_window", "uh_spawn_window")})
+    assert set(on) - set(base) == set(expected) - set(base)
+    for slot, shape in expected.items():
+        assert on[slot] == shape
 
 
 def test_scratch_registry_classifiable_by_restart_manifest(d01_cfg):
@@ -833,6 +884,7 @@ _STRICT_SLOTS = {
     "acoustic_wrf_muts": (6, 8),
     "wrf_exact_muts": (6, 8),
     "wrf_exact_mu_halo": (6, 8),
+    "wrf_history_t": (4, 6, 8),
     "rk_ww_ru": (4, 6, 9),
     "rk_ww_rv": (4, 7, 8),
     "moist_sc_t": (4, 6, 8),
@@ -870,7 +922,8 @@ def test_strict_mode_scratch_is_priced_and_builds_a_multi_domain_arena(
         _STRICT_SLOTS
     for slot in _STRICT_SLOTS:
         assert pf.scratch_slot_lifetime(slot) is not None, slot
-        assert not pf.scratch_slot_uses_arena(slot), slot
+        # Acoustic muts has its own audited producer before every consumer.
+        assert pf.scratch_slot_uses_arena(slot) == (slot == "acoustic_wrf_muts"), slot
     dry = pf.scratch_slot_registry(RunConfig(**_TINY), n_lbc_intervals=2)
     assert "moist_sc_t" not in dry and "rk_ww_ru" in dry
 
@@ -878,10 +931,10 @@ def test_strict_mode_scratch_is_priced_and_builds_a_multi_domain_arena(
             types.SimpleNamespace(grid_id=2, parent_id=1, run=child_cfg))
     arena = state_mod.build_shared_scratch_arena(tree)
     assert arena.nbytes == pf.shared_scratch_arena_bytes(tree)
-    assert not set(_STRICT_SLOTS) & set(arena.slot_shapes)
+    assert set(_STRICT_SLOTS) & set(arena.slot_shapes) == {"acoustic_wrf_muts"}
 
     # The flagship tree, inputs not required: the strict estimate prices
-    # exactly the six slots on every domain, and nothing else moves in
+    # exactly the seven slots on every domain, and nothing else moves in
     # residency.
     raw = tomllib.loads(CONFIG_4DOM.read_text(encoding="utf-8"))
     raw.pop("case_data")
@@ -893,7 +946,7 @@ def test_strict_mode_scratch_is_priced_and_builds_a_multi_domain_arena(
                                 default.domains):
         nz, ny, nx = dc.run.nz, dc.run.ny, dc.run.nx
         expected = 4 * (3 * ny * nx + nz * ny * (nx + 1)
-                        + nz * (ny + 1) * nx + nz * ny * nx)
+                        + nz * (ny + 1) * nx + 2 * nz * ny * nx)
         # A strict process also carries WRF's 3-D PBL and cumulus tendency
         # history rows (2.9.1, physics_inventory.history_tendency_rows); a
         # default process does not.  Each is one (nz, ny, nx) FP32 plane.
@@ -955,7 +1008,7 @@ def test_smag_coefficients_alias_acoustic_backings(monkeypatch):
 @pytest.mark.parametrize("strict", [False, True])
 def test_strict_nest_larger_than_its_parent_gets_its_own_relaxation_backing(
         monkeypatch, strict):
-    """A two-domain strict case (2026-10-28): d01 120x100, d02 210x150,
+    """The two-domain strict nested-domain case (2026-10-28): d01 120x100, d02 210x150,
     44 levels.  Strict mode folds a nest's lateral relaxation through the
     lbc_relax_* slots too (dycore._wrf_relaxation_fold), so the shared
     arena must size them by the nest; sized by the specified parent alone,
@@ -1016,7 +1069,7 @@ def _scan_scratch_tree(tree, rel):
     that is not immediately called (method aliasing) and any
     ``getattr(x, "scratch")`` lookup are recorded as ``alias``/
     ``getattr`` sites so the completeness gate can reject them -- both
-    were silent-skip bypasses (review F3 / shadow F4).
+    were silent-skip bypasses (review F3 / F4).
     """
     sites = []
     call_func_ids = {id(node.func) for node in ast.walk(tree)
@@ -1144,6 +1197,7 @@ def test_every_scratch_call_site_is_classified(d01_cfg, monkeypatch):
                           mp_physics=16),
                 RunConfig(**_TINY, moist=True, mp_physics=18),
                 RunConfig(**_TINY, moist=True, mp_physics=28),
+                RunConfig(**_TINY, moist=True, mp_physics=40, km_opt=4),
                 RunConfig(**_TINY, moist=True, mp_physics=28,
                           specified=True, aer_init_opt=1, wif_input_opt=1),
                 # P3 one-category owns the only three ice-diagnostic slots
@@ -2019,8 +2073,12 @@ def test_every_moist_scheme_has_a_written_reflectivity_rail_decision():
     and ``domain_kernel_modules`` now refuses it by name.
     """
     priced = set(pf._MICROPHYSICS_KERNEL_MODULES) - {0}
+    from woof.core.refl import SCHEME_ABSENT_REFL_10CM
+    assert set(SCHEME_ABSENT_REFL_10CM) == {0, 11, 95, 96}
+    assert "never writes REFL_10CM" in SCHEME_ABSENT_REFL_10CM[11]
     decided = (set(pf._REFLECTIVITY_MICROPHYSICS)
-               | set(pf._SELF_REFLECTIVITY_MICROPHYSICS))
+               | set(pf._SELF_REFLECTIVITY_MICROPHYSICS)
+               | set(SCHEME_ABSENT_REFL_10CM))
     assert priced - decided == set(), (
         "these moist selectors are priced for microphysics kernels but "
         "have no reflectivity-rail decision: "
@@ -2430,18 +2488,25 @@ def test_mp50_is_deliberately_out_of_the_six_mass_shape_package():
     p3_arms = [
         node for node in ast.walk(tree)
         if isinstance(node, ast.If)
-        and isinstance(node.test, ast.Compare)
-        and isinstance(node.test.ops[0], ast.Eq)
-        and isinstance(node.test.comparators[0], ast.Constant)
-        and node.test.comparators[0].value == 50]
-    assert len(p3_arms) == 1, "the mp==50 shape arm moved or was duplicated"
+        and ast.unparse(node.test) == "_p3 is not None"]
+    assert len(p3_arms) == 1, "the P3 variant shape arm moved or was duplicated"
+    assert any(isinstance(node, ast.Assign)
+               and any(isinstance(target, ast.Name) and target.id == "_p3"
+                       for target in node.targets)
+               and ast.unparse(node.value) == "p3_variant(cfg.mp_physics)"
+               for node in ast.walk(tree))
     orelse = p3_arms[0].orelse
     assert len(orelse) == 1 and isinstance(orelse[0], ast.If), (
         "the six-mass arm is no longer chained to the mp==50 arm; an "
         "unchained sibling lets a widened tuple price qs/qg/effs on top "
         "of P3's own package")
     # Lin has its own six-mass arm without effective-radius fields.
-    lin_arm = orelse[0]
+    sbu_arm = orelse[0]
+    assert ast.unparse(sbu_arm.test) == "_column_kernel_row(cfg.mp_physics) is not None"
+    # WDM5 has its own table-derived mass and number package.
+    wdm5_arm = sbu_arm.orelse[0]
+    assert ast.unparse(wdm5_arm.test) == "cfg.mp_physics == 14"
+    lin_arm = wdm5_arm.orelse[0]
     assert isinstance(lin_arm.test, ast.Compare)
     assert isinstance(lin_arm.test.ops[0], ast.Eq)
     assert lin_arm.test.comparators[0].value == 2
@@ -2450,6 +2515,9 @@ def test_mp50_is_deliberately_out_of_the_six_mass_shape_package():
     assert not {"effc", "effi", "effs"} & set(lin_shapes)
     assert not priced(2)
     assert len(lin_arm.orelse) == 1
+    sbu_shapes = pf.state_array_shapes(RunConfig(**_TINY, moist=True, mp_physics=13))
+    assert {"qi", "qs", "qi0", "qs0", "rimi"} <= set(sbu_shapes)
+    assert not {"qg", "qg0", "rimi0", "effc", "effi", "effs"} & set(sbu_shapes)
     wsm3_arm = lin_arm.orelse[0]
     assert isinstance(wsm3_arm.test.ops[0], ast.Eq)
     assert wsm3_arm.test.comparators[0].value == 3
@@ -2463,13 +2531,26 @@ def test_mp50_is_deliberately_out_of_the_six_mass_shape_package():
         assert 50 not in COLUMN_SCHEMES
         orelse = orelse[0].orelse
         assert len(orelse) == 1 and isinstance(orelse[0], ast.If)
+    # Eta-New carries snow/total-water and its own restart state before the
+    # six-mass arm. Its package must remain disjoint from P3's arm.
+    eta_arm = orelse[0]
+    assert ast.unparse(eta_arm.test) == "cfg.mp_physics == 95"
+    eta_shapes = pf.state_array_shapes(RunConfig(**_TINY, moist=True, mp_physics=95))
+    assert {"qs", "qt", "f_ice_phy", "f_rain_phy", "f_rimef_phy", "qs0", "qt0", "etanew_restart_state"} <= set(eta_shapes)
+    assert not {"qg", "qg0", "effc", "effi", "effs"} & set(eta_shapes)
+    orelse = eta_arm.orelse
     chained = orelse[0].test
     assert isinstance(chained, ast.Compare)
     assert isinstance(chained.ops[0], ast.In)
-    assert list(eval(compile(ast.Expression(chained.comparators[0]), "<six-mass-membership>", "eval"), pf.__dict__)) == [6, 8, 9, 10, 16, 18, 24, 28, 106], (  # Lin (2) and FAST_SBM (30) own arms; TEMPO is a named row
+    from woof.core.mp_column_schemes import SIX_MASS_TABLE_SCHEMES
+    from woof.config import P3_MP_PHYSICS
+    membership = tuple(eval(compile(ast.Expression(chained.comparators[0]),
+                                   "<six-mass-membership>", "eval"), pf.__dict__))
+    assert membership == (6, 8, 9, 10, 16, 18, 24, 26, 27, 28, 29, 38, 40, 106) + SIX_MASS_TABLE_SCHEMES, (
         "the six-mass membership tuple moved; see Registry.EM_COMMON "
         ":3021/:3024/:3025/:3026/:3031/:3033/:3036 for its members and "
         ":3038 for why 50 is not one of them")
+    assert set(membership).isdisjoint(P3_MP_PHYSICS)
 
 
 def test_mp50_acoustic_cq_takes_its_one_ice_category_arm():
@@ -2812,7 +2893,7 @@ def test_mp28_mixed_nest_edge_resolves_on_every_partner_by_name():
         for mp in mt.PORTED_MP_PHYSICS
         for name in mt._MASS_FIELDS[mp] + mt._MOMENT_FIELDS[mp]
     }
-    assert len(mt._EDGE_FIELD_CODES) == len(ported_names) == 27
+    assert len(mt._EDGE_FIELD_CODES) == len(ported_names) == 28
     assert set(mt._EDGE_FIELD_CODES) == ported_names
     assert {16, 28} <= set(mt.PORTED_MP_PHYSICS)
 
@@ -3732,14 +3813,14 @@ def test_estimate_domain_itemization_pins(exp1):
     # paper/conus-suite-exact (2.9.11): the stored MF_VX_INV state plane msfv_inv,
     # 4*(ny+1)*nx = 201,000 B on this 250x200 grid.
     assert by_cat == {'state': 573559148,
- 'physics': 275028360,
+ 'physics': 276028360,
  'scratch': 597187064,
  'lbc': 67091504,
  'nest': 0,
  'transient': 469137500}
     assert d01.resident_bytes == sum(
         v for c, v in by_cat.items() if c != "transient")
-    assert d01.resident_bytes == 1512866076
+    assert d01.resident_bytes == 1513866076
     assert est.resident_bytes == d01.resident_bytes + est.k_tables_bytes
     assert d01.transient_bytes == 469137500
 
@@ -3915,7 +3996,7 @@ def test_d01_calibration_bounds_measured_fixture(exp1):
     # The cap-solar SWDDIR/SWDDNI/SWDDIF history planes add 600,000 B.
     # paper/conus-suite-exact (2.9.11): the stored MF_VX_INV state plane msfv_inv,
     # 4*(ny+1)*nx = 201,000 B on this 250x200 grid.
-    assert est.domains[0].resident_bytes == 1512866076
+    assert est.domains[0].resident_bytes == 1513866076
     # Compare the recorded pre-intake residency to its historical measurement.
     # New history carriers are separately priced above; this is no new pool measurement.
     ratio = 1523343280 / measured
@@ -3923,7 +4004,7 @@ def test_d01_calibration_bounds_measured_fixture(exp1):
 
 
 def test_calibration_constants_pin_the_measurement_record():
-    """CONSISTENCY pins, not validation (shadow F3 / review F5): these
+    """CONSISTENCY pins, not validation (review F3 / F5): these
     re-state the two controller measurement records -- the d01 run
     fixture (n0-preflight-baseline.log) and the N0 allocation probe
     (n0-alloc-probe-r2.json) -- so any silent constant edit is visible.
@@ -4279,7 +4360,7 @@ def test_check_cli_over_budget_fails_and_names_the_lever(capsys):
 def test_check_over_budget_envelope_exits_nonzero(capsys, monkeypatch):
     """B-1: the report said "exceeds the WDDM budget" and exited 0.
 
-    A a development machine pilot on virgin 1.0.1 read `woof check`'s own sentence --
+    A test host 7 pilot on virgin 1.0.1 read `woof check`'s own sentence --
     "observed peak envelope 12.98 GiB exceeds the WDDM budget 11.64 GiB"
     -- out of a command that exited 0, so every script wrapping it read
     green.  The prose and the exit code cannot disagree; the prose is the
@@ -4391,7 +4472,7 @@ def test_check_cli_reports_observed_peak_envelope(capsys, monkeypatch):
     estimate and the measured legs.
 
     The exit code is NOT informational, though: see
-    ``test_check_over_budget_envelope_exits_nonzero``.  A a development machine pilot
+    ``test_check_over_budget_envelope_exits_nonzero``.  A test host 7 pilot
     read this command's rc 0 out of a report whose own text said the
     configuration might not fit.
     """
@@ -4631,12 +4712,12 @@ def test_check_cli_legacy_config_wraps(capsys):
     # planes add 600,000 B.
     # paper/conus-suite-exact (2.9.11): the stored MF_VX_INV state plane msfv_inv,
     # 4*(ny+1)*nx = 201,000 B on this 250x200 grid.
-    assert payload["domains"]["d01"]["resident_bytes"] == 1503966236
+    assert payload["domains"]["d01"]["resident_bytes"] == 1504966236
 
 
 def test_check_cli_fails_closed_when_nothing_is_evaluable(capsys,
                                                           monkeypatch):
-    """review F6 / shadow F5: estimator mode with no budget and no GPU
+    """Review F6 / F5: estimator mode with no budget and no GPU
     verified NOTHING -- the exit code must say so (rc 2), never 0 via
     ``all([])``."""
     import sys
@@ -4686,7 +4767,7 @@ def _stub_cupy(free_bytes, total_bytes=int(31.84 * GIB)):
 
 def test_headroom_abort_still_reports_and_exits_distinctly(capsys,
                                                            monkeypatch):
-    """review F1 / shadow F5 fix: a headroom abort before measurement must
+    """Review F1 / F5 fix: a headroom abort before measurement must
     still emit the structured report (estimate-side legs evaluated, abort
     reason recorded) with an exit code DISTINCT from a leg FAIL."""
     import sys
@@ -5061,7 +5142,7 @@ def test_legacy_rrtmg_variant_prices_the_lw_chain_local_frame():
         "rrtmg_lw_taugb13_16", "p3", "urban_bep_bem",
         "terrain_drag",
         "rrtmg_lw_chain_coalesced", "rrtmg_lw_zbatched", "noah_mosaic",
-        "thompson_fork"}
+        "thompson_fork", "gbmpbl", "acm2pbl"}
     assert covered <= pf.UNMEASURED_KERNEL_MODULES
     assert not modules & pf.UNMEASURED_KERNEL_MODULES
 
@@ -5905,8 +5986,7 @@ def test_the_recorded_local_frames_match_the_driver():
     from woof.core.kernels import load_module, kernel_local_size_bytes
 
     kdir = ROOT / "woof" / "core" / "kernels"
-    symbol = re.compile(
-        r'extern\s+"C"\s+__global__\s+void\s+([A-Za-z_][A-Za-z0-9_]*)')
+    from tools.vram_reserve_probe import _SYMBOL as symbol
     probe = subprocess.run(
         [sys.executable, "-c",
          "import cupy as cp\n"
@@ -6972,3 +7052,6 @@ def test_shinhong_workspace_pricing_tracks_the_tile_and_levels():
     exp = experiment_from_run_config(
         dataclasses.replace(cfg, bl_pbl_physics=1), datetime(2000, 1, 1))
     assert pf.shinhong_column_workspace_bytes(exp, profile=profile) == 0
+
+# Release census replacements (reviewed against the merged sources).
+# Census: test_nwp_diagnostics_prices_exactly_the_uh_planes is covered by test_nwp_diagnostics_prices_native_windows_and_work.

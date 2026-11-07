@@ -1,0 +1,87 @@
+{
+  "row": "cu10-fast",
+  "scope": "cumulus",
+  "baseline_scope": "cumulus",
+  "commit": "17f06c397baa6d87e1018d667cbeb9c6768b2816",
+  "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
+  "warm_policy": "first actual forecast step retained separately; steps 2 onward for stage ratios",
+  "stage_ratio": 1.3771765611436333,
+  "median_stage_ratio": 1.367622286196686,
+  "amortized_stage_ratio": 1.377176561143633,
+  "active_whole_forecast_wall_ratio": 0.946810461368086,
+  "active_whole_forecast_seconds": {
+    "baseline": 15.81934854388237,
+    "candidate": 14.977924693375826
+  },
+  "whole_forecast_warm_step_ratio": 1.1059775579827378,
+  "arms": {
+    "baseline": {
+      "cumulus": {
+        "calls": 59,
+        "median_ms": 2.7157440185546875,
+        "mean_ms": 2.7315362712084235,
+        "sum_ms": 161.160640001297,
+        "mean_host_ms": 1.4476997746249378
+      },
+      "step": {
+        "calls": 59,
+        "median_ms": 22.787647247314453,
+        "mean_ms": 27.68797014527402,
+        "sum_ms": 1633.590238571167,
+        "mean_host_ms": 24.918575344954508
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 30.628320693969727,
+        "mean_ms": 32.48826495083895,
+        "sum_ms": 357.3709144592285,
+        "mean_host_ms": 32.49049864032052
+      }
+    },
+    "candidate": {
+      "cumulus": {
+        "calls": 59,
+        "median_ms": 3.7141120433807373,
+        "mean_ms": 3.7618077286219194,
+        "sum_ms": 221.94665598869324,
+        "mean_host_ms": 2.0999264414027587
+      },
+      "step": {
+        "calls": 59,
+        "median_ms": 23.984256744384766,
+        "mean_ms": 30.62227360676911,
+        "sum_ms": 1806.7141427993774,
+        "mean_host_ms": 27.765654343164574
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 38.6440315246582,
+        "mean_ms": 43.81463016163219,
+        "sum_ms": 481.9609317779541,
+        "mean_host_ms": 43.815527111291885
+      }
+    }
+  },
+  "nonfinite_heating": {
+    "baseline": 0,
+    "candidate": 0
+  },
+  "cold_first_step": {
+    "baseline": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 1308.575439453125,
+      "host_seconds": 1.308571245521307
+    },
+    "candidate": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 406.4210510253906,
+      "host_seconds": 0.4065014533698559
+    }
+  },
+  "forecasts": {
+    "baseline": "/workspace/runs/spd-retime-rad-cu/logs/cu10-fast-baseline.log",
+    "candidate": "/workspace/runs/spd-retime-rad-cu/logs/cu10-fast-candidate.log"
+  }
+}

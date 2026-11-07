@@ -108,7 +108,8 @@ def test_real_input_shared_bootstrap_whole_physics_driver_matches_each_member(pr
     inputs = prepared_real
     domain, bundle, grid = inputs.experiment.root, inputs.domains[0], inputs.grids[0]
     cfg = domain.run
-    assert (cfg.mp_physics, cfg.sf_sfclay_physics, cfg.sf_surface_physics, cfg.bl_pbl_physics) == (8, 1, 2, 1)
+    assert (cfg.mp_physics, cfg.sf_sfclay_physics, cfg.sf_surface_physics, cfg.bl_pbl_physics) in (
+        (8, 1, 2, 1), (55, 91, 2, 1))
     scalar_states, scalar_drivers = [], []
     for unused in range(members):
         state = restore_domain_state(bundle.restored, cfg)

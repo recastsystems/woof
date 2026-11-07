@@ -18,5 +18,5 @@ if ! grep -q '^\[workspace\]' "$out/crate/Cargo.toml"; then
 fi
 cp "$root/rustwx/crates/rw-sfc-series/Cargo.lock" "$out/crate/Cargo.lock"
 export CARGO_TARGET_DIR="$out/target"
-cargo "${SFC_CARGO_ACTION:-build}" --manifest-path "$out/crate/Cargo.toml" --release --locked -j "${CARGO_BUILD_JOBS:-$(nproc)}"
+cargo "${SFC_CARGO_ACTION:-build}" --manifest-path "$out/crate/Cargo.toml" --release --locked -j "${CARGO_BUILD_JOBS:-8}"
 if [ "${SFC_CARGO_ACTION:-build}" = build ]; then cp "$out/target/release/rw_sfc_series" "$out/rw_sfc_series"; fi

@@ -1,8 +1,7 @@
 // gpuwm/core/kernels/gf.cu
 //
-// Strict GF normalization uses WOOF's earlier operation sequence, held in
-// gf_wrf_normalization.cuh. Default arithmetic retains the current routine.
-// The historical divergence notes below describe the default arm.
+// Both numerics modes use the repository's correctly rounded gamma contract.
+// The deliberate stock-libm divergence is described below and in the oracle.
 //
 // CUDA half of the Grell-Freitas cumulus scheme (cu_physics = 3), WRF
 // v4.6.1 -- ONE translation unit for the whole of GFDRV: the deep cloud
@@ -833,15 +832,11 @@ struct GfdPdf { float tunning, alpha, beta, fzu; int kb_adj; };
 
 __device__ float gfd_pdf_normalizer(float alpha, float beta)
 {
-#ifdef GPUWM_WRF_EXACT
-    // The scalar stock build folds the constant beta factor. The other two
-    // factors retain their runtime float32 operation sequence.
-    return FDIV(gf_wrf_tgamma(FADD(alpha, beta)),
-                FMUL(gf_wrf_tgamma(alpha), gfk_tgamma(beta)));
-#else
+    // The repository's normalization authority uses correctly rounded gamma
+    // in both arithmetic modes (docs/gf_gamma_known_delta.md). Strict mode
+    // changes operation contraction, never the gamma accuracy contract.
     return FDIV(gfk_tgamma(FADD(alpha, beta)),
                 FMUL(gfk_tgamma(alpha), gfk_tgamma(beta)));
-#endif
 }
 
 __device__ void gfd_get_zu_zd_pdf(int draft, GfColC p, int kb, int kt,

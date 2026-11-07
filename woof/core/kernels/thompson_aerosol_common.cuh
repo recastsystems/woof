@@ -460,6 +460,11 @@
 #define THOMPSON_AA_SPECIES_RAIN     0
 #define THOMPSON_AA_SPECIES_SNOW     1
 #define THOMPSON_AA_SPECIES_GRAUPEL  2
+// The hail-aware scheme (mp_physics=38) keeps the Heymsfield pair in slot
+// idx_bg1 = 5 (av_g = 143.204224, bv_g = 0.640961647, :152-158), so its
+// Eff_aero graupel fall speed av_g(idx_bg1)*D**bv_g(idx_bg1) (:4981) is not
+// the 442/0.89 mp=8/28 install at :463-464.
+#define THOMPSON_AA_SPECIES_GRAUPEL_HAIL  3
 
 // t_Nc(1), :720-731.  DOUBLE PRECISION in WRF and DLOG'd there, so the
 // droplet-bin index must be formed in double.  nic1 is declared INTEGER at
@@ -1214,6 +1219,12 @@ __device__ __forceinline__ float thompson_eff_aero(
     } else if (species == THOMPSON_AA_SPECIES_GRAUPEL) {
         vt = thompson_aa_mul(
             THOMPSON_AA_AV_G, thompson_aa_powf(D, THOMPSON_AA_BV_G));
+    } else if (species == THOMPSON_AA_SPECIES_GRAUPEL_HAIL) {
+        // av_g(5)*D**bv_g(5) with the Heymsfield slot-5 pair (literals as
+        // THOMPSON_AA_HAIL_AV_G[5] / THOMPSON_AA_HAIL_BV_G below), through
+        // WOOF's own float32 powf.
+        vt = thompson_aa_mul(1.432042236e+02f,
+                             gfk_pow(D, 6.409616470e-01f));
     }
 
     // Cc = 1. + 2.*meanPath/Da * (1.257 + 0.4*exp(-0.55*Da/meanPath))
@@ -2058,6 +2069,455 @@ __device__ __forceinline__ float thompson_aa_wrf39_eff_rad_snow(
 
 
 // ===========================================================================
+// HAIL-AWARE THOMPSON (mp_physics = 38): the variable-density graupel
+// ===========================================================================
+//
+// WRF v4.6.1 runs ONE module for mp=8, 28 and 38.  What makes it hail aware
+// is a single fact, the presence of the optional graupel number at
+// thompson_init (:459-466), and that fact changes exactly these things:
+//
+//   * the graupel number ng (QNGRAUPEL) and graupel volume qb (QVGRAUPEL,
+//     m3 per kg) are prognostic state, read at :1260-1264 and written back at
+//     :1342-1347, instead of being diagnosed from qg at every call;
+//   * the bulk graupel density rho_g = qg/qb selects one of NINE density bins
+//     idx_bg in 1..9 (:1920-1923, :3272-3274, :4065-4067) where mp=8/28 sit
+//     on idx_bg1 = 5 always (:1950, :2848, :3284-3286, :4068);
+//   * av_g/bv_g keep the Heymsfield Best-Reynolds values in all nine slots;
+//     mp=8/28 overwrite slot 5 with av_g_old = 442, bv_g_old = 0.89
+//     (:463-464).  So every graupel fall-speed moment changes, and since
+//     bv_g is the SAME in all nine slots (0.640961647, :155-158), cge(n,m)
+//     and cgg(n,m) are one column repeated nine times;
+//   * the rain-graupel collection tables carry nine density slabs,
+//     qr_acr_qg_mp38V1.dat (:4117-4125, :4192-4273);
+//   * graupel falls with a density-dependent speed from Heymsfield's
+//     Best-number relation (:3750-3753) instead of av_g_old/bv_g_old.
+//
+// The literals below are WRF's own REAL(4) values, read back from the
+// compiled module after a hail-aware thompson_init (an instrumented copy of
+// module_mp_thompson.F that writes rho_g/am_g/av_g/bv_g/cge/cgg/oamg/ocmg/
+// oge1/ogg1/ogg2/ogg3/obmg/Sc3/t1_qg_sd/t1_qg_me in Z8.8 and stops; recorded
+// in tools/thompson_wrf461_oracle/README-HAIL.md).  Every decimal literal
+// round-trips to exactly that bit pattern.  Index 0 is an unused pad so the
+// device code reads idx_bg with WRF's one-based value.
+#define THOMPSON_AA_HAIL_NRHG       9
+#define THOMPSON_AA_HAIL_IDX_BG1    5           // :79
+#define THOMPSON_AA_HAIL_RHO_I      890.0f      // :72
+#define THOMPSON_AA_HAIL_BV_G       6.409616470e-01f   // :155-158, every slot
+#define THOMPSON_AA_HAIL_A_COEFF    0.47244157f        // :159
+#define THOMPSON_AA_HAIL_B_COEFF    0.54698726f        // :160
+#define THOMPSON_AA_HAIL_OGG1       1.666666716e-01f   // 1./cgg(1,1)
+#define THOMPSON_AA_HAIL_OGG2       1.000000000e+00f   // 1./cgg(2,1)
+#define THOMPSON_AA_HAIL_OGG3       1.666666716e-01f   // 1./cgg(3,1)
+#define THOMPSON_AA_HAIL_OBMG       3.333333433e-01f   // 1./bm_g
+#define THOMPSON_AA_HAIL_SC3        8.581680655e-01f   // Sc**(1./3.), :663
+#define THOMPSON_AA_HAIL_T1_QG_SD   8.600000143e-01f   // :812
+#define THOMPSON_AA_HAIL_T1_QG_ME   1.617826092e-05f   // :816
+#define THOMPSON_AA_HAIL_OLFUS      (1.0f / 334000.0f) // :219, lsub-lvap0
+#define THOMPSON_AA_HAIL_C_CUBE     0.5f               // :167
+// (3.0 + mu_g + 0.672) as WRF forms it in REAL(4) (:1926).
+#define THOMPSON_AA_HAIL_MVD_NUM    ((3.0f + 0.0f) + 0.672f)
+
+__constant__ float THOMPSON_AA_HAIL_RHO_G[10] = {
+    0.0f, 50.0f, 100.0f, 200.0f, 300.0f, 400.0f, 500.0f, 600.0f, 700.0f,
+    800.0f};
+// am_g(m) = PI*rho_g(m)/6., :132-135.
+__constant__ float THOMPSON_AA_HAIL_AM_G[10] = {
+    0.0f, 2.617993927e+01f, 5.235987854e+01f, 1.047197571e+02f,
+    1.570796356e+02f, 2.094395142e+02f, 2.617994080e+02f, 3.141592712e+02f,
+    3.665191650e+02f, 4.188790283e+02f};
+// av_g(m), Heymsfield Best-Reynolds, :151-154 (slot 5 NOT overwritten).
+__constant__ float THOMPSON_AA_HAIL_AV_G[10] = {
+    0.0f, 4.591738129e+01f, 6.708673859e+01f, 9.801584625e+01f,
+    1.223533783e+02f, 1.432042236e+02f, 1.617947235e+02f, 1.787621155e+02f,
+    1.944887848e+02f, 2.092258759e+02f};
+// cge(n,m) and cgg(n,m) = WGAMMA(cge(n,m)), n = 1..12, :751-769.  One
+// column: bv_g is identical in all nine slots under hail awareness.
+__constant__ float THOMPSON_AA_HAIL_CGE[13] = {
+    0.0f, 4.000000000e+00f, 1.000000000e+00f, 4.000000000e+00f,
+    7.000000000e+00f, 7.640961647e+00f, 4.640961647e+00f, 3.140961647e+00f,
+    1.640961647e+00f, 3.640961647e+00f, 2.000000000e+00f, 2.820480824e+00f,
+    2.500000000e+00f};
+__constant__ float THOMPSON_AA_HAIL_CGG[13] = {
+    0.0f, 6.000000000e+00f, 1.000000000e+00f, 6.000000000e+00f,
+    7.200000610e+02f, 2.465598145e+03f, 1.418176556e+01f, 2.286627531e+00f,
+    8.987805247e-01f, 3.895060301e+00f, 1.000000000e+00f, 1.705754399e+00f,
+    1.329340339e+00f};
+
+// WRF's REAL(4) `x**y` with a REAL exponent is the C library powf, which
+// WOOF's own float32 libm (glibc_flt32.cuh, prepended to the aerosol units)
+// reproduces bit for bit.  The hail-aware statements call it directly; the
+// inherited mp=28 statements keep their thompson_aa_powf_cr, whose measured
+// residual is recorded where it is used.
+__device__ __forceinline__ float thompson_aa_hail_powf(float x, float y)
+{
+    return gfk_pow(x, y);
+}
+
+// NINT(q/rb*0.01)+1 clamped to 1..NRHG: the bulk-density bin, :1923, :3274,
+// :4067, :5791.  `ratio_scaled` is WRF's REAL (q/rb)*0.01 (or
+// ((rg/rho)/rb)*0.01 at :3274), formed by the caller in WRF's own order.
+// NOTE for readers: rho_g(1) = 50 is reachable only below the 50 kg m-3
+// clamp, i.e. never -- NINT maps 50..149 to slot 2 (100 kg m-3).  That is
+// WRF's binning, kept: it is a property of the scheme's design, not an
+// arithmetic defect, and the nine-slab tables are built for exactly it.
+__device__ __forceinline__ int thompson_aa_hail_density_bin(
+    float ratio_scaled)
+{
+    return max(1, min(thompson_aa_nint(ratio_scaled) + 1,
+                      THOMPSON_AA_HAIL_NRHG));
+}
+
+// ng = cgg(2,1)*ogg3*rg*lamg**bm_g / am_g(idx_bg), :1927/:1934/:1938/:3148.
+// REAL(4) prefix, DOUBLE lamg**bm_g and division, one rounding to REAL.
+__device__ __forceinline__ float thompson_aa_hail_number_from_lambda(
+    float rg, double lamg, int idx_bg)
+{
+    return (float)(
+        (double)thompson_aa_mul(
+            thompson_aa_mul(THOMPSON_AA_HAIL_CGG[2], THOMPSON_AA_HAIL_OGG3),
+            rg)
+        * thompson_aa_pow(lamg, 3.0) / (double)THOMPSON_AA_HAIL_AM_G[idx_bg]);
+}
+
+// lamg = (am_g(idx_bg)*cgg(3,1)*ogg2*ng/rg)**obmg, REAL(4) throughout and
+// widened into the DOUBLE lamg (:1929, :2136, :3126, :3374, :4069).
+__device__ __forceinline__ double thompson_aa_hail_lambda(
+    float ng, float rg, int idx_bg)
+{
+    return (double)thompson_aa_hail_powf(
+        thompson_aa_div(
+            thompson_aa_mul(
+                thompson_aa_mul(
+                    thompson_aa_mul(THOMPSON_AA_HAIL_AM_G[idx_bg],
+                                    THOMPSON_AA_HAIL_CGG[3]),
+                    THOMPSON_AA_HAIL_OGG2),
+                ng),
+            rg),
+        THOMPSON_AA_HAIL_OBMG);
+}
+
+// The hail-aware graupel distribution of one level at call entry.
+struct ThompsonAaHailGraupel {
+    bool l_qg;       // qg1d > R1, :1915
+    int idx_bg;      // :1923 (idx_bg1 where L_qg fails, :1944)
+    float rg;        // qg1d*rho, or R1
+    float ng;        // per m3 after the :1924-1939 seed and size clamps
+    float rb;        // clamped volume (m3 per kg), :1920-1921, :1947
+    float qb_entry;  // qb1d as :1922/:1943 rewrite it
+    float mvd_g;
+    double lamg;     // :2136, every level
+    double ilamg;    // :2137
+    double n0_g;     // :2138
+};
+
+// module_mp_thompson.F:1915-1949 (hail-aware arm) then the unguarded
+// kte->kts slope loop :2135-2139.  `rho` is the entry density of :1802.
+__device__ __forceinline__ void thompson_aa_hail_graupel_entry(
+    float qg1d, float ng1d, float qb1d, float rho,
+    ThompsonAaHailGraupel* g)
+{
+    float ng = THOMPSON_AA_R2;
+    int idx = THOMPSON_AA_HAIL_IDX_BG1;
+    g->mvd_g = 0.0f;
+    if (qg1d > THOMPSON_AA_R1) {
+        g->l_qg = true;
+        g->rg = thompson_aa_mul(qg1d, rho);
+        ng = fmaxf(THOMPSON_AA_R2, thompson_aa_mul(ng1d, rho));
+        float rb = fmaxf(thompson_aa_div(qg1d, THOMPSON_AA_HAIL_RHO_G[9]),
+                         qb1d);
+        rb = fminf(thompson_aa_div(qg1d, THOMPSON_AA_HAIL_RHO_G[1]), rb);
+        g->rb = rb;
+        g->qb_entry = rb;
+        idx = thompson_aa_hail_density_bin(
+            thompson_aa_mul(thompson_aa_div(qg1d, rb), 0.01f));
+        double lamg;
+        if (ng <= THOMPSON_AA_R2) {
+            g->mvd_g = 1.5e-3f;
+            lamg = (double)thompson_aa_div(THOMPSON_AA_HAIL_MVD_NUM,
+                                           g->mvd_g);
+            ng = thompson_aa_hail_number_from_lambda(g->rg, lamg, idx);
+        }
+        lamg = thompson_aa_hail_lambda(ng, g->rg, idx);
+        g->mvd_g = (float)((double)THOMPSON_AA_HAIL_MVD_NUM / lamg);
+        if (g->mvd_g > 25.4e-3f) {
+            g->mvd_g = 25.4e-3f;
+            lamg = (double)thompson_aa_div(THOMPSON_AA_HAIL_MVD_NUM,
+                                           g->mvd_g);
+            ng = thompson_aa_hail_number_from_lambda(g->rg, lamg, idx);
+        } else if (g->mvd_g < THOMPSON_AA_D0R) {
+            g->mvd_g = THOMPSON_AA_D0R;
+            lamg = (double)thompson_aa_div(THOMPSON_AA_HAIL_MVD_NUM,
+                                           g->mvd_g);
+            ng = thompson_aa_hail_number_from_lambda(g->rg, lamg, idx);
+        }
+    } else {
+        g->l_qg = false;
+        g->rg = THOMPSON_AA_R1;
+        g->rb = thompson_aa_div(thompson_aa_div(THOMPSON_AA_R1, rho),
+                                THOMPSON_AA_HAIL_RHO_G[9]);
+        g->qb_entry = 0.0f;
+    }
+    g->ng = ng;
+    g->idx_bg = idx;
+    // :2135-2139, on the post-clamp ng and the entry idx_bg, every level.
+    g->lamg = thompson_aa_hail_lambda(ng, g->rg, idx);
+    g->ilamg = 1.0 / g->lamg;
+    // N0_g = ng*ogg2*lamg**cge(2,1); cge(2,1) = mu_g+1 = 1 exactly.
+    g->n0_g = (double)thompson_aa_mul(ng, THOMPSON_AA_HAIL_OGG2) * g->lamg;
+}
+
+// Graupel collecting cloud water and scavenging aerosol, :2414-2439 and
+// :2460-2471, in WRF's REAL/DOUBLE mixture, for one level.  Shared by the
+// cold and warm networks so the two halves of the hail-aware column cannot
+// see different graupel.
+struct ThompsonAaHailCollect {
+    double prg_gcw;
+    double pnc_gcw;
+    double pbg_gcw;
+    double pna_gca;
+    double pnd_gcd;
+};
+
+__device__ __forceinline__ void thompson_aa_hail_graupel_collect(
+    const ThompsonAaHailGraupel* g,
+    bool l_qc, float mvd_c, float rc, float nc, float nwfa, float nifa,
+    float rho, float temp_k, float twet, float rhof, float visco,
+    float odts, ThompsonAaHailCollect* out)
+{
+    out->prg_gcw = 0.0;
+    out->pnc_gcw = 0.0;
+    out->pbg_gcw = 0.0;
+    out->pna_gca = 0.0;
+    out->pnd_gcd = 0.0;
+    const int idx = g->idx_bg;
+    const float av = THOMPSON_AA_HAIL_AV_G[idx];
+    const float tempc = thompson_aa_sub(temp_k, 273.15f);
+    // t1_qg_qc = PI*.25*av_g(idx_bg)*cgg(9,idx_bg), :2432 / :2463.
+    const float t1_qg_qc = thompson_aa_mul(
+        thompson_aa_mul(thompson_aa_mul(THOMPSON_AA_PI, 0.25f), av),
+        THOMPSON_AA_HAIL_CGG[9]);
+    const double fall9 = thompson_aa_pow(g->ilamg, (double)THOMPSON_AA_HAIL_CGE[9]);
+    // xDg = (bm_g + mu_g + 1.)*ilamg: a REAL 4.0 times the DOUBLE slope.
+    const float xdg = (float)(4.0 * g->ilamg);
+    if (l_qc && mvd_c > THOMPSON_AA_D0C
+            && g->rg >= 1.0e-6f && mvd_c > THOMPSON_AA_D0C) {
+        // vtg = rhof*av_g*cgg(6)*ogg3 * ilamg**bv_g, :2417.
+        const float vtg = (float)(
+            (double)thompson_aa_mul(
+                thompson_aa_mul(thompson_aa_mul(rhof, av),
+                                THOMPSON_AA_HAIL_CGG[6]),
+                THOMPSON_AA_HAIL_OGG3)
+            * thompson_aa_pow(g->ilamg, (double)THOMPSON_AA_HAIL_BV_G));
+        // stoke_g = mvd_c*mvd_c*vtg*rho_w/(9.*visco*xDg), :2418.
+        const float stoke_g = thompson_aa_div(
+            thompson_aa_mul(
+                thompson_aa_mul(thompson_aa_mul(mvd_c, mvd_c), vtg),
+                1000.0f),
+            thompson_aa_mul(thompson_aa_mul(9.0f, visco), xdg));
+        // Cober and List (1993) rime density, :2420-2422.
+        float const_ri = thompson_aa_div(
+            thompson_aa_mul(
+                thompson_aa_mul(-1.0f, thompson_aa_mul(mvd_c, 0.5e6f)),
+                vtg),
+            fminf(-0.1f, tempc));
+        const_ri = fmaxf(0.1f, fminf(const_ri, 10.0f));
+        const float rime_dens = thompson_aa_mul(
+            thompson_aa_sub(
+                thompson_aa_add(0.051f, thompson_aa_mul(0.114f, const_ri)),
+                thompson_aa_mul(thompson_aa_mul(0.0055f, const_ri),
+                                const_ri)),
+            1000.0f);
+        float ef_gw = 0.0f;
+        if (stoke_g >= 0.4f && stoke_g <= 10.0f) {
+            ef_gw = thompson_aa_mul(
+                0.55f, (float)thompson_aa_log10((double)thompson_aa_mul(2.51f, stoke_g)));
+        } else if (stoke_g > 10.0f) {
+            ef_gw = 0.77f;
+        }
+        if (twet > 273.15f) ef_gw = thompson_aa_mul(ef_gw, 0.1f);
+        out->prg_gcw = (double)thompson_aa_mul(
+            thompson_aa_mul(thompson_aa_mul(rhof, t1_qg_qc), ef_gw), rc)
+            * g->n0_g * fall9;
+        const double pnc = (double)thompson_aa_mul(
+            thompson_aa_mul(thompson_aa_mul(rhof, t1_qg_qc), ef_gw), nc)
+            * g->n0_g * fall9;
+        out->pnc_gcw = fmin((double)thompson_aa_mul(nc, odts), pnc);
+        if (twet < 273.15f) out->pbg_gcw = out->prg_gcw / (double)rime_dens;
+    }
+    if (g->rg > 1.0e-6f) {
+        const float ef_ccn = thompson_eff_aero(
+            xdg, 0.04e-6f, visco, rho, temp_k,
+            THOMPSON_AA_SPECIES_GRAUPEL_HAIL);
+        out->pna_gca = fmin(
+            (double)thompson_aa_mul(nwfa, odts),
+            (double)thompson_aa_mul(
+                thompson_aa_mul(thompson_aa_mul(rhof, t1_qg_qc), ef_ccn),
+                nwfa) * g->n0_g * fall9);
+        const float ef_in = thompson_eff_aero(
+            xdg, 0.8e-6f, visco, rho, temp_k,
+            THOMPSON_AA_SPECIES_GRAUPEL_HAIL);
+        out->pnd_gcd = fmin(
+            (double)thompson_aa_mul(nifa, odts),
+            (double)thompson_aa_mul(
+                thompson_aa_mul(thompson_aa_mul(rhof, t1_qg_qc), ef_in),
+                nifa) * g->n0_g * fall9);
+    }
+}
+
+// The rain-graupel table's graupel intercept bin, :2366-2377: N0_exp is
+// re-formed from 1./ilamg(k) with the density bin's am_g.
+// (cgg(3,1)*ogg2*ogg1)**bm_g is REAL 1.0, so lam_exp is lamg.
+__device__ __forceinline__ int thompson_aa_hail_intercept_bin(
+    const ThompsonAaHailGraupel* g)
+{
+    const double lamg = 1.0 / g->ilamg;
+    const float scale = thompson_aa_hail_powf(
+        thompson_aa_mul(thompson_aa_mul(THOMPSON_AA_HAIL_CGG[3],
+                                        THOMPSON_AA_HAIL_OGG2),
+                        THOMPSON_AA_HAIL_OGG1),
+        3.0f);
+    const double lam_exp = lamg * (double)scale;
+    const double n0_exp = (double)thompson_aa_div(
+        thompson_aa_mul(THOMPSON_AA_HAIL_OGG1, g->rg),
+        THOMPSON_AA_HAIL_AM_G[g->idx_bg])
+        * thompson_aa_pow(lam_exp, (double)THOMPSON_AA_HAIL_CGE[1]);
+    return thompson_aa_decade_index_double(n0_exp, 2, 37);
+}
+
+// Flat index into the nine-slab (37, 37, 9, 37, 37) Fortran-order
+// rain-graupel tables (tcg_racg ... tnr_gacr), all indices zero-based.
+__device__ __forceinline__ size_t thompson_aa_hail_rain_graupel_index(
+    int graupel_intercept_bin, int graupel_mass_bin, int idx_bg,
+    int rain_intercept_bin, int rain_mass_bin)
+{
+    return (size_t)graupel_intercept_bin
+        + (size_t)37 * ((size_t)graupel_mass_bin
+        + (size_t)37 * ((size_t)(idx_bg - 1)
+        + (size_t)THOMPSON_AA_HAIL_NRHG * ((size_t)rain_intercept_bin
+        + (size_t)37 * (size_t)rain_mass_bin)));
+}
+
+// The graupel mass/number balance of the hail-aware column, :3118-3161, in
+// WRF's tendency form.  qg1d/ng1d/qb1d are the ENTRY values as :1922/:1943
+// rewrote them, rho/orho the entry density, idx_bg the entry bin.  Updates
+// qgten/ngten/qbten in place exactly as WRF does: the number tendency is
+// re-formed where the median volume diameter leaves [D0r, 25.4 mm], and the
+// whole call's graupel is removed where the post-source content is at or
+// below R1.  (xrb, :3122-3123, feeds only a debug print and is not formed.)
+__device__ __forceinline__ void thompson_aa_hail_graupel_balance(
+    float qg1d, float ng1d, float qb1d, int idx_bg, float rho, float orho,
+    float odts, float dt, float* qgten, float* ngten, float* qbten)
+{
+    const float xrg = fmaxf(THOMPSON_AA_R1, thompson_aa_mul(
+        thompson_aa_add(qg1d, thompson_aa_mul(*qgten, dt)), rho));
+    const float xng = fmaxf(THOMPSON_AA_R2, thompson_aa_mul(
+        thompson_aa_add(ng1d, thompson_aa_mul(*ngten, dt)), rho));
+    if (xrg > THOMPSON_AA_R1) {
+        double lamg = thompson_aa_hail_lambda(xng, xrg, idx_bg);
+        const float mvd_g = (float)((double)THOMPSON_AA_HAIL_MVD_NUM / lamg);
+        bool bounded = false;
+        float mvd = mvd_g;
+        if (mvd_g > 25.4e-3f) {
+            mvd = 25.4e-3f;
+            bounded = true;
+        } else if (mvd_g < THOMPSON_AA_D0R) {
+            mvd = THOMPSON_AA_D0R;
+            bounded = true;
+        }
+        if (bounded) {
+            lamg = (double)thompson_aa_div(THOMPSON_AA_HAIL_MVD_NUM, mvd);
+            const float xng_b = thompson_aa_hail_number_from_lambda(
+                xrg, lamg, idx_bg);
+            *ngten = thompson_aa_mul(thompson_aa_mul(
+                thompson_aa_sub(xng_b, thompson_aa_mul(ng1d, rho)), odts),
+                orho);
+        }
+    } else {
+        *qgten = thompson_aa_mul(-qg1d, odts);
+        *ngten = thompson_aa_mul(-ng1d, odts);
+        *qbten = thompson_aa_mul(-qb1d, odts);
+    }
+}
+
+// diffu(k) = 2.11E-5*(temp/273.15)**1.94 * (101325./pres), :1991 / :3199,
+// REAL(4) left to right through WOOF's float32 powf.
+__device__ __forceinline__ float thompson_aa_hail_diffu(float temp_k,
+                                                        float pres)
+{
+    return thompson_aa_mul(
+        thompson_aa_mul(2.11e-5f,
+                        gfk_pow(thompson_aa_div(temp_k, 273.15f), 1.94f)),
+        thompson_aa_div(101325.0f, pres));
+}
+
+// tcond(k) = (5.69 + 0.0168*tempc)*1.0E-5 * 418.936, :2000 / :3207.
+__device__ __forceinline__ float thompson_aa_hail_tcond(float tempc)
+{
+    return thompson_aa_mul(
+        thompson_aa_mul(thompson_aa_add(5.69f, thompson_aa_mul(0.0168f,
+                                                               tempc)),
+                        1.0e-5f),
+        418.936f);
+}
+
+// The Srivastava & Coen deposition/sublimation prefactor t1_subl,
+// :2384-2400, with WRF's grouping (rvs*otemp first, the three rvs_pp terms
+// summed left to right, alphsc divided through in source order).  Returns
+// t1_subl; *rvs_out receives rvs = rho*qvsi.
+__device__ __forceinline__ float thompson_aa_hail_t1_subl(
+    float temp_k, float rho, float qvsi, float diffu, float tcond,
+    float ssati, float* rvs_out)
+{
+    const float lsub = 2.834e6f;
+    const float orv = 1.0f / 461.5f;
+    const float otemp = thompson_aa_div(1.0f, temp_k);
+    const float rvs = thompson_aa_mul(rho, qvsi);
+    const float tt = thompson_aa_sub(
+        thompson_aa_mul(thompson_aa_mul(lsub, otemp), orv), 1.0f);
+    const float rvs_p = thompson_aa_mul(thompson_aa_mul(rvs, otemp), tt);
+    const float pp_a = thompson_aa_mul(
+        thompson_aa_mul(thompson_aa_mul(otemp, tt), otemp), tt);
+    float pp_b = thompson_aa_mul(2.0f, lsub);
+    pp_b = thompson_aa_mul(pp_b, otemp);
+    pp_b = thompson_aa_mul(pp_b, otemp);
+    pp_b = thompson_aa_mul(pp_b, otemp);
+    pp_b = -thompson_aa_mul(pp_b, orv);
+    const float pp_c = thompson_aa_mul(otemp, otemp);
+    const float rvs_pp = thompson_aa_mul(
+        rvs, thompson_aa_add(thompson_aa_add(pp_a, pp_b), pp_c));
+    const float gamsc = thompson_aa_mul(
+        thompson_aa_div(thompson_aa_mul(lsub, diffu), tcond), rvs_p);
+    const float gr = thompson_aa_div(gamsc, thompson_aa_add(1.0f, gamsc));
+    float alphsc = thompson_aa_mul(0.5f, gr);
+    alphsc = thompson_aa_mul(alphsc, gr);
+    alphsc = thompson_aa_mul(alphsc, rvs_pp);
+    alphsc = thompson_aa_div(alphsc, rvs_p);
+    alphsc = thompson_aa_mul(alphsc, rvs);
+    alphsc = thompson_aa_div(alphsc, rvs_p);
+    alphsc = fmaxf(1.0e-9f, alphsc);
+    float xsat = ssati;
+    if (fabsf(xsat) < 1.0e-9f) xsat = 0.0f;
+    const float ax = thompson_aa_mul(alphsc, xsat);
+    float t2 = thompson_aa_mul(2.0f, alphsc);
+    t2 = thompson_aa_mul(t2, alphsc);
+    t2 = thompson_aa_mul(t2, xsat);
+    t2 = thompson_aa_mul(t2, xsat);
+    float t3 = thompson_aa_mul(5.0f, alphsc);
+    t3 = thompson_aa_mul(t3, alphsc);
+    t3 = thompson_aa_mul(t3, alphsc);
+    t3 = thompson_aa_mul(t3, xsat);
+    t3 = thompson_aa_mul(t3, xsat);
+    t3 = thompson_aa_mul(t3, xsat);
+    float paren = thompson_aa_sub(1.0f, ax);
+    paren = thompson_aa_add(paren, t2);
+    paren = thompson_aa_sub(paren, t3);
+    *rvs_out = rvs;
+    return thompson_aa_div(
+        thompson_aa_mul(thompson_aa_mul(4.0f, THOMPSON_AA_PI), paren),
+        thompson_aa_add(1.0f, gamsc));
+
+}
+
 // THE PER-LEVEL SOURCE STAGE IN WRF'S OWN ARITHMETIC ORDER
 // (module_mp_thompson.F:1798-2151 entry, :2157-2234 warm loop, :2239-2848
 // frozen block, :2856-2952 conservation).

@@ -1,7 +1,7 @@
 """`woof check` prices the forcing slots the chained `woof go` forecast holds.
 
 Breakage this prevents: on a 96 GB RTX PRO 6000 (94.42 GiB free measured on
-V53, 2026-10-19) `woof check` refused the full-grid CONUS HRRR recipe by
+test host, 2026-10-19) `woof check` refused the full-grid CONUS HRRR recipe by
 0.50 GiB because it priced every hourly hrrr-prs boundary interval on the
 card, while `woof go` runs that one-domain, one-card forecast chained and
 holds one forcing slot (go_cli memory gate, since 9deedbc5066).  The two

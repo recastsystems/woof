@@ -96,7 +96,11 @@ class _PinnedTables:
                                 pieces.append((upper, b))
                     uncovered = pieces
                 for a, b in uncovered:
-                    cp.cuda.runtime.hostRegister(a, b - a, 1)  # portable across devices
+                    if getattr(cp.cuda.runtime, "is_hip", False):
+                        from woof.hip_runtime import host_register
+                        host_register(a, b - a, 1)
+                    else:
+                        cp.cuda.runtime.hostRegister(a, b - a, 1)  # portable across devices
                     self.regions.append((a, b))
         except BaseException:
             self.close()
@@ -105,7 +109,11 @@ class _PinnedTables:
     def close(self):
         import cupy as cp
         for start, _ in reversed(self.regions):
-            cp.cuda.runtime.hostUnregister(start)
+            if getattr(cp.cuda.runtime, "is_hip", False):
+                from woof.hip_runtime import host_unregister
+                host_unregister(start)
+            else:
+                cp.cuda.runtime.hostUnregister(start)
         self.regions.clear()
 
 

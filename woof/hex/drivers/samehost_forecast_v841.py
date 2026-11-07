@@ -214,7 +214,10 @@ def lease_vram_mib(grid, count, *, cells, levels=55):
         layouts = load_layouts_npz(selected.samehost_layouts, expect_mesh_sha256=sha256_file(grid),
                                    expect_part_sha256=sha256_file(selected.samehost_part), expect_halo_rings=3)
         local = [int(layout.n_local_cells) for layout in layouts]
-        model = samehost_rank_model(model_for_card(card, "global"))
+        from woof.hex.drivers.samehost_rank_group_v841 import executor_choice
+        executor, _ = executor_choice(None, tuple(range(count)))
+        model = samehost_rank_model(model_for_card(card, "global"), ranks=count,
+                                    process_ranks=executor == "processes")
         basis = "same-host rank admission row at the largest rank's local columns"
     else:
         local = [int(cells)]
@@ -296,7 +299,7 @@ def rank_event(output_root, stage, phase, rank, device, *, attrs=None):
     try:
         from woof.timeline.ledger import emit
     except ModuleNotFoundError:
-        # woof 2.8.7 and earlier carry no woof.timeline; a rank event is
+        # gpuwm 2.8.7 and earlier carry no woof.timeline; a rank event is
         # telemetry and must not stop a same-host forecast.
         return
     grant = os.environ.get("GPU_MUTEX_CARDS", "").replace(",", " ").split()
@@ -713,6 +716,8 @@ def admit_request(request, registry, options, door):
         if os.environ.get(name, "") not in ("", "0"):
             raise ValueError(f"{name} is set; same-host admission cannot open a local card")
     import cupy as cp
+    from woof.hex.drivers.samehost_rank_group_v841 import executor_choice
+    executor, _ = executor_choice(options.get("rank_executor"), options["devices"])
     count = cp.cuda.runtime.getDeviceCount()
     records, floors, verdicts = [], {}, []
     for device in sorted(set(options["devices"])):
@@ -724,14 +729,15 @@ def admit_request(request, registry, options, door):
             raise ValueError(f"device {device}: " + below_floor_refusal(compute, PROVEN_COMPUTE))
         raw_name = properties["name"]
         name = raw_name.decode("utf-8", "replace") if isinstance(raw_name, bytes) else str(raw_name)
-        threads_per_sm = cp.cuda.runtime.deviceGetAttribute(
-            cp.cuda.runtime.cudaDevAttrMaxThreadsPerMultiProcessor, device)
+        from woof.hip_runtime import device_attribute
+        threads_per_sm = device_attribute(cp, "MaxThreadsPerMultiProcessor", device)
         card = card_profile_from_attributes(name, {"MultiProcessorCount": properties["multiProcessorCount"],
                      "MaxThreadsPerMultiProcessor": threads_per_sm})
         configuration = door.request_configuration(request)
         model = request.model.with_card(card, configuration) if isinstance(request.model, door._SuppliedRow) else model_for_card(card, configuration)
         if request.model is None:
-            model = samehost_rank_model(model, ranks=len(options["devices"]))
+            model = samehost_rank_model(model, ranks=len(options["devices"]),
+                                        process_ranks=executor == "processes")
         owned_ranks = [rank for rank, target in enumerate(options["devices"]) if target == device]
         predicted = sum(int(round(model.predict_bytes(options["layouts"][rank].n_local_cells))) for rank in owned_ranks)
         stochastic_arrays = {}
@@ -850,6 +856,24 @@ def _capture_rank(proof, host, stack, step, label, *, deferred=False):
     return PendingSnapshot(transfer, lambda: arrays)
 
 
+def _expected_noahmp_census(proof, backend, used):
+    """The columns Noah-MP should have been handed, for a payload that does not say itself.
+
+    The backend's own layout count, which follows carried and evolving ice: a suite backend's snapshot does not carry
+    it, and the constructor's count is the new mesh's cold ice, not the ice a move carried. THE BREAKAGE THIS FIXES: a
+    Thompson member of a storm roster stopped at its first frame after a move, "history NoahMP execution census differs
+    from its local constructor" (run_392edb793fea0966, run_dbe08aff17eae2c7).
+    """
+    routing = getattr(backend, "noahmp_routing_census", None)
+    if routing is not None:
+        return routing()
+    census = {"land": used["sflx_land_columns"], "water": used["open_water_columns"],
+              "sea_ice": used["sea_ice_columns"], "glacier": used["glacier_columns"]}
+    if census["glacier"]:
+        census["glacier_path"] = proof.ARWEN_GLACIER_CUDA_PROVENANCE
+    return census
+
+
 def _capture_rank_arrays(proof, host, stack, step, label, download, *, resident):
     import cupy as cp
     from woof.hex.cuda_physics_prep_v841 import prepare_mpas_to_phys_cuda_v841
@@ -875,12 +899,7 @@ def _capture_rank_arrays(proof, host, stack, step, label, download, *, resident)
     # frozen backend's last_noahmp_census in its receipts).
     selection = getattr(stack["constructor"], "selection", None)
     noahmp = selection is None or selection.get("land_surface_scheme") == "noahmp"
-    census = None
-    if noahmp:
-        census = {"land": used["sflx_land_columns"], "water": used["open_water_columns"],
-                  "sea_ice": used["sea_ice_columns"], "glacier": used["glacier_columns"]}
-        if census["glacier"]:
-            census["glacier_path"] = proof.ARWEN_GLACIER_CUDA_PROVENANCE
+    census = _expected_noahmp_census(proof, backend, used) if noahmp else None
     for payload in (backend.step_receipt(), diagnostic["metadata"], diagnostic["receipt"]):
         if dict(payload["surface_classification"]) != classification:
             raise RuntimeError("history backend census differs from its local constructor")
@@ -921,6 +940,10 @@ def _capture_rank_arrays(proof, host, stack, step, label, download, *, resident)
             raise RuntimeError("history step committed no reflectivity")
         refl = cp.zeros_like(state.rho)
     arrays["refl10cm"] = download(refl, cp)
+    # This partition's running-max updraft helicity (woof.hex.uh_layers.attach_rank), on the host already; the
+    # executors scatter its owned words to global cells with every other cell field.
+    from woof.hex.uh_layers import rank_history_arrays
+    arrays.update(rank_history_arrays(stack))
     regional = getattr(driver, "regional_v841", None)
     if regional is not None:
         arrays = {name: value if name == "normal_u" else regional.history_slice(value)
@@ -930,6 +953,11 @@ def _capture_rank_arrays(proof, host, stack, step, label, download, *, resident)
 
 def execute_samehost(forecast, **kwargs):
     host = kwargs["host"]
+    # The ordinary driver forwards this option even when diagnostics are off.
+    # Partitioned ranks have no global TC tracker/history session; keep the
+    # door's refusal here too rather than silently dropping an enabled recipe.
+    if kwargs.pop("tc_climate", None) is not None:
+        raise ValueError("--tc-climate is not wired to the partitioned same-host executor")
     if kwargs.get("balance_series"):
         # THE BREAKAGE THIS PREVENTS: the balance series is sampled by the one-card executors; the ranks
         # have no sampler, so the flag would be accepted and nothing written.
@@ -960,6 +988,15 @@ def execute_samehost(forecast, **kwargs):
     return result
 
 
+def domain_ocean_ice(values) -> bool:
+    """The test woof.ocean.seaice.initialize makes, on the whole mesh's inputs (a lake's ice stays the lake's)."""
+    import numpy as np
+
+    xice = np.asarray(values["xice"])
+    lake = values.get("lakemask")
+    return bool(np.any((xice > 0) & (np.asarray(lake) < .5 if lake is not None else True)))
+
+
 def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_path, transport_policy, reference,
                      memory_floor_by_device=None, admission_records=None, card_selection=None,
                      host, schedule, cache_root, output_root, arwen_checkout,
@@ -968,6 +1005,7 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
                      local_timestep_classing_path=None, cycling=None, iau=None,
                      on_history_ready=None, history_product_session=None,
                      history_product_max_pending=2, required_product_ids=(), rank_executor=None, door_replay=None):
+    source_host = host
     if on_history_ready is not None and history_product_session is not None:
         raise ValueError("supply one history callback or one product session factory")
     if history_product_max_pending < 1:
@@ -1115,6 +1153,9 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
     for rank, device in enumerate(devices):
         first_on_device.setdefault(device, rank)
 
+    # Each rank holds a part of the mesh; whether the engine's sea ice is on is a question for the whole of it.
+    host["domain_ocean_ice"] = domain_ocean_ice(host["constructor_values"])
+
     def context(rank):
         return rank_group.RankContext(rank=rank, device=devices[rank], card=devices[rank], proof=proof,
             forecast=forecast, host=host, schedule=schedule, output_root=output_root, layouts=layouts,
@@ -1126,7 +1167,8 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
         timeout = float(os.environ.get("WOOF_HEX_SAMEHOST_TIMEOUT")
                         or os.environ.get("WOOF_HEX_MPAS_SAMEHOST_TIMEOUT") or "1800")
         replay = rank_group.replay_spec(door_replay)
-        group = rank_group.ProcessRankGroup(context(0), devices, tables, job=output_root, timeout=timeout)
+        group = rank_group.ProcessRankGroup(context(0), devices, tables, job=output_root, timeout=timeout,
+                                            owner_paths=(cache_root,))
         contexts = group.contexts
     else:
         contexts = [context(rank) for rank in range(len(devices))]
@@ -1146,7 +1188,7 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
             hosts = None
             process_receipt = group.start(requests)
             requests = None
-            from woof.hex.partition_process_transport_v841 import ProcessHaloTransport
+            from woof.hex.process_transport import process_halo_transport as ProcessHaloTransport
             with cp.cuda.Device(devices[0]):
                 group.ctx.transport = ProcessHaloTransport(tables, list(devices), 0, group.halo_links, xp=cp,
                                                            timeout=timeout, field_halo_indices=field_indices)
@@ -1265,6 +1307,16 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
         final_forcing_hashes = None
         compile_identity = None
         static = proof._static_output_fields(host)
+        # All ranks have uploaded and IAU has consumed the global fields.
+        # Mutate every shared host mapping so the caller cannot retain them.
+        # local_call: no rank worker is open yet. THE BREAKAGE THIS PREVENTS: group.call here needs the step scope
+        # (ThreadRankGroup.open), so every ArWen-route --samehost-ranks threads run stopped before step 1 with
+        # "NoneType object has no attribute call" (since ec96043b). The process group runs it the same either way.
+        group.local_call("release_preparation")
+        from woof.hex.host_lifetime import release_preparation
+        if source_host is not host:
+            release_preparation(source_host)
+        mesh = None
         captures = {step for step in schedule["capture_steps"] if step > start_step or step == start_step == 0}
         dt = float(host["config"].config_dt)
         async_history = os.environ.get("WOOF_HEX_ASYNC_HISTORY", "1")
@@ -1309,6 +1361,9 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
         held_f000 = []
         try:
             with group.open(None if processes else transport):
+                # One wave service on rank 0 (waves.attach_arwen): the other ranks' first roughness.
+                rank_group.couple_waves(group, initial=True)
+
                 def boundary(step):
                     with measure_wall("fingerprints"):
                         collected = group.call("collect_owned")
@@ -1317,6 +1372,7 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
                             return
                         record_boundary(step, collected)
                 def capture(step):
+                    rank_group.wave_output(group, float(step) * dt)
                     with measure_wall("capture_inclusive"):
                         with output_span("forecast.output.capture", step):
                             return capture_arrays(step)
@@ -1325,7 +1381,7 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
                     # that rank, then assembled with every other published field.
                     kinds = {name: "edge" if name == "normal_u" else "cell" for name in arrays[0]}
                     snapshot = {"arrays": assemble_owned_arrays(layouts, arrays, kinds=kinds,
-                                    native_pads=("normal_u",) if host.get("regional") is not None else ()),
+                                    native_pads=("normal_u",) if host.get("regional") is not None else (), consume=True),
                                 "receipt": {"step": step, "arwen_v2_surface_execution": {"last_noahmp_census": None}}}
                     if step == 0:
                         proof.overlay_f000_initialized_surface_diagnostics(snapshot["arrays"], host["f000_surface_diagnostics"]["arrays"])
@@ -1398,6 +1454,7 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
                         rank_receipts = group.step(step, dt=dt, last=step == int(schedule["steps"]),
                                                    refl_due=step in captures, first=step == 1,
                                                    card_selection=card_selection)
+                        rank_group.couple_waves(group)
                         if product_ready is not None:
                             last_step_clock = (time.monotonic(), time.time())
                         if pipeline == "1":

@@ -67,7 +67,7 @@ RURAL_CASES = (6, 18, 24)
 
 #: Measured, see the module docstring.  Column surface stress relative to the
 #: same column with urban off, cases 6, 18, 24, u then v, 2026-09-30 on
-#: a development machine (RTX 5090, sm_120, NVRTC 13.4.92):
+#: test host 2 (RTX 5090, sm_120, NVRTC 13.4.92):
 #:   woof's arm / urban off / spelling ratio:
 #:       0.99856 0.99931 0.99954 0.99854 0.99925 0.99950
 #:   stock WRF flag_bep / urban off (the defect):
@@ -116,7 +116,7 @@ def test_the_kernel_removes_the_whole_of_its_own_drag_under_bep(module):
     recorded beside it so the revert is one line."""
     from woof.core.kernels import _unit_text
     text = _unit_text(module)
-    # Since lane/parity-286 the BEP entry point takes WRF's ctopo drag arm
+    # Since development branch the BEP entry point takes WRF's ctopo drag arm
     # (ctopo = 1, as WRF's driver passes it), so the removal is spelled on
     # WRF's own bracket, fric*vconvlim + ctopo*fric*(1-vconvlim).
     arm = text[text.index("real ctopo = topo.ctopo ? topo.ctopo[col] : 1.0f;"):]

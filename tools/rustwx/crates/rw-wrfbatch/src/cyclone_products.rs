@@ -3,7 +3,7 @@
 //! on the GPU at every committed fine-domain step, before any nest relocation.
 use crate::{
     annotate::{parse_color, LineSpec, MapOverlays, PointSpec},
-    panel::{layout_path, render_panel_with_unobserved, PanelRequest},
+    panel::{layout_path, render_panel_with_unobserved_bounds, PanelRequest},
     scales,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -447,7 +447,8 @@ fn draw(
     );
     let unobserved: Vec<_> = values.iter().map(|v| !v.is_finite()).collect();
     let coverage = (slug == "eyewall-observed").then_some(unobserved.as_slice());
-    let result = render_panel_with_unobserved(
+    let bounds = rusty_weather::batch_render::native_grid_domain_from_coordinates(lat,lon)?.bounds;
+    let result = render_panel_with_unobserved_bounds(
         PanelRequest {
             lat_deg: lat,
             lon_deg: lon,
@@ -477,6 +478,7 @@ fn draw(
             out_path: path,
         },
         coverage,
+        bounds,
     )?;
     println!("RENDERED\t{}", result.display());
     Ok(result)
@@ -961,10 +963,7 @@ fn render_accumulator(path: &Path) -> Result<(), String> {
             scale = scales::spread_scale(exposure_scale_limit(&values));
         }
         if product == "min-pressure" {
-            scale = scales::spread_scale(120.);
-            if let rustwx_render::ColorScale::Discrete(ref mut d) = scale {
-                d.levels.iter_mut().for_each(|v| *v += 930.);
-            }
+            scale = minimum_pressure_scale(&values);
         }
         let output_name = if name == "nest_rain_exposure_hours" { "rain-exposure" } else { product };
         draw(&r, output_name, format!("{}: {title}", r.experiment_label), &valid,
@@ -975,6 +974,27 @@ fn render_accumulator(path: &Path) -> Result<(), String> {
             &valid, &lat, &lon, shape, vec![f32::NAN;cells], "", scales::probability_scale(), Some(&layers), false)?;
     }
     Ok(())
+}
+
+fn minimum_pressure_scale(values:&[f32]) -> ColorScale {
+    let lower=values.iter().copied().filter(|v|v.is_finite())
+        .fold(930.0_f32,f32::min) as f64;
+    let lower=(lower/10.).floor()*10.;
+    let mut scale=scales::spread_scale(1050.-lower);
+    if let ColorScale::Discrete(ref mut discrete)=scale {
+        discrete.levels.iter_mut().for_each(|v|*v+=lower);
+        discrete.extend=rustwx_render::ExtendMode::Both;
+    }
+    scale
+}
+
+#[test]
+fn pressure_swath_keeps_the_deepest_native_core_visible() {
+    let ColorScale::Discrete(scale)=minimum_pressure_scale(&[f32::NAN,892.5,1001.]) else {panic!("discrete pressure scale")};
+    assert!(scale.levels[0]<=892.5);
+    assert!(*scale.levels.last().unwrap()>=1001.);
+    assert_eq!(scale.mask_below,None);
+    assert_eq!(scale.extend,rustwx_render::ExtendMode::Both);
 }
 
 fn exposure_scale_limit(values: &[f32]) -> f64 {
@@ -1196,6 +1216,24 @@ fn plume_fix(f: &PlumeFix) -> Option<Fix> {
         max_wind_m_s: f.max_wind10_ms.unwrap_or(f32::NAN),
     })
 }
+// Fit the occupied ground span with a 20% margin and a small local minimum.
+// Unwrap around the first fix so crossing 180 degrees stays local.
+fn plume_bounds(points: &[&Fix]) -> (f64, f64, f64, f64) {
+    let anchor = points[0].longitude;
+    let longitude = |p: &&Fix| anchor + (p.longitude - anchor + 180.).rem_euclid(360.) - 180.;
+    let west = points.iter().map(longitude).fold(f64::INFINITY, f64::min);
+    let east = points.iter().map(longitude).fold(f64::NEG_INFINITY, f64::max);
+    let south = points.iter().map(|p| p.latitude).fold(90., f64::min);
+    let north = points.iter().map(|p| p.latitude).fold(-90., f64::max);
+    let mid_lat = (south + north) * 0.5;
+    let cos_lat = mid_lat.to_radians().cos().abs().max(0.05);
+    let half_y = ((north - south) * 0.7).max(0.2);
+    let half_x = ((east - west) * cos_lat * 0.7).max(0.2);
+    let half_y = half_y.max(half_x / (4. / 3.));
+    let half_x = half_x.max(half_y * (4. / 3.)) / cos_lat;
+    let mid_lon = (west + east) * 0.5;
+    (mid_lon-half_x, mid_lon+half_x, (mid_lat-half_y).max(-90.), (mid_lat+half_y).min(90.))
+}
 fn render_plume(path: &Path, out: &Path) -> Result<(), String> {
     let p = read_plume(&fs::read(path).map_err(|e| e.to_string())?)?;
     let mut tracks = vec![];
@@ -1206,7 +1244,7 @@ fn render_plume(path: &Path, out: &Path) -> Result<(), String> {
             .position(|m| m["member_id"] == t.member_id)
             .unwrap();
         let mut segment = vec![];
-        let label = serde_json::Value::String(format!("{} w={:.4}", t.member_id, t.weight));
+        let label = serde_json::Value::String(t.member_id.clone());
         let add = |seg: &mut Vec<Fix>, tracks: &mut Vec<Track>| {
             if !seg.is_empty() {
                 tracks.push(Track {
@@ -1246,10 +1284,7 @@ fn render_plume(path: &Path, out: &Path) -> Result<(), String> {
     if points.is_empty() {
         return Err("no finite model or best-track fixes to draw".into());
     }
-    let lo = points.iter().map(|p| p.longitude).fold(180., f64::min) - 4.;
-    let hi = points.iter().map(|p| p.longitude).fold(-180., f64::max) + 4.;
-    let so = (points.iter().map(|p| p.latitude).fold(90., f64::min) - 4.).max(-90.);
-    let no = (points.iter().map(|p| p.latitude).fold(-90., f64::max) + 4.).min(90.);
+    let (lo, hi, so, no) = plume_bounds(&points);
     let (ny, nx) = (181, 241);
     let lat: Vec<_> = (0..ny * nx)
         .map(|k| (no - (no - so) * (k / nx) as f64 / (ny - 1) as f64) as f32)
@@ -1268,7 +1303,7 @@ fn render_plume(path: &Path, out: &Path) -> Result<(), String> {
         nx,
         values: vec![f32::NAN; ny * nx],
         product_slug: "tc-track-plume".into(),
-        title: p.plot["title"].as_str().unwrap_or("Completed-output cyclone tracks").into(),
+        title: p.plot["title"].as_str().unwrap_or("Storm tracks").into(),
         display_units: String::new(),
         scale: scales::probability_scale(),
         cbar_tick_step: None,
@@ -1280,13 +1315,13 @@ fn render_plume(path: &Path, out: &Path) -> Result<(), String> {
         // A request may name its own labels (medicane / polar-low tracks have no agency reference);
         // otherwise the tropical-cyclone wording, keyed on whether an observed best track is drawn.
         subtitle_left: p.plot["subtitle_left"].as_str().map(String::from).unwrap_or_else(|| if best.is_empty() {
-            "Raw tracker fixes | gaps retained".into()
+            "Forecast positions | missing positions leave gaps".into()
         } else {
-            "Raw tracker fixes | gaps retained | black: observed best track".into()
+            "Forecast positions | black: observed track".into()
         }),
         subtitle_center: None,
         subtitle_right: p.plot["subtitle_right"].as_str().map(String::from).unwrap_or_else(|| if best.is_empty() {
-            "Model wind: instantaneous 10 m maximum".into()
+            "".into()
         } else {
             "Instantaneous model wind differs from observed 1-minute sustained wind".into()
         }),
@@ -1298,7 +1333,7 @@ fn render_plume(path: &Path, out: &Path) -> Result<(), String> {
         annotations: None,
         out_path: out.into(),
     }, Some((lo, hi, so, no)))?;
-    // Reuse the existing native overlay legend; plume labels include member weights.
+    // The legend names members and their share of the ensemble.
     plume_legend(out, &p, !best.is_empty())?;
     println!("RENDERED\t{}", out.display());
     Ok(())
@@ -1329,7 +1364,7 @@ fn plume_legend(path: &Path, p: &Plume, has_best: bool) -> Result<(), String> {
     let ink = rustwx_render::Color::rgba(23, 35, 52, 255);
     rustwx_render::draw_text_line(
         &mut fig,
-        "Member / weight / stratum",
+        "Forecast members",
         map.width() as i32 + 12,
         28,
         ink,
@@ -1351,11 +1386,11 @@ fn plume_legend(path: &Path, p: &Plume, has_best: bool) -> Result<(), String> {
         rustwx_render::draw_text_line(
             &mut fig,
             &format!(
-                "{} w={:.4} {}{}",
+                "{} | share {:.1}% {}{}",
                 id,
-                m["weight"].as_f64().unwrap_or(0.),
+                100. * m["weight"].as_f64().unwrap_or(0.),
                 m["stratum"].as_str().unwrap_or(""),
-                if has_track { "" } else { " no track (no tracker fix)" }
+                if has_track { "" } else { " no positions" }
             ),
             x as i32 + 30,
             y as i32,
@@ -1400,6 +1435,17 @@ mod plume_tests {
         // Native georeference sidecars are small test products in this directory.
         for entry in fs::read_dir(&dir).unwrap() { let p=entry.unwrap().path();if p.is_file(){fs::remove_file(p).unwrap();} }
         fs::remove_dir(dir).unwrap();
+    }
+    #[test]
+    fn short_track_bounds_are_local_and_cross_the_dateline() {
+        let a = Fix { footprint: vec![], valid_time: String::new(), latitude: 12., longitude: 179.9,
+            mslp_hpa: 990., max_wind_m_s: 20. };
+        let mut b = a.clone();
+        b.latitude = 12.1;
+        b.longitude = -179.9;
+        let (w,e,s,n) = plume_bounds(&[&a,&b]);
+        assert!(e-w < 1. && n-s < 1.);
+        assert!(w < 179.9 && e > 180.1 && s < 12. && n > 12.1);
     }
     #[test]
     fn plume_reader_keeps_missing_fixes_and_member_weights() {

@@ -1,0 +1,80 @@
+{
+  "source_sha256": "f18685f7ea091f567c3f37e983f26357dcd7e9ec2eea9a6e70635c506a66d60c",
+  "thermal": {
+    "source_sha256": "f18685f7ea091f567c3f37e983f26357dcd7e9ec2eea9a6e70635c506a66d60c",
+    "fixture": "acm2-l40, step 2, convective column 6; truncate at its native KPBL",
+    "nz": 18,
+    "xtime": 2,
+    "commands": [
+      [
+        "gfortran",
+        "-cpp",
+        "-DWRF_CHEM=0",
+        "-ffree-form",
+        "-ffree-line-length-none",
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-tree-vectorize",
+        "-fcheck=bounds",
+        "-g",
+        "-c",
+        "module_bl_acm.F"
+      ],
+      [
+        "gfortran",
+        "-ffree-form",
+        "-ffree-line-length-none",
+        "-I.",
+        "-c",
+        "<lanes>/port-bl7-acm2/engine/tools/acm2_wrf461_oracle/run_acm2.F90",
+        "fatal_stub.f90"
+      ],
+      [
+        "gfortran",
+        "-o",
+        "run_acm2_bounds",
+        "run_acm2.o",
+        "module_bl_acm.o",
+        "fatal_stub.o"
+      ]
+    ],
+    "run": [
+      "./run_acm2_bounds",
+      "top.in.bin",
+      "top.out.bin"
+    ],
+    "exit_code": 2,
+    "stdout": "At line 439 of file module_bl_acm.F\nFortran runtime error: Index '19' of dimension 2 of array 'thetav' above upper bound of 18\n\nError termination. Backtrace:\n#0  0x7d592582a494 in ???\n#1  0x7d592582b231 in ???\n#2  0x7d592582b886 in ???\n#3  0x5960af75ac8e in __module_bl_acm_MOD_acm2d\n\tat <lanes>/port-bl7-acm2/scratch/native-bounds/module_bl_acm.F:439\n#4  0x5960af75c3aa in __module_bl_acm_MOD_acmpbl\n\tat <lanes>/port-bl7-acm2/scratch/native-bounds/module_bl_acm.F:228\n#5  0x5960af7510aa in ???\n#6  0x5960af751dd5 in ???\n#7  0x7d592542a600 in ???\n#8  0x7d592542a717 in ???\n#9  0x5960af749224 in ???\n#10  0xffffffffffffffff in ???\n",
+    "input_sha256": "8cd02847f62f0376407d406ddc414e55372140e5e846cf70b9669719a32c291f"
+  },
+  "mixing": {
+    "source_sha256": "f18685f7ea091f567c3f37e983f26357dcd7e9ec2eea9a6e70635c506a66d60c",
+    "driver_sha256": "e4935e1353c7e8d3c357d5d7ceca99a51061b925edb4d03fcbb3e9b8912a4fbc",
+    "command": [
+      "gfortran",
+      "-ffree-form",
+      "-ffree-line-length-none",
+      "-I.",
+      "-o",
+      "top_mix",
+      "top_mix.F90",
+      "module_bl_acm.o",
+      "fatal_stub.o"
+    ],
+    "configuration": "six finite 100-m layers, NOCONV=1, KLPBL=kte=6, PBL=550m, MOL=-100m, dt=12s, scalar and momentum subroutines",
+    "rows": [
+      {
+        "mode": "scalar",
+        "exit_code": 2,
+        "stdout": "At line 978 of file module_bl_acm.F\nFortran runtime error: Index '7' of dimension 1 of array 'mdwn' above upper bound of 6\n\nError termination. Backtrace:\n#0  0x7adebc02a494 in ???\n#1  0x7adebc02b231 in ???\n#2  0x7adebc02b886 in ???\n#3  0x5838389fb956 in __module_bl_acm_MOD_acm\n\tat <lanes>/port-bl7-acm2/scratch/native-bounds/module_bl_acm.F:978\n#4  0x5838389f6727 in ???\n#5  0x5838389f68ae in ???\n#6  0x7adebbc2a600 in ???\n#7  0x7adebbc2a717 in ???\n#8  0x5838389f6164 in ???\n#9  0xffffffffffffffff in ???\n"
+      },
+      {
+        "mode": "momentum",
+        "exit_code": 2,
+        "stdout": "At line 1301 of file module_bl_acm.F\nFortran runtime error: Index '7' of dimension 1 of array 'mdwn' above upper bound of 6\n\nError termination. Backtrace:\n#0  0x79cc7242a494 in ???\n#1  0x79cc7242b231 in ???\n#2  0x79cc7242b886 in ???\n#3  0x615cb5ca3b8f in __module_bl_acm_MOD_acmm\n\tat <lanes>/port-bl7-acm2/scratch/native-bounds/module_bl_acm.F:1301\n#4  0x615cb5ca186b in ???\n#5  0x615cb5ca18ae in ???\n#6  0x79cc7202a600 in ???\n#7  0x79cc7202a717 in ???\n#8  0x615cb5ca1164 in ???\n#9  0xffffffffffffffff in ???\n"
+      }
+    ]
+  },
+  "note": "The byte-unmodified public WRF module is bounds checked. These are witnessed native undefined accesses; they are excluded from bitwise conformance claims. CUDA pads the zero top mixing term and bounds the top thermal search."
+}

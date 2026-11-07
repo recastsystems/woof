@@ -1645,15 +1645,18 @@ class NewTiedtke:
 
         exner = atmosphere["exner"]
         # THE FOLD.  module_cumulus_driver.F:879-880, including the * pi.
-        # RTHRATEN is the SUM of the two radiative lanes, the same way
-        # gf.py assembles it -- the driver holds longwave and shortwave
-        # separately and WRF's RTHRATEN is their total.
-        rthraten = (self._lane("rthratenlw", nz, ny, nx)
+        # Use the carried, mass-decoupled RTHRATEN total. Reconstructing
+        # it from separately rounded LW/SW lanes changes the forcing.
+        # External drivers without the total accessor retain their API.
+        total_radiation = getattr(self._driver, "radiation_theta_forcing", None)
+        rthraten = (total_radiation() if total_radiation is not None else
+                    self._lane("rthratenlw", nz, ny, nx)
                     + self._lane("rthratensw", nz, ny, nx))
-        thften = ((self._lane("gf_rthdynten", nz, ny, nx)
-                   + rthraten
+        theta_advective = self._lane("gf_rthdynten", nz, ny, nx)
+        vapour_advective = self._lane("gf_rqvdynten", nz, ny, nx)
+        thften = ((theta_advective + rthraten
                    + self._lane("gf_rthblten", nz, ny, nx)) * exner)
-        qvften = (self._lane("gf_rqvdynten", nz, ny, nx)
+        qvften = (vapour_advective
                   + self._lane("gf_rqvblten", nz, ny, nx))
 
         w = state.w
@@ -1898,3 +1901,24 @@ def _nt_model_dt(cfg) -> float:
     from woof.core.physics import _model_clock_dt
 
     return _model_clock_dt(cfg)
+
+
+def finish_advective_forcing(state, cfg):
+    """Complete WRF phy_prep_part2 after transport, before microphysics.
+
+    RK captures coupled RTHFTEN/RQVFTEN. Native WRF decouples them here,
+    then converts moist thermal forcing using pre-microphysics water.
+    These persistent native-rate buffers feed the next cumulus call.
+    """
+    if cfg.cu_physics != 16:
+        return
+    from woof.state_serialization_contract import WRF_MUTS_SLOT
+    mass = state.existing_scratch(WRF_MUTS_SLOT)
+    if mass is None:
+        mass = state.total_mu()
+    weight = state.c1h[:, None, None] * mass[None] + state.c2h[:, None, None]
+    state.rthften /= weight
+    state.rqvften /= weight
+    if getattr(state, "use_theta_m", 0):
+        from woof.core.theta_m_physics import dry_cumulus_theta_tendency
+        dry_cumulus_theta_tendency(state, state.rthften, state.rqvften)

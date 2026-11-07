@@ -54,6 +54,11 @@ NSOIL = 9
 #: :data:`NAMED_IMPOSSIBILITIES` below.
 EXPECTED_POLICY = {
     "20crv3": "layer_midpoint_samples",
+    # 3.0.0 hurricane line (fold/tc-arwen-3.0): the HAFS parents and the GFS
+    # pressure-level source the storm merge reads, on the same RUC policy.
+    "gfs-pressure": "layer_midpoint_samples",
+    "hafs-a": "layer_midpoint_samples",
+    "hafs-b": "layer_midpoint_samples",
     "20crv3-cf": "layer_midpoint_samples",
     "aifs": "layer_midpoint_samples",
     "aigefs": "layer_midpoint_samples",
@@ -64,9 +69,13 @@ EXPECTED_POLICY = {
     # degree, decoded by the 0.25-degree oper profile's soil layers.
     "ecmwf-open-data-0p1": "layer_midpoint_samples",
     "era5-l137": "layer_midpoint_samples",
+    # The admitted GEM profiles declare the authenticated deep-soil donor.
+    "gem-gdps": "layer_midpoint_samples",
+    "gem-hrdps": "layer_midpoint_samples",
+    "gem-rdps": "layer_midpoint_samples",
     "gdas": "layer_midpoint_samples",
     "gefs": "layer_midpoint_samples",
-    # lane/cap-gefs-archive (6a3b8fd50bf): the indexed GEFS retrospective
+    # development branch (6a3b8fd50bf): the indexed GEFS retrospective
     # members carry the GFS Noah four-layer soil, the layer arm.
     "gefs-reforecast": "layer_midpoint_samples",
     "gefs-reforecast-weekly": "layer_midpoint_samples",
@@ -83,7 +92,7 @@ EXPECTED_POLICY = {
     "rap": "node_point_samples",
     "rap-native": "node_point_samples",
     "rrfs": "node_point_samples",
-    # S9 (lane/leftovers-295): the RRFS ensemble member's soil comes from its
+    # S9 (development branch): the RRFS ensemble member's soil comes from its
     # declared deterministic RRFS companion, the same RUC nodes as rrfs.
     "rrfs-ens": "node_point_samples",
 }
@@ -103,16 +112,8 @@ EXPECTED_POLICY.update({row.source_id: MODEL_PROFILE_POLICY[row.packaged_profile
     for row in source_adapters()
     if row.model_table and row.packaged_profile in MODEL_PROFILE_POLICY})
 
-#: The one source RUC cannot be driven from, and WHY -- not "it publishes
-#: differently" but "the soil is not there".  GEM GDPS's mapped composition
-#: declares a single 0-10 cm slab.  ``init_soil_3_real:1938-1943`` builds
-#: the 0 m moisture anchor by extrapolating off the top TWO layers; with one
-#: layer WRF reads ``sm_input(3)`` uninitialised, so there is no WRF number
-#: to reproduce -- and 10 cm of soil does not constrain the 3 m column
-#: ``LSMRUC`` integrates down to its 3.0 m node.
-NAMED_IMPOSSIBILITIES = {
-    "gem-gdps": "1 source layer(s)",
-}
+# The deep-soil donor now supplies the GEM column; no declared source is impossible.
+NAMED_IMPOSSIBILITIES = {}
 
 #: The integer scale each source's ladder is carried in.  100 is WRF's own
 #: centimetres, and every source metgrid can express keeps it -- which is

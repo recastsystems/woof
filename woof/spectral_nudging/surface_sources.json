@@ -1,0 +1,127 @@
+{
+  "upstream": "https://github.com/wrf-model/WRF",
+  "ref": "v4.6.1",
+  "notice": "WRF-NOTICE.txt",
+  "files": [
+    {
+      "path": "LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "sha256": "28cf7a2d369e898217d7231f4ed19310af7f0bec920f3cb57831e3dc4c80beec",
+      "bytes": 436138,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/Registry/Registry.EM_COMMON",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "phys/module_fdda_psufddagd.F",
+      "sha256": "021773e75185ffac50242ed68a6426303a8dec66b2429af549e042a68175a335",
+      "bytes": 59039,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_fdda_psufddagd.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "phys/module_fddagd_driver.F",
+      "sha256": "ef9dc3ef45991771d436810df07a636db9c59aaa708902263dbe45b653539c93",
+      "bytes": 27627,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_fddagd_driver.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "phys/module_sf_pxlsm.F",
+      "sha256": "d26b663d087a5414b0639d6c5725283b1d74f2643496afd8ac516f96581ecf10",
+      "bytes": 98695,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_sf_pxlsm.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "phys/module_surface_driver.F",
+      "sha256": "fde0533233b2b11524ef78da1e48178c867bde0de08a4de03d97d410b103b4fb",
+      "bytes": 396169,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_surface_driver.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "share/module_model_constants.F",
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "bytes": 8280,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/share/module_model_constants.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "dyn_em/module_em.F",
+      "sha256": "7695bfb05a7f99763334a6e69523bbcc1de0f2c659177a18c10a6e1cf530a0c7",
+      "bytes": 127769,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/dyn_em/module_em.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "dyn_em/module_first_rk_step_part1.F",
+      "sha256": "41a92b60e588590f8b2227f8fa67289a4404cddf8d77831c6a6ae23b04b87058",
+      "bytes": 129076,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/dyn_em/module_first_rk_step_part1.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "dyn_em/module_first_rk_step_part2.F",
+      "sha256": "c2559617bbd4602daf9f1b5703864af11eafadb489c82a91a452beb697db6e1d",
+      "bytes": 63903,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/dyn_em/module_first_rk_step_part2.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "phys/module_physics_addtendc.F",
+      "sha256": "ecfe34c06bb3e91a5398a616a69a69a5aa155e73dc082ef0745421df46331894",
+      "bytes": 127097,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_physics_addtendc.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public WRF source reviewed at source. No separate restrictive notice. No new table ships."
+    },
+    {
+      "path": "phys/module_sf_noahdrv.F",
+      "sha256": "bde4ecc9a63c9a57c1ca40408eec1703881749fefd8698a7a1a9260cfaba06b1",
+      "bytes": 257692,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_sf_noahdrv.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public source and WRF LICENSE.txt checked at source before inclusion; no separate restrictive notice. Existing Noah/PX tables retain their individual provenance."
+    },
+    {
+      "path": "phys/module_sf_noahlsm.F",
+      "sha256": "034bf1d5f48b0b734702f200e3bcefe67db441b170cdcec8592992eb7d358e8c",
+      "bytes": 206078,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_sf_noahlsm.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public source and WRF LICENSE.txt checked at source before inclusion; no separate restrictive notice. Existing Noah/PX tables retain their individual provenance."
+    },
+    {
+      "path": "phys/module_pbl_driver.F",
+      "sha256": "90336e30296991fb397ffde87649a4bd20eaa2b7dc6e90639b043810c8420b56",
+      "bytes": 140846,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_pbl_driver.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public source and WRF LICENSE.txt checked at source before inclusion; no separate restrictive notice. Existing Noah/PX tables retain their individual provenance."
+    },
+    {
+      "path": "share/module_check_a_mundo.F",
+      "sha256": "2d6d4eb1f9183b4a4157f32de2ba34753bc4c0c10c380ad2ba4cfb524885b038",
+      "bytes": 177710,
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/share/module_check_a_mundo.F",
+      "licence": "WRF v4.6.1 public-domain statement in LICENSE.txt",
+      "licence_review": "Public source and WRF LICENSE.txt checked at source before inclusion; no separate restrictive notice. Existing Noah/PX tables retain their individual provenance."
+    }
+  ]
+}

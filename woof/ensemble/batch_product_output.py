@@ -1414,6 +1414,10 @@ class HeadlineDiagnosticCollector:
             up_heli_max = existing_scratch("up_heli_max") if callable(existing_scratch) else None
             if up_heli_max is not None:
                 fields["UP_HELI_MAX"] = up_heli_max
+            for suffix in ("01", "02", "03"):
+                band = existing_scratch("up_heli_max" + suffix) if callable(existing_scratch) else None
+                if band is not None:
+                    fields["UP_HELI_MAX" + suffix] = band
         if "UP_HELI_MAX" in fields:
             fields["UH"] = fields["UP_HELI_MAX"]
         if refl_field is not None:
@@ -1459,7 +1463,8 @@ class HeadlineDiagnosticCollector:
         zero = get("earlier")
         zero.fill(0)
         resident = {}
-        for name in ("U10", "V10", "T2", "Q2", "PSFC", "RAINNC", "RAINC", "RAINSH", "REFD_MAX", "GUST", "WIND_GUST", "UH"):
+        for name in ("U10", "V10", "T2", "Q2", "PSFC", "RAINNC", "RAINC", "RAINSH", "REFD_MAX", "GUST", "WIND_GUST", "UH",
+                     "UP_HELI_MAX01", "UP_HELI_MAX02", "UP_HELI_MAX03"):
             if name in fields:
                 array = xp.asarray(fields[name], dtype=np.float32)
                 if array.shape != latitude.shape:
@@ -1559,6 +1564,9 @@ class HeadlineDiagnosticCollector:
                 break
         if "UH" in resident:
             diagnosed["uh"] = resident["UH"]
+        for suffix in ("01", "02", "03"):
+            if "UP_HELI_MAX" + suffix in resident:
+                diagnosed["uh" + suffix] = resident["UP_HELI_MAX" + suffix]
         for name, conditions in self.events.items():
             required = {condition.field for condition in conditions}
             if required <= set(diagnosed):

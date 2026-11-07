@@ -330,7 +330,13 @@ def test_every_data_file_under_gpuwm_is_declared(
     assert present, "found no data files under gpuwm/ -- the walk is broken"
 
     shipped = _files_setuptools_would_ship(monkeypatch)
-    undeclared = sorted(present - shipped)
+    # The verification oracles ship in gpuwm-kernels (3.0.0); their exclusion
+    # is pinned by test_wheel_exclusions_are_exactly_the_pinned_lists.
+    from woof import data_assets
+    companion = {name for name in present
+                 if any(name.startswith(f"woof/data/{tree}/")
+                        for tree in data_assets.VERIFY_ORACLE_TREES)}
+    undeclared = sorted(present - shipped - companion)
     assert not undeclared, (
         f"{len(undeclared)} data file(s) under gpuwm/ would be omitted from a "
         "wheel because [tool.setuptools.package-data] in pyproject.toml does "
@@ -467,12 +473,22 @@ def test_wheel_exclusions_are_exactly_the_pinned_lists(
     # the two directories that moved to the companion in 2.5.0, so an
     # exclusion appearing here again means either a file came back without
     # its reasoning or somebody stripped runtime data from the wheel.
-    gpuwm_excluded = sorted(_files_on_disk()
-                            - _files_setuptools_would_ship(monkeypatch))
-    assert not gpuwm_excluded, (
-        "the woof wheel now excludes files, and both pinned exclusion "
-        "classes moved to recast-woof-data/pyproject.toml with the directories "
-        "they name:\n  " + "\n  ".join(gpuwm_excluded))
+    # Since 3.0.0 the one exception is the verification-oracle class
+    # (woof.data_assets.VERIFY_ORACLE_TREES), which the gpuwm-kernels
+    # companion carries; anything else excluded is runtime data stripped.
+    from woof import data_assets
+
+    gpuwm_excluded = _files_on_disk() - _files_setuptools_would_ship(monkeypatch)
+    oracle_files = {name for name in _files_on_disk()
+                    if any(name.startswith(f"woof/data/{tree}/")
+                           for tree in data_assets.VERIFY_ORACLE_TREES)}
+    assert gpuwm_excluded == oracle_files, (
+        "the woof wheel's exclusions are not exactly the verification "
+        "oracles woof.data_assets.VERIFY_ORACLE_TREES moves to "
+        "gpuwm-kernels:\n  unexpectedly excluded: "
+        + "\n  ".join(sorted(gpuwm_excluded - oracle_files))
+        + "\n  oracle files still shipped: "
+        + "\n  ".join(sorted(oracle_files - gpuwm_excluded)))
 
     present = _files_on_disk(COMPANION_PACKAGE_ROOT, REPO_ROOT)
     shipped = _companion_shipped(monkeypatch)
@@ -539,46 +555,47 @@ def test_externalized_assets_match_the_fetch_contract() -> None:
     # sdist explicitly excludes them too.
     # tests/test_operational_package_excludes_probes.py measures that the
     # sdist really lacks the development probes.
-    root_excludes = [rule for rule in rules if rule.startswith("exclude ")]
-    assert root_excludes == [
-        "exclude tests/test_n5s_toolchain.py",
-        "exclude tests/test_branch_dispositions.py",
-        "exclude tests/test_regional_packing_bench.py",
-        "exclude tests/test_timeline_qualification.py",
-        "exclude configs/da_rerun_286/recent/active-241/case-plan.json",
-        "exclude configs/da_rerun_286/recent/active-241/authority/authority-receipt.json",
-        "exclude configs/da_rerun_286/recent/large-601-center32p2/case-plan.json",
-        "exclude configs/da_rerun_286/recent/large-601-center32p2/authority/authority-receipt.json",
-        "exclude configs/da_rerun_286/recent/requested-601-center31/case-plan.json",
-        "exclude configs/da_rerun_286/recent/requested-601-center31/authority/authority-receipt.json",
-        "exclude configs/da_rerun_286/recent/native-linux-pricing.json",
-        "exclude configs/da_rerun_286/recent/native-linux-pricing-241.json",
-        # The announcement draft: swept in by `recursive-include docs/public
-        # *.md`, and it carries the project's own attribution text, which the
-        # packet's attribution gate refuses in a public asset (2.9.2 cut).
-        "exclude docs/public/ANNOUNCEMENT-DRAFT.md",
-    ], (
-        "the root MANIFEST.in's `exclude` lines drifted.  Size- and "
-        "license-driven excludes belong in recast-woof-data/MANIFEST.in with the "
-        "directory they name (moved there in 2.5.0); the only root excludes "
-        "are RELEASE-EXCLUDE'd development tests and private config receipts; "
-        "found {}".format(rules))
-    release_exclude = {
-        line.strip() for line in
-        (REPO_ROOT / "RELEASE-EXCLUDE.txt").read_text(
-            encoding="utf-8").splitlines()}
-    # The one page the public tree keeps and the source archive does not
-    # ship, with its reason: the repository is where a draft is worked on
-    # (the claim-backing gate and the resolved-scale receipt read it
-    # there); a PyPI asset is permanent, and the packet's attribution gate
-    # refuses the project's own attribution text in one (2.9.2 cut).
-    sdist_only = {"docs/public/ANNOUNCEMENT-DRAFT.md"}
-    for rule in root_excludes:
-        path = rule.split(None, 1)[1].strip()
-        assert path in release_exclude or path in sdist_only, (
-            f"root MANIFEST.in excludes {path} from the sdist but "
-            "RELEASE-EXCLUDE.txt keeps it in the public tree, so the two "
-            "release surfaces disagree about whether it ships")
+    if (REPO_ROOT / "RELEASE-EXCLUDE.txt").is_file():
+        root_excludes = [rule for rule in rules if rule.startswith("exclude ")]
+        assert root_excludes == [
+            "exclude tests/test_n5s_toolchain.py",
+            "exclude tests/test_branch_dispositions.py",
+            "exclude tests/test_regional_packing_bench.py",
+            "exclude tests/test_timeline_qualification.py",
+            "exclude configs/da_rerun_286/recent/active-241/case-plan.json",
+            "exclude configs/da_rerun_286/recent/active-241/authority/authority-receipt.json",
+            "exclude configs/da_rerun_286/recent/large-601-center32p2/case-plan.json",
+            "exclude configs/da_rerun_286/recent/large-601-center32p2/authority/authority-receipt.json",
+            "exclude configs/da_rerun_286/recent/requested-601-center31/case-plan.json",
+            "exclude configs/da_rerun_286/recent/requested-601-center31/authority/authority-receipt.json",
+            "exclude configs/da_rerun_286/recent/native-linux-pricing.json",
+            "exclude configs/da_rerun_286/recent/native-linux-pricing-241.json",
+            # The announcement draft: swept in by `recursive-include docs/public
+            # *.md`, and it carries the project's own attribution text, which the
+            # packet's attribution gate refuses in a public asset (2.9.2 cut).
+            "exclude docs/public/ANNOUNCEMENT-DRAFT.md",
+        ], (
+            "the root MANIFEST.in's `exclude` lines drifted.  Size- and "
+            "license-driven excludes belong in recast-woof-data/MANIFEST.in with the "
+            "directory they name (moved there in 2.5.0); the only root excludes "
+            "are RELEASE-EXCLUDE'd development tests and private config receipts; "
+            "found {}".format(rules))
+        release_exclude = {
+            line.strip() for line in
+            (REPO_ROOT / "RELEASE-EXCLUDE.txt").read_text(
+                encoding="utf-8").splitlines()}
+        # The one page the public tree keeps and the source archive does not
+        # ship, with its reason: the repository is where a draft is worked on
+        # (the claim-backing gate and the resolved-scale receipt read it
+        # there); a PyPI asset is permanent, and the packet's attribution gate
+        # refuses the project's own attribution text in one (2.9.2 cut).
+        sdist_only = {"docs/public/ANNOUNCEMENT-DRAFT.md"}
+        for rule in root_excludes:
+            path = rule.split(None, 1)[1].strip()
+            assert path in release_exclude or path in sdist_only, (
+                f"root MANIFEST.in excludes {path} from the sdist but "
+                "RELEASE-EXCLUDE.txt keeps it in the public tree, so the two "
+                "release surfaces disagree about whether it ships")
     # The prunes keep other artifacts and development-only probes out of
     # the operational source distribution:
     #
@@ -598,8 +615,10 @@ def test_externalized_assets_match_the_fetch_contract() -> None:
     #
     # Pin the complete set so exclusions cannot drift silently.
     assert {rule for rule in rules if rule.startswith("prune ")} == {
-        "prune recast-woof-data", "prune woof/libexec/bridges",
-        "prune tilestream/skeptic"}, (
+        "prune recast-woof-data", "prune gpuwm-kernels", "prune gpuwm-kernels-startup",
+        "prune woof/libexec/bridges", "prune tilestream/skeptic", "prune configs/da_rerun_286",
+        # 3.0.0 SIZE-01: the native oracle fixtures stay in the repository.
+        "prune tests/data/oracles"}, (
         "the root MANIFEST.in's prunes drifted: keep the companion source, "
         "staged platform binaries and development fault-injection probes "
         f"out of the operational source distribution; found {rules}")
@@ -631,7 +650,8 @@ def test_the_sdist_ships_the_advertised_installers_and_public_pages(
             else:
                 expected.add(ref)
 
-    rules = read_exclusions(REPO_ROOT)
+    rules = (read_exclusions(REPO_ROOT)
+             if (REPO_ROOT / "RELEASE-EXCLUDE.txt").is_file() else [])
     # The top-level pages RELEASE-EXCLUDE.txt keeps private, offered to the
     # manifest so the privacy assertion below is a measurement.
     private_pages = {rule for rule in rules
@@ -1348,3 +1368,104 @@ def test_the_companion_wheel_ships_the_renderers_map_layers(
     assert not absent, (
         "the recast-woof-data wheel would not carry these map layers, so a wheel "
         "install draws pictures with no geography:\n  " + "\n  ".join(absent))
+
+
+def test_verify_oracle_exclusions_are_the_resolvers_trees() -> None:
+    """pyproject's exclusion and the resolver name the same trees, in order.
+
+    The breakage on either side: a tree excluded but not resolved to the
+    companion is a verifier reading a path no install has; a tree resolved
+    to the companion but still shipped puts its bytes back in a wheel that
+    was over the 100,000,000-byte gate with them.
+    """
+
+    _require_source_tree()
+    from woof import data_assets
+
+    declared = _exclude_package_data_declaration().get("woof", [])
+    assert declared == [f"data/{tree}/*" for tree in data_assets.VERIFY_ORACLE_TREES]
+    for tree in data_assets.VERIFY_ORACLE_TREES:
+        assert (PACKAGE_ROOT / "data" / tree).is_dir(), tree
+
+
+def test_forecast_read_oracle_members_still_ship(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The two oracle directories the forecast reads at run time stay here.
+
+    ``ruc/oracle/tbq.csv`` is the RUC saturation table every sf_surface_physics=3
+    run loads, and ``urban/oracle/ucm480/schema.json`` is the UCM argument
+    schema: moving either to a companion would make a forecast depend on it.
+    """
+
+    _require_source_tree()
+    shipped = _files_setuptools_would_ship(monkeypatch)
+    for member in ("woof/data/ruc/oracle/tbq.csv",
+                   "woof/data/urban/oracle/ucm480/schema.json"):
+        assert member in shipped, member
+
+
+def test_the_kernels_companion_build_carries_every_verify_oracle(tmp_path) -> None:
+    """gpuwm-kernels/setup.py stages exactly the excluded trees, byte for byte."""
+
+    _require_source_tree()
+    import hashlib
+    import importlib.util
+
+    from woof import data_assets
+
+    spec = importlib.util.spec_from_file_location(
+        "gpuwm_kernels_setup_hook", REPO_ROOT / "gpuwm-kernels" / "setup.py")
+    source = (REPO_ROOT / "gpuwm-kernels" / "setup.py").read_text(encoding="utf-8")
+    # Load the hook without running setup(): everything above the call.
+    namespace: dict = {"__file__": str(REPO_ROOT / "gpuwm-kernels" / "setup.py"),
+                       "__name__": "gpuwm_kernels_setup_hook"}
+    exec(compile(source.rsplit("\nsetup(", 1)[0], str(spec.origin), "exec"), namespace)
+    manifest = namespace["stage"](tmp_path / "verify_oracles")
+    namespace["check"](tmp_path / "verify_oracles")
+    assert tuple(manifest["trees"]) == data_assets.VERIFY_ORACLE_TREES
+    expected = {name.removeprefix("woof/data/") for name in _files_on_disk()
+                if any(name.startswith(f"woof/data/{tree}/")
+                       for tree in data_assets.VERIFY_ORACLE_TREES)}
+    assert set(manifest["files"]) == expected
+    for relative in sorted(expected)[:50]:
+        data = (PACKAGE_ROOT / "data" / relative).read_bytes()
+        assert manifest["files"][relative]["sha256"] == hashlib.sha256(data).hexdigest()
+
+
+def test_verify_oracle_paths_resolve_to_the_checkout_here() -> None:
+    """A checkout reads its own copy; data_path routes the trees the same way."""
+
+    _require_source_tree()
+    from woof import data_assets
+
+    for tree in data_assets.VERIFY_ORACLE_TREES:
+        assert data_assets.verify_oracle_path(tree) == PACKAGE_ROOT / "data" / tree
+        assert data_assets.data_path(tree) == PACKAGE_ROOT / "data" / tree
+
+
+def test_a_missing_verify_oracle_is_refused_plainly(tmp_path) -> None:
+    from woof import data_assets
+
+    with pytest.raises(data_assets.CompanionDataMissing) as caught:
+        data_assets.require_verify_oracle(tmp_path / "absent")
+    text = str(caught.value)
+    assert "gpuwm-kernels" in text and "pip install --force-reinstall gpuwm-kernels" in text
+
+
+def test_the_sdist_keeps_the_verify_oracles() -> None:
+    """MANIFEST.in re-includes every verification-oracle tree in the source archive.
+
+    exclude-package-data would otherwise strip them from the sdist as well
+    (measured: 768 members gone, 75.5 MB -> 63.5 MB), leaving the in-tree
+    tests and the rw-mpas oracle-column tests without their fixtures when
+    run from the archive.
+    """
+
+    _require_source_tree()
+    from woof import data_assets
+
+    lines = [line.strip() for line in (REPO_ROOT / "MANIFEST.in").read_text().splitlines()
+             if line.startswith("recursive-include woof/data/")]
+    expected = {f"recursive-include woof/data/{tree} *" for tree in data_assets.VERIFY_ORACLE_TREES}
+    assert expected <= set(lines), sorted(expected - set(lines))

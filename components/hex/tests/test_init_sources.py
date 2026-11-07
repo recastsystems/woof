@@ -25,7 +25,7 @@ TABLE = src.load_table()
 
 def test_the_table_loads_and_every_runnable_row_has_its_vtable():
     runnable = [row for row in TABLE["sources"]
-                if row.get("status") != "refused" and row.get("coverage", "global") == "global"]
+                if row.get("status") != "refused" and not row.get("blend") and row.get("coverage", "global") == "global"]
     assert {row["id"] for row in runnable} >= {"gfs", "ifs", "aifs", "ifs-ens", "gefs", "era5", "icon"}
     for row in runnable:
         assert src.resolve_vtable(row).is_file(), row["id"]
@@ -44,7 +44,7 @@ def test_every_vtable_ships_inside_the_package():
 
     package = Path(woof.hex.__file__).resolve().parent
     for row in TABLE["sources"]:
-        if row.get("status") == "refused" or row.get("coverage", "global") != "global":
+        if row.get("status") == "refused" or row.get("blend") or row.get("coverage", "global") != "global":
             continue
         vtable = src.resolve_vtable(row)
         assert vtable.is_relative_to(package / "data"), (row["id"], vtable)
@@ -134,7 +134,7 @@ def test_map_source_labels_are_the_writers_closed_vocabulary():
     # met_intermediate refuses an unknown label; the rows must use its labels.
     known = {"ncep-gfs", "ncep-gefs", "ncep-cdas-cfsv2", "ecmwf", "dwd"}
     for row in TABLE["sources"]:
-        if row.get("status") != "refused" and row.get("coverage", "global") == "global":
+        if row.get("status") != "refused" and not row.get("blend") and row.get("coverage", "global") == "global":
             assert row["decode"]["map_source"] in known, row["id"]
 
 
@@ -241,7 +241,7 @@ def test_every_row_initialises_under_the_same_run_switches(tmp_path):
     cycle = src.Cycle.parse("2026-10-03T12")
     tails = set()
     for row in TABLE["sources"]:
-        if row.get("status") == "refused" or row.get("coverage", "global") != "global":
+        if row.get("status") == "refused" or row.get("blend") or row.get("coverage", "global") != "global":
             continue
         argv = src.init_argv(TABLE, row, met=tmp_path / "m", grid=tmp_path / "g", static=tmp_path / "s",
                              vertical_spec=tmp_path / "v", out=tmp_path / "o", cycle=cycle)
@@ -580,3 +580,51 @@ def test_an_old_cycle_still_reaches_the_archive(tmp_path, monkeypatch):
     got = src.acquire([plan], tmp_path, cycle, jobs=1)
     assert got[0]["url"].startswith("https://data.gdex.ucar.edu/d084001/2018/20180601/")
     assert [("gdex" in u) for u in asked] == [False, False, True]
+
+
+def test_concurrent_whole_downloads_publish_the_same_object(tmp_path):
+    """Cold preparation can request one source object in two parallel branches."""
+    from concurrent.futures import ThreadPoolExecutor
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+    from woof.hex import init_sources
+
+    payload = bytes(range(256)) * 4096
+    both_reading = threading.Barrier(2)
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(payload)))
+            self.send_header('Accept-Ranges', 'bytes')
+            self.end_headers()
+
+        def do_GET(self):
+            span = self.headers['Range'].removeprefix('bytes=')
+            first, last = map(int, span.split('-'))
+            body = payload[first:last + 1]
+            both_reading.wait(timeout=10)
+            self.send_response(206)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Content-Range', f'bytes {first}-{last}/{len(payload)}')
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    target = tmp_path / 'analysis.nc'
+    try:
+        url = f'http://127.0.0.1:{server.server_port}/analysis.nc'
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: init_sources._fetch_whole_parallel(target, url, 2), range(2)))
+        assert all(row['mode'] == 'parallel-range' for row in results)
+        assert target.read_bytes() == payload
+        assert list(tmp_path.glob('*.part')) == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join()

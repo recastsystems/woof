@@ -4,7 +4,19 @@ from types import SimpleNamespace
 
 import pytest
 
-from woof.hex.moving_retention import artifacts_present, retire_members
+from woof.hex.moving_retention import artifacts_present, retire_members, speculative_admission
+
+
+def test_ready_member_keeps_its_speculative_slot_after_builder_exits():
+    state = dict(current='start', members={'start': dict(status='ready')})
+    assert speculative_admission(state, 1)
+    for status in ('preparing', 'prepared', 'ready'):
+        state['members']['next'] = dict(status=status)
+        assert not speculative_admission(state, 1)
+        assert speculative_admission(state, 0)
+    state['current'] = 'next'
+    state['members']['start']['status'] = 'stale'
+    assert speculative_admission(state, 1)
 
 
 def fixture(tmp_path):

@@ -1,4 +1,4 @@
-"""Ferrier-Aligo microphysics (WRF ``mp_physics=5``, package fer_mp_hires).
+"""Ferrier-Aligo microphysics (WRF ``mp_physics=5`` and ``15``).
 
 The CUDA translation unit ``kernels/fer_hires.cu`` carries WRF v4.6.1
 ``phys/module_mp_fer_hires.F`` statement by statement: FER_HIRES, its
@@ -30,6 +30,12 @@ F_RAIN_PHY are overwritten on entry but read by radiation after the call,
 and F_RIMEF_PHY carries the rime factor of every ice-bearing cell from one
 step to the next (:389-395).  fer_hires_init sets them to 0, 0 and 1 on a
 non-restart start (:2912-2923), which is what the allocator does here.
+
+Selector 15 (fer_mp_hires_advect) transports qi and qrimef instead. The
+QRIMEF scalar is qi times rime factor; it is not an additional water mass.
+FER_HIRES_ADVECT reconstructs QT and the fractions locally, obtains the
+rime factor from QRIMEF/QI, then writes QI times the updated factor. This
+variant does not allocate QT or the three persistent fraction fields.
 """
 
 from __future__ import annotations
@@ -178,7 +184,7 @@ def host_table_words(tables: dict[str, np.ndarray]) -> np.ndarray:
 _DEVICE_TABLES: dict[tuple, object] = {}
 
 
-def device_tables(dtph: float):
+def device_tables(dtph: float, *, no_fmad: bool = False):
     """The kernel's table buffer for a domain whose init step is ``dtph``.
 
     fer_hires_init (:2793-3150): GPVS and the SAVE scalars, CBFR from DTPH.
@@ -186,10 +192,16 @@ def device_tables(dtph: float):
     domains' buffers differ.
     """
     import cupy as cp
-    from woof.core.kernels import get_kernel
+    from woof.core.kernels import load_module_no_ftz, get_kernel as inherited_kernel
+
+    def get_kernel(unit, symbol):
+        # Preserve the dependency's existing compiler route for mp=5.
+        if not no_fmad:
+            return inherited_kernel(unit, symbol)
+        return load_module_no_ftz(unit, no_fmad=True).get_function(symbol)
 
     key = (cp.cuda.runtime.getDevice(),
-           int(np.float32(dtph).view(np.uint32)), str(table_root()))
+           int(np.float32(dtph).view(np.uint32)), str(table_root()), no_fmad)
     tab = _DEVICE_TABLES.get(key)
     if tab is None:
         if not np.isfinite(dtph) or dtph <= 0.0:
@@ -205,7 +217,8 @@ def device_tables(dtph: float):
 
 def launch_fer_hires(th, qv, qc, qr, qi, qt, f_ice, f_rain, f_rimef,
                      p, pii, rho, dz8w, rainnc, rainncv, sr, tab,
-                     dt: float, gid: int, refl=None, *, analysis_only=False) -> None:
+                     dt: float, gid: int, refl=None, *, analysis_only=False,
+                     qrimef=None, kernel=None, no_fmad=False) -> None:
     """One FER_HIRES call over contiguous float32 ``(nz, ny, nx)`` fields.
 
     th/qv/qc/qr/qi/f_ice/f_rain/f_rimef are updated and qt written in
@@ -214,7 +227,13 @@ def launch_fer_hires(th, qv, qc, qr, qi, qt, f_ice, f_rain, f_rimef,
     scheme's own reflectivity column (EGCP01COLUMN DBZ_col, dBZ) is
     written there too.
     """
-    from woof.core.kernels import get_kernel
+    from woof.core.kernels import load_module_no_ftz, get_kernel as inherited_kernel
+
+    def get_kernel(unit, symbol):
+        # Preserve the dependency's existing compiler route for mp=5.
+        if not no_fmad:
+            return inherited_kernel(unit, symbol)
+        return load_module_no_ftz(unit, no_fmad=True).get_function(symbol)
     from woof.core.state import DTYPE
 
     shape = th.shape
@@ -237,23 +256,55 @@ def launch_fer_hires(th, qv, qc, qr, qi, qt, f_ice, f_rain, f_rimef,
         if a.shape != (ny, nx) or a.dtype != DTYPE or not a.flags.c_contiguous:
             raise ValueError(f"{name} must be C-contiguous float32 "
                              f"{(ny, nx)}, got {a.dtype} {a.shape}")
+    if qrimef is not None and (qrimef.shape != shape or qrimef.dtype != DTYPE
+                               or not qrimef.flags.c_contiguous):
+        raise ValueError(f"qrimef must be C-contiguous float32 {shape}")
     if tab.shape != (TABLE_WORDS,) or tab.dtype != DTYPE:
         raise ValueError("tab is not the buffer device_tables() builds")
     if refl is not None and (refl.shape != shape or refl.dtype != DTYPE
                              or not refl.flags.c_contiguous):
         raise ValueError(f"refl must be C-contiguous float32 {shape}")
     blocks = (ny * nx + _TPB - 1) // _TPB
-    get_kernel("fer_hires", "fer_hires_column")(
+    (kernel or get_kernel("fer_hires", "fer_hires_column"))(
         (blocks,), (_TPB,),
         (th, qv, qc, qr, qi, qt, f_ice, f_rain, f_rimef, p, pii, rho, dz8w,
          rainnc, rainncv, sr, th if refl is None else refl, tab, DTYPE(dt),
          np.int32(gid), np.int32(0 if refl is None else 1), np.int32(nz),
-         np.int32(ny), np.int32(nx), np.int32(analysis_only)))
+         np.int32(ny), np.int32(nx), np.int32(analysis_only),
+         th if qrimef is None else qrimef, np.int32(qrimef is not None)))
 
 
 #: The adapter's state fields beyond qv/qc/qr: the moist and scalar species
 #: and the three WRF state arrays (Registry.EM_COMMON:3019).
 STATE_FIELDS = ("qi", "qt", "f_ice", "f_rain", "f_rimef")
+
+
+def package_for(mp_physics: int) -> dict:
+    """Variant and state fields from selector metadata, without CUDA."""
+    from woof.physics_registry import component_options, implemented_selector_values
+    option_id = implemented_selector_values("microphysics").get(int(mp_physics))
+    if option_id is None:
+        return {}
+    return component_options("microphysics")[option_id].get(
+        "extensions", {}).get("ferrier_hires", {})
+
+
+def variant_for(mp_physics: int) -> str | None:
+    return package_for(mp_physics).get("variant")
+
+
+def ferrier_selectors() -> dict[int, str]:
+    from woof.physics_registry import implemented_selector_values
+    return {int(v): variant_for(v) for v in implemented_selector_values("microphysics")
+            if variant_for(v) is not None}
+
+
+def scalar_values(buf) -> dict:
+    """Copy initialization constants for offline oracle inspection only."""
+    host = buf.get() if hasattr(buf, "get") else np.asarray(buf)
+    return {("CRAIN" if name == "Crain" else name): host[OFF_SCALARS+i]
+            for i, name in enumerate(SCALARS)
+            if name != "DTPH"}
 
 
 def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
@@ -266,9 +317,11 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
                                          save_pre_mp_theta)
     from woof.core.state import DTYPE
 
-    missing = [n for n in STATE_FIELDS if getattr(state, n, None) is None]
+    package = package_for(cfg.mp_physics)
+    fields = package.get("state_fields", STATE_FIELDS)
+    missing = [n for n in fields if getattr(state, n, None) is None]
     if missing:
-        raise ValueError("mp_physics=5 state lacks Ferrier fields: "
+        raise ValueError(f"mp_physics={cfg.mp_physics} state lacks Ferrier fields: "
                          + ", ".join(missing))
     nz, ny, nx = state.p.shape
     thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
@@ -278,7 +331,8 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
     pii = state.scratch((nz, ny, nx), "mp_pii")
     dz8w = state.scratch((nz, ny, nx), "mp_dz8w")
     z8w = state.scratch((nz + 1, ny, nx), "mp_z8w")
-    th[...] = thb + state.thp
+    th[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
     rho[...] = 1.0 / state.alt                   # dry density 1/(al+alb)
     pii[...] = cp.power(state.p / DTYPE(c.P0), DTYPE(c.RCP))
     z8w[...] = (phb + state.php) / DTYPE(c.G)
@@ -291,13 +345,20 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
 
     # fer_hires_init runs once per domain with the domain's model step
     # (WRF microphysics_init passes grid%dt); the configured step is that.
-    tab = device_tables(float(cfg.dt))
+    no_fmad = bool(package.get("no_fmad", False))
+    tab = device_tables(float(cfg.dt), no_fmad=no_fmad)
     refl = state.scratch((nz, ny, nx), "refl_10cm") if refl_10cm_due else None
     save_pre_mp_theta(state)                     # moist_physics_prep_em
-    launch_fer_hires(th, state.qv, state.qc, state.qr, state.qi, state.qt,
-                     state.f_ice, state.f_rain, state.f_rimef, state.p, pii,
+    advected = package.get("variant") == "advected_rime"
+    unused = state.qi
+    launch_fer_hires(th, state.qv, state.qc, state.qr, state.qi,
+                     unused if advected else state.qt,
+                     unused if advected else state.f_ice,
+                     unused if advected else state.f_rain,
+                     unused if advected else state.f_rimef, state.p, pii,
                      rho, dz8w, rainnc, rainncv, sr, tab, dt,
-                     int(getattr(cfg, "grid_id", 1)), refl=refl)
+                     int(getattr(cfg, "grid_id", 1)), refl=refl,
+                     qrimef=state.qrimef if advected else None, no_fmad=no_fmad)
     if refl is not None:
         # The scheme's own DBZ_col (kernels/fer_hires.cu, REFLECTIVITY),
         # parked for the history writer the way P3 and Milbrandt-Yau park
@@ -319,7 +380,8 @@ def reflectivity(state, cfg):
     from woof.core.state import DTYPE
     shape = tuple(state.p.shape)
     thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
-    th = cp.ascontiguousarray(thb + state.thp)
+    th = cp.ascontiguousarray(state.total_theta() if getattr(state, "use_theta_m", 0)
+                              else thb + state.thp)
     pii = cp.power(state.p / DTYPE(c.P0), DTYPE(c.RCP))
     rho = 1 / state.alt
     # Thickness cancels in the native PSD setup when there is no fallout.
@@ -328,8 +390,11 @@ def reflectivity(state, cfg):
     unused = cp.empty(shape, dtype=DTYPE)
     refl = state.scratch(shape, "refl_10cm")
     launch_fer_hires(th, state.qv, state.qc, state.qr, state.qi,
-                     unused, unused, unused, state.f_rimef, state.p, pii,
+                     unused, unused, unused,
+                     unused if variant_for(cfg.mp_physics) == "advected_rime" else state.f_rimef,
+                     state.p, pii,
                      rho, dz, surface, surface, surface,
                      device_tables(float(cfg.dt)), float(cfg.dt),
-                     int(getattr(cfg, "grid_id", 1)), refl=refl, analysis_only=True)
+                     int(getattr(cfg, "grid_id", 1)), refl=refl, analysis_only=True,
+                     qrimef=getattr(state, "qrimef", None))
     return refl

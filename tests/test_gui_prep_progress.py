@@ -5,7 +5,7 @@ list said only "Preparing the grid · forecast hour 0 of 15 · 12 / 3 / 1 km"
 and nothing moved for minutes, although the engine was downloading, reading
 the starting data, building each grid's start state and writing boundary
 times.  Each test replays a real run's recorded events (tests/data/
-gui-prep-progress, trimmed from runs on the a development machine page) or records written
+gui-prep-progress, trimmed from runs on the test host 4 page) or records written
 by the engine's own step reporters, into a live run folder, and reads what
 the page server says about it; the last ones draw the words with the page's
 own script.
@@ -153,7 +153,7 @@ def test_a_nested_preparation_names_its_phase_step_and_grid(tmp_path):
 
 
 def test_a_real_nested_run_reads_step_by_step_from_download_to_the_first_model_step(tmp_path):
-    # Recorded on a development machine from this change's engine: the 8 GB 12 / 3 / 1 km ERA5 run an event page starts, from
+    # Recorded on test host 4 from this change's engine: the 8 GB 12 / 3 / 1 km ERA5 run an event page starts, from
     # its download to its third model step (a card with no kernel cache compiles through the first one).
     def at(sequence, heartbeat=None):
         run = live_run(tmp_path / str(sequence), "real", recorded("nested-run.jsonl", through=sequence),

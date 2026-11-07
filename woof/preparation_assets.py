@@ -60,7 +60,7 @@ def wif_fetch_domains(experiment, fetch_hints) -> tuple[int, ...]:
     requested = []
     for domain in experiment.domains:
         cfg = domain.run
-        if cfg.mp_physics != 28 or cfg.wif_climatology_path:
+        if cfg.mp_physics not in THOMPSON_AEROSOL_FAMILY or cfg.wif_climatology_path:
             continue
         source = cfg.mp28_aerosol_source
         surface_monthly = cfg.use_rap_aero_icbc
@@ -89,3 +89,5 @@ def wif_fetch_resolution(domains: tuple[int, ...]) -> dict:
                 "transfer and preparation, reusing its verified cache. Offline: "
                 "woof fetch-tables --wif --from DIR.",
     }
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

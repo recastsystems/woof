@@ -24,9 +24,15 @@ fn bad(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
 #[derive(Deserialize)]
 struct Request {
     forecast: Vec<PathBuf>,
+    #[serde(default = "sst_variable")]
+    sst_variable: String,
+    #[serde(default)] ocean_mask: Option<PathBuf>,
     oisst: Vec<PathBuf>,
     buoys: Vec<Buoy>,
     output: PathBuf,
+    /// Optional raw planes for rw_wrfbatch; no Python field transforms.
+    #[serde(default)]
+    products: Option<PathBuf>,
     #[serde(default = "jobs")]
     jobs: usize,
     #[serde(default = "gap")]
@@ -36,6 +42,7 @@ struct Request {
     #[serde(default = "minutes")]
     buoy_match_minutes: i64,
 }
+fn sst_variable() -> String { "OCEAN_SST".into() }
 fn jobs() -> usize {
     8
 }
@@ -150,9 +157,10 @@ struct Frame {
     lat: Vec<f64>,
     lon: Vec<f64>,
 }
-fn forecast(bridge: &Path, path: &Path, work: &Path) -> Result<Vec<Frame>> {
-    let d = dump(bridge, path, &["OCEAN_SST", "XLAT", "XLONG", "Times"], work)?;
-    let s = &d["OCEAN_SST"];
+fn forecast(bridge: &Path, path: &Path, work: &Path, variable: &str) -> Result<Vec<Frame>> {
+    let d = dump(bridge, path, &[variable, "XLAT", "XLONG", "XLAND", "Times"], work)?;
+    let s = &d[variable];
+    let land = d["XLAND"].numbers()?;
     let shape = &s.record.shape;
     if shape.len() != 3 || shape.contains(&0) {
         return Err(bad("forecast SST must have Time,y,x axes"));
@@ -160,6 +168,7 @@ fn forecast(bridge: &Path, path: &Path, work: &Path) -> Result<Vec<Frame>> {
     let nt = shape[0];
     let n = shape[1] * shape[2];
     let values = s.numbers()?;
+    if ![n,n*nt].contains(&land.len()) {return Err(bad("XLAND shape differs from SST"));}
     let offset = unit_offset(&s.record.units)?;
     let lat = d["XLAT"].numbers()?;
     let lon = d["XLONG"].numbers()?;
@@ -193,7 +202,7 @@ fn forecast(bridge: &Path, path: &Path, work: &Path) -> Result<Vec<Frame>> {
             time,
             sst: values[t * n..(t + 1) * n]
                 .iter()
-                .map(|v| v + offset)
+                .enumerate().map(|(i,v)| if land[if land.len()==n{i}else{t*n+i}]>1.5 {v + offset} else {f64::NAN})
                 .collect(),
             lat: coords(&lat),
             lon: coords(&lon),
@@ -350,6 +359,16 @@ fn parse_buoy(text: &str) -> Result<Vec<(DateTime<Utc>, f64)>> {
     }
     Ok(out)
 }
+fn ocean_mask(path: &Option<PathBuf>) -> Result<Option<Vec<f32>>> {
+    path.as_ref().map(|p| {
+        let bytes=fs::read(p)?;
+        if bytes.len()%4!=0 {return Err(bad("ocean mask must be raw float32"));}
+        let values:Vec<f32>=bytes.chunks_exact(4).map(|b|f32::from_le_bytes(b.try_into().unwrap())).collect();
+        if values.iter().any(|v|!v.is_finite()||!(*v==0.||*v==1.)) {return Err(bad("ocean mask must contain zero or one"));}
+        Ok(values)
+    }).transpose()
+}
+
 fn run(args: &[String]) -> Result<Value> {
     if args.len() != 3 || args[0] != "score" {
         return Err(bad("rw_ocean_verify score REQUEST.json RW_NETCDF"));
@@ -388,12 +407,18 @@ fn run(args: &[String]) -> Result<Value> {
         req.forecast
             .par_iter()
             .enumerate()
-            .map(|(i, p)| forecast(Path::new(&args[2]), p, &work.0.join(format!("f{i}"))))
+            .map(|(i, p)| forecast(Path::new(&args[2]), p, &work.0.join(format!("f{i}")), &req.sst_variable))
             .collect::<Vec<_>>()
     });
     let mut frames = Vec::new();
     for item in decoded {
         frames.extend(item?);
+    }
+    if let Some(mask)=ocean_mask(&req.ocean_mask)? {
+        for frame in &mut frames {
+            if frame.sst.len()!=mask.len(){return Err(bad("ocean mask shape differs from SST"));}
+            for (v,m) in frame.sst.iter_mut().zip(&mask){if *m<0.5{*v=f64::NAN;}}
+        }
     }
     frames.sort_by_key(|f| f.time);
     if frames.is_empty() || frames.windows(2).any(|p| p[0].time == p[1].time) {
@@ -412,6 +437,7 @@ fn run(args: &[String]) -> Result<Value> {
         return Err(bad("SST verifier requires a fixed finite geographic grid"));
     }
     let mut daily_scores = Vec::new();
+    let mut product_days = Vec::new();
     let mut used_days = BTreeSet::new();
     let mut last_day = None;
     let mut baseline: Option<(Vec<f64>, Vec<f64>)> = None;
@@ -486,6 +512,28 @@ fn run(args: &[String]) -> Result<Value> {
                 }
             }
         }
+        if let Some(dir) = &req.products {
+            fs::create_dir_all(dir)?;
+            let write = |name: &str, values: Vec<f64>| -> Result<PathBuf> {
+                let path = dir.join(format!("{day}-{name}.f32"));
+                let mut bytes = vec![0u8; values.len()*4];
+                bytes.par_chunks_mut(4).zip(values.par_iter()).for_each(|(b,v)|
+                    b.copy_from_slice(&(if v.is_finite(){*v as f32}else{0.}).to_le_bytes()));
+                fs::write(&path,bytes)?;
+                Ok(path)
+            };
+            let valid: Vec<bool> = mean.iter().zip(&matched).map(|(&m,&o)|physical(m)&&physical(o)).collect();
+            let mut fields = BTreeMap::new();
+            fields.insert("model-sst",write("model-sst",mean.iter().map(|v|v-273.15).collect())?);
+            fields.insert("observed-sst",write("observed-sst",matched.iter().map(|v|v-273.15).collect())?);
+            if let Some((m0,o0)) = &baseline {
+                fields.insert("model-change",write("model-change",mean.iter().zip(m0).map(|(a,b)|a-b).collect())?);
+                fields.insert("observed-change",write("observed-change",matched.iter().zip(o0).map(|(a,b)|a-b).collect())?);
+                fields.insert("change-wet",write("change-wet",valid.iter().zip(m0.iter().zip(o0)).map(|(v,(m,o))|if *v&&physical(*m)&&physical(*o){1.}else{0.}).collect())?);
+            }
+            product_days.push(json!({"date":day.to_string(),"latitude":write("latitude",first.lat.clone())?,
+                "longitude":write("longitude",first.lon.clone())?,"wet":write("wet",valid.iter().map(|v|if *v{1.}else{0.}).collect())?,"fields":fields}));
+        }
         if baseline.is_none() {
             baseline = Some((mean, matched));
         }
@@ -545,6 +593,7 @@ fn run(args: &[String]) -> Result<Value> {
         .iter()
         .chain(&req.oisst)
         .chain(req.buoys.iter().map(|b| &b.path))
+        .chain(req.ocean_mask.iter())
         .collect::<Vec<_>>();
     let refs = pool.install(|| {
         sources
@@ -556,13 +605,104 @@ fn run(args: &[String]) -> Result<Value> {
     for r in refs {
         references.push(r?);
     }
-    let record = json!({"schema":"gpuwm-ocean-sst-verification-v1","output":req.output,"forecast_frames":frames.len(),"daily":daily_scores,"buoys":buoy_scores,"sources":references,"wall_seconds":begin.elapsed().as_secs_f64(),"worker_threads":req.jobs,
+    let record = json!({"schema":"gpuwm-ocean-sst-verification-v1","output":req.output,"forecast_frames":frames.len(),"daily":daily_scores,"buoys":buoy_scores,"products":product_days,"sources":references,"wall_seconds":begin.elapsed().as_secs_f64(),"worker_threads":req.jobs,
         "limitations":["Daily time-weighted left-interval model means matched to nearest OISST cell, cosine-latitude weighted on model support; no area-conservative regrid.","Model top-layer SST and OISST foundation SST/buoy sensor depths differ; representativeness error is uncorrected.","OISST includes buoy SST, so these comparisons are not independent.","NDBC historical archive QC and missing-value masks are used; no extra gross-error or sea-ice filter."]});
     let tmp = work.0.join("receipt.json");
     fs::write(&tmp, serde_json::to_vec_pretty(&record)?)?;
     fs::rename(tmp, &req.output)?;
     Ok(record)
 }
+#[derive(Deserialize)]
+struct DiagnosticRequest {
+    #[serde(default = "surface_height_limit")] maximum_ocean_surface_height_m: f64,
+    forecast: Vec<PathBuf>,
+    output: PathBuf,
+    products: PathBuf,
+    fields: Vec<String>,
+    #[serde(default)] ocean_mask: Option<PathBuf>,
+    stations: Vec<Station>,
+    #[serde(default = "jobs")] jobs: usize,
+}
+#[derive(Deserialize)]
+struct Station { id: String, latitude: f64, longitude: f64 }
+fn surface_height_limit() -> f64 {10.}
+fn diagnostics(args: &[String]) -> Result<Value> {
+    if args.len()!=2 {return Err(bad("diagnostics REQUEST.json RW_NETCDF"));}
+    let req: DiagnosticRequest=serde_json::from_slice(&fs::read(&args[0])?)?;
+    let bridge=Path::new(&args[1]);
+    let mask=ocean_mask(&req.ocean_mask)?;
+    if !req.maximum_ocean_surface_height_m.is_finite() || req.maximum_ocean_surface_height_m<0. {return Err(bad("surface-height limit must be finite and nonnegative"));}
+    fs::create_dir_all(&req.products)?;
+    let begin=std::time::Instant::now();
+    let pool=rayon::ThreadPoolBuilder::new().num_threads(req.jobs).build()?;
+    let rows: Vec<Result<Vec<Value>>>=pool.install(||req.forecast.par_iter().enumerate().map(|(index,path)| {
+        let mut names: Vec<&str>=req.fields.iter().map(String::as_str).collect();
+        for name in ["PSFC","U10","V10","XLAND","XLAT","XLONG","Times","PH","PHB"] {if !names.contains(&name){names.push(name);}}
+        let d=dump(bridge,path,&names,&req.products.join(format!("decode-{index}")))?;
+        let shape=&d["PSFC"].record.shape;
+        if shape.len()!=3 {return Err(bad("PSFC must have time,y,x dimensions"));}
+        let (nt,ny,nx)=(shape[0],shape[1],shape[2]);let n=ny*nx;
+        if mask.as_ref().is_some_and(|m|m.len()!=n){return Err(bad("ocean mask shape differs from diagnostics"));}
+        let mut numbers=BTreeMap::new();
+        for name in names.iter().filter(|&&x|x!="Times") {
+            let mut values=d[*name].numbers()?;
+            if *name=="PH" || *name=="PHB" {
+                let shape=&d[*name].record.shape;
+                if shape.len()!=4 || shape[0]!=nt || shape[1]==0 || shape[2]!=ny || shape[3]!=nx {return Err(bad("geopotential shape differs from surface"));}
+                values=values.chunks_exact(shape[1]*n).flat_map(|v|v[..n].iter().copied()).collect();
+            }
+            if values.len()!=n&&values.len()!=n*nt {return Err(bad(format!("{name} is not a surface field")));}
+            numbers.insert(*name,values);
+        }
+        let times=&d["Times"];let width=times.record.shape[1];
+        let mut frames=Vec::new();
+        for t in 0..nt {
+            let time=instant(std::str::from_utf8(&times.bytes[t*width..(t+1)*width])?.trim_end_matches('\0'))?;
+            let plane=|name:&str|->&[f64]{let a=&numbers[name];if a.len()==n{a}else{&a[t*n..(t+1)*n]}};
+            let lat=plane("XLAT");let lon=plane("XLONG");let land=plane("XLAND");
+            let p=plane("PSFC");let u=plane("U10");let v=plane("V10");
+            let sea:Vec<usize>=(0..n).filter(|&i|land[i]>1.5&&mask.as_ref().is_none_or(|m|m[i]>0.5) ).collect();
+            if sea.iter().any(|&i|!p[i].is_finite()||p[i]<=10000.) {return Err(bad("nonfinite or invalid ocean surface pressure"));}
+            let ph=plane("PH");let phb=plane("PHB");
+            let center=sea.iter().copied().filter(|&i|((ph[i]+phb[i])/9.81).abs()<=req.maximum_ocean_surface_height_m).min_by(|&a,&b|p[a].total_cmp(&p[b])).ok_or_else(||bad("no finite ocean pressure"))?;
+            let wind=sea.iter().filter(|&&i|angle(lat[center],lon[center],lat[i],lon[i])*6371.<=300.)
+                .map(|&i|u[i].hypot(v[i])).filter(|v|v.is_finite()).fold(0.,f64::max);
+            let mut stations=Vec::new();
+            for s in &req.stations {
+                let i=sea.iter().copied().min_by(|&a,&b|angle(s.latitude,s.longitude,lat[a],lon[a]).total_cmp(&angle(s.latitude,s.longitude,lat[b],lon[b]))).unwrap();
+                let mut values=BTreeMap::new();
+                for name in &req.fields {values.insert(name.clone(),plane(name)[i]);}
+                stations.push(json!({"id":s.id,"distance_km":angle(s.latitude,s.longitude,lat[i],lon[i])*6371.,"latitude":lat[i],"longitude":lon[i],"values":values}));
+            }
+            let write=|name:&str,values:&[f64]|->Result<PathBuf>{
+                let path=req.products.join(format!("{}-{name}.f32",time.format("%Y%m%dT%H%M%S")));
+                let bytes:Vec<u8>=values.iter().flat_map(|&x|(x as f32).to_le_bytes()).collect();fs::write(&path,bytes)?;Ok(path)
+            };
+            let mut fields=BTreeMap::new();
+            let mut field_health=BTreeMap::new();
+            for name in &req.fields {
+                let values=plane(name);
+                let nonfinite=sea.iter().filter(|&&i|!values[i].is_finite()).count();
+                // The published OCEAN_SST diagnostic deliberately fills inactive
+                // PWP land/lake cells. Retain the missing-location fingerprint
+                // so evidence can distinguish fixed support from new failures.
+                if nonfinite>0 && name!="OCEAN_SST" {return Err(bad(format!("{name} has {nonfinite} nonfinite ocean values at {time}")));}
+                let missing:Vec<u8>=sea.iter().map(|&i|u8::from(!values[i].is_finite())).collect();
+                field_health.insert(name.clone(),json!({"ocean_cells":sea.len(),"nonfinite":nonfinite,"missing_location_sha256":format!("{:x}",Sha256::digest(&missing)),
+                    "min":sea.iter().map(|&i|values[i]).filter(|v|v.is_finite()).min_by(f64::total_cmp),
+                    "max":sea.iter().map(|&i|values[i]).filter(|v|v.is_finite()).max_by(f64::total_cmp)}));
+                fields.insert(name.clone(),write(name,values)?);
+            }
+            let wet:Vec<f64>=land.iter().enumerate().map(|(i,&x)|if x>1.5&&mask.as_ref().is_none_or(|m|m[i]>0.5){1.}else{0.}).collect();
+            frames.push(json!({"time":time.to_rfc3339(),"nx":nx,"ny":ny,"latitude":write("latitude",lat)?,"longitude":write("longitude",lon)?,"wet":write("wet",&wet)?,"fields":fields,"field_health":field_health,"stations":stations,"ocean_min_pressure_hpa":p[center]/100.,"center_latitude":lat[center],"center_longitude":lon[center],"max_ocean_wind_300km_ms":wind}));
+        }
+        Ok(frames)
+    }).collect());
+    let mut frames=Vec::new();for row in rows{frames.extend(row?);}frames.sort_by_key(|r|r["time"].as_str().unwrap().to_owned());
+    let result=json!({"schema":"gpuwm-ocean-diagnostics-v1","frames":frames,"worker_threads":req.jobs,"wall_seconds":begin.elapsed().as_secs_f64(),"maximum_ocean_surface_height_m":req.maximum_ocean_surface_height_m,"pressure_method":"Minimum surface pressure over ocean cells within the configured surface-height limit of sea level; maximum ocean wind within 300 km of that minimum. Center over land is not represented."});
+    fs::write(&req.output,serde_json::to_vec_pretty(&result)?)?;Ok(result)
+}
+
 fn main() {
     std::hint::black_box(GPUWM_BRIDGE_SOURCE_REV_STAMP);
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -579,6 +719,8 @@ fn main() {
     }
     let result = if args.first().map(String::as_str) == Some("ndbc-inventory") {
         buoy_inventory(&args[1..])
+    } else if args.first().map(String::as_str)==Some("diagnostics") {
+        diagnostics(&args[1..])
     } else {
         run(&args)
     };

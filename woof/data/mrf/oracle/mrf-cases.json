@@ -1,0 +1,590 @@
+{
+ "nz": 40,
+ "nstep": 4,
+ "cases": [
+  {
+   "name": "conv-land-00",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-01",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 30.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-02",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 90.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-03",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-04",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 30.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-05",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 90.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-06",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-07",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 30.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-08",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 90.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-09",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-10",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 30.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "conv-land-11",
+   "family": "convective-land",
+   "why": "SFCFLG unstable arm, thermal-enhanced PBL, countergradient terms",
+   "dt": 90.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-00",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-01",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 120.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-02",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-03",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 120.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-04",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-05",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 120.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-06",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-07",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 120.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-08",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "stable-land-09",
+   "family": "stable-night",
+   "why": "BR > 0: no countergradient, Ri-based free-atmosphere K above a shallow PBL",
+   "dt": 120.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "neutral-wind-00",
+   "family": "neutral-windy",
+   "why": "near-zero BR, mechanically driven PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "neutral-wind-01",
+   "family": "neutral-windy",
+   "why": "near-zero BR, mechanically driven PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "neutral-wind-02",
+   "family": "neutral-windy",
+   "why": "near-zero BR, mechanically driven PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "neutral-wind-03",
+   "family": "neutral-windy",
+   "why": "near-zero BR, mechanically driven PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "neutral-wind-04",
+   "family": "neutral-windy",
+   "why": "near-zero BR, mechanically driven PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "neutral-wind-05",
+   "family": "neutral-windy",
+   "why": "near-zero BR, mechanically driven PBL",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-00",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-01",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-02",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-03",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-04",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-05",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-06",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-07",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-08",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "cloud-top-09",
+   "family": "cloud-topped",
+   "why": "IMVDIF moist Ri: qc+qi above 0.01e-3 on adjacent levels",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "shallow-00",
+   "family": "very-shallow",
+   "why": "PBL inside the first layers: BRDN >= BRCR, KPBL = KL",
+   "dt": 30.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "shallow-01",
+   "family": "very-shallow",
+   "why": "PBL inside the first layers: BRDN >= BRCR, KPBL = KL",
+   "dt": 30.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "shallow-02",
+   "family": "very-shallow",
+   "why": "PBL inside the first layers: BRDN >= BRCR, KPBL = KL",
+   "dt": 30.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "shallow-03",
+   "family": "very-shallow",
+   "why": "PBL inside the first layers: BRDN >= BRCR, KPBL = KL",
+   "dt": 30.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "shallow-04",
+   "family": "very-shallow",
+   "why": "PBL inside the first layers: BRDN >= BRCR, KPBL = KL",
+   "dt": 30.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "shallow-05",
+   "family": "very-shallow",
+   "why": "PBL inside the first layers: BRDN >= BRCR, KPBL = KL",
+   "dt": 30.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "near-top-00",
+   "family": "near-model-top",
+   "why": "thermal reaches K = 1: KPBL <= 1 clears PBLFLG",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "near-top-01",
+   "family": "near-model-top",
+   "why": "thermal reaches K = 1: KPBL <= 1 clears PBLFLG",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "near-top-02",
+   "family": "near-model-top",
+   "why": "thermal reaches K = 1: KPBL <= 1 clears PBLFLG",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "near-top-03",
+   "family": "near-model-top",
+   "why": "thermal reaches K = 1: KPBL <= 1 clears PBLFLG",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "near-top-04",
+   "family": "near-model-top",
+   "why": "thermal reaches K = 1: KPBL <= 1 clears PBLFLG",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 1.0
+  },
+  {
+   "name": "near-top-05",
+   "family": "near-model-top",
+   "why": "thermal reaches K = 1: KPBL <= 1 clears PBLFLG",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "water-00",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 2.0
+  },
+  {
+   "name": "water-01",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 2.0
+  },
+  {
+   "name": "water-02",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 2.0
+  },
+  {
+   "name": "water-03",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 2.0
+  },
+  {
+   "name": "water-04",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 2.0
+  },
+  {
+   "name": "water-05",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 2.0
+  },
+  {
+   "name": "water-06",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 2.0
+  },
+  {
+   "name": "water-07",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 2.0
+  },
+  {
+   "name": "water-08",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 0,
+   "xland": 2.0
+  },
+  {
+   "name": "water-09",
+   "family": "water",
+   "why": "XLAND >= 1.5: UST without the 0.1 floor, HGAMQ = 0",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 2.0
+  },
+  {
+   "name": "probe-calm-low",
+   "family": "probe",
+   "why": "UX(KL)=VX(KL)=0: WSPD1 = 1e-9",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-uniform-wind",
+   "family": "probe",
+   "why": "zero shear: SS = 1e-9 floor",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-land-ust-floor",
+   "family": "probe",
+   "why": "land UST below 0.1 floored",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-gamcrt-clamp",
+   "family": "probe",
+   "why": "HGAMT/VPERT reach GAMCRT; XKZMAX clamp",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-prmax",
+   "family": "probe",
+   "why": "very stable Ri: PRNUM clipped to PRMAX",
+   "dt": 120.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-dt-short",
+   "family": "probe",
+   "why": "dt = 10 s",
+   "dt": 10.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-dt-long",
+   "family": "probe",
+   "why": "dt = 180 s",
+   "dt": 180.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-qc-threshold",
+   "family": "probe",
+   "why": "qc+qi exactly at the 0.01e-3 test and one ULP above",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-br-pos-zero",
+   "family": "probe-br",
+   "why": "the BR .GT. 0.0 compare on a signed-zero/subnormal word",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-br-neg-zero",
+   "family": "probe-br",
+   "why": "the BR .GT. 0.0 compare on a signed-zero/subnormal word",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-br-pos-subnormal",
+   "family": "probe-br",
+   "why": "the BR .GT. 0.0 compare on a signed-zero/subnormal word",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-br-neg-subnormal",
+   "family": "probe-br",
+   "why": "the BR .GT. 0.0 compare on a signed-zero/subnormal word",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  },
+  {
+   "name": "probe-br-min-normal",
+   "family": "probe-br",
+   "why": "the BR .GT. 0.0 compare on a signed-zero/subnormal word",
+   "dt": 60.0,
+   "flag_qi": 1,
+   "xland": 1.0
+  }
+ ]
+}

@@ -457,7 +457,7 @@ def _hydro_run_receipts(hydro_receipt) -> dict[str, object]:
         if len(blocks) > 1:
             fragment["hydro_by_domain"] = dict(blocks)
         blocks = root
-    for key in ("hydro_cost", "hydro_products"):
+    for key in ("hydro_cost", "hydro_products", "wave_cost", "wave_products"):
         if isinstance(blocks, Mapping) and key in blocks:
             fragment[key] = blocks[key]
     return fragment
@@ -1047,6 +1047,10 @@ def _initialize_real_case_physics(
     from woof.core.landuse import surface_leaf_area
     lai = surface_leaf_area(cfg, static["LAI12M"], start_time)
     state = initial_result.state
+    if cfg.dfi_opt and cfg.dfi_write_filtered_input:
+        from woof.wrf_direct import runtime_wrfinput_fields
+        state._dfi_input_snapshot = runtime_wrfinput_fields(
+            initial_result, initial_met, soil, static, grid, cfg, start_time)
     # initialize_real loads prognostics but does not launch the EOS kernel.
     # Diagnose the time-zero atmosphere before the first RRTMGP call.
     update_diagnostics(state, cfg.hypsometric_opt)
@@ -1055,7 +1059,10 @@ def _initialize_real_case_physics(
     radiation = make_radiation(
         cfg, start_time, lat, lon, p_top=vertical.p_top,
         trace_gas_overrides=trace_gas_overrides,
-        column_chunk=radiation_column_chunk)
+        column_chunk=radiation_column_chunk,
+        **({"center_lat": (float(getattr(grid, "cen_lat", np.mean(lat)))
+                           if center_lat is None else float(center_lat))}
+           if int(cfg.ra_sw_physics) == 2 else {}))
     landuse = initialize_landuse(
         static["LU_INDEX"], urban_legend=int(getattr(cfg, "sf_urban_physics", 0)) > 0,
         soil_type=reconciled_soil_type,
@@ -1124,6 +1131,8 @@ def _initialize_real_case_physics(
                                         + met0["U10"][:, 1:])
     driver.fields["v10"][...] = 0.5 * (met0["V10"][:-1]
                                         + met0["V10"][1:])
+    from woof.core.myjsfc import seed_eta_family_10m_winds
+    seed_eta_family_10m_winds(driver.fields, cfg.sf_sfclay_physics)
 
     if getattr(cfg, "sf_surface_mosaic", 0) == 1:
         from woof.core.noah_mosaic_door import attach_noah_mosaic_to_driver
@@ -1479,6 +1488,22 @@ def prepare_real_case(cfg: RunConfig, *, grid, geog_root,
         land_state=land_state_context(
             grid, getattr(initial_met, "valid_time", times[0])),
         route=_WATER_ROUTE)
+    # The model's SST carrier: the forcing's SST, with TSK on every water
+    # cell the source leaves without one (real.exe's no-SST rule), for
+    # every forcing source through this one seam.  Set here, before the
+    # case store, the ensemble capture and the physics initialization read
+    # soil_fields, so all three see the same carrier.  ``wrf_compat`` keeps
+    # stock real.exe's carrier (flag_sst = 1 leaves the mapped value) for
+    # byte-for-byte certification.
+    if water_temperature_policy != "wrf_compat" and "SST" in soil_fields:
+        from woof.ingest.water_temperature import model_sst_with_skin_fill
+        soil_fields["SST"], sst_receipt = model_sst_with_skin_fill(
+            soil_fields["SST"], skin=soil.tsk, landmask=static["LANDMASK"])
+        if sst_receipt["filled_from_tsk"]:
+            print(f"[surface] sst: {sst_receipt['filled_from_tsk']} of "
+                  f"{sst_receipt['filled_from_tsk'] + sst_receipt['source_cells']}"
+                  " water cells have no source SST; filled from TSK "
+                  "(real.exe's no-SST rule)", flush=True)
     if store_request is not None:
         from types import SimpleNamespace
         from woof.ingest.case_store import write_case_store_input
@@ -1706,7 +1731,7 @@ def prepare_experiment_case(exp: ExperimentConfig,
 def _child_radiation_adapter(exp: ExperimentConfig, data: CaseDataConfig,
                              dc, state, lat, lon, *,
                              radiation_workspace=None,
-                             radiation_parent=None):
+                             radiation_parent=None, center_lat=None):
     """Construct one child domain's radiation adapter (shared by the
     t=0 preparer and the relocation preparer, so a relocated child's
     radiation is wired by exactly the code that wired it at start)."""
@@ -1741,7 +1766,8 @@ def _child_radiation_adapter(exp: ExperimentConfig, data: CaseDataConfig,
         cfg, exp.start_time, lat, lon, p_top=float(state.p_top),
         trace_gas_overrides=({"co2": data.co2_vmr}
                              if data.co2_vmr is not None else None),
-        column_chunk=exp.column_chunk, ozone_parent=ozone_parent)
+        column_chunk=exp.column_chunk, ozone_parent=ozone_parent,
+        **({"center_lat": center_lat} if int(cfg.ra_sw_physics) == 2 else {}))
     attach_modern_workspace(radiation, radiation_workspace)
     return radiation
 
@@ -1787,6 +1813,11 @@ def prepare_child_case(initialized, child_dc, *, exp: ExperimentConfig,
 
     update_diagnostics(state, cfg.hypsometric_opt)
     domain_start_time = exp.domain_start_time(dc.grid_id)
+    if cfg.dfi_opt and cfg.dfi_write_filtered_input:
+        from woof.wrf_direct import runtime_wrfinput_fields
+        state._dfi_input_snapshot = runtime_wrfinput_fields(
+            real, initialized.horizontal, soil, static, initialized.grid,
+            cfg, domain_start_time)
     from woof.ingest.vegetation import initial_vegetation_fraction
     vegfra = initial_vegetation_fraction(
         initialized.horizontal, static, domain_start_time)
@@ -1796,7 +1827,8 @@ def prepare_child_case(initialized, child_dc, *, exp: ExperimentConfig,
     radiation = _child_radiation_adapter(
         exp, data, dc, state, lat, lon,
         radiation_workspace=radiation_workspace,
-        radiation_parent=radiation_parent)
+        radiation_parent=radiation_parent,
+        center_lat=getattr(initialized.grid, "cen_lat", None))
     geog_selection = GeogSelection.from_case_data(
         data, domain_id=dc.grid_id)
     if getattr(state, "chem", None) is not None:
@@ -1866,6 +1898,8 @@ def prepare_child_case(initialized, child_dc, *, exp: ExperimentConfig,
                                          + met0["U10"][:, 1:])
     driver.fields["v10"][...] = 0.5 * (met0["V10"][:-1]
                                          + met0["V10"][1:])
+    from woof.core.myjsfc import seed_eta_family_10m_winds
+    seed_eta_family_10m_winds(driver.fields, cfg.sf_sfclay_physics)
     if getattr(cfg, "sf_surface_mosaic", 0) == 1:
         from woof.core.noah_mosaic_door import attach_noah_mosaic_to_driver
         # initialize_landuse above runs at its own default,
@@ -1967,7 +2001,9 @@ def rebuild_child_driver_from_land_state(*, exp: ExperimentConfig,
             radiation_workspace=(
                 model._activation_context or {}).get("radiation_workspace"),
             radiation_parent=(None if parent_physics is None
-                              else parent_physics.radiation_callable))
+                              else parent_physics.radiation_callable),
+            center_lat=(getattr(grid, "cen_lat", None)
+                        if center_lat is None else center_lat))
     else:
         radiation = radiation_factory(child_dc, state, lat, lon)
     if landuse_attrs is None:
@@ -1999,8 +2035,13 @@ def rebuild_child_driver_from_land_state(*, exp: ExperimentConfig,
     from woof.ingest.ruc_mosaic import ruc_mosaic_physics_inputs
     cam = cam_ozone_setup(exp=exp, dc=child_dc, grid=grid)
     from woof.ingest.lake_physics import lake_physics_inputs
+    from woof.ocean.mixed_layer import STATE_FIELDS as pwp_fields
     driver = initialize_physics(
         state, cfg, landuse=landuse, hydro_parent_geometry=grid,
+        ocean_initial=({name: land[name] for name in
+            pwp_fields
+            if name in land} if "om_tmp" in land else None),
+        ocean_continuation="om_tmp" in land,
         tsk=land.get("tsk", 300.0),
         soil_temperature=land.get("tslb", 285.0),
         soil_moisture=land.get("smois", 0.30),
@@ -2031,8 +2072,12 @@ def rebuild_child_driver_from_land_state(*, exp: ExperimentConfig,
         100.0 * static["GREENFRAC"].max(axis=0), dtype=cp.float32)
     # Continuation fields the constructor does not take arrive by
     # direct overwrite -- the supplied arrays, on the whole child.
-    for name in ("canwat", "snowc", "snotime", "qsfc", "ust",
-                 "smcrel", "psfc", "t2", "q2", "th2", "u10", "v10"):
+    from woof.ingest.relocation_init import (
+        LAND_SURFACE_CONTINUATION_FIELDS, surface_continuation_fields)
+    for name in dict.fromkeys(("canwat", "snowc", "snotime", "qsfc", "ust",
+                 "smcrel", "psfc", "t2", "q2", "th2", "u10", "v10")
+                 + tuple(name for name in surface_continuation_fields(cfg)
+                         if name not in LAND_SURFACE_CONTINUATION_FIELDS)):
         target = driver.fields.get(name)
         value = land.get(name)
         if target is not None and value is not None:
@@ -2088,6 +2133,27 @@ class RealRelocationChildPreparer:
     # this was caught.  A class attribute is inherited whatever a
     # subclass's __init__ does or does not do.
     _plan_override = None
+    _restoring_checkpoint = False
+
+    def for_checkpoint_restore(self):
+        """Rebuild physics/geometry; the caller then loads all checkpoint state."""
+        from copy import copy
+        preparer = copy(self)
+        preparer._restoring_checkpoint = True
+        preparer._captured = None
+        preparer._plan_override = None
+        return preparer
+
+    def _prepare_checkpoint(self, initialized, new_dc, parent_node, *, center_lat=None):
+        seconds = self._rebuild_driver(
+            initialized, new_dc, parent_node, {}, center_lat=center_lat)
+        self._pending_refresh = (int(new_dc.grid_id), initialized.grid,
+                                 initialized.static_fields)
+        self.last_receipt = {
+            "checkpoint_reconstruction": True,
+            "continuation_source": "complete checkpoint loaded after geometry rebuild",
+            "fields_moved": [], "driver_rebuild_seconds": seconds,
+        }
 
     def __init__(self, *, exp: ExperimentConfig, data: CaseDataConfig,
                  model):
@@ -2104,12 +2170,14 @@ class RealRelocationChildPreparer:
         self.writers = writers
 
     def capture_outgoing(self, node) -> None:
+        if self._restoring_checkpoint:
+            self._captured = None
+            return
         from copy import deepcopy
         from tilestream.physics_inventory import carrier_scalars
         from woof.core.physics_continuation import (_capture, capture_carriers,
                                                      capture_continuation)
-        from woof.ingest.relocation_init import (
-            LAND_SURFACE_CONTINUATION_FIELDS)
+        from woof.ingest.relocation_init import surface_continuation_fields
         from woof.core import nest_accumulation
 
         stream = getattr(node.state, "_streamed_domain", None)
@@ -2119,7 +2187,7 @@ class RealRelocationChildPreparer:
         driver = getattr(source_state, "physics", None)
         fields: dict[str, np.ndarray] = {}
         if driver is not None:
-            for name in LAND_SURFACE_CONTINUATION_FIELDS:
+            for name in surface_continuation_fields(node.cfg.run):
                 value = driver.fields.get(name)
                 if value is not None:
                     if store is not None:
@@ -2131,6 +2199,8 @@ class RealRelocationChildPreparer:
         case = self.model._prepared_by_grid_id.get(int(node.cfg.grid_id))
         self._captured = {
             "grid_id": int(node.cfg.grid_id),
+            # Timing events belong to the full forecast, not one footprint.
+            "tc_cost": getattr(getattr(driver, "tc_surface", None), "cost", None),
             "device": hasattr(getattr(source_state, "p", None),
                               "__cuda_array_interface__"),
             "i_parent_start": int(node.cfg.i_parent_start),
@@ -2162,8 +2232,12 @@ class RealRelocationChildPreparer:
     def __call__(self, initialized, new_dc, parent_node) -> None:
         import time as _time
 
-        from woof.ingest.relocation_init import LAND_SURFACE_CONTINUATION_FIELDS
+        from woof.ingest.relocation_init import surface_continuation_fields
 
+        if self._restoring_checkpoint:
+            self._captured = self._plan_override = None
+            self._prepare_checkpoint(initialized, new_dc, parent_node)
+            return
         started = _time.perf_counter()
         from woof.ingest.relocation_continuation import stage_relocation_continuation
         captured = self._captured
@@ -2171,7 +2245,7 @@ class RealRelocationChildPreparer:
         plan = self._plan_override
         self._plan_override = None
         static = initialized.static_fields
-        staged = stage_relocation_continuation(captured, new_dc, static, plan=plan)
+        staged = stage_relocation_continuation(captured, new_dc, static, plan=plan, parent_node=parent_node)
         plan, statics_verdict, fill, moved = (
             staged.plan, staged.statics_verdict, staged.fill, staged.land)
 
@@ -2198,6 +2272,8 @@ class RealRelocationChildPreparer:
                                      ring=ring)
         new_state = getattr(initialized, "state", None)
         new_driver = getattr(new_state, "physics", None)
+        from woof.tc.receipt import restore_cost
+        restore_cost(new_driver, captured.get("tc_cost"))
         if new_state is not None and new_driver is not None:
             continuation = restore_continuation(
                 new_state, new_driver, shifted)
@@ -2246,7 +2322,7 @@ class RealRelocationChildPreparer:
             "donor_fill": dict(fill.counts),
             "fields_moved": sorted(moved),
             "fields_absent": sorted(
-                set(LAND_SURFACE_CONTINUATION_FIELDS)
+                set(surface_continuation_fields(new_dc.run))
                 - set(captured["fields"])),
             "accumulators_reinitialized": not continuation["restored"],
             "physics_continuation": continuation,
@@ -2273,8 +2349,18 @@ class RealRelocationChildPreparer:
 
         captured, self._captured = self._captured, None
         override, self._plan_override = self._plan_override, None
+        if self._restoring_checkpoint:
+            lat, _ = footprint.grid.latlon_mass()
+            center_lat = float(getattr(footprint.grid, "cen_lat", np.mean(lat)))
+            def prepare(initialized, slab_domain, window):
+                self._prepare_checkpoint(initialized, slab_domain, parent_node,
+                                         center_lat=center_lat)
+                self._pending_refresh = (int(new_dc.grid_id), footprint.grid,
+                                         footprint.static_fields)
+            prepare.precipitation_archive = {}
+            return prepare
         staged = stage_relocation_continuation(
-            captured, new_dc, footprint.static_fields, plan=override)
+            captured, new_dc, footprint.static_fields, plan=override, parent_node=parent_node)
         scalars = captured.get("scalar_carriers")
         if scalars is None:
             raise RelocationRefusal("window reconstruction requires canonical streamed scalar carriers")
@@ -2311,6 +2397,8 @@ class RealRelocationChildPreparer:
                 initialized, slab_domain, parent_node, crop(staged.land, window),
                 center_lat=center_lat)
             state, driver = initialized.state, initialized.state.physics
+            from woof.tc.receipt import restore_cost
+            restore_cost(driver, captured.get("tc_cost"))
             continuation = restore_continuation(state, driver, crop(shifted, window))
             carriers = restore_carriers(driver, crop(radiative_fields, window), radiation.get("contract"))
             set_carrier_scalars(state, scalars)
@@ -2911,10 +2999,12 @@ def build_prepared_tree_descendant_regrounder(exp, *, model, corridors,
     root_id = next(int(d.grid_id) for d in exp.domains
                    if int(d.parent_id) in (0, int(d.grid_id)))
 
-    def reground(*, node, plan, delta_parent_cells):
+    def reground(*, node, plan, delta_parent_cells, restoring_checkpoint=False):
         grid_id = int(node.cfg.grid_id)
         corridor = corridors[grid_id]
         preparer = preparers[grid_id]
+        if restoring_checkpoint:
+            preparer = preparer.for_checkpoint_restore()
 
         def statics_builder(grid, new_dc):
             del grid
@@ -2982,32 +3072,35 @@ def build_prepared_tree_descendant_regrounder(exp, *, model, corridors,
 
         frame_width = int(
             getattr(initializer, "donor_alignment_frame_width", 0) or 0)
-        alignment = donor_alignment_check(
-            source_state=source_state, target_state=initialized.state,
-            plan=plan, frame_width=frame_width)
-        if not alignment["pass"]:
+        alignment = ({"pass": None, "reason": "checkpoint reconstruction; no state carried"}
+                     if restoring_checkpoint else donor_alignment_check(
+                         source_state=source_state, target_state=initialized.state,
+                         plan=plan, frame_width=frame_width))
+        if not restoring_checkpoint and not alignment["pass"]:
             raise RelocationRefusal(
                 f"descendant d{grid_id:02d}'s re-grounded base state does "
                 f"not match its outgoing one on the overlap, so the two "
                 f"footprints do not share donor cells: {alignment}. The "
                 "ground displacement carried down from the mover is wrong, "
                 "or its corridor is anchored to a frame that moved.")
-        transplant = transplant_overlap(
-            source_state=source_state, target_state=initialized.state,
-            plan=plan)
+        transplant = ({"checkpoint_reconstruction": True, "fields": {}}
+                      if restoring_checkpoint else transplant_overlap(
+                          source_state=source_state, target_state=initialized.state,
+                          plan=plan))
         # The same two-point probe the mover gets; a descendant is the
         # control that made the mover's deficit legible in the first
         # place, so it has to be measurable the same way.
         from woof.core.nest_relocation import (
             overlap_prognostic_mismatches, relocation_probe_enabled)
         probe = None
-        if relocation_probe_enabled():
+        if not restoring_checkpoint and relocation_probe_enabled():
             probe = {"after_transplant": overlap_prognostic_mismatches(
                 source_state, initialized.state, plan)}
         post_transplant = getattr(reconstruction if reconstruction is not None else initializer,
                                   "post_transplant", None)
         post_receipt = (
-            None if post_transplant is None else post_transplant(
+            None if post_transplant is None or (restoring_checkpoint and reconstruction is None)
+            else post_transplant(
                 source_state=source_state, target_state=initialized.state,
                 plan=plan))
         if probe is not None:
@@ -3068,6 +3161,8 @@ def build_prepared_tree_descendant_regrounder(exp, *, model, corridors,
             "rebuild": getattr(initialized, "preprocess_receipt", None),
         }
 
+    from functools import partial
+    reground.restore_checkpoint = partial(reground, restoring_checkpoint=True)
     reground.attach_writers = attach_writers
     return reground
 
@@ -4203,6 +4298,11 @@ def walk_spawn_legs(model, exp: ExperimentConfig, data: CaseDataConfig, *,
             coupler_factory=coupler_factory,
             spawned_stepper_factory=spawned_stepper_factory, leg=leg)
     result = None
+    # A cycle stop (woof.core.restart_boundary.dispatch_at_restart) ends the
+    # walk at its restart boundary; run_prepared_tree admits one only when no
+    # dormant slot can open at or before it.
+    cycle_stop = getattr(execute_kwargs.get("schedule_dispatch"),
+                         "stop_seconds", None)
     while True:
         elapsed = float(model.root.clock.elapsed_seconds)
         boundary = spawn_leg_boundary(
@@ -4227,12 +4327,20 @@ def walk_spawn_legs(model, exp: ExperimentConfig, data: CaseDataConfig, *,
             target = getattr(runner.config, "grid_id", None)
             if target is not None and int(target) not in model.nodes_by_grid_id:
                 runner = None
+        # The stop belongs to the leg whose horizon reaches it: earlier legs
+        # end at their own boundary (the stop lies past their schedule).
+        leg_kwargs = execute_kwargs
+        if cycle_stop is not None and float(boundary) + tol < float(cycle_stop):
+            leg_kwargs = {key: value for key, value in execute_kwargs.items()
+                          if key != "schedule_dispatch"}
         leg_report = execute_experiment(
             model, relocation_runner=runner, experiment=exp,
-            **execute_kwargs)
+            **leg_kwargs)
         result = _accumulate_leg_report(result, leg_report)
         elapsed = float(model.root.clock.elapsed_seconds)
         if elapsed + tol >= total:
+            break
+        if cycle_stop is not None and elapsed + tol >= float(cycle_stop):
             break
         relocation_runner = _leg_boundary_pass(
             model, spawn_runner, elapsed=elapsed, writers=writers,
@@ -5243,6 +5351,11 @@ def integrate_prepared_case(
             if health_debug and not phase_hook_supported and health_armed:
                 health.require_healthy(phase=phase + ".pre-step")
             step_kwargs = {"refl_10cm_due": refl_due}
+            if cfg.do_avgflx_em and outer_step < history_begin_step:
+                # Native's initial HISTORY_ALARM previous ring time is
+                # history_begin, even before the first frame is written.
+                from woof.core.avgflx import history_written
+                history_written(state)
             if int(getattr(cfg, "ifire", 0)) == 2:
                 step_kwargs["fire_history_due"] = refl_10cm_due(
                     outer_step, substep, output_outer_steps,
@@ -5451,6 +5564,12 @@ def integrate_prepared_case(
         state.physics, outdir=output_dir, dx_m=float(cfg.dx),
         forecast_seconds=time.perf_counter() - hydro_forecast_started,
         atmosphere_steps=(outer_steps - start_outer_step) * dynamics_substeps)
+    from woof.ocean.cost import receipt as wave_cost_receipt
+    hydro_receipt["wave_cost"] = wave_cost_receipt(
+        state.physics, forecast_seconds=time.perf_counter()-hydro_forecast_started,
+        atmosphere_steps=(outer_steps-start_outer_step)*dynamics_substeps)
+    from woof.ocean.products import publish as wave_products
+    hydro_receipt["wave_products"] = wave_products(state.physics,outdir=output_dir,domain=f"d{domain_id:02d}")
 
     # After the final device synchronization and after every history frame is
     # durable, so the digest observes the trajectory and cannot join it.
@@ -5901,6 +6020,8 @@ def run_experiment(exp: ExperimentConfig, data: CaseDataConfig, outdir, *,
     ensemble session the session wires its own log, so nothing is opened
     here.
     """
+    if getattr(exp, "nudging", None) is not None:
+        raise ValueError("NUDGING_ANALYSES_UNBOUND: use woof go to prepare the source analyses before integration")
     from woof.ensemble.runtime_context import current_capture, current_session
     if current_session() is not None:
         return _run_experiment(exp, data, outdir, restart=restart,
@@ -5959,6 +6080,12 @@ def _run_experiment(exp: ExperimentConfig, data: CaseDataConfig, outdir, *,
         return ensemble.run_experiment(run_experiment, exp, data,
             output_directory=outdir, restart=restart,
             progress_callback=progress_callback, health_debug=health_debug)
+    if exp.root.run.dfi_opt:
+        # Signed startup passes own the complete device state, just as on
+        # the prepared-input route. Price that resident road before ingest.
+        from woof.core import streaming as _dfi_streaming
+        exp = dataclass_replace(exp, tiles=_dfi_streaming.OFF,
+            domains=tuple(dataclass_replace(dc, tiles=None) for dc in exp.domains))
     from woof import kernel_prewarm
     kernel_prewarm.start_plan(exp)
     from woof.io.wrfout import quarantine_orphan_wrfouts
@@ -6133,7 +6260,7 @@ def _run_experiment(exp: ExperimentConfig, data: CaseDataConfig, outdir, *,
         store_direct = single_decision.stream and single_decision.store == "host"
         adaptive_clock = None
         adaptive_fingerprint = None
-        if dc.run.use_adaptive_time_step:
+        if dc.run.use_adaptive_time_step or dc.run.dfi_opt:
             from woof.core.clock import resolve_clock
             from woof.core.model import experiment_fingerprint
             adaptive_clock = resolve_clock(
@@ -6208,8 +6335,8 @@ def _run_experiment(exp: ExperimentConfig, data: CaseDataConfig, outdir, *,
         if single_tiles.enabled:
             print(single_decision.explain())
         if adaptive_model is not None:
-            # Initialization above is the same resident or bounded host-store
-            # route. Only the configured adaptive calendar selects this executor.
+            # Adaptive clocks and signed DFI startup share the scheduled
+            # executor; an ordinary fixed-step run keeps its existing loop.
             return _run_built_experiment(
                 exp, data, outdir, adaptive_model, restart=restart,
                 progress_callback=progress_callback, health_debug=health_debug,
@@ -6450,6 +6577,9 @@ def _run_built_experiment(exp, data, outdir, model, *, restart=None,
         remark_relocation_fingerprint(model, lifecycle)
         _preparation_progress(progress_callback, "restore-tree-checkpoint")
         restart_info = restore_tree_restart(restart, model)
+    if model.root.cfg.run.dfi_opt and restart is None:
+        from woof.core.dfi_initialization import initialize_tree
+        initialize_tree(model, start_time=exp.start_time, output_directory=outdir)
     # A restore whose point IS the stop tick is a finished run, not an
     # error and not an integration: the executor refuses a start period
     # at the end of the schedule, so this decides here, once.
@@ -6601,7 +6731,7 @@ def _run_built_experiment(exp, data, outdir, model, *, restart=None,
                 "already complete, finalizing without integrating")
         elif spawn_runner is None:
             execute_experiment(
-                model, history_handler=history_handler,
+                model, output_directory=outdir, history_handler=history_handler,
                 restart_handler=restart_handler,
                 progress_callback=committed_progress,
                 health_debug=health_debug,
@@ -6612,7 +6742,7 @@ def _run_built_experiment(exp, data, outdir, model, *, restart=None,
             # The leg walk: dormant nests are born mid-run and integrate
             # from their birth boundary onward.
             walk_spawn_legs(
-                model, exp, data,
+                model, exp, data, output_directory=outdir,
                 spawn_runner=spawn_runner, writers=writers,
                 lbc_interval_s=_tree_forcing_cadence_seconds(
                     model._input_catalog),
@@ -6646,6 +6776,12 @@ def _run_built_experiment(exp, data, outdir, model, *, restart=None,
             dx_m=float(node.cfg.run.dx), forecast_seconds=hydro_wall,
             atmosphere_steps=round((node.clock.elapsed_seconds - hydro_start_seconds)
                                    / float(node.cfg.run.dt)))
+        from woof.ocean.cost import receipt as wave_cost_receipt
+        hydro_receipts[f"d{grid_id:02d}"]["wave_cost"] = wave_cost_receipt(
+            node.state.physics, forecast_seconds=hydro_wall,
+            atmosphere_steps=round((node.clock.elapsed_seconds-hydro_start_seconds)/float(node.cfg.run.dt)))
+        from woof.ocean.products import publish as wave_products
+        hydro_receipts[f"d{grid_id:02d}"]["wave_products"] = wave_products(node.state.physics,outdir=outdir,domain=f"d{grid_id:02d}")
     # After the writer drain above and after the final device synchronization,
     # so the digest observes the trajectory and cannot participate in it.
     # A completed summary reports an observed final state, including a resume
@@ -6763,6 +6899,9 @@ def _submit_tree_history_frame(writers, node, ticks: int) -> None:
             from woof.core.refl import analysis_refl_10cm
             refl_field = analysis_refl_10cm(
                 node.state, shape=(node.cfg.run.nz, node.cfg.run.ny, node.cfg.run.nx))
+    if os.environ.get("WOOF_TC_TRACKER"):
+        from woof_tools_tc_tracker.adapters import arwen_history
+        arwen_history(node, node.clock.elapsed_seconds)
     writers.submit(node, ticks, refl_field=refl_field)
     # History-interval reset of this domain's UP_HELI_MAX window.  Safe
     # ordering: submit's producer-stream wait_event fences the side-stream

@@ -391,9 +391,11 @@ def placement_report(text, selection):
 
     raw = tomllib.loads(text)
     exp = dw.experiment_from_text(text, source="cyclone-track-placement.toml")
-    parent, child = exp.domains
+    child = next(d for d in exp.domains if d.grid_id == tc.FOLLOWER_GRID_ID)
+    parent = next(d for d in exp.domains if d.grid_id == child.parent_id)
     from woof.static.projection import grids_from_projection_config
-    child_grid = grids_from_projection_config(exp)[1]
+    grids = {d.grid_id: grid for d, grid in zip(exp.domains, grids_from_projection_config(exp))}
+    child_grid = grids[child.grid_id]
     actual_seed = child_grid.ij_to_latlon(child_grid.e_we/2., child_grid.e_sn/2.)
     grid = dw._root_grid(raw["projection"], parent.run.nx, parent.run.ny, parent.run.dx)
     clearance = tc._nest_clearance_cells(exp, (child.run.nx, child.run.ny))

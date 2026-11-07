@@ -1,4 +1,6 @@
 """Persistent direct-NVRTC images, without CuPy's RawModule FTZ override."""
+
+from woof.backend import compilation_target as _compilation_target
 from functools import lru_cache
 import hashlib
 import json
@@ -27,7 +29,7 @@ def compile_image(source, *, options, arch=None, cache_dir=None):
     import cupy as cp
     from cupy.cuda import compiler
     device = cp.cuda.runtime.getDevice()
-    arch = arch or cp.cuda.Device(device).compute_capability
+    arch = arch or _compilation_target(device, xp=cp)
     source_hash = hashlib.sha256(source.encode('utf-8')).hexdigest()
     identity = dict(schema=1, source_sha256=source_hash, options=list(options),
                     arch=str(arch), platform=_platform(device))

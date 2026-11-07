@@ -207,9 +207,29 @@ fn recipe_flags(slug: &str) -> Vec<ProductSemanticFlag> {
         "cloud_cover_levels" | "precipitation_type" | "composite_reflectivity_uh" => {
             vec![ProductSemanticFlag::Composite]
         }
+        _ if is_uh_layer_overlay_recipe(slug) => vec![ProductSemanticFlag::Composite],
         "1h_qpf" => vec![ProductSemanticFlag::Alias],
         _ => Vec::new(),
     }
+}
+
+/// The reflectivity recipes with an updraft-helicity layer contoured on
+/// top (WOOF uh-layers, 2026-11-02): composite reflectivity over the 0-1,
+/// 0-2 and 0-3 km layers, and 1 km AGL reflectivity over all four. The
+/// 2-5 km composite overlay keeps its own name, `composite_reflectivity_uh`.
+pub const UH_LAYER_OVERLAY_RECIPES: [&str; 7] = [
+    "composite_reflectivity_uh0to1km",
+    "composite_reflectivity_uh0to2km",
+    "composite_reflectivity_uh0to3km",
+    "1km_reflectivity_uh2to5km",
+    "1km_reflectivity_uh0to1km",
+    "1km_reflectivity_uh0to2km",
+    "1km_reflectivity_uh0to3km",
+];
+
+/// Whether `slug` is one of [`UH_LAYER_OVERLAY_RECIPES`].
+pub fn is_uh_layer_overlay_recipe(slug: &str) -> bool {
+    UH_LAYER_OVERLAY_RECIPES.contains(&slug)
 }
 
 fn recipe_window(slug: &str, lineage: ProductLineage) -> Option<ProductWindowSpec> {
@@ -3688,6 +3708,12 @@ const FIELD_ISOTHERM_HEIGHT_MINUS20C: GribFieldSpec = field_spec(
     &[],
 );
 
+const FIELD_ICE_WATER_PATH: GribFieldSpec = field_spec(
+    "ice_water_path", "Ice Water Path", ProductFamily::Native,
+    GribLevelKind::EntireAtmosphere, None,
+    Some(FieldSelector::entire_atmosphere(CanonicalField::IceWaterPath)), &[],
+);
+
 const FIELD_SUPERCOOLED_WATER_PATH: GribFieldSpec = field_spec(
     "supercooled_water_path",
     "Supercooled Liquid Water Path",
@@ -3976,6 +4002,57 @@ const FIELD_UH: GribFieldSpec = field_spec(
         5000,
     )),
     &["MXUPHL:5000-2000", "UPHL:5000-2000", "UHEL:"],
+);
+
+/// A low-level interval-max updraft helicity layer, as HRRR/RRFS write
+/// `UP_HELI_MAX01/02/03` (WOOF uh-layers, 2026-11-02). The WRF store path
+/// reads it by selector; no GRIB fetch pattern is claimed for it.
+const FIELD_UH_0TO1KM: GribFieldSpec = field_spec(
+    "updraft_helicity_0to1km",
+    "Updraft Helicity 0-1 km",
+    ProductFamily::Native,
+    GribLevelKind::HeightAboveGroundLayer,
+    None,
+    Some(FieldSelector::height_layer_agl(
+        CanonicalField::UpdraftHelicity,
+        0,
+        1000,
+    )),
+    &[],
+);
+
+/// A low-level interval-max updraft helicity layer, as HRRR/RRFS write
+/// `UP_HELI_MAX01/02/03` (WOOF uh-layers, 2026-11-02). The WRF store path
+/// reads it by selector; no GRIB fetch pattern is claimed for it.
+const FIELD_UH_0TO2KM: GribFieldSpec = field_spec(
+    "updraft_helicity_0to2km",
+    "Updraft Helicity 0-2 km",
+    ProductFamily::Native,
+    GribLevelKind::HeightAboveGroundLayer,
+    None,
+    Some(FieldSelector::height_layer_agl(
+        CanonicalField::UpdraftHelicity,
+        0,
+        2000,
+    )),
+    &[],
+);
+
+/// A low-level interval-max updraft helicity layer, as HRRR/RRFS write
+/// `UP_HELI_MAX01/02/03` (WOOF uh-layers, 2026-11-02). The WRF store path
+/// reads it by selector; no GRIB fetch pattern is claimed for it.
+const FIELD_UH_0TO3KM: GribFieldSpec = field_spec(
+    "updraft_helicity_0to3km",
+    "Updraft Helicity 0-3 km",
+    ProductFamily::Native,
+    GribLevelKind::HeightAboveGroundLayer,
+    None,
+    Some(FieldSelector::height_layer_agl(
+        CanonicalField::UpdraftHelicity,
+        0,
+        3000,
+    )),
+    &[],
 );
 
 const FIELD_SMOKE_MASS_DENSITY_8M: GribFieldSpec = field_spec(
@@ -6017,6 +6094,11 @@ const PLOT_RECIPES: &[PlotRecipe] = &[
         style: RenderStyle::WeatherIsothermHeight,
     },
     PlotRecipe {
+        slug: "ice_water_path", title: "Ice Water Path", filled: FIELD_ICE_WATER_PATH,
+        contours: None, barbs_u: None, barbs_v: None,
+        style: RenderStyle::WeatherSupercooledWaterPath,
+    },
+    PlotRecipe {
         slug: "supercooled_water_path",
         title: "Supercooled Liquid Water Path",
         filled: FIELD_SUPERCOOLED_WATER_PATH,
@@ -6452,6 +6534,96 @@ const PLOT_RECIPES: &[PlotRecipe] = &[
         barbs_u: None,
         barbs_v: None,
         style: RenderStyle::WeatherUh,
+    },
+    PlotRecipe {
+        slug: "uh_0to1km",
+        title: "Updraft Helicity 0-1 km",
+        filled: FIELD_UH_0TO1KM,
+        contours: None,
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherUh,
+    },
+    PlotRecipe {
+        slug: "uh_0to2km",
+        title: "Updraft Helicity 0-2 km",
+        filled: FIELD_UH_0TO2KM,
+        contours: None,
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherUh,
+    },
+    PlotRecipe {
+        slug: "uh_0to3km",
+        title: "Updraft Helicity 0-3 km",
+        filled: FIELD_UH_0TO3KM,
+        contours: None,
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherUh,
+    },
+    PlotRecipe {
+        slug: "composite_reflectivity_uh0to1km",
+        title: "Composite Reflectivity / UH 0-1 km",
+        filled: FIELD_COMPOSITE_REFLECTIVITY,
+        contours: Some(FIELD_UH_0TO1KM),
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherReflectivity,
+    },
+    PlotRecipe {
+        slug: "composite_reflectivity_uh0to2km",
+        title: "Composite Reflectivity / UH 0-2 km",
+        filled: FIELD_COMPOSITE_REFLECTIVITY,
+        contours: Some(FIELD_UH_0TO2KM),
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherReflectivity,
+    },
+    PlotRecipe {
+        slug: "composite_reflectivity_uh0to3km",
+        title: "Composite Reflectivity / UH 0-3 km",
+        filled: FIELD_COMPOSITE_REFLECTIVITY,
+        contours: Some(FIELD_UH_0TO3KM),
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherReflectivity,
+    },
+    PlotRecipe {
+        slug: "1km_reflectivity_uh2to5km",
+        title: "1km AGL Reflectivity / UH 2-5 km",
+        filled: FIELD_1KM_REFLECTIVITY,
+        contours: Some(FIELD_UH),
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherRadarReflectivity,
+    },
+    PlotRecipe {
+        slug: "1km_reflectivity_uh0to1km",
+        title: "1km AGL Reflectivity / UH 0-1 km",
+        filled: FIELD_1KM_REFLECTIVITY,
+        contours: Some(FIELD_UH_0TO1KM),
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherRadarReflectivity,
+    },
+    PlotRecipe {
+        slug: "1km_reflectivity_uh0to2km",
+        title: "1km AGL Reflectivity / UH 0-2 km",
+        filled: FIELD_1KM_REFLECTIVITY,
+        contours: Some(FIELD_UH_0TO2KM),
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherRadarReflectivity,
+    },
+    PlotRecipe {
+        slug: "1km_reflectivity_uh0to3km",
+        title: "1km AGL Reflectivity / UH 0-3 km",
+        filled: FIELD_1KM_REFLECTIVITY,
+        contours: Some(FIELD_UH_0TO3KM),
+        barbs_u: None,
+        barbs_v: None,
+        style: RenderStyle::WeatherRadarReflectivity,
     },
     PlotRecipe {
         slug: "smoke_pm25_native",

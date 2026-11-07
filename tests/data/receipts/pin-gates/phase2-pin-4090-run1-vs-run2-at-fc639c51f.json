@@ -1,7 +1,7 @@
 {
   "comparison": "two captures at fc639c51f on the RTX 4090, one session",
-  "old": "<home>/work/pin-gates-276/proof/cap-fc639c51f-4090.npz",
-  "new": "<home>/work/pin-gates-276/proof/cap-fc639c51f-4090-run2.npz",
+  "old": "<home>/tool-work/pin-gates-276/proof/cap-fc639c51f-4090.npz",
+  "new": "<home>/tool-work/pin-gates-276/proof/cap-fc639c51f-4090-run2.npz",
   "old_content_sha256": "b7b5baefe10e13d1ce01a2aee3c0b69d9fb96b558dcb167652eb0c4795171436",
   "new_content_sha256": "b7b5baefe10e13d1ce01a2aee3c0b69d9fb96b558dcb167652eb0c4795171436",
   "entries": {

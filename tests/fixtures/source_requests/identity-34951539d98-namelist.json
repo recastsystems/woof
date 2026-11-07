@@ -1,0 +1,5 @@
+{
+  "base_commit": "34951539d986683d7a23108553fad619903d8131",
+  "namelist": "426a192a1ed77fa885fd4cdb493f4e186941af4052a3090b25c250721a7c6ae4",
+  "normalization": "without_wrf_clock_lines, with_retired_line; same as prior fixture test"
+}

@@ -31,9 +31,12 @@ def test_every_wrf_value_is_run_or_refused_with_a_reason(key, values, accepted):
     assert set(config_mod.RA_UNPORTED_REASONS[key]) == set(values) - set(accepted)
 
 
+# Fu-Liou-Gu (7), Held-Suarez (31), GFDL (99), old Goddard SW (2) and CAM SW
+# (3) are ported now; RRTMG-K (14) and fast RRTMG (24) are the WRF values
+# still refused, on either stream.
 @pytest.mark.parametrize("lw,sw,needle", [
-    (7, 4, "Fu-Liou-Gu"), (31, 4, "Held-Suarez"), (99, 4, "GFDL"),
-    (24, 4, "fast RRTMG"), (4, 2, "old Goddard"), (4, 3, "CAM shortwave"),
+    (24, 4, "fast RRTMG longwave"), (14, 4, "RRTMG-K longwave"),
+    (4, 24, "fast RRTMG shortwave"), (4, 14, "RRTMG-K shortwave"),
 ])
 def test_the_importer_names_the_reason(tmp_path, lw, sw, needle):
     # mp 8 (Thompson): the fixture's mp 55 is refused by its own name on
@@ -46,8 +49,8 @@ def test_the_importer_names_the_reason(tmp_path, lw, sw, needle):
 
 
 def test_new_goddard_is_named_in_the_config_menu_message():
-    with pytest.raises(ValueError, match=r"5 \(WRF New Goddard\).*Fu-Liou-Gu"):
-        config_mod.validate_run_config(_cfg(ra_lw_physics=7, ra_sw_physics=7))
+    with pytest.raises(ValueError, match=r"5 \(WRF New Goddard\).*7 \(WRF Fu-Liou-Gu\)"):
+        config_mod.validate_run_config(_cfg(ra_lw_physics=24, ra_sw_physics=24))
 
 
 def _cfg(**kw):

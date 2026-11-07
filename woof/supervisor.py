@@ -1115,7 +1115,7 @@ def _run_nvidia_smi(arguments: list[str]) -> str:
               "driver/runtime access before retrying the forecast.")
     try:
         result = subprocess.run(
-            ["nvidia-smi", *arguments], check=False, capture_output=True,
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(), *arguments], check=False, capture_output=True,
             text=True, encoding="utf-8", errors="replace", timeout=20)
     except FileNotFoundError as exc:
         raise _nvidia_smi_failure(
@@ -1795,7 +1795,7 @@ class RuntimeHeartbeat:
             # is published atomically but not fsynced.  Breakage this
             # prevents: two fsyncs (file and directory) on the stepping
             # thread every step, 10-27 ms each on a box whose disk is busy
-            # with 16 GB history frames (V59, 8 x RTX 5090, 2026-10-21: the
+            # with 16 GB history frames (test host, 8 x RTX 5090, 2026-10-21: the
             # stepping thread sat in xlog_wait_on_iclog, the 26 ms per-step
             # gap the step timer missed).  Every other status stays durable.
             durable=status != "integrating")
@@ -2357,7 +2357,9 @@ def priced_reservation_bytes(configuration, *, source=None,
     """
 
     try:
-        from woof.core.preflight import admission_estimate
+        from woof.core.preflight import (
+            admission_estimate, device_memory_probe_subprocess,
+            profile_from_device_probe)
 
         experiment = configuration
         if isinstance(configuration, (str, os.PathLike)):
@@ -2365,6 +2367,16 @@ def priced_reservation_bytes(configuration, *, source=None,
 
             experiment = load_experiment(configuration)
         pricing = {"source": source}
+        # The supervisor has no CUDA context. Price its selected card from
+        # the same short-lived probe as the planning door, rather than
+        # charging every device the 170-SM reference card's local store.
+        probe = device_memory_probe_subprocess()
+        profile = profile_from_device_probe(probe)
+        if profile is not None:
+            from woof.core.streaming import planner_machine
+            pricing["machine"] = planner_machine(
+                vram_bytes=probe.get("total_bytes"), name=profile.name,
+                device_profile=profile)
         if urban_columns is not None:
             pricing["urban_columns"] = urban_columns
         estimate = admission_estimate(experiment, **pricing)
@@ -2484,7 +2496,7 @@ def supervise_experiment(
                 # process-local device ordinal 0.  Mask before Popen so
                 # logical device 0 is the selected UUID before any CUDA import
                 # or context can exist in the fresh worker.
-                "CUDA_VISIBLE_DEVICES": cuda_mask,
+                **__import__("woof.gpu_smi",fromlist=["visibility_environment"]).visibility_environment(cuda_mask),
                 "WOOF_RUN_ID": run_id,
                 "WOOF_CONFIG_DIGEST": digest,
                 "WOOF_STARTED_AT_UTC": started_at,

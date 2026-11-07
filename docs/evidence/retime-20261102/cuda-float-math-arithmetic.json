@@ -1,0 +1,18 @@
+{
+  "source": "extern \"C\" __global__ void float_pow(float* x){int i=blockIdx.x*blockDim.x+threadIdx.x;x[i]=powf(x[i],x[i+1]);}\nextern \"C\" __global__ void float_exp(float* x){int i=blockIdx.x*blockDim.x+threadIdx.x;x[i]=expf(x[i]);}\nextern \"C\" __global__ void float_log(float* x){int i=blockIdx.x*blockDim.x+threadIdx.x;x[i]=logf(x[i]);}\nextern \"C\" __global__ void float_mod(float* x){int i=blockIdx.x*blockDim.x+threadIdx.x;x[i]=fmodf(x[i],x[i+1]);}\nextern \"C\" __global__ void float_trig(float* x){int i=blockIdx.x*blockDim.x+threadIdx.x;x[i]=sinf(x[i])+cosf(x[i]);}",
+  "options": [
+    "-std=c++17",
+    "--ftz=false"
+  ],
+  "scope": "Static diagnostic of NVRTC CUDA float elementary function implementation; no forecast timing claim",
+  "binary64_arithmetic": {
+    "float_trig": [
+      "/*0620*/                   DMUL R8, R8, UR6 ;                                                /* 0x0000000608087c28 */",
+      "/*0c60*/                   DMUL R12, R12, UR6 ;                                              /* 0x000000060c0c7c28 */"
+    ],
+    "float_mod": [],
+    "float_log": [],
+    "float_exp": [],
+    "float_pow": []
+  }
+}

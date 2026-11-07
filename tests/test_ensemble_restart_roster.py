@@ -429,6 +429,11 @@ def test_seal_retries_when_another_member_retires_a_checkpoint_mid_pass(tmp_path
             retired.append(path)
         return value
     monkeypatch.setattr(restart_roster, "digest_file", digest_then_retire)
+    # Force a new file identity: an unchanged write-once inode now reuses
+    # its proof, so retirement must interrupt this replacement's first read.
+    replacement = new.with_suffix(".replacement")
+    replacement.write_bytes(new.read_bytes())
+    replacement.replace(new)
     document = restart_roster.seal(tmp_path, collector=collector)
     assert retired
     row = document["members"][1]
@@ -552,7 +557,7 @@ class FrameWritingCollector(Collector):
 
 
 def test_killed_ensemble_resumes_after_frames_rewrote_the_sealed_files(tmp_path, identity, monkeypatch):
-    # 2.9.1 audit (woof 2.9.0 from PyPI): an ensemble killed after member 1's
+    # 2.9.1 audit (gpuwm 2.9.0 from PyPI): an ensemble killed after member 1's
     # checkpoint seal refused every resume with "ensemble resume file is missing or
     # hash-mismatched: d01/ensemble-manifest.json". Member 1's next frame rewrote
     # the domain manifest and the history ledger 0.5 s after the seal, and the
@@ -723,6 +728,7 @@ def test_resume_reuses_only_exact_prepared_bindings(tmp_path, monkeypatch):
         return 0
 
     monkeypatch.setattr(recipe_door, "member_inputs", load)
+    monkeypatch.setattr(restart_roster, "resume_recipe_request", lambda request, _: request)
     monkeypatch.setattr(door, "production_run_scope", scope)
     monkeypatch.setattr(prepared_single_domain_forecast, "main", run)
     args = SimpleNamespace(restart_roster=tmp_path / restart_roster.ROSTER, outdir=tmp_path)
@@ -765,3 +771,219 @@ def test_member_completion_seal_defers_when_the_product_drain_is_busy(tmp_path, 
     assert [row["status"] for row in roster["members"]] == ["completed"] * 3
     assert restart_roster.verify_roster(tmp_path / restart_roster.ROSTER,
         json.loads((tmp_path / restart_roster.IDENTITIES).read_text()), root=tmp_path)
+
+
+def _memo_checkpoint_root(root, count):
+    import numpy as np
+    identities = {"schema": restart_roster.CONTRACT, "member_order": list(range(count)),
+        "members": [{"member_id": member, "identity_sha256": f"owner-{member}"}
+                    for member in range(count)]}
+    restart_roster.atomic_json(root / restart_roster.IDENTITIES, identities)
+    restart_roster.atomic_json(root / restart_roster.INPUTS,
+        {"members": [{"member_id": member} for member in range(count)]})
+    restart_roster.atomic_json(root / "ensemble-run.json", {"members_completed": []})
+    paths = []
+    for member in range(count):
+        path = root / "members" / f"member-{member:04d}" / "gpuwmrst_d01_2024-01-01_01_00_00.npz"
+        path.parent.mkdir(parents=True)
+        array = np.full(1024, member, np.float32)
+        header = {"elapsed_seconds": 3600, "array_manifest": {
+            "state": {"shape": list(array.shape), "dtype": str(array.dtype)}}}
+        np.savez(path, __gpuwm_restart_header__=np.frombuffer(json.dumps(header).encode(), dtype=np.uint8),
+                 state=array)
+        paths.append(path)
+    return identities, paths
+
+
+def test_member_round_hashes_and_validates_each_inode_once_but_resume_rehashes(tmp_path, monkeypatch):
+    from collections import Counter
+    from threading import Lock, RLock
+    from woof import supervisor
+    identities, paths = _memo_checkpoint_root(tmp_path, 6)
+    reads, validations, count_lock = Counter(), Counter(), Lock()
+    digest, validate = restart_roster.digest_file, supervisor.validate_manifest_checkpoint
+    def counted_digest(path):
+        if Path(path).suffix == ".npz":
+            with count_lock:
+                reads[Path(path).stat().st_ino] += 1
+        return digest(path)
+    def counted_validate(path):
+        with count_lock:
+            validations[Path(path).stat().st_ino] += 1
+        return validate(path)
+    monkeypatch.setattr(restart_roster, "digest_file", counted_digest)
+    monkeypatch.setattr(supervisor, "validate_manifest_checkpoint", counted_validate)
+    collector, manifest_lock = Collector(tmp_path), RLock()
+    for path in paths:
+        restart_roster.CheckpointProgress(lambda **event: None, collector=collector,
+            root=tmp_path, manifest_lock=manifest_lock)(last_checkpoint=path)
+    assert len(reads) == len(paths) and set(reads.values()) == {1}
+    assert len(validations) == len(paths) and set(validations.values()) == {1}
+    record = restart_roster.verify_roster(tmp_path / restart_roster.ROSTER, identities, root=tmp_path)
+    assert all(row["status"] == "checkpoint" for row in record["members"])
+    assert set(reads.values()) == {2}
+    assert restart_roster.restore_roster(record, root=tmp_path)["restored"] == []
+    assert set(reads.values()) == {3}
+
+
+def test_members_hash_before_manifest_lock_and_share_inflight_proofs(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, RLock
+    _, paths = _memo_checkpoint_root(tmp_path, 2)
+    lock, entered = RLock(), Barrier(2)
+    digest = restart_roster.digest_file
+    def concurrent_digest(path):
+        if Path(path) in paths:
+            assert not lock._is_owned()
+            entered.wait(timeout=5)
+        return digest(path)
+    monkeypatch.setattr(restart_roster, "digest_file", concurrent_digest)
+    collector = Collector(tmp_path)
+    callbacks = [restart_roster.CheckpointProgress(lambda **event: None, collector=collector,
+                 root=tmp_path, manifest_lock=lock) for _ in paths]
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        futures = [workers.submit(callback, last_checkpoint=path) for callback, path in zip(callbacks, paths)]
+        for future in futures:
+            future.result(timeout=10)
+    record = json.loads((tmp_path / restart_roster.ROSTER).read_text())
+    assert all(row["status"] == "checkpoint" for row in record["members"])
+
+
+def test_cold_member_scan_reads_checkpoints_on_parallel_file_workers(tmp_path, monkeypatch):
+    from threading import Barrier, current_thread, get_ident
+    from woof.ingest import cpu_backend
+    _, paths = _memo_checkpoint_root(tmp_path, 2)
+    for path in paths:
+        restart_roster.bind_checkpoint_member(tmp_path, path)
+    with restart_roster._FILE_MEMO_LOCK:
+        restart_roster._FILE_MEMO.clear()
+    monkeypatch.setattr(cpu_backend, "available_cpu_count", lambda: 2)
+    entered, readers = Barrier(2), set()
+    digest = restart_roster.digest_file
+    def parallel_digest(path):
+        if Path(path) in paths:
+            readers.add((get_ident(), current_thread().name))
+            entered.wait(timeout=5)
+        return digest(path)
+    monkeypatch.setattr(restart_roster, "digest_file", parallel_digest)
+    record = restart_roster.seal(tmp_path)
+    assert len(readers) == 2 and all(name.startswith("ensemble-seal") for _, name in readers)
+    assert all(row["status"] == "checkpoint" for row in record["members"])
+
+
+def test_memo_rechecks_replaced_checkpoint_and_changed_sealed_copy(tmp_path, monkeypatch):
+    import os
+    from woof import supervisor
+    _, paths = _memo_checkpoint_root(tmp_path, 1)
+    path = paths[0]
+    restart_roster.bind_checkpoint_member(tmp_path, path)
+    first = restart_roster.seal(tmp_path)
+    checkpoint = next(row for row in first["files"] if row["path"].endswith(".npz"))
+    # A hard link shares the proof. An atomic replacement with identical bytes
+    # has a new inode and must pass both full reads again.
+    old = tmp_path / checkpoint["snapshot"]
+    assert restart_roster._seal_digest(old) == checkpoint["sha256"]
+    replacement = path.with_suffix(".replacement")
+    replacement.write_bytes(path.read_bytes())
+    os.replace(replacement, path)
+    reads, validations = [], []
+    digest, validate = restart_roster.digest_file, supervisor.validate_manifest_checkpoint
+    def counted_digest(file):
+        if Path(file).suffix == ".npz":
+            reads.append(file)
+        return digest(file)
+    def counted_validate(file):
+        validations.append(file)
+        return validate(file)
+    monkeypatch.setattr(restart_roster, "digest_file", counted_digest)
+    monkeypatch.setattr(supervisor, "validate_manifest_checkpoint", counted_validate)
+    second = restart_roster.seal(tmp_path)
+    assert reads == [path] and validations == [path]
+    checkpoint = next(row for row in second["files"] if row["path"].endswith(".npz"))
+    sealed = tmp_path / checkpoint["snapshot"]
+    # Break the sealed link only, leaving the live source revision unchanged.
+    replacement.write_bytes(b"tampered")
+    os.replace(replacement, sealed)
+    with pytest.raises(ValueError, match="sealed copy changed"):
+        restart_roster.seal(tmp_path)
+
+
+def test_concurrent_same_inode_memo_has_one_reader_and_forgets_failures(tmp_path, monkeypatch):
+    from collections import Counter
+    from threading import Lock
+    import time
+    from woof import supervisor
+    _, paths = _memo_checkpoint_root(tmp_path, 1)
+    path = paths[0]
+    counts, lock = Counter(), Lock()
+    digest, validate = restart_roster.digest_file, supervisor.validate_manifest_checkpoint
+    def counted_digest(file):
+        with lock:
+            counts["sha"] += 1
+        time.sleep(.02)
+        return digest(file)
+    def counted_validate(file):
+        with lock:
+            counts["valid"] += 1
+        time.sleep(.02)
+        return validate(file)
+    monkeypatch.setattr(restart_roster, "digest_file", counted_digest)
+    monkeypatch.setattr(supervisor, "validate_manifest_checkpoint", counted_validate)
+    def inspect(file):
+        restart_roster._validate_checkpoint(file)
+        return restart_roster._seal_digest(file)
+    proofs = restart_roster._parallel_file_map(inspect, [path] * 16)
+    assert len(set(proofs)) == 1 and counts == {"sha": 1, "valid": 1}
+    # Failed reads cannot become a durable cached pass.
+    bad = tmp_path / "bad.npz"
+    bad.write_bytes(b"not an archive")
+    for _ in range(2):
+        with pytest.raises(supervisor.CheckpointValidationError):
+            restart_roster._validate_checkpoint(bad)
+    assert counts["valid"] == 3
+
+
+def test_cached_checkpoint_with_new_bad_crc_still_refuses(tmp_path):
+    from woof import supervisor
+    import struct
+    import zipfile
+    _, paths = _memo_checkpoint_root(tmp_path, 1)
+    path = paths[0]
+    restart_roster.bind_checkpoint_member(tmp_path, path)
+    assert restart_roster.seal(tmp_path)["members"][0]["status"] == "checkpoint"
+    with zipfile.ZipFile(path) as archive:
+        info = archive.getinfo("state.npy")
+    data = bytearray(path.read_bytes())
+    name_length, extra_length = struct.unpack_from("<HH", data, info.header_offset + 26)
+    payload_start = info.header_offset + 30 + name_length + extra_length
+    data[payload_start + info.compress_size - 1] ^= 1
+    replacement = path.with_suffix(".replacement")
+    replacement.write_bytes(data)
+    replacement.replace(path)
+    # Even a freshly stamped binding with the corrupted bytes' SHA cannot
+    # make an invalid archive eligible for a restart roster.
+    restart_roster.bind_checkpoint_member(tmp_path, path)
+    previous = (tmp_path / restart_roster.ROSTER).read_bytes()
+    with pytest.raises(supervisor.CheckpointValidationError, match="Bad CRC-32"):
+        restart_roster.seal(tmp_path)
+    assert (tmp_path / restart_roster.ROSTER).read_bytes() == previous
+
+
+def test_recipe_resume_restores_derived_provenance_and_keeps_declared_identity():
+    from dataclasses import replace
+    from woof.ensemble.request import EnsembleRequest
+    from woof.ensemble.lineage import trajectory_records
+    request = EnsembleRequest(members=2, recipe="member-roster", base_seed=17,
+                              member_variants=({"name": "control"}, {"name": "second", "surface": {"soil_moisture_scale": 1.1}}))
+    records, weights = trajectory_records([
+        {"source": "gfs", "cycle": "2021-06-27T12:00:00+00:00"},
+        {"source": "gfs", "cycle": "2021-06-27T12:00:00+00:00"},
+    ], base_seed=17)
+    original = replace(request, provenance=records, family_weights=weights)
+    identities = {"request": json.loads(json.dumps(original.receipt()))}
+    restored = restart_roster.resume_recipe_request(request, identities)
+    assert restored == original
+    for changed in (replace(request, base_seed=18),
+                    replace(request, family_weights={"physics": .5, "ai": .5})):
+        with pytest.raises(ValueError, match="different declared recipe"):
+            restart_roster.resume_recipe_request(changed, identities)

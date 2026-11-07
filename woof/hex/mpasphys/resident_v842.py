@@ -552,6 +552,13 @@ class ResidentPhysicsGlue:
     def get_tend(self, call):
         """Assemble outer tendencies once, todynamics.F:98-498."""
         p = self.provider
+        # The last outer-physics slot has finished. Assembly reads Registry
+        # state and held rates, never the prepared scheme work arrays. Return
+        # those arrays before allocating sources, rather than stacking both
+        # live sets until ResidentNativeCoupling.stage returns. Pool release
+        # hooks invalidate any bindings before the next preparation.
+        if shared_card_memory():
+            p.release_prepared()
         p.level = 2
         mass = p.field('state', 'rho_zz')
         p.level = 1
@@ -565,6 +572,9 @@ class ResidentPhysicsGlue:
             tendencies=rates, n_cells_solve=self.ncells,
             n_edges_solve=self.dimensions['nEdgesSolve'], rk_step=call.pools['rk_step'],
             dynamics_substep=call.pools['dynamics_substep'], invalid_flag=self.invalid)
-        p.field('tend', 'scalars_tend')[...] = out.scalars
+        if shared_card_memory():
+            p.adopt_tendency('scalars_tend', out.scalars)
+        else:
+            p.field('tend', 'scalars_tend')[...] = out.scalars
         p.commit()
         return out

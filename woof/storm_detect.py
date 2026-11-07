@@ -86,7 +86,7 @@ def execute(args):
     work=Path(tempfile.mkdtemp(prefix='.storm-work-',dir=out));deleted=[];stop=threading.Event();peak=[0]
     def monitor():
         while not stop.is_set():
-            result=subprocess.run(['nvidia-smi','--query-compute-apps=pid,used_memory','--format=csv,noheader,nounits'],capture_output=True,text=True)
+            result=subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(),'--query-compute-apps=pid,used_memory','--format=csv,noheader,nounits'],capture_output=True,text=True)
             for line in result.stdout.splitlines():
                 parts=line.split(',')
                 if len(parts)==2 and parts[0].strip()==str(os.getpid()):

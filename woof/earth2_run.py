@@ -176,7 +176,7 @@ def require_inference_vram(model_id, row):
     if visible is not None and not visible.strip():
         raise ValueError(f"{model_id}: inference needs {minimum:g} GiB of GPU memory; CUDA devices are hidden")
     selector = visible.split(",")[0] if visible else "0"
-    command = ["nvidia-smi", "--query-gpu=memory.total,memory.free",
+    command = [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=memory.total,memory.free",
                "--format=csv,noheader,nounits", "--id=" + selector]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=True)

@@ -93,7 +93,7 @@ import numpy as np
 #: The engine files New Tiedtke executes beyond the frozen sixteen.  Pinned
 #: here by SHA-256 because the frozen manifest does not cover them: a run of
 #: this row executes these bytes, so these bytes are named.  Measured from
-#: the published woof 2.8.0 wheel (gpuwm-2.8.0-py3-none-manylinux_2_28_x86_64)
+#: the published gpuwm 2.8.0 wheel (gpuwm-2.8.0-py3-none-manylinux_2_28_x86_64)
 #: on 2026-10-05.
 NTIEDTKE_ENGINE_SOURCES: Mapping[str, str] = MappingProxyType(
     {
@@ -174,7 +174,7 @@ def measured_row_match(found: Mapping[str, str]) -> dict[str, Any]:
         for relative, wanted in NTIEDTKE_ENGINE_SOURCES.items()
     }
     return {
-        "measured_row": "woof 2.8.0 wheel, 2026-10-05",
+        "measured_row": "gpuwm 2.8.0 wheel, 2026-10-05",
         "matched": all(item["matched"] for item in files.values()),
         "files": files,
     }
@@ -283,7 +283,7 @@ def _capturing_new_tiedtke() -> Any:
             # column and llo3 is reduced and checked per chunk, exactly as on
             # any mesh already wider than the cap, so the width moves memory
             # and launch counts only.  An engine without the per-instance cap
-            # (before lane/292-hex-memory) ignores the attribute.
+            # (before development branch) ignores the attribute.
             self.tile_columns_per_sm = HEX_NT_TILE_COLUMNS_PER_SM
 
         def __call__(self, *, atmosphere, fields, state, cfg):

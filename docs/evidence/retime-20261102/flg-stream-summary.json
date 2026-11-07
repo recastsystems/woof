@@ -1,0 +1,73 @@
+{
+  "row": "flg-stream",
+  "scope": "radiation",
+  "baseline_scope": "radiation",
+  "commit": "36b0f256631277dbcd55beec5d496a01ac9cb0d5",
+  "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
+  "warm_policy": "first actual forecast step retained separately; steps 2 onward for stage ratios",
+  "stage_ratio": 3.5122332217448475,
+  "median_stage_ratio": 3.96977518214607,
+  "amortized_stage_ratio": 3.512233221744847,
+  "active_whole_forecast_wall_ratio": 1.1204117547878127,
+  "active_whole_forecast_seconds": {
+    "baseline": 60.367923092097044,
+    "candidate": 67.63693064451218
+  },
+  "whole_forecast_warm_step_ratio": 1.6959190844435637,
+  "arms": {
+    "baseline": {
+      "step": {
+        "calls": 59,
+        "median_ms": 22.072479248046875,
+        "mean_ms": 26.97082374055507,
+        "sum_ms": 1591.278600692749,
+        "mean_host_ms": 24.20049375396664
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 33.97593688964844,
+        "mean_ms": 38.148733312433414,
+        "sum_ms": 419.6360664367676,
+        "mean_host_ms": 38.14784505150535
+      }
+    },
+    "candidate": {
+      "step": {
+        "calls": 59,
+        "median_ms": 21.35759925842285,
+        "mean_ms": 45.74033470477088,
+        "sum_ms": 2698.679747581482,
+        "mean_host_ms": 20.986847137495623
+      },
+      "radiation": {
+        "calls": 11,
+        "median_ms": 134.8768310546875,
+        "mean_ms": 133.987248507413,
+        "sum_ms": 1473.859733581543,
+        "mean_host_ms": 10.780853642658755
+      }
+    }
+  },
+  "nonfinite_heating": {
+    "baseline": 0,
+    "candidate": 0
+  },
+  "cold_first_step": {
+    "baseline": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 690.0512084960938,
+      "host_seconds": 0.6901337094604969
+    },
+    "candidate": {
+      "label": "step",
+      "step": 1,
+      "gpu_ms": 5765.388671875,
+      "host_seconds": 5.765481360256672
+    }
+  },
+  "forecasts": {
+    "baseline": "/workspace/runs/spd-retime-rad-cu/logs/flg-stream-baseline.log",
+    "candidate": "/workspace/runs/spd-retime-rad-cu/logs/flg-stream-candidate.log"
+  }
+}

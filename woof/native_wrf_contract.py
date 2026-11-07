@@ -459,7 +459,7 @@ def _decode_native_static_fields(fields, names):
     # a full-grid HRRR (1797x1057, 1.93 GB native-static.npz) failed at
     # preflight with "BadZipFile: Overlapped entries: 'CONLS.npy' (possible
     # zip bomb)" from zipfile's overlap check reading the shared cursor
-    # (V54, 2026-10-19).  An archive with no file path stays serial.
+    # (test host, 2026-10-19).  An archive with no file path stays serial.
     path = getattr(getattr(fields, "zip", None), "filename", None)
     if workers > 1 and not (isinstance(path, (str, os.PathLike))
                             and os.path.isfile(path)):

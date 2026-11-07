@@ -592,7 +592,7 @@ def test_the_door_takes_explain_like_every_other_subcommand():
 def _shipped_run_tree(root: Path) -> Path:
     """One run folder in the layout the chain publishes.
 
-    Transcribed from a real a development machine run:
+    Transcribed from a real test host 1 run:
     ``<run>/run/wrfout/wrfout_d01_...``, ``<run>/run/report.json``, and
     ``<run>/png/<domain>/<product>/<valid-day>/*.png``.  The first
     version of the reader looked for ``<run>/wrfout`` and
@@ -630,7 +630,7 @@ def test_the_reader_finds_the_frames_the_chain_actually_wrote(tmp_path):
 def test_the_reader_finds_the_tree_runners_own_validity_verdict(tmp_path):
     """A DOMAIN TREE writes no report.json.
 
-    MEASURED on a development machine 2026-08-20: the nested course integrated eight
+    MEASURED on test host 1 2026-08-20: the nested course integrated eight
     frames across two nests, rendered sixty-four pictures, and the
     capsule called it VOID with ``forecast_validity 'unavailable'``.
     The single-domain runner publishes ``run/report.json``; the tree
@@ -652,7 +652,7 @@ def test_the_reader_finds_the_tree_runners_own_validity_verdict(tmp_path):
 def test_a_run_plan_driven_course_finds_its_run_under_chain(tmp_path):
     """``run-plan`` nests the go chain one directory deeper.
 
-    MEASURED on a development machine: run-plan's ``prepared`` route publishes at
+    MEASURED on test host 1: run-plan's ``prepared`` route publishes at
     ``<output_root>/chain/run-.../`` while ``woof go`` publishes at
     ``<outdir>/run-.../``.  Resolving the run root with the go rule on a
     run-plan case directory found no run folder at all.
@@ -699,7 +699,7 @@ def test_stage_walls_come_from_run_plans_own_event_stream(tmp_path):
 def test_stage_walls_are_attributed_by_phase_and_summed_not_overwritten():
     """run-plan's stage names are coarser than its phases, and repeat.
 
-    MEASURED on a development machine: the five ``stage_finished`` records were
+    MEASURED on test host 1: the five ``stage_finished`` records were
     ``prepare(authority)``, ``fetch(fetch)``, ``prepare(manifest)``,
     ``forecast(forecast)``, ``finalize(render)``.  Keying on ``stage``
     puts render under ``finalize`` -- so a record's render cell reads
@@ -860,7 +860,7 @@ def test_the_capsule_carries_the_renderer_identity():
 def test_the_prepare_cell_is_every_on_clock_stage_before_the_forecast():
     """The two doors name the pre-forecast phases differently.
 
-    MEASURED on a development machine: a tree record's stages were ``authority 0.2,
+    MEASURED on test host 1: a tree record's stages were ``authority 0.2,
     manifest 6.3, forecast 95.4, render 7.8`` -- rw-wps's preparation
     wall lands under ``manifest`` on the run-plan route and under
     ``prepare`` on the go route.  A row that read only ``prepare``

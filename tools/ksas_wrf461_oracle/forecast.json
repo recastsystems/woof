@@ -1,0 +1,523 @@
+{
+  "schema": "ksas-whole-forecast-v1",
+  "runtime_commit": "0ab8e38157c532aec47558494a464a024dc72d7a",
+  "selector": {
+    "cu_physics": 14,
+    "cudt": 0
+  },
+  "case": {
+    "nx": 300,
+    "ny": 300,
+    "nz": 49,
+    "dx_m": 3000,
+    "dt_s": 15,
+    "steps": 720,
+    "start": "2026-10-16T09:00:00Z",
+    "end": "2026-10-16T12:00:00Z",
+    "mp_physics": 6,
+    "bl_pbl_physics": 1,
+    "sf_sfclay_physics": 91,
+    "sf_surface_physics": 2,
+    "ra_lw_physics": 4,
+    "ra_sw_physics": 4,
+    "bldt": 0
+  },
+  "gpu": {
+    "command": "python3 -m gpuwm go --wrfinput scratch/prepared --outdir scratch/gpu-go-complete --run-stamp off --allow-shared-gpu --benchmark",
+    "numerics": "fast",
+    "device": "shared NVIDIA RTX 5090",
+    "exit_code": 0,
+    "steps": 720,
+    "total_cli_seconds": 93.196,
+    "median_step_seconds": 0.082046
+  },
+  "native": {
+    "command": "mpirun --bind-to none -np 2 scratch/native-wrf/main/wrf.exe",
+    "numerics": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+    "exit_code": 0,
+    "steps": 720,
+    "elapsed_seconds_including_load_pauses": 4745.284562110901,
+    "artifacts": [
+      {
+        "path": "scratch/native-wrf/main/wrf.exe",
+        "bytes": 37996768,
+        "sha256": "a08abf5d6cff85b9e7ed424918eb12226567096503c5c6f9cdd919f776893685"
+      },
+      {
+        "path": "scratch/native-wrf/phys/module_cu_ksas.F",
+        "bytes": 82497,
+        "sha256": "93fd60204bd462c345ee3f059c9af5155c63e7e5f94dd78f8e1a83e26b7b5f29"
+      },
+      {
+        "path": "scratch/native-wrf/configure.wrf",
+        "bytes": 21382,
+        "sha256": "c19da798e937afcab9ad333569addb49a1463fd9d3cacc7a54817a8d631bc7d2"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "path": "scratch/prepared/namelist.input",
+      "bytes": 2490,
+      "sha256": "943ec9b2e7255080eda725342af0e29036ad023255e95c5ab83039c014f772ff"
+    },
+    {
+      "path": "scratch/prepared/wrfbdy_d01",
+      "bytes": 52267644,
+      "sha256": "bb77061a5bca7f385a8d55fcf2b48505308652d173426ce4acffbaa577cebafb"
+    },
+    {
+      "path": "scratch/prepared/wrfinput_d01",
+      "bytes": 403379504,
+      "sha256": "8121a77ddddc8ba5637ca1e729a90d1ca3cb0dd52826a6fafdeda3496400c569"
+    }
+  ],
+  "strict_module_replay": {
+    "receipt": "tools/ksas_wrf461_oracle/native-replay.json",
+    "words": 13410000,
+    "differing_words": 0
+  },
+  "stage_speed": {
+    "scope": "full cumulus adapter stage on native captured 45000 columns, 49 levels; CUDA event timings, seven warmed calls, shared RTX 5090",
+    "numerics": "fast",
+    "rows": {
+      "14": {
+        "device_ms": [
+          2.3460159301757812,
+          1.6967999935150146,
+          3.6394879817962646,
+          5.948063850402832,
+          5.95088005065918,
+          3.993567943572998,
+          4.665440082550049
+        ],
+        "median_device_ms": 3.993567943572998,
+        "median_call_wall_ms": 6.3810572028160095,
+        "finite_rtheta": true
+      },
+      "96": {
+        "device_ms": [
+          7.846240043640137,
+          7.879007816314697,
+          7.901120185852051,
+          7.790719985961914,
+          5.72492790222168,
+          7.783328056335449,
+          7.854976177215576
+        ],
+        "median_device_ms": 7.846240043640137,
+        "median_call_wall_ms": 12.260688468813896,
+        "finite_rtheta": true
+      }
+    },
+    "ratio_14_over_96": 0.5089785580559738,
+    "ksas_source_sha256": "e49b4361940096c474d8a8f4b47348df4032e366d49cad99b6865ae0a9eb2894",
+    "ksas_options": [
+      "-std=c++17"
+    ]
+  },
+  "observations": {
+    "kind": "ASOS surface temperature, dewpoint and scalar wind",
+    "command": "source evidence/env-gpu.sh; python3 evidence/fetch-asos.py",
+    "precipitation_or_radar_observations": false
+  },
+  "hours": [
+    {
+      "valid_time": "2026-10-16T10:00:00Z",
+      "model_differences": [
+        {
+          "key": "d01-3km_composite_reflectivity",
+          "units": "dBZ",
+          "half_range": "1",
+          "step": "0.2",
+          "rule": "adaptive(table=50,p99=0.6501)",
+          "defined_cells": "8499",
+          "differing_cells": "8499",
+          "max_abs": "4.57"
+        },
+        {
+          "key": "d01-3km_2m_temperature",
+          "units": "\u00b0F",
+          "half_range": "0.25",
+          "step": "0.05",
+          "rule": "adaptive(table=10,p99=0.1219)",
+          "defined_cells": "90000",
+          "differing_cells": "89607",
+          "max_abs": "1.71"
+        },
+        {
+          "key": "d01-3km_total_qpf",
+          "units": "in",
+          "half_range": "0.005",
+          "step": "0.001",
+          "rule": "p99=0.0030",
+          "defined_cells": "2059",
+          "differing_cells": "2059",
+          "max_abs": "0.00670"
+        }
+      ],
+      "surface_observations": [
+        {
+          "arms": [
+            {
+              "bias": -0.05411302831464607,
+              "count": 228,
+              "label": "ArWen KSAS",
+              "rmse": 1.3532470692675205
+            },
+            {
+              "bias": -0.05391445580998129,
+              "count": 228,
+              "label": "Native WRF KSAS",
+              "rmse": 1.3524679739572687
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF KSAS"
+        },
+        {
+          "arms": [
+            {
+              "bias": -2.205040181342071,
+              "count": 228,
+              "label": "ArWen KSAS",
+              "rmse": 3.0418419268525207
+            },
+            {
+              "bias": -2.20542964722635,
+              "count": 228,
+              "label": "Native WRF KSAS",
+              "rmse": 3.041911790306554
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "ArWen KSAS"
+        },
+        {
+          "arms": [
+            {
+              "bias": 0.35315115892959037,
+              "count": 225,
+              "label": "ArWen KSAS",
+              "rmse": 1.786861053209
+            },
+            {
+              "bias": 0.35673786321692835,
+              "count": 225,
+              "label": "Native WRF KSAS",
+              "rmse": 1.7886433619131388
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "ArWen KSAS"
+        }
+      ],
+      "visual_findings": "Both forecasts place an elongated rain and reflectivity band from the southwest boundary into western and central Texas. The north cool and south warm temperature gradient matches. Station dots broadly follow that gradient, with local errors in both arms. Rain totals are small. Differences are localized, without an obvious domain seam or numerical blowup.",
+      "reviewed_images": [
+        {
+          "path": "evidence/figures/10Z/d01/verify_temperature_2m/2026-10-16/verification_20261016100000.png",
+          "bytes": 999997,
+          "sha256": "ae2606a1ca5ed68f810aebbe0d9742ad4620257719c0c3145d62a6fa995d1dd9"
+        },
+        {
+          "path": "evidence/figures/10Z/rustwx_wrf_20261016_9z_f001_d01-3km_composite_reflectivity_difference_sheet.png",
+          "bytes": 760254,
+          "sha256": "f39601dde3c547ba4a46802d4d6672605f800a14a2b22fb3396071918f928c2d"
+        },
+        {
+          "path": "evidence/figures/10Z/rustwx_wrf_20261016_9z_f001_d01-3km_total_qpf_difference_sheet.png",
+          "bytes": 692702,
+          "sha256": "75ee0421c66c1ec628f62553057c9bfaa1c673b0b7e9d1ab0c2376b399e28436"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "bytes": 153352256,
+          "path": "scratch/gpu-go-complete/wrfout/wrfout_d01_2026-10-16_10_00_00",
+          "sha256": "f1331c58edf4c52dae5a96e67589c0f9e8a88d8e420bbcfd459f6abc2e3f082a"
+        },
+        {
+          "bytes": 129503382,
+          "path": "scratch/native-run/wrfout_d01_2026-10-16_10_00_00",
+          "sha256": "7b729235c322e9b851199709e714780e406bf906792a941c88946454678622ea"
+        }
+      ]
+    },
+    {
+      "valid_time": "2026-10-16T11:00:00Z",
+      "model_differences": [
+        {
+          "key": "d01-3km_2m_temperature",
+          "units": "\u00b0F",
+          "half_range": "0.25",
+          "step": "0.05",
+          "rule": "adaptive(table=10,p99=0.1623)",
+          "defined_cells": "90000",
+          "differing_cells": "89634",
+          "max_abs": "1.56"
+        },
+        {
+          "key": "d01-3km_composite_reflectivity",
+          "units": "dBZ",
+          "half_range": "5",
+          "step": "1",
+          "rule": "adaptive(table=50,p99=2.9333)",
+          "defined_cells": "7891",
+          "differing_cells": "7891",
+          "max_abs": "7.91"
+        },
+        {
+          "key": "d01-3km_total_qpf",
+          "units": "in",
+          "half_range": "0.01",
+          "step": "0.002",
+          "rule": "p99=0.0089",
+          "defined_cells": "4465",
+          "differing_cells": "4465",
+          "max_abs": "0.0254"
+        }
+      ],
+      "surface_observations": [
+        {
+          "arms": [
+            {
+              "bias": -0.042484580201766084,
+              "count": 228,
+              "label": "ArWen KSAS",
+              "rmse": 1.2752373203968639
+            },
+            {
+              "bias": -0.043181031396855474,
+              "count": 228,
+              "label": "Native WRF KSAS",
+              "rmse": 1.274093608483126
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF KSAS"
+        },
+        {
+          "arms": [
+            {
+              "bias": -2.3412662271952898,
+              "count": 228,
+              "label": "ArWen KSAS",
+              "rmse": 3.0834130616429065
+            },
+            {
+              "bias": -2.340480814562575,
+              "count": 228,
+              "label": "Native WRF KSAS",
+              "rmse": 3.0826286768288713
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF KSAS"
+        },
+        {
+          "arms": [
+            {
+              "bias": 0.17853651706536772,
+              "count": 227,
+              "label": "ArWen KSAS",
+              "rmse": 2.029685562352299
+            },
+            {
+              "bias": 0.18216512068980462,
+              "count": 227,
+              "label": "Native WRF KSAS",
+              "rmse": 2.031934734707957
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "ArWen KSAS"
+        }
+      ],
+      "visual_findings": "Both forecasts strengthen the same western Texas rain band and retain its northeast tip. The reflectivity edge and southern cells have localized differences, concentrated near the southwest boundary. Rainfall footprint and temperature gradient remain closely aligned. Station temperature colors broadly agree with the model field in both arms. No obvious new seam or numerical blowup is visible.",
+      "reviewed_images": [
+        {
+          "path": "evidence/figures/11Z/d01/verify_temperature_2m/2026-10-16/verification_20261016110000.png",
+          "bytes": 1013021,
+          "sha256": "89de6820e4fa80a2a27ac8e31c4b02b434cd79a1f7c52ab5ed35c5aaebe18d50"
+        },
+        {
+          "path": "evidence/figures/11Z/rustwx_wrf_20261016_9z_f002_d01-3km_composite_reflectivity_difference_sheet.png",
+          "bytes": 776677,
+          "sha256": "e2f37b8373f8f6d88de9745ca2fd8a98d52439307fdec8d40f33397c4fc01aa0"
+        },
+        {
+          "path": "evidence/figures/11Z/rustwx_wrf_20261016_9z_f002_d01-3km_total_qpf_difference_sheet.png",
+          "bytes": 723254,
+          "sha256": "db73664fe5271dbf0577429d54eee825d493ffc9b9f13c5a88846fec8134c63e"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "bytes": 155216264,
+          "path": "scratch/gpu-go-complete/wrfout/wrfout_d01_2026-10-16_11_00_00",
+          "sha256": "b50495d6e8ef85792666cf569b50665dc804551bb597cf4e357a7d2efd6d5544"
+        },
+        {
+          "bytes": 131040423,
+          "path": "scratch/native-run/wrfout_d01_2026-10-16_11_00_00",
+          "sha256": "f280ead7924faa656ce23bdbd0556dc68ed761351b6d37f27fdfdddc3c503240"
+        }
+      ]
+    },
+    {
+      "valid_time": "2026-10-16T12:00:00Z",
+      "model_differences": [
+        {
+          "key": "d01-3km_2m_temperature",
+          "units": "\u00b0F",
+          "half_range": "0.25",
+          "step": "0.05",
+          "rule": "adaptive(table=10,p99=0.1773)",
+          "defined_cells": "90000",
+          "differing_cells": "89679",
+          "max_abs": "1.86"
+        },
+        {
+          "key": "d01-3km_composite_reflectivity",
+          "units": "dBZ",
+          "half_range": "5",
+          "step": "1",
+          "rule": "adaptive(table=50,p99=4.7951)",
+          "defined_cells": "8660",
+          "differing_cells": "8660",
+          "max_abs": "14.2"
+        },
+        {
+          "key": "d01-3km_total_qpf",
+          "units": "in",
+          "half_range": "0.05",
+          "step": "0.01",
+          "rule": "p99=0.0362",
+          "defined_cells": "5250",
+          "differing_cells": "5250",
+          "max_abs": "0.0923"
+        }
+      ],
+      "surface_observations": [
+        {
+          "arms": [
+            {
+              "bias": -0.12293508909967445,
+              "count": 227,
+              "label": "ArWen KSAS",
+              "rmse": 1.4511030433208518
+            },
+            {
+              "bias": -0.12344750790869147,
+              "count": 227,
+              "label": "Native WRF KSAS",
+              "rmse": 1.4508521272037884
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF KSAS"
+        },
+        {
+          "arms": [
+            {
+              "bias": -2.4485382947937038,
+              "count": 227,
+              "label": "ArWen KSAS",
+              "rmse": 3.2194261889118114
+            },
+            {
+              "bias": -2.448747798393743,
+              "count": 227,
+              "label": "Native WRF KSAS",
+              "rmse": 3.2200302477182996
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "ArWen KSAS"
+        },
+        {
+          "arms": [
+            {
+              "bias": -0.13545769829721993,
+              "count": 226,
+              "label": "ArWen KSAS",
+              "rmse": 2.114560157501071
+            },
+            {
+              "bias": -0.1352664583118439,
+              "count": 226,
+              "label": "Native WRF KSAS",
+              "rmse": 2.117195708690854
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "ArWen KSAS"
+        }
+      ],
+      "visual_findings": "Both forecasts retain the same western Texas rain band and northeast extension. The larger southwestern cells differ locally in reflectivity and accumulated rain. The maximum reflectivity difference reaches 14.2 dBZ and rain difference reaches 0.0923 inches, while the broad footprint remains aligned. The cool-north and warm-south temperature gradient and station colors remain closely matched between arms. No obvious new domain seam or numerical blowup is visible. There are no radar or rainfall observations with which to establish which rain field is better.",
+      "reviewed_images": [
+        {
+          "path": "evidence/figures/12Z/d01/verify_temperature_2m/2026-10-16/verification_20261016120000.png",
+          "bytes": 1034412,
+          "sha256": "30d2d737fa1243ecd1ed39ac3987793623618aa351a15a858ba52eb144f5dbd0"
+        },
+        {
+          "path": "evidence/figures/12Z/rustwx_wrf_20261016_9z_f003_d01-3km_composite_reflectivity_difference_sheet.png",
+          "bytes": 798517,
+          "sha256": "d9174024d50d57cb6612b27e16e928344e3100cf8bf1739a7445561c3141e0ae"
+        },
+        {
+          "path": "evidence/figures/12Z/rustwx_wrf_20261016_9z_f003_d01-3km_total_qpf_difference_sheet.png",
+          "bytes": 744143,
+          "sha256": "102efc8433b888d37d813503e2ef781280ead10e434a246ff08fd72efc86921d"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "bytes": 156490064,
+          "path": "scratch/gpu-go-complete/wrfout/wrfout_d01_2026-10-16_12_00_00",
+          "sha256": "013eb5c0790d1583f4c972e31f8971cfacca366da194065409920cf8445b3dd6"
+        },
+        {
+          "bytes": 131927070,
+          "path": "scratch/native-run/wrfout_d01_2026-10-16_12_00_00",
+          "sha256": "9ec5f34fd96a7beef08576ac735ff0ee931d075016633c2dc28e5cc8974e1154"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "This is one three-hour, single-domain case, not a convection skill catalogue.",
+    "There were no radar or rainfall observations in this comparison.",
+    "Full forecasts with both nest feedback modes and a real ensemble were not run.",
+    "The option-off proof covers 205 unchanged existing kernels and 49,152 shared clock words, not a complete option-off forecast.",
+    "Native skipped-PBL HPBL_HOLD residue was not exercised; the selected bldt=0 case calls PBL every step.",
+    "Raw model outputs and prepared inputs were deleted after receipt and map capture."
+  ],
+  "reproduce_maps": "source evidence/env-gpu.sh; GPUWM_NUMERICS=fast GPUWM_WRF_EXACT=0 python3 evidence/render-hour.py HOUR",
+  "renderer": "rw_wrfbatch through gpuwm.rustwx",
+  "code": [
+    "gpuwm/core/kernels/sas.cu:115",
+    "gpuwm/core/sas.py:234",
+    "gpuwm/core/physics.py:3236",
+    "gpuwm/wrfinput_go.py:50"
+  ]
+}

@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -517,7 +518,7 @@ impl WrfFile {
         self.cached_or_compute(&key, || {
             let p = self.read_var("P", t)?;
             let pb = self.read_var("PB", t)?;
-            Ok(p.iter().zip(pb.iter()).map(|(a, b)| a + b).collect())
+            Ok(p.par_iter().with_min_len(4096).zip(pb.par_iter().with_min_len(4096)).map(|(a, b)| a + b).collect())
         })
     }
 
@@ -526,7 +527,7 @@ impl WrfFile {
         let key = format!("theta_{t}");
         self.cached_or_compute(&key, || {
             let th = self.read_var("T", t)?;
-            Ok(th.iter().map(|v| v + 300.0).collect())
+            Ok(th.par_iter().with_min_len(4096).map(|v| v + 300.0).collect())
         })
     }
 
@@ -537,7 +538,7 @@ impl WrfFile {
         self.cached_or_compute(&key, || {
             let ph = self.read_var("PH", t)?;
             let phb = self.read_var("PHB", t)?;
-            let stag: Vec<f64> = ph.iter().zip(phb.iter()).map(|(a, b)| a + b).collect();
+            let stag: Vec<f64> = ph.par_iter().with_min_len(4096).zip(phb.par_iter().with_min_len(4096)).map(|(a, b)| a + b).collect();
             Ok(grid::destagger_z(&stag, self.nz_stag, self.ny, self.nx))
         })
     }
@@ -549,7 +550,7 @@ impl WrfFile {
         self.cached_or_compute(&key, || {
             let ph = self.read_var("PH", t)?;
             let phb = self.read_var("PHB", t)?;
-            Ok(ph.iter().zip(phb.iter()).map(|(a, b)| a + b).collect())
+            Ok(ph.par_iter().with_min_len(4096).zip(phb.par_iter().with_min_len(4096)).map(|(a, b)| a + b).collect())
         })
     }
 
@@ -560,8 +561,8 @@ impl WrfFile {
             let theta = self.full_theta(t)?;
             let pres = self.full_pressure(t)?;
             Ok(theta
-                .iter()
-                .zip(pres.iter())
+                .par_iter().with_min_len(4096)
+                .zip(pres.par_iter().with_min_len(4096))
                 .map(|(th, p)| th * (p / P0).powf(KAPPA))
                 .collect())
         })
@@ -572,7 +573,7 @@ impl WrfFile {
         let key = format!("height_msl_{t}");
         self.cached_or_compute(&key, || {
             let geopt = self.full_geopotential(t)?;
-            Ok(geopt.iter().map(|g| g / G).collect())
+            Ok(geopt.par_iter().with_min_len(4096).map(|g| g / G).collect())
         })
     }
 
@@ -589,7 +590,7 @@ impl WrfFile {
             let h = self.height_msl(t)?;
             let ter = self.terrain(t)?;
             let nxy = self.nxy();
-            Ok(h.iter()
+            Ok(h.par_iter().with_min_len(4096)
                 .enumerate()
                 .map(|(idx, hv)| hv - ter[idx % nxy])
                 .collect())
@@ -825,7 +826,7 @@ impl WrfFile {
         let key = format!("pressure_hpa_{t}");
         self.cached_or_compute(&key, || {
             let p = self.full_pressure(t)?;
-            Ok(p.iter().map(|v| v / 100.0).collect())
+            Ok(p.par_iter().with_min_len(4096).map(|v| v / 100.0).collect())
         })
     }
 
@@ -834,7 +835,7 @@ impl WrfFile {
         let key = format!("temp_c_{t}");
         self.cached_or_compute(&key, || {
             let tk = self.temperature(t)?;
-            Ok(tk.iter().map(|v| v - 273.15).collect())
+            Ok(tk.par_iter().with_min_len(4096).map(|v| v - 273.15).collect())
         })
     }
 

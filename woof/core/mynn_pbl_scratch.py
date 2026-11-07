@@ -422,6 +422,10 @@ SLOT_GSD41_CONDENSATION_WORK = _gsd41_layers(
     "mynn_pbl_gsd41_condensation_work", ("q1", "rh", "a", "b", "cld"))
 #: GET_PBLH's theta-v of the liquid-water theta (thvl).
 SLOT_GSD41_THVL = _gsd41_layers("mynn_pbl_gsd41_thvl", ("thvl",))
+# Five native driver diagnostics. Two words hold int32 plume indices through
+# zero-copy views; this slot exists only for the GSD generation.
+SLOT_GSD41_DIAGNOSTICS = "mynn_pbl_gsd41_diagnostics"
+GSD41_DIAGNOSTICS = ("wstar", "delta", "mf_at_base", "kbot_shallow", "nupdraft")
 
 # --- mynn_tendencies ------------------------------------------------------
 SLOT_TENDENCY = _layers("mynn_pbl_tendency",
@@ -518,7 +522,15 @@ def mynn_pbl_scratch_shapes(chunk: int, nz: int, *,
         shapes[slot] = (count * chunk * (nz + 1),)
     for slot, (count, _names) in _COLUMN_GROUPS.items():
         shapes[slot] = (count * chunk,)
+    if bl_mynn_version == "wrf_471":
+        from woof.core.mynn471_gpu import scratch_shapes
+        # The 4.7.1 monolithic column owns its internal workspace. Keep
+        # only the wrapper's staging slots from the older split solver.
+        shapes = {slot: shapes[slot] for slot in
+                  (SLOT_STAGE_LAYER, SLOT_STAGE_DX, SLOT_ZERO_COLUMN)}
+        shapes.update(scratch_shapes(chunk, nz))
     if bl_mynn_version == "gsd_41":
+        shapes[SLOT_GSD41_DIAGNOSTICS] = (len(GSD41_DIAGNOSTICS) * chunk,)
         # Ten plume classes, eight state vectors and three work vectors.
         shapes[SLOT_PLUME_WORK] = (80 * chunk * (nz + 1),)
         shapes[SLOT_PLUME_SCRATCH] = (13 * chunk * nz,)
@@ -1229,6 +1241,7 @@ def mynn_pbl_tendency_field_shapes(nz: int, ny: int, nx: int
 def mynn_pbl_slot_names() -> tuple[str, ...]:
     """Every slot name this module declares, float32 then int32 then flags."""
     return (*sorted(_LAYER_GROUPS), *sorted(_GSD41_LAYER_GROUPS),
+            SLOT_GSD41_DIAGNOSTICS,
             *sorted(_FACE_GROUPS),
             *sorted(_COLUMN_GROUPS), *sorted(MYNN_PBL_INDEX_SLOTS),
             *MYNN_PBL_FLAG_SLOTS)
@@ -1398,6 +1411,8 @@ __all__ = [
     "SLOT_EXCHANGE",
     "SLOT_GSD41_CONDENSATION_WORK",
     "SLOT_GSD41_THVL",
+    "SLOT_GSD41_DIAGNOSTICS",
+    "GSD41_DIAGNOSTICS",
     "SLOT_INITIALIZE",
     "SLOT_INITIALIZE_WORK",
     "SLOT_LEVEL2_FULL",

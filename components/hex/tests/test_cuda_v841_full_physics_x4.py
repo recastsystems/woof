@@ -117,7 +117,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         "src/hexcore/history_writer.py": "570c9124745a8d8325a35c11da17e58036bfcf2e3117a5be502dec196a9905f0",
         "src/hexcore/cuda_arwen_helper_scope_v2.py": "641e8b77427a7c2f8eff374daa37e09a034fc45271d1dac67c3e39d03e3814e9",
         "src/hexcore/radiation_source_sets.json": "4fdb41a8102a0c4891771ed476d2eb7cf870e89a66c1a2dd4a92b8cd42dac802",
-        "src/hexcore/data/profiles/engine-helper-sets.v1.json": "5baf11c81a168c7a8644dc857e57099d9e4ce79ef6d80bacba6196e626f2b43a",
+        "src/hexcore/data/profiles/engine-helper-sets.v1.json": "2e7e727e78357bcd847100dea32450467e08359a01d374eb1a6619e851a61ca6",
         "src/hexcore/step_anchors.py": (
             "13f8bf3361b3fc5c25805d05d48e3c59841050e3d372c03c96f1498133399b72"
         ),
@@ -128,13 +128,13 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         "src/hexcore/upper_damping_v841.py": "947f477d5f56b41d95fb5a0b92adb21d68be95b5fac19ba524181cb373710860",
         "src/hexcore/cuda_upper_damping_v841.py": "04f0b5b450c088575e589de943b7b44fff10b442d01ae0c0acc0a5e848748545",
         "src/hexcore/cuda_physics_prep_v841.py": (
-            "fffb12b21f67e51e045c50dc739e2259b962ad28cf99d829211beb92c72b8ef3"
+            "a0ae4d9b3e639bfe02a8de57458fac4407c6e48f1bc12e2e698626e9a9069d2c"
         ),
         "src/hexcore/cuda_gwdo_v841.py": (
             "8dc6e9a3d8e88c231bc8d738f80a1655839aed2478b56ccc5038ab4daba7cfb5"
         ),
         "src/hexcore/cuda_physics_v841.py": (
-            "18ac060a3adf6884eef7b853cb4b8fab76b37a6ec561c545372515d7f7e71672"
+            "8140553c0bec161af26c5c4f66ff8a54f1f18762810d36460cf447996ee64b44"
         ),
         # Re-frozen 2026-08-26 for the convection ruling: the physics cadence
         # table reports convection: None when no scheme is selected; and again
@@ -149,16 +149,16 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # Re-frozen 2026-10-05 for the startup lane (host-preparation cache);
         # the rationale lives beside the runner's pin.
         "src/hexcore/cuda_driver.py": (
-            "e8d3c8484928c85f126dfce6bacb35ba215cf59dc7005ded780b96aa639f0f42"
+            "f453eee1152aa33392b09ecfde1d16ee33ec53cf17d754ecd076736088630fea"
         ),
         # New pin (startup lane, 2026-10-05): the frozen driver executes host
         # preparation through this module; the rationale lives beside the
         # runner's pin.
         "src/hexcore/prep_cache.py": (
-            "9a02aded2bf3f708589aa1006c2ac042cffa145d48e58841b062f1f253280bcf"
+            "9e2014bee45c4e42e16b7afe5e8c7f6df5ef1ebf2f62a6269c01692aa6cc095e"
         ),
         "src/hexcore/cuda_backend/recovery.py": (
-            "e3a65ff8b255077e2055ae0665e88a4dad0103ca895f4b694deb089a30299624"
+            "1a5a85585ebc72867904f852ee54c541ace5fc2ac26f0ef89dabd179096cc041"
         ),
         # Re-frozen for the regional CPU authority lane, again
         # for timestep admission, and again 2026-08-26 for the
@@ -228,12 +228,12 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # export became declinable (default armed).  The rationale lives
         # beside the runner's pin.
         "src/hexcore/cuda_arwen_physics_v841.py": (
-            "58f169eb8841f81e693bfa5297e67ee309dd61a552413e8b4da234325a50ea99"
+            "23de7db623fba0fae2c9ad92d26b99b47475edd28f8b72bfa6e3e317503aa2c0"
         ),
         # New pin 2026-10-05 (New Tiedtke row); the rationale lives beside the
         # runner's pin.
         "src/hexcore/cuda_ntiedtke_column_v841.py": (
-            "5b2016c35060ba14b17bbc7356e6cf2f8b9c59cd5fc5517f1c99ebe4620d531c"
+            "6be7219b39c2e0f9732342631c0ab27c438ea6126ea9faf97b45c6c22080c2ea"
         ),
         "src/hexcore/cuda_seam_snapshot_v841.py": (
             "a05fdda5ef82b0d77b1af63d4354953660f3d5b80470d7915bb647f41d191019"
@@ -247,17 +247,17 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # 2026-10-05 for the startup lane (host-preparation cache); the
         # rationale lives beside the runner's pin.
         "src/hexcore/mixing_v841.py": (
-            "023df21823186b0820c21a1e15f8a9ceb662bd7c77fc4e86e469202c4ec7c749"
+            "e6bad617c0a1e8dc3672eab985ac80d0c9885dc5381e38497d070f7714d985b7"
         ),
         "src/hexcore/cuda_horizontal.py": (
             "f94137176db65d24df0d9ff1d491c278d6c835bb08cd76dc43c5cfcbf323a345"
         ),
         "src/hexcore/cuda_horizontal_v841.py": (
-            "37714ab89935af5b02d79eeea4c06cfad038de457502116c9dad27a8bdd55465"
+            "1a5fae3d6055a710de7d7ce216dddb9bee7c2e4ee72cf4e6a959e2401dfe0cb7"
         ),
         # Current d15ea3482cc5 cache-key correction; archived proofs unchanged.
         "src/hexcore/cuda_transport_v841.py": (
-            "178246f5032b512717edf764edaa6d1ddec6f04241f329e6cb6acffe9112acb6"
+            "5bf88077aeb7f63f66c83d997ec9a1e4af8f1d9e64ce19741efa63cfd1addb87"
         ),
         "src/hexcore/cuda_transport.py": (
             "013ed46f8ef3bcc1a445b2e81135e262c23c49950e52e5b62b22e4274644b15e"
@@ -277,7 +277,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         "src/hexcore/partition_device_scheduler_v841.py": (
             # re-frozen 2026-08-25: admission floors rerouted through
             # device_admission (stale-guard audit, finding 5)
-            "0ad0d541335ffaef95d385c81fdc01c9eaa2d65dff0b3a6d8b442f2812fdfeeb"
+            "451b24391600448317c87ea3757491282bf6ae188079cb5f652c29e966ebdbff"
         ),
         "src/hexcore/partition_executor_v841.py": (
             "9821e7e3b7c7238d48e40edadbc2c99afbf7e157d08b078649b51cef2c445009"

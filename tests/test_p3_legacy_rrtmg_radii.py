@@ -47,7 +47,15 @@ from woof.core.rrtmg_legacy import (
     legacy_scheme_has_req,
 )
 
+from woof.config import P3_MP_PHYSICS as PORTED_P3_VARIANTS
+
 P3_MP_PHYSICS = 50
+
+#: WRF's second use_mp_re block (module_physics_init.F:1027-1033) names the
+#: P3 family AND Jensen-Ishmael (mp=55, which also carries ice categories
+#: with no snow species), so both reach the (1, 1, 0) triple.
+JENSEN_ISHMAEL_MP_PHYSICS = 55
+SNOW_RADII_SUPPRESSED = set(PORTED_P3_VARIANTS) | {JENSEN_ISHMAEL_MP_PHYSICS}
 
 
 def test_p3_is_in_wrfs_use_mp_re_table_with_snow_suppressed():
@@ -64,7 +72,7 @@ def test_p3_is_in_wrfs_use_mp_re_table_with_snow_suppressed():
 def test_the_uniform_schemes_keep_their_uniform_triples():
     """The override touches P3 and nothing else in the table."""
     for mp_physics in sorted(_MP_DECLARES_RADII):
-        if mp_physics == P3_MP_PHYSICS:
+        if mp_physics in SNOW_RADII_SUPPRESSED:
             continue
         flag = int(_MP_DECLARES_RADII[mp_physics])
         assert legacy_scheme_has_req(mp_physics, 1) == (flag, flag, flag)
@@ -72,7 +80,7 @@ def test_the_uniform_schemes_keep_their_uniform_triples():
 
 
 def test_p3_is_the_only_selector_that_reaches_wrfs_p3_radii_branch():
-    """(1, 1, 0) is the wrapper's P3 trigger, and only mp=50 produces it.
+    """(1, 1, 0) is the wrapper's P3 trigger, and every admitted P3 variant produces it.
 
     This is the assertion that fails without the table row: before it,
     every scheme's triple was uniform, so nothing could satisfy
@@ -86,7 +94,7 @@ def test_p3_is_the_only_selector_that_reaches_wrfs_p3_radii_branch():
         if (lambda t: t[2] == 0 and t[1] != 0 and t[0] != 0)(
             legacy_scheme_has_req(mp_physics, use_mp_re))
     }
-    assert reaching == {P3_MP_PHYSICS}
+    assert reaching == SNOW_RADII_SUPPRESSED
 
 
 def _radii_case(has_req, *, re_snow=None):

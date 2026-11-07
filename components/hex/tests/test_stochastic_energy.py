@@ -59,6 +59,7 @@ def test_production_launches_apply_covariance_budget_to_both_forcings(monkeypatc
     forcing.config, forcing.resource = c, r
     forcing.timing_events, forcing.calls = [None]*4, 4  # Do not create events.
     forcing.taper = forcing.vertex_taper = np.ones((1, 2), np.float32)
+    forcing.skeb_norm = np.ones(1, np.float32)
     forcing.process = SimpleNamespace(advance=lambda seconds: (
         np.zeros(4, np.float32), np.arange(4, dtype=np.float32),
         np.arange(4, dtype=np.float32)))
@@ -71,7 +72,8 @@ def test_production_launches_apply_covariance_budget_to_both_forcings(monkeypatc
     h = interval or 600.
     phi = math.exp(-h/c.time_s)
     inverse_covariance = 2*(1-phi)/(h*(1+phi))
-    assert launches['force_cells'][-1] == pytest.approx(
+    # force_cells argument 20 is the thermal scale (the moisture guard follows it).
+    assert launches['force_cells'][20] == pytest.approx(
         inverse_covariance*c.thermal_fraction*300/1004, rel=1e-7)
     assert launches['force_edges'][-1] == pytest.approx(
         inverse_covariance*c.skeb_fraction, rel=1e-7)

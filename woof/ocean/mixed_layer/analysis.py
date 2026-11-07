@@ -40,16 +40,22 @@ def nearest_indices(latitude, longitude, land, source_latitude, source_longitude
     return indices
 
 
-def load(path, *, latitude, longitude, land, levels, source='rtofs', names=None, rotation=None, expected_time=None):
+def load(path, *, latitude, longitude, land, levels, source='rtofs', names=None, rotation=None, expected_time=None, layer_m=5.0, uncovered="refuse"):
     """Read one regional analysis and remap to the model columns on CUDA.
 
-    A wet source must lie within one degree. Profiles interpolate to 5 m
-    layer bottoms. WRF's flat-bottom ocean requires complete profiles to
+    A wet source must lie within one degree. Profiles are piecewise-linearly integrated into layer means, with
+    layer thickness given by layer_m (5 m by default). WRF's flat-bottom ocean requires complete profiles to
     that depth. Coastal points use the nearest complete offshore profile
-    within one degree; uncovered water is refused. This does not supply
+    within one degree. Uncovered water is refused by default; the explicit
+    prescribed policy returns an inactive mask and keeps it outside PWP. This does not supply
     bathymetry. The configured uniform MLD fallback is labelled separately.
     """
     import cupy as cp
+    import math
+    if uncovered not in ('refuse', 'prescribed'):
+        raise ValueError('uncovered ocean policy must be refuse or prescribed')
+    if not math.isfinite(layer_m) or layer_m <= 0:
+        raise ValueError("ocean layer thickness must be positive and finite")
     from woof import netcdf_bridge
     from . import kernels
     from datetime import datetime, timezone
@@ -93,8 +99,8 @@ def load(path, *, latitude, longitude, land, levels, source='rtofs', names=None,
     depth=values['depth'].ravel();nk=depth.size;ns=lat.size;nt=land.size
     if nk<2 or bool(cp.any(~cp.isfinite(depth))) or bool(cp.any(depth[1:]<=depth[:-1])):
         raise ValueError('ocean analysis depths must be finite and strictly increasing')
-    if float(depth[-1].item())<5*levels:
-        raise ValueError(f'ocean analysis does not reach the deepest configured layer at {5*levels} m')
+    if float(depth[-1].item())<layer_m*levels:
+        raise ValueError(f'ocean analysis does not reach the deepest configured layer at {layer_m*levels} m')
     if units.lower() not in ('degc','degrees_c','degree_celsius','degrees_celsius','celsius','k','kelvin'):
         raise ValueError(f'ocean analysis temperature units {units!r} are not Celsius or Kelvin')
     celsius=units.lower() not in ('k','kelvin')
@@ -109,7 +115,7 @@ def load(path, *, latitude, longitude, land, levels, source='rtofs', names=None,
     if celsius:surface=surface+cp.float32(273.15)
     # Search complete profiles rather than selecting a shallow/masked source
     # and discovering its missing deep layers after the horizontal mapping.
-    upper=int(cp.searchsorted(depth,cp.float32(5*levels)).item())+1
+    upper=int(cp.searchsorted(depth,float(layer_m*levels)).item())+1
     valid=cp.ones(lat.shape,dtype=cp.bool_)
     for key,a in arrays.items():
         v=a[:upper]
@@ -118,13 +124,19 @@ def load(path, *, latitude, longitude, land, levels, source='rtofs', names=None,
     surface=cp.ascontiguousarray(cp.where(valid,surface,cp.float32('nan')))
     module=kernels(levels)
     indices=nearest_indices(latitude,longitude,land,lat,lon,valid,levels)
-    if bool(cp.any(indices==-1)):
-        raise ValueError('ocean analysis lacks a complete wet source profile within one degree of the forecast ocean')
-    result={};z=cp.empty((levels,*land.shape),dtype=cp.float32)
+    missing = int(cp.count_nonzero(indices == -1).item())
+    if missing and uncovered == 'refuse':
+        raise ValueError(f'ocean analysis lacks a complete wet source profile within one degree for {missing} forecast water cells')
+    if missing:
+        import logging
+        logging.getLogger(__name__).warning('Ocean analysis coverage: %d water cells stay prescribed; no complete profile within one degree', missing)
+    active = (indices >= 0).astype(cp.float32)
+    indices = cp.where(indices < 0, cp.int32(-2), indices)
+    result={'om_active': active};z=cp.empty((levels,*land.shape),dtype=cp.float32)
     for key,name in (('temperature','om_tmp'),('salinity','om_s'),('u','om_u'),('v','om_v')):
         out=cp.empty_like(z)
         module.get_function('ocean_profiles')(((out.size+127)//128,),(128,),
-            (arrays[key],depth,indices,out,z,np.int32(ns),np.int32(nt),np.int32(nk),np.int32(celsius and key=='temperature')))
+            (arrays[key],depth,indices,out,z,np.int32(ns),np.int32(nt),np.int32(nk),np.int32(celsius and key=='temperature'),np.float32(layer_m)))
         result[name]=out
     result['om_depth']=z
     if rotation is None:

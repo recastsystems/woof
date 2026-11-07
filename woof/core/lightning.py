@@ -1,5 +1,6 @@
 """One diagnostic driver for WRF's lightning packages. No state feedback."""
 from __future__ import annotations
+from functools import lru_cache
 import numpy as np
 from woof.lightning_contract import LIGHTNING_OPTIONS, FLASH_FIELDS, validate_lightning
 
@@ -49,15 +50,69 @@ def initialize_lightning(state,cfg,*,latitude=None,longitude=None,start_time=Non
         state.scratch(shape,"ltng_ktop_deep",dtype=np.int32)[...] = -1
     clock=state.scratch((1,),"ltng_ltngacttime")
     clock[0]=np.float32(cfg.lightning_start_seconds)
+    state._lightning_host_clock = {
+        "activation": float(np.float32(cfg.lightning_start_seconds)),
+        "calendar": ([stamp.year,stamp.month,stamp.day,stamp.hour,stamp.minute,stamp.second]
+                     if start_time is not None else [0]*6)}
+
+def host_clock(state):
+    """Host mirror of small driver clocks, rebuilt once after a restore.
+
+    Array carriers remain the checkpoint authority. Tile sweeps transport
+    this mirror alongside their ordinary scalar clocks. No domain field is
+    transferred here, and an initialized step never reads a device scalar.
+    """
+    canonical = getattr(state, "_canonical_scalars", None)
+    cached = (canonical.get("lightning_clock") if canonical is not None
+              else getattr(state, "_lightning_host_clock", None))
+    if cached is None:
+        clock = state.existing_scratch("ltng_ltngacttime")
+        if clock is None:
+            raise ValueError("lightning was not initialized; activation time and IC:CG inputs are missing")
+        from woof.core.state import _state_array_module
+        xp = _state_array_module(state)
+        calendar = state.existing_scratch("ltng_calendar")
+        values = np.asarray(calendar if xp is np else xp.asnumpy(calendar))
+        cached = {"activation": float(clock[0]), "calendar": [int(v) for v in values]}
+        state._lightning_host_clock = cached
+    return cached
+
+
+def invalidate_host_clock(state):
+    """A restored array carrier must replace a pre-restore driver mirror."""
+    state._lightning_host_clock = None
+
 
 def lightning_due(state,cfg):
     if not cfg.lightning_option:
         return False
-    clock=state.existing_scratch("ltng_ltngacttime")
-    if clock is None:
-        raise ValueError("lightning was not initialized; activation time and IC:CG inputs are missing")
     interval=cfg.lightning_dt if cfg.lightning_dt>0 else cfg.dt
-    return next_activation(float(clock[0]),state.elapsed_seconds,cfg.dt,interval) is not None
+    return next_activation(host_clock(state)["activation"],state.elapsed_seconds,cfg.dt,interval) is not None
+
+@lru_cache(maxsize=128)
+def _validated_tiles(nx,ny,tiles):
+    """Validate static launch geometry once, without a domain-sized host mask."""
+    area=0
+    for index,(i0,i1,j0,j1) in enumerate(tiles):
+        if not (0<=i0<i1<=nx and 0<=j0<j1<=ny):
+            raise ValueError("lightning tile lies outside the domain")
+        area+=(i1-i0)*(j1-j0)
+        for a0,a1,b0,b1 in tiles[:index]:
+            if max(i0,a0)<min(i1,a1) and max(j0,b0)<min(j1,b1):
+                raise ValueError("lightning tiles must cover the domain exactly once; overlaps double count flashes")
+    if area!=nx*ny:
+        raise ValueError("lightning tiles must cover the domain exactly once; gaps omit flashes")
+    return tiles
+
+
+def _refuse_lightning(flags):
+    causes={1:"cumulus cloud top is outside the column",
+            2:"PR93 freezing-level search would read below the column",
+            4:"input IC:CG ratio is -1 and divides by zero"}
+    if flags:
+        raise ValueError("lightning refused: "+"; ".join(
+            text for bit,text in causes.items() if flags & bit))
+
 
 def launch_lightning(fields,output,*,option,method,cellcount_method,dx,dy,
                      interval,factor=1.,num=0.,den=1.,adjust=0.,month=1,tiles=None):
@@ -73,24 +128,22 @@ def launch_lightning(fields,output,*,option,method,cellcount_method,dx,dy,
         raise ValueError("IC:CG input month must be 1..12")
     if cellcount_method==0:
         cellcount_method=(1 if nx*dx>1.e4 else 2) if option==1 else 1
-    tiles=tiles or [(0,nx,0,ny)]
-    cover=np.zeros((ny,nx),dtype=np.uint32)
-    for i0,i1,j0,j1 in tiles:
-        if not (0<=i0<i1<=nx and 0<=j0<j1<=ny):
-            raise ValueError("lightning tile lies outside the domain")
-        cover[j0:j1,i0:i1]+=1
-    if not np.all(cover==1):
-        raise ValueError("lightning tiles must cover the domain exactly once; overlaps double count flashes")
+    tiles=_validated_tiles(nx,ny,tuple(tuple(tile) for tile in (tiles or [(0,nx,0,ny)])))
     summary=cp.zeros(2,dtype=cp.float32)
     invalid=cp.zeros(1,dtype=cp.int32)
     i32=np.int32;f32=np.float32
     first=("refl","w","t","z")
     if option in (1,2):
+        levels=cp.empty(2*nz,dtype=cp.float32)
+        level_kernel=get_kernel("lightning","lightning_levels")
         patch=get_kernel("lightning","lightning_patch")
         def reduce(tile):
-            patch((1,),(1,),tuple(fields[k] for k in first)+
-                  (fields["ht"],fields["land"],i32(nz),i32(ny),i32(nx),i32(option))+
-                  tuple(i32(v) for v in tile)+(summary,))
+            geometry=tuple(i32(v) for v in tile)
+            level_kernel((nz,),(256,),
+                         (fields["refl"],fields["w"],i32(nz),i32(ny),i32(nx),*geometry,levels))
+            patch((1,),(256,),
+                  (fields["refl"],fields["t"],fields["z"],fields["ht"],fields["land"],levels,
+                   i32(nz),i32(ny),i32(nx),i32(option),*geometry,summary))
         if cellcount_method==2:
             reduce((0,nx,0,ny))
     columns=get_kernel("lightning","lightning_columns")
@@ -103,10 +156,9 @@ def launch_lightning(fields,output,*,option,method,cellcount_method,dx,dy,
         args+=tuple(f32(v) for v in (dx,dy,adjust,num,den,factor,interval))
         args+=tuple(i32(v) for v in tile)+tuple(output[k] for k in (*FLASH_FIELDS,"lpi"))+(invalid,)
         columns(((nx*ny+127)//128,),(128,),args)
-    code=int(invalid[0])
-    if code:
-        causes={1:"cumulus cloud top is outside the column",2:"PR93 freezing-level search would read below the column",3:"input IC:CG ratio is -1 and divides by zero"}
-        raise ValueError("lightning refused: "+causes[code])
+    from woof.core.health_ledger import read_status
+    code=read_status(invalid,site="lightning",describe=_refuse_lightning)
+    _refuse_lightning(code)
 
 def update_lightning(state,cfg,*,history_reflectivity_due=False):
     if not lightning_due(state,cfg):
@@ -151,11 +203,13 @@ def update_lightning(state,cfg,*,history_reflectivity_due=False):
     interval=cfg.lightning_dt if cfg.lightning_dt>0 else cfg.dt
     month = 1
     if cfg.iccg_method == 4 and cfg.lightning_option != 3:
-        calendar=cp.asnumpy(state.existing_scratch("ltng_calendar"))
+        calendar=host_clock(state)["calendar"]
         month=(datetime(*(int(v) for v in calendar))+timedelta(seconds=state.elapsed_seconds)).month
     launch_lightning(fields,output,option=cfg.lightning_option,method=cfg.iccg_method,
                      cellcount_method=cfg.cellcount_method,dx=cfg.dx,dy=cfg.dy,
                      interval=interval,factor=cfg.flashrate_factor,num=cfg.iccg_prescribed_num,
                      den=cfg.iccg_prescribed_den,adjust=cfg.cldtop_adjustment,month=month)
     clock=state.existing_scratch("ltng_ltngacttime")
-    clock[0]=np.float32(next_activation(float(clock[0]),state.elapsed_seconds,cfg.dt,interval))
+    value=next_activation(host_clock(state)["activation"],state.elapsed_seconds,cfg.dt,interval)
+    clock[0]=np.float32(value)
+    state._lightning_host_clock["activation"]=value

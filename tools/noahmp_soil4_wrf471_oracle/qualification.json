@@ -1,0 +1,238 @@
+{
+  "status": "FOLD-READY-OPTIN",
+  "label": "native WRF 4.7.1 fails here; this fixes it, not bitwise to WRF",
+  "base": "58e8bec3dd4f8a1ba467ec4977b6b7de78f965c1",
+  "production_commit": "9a6457e1d02fe372bb42345b97816ba643cfa747",
+  "tested_commit": "708abbe27d297928a02f80d469dc53044ef68436",
+  "replay_commit": "f31423fe4abb0e23c4fe246e857df6b2cd80f863",
+  "native_wrf": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "native_noahmp": "e5c0859874407859936739e8be8741f9aed369ee",
+  "replay": {
+    "formal_fields": 153,
+    "working_calls": 8,
+    "working_words": 1960,
+    "direct_warm_calls": 16,
+    "direct_warm_words": 3920,
+    "differing_words": 0,
+    "exclusions": 0,
+    "scope": "complete SFLX call boundary; not stock option4 WRF driver parity"
+  },
+  "option_off": {
+    "files": 4,
+    "bytes": 157437704,
+    "byte_identical": true
+  },
+  "forecast": {
+    "grid": [
+      150,
+      150,
+      49
+    ],
+    "dx_m": 3000,
+    "dt_s": 12,
+    "steps": 150,
+    "model_minutes": 30,
+    "soil_geography": "synthetic native-category hydraulic vectors; DKSAT/DWSAT factors1.05/1/.95/.9 by depth",
+    "rust_maps_rendered": 12,
+    "rust_maps_visually_inspected": 12,
+    "all_four_times_physical_checks": true,
+    "all_nine_input_geography_arrays_retained_bitwise": true
+  },
+  "own_process_maximum_sampled_vram_mib": 11486,
+  "timing": {
+    "wall_scope": "complete driver plus deferred health drain; CUDA events end before host readback",
+    "strict_replay_environment": "unset: ordinary forecast mode",
+    "engine_commit": "708abbe27d297928a02f80d469dc53044ef68436",
+    "source": "actual complete land driver; same real initial atmosphere and carriers; reference option3 supplied 41/18 percent sand/clay",
+    "grid": [
+      150,
+      150,
+      49
+    ],
+    "census": {
+      "land": 22303,
+      "water": 197,
+      "sea_ice": 0,
+      "glacier": 0
+    },
+    "samples": {
+      "reference3": [
+        {
+          "gpu_ms": 7.724639892578125,
+          "wall_ms": 7.80472531914711
+        },
+        {
+          "gpu_ms": 7.369728088378906,
+          "wall_ms": 7.436826825141907
+        },
+        {
+          "gpu_ms": 7.328864097595215,
+          "wall_ms": 7.395807653665543
+        },
+        {
+          "gpu_ms": 7.122879981994629,
+          "wall_ms": 7.186271250247955
+        },
+        {
+          "gpu_ms": 7.08073616027832,
+          "wall_ms": 7.143918424844742
+        },
+        {
+          "gpu_ms": 7.273759841918945,
+          "wall_ms": 7.341738790273666
+        },
+        {
+          "gpu_ms": 7.287583827972412,
+          "wall_ms": 7.359229028224945
+        },
+        {
+          "gpu_ms": 7.1629438400268555,
+          "wall_ms": 7.22835585474968
+        }
+      ],
+      "selected4": [
+        {
+          "gpu_ms": 8.493023872375488,
+          "wall_ms": 8.578937500715256
+        },
+        {
+          "gpu_ms": 8.442015647888184,
+          "wall_ms": 8.513227105140686
+        },
+        {
+          "gpu_ms": 8.928511619567871,
+          "wall_ms": 8.999146521091461
+        },
+        {
+          "gpu_ms": 7.967455863952637,
+          "wall_ms": 8.029408752918243
+        },
+        {
+          "gpu_ms": 7.778111934661865,
+          "wall_ms": 7.845818996429443
+        },
+        {
+          "gpu_ms": 7.875679969787598,
+          "wall_ms": 7.941514253616333
+        },
+        {
+          "gpu_ms": 7.8766398429870605,
+          "wall_ms": 7.944822311401367
+        },
+        {
+          "gpu_ms": 7.834080219268799,
+          "wall_ms": 7.90167972445488
+        }
+      ]
+    },
+    "warmups_per_arm": 2,
+    "selected_options": {
+      "opt_alb": 2,
+      "opt_stc": 1,
+      "opt_rsf": 1,
+      "opt_btr": 1,
+      "opt_soil": 4
+    },
+    "reference_options": {
+      "opt_alb": 2,
+      "opt_stc": 1,
+      "opt_rsf": 1,
+      "opt_btr": 1,
+      "opt_soil": 3
+    },
+    "load_start": "40.54 39.62 41.67 30/7658 3315806",
+    "load_timing_start": "40.54 39.62 41.67 33/7747 3316180",
+    "card_at_launch": "1, 97245, 97887, NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "load_end": "39.93 39.51 41.62 32/7743 3316331",
+    "card": "timed-card1 lock; GPU alone; CPU contention separately reported",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "median": {
+      "reference3": {
+        "gpu_ms": 7.280671834945679,
+        "wall_ms": 7.350483909249306
+      },
+      "selected4": {
+        "gpu_ms": 7.922047853469849,
+        "wall_ms": 7.987115532159805
+      }
+    },
+    "selected_over_reference": {
+      "gpu_ms": 1.0880929717839638,
+      "wall_ms": 1.0866108450505427
+    }
+  },
+  "evidence": "<reports>/WRF-PORTS-2026-11-01/evidence/port-noahmp-soil4",
+  "paper": "<paper-archive>/wrf-ports/port-noahmp-soil4",
+  "receipts": {
+    "timing-command.json": {
+      "bytes": 491,
+      "sha256": "1cd33f2c64c3423e7227d505e28cc6f2fd52bda016a3ca384f6821f85065ff53"
+    },
+    "forecast-source-provenance.json": {
+      "bytes": 1456,
+      "sha256": "92aab9dffbb659c0fbd3673db86e1fbd09a1efbe8708b074d966324f14d43c59"
+    },
+    "native-failure.json": {
+      "bytes": 1108,
+      "sha256": "538dc1dc6e6bfbef6c8636cc13da82e1adfa875b9abbaaa4405848fc57769099"
+    },
+    "native-working-replay-final-result.json": {
+      "bytes": 6520,
+      "sha256": "13e522d81b696b0168cad0e96ee6da7319a44f3035a6cf7ecf0ebdb430b7b195"
+    },
+    "native-direct-replay-final-result.json": {
+      "bytes": 7986,
+      "sha256": "be88f582ed413e6b1cd772acaa9792107a5d18d381fef14edf6f6d100be9b6b4"
+    },
+    "option-off-byte-comparison.json": {
+      "bytes": 2680,
+      "sha256": "808996992b7fc53711a7824d70d6fcd79a9c68913f3f286c8ba5eedb8728f6f3"
+    },
+    "physical-checks.json": {
+      "bytes": 33252,
+      "sha256": "91406dd4ae6181de5ec128cf94722af87c6982fd0413d5a1da8b792e7aa4138a"
+    },
+    "visual-review.json": {
+      "bytes": 5996,
+      "sha256": "337c1f95cb0e2e1cfa126c751859c1bba281e2c90ded20f01c21401f5ccd1166"
+    },
+    "forecast-vram-summary.json": {
+      "bytes": 196,
+      "sha256": "2cbb980d67ace6b01e92ff066ac34e54effdd8bea28883fd2e809a3ddfdc5d2d"
+    },
+    "timing-result.json": {
+      "bytes": 2986,
+      "sha256": "d836ee38f8d58e4d8714d4c8f8d3f7a88d2bf9c2e7aa856b1f864d757aeb251a"
+    },
+    "focused-tests2.json": {
+      "bytes": 446,
+      "sha256": "b10244f6f9ea390e18ab09c595dcdb780289e711b9ade8b99af23e68b9e5f9b8"
+    },
+    "focused-tests-inventory.json": {
+      "bytes": 321,
+      "sha256": "b1a9b447404086a479faa4cd3c4e97622cbb8252b492a298006c65323cdd2ecb"
+    },
+    "reader-tests-final.json": {
+      "bytes": 279,
+      "sha256": "f283be55ce4cd7e5f25e5e8c0f324dc806d80fbcfe7d560693e4dc3d1e76c8d4"
+    },
+    "registry-check-final.json": {
+      "bytes": 278,
+      "sha256": "f1e5bdd0230be693a802456ed9163d031aff153c166459dfd22c8d4adc346309"
+    },
+    "whole-wheel-final.json": {
+      "bytes": 325,
+      "sha256": "d1a5762b89d75d2bab947434ec5a608b005eb9fa444c6deaeef396105ff10cff"
+    },
+    "paper-verification.json": {
+      "bytes": 684,
+      "sha256": "b23c38f523ef34e70c7e3a16838c50785119995e495c017125eb58208ab229e1"
+    }
+  },
+  "limits": [
+    "No whole-model native opt_soil4 parity claim.",
+    "Physical smoke case uses synthetic direct soil geography; no observational skill claim.",
+    "Frozen/precipitating forecast regimes and the full cross-product of options were not qualified by this lane.",
+    "Whole-package private wheel reused explicit existing Rust bridge overrides; release sealing must use the release build."
+  ]
+}

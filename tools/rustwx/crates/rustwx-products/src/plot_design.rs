@@ -380,10 +380,27 @@ pub fn operational_fill_scale_for_recipe_in(
             mask_below: None,
         },
         RenderStyle::WeatherUh => DiscreteColorScale {
-            levels: {
-                let mut levels = range_step(0.0, 200.0, 5.0);
-                levels.extend(range_step(200.0, 401.0, 10.0).into_iter().skip(1));
-                levels
+            // The low-level layers (WOOF uh-layers, 2026-11-02) run far weaker
+            // than 2-5 km UH: on the 2024-05-06 outbreak 0-1 km peaked near 20
+            // and 0-2 km near 135 m2/s2, so on the 0-400 bar their swaths were
+            // near-white. 0-1 km takes the same palette over 0-100, 0-2 km over
+            // 0-200; 0-3 km and 2-5 km keep 0-400.
+            levels: match filled_selector.vertical {
+                VerticalSelector::HeightAboveGroundLayerMeters { bottom_m: 0, top_m: 1000 } => {
+                    let mut levels = range_step(0.0, 50.0, 1.25);
+                    levels.extend(range_step(50.0, 100.25, 2.5).into_iter().skip(1));
+                    levels
+                }
+                VerticalSelector::HeightAboveGroundLayerMeters { bottom_m: 0, top_m: 2000 } => {
+                    let mut levels = range_step(0.0, 100.0, 2.5);
+                    levels.extend(range_step(100.0, 200.5, 5.0).into_iter().skip(1));
+                    levels
+                }
+                _ => {
+                    let mut levels = range_step(0.0, 200.0, 5.0);
+                    levels.extend(range_step(200.0, 401.0, 10.0).into_iter().skip(1));
+                    levels
+                }
             },
             colors: weather_palette(WeatherPalette::Uh),
             extend: ExtendMode::Both,
@@ -570,6 +587,28 @@ pub fn operational_contour_layer_for_values(
                 },
             ..
         } => (vec![75.0], Color::BLACK, 1, false, None, None, false),
+        // The low-level layers (WOOF uh-layers, 2026-11-02) run weaker than
+        // 2-5 km UH. 0-1 km: 10, 20 and 40 m2/s2 (a 3 km severe-day run,
+        // 2024-05-06 00Z, peaked at 20 there against 276 at 2-5 km); 0-2 and
+        // 0-3 km: 25, 50 and 75, the ensemble probability thresholds.
+        FieldSelector {
+            field: CanonicalField::UpdraftHelicity,
+            vertical:
+                rustwx_core::VerticalSelector::HeightAboveGroundLayerMeters {
+                    bottom_m: 0,
+                    top_m: 1000,
+                },
+            ..
+        } => (vec![10.0, 20.0, 40.0], Color::BLACK, 1, false, None, None, false),
+        FieldSelector {
+            field: CanonicalField::UpdraftHelicity,
+            vertical:
+                rustwx_core::VerticalSelector::HeightAboveGroundLayerMeters {
+                    bottom_m: 0,
+                    top_m: 2000 | 3000,
+                },
+            ..
+        } => (vec![25.0, 50.0, 75.0], Color::BLACK, 1, false, None, None, false),
         _ => (
             range_step(0.0, 200.0, 10.0),
             Color::BLACK,
@@ -994,6 +1033,25 @@ pub fn fit_isobaric_temperature_scale(
     DiscreteColorScale { levels: new_levels, colors, ..scale }
 }
 
+/// Keep strong surface winds visible instead of saturating the 60 kt bar.
+/// Inputs are already in the recipe's display units (knots). Ordinary-wind
+/// charts retain their exact scale; stronger fields extend to a 20 kt boundary.
+/// Each legend states its range, so comparisons must read the labelled bars.
+pub fn fit_surface_wind_scale(scale: DiscreteColorScale, values: &[f32]) -> DiscreteColorScale {
+    if scale.levels.len() < 2 { return scale; }
+    let low = scale.levels[0];
+    let high = *scale.levels.last().unwrap();
+    let peak = values.iter().copied().filter(|x| x.is_finite())
+        .map(f64::from).fold(high, f64::max);
+    if peak <= high { return scale; }
+    let upper = (peak / 20.0).ceil() * 20.0;
+    let step = (scale.levels[1] - low).max(((upper-low)/48.0/5.0).ceil()*5.0);
+    let count = ((upper - low) / step).ceil() as usize;
+    let levels: Vec<f64> = (0..=count).map(|i| low + i as f64 * step).collect();
+    let colors = resampled_palette(&scale.colors, levels.len().saturating_sub(1));
+    DiscreteColorScale { levels, colors, ..scale }
+}
+
 fn resampled_palette(anchors: &[Color], n: usize) -> Vec<Color> {
     if n == 0 || anchors.is_empty() {
         return Vec::new();
@@ -1185,6 +1243,26 @@ mod tests {
     use super::*;
     use rustwx_core::{CanonicalField, Field2D, FieldSelector, GridShape, LatLonGrid, ProductKey};
     use rustwx_render::{ColorScale, DiscreteColorScale, ExtendMode};
+
+    #[test]
+    fn surface_wind_scale_keeps_ordinary_fields_and_covers_extremes() {
+        let recipe = rustwx_models::plot_recipe("10m_wind_speed_and_direction").unwrap();
+        let selector = recipe.filled.selector.unwrap();
+        let ColorScale::Discrete(fixed) = operational_fill_scale_for_recipe(recipe, selector) else {
+            panic!("surface wind must use discrete colors");
+        };
+        let unchanged = fit_surface_wind_scale(fixed.clone(), &[0.0, 30.0, f32::NAN]);
+        assert_eq!(unchanged.levels, fixed.levels);
+        assert_eq!(unchanged.colors, fixed.colors);
+        for peak in [60.1_f32, 98.0, 175.0, 507.0] {
+            let fitted = fit_surface_wind_scale(fixed.clone(), &[0.0, peak, f32::NAN]);
+            assert!(*fitted.levels.last().unwrap() >= f64::from(peak));
+            assert!(fitted.levels.len() <= 50);
+            assert_eq!(fitted.levels.len(), fitted.colors.len() + 1);
+            assert_eq!(fitted.colors.first(), fixed.colors.first());
+            assert_eq!(fitted.colors.last(), fixed.colors.last());
+        }
+    }
 
     fn sample_request() -> MapRenderRequest {
         let shape = GridShape::new(2, 2).unwrap();

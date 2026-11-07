@@ -9,7 +9,7 @@ tuning each moved alone, then all together; the base variant runs three
 consecutive steps.  Outputs are the five bins, EDUST, TOT_EDUST, TOT_DUST,
 VIS_DUST and AFWA_DUSTLOFT.
 
-Measured on the a development machine RTX 4090 (sm_89): every output equals the Fortran bit
+Measured on the test host 1 RTX 4090 (sm_89): every output equals the Fortran bit
 for bit.  The implementer lane also ran the full 192-variant factorial (576
 cases) at 0 ULP before the fixture was cut to this covering set for size.
 """

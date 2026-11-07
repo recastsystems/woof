@@ -122,7 +122,9 @@ exactly that shape.
 
 from __future__ import annotations
 
+from woof.config import P3_MP_PHYSICS
 from woof.core.device_cache import cuda_cache
+from woof.core.mp_column_schemes import SIX_MASS_TABLE_SCHEMES
 
 from datetime import datetime, timedelta
 from functools import lru_cache, partial
@@ -372,7 +374,12 @@ def _t8w_columns(t3d, z_at_w, fnm, fnp):
 #: for the campaign's nssl_2moment_on=1 configuration (the only NSSL
 #: form woof runs).
 _MP_DECLARES_RADII = {
+    96: False,
     30: False,
+    55: True,  # WRF module_physics_init.F:1017 and :1027-1033
+
+    7: True,  # module_physics_init.F:1015 and radiation_driver.F:1140-1152
+    95: False,
     0: False,
     1: False,
     2: False,
@@ -396,6 +403,15 @@ _MP_DECLARES_RADII = {
     # own radii exactly as it does under any has_reqc=0 scheme.
     9: False,
     10: False,   # Morrison two-moment: NOT in WRF's use_mp_re list
+    # Goddard GCE: GSFCGCESCHEME is NOT in the use_mp_re disjunction
+    # (module_physics_init.F:1004-1023), and the scheme writes no radii, so
+    # RRTMG computes its own exactly as under any has_reqc=0 scheme.
+    97: False,
+    # SBU-YLin: SBU_YLINSCHEME is absent from the use_mp_re disjunction
+    # (module_physics_init.F:1004-1023) and the scheme computes no radii,
+    # so has_reqc = has_reqi = has_reqs = 0 and RRTMG derives its own.
+    13: False,
+    40: False,  # aercu_opt=0 does not publish EFCG/EFIG/EFSG
     # WDM6.  WRF lists WDM6SCHEME explicitly in the use_mp_re disjunction
     # (module_physics_init.F:1013, beside WSM6SCHEME at :1010) and the
     # P3/Jensen-Ishmael has_reqs=0 override (:1027-1033) does not name it,
@@ -405,7 +421,12 @@ _MP_DECLARES_RADII = {
     # (:3220), snow to [25, 999] um (:3229).  The ice bound is what matters
     # here -- cldprmc's [5, 140] um fatal is the reason Morrison (EFFI to
     # 525 um) is False above, and WDM6's 125 um cap sits inside it.
+    14: True,    # WDM5SCHEME, effectRad_wdm5
     16: True,    # WDM6 (WDM6SCHEME)
+    # WDM7: WDM7SCHEME is in the same use_mp_re disjunction
+    # (module_physics_init.F:1014) and effectRad_wdm7 applies WDM6's clamps.
+    26: True,    # WDM7 (WDM7SCHEME)
+    27: False,   # UDM is absent from WRF 4.7.1 use_mp_re; radius flags stay zero.
     18: True,    # NSSL 2-moment (nssl_2moment_on=1)
     # WSM7.  module_physics_init.F:1011 lists WSM7SCHEME in the use_mp_re
     # disjunction beside WSM6SCHEME and the P3 has_reqs=0 override does
@@ -428,6 +449,10 @@ _MP_DECLARES_RADII = {
     # mp_gt_driver is ONE driver serving both packages.  So the upper bounds
     # that keep Morrison out of this table (cldprmc's [5,140] um fatal) are
     # satisfied by construction for mp=28 exactly as they are for mp=8.
+    # THOMPSONGH is absent from WRF v4.7.1 module_physics_init.F:985-1024.
+    # Sharing the Thompson module does not give MP38 MP28's radius flags.
+    38: False,
+    29: True,    # RCON native RE_CLOUD/RE_ICE/RE_SNOW.
     28: True,    # Thompson aerosol-aware (THOMPSONAERO)
     # P3 one-category.  WRF names P3_1CATEGORY in the use_mp_re
     # disjunction (module_physics_init.F:1017, beside THOMPSON at :1005),
@@ -451,17 +476,32 @@ _MP_DECLARES_RADII = {
     # (module_ra_rrtmg_lw.F:12519-12522), so cldprmc's [5, 140] fatal is
     # unreachable however large P3's lookup-table effective radius grows
     # (the shipped p3_lookupTable_1.dat-v5.4_2momI reaches 2.1e4 um).
+    52: True,    # Registry.EM_COMMON:3040, prognostic category 2
     50: True,    # P3 one-category (P3_1CATEGORY)
     # Ferrier-Aligo (FER_MP_HIRES) is absent from the use_mp_re
     # disjunction (module_physics_init.F:1004-1023): has_reqc/i/s stay 0
     # and the wrappers compute their own radii, as for Kessler.
     5: False,
+    # P3 with predicted droplet number: the same has_reqc/has_reqi/has_reqs
+    # triple (module_physics_init.F:1017-1033 list P3_1CATEGORY_NC beside
+    # P3_1CATEGORY), so the same coupling.
+    51: True,    # P3 one-category, predicted Nc (P3_1CATEGORY_NC)
+    # P3 three-moment ice (P3_1CAT_3MOM): in the same use_mp_re disjunction
+    # (module_physics_init.F:1020) and the same has_reqs=0 override
+    # (:1030), so the same (1, 1, 0) triple and the same snow-slot remap.
+    52: True,
+    53: True,
+    15: False,
+    # NTU: not in WRF's use_mp_re disjunction (module_physics_init.F:
+    # 1004-1023), so has_reqc/has_reqi/has_reqs stay 0 and RRTMG
+    # computes its own radii, exactly as for mp=9/10.
+    56: False,   # NTU has qi/qs, but is absent from WRF use_mp_re.
 }
 
 
 from woof.microphysics_schemes import NAMED_SCHEMES as _NAMED_MP_SCHEMES
 # Named schemes declare radii (their adapters write effc/effi/effs).
-_MP_DECLARES_RADII.update({_s.mp_id: True for _s in _NAMED_MP_SCHEMES.values()})
+_MP_DECLARES_RADII.update({_s.mp_id: _s.mp_id != 11 for _s in _NAMED_MP_SCHEMES.values()})
 
 def _require_agreement_with_the_registry() -> None:
     """``_MP_DECLARES_RADII`` is the registry's ``cloud_optics.legacy_declares_radii``.
@@ -524,14 +564,12 @@ def legacy_scheme_declares_radii(mp_physics, use_mp_re):
 #: state could produce that triple and the transcribed branch was
 #: unreachable.
 #:
-#: Of WRF's P3/Jensen-Ishmael family only mp=50 is selectable here:
-#: mp=51 and mp=52 are refused by name in
-#: ``woof.config._P3_UNPORTED_VARIANTS`` and Jensen-Ishmael (mp=55) is
-#: outside ``woof.config.MP_PHYSICS_ACCEPTED`` entirely.
-_MP_SNOW_RADII_SUPPRESSED = frozenset((50,))
+#: P3 selectors share their radius ownership, including both ice categories.
+#: 55 is JENSEN_ISHMAEL, named in the same block (module_physics_init.F:1029).
+_MP_SNOW_RADII_SUPPRESSED = frozenset(P3_MP_PHYSICS + (55,))
 
 
-def legacy_scheme_has_req(mp_physics, use_mp_re):
+def legacy_scheme_has_req(mp_physics, use_mp_re, *, nssl_2moment_on=1):
     """WRF's ``(has_reqc, has_reqi, has_reqs)`` triple, both blocks.
 
     Read in WRF's own order (``module_physics_init.F:987-1033``): the
@@ -543,6 +581,11 @@ def legacy_scheme_has_req(mp_physics, use_mp_re):
     ``(1, 1, 0)`` -- so the adapter asks for the triple and never for one
     boolean.
     """
+    # module_physics_init.F:1007: the generalized NSSL package declares
+    # radii only with predicted concentrations. MP19/21 canonicalize to
+    # MP18 with this selector zero; their PRESENT radius arrays are unwritten.
+    if int(mp_physics) == 18 and int(nssl_2moment_on) == 0:
+        return 0, 0, 0
     declares = legacy_scheme_declares_radii(mp_physics, use_mp_re)
     flag = int(bool(declares))
     has_reqs = 0 if int(mp_physics) in _MP_SNOW_RADII_SUPPRESSED else flag
@@ -570,11 +613,13 @@ def legacy_scheme_has_req(mp_physics, use_mp_re):
 #: would assert a ``qs`` its Registry package never declares.  Resolve the
 #: pair through :func:`legacy_cloud_fraction_flags`, never by reading one
 #: boolean into both flags.
-_LEGACY_ICE_ACTIVE_MICROPHYSICS = frozenset((2, 4, 6, 8, 9, 10, 16, 18, 24, 28, 30, 106))
+_LEGACY_ICE_ACTIVE_MICROPHYSICS = frozenset((2, 4, 6, 7, 8, 9, 10, 13, 14, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 56, 96, 106))
 # Named schemes carrying both qi and qs (capability row).
 _LEGACY_ICE_ACTIVE_MICROPHYSICS = _LEGACY_ICE_ACTIVE_MICROPHYSICS | frozenset(
     _s.mp_id for _s in _NAMED_MP_SCHEMES.values()
     if {"qi", "qs"} <= set(_s.ice_mass_species))
+
+_LEGACY_ICE_ACTIVE_MICROPHYSICS |= frozenset(SIX_MASS_TABLE_SCHEMES)
 
 #: WRF Registry ``F_QI and not F_QS``: schemes whose package carries ``qi``
 #: in ``moist`` and no ``qs`` at all.  P3 one-category (mp=50) is the
@@ -595,15 +640,14 @@ _LEGACY_ICE_ACTIVE_MICROPHYSICS = _LEGACY_ICE_ACTIVE_MICROPHYSICS | frozenset(
 #: from the ``F_QI .and. F_QC .and. F_QS`` arm at :3870-3877.
 #:
 #: mp=51 (``p3_1category_nc``, Registry.EM_COMMON:3039) is the same WRF
-#: arm and is deliberately NOT listed: ``woof/config.py`` does not accept
-#: 51, so it is refused by name at admission rather than half-answered
-#: here.
+#: arm (its own comment, :3879: "for P3, mp option 50 or 51"), so both
+#: ported P3 variants are listed (woof.config.P3_MP_PHYSICS).
 #: Ferrier-Aligo (mp=5) is the second member on the same reading:
 #: Registry.EM_COMMON:3019 declares ``package fer_mp_hires mp_physics==5 -
 #: moist:qv,qc,qr,qi`` (qi is the total ice) with no qs, so cal_cldfra1
 #: takes the P3 arm and then WRF's Ferrier selector arm (:3926-3937),
 #: which ``cal_cldfra1(..., mp_physics=5)`` applies.
-_LEGACY_ICE_ONLY_MICROPHYSICS = frozenset((5, 50))
+_LEGACY_ICE_ONLY_MICROPHYSICS = frozenset((5, 15, 55) + P3_MP_PHYSICS)
 
 #: WRF Registry ``not F_QI and not F_QS``: no frozen species in the package
 #: at all -- ``passiveqv`` (mp=0, Registry.EM_COMMON:3014, ``moist:qv``)
@@ -612,6 +656,8 @@ _LEGACY_ICE_ONLY_MICROPHYSICS = frozenset((5, 50))
 #: qc and qr).  These take ``cal_cldfra1``'s qc-only arm with its 273.15 K
 #: phase threshold (module_radiation_driver.F:3891-3899).
 _LEGACY_NO_ICE_MICROPHYSICS = frozenset((0, 1, 3))
+
+_LEGACY_SNOW_ONLY_MICROPHYSICS = frozenset((95,))
 
 
 def legacy_ice_active(mp_physics: int) -> bool:
@@ -644,7 +690,7 @@ def legacy_cloud_fraction_flags(mp_physics: int) -> tuple[bool, bool]:
     CLDFRA 0.0 (clear sky) where WRF's own P3 arm returns 1.0 (overcast).
 
     FAILS CLOSED.  Every selector ``woof/config.py`` accepts has a row in
-    one of the three sets; an unmapped one raises instead of inheriting
+    one of the four sets; an unmapped one raises instead of inheriting
     Kessler's ice-free arm.
     """
 
@@ -653,6 +699,8 @@ def legacy_cloud_fraction_flags(mp_physics: int) -> tuple[bool, bool]:
         return (True, True)
     if selector in _LEGACY_ICE_ONLY_MICROPHYSICS:
         return (True, False)
+    if selector in _LEGACY_SNOW_ONLY_MICROPHYSICS:
+        return (False, True)
     if selector in _LEGACY_NO_ICE_MICROPHYSICS:
         return (False, False)
     raise NotImplementedError(
@@ -1199,9 +1247,16 @@ class _ColumnGather:
             if g.dtype != cp.float32 or not g.flags.c_contiguous or                     g.shape[1] != self.ncol:
                 raise ValueError("gathered grids must be C-contiguous float32 "
                                  "(nk, ncol) device arrays")
-        self.src = cp.asarray(np.asarray([g.data.ptr for g in self.grids],
-                                         dtype=np.uint64))
-        self.nk_d = cp.asarray(np.asarray(self.nk, dtype=np.int32))
+        if cp.cuda.get_current_stream().is_capturing():
+            self.src = cp.empty(len(self.grids),cp.uint64)
+            self.nk_d = cp.empty(len(self.grids),cp.int32)
+            for i,(grid,nk) in enumerate(zip(self.grids,self.nk)):
+                self.src[i:i+1].fill(np.uint64(grid.data.ptr))
+                self.nk_d[i:i+1].fill(np.int32(nk))
+        else:
+            self.src = cp.asarray(np.asarray([g.data.ptr for g in self.grids],
+                                             dtype=np.uint64))
+            self.nk_d = cp.asarray(np.asarray(self.nk, dtype=np.int32))
 
     def __call__(self, sel):
         cp = self.cp
@@ -1394,6 +1449,8 @@ class RRTMGLegacyRadiation:
     batch entries, McICA twin, and both engines are each per-column
     bitwise at any width -- their own gated contracts).
     """
+
+    native_eclipse = True  # WRF dims incoming SCON before SW transport.
 
     #: RRTMG_LWRAD's ``OLR`` (TOA outgoing longwave, W m-2) is
     #: ``TOTUFLUX`` at the top level -- ``lwrad_outputs_batch`` already maps
@@ -1735,10 +1792,9 @@ class RRTMGLegacyRadiation:
     # ------------------------------------------------------------------
     def _check_pins(self, cfg):
         """Fail closed on any option outside the ported combination."""
-        if int(getattr(cfg, "icloud", 1)) not in (1, 2):
+        if int(getattr(cfg, "icloud", 1)) not in (1, 2, 3):
             raise NotImplementedError(
-                "icloud=0 lacks a recorded legacy clear-sky solve; "
-                "icloud=3 requires unported cal_cldfra3 condensate adjustment")
+                "icloud=0 lacks a recorded legacy clear-sky solve")
         for name, pinned in _PINNED_OPTIONS.items():
             value = getattr(cfg, name, pinned)
             if int(value) != pinned:
@@ -1886,6 +1942,59 @@ class RRTMGLegacyRadiation:
     # (woof.core.deferred_device_checks, A3).  A failed guard raises the
     # same error before any result leaves this call.
     @_with_deferred_device_checks
+    def prepare_graph_times(self,cfg,times,*,model_levels,p_top):
+        """Stage immutable calendar/climatology inputs for a finite DFI graph.
+
+        Pressure interpolation, optics, clouds and all radiation solves still
+        read the live atmosphere inside the graph. No model step is run here.
+        """
+        import cupy as cp
+        from woof.wrf_exact import ENABLED
+        adapter_gpu_preflight()
+        _mcica.prepare_graph_tables()
+        _prep_device.gpu_preflight()
+        _prep_device._tables(cp.cuda.runtime.getDevice())
+        if self.longwave:
+            _lw._lw_dev_consts(cp,self._C)
+        lat = self.latitude_deg.reshape(-1)
+        lon = self.longitude_deg.reshape(-1)
+        self._graph_lat = cp.asarray(lat)
+        self._graph_lon = cp.asarray(lon)
+        prepared = {}
+        for elapsed in times:
+            valid = self.start_time+timedelta(seconds=float(elapsed))
+            julday = int(valid.timetuple().tm_yday)
+            hour = (valid.hour+valid.minute/60.+valid.second/3600.+valid.microsecond/3.6e9)
+            julian = F((julday-1)+hour/24.)
+            gmt = F(self.start_time.hour+self.start_time.minute/60.+
+                self.start_time.second/3600.+self.start_time.microsecond/3.6e9)
+            xt_mid = F(float(elapsed)/60.)+F(cfg.radt if cfg.radt>0 else cfg.radt_minutes)*F(.5)
+            generation = getattr(cfg,'solar_generation','wrf_480')
+            if ENABLED and generation == 'wrf_461':
+                coszen_d,_,declin,solcon = solar_geometry_device(
+                    julian,xt_mid,gmt,self._graph_lat,self._graph_lon)
+                coszen = cp.asnumpy(coszen_d)
+            elif generation == 'wrf_480':
+                from woof.core.solar import solar_geometry_device as solar480
+                ds,coszen_d,_ = solar480(julian,xt_mid,gmt,lat,lon)
+                declin,solcon = map(F,cp.asnumpy(ds))
+                coszen = cp.asnumpy(coszen_d)
+            else:
+                declin,solcon = radconst(julian)
+                coszen = calc_coszen(julian,xt_mid,gmt,lat,lon,declin,generation='wrf_461')
+                coszen_d = cp.asarray(coszen)
+            record = dict(coszen=coszen,coszen_d=coszen_d,declin=declin,solcon=solcon,
+                day=cp.asarray(np.nonzero(coszen>F(0))[0].astype(np.int64)),
+                night=cp.asarray(np.nonzero(coszen<=F(0))[0].astype(np.int64)))
+            if self.o3input and self._ozone_provider is None:
+                pin = np.asarray(self._ozone_climo.plev)
+                if pin.dtype != np.float32 or not np.all(np.diff(pin)>0):
+                    raise ValueError('OZN_P_INT: invalid climatology pressure')
+                ozmixt = self._ozone.ozn_latitude_time_int(julday,julian,lat,self._ozone_climo)
+                record.update(pin=cp.asarray(pin),ozmixt=cp.asarray(np.ascontiguousarray(ozmixt)))
+            prepared[float(elapsed)] = record
+        self._graph_times = prepared
+
     def __call__(self, *, atmosphere, fields, state, cfg):
         import cupy as cp
 
@@ -1974,7 +2083,11 @@ class RRTMGLegacyRadiation:
         g_moist = {}
         f_flags = {}
         for name in ("qv", "qc", "qr", "qi", "qs", "qg"):
-            value = getattr(state, name, None)
+            if name == "qi":
+                from woof.core.physics_inventory import registered_ice_mass_for_radiation
+                value = registered_ice_mass_for_radiation(state)
+            else:
+                value = getattr(state, name, None)
             if value is None:
                 g_moist[name] = None
                 f_flags[name] = False
@@ -2018,7 +2131,8 @@ class RRTMGLegacyRadiation:
         # single boolean here would have to either invent a P3 snow radius
         # or throw away the two radii P3 does predict.
         has_reqc, has_reqi, has_reqs = legacy_scheme_has_req(
-            mp_physics, getattr(cfg, "use_mp_re", 1))
+            mp_physics, getattr(cfg, "use_mp_re", 1),
+            nssl_2moment_on=getattr(cfg, "nssl_2moment_on", 1))
         g_radii = {}
         has_req = {}
         for name, key, q, scheme_declares in (
@@ -2049,7 +2163,9 @@ class RRTMGLegacyRadiation:
                              "snow")}
         lat_flat = self.latitude_deg.reshape(-1)
         lon_flat = self.longitude_deg.reshape(-1)
-        lat_d = cp.asarray(lat_flat)
+        graph_time = (self._graph_times[float(state.elapsed_seconds)]
+            if cp.cuda.get_current_stream().is_capturing() else None)
+        lat_d = self._graph_lat if graph_time is not None else cp.asarray(lat_flat)
         fnm_d = self._vertical_weight_device(state.fnm)
         fnp_d = self._vertical_weight_device(state.fnp)
 
@@ -2105,21 +2221,24 @@ class RRTMGLegacyRadiation:
         xt_mid = xtime + radt_minutes * F(0.5)
         generation = getattr(cfg, "solar_generation", "wrf_480")
         from woof.wrf_exact import ENABLED
-        if ENABLED and generation == "wrf_461":
-            coszen_d, _hrang_d, declin, solcon = solar_geometry_device(
-                julian, xt_mid, gmt, lat_d, cp.asarray(lon_flat))
-            coszen = cp.asnumpy(coszen_d)
-        elif generation == "wrf_480":
-            from woof.core.solar import solar_geometry_device as _solar_device
-            ds, coszen_d, _hrang = _solar_device(julian, xt_mid, gmt, lat_flat, lon_flat)
-            declin, solcon = map(F, cp.asnumpy(ds))
-            coszen = cp.asnumpy(coszen_d)
+        if graph_time is not None:
+            coszen_d,coszen,declin,solcon = (graph_time[k] for k in
+                ('coszen_d','coszen','declin','solcon'))
         else:
-            declin, solcon = radconst(julian)
-            coszen = calc_coszen(julian, xt_mid, gmt, lat_flat, lon_flat,
-                                 declin, generation='wrf_461')
-            coszen_d = cp.asarray(coszen)
-
+            if ENABLED and generation == "wrf_461":
+                coszen_d, _hrang_d, declin, solcon = solar_geometry_device(
+                    julian, xt_mid, gmt, lat_d, cp.asarray(lon_flat))
+                coszen = cp.asnumpy(coszen_d)
+            elif generation == "wrf_480":
+                from woof.core.solar import solar_geometry_device as _solar_device
+                ds, coszen_d, _hrang = _solar_device(julian, xt_mid, gmt, lat_flat, lon_flat)
+                declin, solcon = map(F, cp.asnumpy(ds))
+                coszen = cp.asnumpy(coszen_d)
+            else:
+                declin, solcon = radconst(julian)
+                coszen = calc_coszen(julian, xt_mid, gmt, lat_flat, lon_flat,
+                                     declin, generation='wrf_461')
+                coszen_d = cp.asarray(coszen)
         # ---- o33d: WRF's root-compute + parent->child routing ----------
         # Keep the interpolated grid for all chunk gathers. The retained
         # host field remains the provider and restart contract.
@@ -2163,27 +2282,32 @@ class RRTMGLegacyRadiation:
             # One host buffer for every call (the native route fills it in
             # place): a fresh ~200 MB array per call per rank was faulted in
             # at every 1 km radiation step (A3).
-            ozmixt = np.asarray(self._ozone.ozn_latitude_time_int(
-                julday, julian, self.latitude_deg.reshape(-1), self._ozone_climo,
-                out=self.__dict__.get("_ozmixt_buf")))
-            self.__dict__["_ozmixt_buf"] = ozmixt
-            pin = np.asarray(self._ozone_climo.plev)
-            if pin.dtype != np.float32 or pin.ndim != 1:
-                raise ValueError("pin must be float32 (levsiz,)")
-            if not np.all(np.diff(pin) > 0):
-                # WRF's runtime guard (ozn_p_int's kount > ncol check).
-                raise ValueError("OZN_P_INT: Bad ozone data: "
-                                 "non-monotonicity suspected")
-            if (ozmixt.dtype != np.float32
-                    or ozmixt.shape != (ncol, pin.size)):
-                raise ValueError("ozmixt must be float32 (ncol, levsiz)")
-            ozmixt = np.ascontiguousarray(ozmixt)
-            pin_d = cp.asarray(pin)
-            levsiz = int(pin.size)
-            # ozn_p_int on the device over the (nz, ncol) grid, once, for
-            # the field children and restarts retain and chunks reuse.
-            grid_o3 = cp.empty((nz, ncol), dtype=cp.float32)
-            ozmixt_d = cp.asarray(ozmixt)
+            if graph_time is not None:
+                pin_d,ozmixt_d = graph_time['pin'],graph_time['ozmixt']
+                levsiz = int(pin_d.size)
+                grid_o3 = cp.empty((nz,ncol),dtype=cp.float32)
+            else:
+                ozmixt = np.asarray(self._ozone.ozn_latitude_time_int(
+                    julday, julian, self.latitude_deg.reshape(-1), self._ozone_climo,
+                    out=self.__dict__.get("_ozmixt_buf")))
+                self.__dict__["_ozmixt_buf"] = ozmixt
+                pin = np.asarray(self._ozone_climo.plev)
+                if pin.dtype != np.float32 or pin.ndim != 1:
+                    raise ValueError("pin must be float32 (levsiz,)")
+                if not np.all(np.diff(pin) > 0):
+                    # WRF's runtime guard (ozn_p_int's kount > ncol check).
+                    raise ValueError("OZN_P_INT: Bad ozone data: "
+                                     "non-monotonicity suspected")
+                if (ozmixt.dtype != np.float32
+                        or ozmixt.shape != (ncol, pin.size)):
+                    raise ValueError("ozmixt must be float32 (ncol, levsiz)")
+                ozmixt = np.ascontiguousarray(ozmixt)
+                pin_d = cp.asarray(pin)
+                levsiz = int(pin.size)
+                # ozn_p_int on the device over the (nz, ncol) grid, once, for
+                # the field children and restarts retain and chunks reuse.
+                grid_o3 = cp.empty((nz, ncol), dtype=cp.float32)
+                ozmixt_d = cp.asarray(ozmixt)
             _adapter_kernel("rla_ozn_p_int")(
                 ((ncol + 127) // 128,), (128,),
                 (np.int32(ncol), np.int32(nz), np.int32(levsiz),
@@ -2210,15 +2334,57 @@ class RRTMGLegacyRadiation:
         # Every grid a chunk reads, gathered in one launch per chunk.
         gather_grids = {"p3d": g_p3d, "t3d": g_t3d, "zw": g_zw,
                         "p8w": g_p8w, "dz8w": g_dz8w}
+        if mp_physics == 95:
+            phase = getattr(state, "f_ice_phy", None)
+            if phase is None:
+                raise ValueError("mp_physics=95 radiation requires carried F_ICE_PHY")
+            gather_grids["f_ice_phy"] = _device_grid(phase, nz)
         if grid_o3 is not None:
             gather_grids["o33d"] = grid_o3
         gather_grids.update((name, g) for name, g in g_moist.items()
                             if g is not None)
+        if atmosphere.get("cumulus_feedback") is not None and cfg.aercu_opt>0:
+            for key,name in (("re_cloud","efcg"),("re_ice","efig"),("re_snow","efsg")):
+                g_radii[key]=_device_grid(getattr(state,name),nz)
         gather_grids.update((key, g) for key, g in g_radii.items()
                             if g is not None)
         if active_bl:
             gather_grids.update(g_bl)
-        if icloud == 2:
+        cup_active = int(getattr(cfg, "cu_physics", 0)) == 10
+        if cup_active:
+            from woof.core.kfcup_radiation import merge_kfcup_clouds
+            zero = cp.zeros_like(g_p3d)
+            liquid = zero.copy() if g_moist["qc"] is None else g_moist["qc"].copy()
+            if icloud == 1:
+                cup_cf, cup_flags = _rrtmgp.cal_cldfra1(g_moist["qv"], liquid,
+                    zero if g_moist["qi"] is None else g_moist["qi"],
+                    zero if g_moist["qs"] is None else g_moist["qs"],g_t3d,g_p3d,
+                    f_qc=True,f_qi=f_qi,f_qs=f_qs,mp_physics=mp_physics,return_flags=True)
+            else:
+                cup_flags=None
+                cup_cf=_rrtmgp.cal_cldfra2(liquid,zero if g_moist["qi"] is None else g_moist["qi"],
+                    f_qc=mp_physics != 0,f_qi=f_qi) if icloud else zero.copy()
+            liquid,cup_cf=merge_kfcup_clouds(liquid,cup_cf,cup_flags,fields,cfg,level_major=True)
+            gather_grids["qc"]=liquid
+            gather_grids["cup_cldfra"]=cup_cf
+        active_bmj_cloud = (getattr(cfg, "cu_physics", 0) == 2
+                            and getattr(cfg, "bmj_rad_feedback", False))
+        if int(getattr(cfg, 'shcu_physics', 0)) == 5:
+            for name in ('cw_rad', 'cldfra_sh'):
+                gather_grids[name] = _device_grid(fields[name], nz)
+        if active_bmj_cloud:
+            # BMJ's carried clouds join the same bounded device gather as
+            # the prognostic moisture. They are merged after MYNN, as in
+            # module_radiation_driver.F:1583-1587, without changing state.
+            for name in ("qcconv", "qiconv", "ccldfra"):
+                gather_grids[name] = _device_grid(fields[name], nz)
+
+        if mp_physics == 11:
+            for name in ("lradius", "iradius", "cldfra_mp_all"):
+                gather_grids["cam_" + name] = getattr(state, name).reshape(nz, ncol)
+        if "radiation_cldfra3" in fields:
+            gather_grids["binary_cldfra"] = fields["radiation_cldfra3"].reshape(nz,ncol)
+        elif icloud == 2:
             # One driver CLDFRA field is shared by LW and SW. Gather only
             # repacks it into each prep's column window; it never recomputes
             # the threshold on separate moisture buffers.
@@ -2228,6 +2394,9 @@ class RRTMGLegacyRadiation:
                 zero_cloud if g_moist["qi"] is None else g_moist["qi"],
                 f_qc=mp_physics != 0, f_qi=f_qi)
             del zero_cloud
+        feedback=atmosphere.get("cumulus_feedback")
+        if feedback is not None:
+            gather_grids.update({"cu_"+key:_device_grid(value,nz) for key,value in feedback.items()})
         gather_names = list(gather_grids)
         gather = _ColumnGather(gather_grids.values(), ncol)
 
@@ -2257,12 +2426,15 @@ class RRTMGLegacyRadiation:
             # cal_cldfra1 (icloud=1), the WRF transcription already gated
             # on the RTE+RRTMGP path -- imported, not copied; fed the raw
             # moisture before the MYNN merge writes qc/qi.
-            if icloud == 2:
+            if cup_active:
+                cldfra = blocks["cup_cldfra"]
+            elif "binary_cldfra" in blocks:
                 cldfra = blocks["binary_cldfra"]
             else:
                 cldfra = _rrtmgp.cal_cldfra1(
                     moist["qv"], moist["qc"], moist["qi"], moist["qs"], t3d,
-                    p3d, f_qc=True, f_qi=f_qi, f_qs=f_qs, mp_physics=mp_physics)
+                    p3d, f_qc=True, f_qi=f_qi, f_qs=f_qs, mp_physics=mp_physics,
+                    f_ice_phy=blocks.get("f_ice_phy"))
             # Microphysics already applied the stock wrapper's metre to
             # micron multiply. Undoing and redoing it loses one ULP in
             # some radii on the next radiation call, so a strict run's prep
@@ -2317,6 +2489,29 @@ class RRTMGLegacyRadiation:
                          F(MERGE_QC_BELOW), F(MERGE_QI_BELOW),
                          F(MERGE_CLDFRA_BL_ABOVE)))
                 del bl
+            if active_bmj_cloud or int(getattr(cfg, 'shcu_physics', 0)) == 5:
+                from woof.core.column_cumulus import merge_column_cumulus_clouds
+                moist["qc"], moist["qi"], cldfra = merge_column_cumulus_clouds(
+                    moist["qc"], moist["qi"], cldfra,
+                    fields=blocks, cfg=cfg, columns=lambda value: value)
+
+            if mp_physics == 11:
+                cam_step = wrf_itimestep(state.elapsed_seconds, cfg.dt)
+                if cam_step != 1:
+                    cldfra = cp.where(blocks["cam_cldfra_mp_all"] < F(.01),
+                                     F(0), blocks["cam_cldfra_mp_all"])
+
+            if feedback is not None:
+                from woof.core.cumulus_feedback import merge_cumulus_feedback
+                packed={key:blocks["cu_"+key] for key in feedback}
+                background=dict(zip(("effc","effi","effs"),
+                    (blocks.get(key) for key in ("re_cloud","re_ice","re_snow"))))
+                moist["qc"],moist["qi"],moist["qs"],cldfra,blended=merge_cumulus_feedback(
+                    moist["qc"],moist["qi"],moist["qs"],cldfra,packed,
+                    aerosol=cfg.aercu_opt>0,radii=background if cfg.aercu_opt>0 else None)
+                if cfg.aercu_opt>0:
+                    radii=_radius_meters_blocks(dict(zip(("re_cloud","re_ice","re_snow"),
+                        (blended[key] for key in ("effc","effi","effs")))))
             o33d = (blocks["o33d"] if grid_o3 is not None else
                     cp.zeros((nc, nz), dtype=cp.float32))
             sel_kw = dict(
@@ -2331,6 +2526,9 @@ class RRTMGLegacyRadiation:
             for key in ("re_cloud", "re_ice", "re_snow"):
                 if radii[key] is not None:
                     sel_kw[key] = radii[key]
+            if mp_physics == 11:
+                sel_kw.update(cam_lradius=blocks["cam_lradius"],
+                              cam_iradius=blocks["cam_iradius"])
             return sel_kw
 
         from woof.core.trace_gases import LEGACY_LW_GASES, LEGACY_SW_GASES, trace_gas_subset
@@ -2368,6 +2566,13 @@ class RRTMGLegacyRadiation:
             if name.startswith("sw"):
                 value.fill(0)
         rthratensw = cp.zeros((nz, ncol), dtype=cp.float32)
+        spectral_bindings = (("swvisdir", "sibvisdir", "asdir", "alswvisdir"),
+                             ("swvisdif", "sibvisdif", "asdif", "alswvisdif"),
+                             ("swnirdir", "sibnirdir", "aldir", "alswnirdir"),
+                             ("swnirdif", "sibnirdif", "aldif", "alswnirdif"))
+        spectral = ({n: cp.zeros(ncol, dtype=cp.float32)
+                     for n, _, _, _ in spectral_bindings}
+                    if all(a in fields for _, _, _, a in spectral_bindings) else None)
         gsw = cp.zeros(ncol, dtype=cp.float32)
         # SWDDIR/SWDDIF, rrtmg_swrad's swdkdir/swdkdif at the surface
         # (module_ra_rrtmg_sw.F, the driver's jararias 2013 arm;
@@ -2487,8 +2692,9 @@ class RRTMGLegacyRadiation:
         chunk_sw = (wide
                     or (_cuda_sw(self._sw_tables).batch_column_chunk(nz + 1)
                         if self.shortwave else _sw.SW_BATCH_COLUMN_CHUNK))
-        aerosol_aod = cp.empty((nz,ncol),cp.float32) if self.aer_opt==2 else None
-        aerosol_diag = cp.empty((ncol,4),cp.float32) if self.aer_opt==2 else None
+        stock_aer3 = self.aer_opt == 3 and cfg.rrtmg_aer3_source == "wrf_461"
+        aerosol_aod = cp.zeros((nz,ncol),cp.float32) if stock_aer3 else (cp.empty((nz,ncol),cp.float32) if self.aer_opt==2 else None)
+        aerosol_diag = cp.empty((ncol,4),cp.float32) if self.aer_opt==2 or stock_aer3 else None
         user_inputs = _aer2.auxiliary_inputs(cfg,self.start_time,state.elapsed_seconds,(ny,nx)) if self.aer_opt==2 else {}
         def user_optics(kw,sel):
             if self.aer_opt != 2:
@@ -2503,11 +2709,20 @@ class RRTMGLegacyRadiation:
             aerosol_aod[:,sel] = produced[3].T
             aerosol_diag[sel,:] = produced[4]
             return produced[0],produced[2],produced[1]
-        if self.aer_opt == 2:
+        def stock_optics(kw,sel):
+            from woof.core.wrf_stock_aer3 import optics_device
+            nwfa_c,nifa_c=aer_gather(sel)
+            optics,aod,diagnostics=optics_device(kw["p3d"],kw["t3d"],kw["qv3d"],
+                kw["dz8w"],nwfa_c,nifa_c)
+            # Native leaves AOD5503D at its allocation words for option 3.
+            aerosol_diag[sel,:]=diagnostics[cp.asarray([2,3,0,1])].T
+            return optics
+        if self.aer_opt == 2 or stock_aer3:
             for off in range(0,night_idx.size,chunk_sw):
-                sel=cp.asarray(night_idx[off:off+chunk_sw].astype(np.int64))
-                user_optics(chunk_inputs(sel),sel)
-        day_idx_d = cp.asarray(day_idx.astype(np.int64))
+                sel=(graph_time['night'][off:off+chunk_sw] if graph_time is not None else
+                     cp.asarray(night_idx[off:off+chunk_sw].astype(np.int64)))
+                (stock_optics if stock_aer3 else user_optics)(chunk_inputs(sel),sel)
+        day_idx_d = graph_time['day'] if graph_time is not None else cp.asarray(day_idx.astype(np.int64))
         span_sw = adapter_span(chunk_sw, day_idx.size)
         for a0 in range(0, day_idx.size if self.shortwave else 0, span_sw):
             sel = day_idx_d[a0:a0 + span_sw]
@@ -2520,7 +2735,9 @@ class RRTMGLegacyRadiation:
             diagnostic_cloud = (kw["cldfra3d"] if diagnostic_sink else None)
             diagnostic_aerosol = None
             aerosol = user_optics(kw,sel)
-            if aer_gather is not None:
+            if stock_aer3:
+                aerosol = stock_optics(kw,sel)
+            elif aer_gather is not None:
                 # The driver builds the optics from its own p, t, qv and
                 # dz8w before RRTMG_SWRAD runs (module_radiation_driver.F
                 # :975, :1890); the wrapper's layer above the model top
@@ -2555,10 +2772,16 @@ class RRTMGLegacyRadiation:
                 **kw, albedo=surf["albedo"][sel],
                 xcoszen=coszen_d[sel], solcon=solcon,
                 sf_surface_physics=sf_surface_physics, trace_gas_overrides=sw_gases,
+                **({} if spectral is None else {"spectral_albedo":
+                    {key: _device_flat(fields[a])[sel] for _, _, key, a in spectral_bindings}}),
                 subcolumn_generator=self._mcica_generator(
                     _mcica.gpu_generate_sw_subcolumns),
                 defer_subcolumns=True, **shared)
             del kw
+            if "ecobsc" in fields:
+                # Native RRTMG_SWRAD:10872 scales the incoming solar constant,
+                # before the spectral solution and its heating differences.
+                ps["scon"] *= (F(1.0)-fields["ecobsc"].reshape(-1)[sel])
             window = ps.pop("mcica_window")
             for extra in _SW_PREP_EXTRAS:
                 ps.pop(extra, None)
@@ -2597,6 +2820,18 @@ class RRTMGLegacyRadiation:
                     aerosol=aerosol_w,
                     column_chunk=chunk_sw, _stage_probe=self._stage_probe,
                     mcica_layout="column")
+                if spectral is not None:
+                    for key, output, _, _ in spectral_bindings:
+                        # The device engine returns total and direct spectral
+                        # fluxes. Diffuse is the WRF post-pass subtraction, not
+                        # a key returned by its device API.
+                        if output == "sibvisdif":
+                            value = res["puvfd"][:, 0] - res["sibvisdir"][:, 0]
+                        elif output == "sibnirdif":
+                            value = res["pnifd"][:, 0] - res["sibnirdir"][:, 0]
+                        else:
+                            value = res[output][:, 0]
+                        spectral[key][selw] = value
                 del mc, aerosol_w
                 if diagnostic_sink is not None:
                     idx = day_idx[a0 + w0:a0 + w1]
@@ -2647,6 +2882,11 @@ class RRTMGLegacyRadiation:
                     shape=(ny, nx), coszen=coszen, adapter=self, finish=True,
                     **smoke_receipt)
 
+        # Preserve native RTHRATEN before the diagnostic subtraction. The
+        # rounded LW + SW residual need not recover this same total.
+        # Dry theta keeps the established output and numerical contract.
+        rthraten_total = (rthratenlw + rthratensw
+                          if cfg.use_theta_m else None)
         # WRF v4.6.1 module_radiation_driver.F:2870 recovers SW from the
         # rounded total after the SW routine adds its heating to LW.
         # This diagnostic round trip is also part of the wrapper contract.
@@ -2661,6 +2901,8 @@ class RRTMGLegacyRadiation:
 
         self.update_count += 1
         return RadiationResult(
+            rthraten_total=(None if rthraten_total is None else
+                            rthraten_total.reshape(nz, ny, nx)),
             boundary_fluxes={name:value.reshape(ny,nx) for name,value in boundary_fluxes.items()},
             rthratenlw=rthratenlw.reshape(nz, ny, nx),
             rthratensw=rthratensw.reshape(nz, ny, nx),
@@ -2674,6 +2916,8 @@ class RRTMGLegacyRadiation:
             swddir=(None if swddir is None else swddir.reshape(ny, nx)),
             swddif=(None if swddif is None else swddif.reshape(ny, nx)),
             cldfra=cp.ascontiguousarray(cldfra_cols.T).reshape(nz, ny, nx),
+            spectral_surface=(None if spectral is None else
+                              {k: v.reshape(ny, nx) for k, v in spectral.items()}),
             aodtot=None if aodtot is None else aodtot.reshape(ny, nx),
             aod5503d=None if aerosol_aod is None else aerosol_aod.reshape(nz,ny,nx),
             aerosol2d=None if aerosol_diag is None else {key:cp.ascontiguousarray(aerosol_diag[:,i]).reshape(ny,nx) for i,key in enumerate(_aer2.INPUT_FIELDS)})

@@ -1,0 +1,32 @@
+{
+  "wrf_commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "module_sha256": "da257cf060c385c3aa4d6c3a737ec8c10773bd52034786d954bab0a0dc290766",
+  "compiler": "GNU Fortran (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+  "libc": "glibc 2.43",
+  "flags": [
+    "-O0",
+    "-ffp-contract=off",
+    "-fno-tree-vectorize"
+  ],
+  "oracle_sha256": "124aaf3ae18a5e3690dc20504c4f53c1bd5e09fd4f0f14292561be89c4a8f235",
+  "fixture_sha256": "b2c92ef5c4806169bdbdba4a1db66e4d008afd77700e33850f27f688b0fe8ca9",
+  "fixtures": [
+    {
+      "layers": 8,
+      "columns": 64,
+      "sha256": "2d9398d7d7f2967f04236a01b84aaaaa642296deabf580e24033e9142432ad40"
+    },
+    {
+      "layers": 48,
+      "columns": 64,
+      "sha256": "aa014c97f591d3db1de41396d457cc1183016bd2daa55baeccbad862c9a851b2"
+    }
+  ],
+  "fields": [
+    "RTHRATEN",
+    "TAUCLDI",
+    "TAUCLDC",
+    "GSW",
+    "RSWTOA"
+  ]
+}

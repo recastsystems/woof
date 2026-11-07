@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "gpuwm-kernels-startup"
+description = "Source-bound startup compiler images for woof"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "licenses/*"]
+requires-python = ">=3.11"
+dependencies = []
+dynamic = ["version"]
+[tool.setuptools.dynamic]
+version = { file = ["gpuwm_kernels_startup/VERSION"] }
+[tool.setuptools.packages.find]
+include = ["gpuwm_kernels_startup"]
+[tool.setuptools.package-data]
+gpuwm_kernels_startup = ["VERSION", "data/**/*"]

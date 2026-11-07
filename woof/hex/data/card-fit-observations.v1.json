@@ -110,7 +110,7 @@
       "mesh_spec_sha256": "8034c552ad52f3894e7ca2456f7a8ae39e480e36fd59b56844df27afe69bba74",
       "grid_sha256": null,
       "engine_version": "2.9.6",
-      "door_version": "0.4.4 + lane/woof-keep-as-init-hex",
+      "door_version": "0.4.4 + development branch",
       "numerics": "fast",
       "cuda_graph_replay": false,
       "evidence": "global-vr-receipt.json (80 -> 5 km zoom globe, 400 km core, 3 h whole door with 15 min native frames, complete, RTX 5090, 2026-10-24)",
@@ -276,42 +276,6 @@
       "evidence": "fit-r900-2c (3 km core of 900 km radius) stopped at the first physics step on both cards: CuPy \"Out of memory allocating 46,583,808 bytes (allocated so far: 32,356,804,096 bytes)\" with 32,107 MiB on each card; at least 32,107 + 44 MiB, box VRFS (8 x RTX 5090 32 GB, no peer-to-peer), gpuwm-hex 0.4.9 + gpuwm 2.9.9 from PyPI, 96 -> 3 km zoom globe at 37.5N 91W, 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z, convection_permitting in correct mode, every slot hex-cuda, one rank thread per card; MPAS-A multi-card scaling measurements, 2026-10-28"
     },
     {
-      "id": "mpas-route-x1.40962-55l-170sm-cp-1card-1h",
-      "status": "complete",
-      "card": "32gib-170sm",
-      "levels": 55,
-      "cells": 40962,
-      "cards": 1,
-      "hours": 1,
-      "dt_seconds": 600,
-      "route": "mpas",
-      "suite": "convection_permitting",
-      "peak_process_vram_mib": 12664.0,
-      "engine_version": "hex 0.4.8",
-      "numerics": "fast",
-      "cuda_graph_replay": false,
-      "evidence": "x1.40962 120 km uniform globe, GEFS 2025-05-19 06Z members 1-2, hex 0.4.8 MPAS physics convection_permitting, one member per group on an RTX 5090, 2026-10-27 (device_admission.MPAS_ROUTE_RUN_PEAKS)",
-      "instrument": "the member processes' nvidia-smi compute-apps rows every 1 s"
-    },
-    {
-      "id": "mpas-route-x1.655362-55l-188sm-cp-1card-6h",
-      "status": "complete",
-      "card": "96gib-188sm",
-      "levels": 55,
-      "cells": 655362,
-      "cards": 1,
-      "hours": 6,
-      "dt_seconds": 180,
-      "route": "mpas",
-      "suite": "convection_permitting",
-      "peak_process_vram_mib": 75069.0,
-      "engine_version": "hex 0.4.8",
-      "numerics": "fast",
-      "cuda_graph_replay": false,
-      "evidence": "x1.655362 30 km uniform globe, GEFS 2025-05-19 06Z members, 6 h, hex 0.4.8 MPAS physics convection_permitting, one member alone on an RTX PRO 6000, 2026-10-27 (device_admission.MPAS_ROUTE_RUN_PEAKS)",
-      "instrument": "the card's nvidia-smi row every 5 s over five member rounds"
-    },
-    {
       "card": "32gib-170sm",
       "levels": 59,
       "cards": 1,
@@ -326,7 +290,7 @@
       "cells": 10242,
       "hours": 1,
       "peak_process_vram_mib": 6770.0,
-      "evidence": "x1.10242 1 h, RRFS-MPAS hrrrv5 (TEMPO, MYNN-EDMF, MYNN surface layer, RUC, UGWP, RRTMG), 59 levels, GFS 2023-03-31 12Z, one RTX 5090 (box V5090), gpuwm-hex rrfs/mynn-speed c2efafcf + gpuwm fix/rrfs-init-rust 77f65a2614, before the RUC workspace memory work; big-mesh measurements 18:08Z, 2026-10-28"
+      "evidence": "x1.10242 1 h, RRFS-MPAS hrrrv5 (TEMPO, MYNN-EDMF, MYNN surface layer, RUC, UGWP, RRTMG), 59 levels, GFS 2023-03-31 12Z, one RTX 5090 (box reference system), gpuwm-hex rrfs/mynn-speed c2efafcf + gpuwm fix/rrfs-init-rust 77f65a2614, before the RUC workspace memory work; big-mesh measurements 18:08Z, 2026-10-28"
     },
     {
       "card": "32gib-170sm",
@@ -344,7 +308,7 @@
       "hours": 4,
       "dt_seconds": 450,
       "peak_process_vram_mib": 12024.0,
-      "evidence": "x1.40962 4 h (bigmesh-x1.40962), RRFS-MPAS hrrrv5 (TEMPO, MYNN-EDMF, MYNN surface layer, RUC, UGWP, RRTMG), 59 levels, GFS 2023-03-31 12Z, one RTX 5090 (box V5090), gpuwm-hex rrfs/mynn-speed c2efafcf + gpuwm fix/rrfs-init-rust 77f65a2614, before the RUC workspace memory work; big-mesh measurements 18:08Z, 2026-10-28"
+      "evidence": "x1.40962 4 h (bigmesh-x1.40962), RRFS-MPAS hrrrv5 (TEMPO, MYNN-EDMF, MYNN surface layer, RUC, UGWP, RRTMG), 59 levels, GFS 2023-03-31 12Z, one RTX 5090 (box reference system), gpuwm-hex rrfs/mynn-speed c2efafcf + gpuwm fix/rrfs-init-rust 77f65a2614, before the RUC workspace memory work; big-mesh measurements 18:08Z, 2026-10-28"
     },
     {
       "card": "32gib-170sm",
@@ -363,7 +327,7 @@
       "dt_seconds": 300,
       "at_least_mib": 32607.0,
       "peak_process_vram_mib": 31746.0,
-      "evidence": "x1.163842 stopped out of memory at 31,746 MiB while the RUC LSM asked for its 10,240 MiB workspace (64 KiB per cell, all cells at once): it needs more than the card's 32,607 MiB, RRFS-MPAS hrrrv5 (TEMPO, MYNN-EDMF, MYNN surface layer, RUC, UGWP, RRTMG), 59 levels, GFS 2023-03-31 12Z, one RTX 5090 (box V5090), gpuwm-hex rrfs/mynn-speed c2efafcf + gpuwm fix/rrfs-init-rust 77f65a2614, before the RUC workspace memory work; big-mesh measurements 18:08Z, 2026-10-28"
+      "evidence": "x1.163842 stopped out of memory at 31,746 MiB while the RUC LSM asked for its 10,240 MiB workspace (64 KiB per cell, all cells at once): it needs more than the card's 32,607 MiB, RRFS-MPAS hrrrv5 (TEMPO, MYNN-EDMF, MYNN surface layer, RUC, UGWP, RRTMG), 59 levels, GFS 2023-03-31 12Z, one RTX 5090 (box reference system), gpuwm-hex rrfs/mynn-speed c2efafcf + gpuwm fix/rrfs-init-rust 77f65a2614, before the RUC workspace memory work; big-mesh measurements 18:08Z, 2026-10-28"
     },
     {
       "card": "96gib-188sm",
@@ -380,11 +344,11 @@
       "hours": 1,
       "numerics": "fast",
       "instrument": "nvidia-smi memory.used of the run's cards every 1 s and its own processes' used_memory every 0.5 s (compute-apps); the largest card; the peak is reached in the first steps and held",
-      "id": "v8x6000-r700-286530-55l-188sm-mpas-cp-aerosol-1card-fast-1h",
+      "id": "eight-card-system-r700-286530-55l-188sm-mpas-cp-aerosol-1card-fast-1h",
       "cards": 1,
       "peak_process_vram_mib": 44989.0,
       "forecast_wall_seconds": 204,
-      "evidence": "box V8X6000 (8 x RTX PRO 6000 96 GB, peer-to-peer OK), 2026-10-29, the same forecast argv on one card (no --samehost-devices); 1 vs 2 cards 1,469,897,867 history + diag words, 0 different; one process per card; 96 -> 3 km zoom globe at 37.5N 91W, 286,530 cells, 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z cold start; gpuwm-hex fold/hex-0410-hb9 ed2dd96b hexcore over the gpuwm 2.9.9 / gpuwm-hex 0.4.9 wheels, CPython 3.14t; rc 0"
+      "evidence": "box eight-card system (8 x RTX PRO 6000 96 GB, peer-to-peer OK), 2026-10-29, the same forecast argv on one card (no --samehost-devices); 1 vs 2 cards 1,469,897,867 history + diag words, 0 different; one process per card; 96 -> 3 km zoom globe at 37.5N 91W, 286,530 cells, 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z cold start; gpuwm-hex fold/hex-0410-hb9 ed2dd96b hexcore over the gpuwm 2.9.9 / gpuwm-hex 0.4.9 wheels, CPython 3.14t; rc 0"
     },
     {
       "card": "96gib-188sm",
@@ -401,11 +365,11 @@
       "hours": 1,
       "numerics": "fast",
       "instrument": "nvidia-smi memory.used of the run's cards every 1 s and its own processes' used_memory every 0.5 s (compute-apps); the largest card; the peak is reached in the first steps and held",
-      "id": "v8x6000-r700-286530-55l-188sm-mpas-cp-aerosol-2card-fast-1h",
+      "id": "eight-card-system-r700-286530-55l-188sm-mpas-cp-aerosol-2card-fast-1h",
       "cards": 2,
       "peak_process_vram_mib": 30813.0,
       "forecast_wall_seconds": 173.4,
-      "evidence": "box V8X6000 (8 x RTX PRO 6000 96 GB, peer-to-peer OK), 2026-10-29, gpuwm-hex mesh-plan --global-mesh --point 37.5,-91 --fine-dx-m 3000 --radius-km 700 --background-km 96 --card rtx-pro-6000 --cards 2 --generate --run --source gfs --cycle 2023-03-31T12 --hours 1 (no physics named: the door's recipe gave --physics-suite=convection_permitting --physics-mode=correct --physics-profile=hrrr-like-aerosol, microphysics mp_thompson_aerosols); one process per card; 96 -> 3 km zoom globe at 37.5N 91W, 286,530 cells, 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z cold start; gpuwm-hex fold/hex-0410-hb9 ed2dd96b hexcore over the gpuwm 2.9.9 / gpuwm-hex 0.4.9 wheels, CPython 3.14t; rc 0; a pool lease on cards 5 and 6 of a 96 GB box: card 5 also held 27 processes of other lanes during the run, card 6 (the peak, 30,813 MiB memory.used, 30,798 its own processes) none; the 2 x RTX 5090 price comes from the card_capacity_mib row below"
+      "evidence": "box eight-card system (8 x RTX PRO 6000 96 GB, peer-to-peer OK), 2026-10-29, gpuwm-hex mesh-plan --global-mesh --point 37.5,-91 --fine-dx-m 3000 --radius-km 700 --background-km 96 --card rtx-pro-6000 --cards 2 --generate --run --source gfs --cycle 2023-03-31T12 --hours 1 (no physics named: the door's recipe gave --physics-suite=convection_permitting --physics-mode=correct --physics-profile=hrrr-like-aerosol, microphysics mp_thompson_aerosols); one process per card; 96 -> 3 km zoom globe at 37.5N 91W, 286,530 cells, 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z cold start; gpuwm-hex fold/hex-0410-hb9 ed2dd96b hexcore over the gpuwm 2.9.9 / gpuwm-hex 0.4.9 wheels, CPython 3.14t; rc 0; a pool lease on cards 5 and 6 of a 96 GB box: card 5 also held 27 processes of other lanes during the run, card 6 (the peak, 30,813 MiB memory.used, 30,798 its own processes) none; the 2 x RTX 5090 price comes from the card_capacity_mib row below"
     },
     {
       "card": "96gib-188sm",
@@ -423,12 +387,12 @@
       "hours": 1,
       "numerics": "fast",
       "instrument": "each card held to an RTX 5090's 32,607 MiB by a ballast process (nvidia-smi 65,280 MiB = 97,887 - 32,607, its context included; the run's processes then saw 31,961 MiB free, about 600 MiB less than an idle 5090) and cudaMemGetInfo's total capped at 32,607 MiB in the run's processes, so device_memory_release's 15 % / 10 % free-share rules and the free-sized tiles act as on a 5090; nvidia-smi memory.used every 1 s less the ballast, and the run's own processes every 0.5 s; the largest card",
-      "id": "v8x6000-r700-286530-55l-188sm-held-to-32607mib-mpas-cp-aerosol-2card-fast-1h",
+      "id": "eight-card-system-r700-286530-55l-188sm-held-to-32607mib-mpas-cp-aerosol-2card-fast-1h",
       "cards": 2,
       "peak_process_vram_mib": 27998.0,
       "pool_used_high_water_mib": 23297.3,
       "pool_held_high_water_mib": 26697.0,
-      "evidence": "box V8X6000 (8 x RTX PRO 6000 96 GB), 2026-10-29 05:04-05:07Z, one exclusive 2-card lease (cards 0 and 3), each card held to a 5090's 32,607 MiB: rc 0, mp_thompson_aerosols, 12Z/13Z history and 13Z diag written, forecast stage 173 s; per card 27,998 / 27,489 MiB memory.used less the ballast (own processes 27,976 / 26,986; card 0's figure includes a 588 MiB context another lane opened at 05:07:04Z, the run's last second), CuPy pool in use at most 23,297 / 23,293 MiB, held at most 26,697 / 26,252 MiB per rank; the same forecast argv mesh-plan --run gives for the 0.4.10 regional default (--physics-suite=convection_permitting --physics-mode=correct --physics-profile=hrrr-like-aerosol --samehost-devices=0,1, one process per card); 96 -> 3 km zoom globe at 37.5N 91W, 286,530 cells (spec 856f96fc), 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z cold start; gpuwm-hex rel/hex-0.4.10 4ab0b9a6 merged with fix/hex-card-fit-profile bd96e5ff (hexcore over the gpuwm 2.9.9 / gpuwm-hex 0.4.9 wheels, CPython 3.14t); receipt folder tight-5090/"
+      "evidence": "box eight-card system (8 x RTX PRO 6000 96 GB), 2026-10-29 05:04-05:07Z, one exclusive 2-card lease (cards 0 and 3), each card held to a 5090's 32,607 MiB: rc 0, mp_thompson_aerosols, 12Z/13Z history and 13Z diag written, forecast stage 173 s; per card 27,998 / 27,489 MiB memory.used less the ballast (own processes 27,976 / 26,986; card 0's figure includes a 588 MiB context another lane opened at 05:07:04Z, the run's last second), CuPy pool in use at most 23,297 / 23,293 MiB, held at most 26,697 / 26,252 MiB per rank; the same forecast argv mesh-plan --run gives for the 0.4.10 regional default (--physics-suite=convection_permitting --physics-mode=correct --physics-profile=hrrr-like-aerosol --samehost-devices=0,1, one process per card); 96 -> 3 km zoom globe at 37.5N 91W, 286,530 cells (spec 856f96fc), 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z cold start; gpuwm-hex rel/hex-0.4.10 4ab0b9a6 merged with fix/hex-card-fit-profile bd96e5ff (hexcore over the gpuwm 2.9.9 / gpuwm-hex 0.4.9 wheels, CPython 3.14t); receipt folder tight-5090/"
     },
     {
       "card": "96gib-188sm",
@@ -445,11 +409,11 @@
       "hours": 1,
       "numerics": "fast",
       "instrument": "nvidia-smi memory.used of the run's cards every 1 s and its own processes' used_memory every 0.5 s (compute-apps); the largest card; the peak is reached in the first steps and held",
-      "id": "v8x6000-r700-286530-55l-188sm-mpas-cp-aerosol-4card-fast-1h",
+      "id": "eight-card-system-r700-286530-55l-188sm-mpas-cp-aerosol-4card-fast-1h",
       "cards": 4,
       "peak_process_vram_mib": 19929.0,
       "forecast_wall_seconds": 122,
-      "evidence": "box V8X6000 (8 x RTX PRO 6000 96 GB, peer-to-peer OK), 2026-10-29, the same forecast argv the 2-card door run gave, on 4 cards (--samehost-devices=0,1,2,3); 2 vs 4 cards 1,469,897,867 history + diag words, 0 different; one process per card; 96 -> 3 km zoom globe at 37.5N 91W, 286,530 cells, 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z cold start; gpuwm-hex fold/hex-0410-hb9 ed2dd96b hexcore over the gpuwm 2.9.9 / gpuwm-hex 0.4.9 wheels, CPython 3.14t; rc 0"
+      "evidence": "box eight-card system (8 x RTX PRO 6000 96 GB, peer-to-peer OK), 2026-10-29, the same forecast argv the 2-card door run gave, on 4 cards (--samehost-devices=0,1,2,3); 2 vs 4 cards 1,469,897,867 history + diag words, 0 different; one process per card; 96 -> 3 km zoom globe at 37.5N 91W, 286,530 cells, 55 levels (tc55), dt 18 s, GFS 2023-03-31 12Z cold start; gpuwm-hex fold/hex-0410-hb9 ed2dd96b hexcore over the gpuwm 2.9.9 / gpuwm-hex 0.4.9 wheels, CPython 3.14t; rc 0"
     },
     {
       "card": "32gib-170sm",
@@ -474,6 +438,60 @@
       "pool_held_high_water_mib": 17742.1,
       "forecast_wall_seconds": 60,
       "evidence": "RTX 5090, 2026-10-29 11:50:33-11:51:36Z, one whole-card pool lease (fs-held4090), the card held to an RTX 4090's 24,564 MiB: rc 0, mp_thompson_aerosols, 12Z/13Z history and diag written, products 124 maps; the run's processes at most 18,916 MiB (card less the ballast 18,969 MiB, nothing else on the card), CuPy pool in use at most 15,648 MiB, held at most 17,742 MiB; the forecast argv the custom-mesh door gives for the GFS cold-start default (--physics-suite=convection_permitting --physics-mode=correct --physics-profile=hrrr-like-aerosol, one card); custom mesh 80 km globe + 10 km Great Plains cap (900 km) + 20 km W Europe box, 124,859 cells (spec 274f20ee), 55 levels, dt 60 s, GFS 2026-10-28 12Z cold start (init 77e5d97d); receipt folder held-24gb/"
+    },
+    {
+      "id": "mpas-route-x1.40962-55l-188sm-cp-1card-1h-0414",
+      "status": "complete",
+      "card": "96gib-188sm",
+      "levels": 55,
+      "cells": 40962,
+      "cards": 1,
+      "hours": 1,
+      "dt_seconds": 600,
+      "route": "mpas",
+      "suite": "convection_permitting",
+      "peak_process_vram_mib": 9162.0,
+      "engine_version": "hex 0.4.14 release measurement",
+      "numerics": "fast",
+      "cuda_graph_replay": false,
+      "evidence": "x1.40962 120 km uniform globe, GFS 2023-03-31 12Z, 1 h, the global door's forecast argv, MPAS physics convection_permitting, fast numerics, one member alone on an RTX PRO 6000, 2026-11-06 (device_admission.MPAS_ROUTE_RUN_PEAKS; replaces the hex 0.4.8 rows)",
+      "instrument": "the run's processes' nvidia-smi compute-apps rows every 0.5 s"
+    },
+    {
+      "id": "mpas-route-x1.163842-55l-188sm-cp-1card-1h-0414",
+      "status": "complete",
+      "card": "96gib-188sm",
+      "levels": 55,
+      "cells": 163842,
+      "cards": 1,
+      "hours": 1,
+      "dt_seconds": 360,
+      "route": "mpas",
+      "suite": "convection_permitting",
+      "peak_process_vram_mib": 18136.0,
+      "engine_version": "hex 0.4.14 release measurement",
+      "numerics": "fast",
+      "cuda_graph_replay": false,
+      "evidence": "x1.163842 60 km uniform globe, GFS 2023-03-31 12Z, 1 h, the global door's forecast argv, MPAS physics convection_permitting, fast numerics, one member alone on an RTX PRO 6000, 2026-11-06 (device_admission.MPAS_ROUTE_RUN_PEAKS; replaces the hex 0.4.8 rows)",
+      "instrument": "the run's processes' nvidia-smi compute-apps rows every 0.5 s"
+    },
+    {
+      "id": "mpas-route-x1.655362-55l-188sm-cp-1card-6h-0414",
+      "status": "complete",
+      "card": "96gib-188sm",
+      "levels": 55,
+      "cells": 655362,
+      "cards": 1,
+      "hours": 6,
+      "dt_seconds": 180,
+      "route": "mpas",
+      "suite": "convection_permitting",
+      "peak_process_vram_mib": 61522.0,
+      "engine_version": "hex 0.4.14 release measurement",
+      "numerics": "fast",
+      "cuda_graph_replay": false,
+      "evidence": "x1.655362 30 km uniform globe, GFS 2023-03-31 12Z, 6 h (a 1 h run peaked 60,372 MiB; both peaks in the first hour), the global door's forecast argv, MPAS physics convection_permitting, fast numerics, one member alone on an RTX PRO 6000, 2026-11-06 (device_admission.MPAS_ROUTE_RUN_PEAKS; replaces the hex 0.4.8 rows)",
+      "instrument": "the run's processes' nvidia-smi compute-apps rows every 0.5 s"
     }
   ]
 }

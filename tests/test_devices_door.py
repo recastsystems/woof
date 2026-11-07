@@ -600,7 +600,7 @@ def test_post_loader_admission_credits_only_the_priced_template(exp, monkeypatch
             return self
         def __exit__(self, *args):
             pass
-    runtime = SimpleNamespace(
+    runtime = SimpleNamespace(is_hip=False,
         getDeviceCount=lambda: 2,
         getDeviceProperties=lambda _: {"name": b"test", "multiProcessorCount": 1,
                                       "maxThreadsPerMultiProcessor": 32},
@@ -1192,7 +1192,7 @@ def test_a_split_tree_that_does_not_fit_is_refused_by_name(rank_api, monkeypatch
         def __init__(self, dev): self.dev = dev
         def __enter__(self): return self
         def __exit__(self, *args): return False
-    runtime = SimpleNamespace(getDeviceCount=lambda: 2,
+    runtime = SimpleNamespace(is_hip=False, getDeviceCount=lambda: 2,
                               memGetInfo=lambda: (1 * GIB, 2 * GIB))
     monkeypatch.setitem(sys.modules, "cupy", SimpleNamespace(
         cuda=SimpleNamespace(Device=Device, runtime=runtime)))

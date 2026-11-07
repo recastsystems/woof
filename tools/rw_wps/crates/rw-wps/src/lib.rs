@@ -9,6 +9,7 @@
 pub mod mapping;
 pub mod namelist;
 pub mod sfire;
+pub mod wrflowinp;
 
 use mapping::{
     AxisRole, GridLocation, MissingPolicy, SourceFormat, Staggering, TargetContract,

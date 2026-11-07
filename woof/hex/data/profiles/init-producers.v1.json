@@ -1,6 +1,43 @@
 {
   "schema": "gpuwm-hex.init-producers/v1",
   "about": "Initialization producers by model source pin. A producer row names the suite routes it initializes and every recipe its init_atmosphere applies (soil, vertical grid, static, drag statistics, aerosols, hydrometeors, lateral boundaries). The init door picks the row from the physics suite; source rows (init_sources) only declare what a first guess carries. A new producer is a new row here, not a new code path. Rows with no producer (the MPAS-A v8.4.2 suites, the ArWen-route suites) keep the door's own case-7 init.",
+  "boundary_recipes": {
+    "noaa": {
+      "source": "rrfs-workflow 570c81f scripts/exrrfs_lbc.sh:39-57: GFS mass only; RAP, HRRR, RRFS all hydrometeors; other parents water vapour only. Native absent number fields stay zero.",
+      "parents": {
+        "gfs": {
+          "map_sources": [
+            "(?:NCEP[ -])?GFS(?: Model)?"
+          ],
+          "config": {
+            "hydrometeors_rrfs": false,
+            "hydrometeors_gfs": true,
+            "absent_numbers": "zero",
+            "aerosol_climatology": false
+          }
+        },
+        "rap-hrrr-rrfs": {
+          "map_sources": [
+            "(?:NCEP[ -])?(?:RAP|HRRR|RRFS)(?: Model)?"
+          ],
+          "config": {
+            "hydrometeors_rrfs": true,
+            "hydrometeors_gfs": false,
+            "absent_numbers": "zero",
+            "aerosol_climatology": false
+          }
+        }
+      },
+      "otherwise": {
+        "config": {
+          "hydrometeors_rrfs": false,
+          "hydrometeors_gfs": false,
+          "absent_numbers": "zero",
+            "aerosol_climatology": false
+        }
+      }
+    }
+  },
   "producers": {
     "rrfs-mpas-1d6e370e": {
       "title": "RRFS-MPAS (NOAA GSL MPAS-Model fork) init_atmosphere",
@@ -16,6 +53,15 @@
         "stages": ["case7", "case9", "static", "terrain", "vertical", "artifact", "prepare", "gwd", "surface"]
       },
       "declarations": "rrfs-init-declarations-1d6e370e.v1.json",
+      "soil_by_scheme": {
+        "sf_noah": {
+          "recipe": "fork-noah4",
+          "n_soil_layers": 4,
+          "land_surface": "noah",
+          "first_guess_soil": "source-layers",
+          "source": "mpas_atmphys_initialize_real.F init_soil_layers_depth: four Noah layers"
+        }
+      },
       "soil": {
         "recipe": "fork-ruc9",
         "n_soil_layers": 9,
@@ -57,7 +103,8 @@
         "landuse_table": "MODIFIED_IGBP_MODIS_NOAH_15s",
         "frac_seaice": true,
         "tsk_seaice_threshold": 271.4,
-        "oned_underflow": "preserve"
+        "oned_underflow": "preserve",
+        "absent_numbers": "from-mass"
       },
       "aerosols": {
         "rule": "source-first",
@@ -66,14 +113,15 @@
       },
       "hydrometeors": {
         "rule": "source-when-present",
-        "source": "cases.F ~7244-7363: qc qr qi qs qg nc ni nr ng vertically interpolated from the first guess when present, else zero"
+        "source": "cases.F ~7244-7363: qc qr qi qs qg nc ni nr ng vertically interpolated from the first guess when present, else zero; hex then fills rain, cloud and ice number from mass where the first guess has the mass and no number (case7.absent_numbers, a declared departure from the fork: docs/rrfs-init.md)"
       },
       "lbc": {
         "hydrometeors_rrfs": true,
         "hydrometeors_gfs": false,
         "aerosolaware": true,
         "fg_interval_seconds": 3600,
-        "source": "exrrfs_lbc.sh case 9 with config_lbc_hydrometeors_rrfs=true"
+        "absent_numbers": "from-mass",
+        "source": "exrrfs_lbc.sh case 9. hydrometeors_rrfs=true for every parent is NOAA's setting for RAP, HRRR and RRFS parents only; for a GFS parent exrrfs_lbc.sh sets hydrometeors_gfs=true, which writes no number fields. It stays true here because those fields carry rain, cloud, ice and graupel number to the model, and absent_numbers=from-mass fills rain, cloud and ice number where the parent has mass and no number (the fork leaves them zero, which TEMPO draws as an echo ring on every edge). A declared departure from NOAA's GFS recipe: docs/rrfs-init.md"
       },
       "static": {
         "recipe": "fork-static",
@@ -157,6 +205,15 @@
         ]
       },
       "declarations": "rrfs-init-declarations-44c0849.v1.json",
+      "soil_by_scheme": {
+        "sf_noah": {
+          "recipe": "fork-noah4",
+          "n_soil_layers": 4,
+          "land_surface": "noah",
+          "first_guess_soil": "source-layers",
+          "source": "mpas_atmphys_initialize_real.F init_soil_layers_depth: four Noah layers"
+        }
+      },
       "soil": {
         "recipe": "fork-ruc9",
         "n_soil_layers": 9,
@@ -200,7 +257,8 @@
         "frac_seaice": true,
         "tsk_seaice_threshold": 271.4,
         "seaice_cleanup": "clear-unfrozen",
-        "oned_underflow": "preserve"
+        "oned_underflow": "preserve",
+        "absent_numbers": "from-mass"
       },
       "aerosols": {
         "rule": "source-first",
@@ -209,14 +267,15 @@
       },
       "hydrometeors": {
         "rule": "source-when-present",
-        "source": "cases.F ~7244-7363: qc qr qi qs qg nc ni nr ng vertically interpolated from the first guess when present, else zero"
+        "source": "cases.F ~7244-7363: qc qr qi qs qg nc ni nr ng vertically interpolated from the first guess when present, else zero; hex then fills rain, cloud and ice number from mass where the first guess has the mass and no number (case7.absent_numbers, a declared departure from the fork: docs/rrfs-init.md)"
       },
       "lbc": {
         "hydrometeors_rrfs": true,
         "hydrometeors_gfs": false,
         "aerosolaware": true,
         "fg_interval_seconds": 3600,
-        "source": "exrrfs_lbc.sh case 9 with config_lbc_hydrometeors_rrfs=true"
+        "absent_numbers": "from-mass",
+        "source": "exrrfs_lbc.sh case 9. hydrometeors_rrfs=true for every parent is NOAA's setting for RAP, HRRR and RRFS parents only; for a GFS parent exrrfs_lbc.sh sets hydrometeors_gfs=true, which writes no number fields. It stays true here because those fields carry rain, cloud, ice and graupel number to the model, and absent_numbers=from-mass fills rain, cloud and ice number where the parent has mass and no number (the fork leaves them zero, which TEMPO draws as an echo ring on every edge). A declared departure from NOAA's GFS recipe: docs/rrfs-init.md"
       },
       "static": {
         "recipe": "fork-static",

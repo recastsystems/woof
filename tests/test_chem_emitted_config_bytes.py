@@ -58,7 +58,7 @@ def test_public_emitted_config_bytes_match_independent_staging(
         for domain in exp.domains))
     assert all("solar_generation" not in domain["run"]
                for domain in experiment_config_document(exp)["domains"])
-    # Declared default capability, 2.9.4 (lane/cap-seaice): prognostic sea
+    # Declared default capability, 2.9.4 (development branch): prognostic sea
     # ice is on wherever a land surface runs it, and such a document writes
     # it with its three parameters; the baseline predates it.  The pinned
     # bytes are read with the switch off, which the document omits.

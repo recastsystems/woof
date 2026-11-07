@@ -1,7 +1,7 @@
 """Which MPAS-route output files are written lossless-compressed, and how.
 
 Ruling 2026-10-28: "Lossless compression is the default"; 2026-10-27: Regional and hex get features together.
-WOOF's history frames are lossless NetCDF-4 since woof 2.9.10, and the ArWen-physics route here already
+WOOF's history frames are lossless NetCDF-4 since gpuwm 2.9.10, and the ArWen-physics route here already
 writes deflated frames (woof.hex.history_deflate). The MPAS-physics route (the hex default) wrote its history
 and diagnostics files uncompressed through rw_mpas_stream. They are now written lossless-compressed by
 rw_mpas_stream itself: NETCDF4_CLASSIC, chunks byte-shuffled and deflated on every core by the engine's

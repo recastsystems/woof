@@ -4,8 +4,14 @@ Authority RRFS-MPAS 1d6e370e + ierrm init (owner ruling 2026-10-14 07:45Z).
 Separately labelled source-corrected strict GNU single precision. All 31
 procedure bodies retained. See receipts for measured identity scope.
 """
+
+from woof.hip_backend import runtime_limit as _runtime_limit
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 from functools import lru_cache
+import re
+import threading
 from pathlib import Path
 
 SCHEME = "cu_grell_freitas_li"
@@ -43687,6 +43693,15 @@ extern "C" __global__ void gfl_spread(int nc,int owned,int nz,int me,int me2,int
  }
 }
 
+// RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_convection.F:1360-1433 with sub3d <= 0:
+// each tendency word gains its subsidence word, where both live.
+extern "C" __global__ void gfl_add_subsidence(int owned,int nz,long long kt,long long ct,long long ks,long long cs,const float* sub,float* tend){
+ long long ix=(long long)blockIdx.x*blockDim.x+threadIdx.x;
+ if(ix>=(long long)owned*nz)return;
+ long long c=ix/nz,k=ix%nz;
+ tend[k*kt+c*ct]=__fadd_rn(tend[k*kt+c*ct],sub[k*ks+c*cs]);
+}
+
 // RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/mpas_atm_core.F:1481-1584
 // Two-ring construction: unique candidates appended in native edge order, owned cells only.
 extern "C" __global__ void gfl_cells_on_cells(int owned,int me,int me2,const int* ne,
@@ -43739,7 +43754,8 @@ def cuda_source():
     # The older Thompson log10f reduction targets glibc 2.39 instead.
     urban = Path(kernels.__file__).with_name('urban_bem.cuh').read_text()
     log10 = urban[urban.index('// log10f: CORE-MATH'):urban.index('\n'+'__device__ '+'void bem_bem(')]
-    return header + '\n' + double + '\n' + extra + '\n' + trig + '\n' + log10 + '\n' + _SUPPORT + '\n' + _SCHEME_SOURCE + '\n' + _ENTRY + '\n' + _DRIVER
+    return (header + '\n' + double + '\n' + extra + '\n' + trig + '\n' + log10 + '\n'
+            + lower(_SUPPORT, _SCHEME_SOURCE, _lane_entry()) + '\n' + _DRIVER)
 
 
 @lru_cache(maxsize=None)
@@ -43749,7 +43765,7 @@ def _module(device):
     from ...cuda_backend.aot import raw_image
     with cp.cuda.Device(device):
         _spill_heap()
-        arch = cp.cuda.Device(device).compute_capability
+        arch = _compilation_target(device, xp=cp)
         # The same raw NVRTC compile (program name, options, target), through the box's warm store, the
         # pack and the kernel plan's pool: a cold start no longer compiles it on one core at the first call.
         binary = raw_image(cuda_source(), _hex_numerics.options(COMPILER_OPTIONS), arch, filename='cu_gfl_bf6a4b0.cu')
@@ -43763,12 +43779,12 @@ def _spill_heap():
     import cupy as cp
     import sys
     limit = cp.cuda.runtime.cudaLimitMallocHeapSize
-    if cp.cuda.runtime.deviceGetLimit(limit) >= SPILL_HEAP_BYTES:
+    if _runtime_limit(limit) >= SPILL_HEAP_BYTES:
         return
     try:
-        cp.cuda.runtime.deviceSetLimit(limit, SPILL_HEAP_BYTES)
+        _runtime_limit(limit, SPILL_HEAP_BYTES)
     except cp.cuda.runtime.CUDARuntimeError as error:
-        print(f'woof hex: GF-Li spill heap stays at {cp.cuda.runtime.deviceGetLimit(limit):,} bytes ({error}); a '
+        print(f'woof hex: GF-Li spill heap stays at {_runtime_limit(limit):,} bytes ({error}); a '
               'column deeper than its scratch share uses it', file=sys.stderr)
 
 
@@ -43780,120 +43796,496 @@ def _saved_fct_error(device):
         return cp.zeros(1,dtype=cp.uint32)
 
 
-def launch_columns(fields, *, ncol, nz, pbl_scheme, row_dx_first, native_dimensions=None, saved_fct_error=None):
+# ---------------------------------------------------------------------------------------------------
+# the lane layout
+# ---------------------------------------------------------------------------------------------------
+# Lane-interleave the GF-Li column arrays, the way CUDA lays out local memory (woof.hex.mpasphys.gf_lanes for GF-Li).
+#
+# THE BREAKAGE THIS ENDS (hrrrv5 + storm scheme on the 96 -> 3 km zoom globe, 84,513 columns, RTX 5090, 2026-10-31):
+# GF-Li ran 1.59x MPAS physics per forecast hour and held 25.3 GB against 15.5 GB. Every thread had its own 311 KB
+# scratch share, so a warp reading ``a[k]`` touched 32 cache lines; each launch paid for that share 13,797 times over
+# (4 GiB) although the deepest column needs a fraction of it; and the driver copied every field into a second
+# column-major array and back on every call.
+#
+# What changes here is placement only: the arithmetic, its order and every index expression are the source's.
+#
+# * Every float/integer array the scheme allocates becomes a lane pointer whose element ``i`` lives ``GF_LANES`` words
+#   after element ``i-1``, so a warp reading ``a[k]`` reads 32 consecutive words. Addressing stays linear in the
+#   element index, so ``&a[e]`` handed to a callee and indexed there by ``j`` still reaches element ``e+j``.
+# * The scheme's own argument arrays (the MPAS fields) are read and written where they already live: a level argument
+#   is a stride pointer into its pool, so the driver holds no second copy. The scheme reads each input once, into its
+#   own arrays, and writes each output once, so nothing is lost by the scatter on those few accesses.
+# * A thread is a workspace slot looping over columns (position = slot, slot+T, ...), so the scratch is sized to the
+#   threads that can run at once, not to the columns of a launch, and one launch serves a whole call.
+# * ``order`` maps a position to its column, so a warp holds columns of like activity.
+#
+# Character and logical arrays keep a small contiguous per-thread region. The host witness compiles with
+# ``GF_LANES 1`` and is the original contiguous layout. This transform runs once at kernel setup; nothing here runs in a
+# step.
+LANES = 128
+
+#: Contiguous bytes per thread: ierrc, ierrcm and ierrcs (one 50-byte element each at its=ite=1) and flg, 16-byte
+#: rounded: 3 * 64 + 16.
+CHARACTER_BYTES = 256
+
+#: Resident 128-thread blocks per SM the column kernel is compiled for (the GF measurement in gf_lanes: fewer blocks
+#: mean more registers per thread and fewer workspace slots).
+_DEFINES = r'''#ifndef GF_MIN_BLOCKS
+#ifdef HEX_NUMERICS_FAST
+#define GF_MIN_BLOCKS 2
+#else
+#define GF_MIN_BLOCKS 4
+#endif
+#endif
+#ifndef GF_LANES
+#ifdef GF_HOST_WITNESS
+#define GF_LANES 1
+#else
+#define GF_LANES 128
+#endif
+#endif
+#define GF_CHARACTER_BYTES ''' + str(CHARACTER_BYTES) + "\n"
+
+_POINTERS = r'''
+#ifdef GF_HOST_WITNESS
+#define __forceinline__ inline
+#define __launch_bounds__(...)
+#endif
+// A scratch array pointer whose element i lives GF_LANES words after element i-1 (lane-interleaved placement).
+// Arithmetic and dereference stay linear in the element index; a pointer to a scalar is only read at element 0.
+template<class T> struct GFLanePtr {
+  T* p;
+  __device__ __forceinline__ GFLanePtr() = default;
+  __device__ __forceinline__ GFLanePtr(T* q):p(q){}
+  __device__ __forceinline__ explicit GFLanePtr(void* q):p((T*)q){}
+  __device__ __forceinline__ GFLanePtr(decltype(nullptr)):p(nullptr){}
+  __device__ __forceinline__ bool operator==(decltype(nullptr)) const {return p==nullptr;}
+  __device__ __forceinline__ bool operator!=(decltype(nullptr)) const {return p!=nullptr;}
+  template<class I> __device__ __forceinline__ T& operator[](I i) const {return p[(long long)i*GF_LANES];}
+  __device__ __forceinline__ T& operator*() const {return *p;}
+};
+typedef GFLanePtr<GFReal> GFP;
+typedef GFLanePtr<int> GIP;
+// A level argument of the scheme: an MPAS field where it lives, element i (level i of this column) i strides on.
+struct GFS {
+  GFReal* p;long long stride;
+  __device__ __forceinline__ GFS() = default;
+  __device__ __forceinline__ GFS(GFReal* q,long long s):p(q),stride(s){}
+  __device__ __forceinline__ bool operator==(decltype(nullptr)) const {return p==nullptr;}
+  __device__ __forceinline__ bool operator!=(decltype(nullptr)) const {return p!=nullptr;}
+  template<class I> __device__ __forceinline__ GFReal& operator[](I i) const {return p[(long long)i*stride];}
+};
+// A contiguous array held on the thread's stack (the fixed zuh2 of the source), never a lane array.
+typedef GFReal* GFRawP;
+'''
+
+_WORKSPACE_START = 'struct GFWorkspace {'
+_FRAME_END = ''' __device__ ~GFFrame(){ws.position=saved;}
+};'''
+
+# Positions count this lane's bytes exactly as before (so capacity and highwater keep their meaning); a lane byte
+# offset b is the address data + b*GF_LANES, i.e. element b/4 of the lane-interleaved slab.
+_WORKSPACE_NEW = '''struct GFWorkspace {
+  char* data;unsigned long long capacity,position,highwater;unsigned int diagnostics;GFReal row_dx_first;
+  // Mutable SAVE, including the early return: MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/module_cu_gfl_deep.F90:2641-2705
+  bool fct1d3_error;
+  char* bytes;unsigned long long bcapacity,bposition;
+// Typed CUDA support for MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/MPAS/module_cu_gfl_common.F90:1-11
+  __device__ void* allocate(unsigned long long n){
+    n=(n+15)&~15ULL;
+    if(position+n>capacity){gf_trap();return nullptr;}
+    void* result=data+position*GF_LANES;position+=n;highwater=gf_max(highwater,position);return result;
+  }
+  // Character and logical arrays are read bytewise: contiguous per thread.
+  __device__ void* allocate_bytes(unsigned long long n){
+    n=(n+15)&~15ULL;
+    if(bposition+n>bcapacity){gf_trap();return nullptr;}
+    void* result=bytes+bposition;bposition+=n;return result;
+  }
+};
+struct GFFrame {
+ GFWorkspace &ws;unsigned long long saved,bsaved;
+ __device__ GFFrame(GFWorkspace &w):ws(w),saved(w.position),bsaved(w.bposition){}
+ __device__ ~GFFrame(){ws.position=saved;ws.bposition=bsaved;}
+};'''
+
+#: The scheme's level arguments: the MPAS fields, which stay where they live. Everything else in its signature is a
+#: scalar or one word per column, read at element 0.
+LEVEL_ARGUMENTS = ('u', 'v', 'w', 't', 'q', 'rho', 'p', 'pi', 'p8w', 'dz8w', 'rqvften', 'rthften', 'rthblten',
+                   'rqvblten', 'rthraten', 'gdc', 'gdc2', 'rthcuten', 'rqvcuten', 'rqccuten', 'rqicuten', 'rucuten',
+                   'rvcuten', 'qc3d', 'qi3d', 'chem3d_in', 'qc_cu', 'qi_cu', 'cldfrac_cu', 'sub3d_rthcuten',
+                   'sub3d_rqvcuten', 'sub3d_rucuten', 'sub3d_rvcuten', 'refl10cm_cu')
+#: Children handed level arguments directly, by parameter name.
+_LEVEL_PARAMETERS = {
+    'calc_cldfraction_monan': ('cldfra', 'qv', 'qc', 'qi', 'p', 't', 'rho', 'dz8w'),
+    'calc_cu_reflectivity': ('t', 'dz8w', 'refl10cm_cu'),
+    'cu_grell_freitas_li': LEVEL_ARGUMENTS,
+}
+
+_BYTE_READ = re.compile(r'\(GFReal \*\) \(\(char \*\) (\w+) \+ \(unsigned long long\) \(')
+
+
+def _balanced_end(text: str, opening: int) -> int:
+    """The index just past the parenthesis matching the one at ``opening``."""
+    depth = 0
+    for index in range(opening, len(text)):
+        if text[index] == '(':
+            depth += 1
+        elif text[index] == ')':
+            depth -= 1
+            if depth == 0:
+                return index + 1
+    raise ValueError("unbalanced parentheses in the GF-Li source")
+
+
+def _lower_byte_addressing(scheme: str) -> str:
+    """``*((GFReal *) ((char *) a + (unsigned long long) (E * 4)))`` is element E of ``a``; byte offsets assume 4."""
+    out, at, count = [], 0, 0
+    while True:
+        found = _BYTE_READ.search(scheme, at)
+        if found is None:
+            out.append(scheme[at:])
+            break
+        star = scheme.rfind('*((', at, found.start() + 1)
+        if star != found.start() - 2:
+            raise ValueError(f"GF-Li byte access without its dereference: {scheme[found.start() - 20:found.end()]}")
+        offset = found.end() - 1
+        end = _balanced_end(scheme, offset)
+        inner = scheme[offset + 1:end - 1]
+        if not inner.endswith(' * 4'):
+            raise ValueError(f"GF-Li byte access not in 4-byte words: {inner[-40:]}")
+        whole = _balanced_end(scheme, star + 1)
+        if scheme[end:whole] != '))':
+            raise ValueError(f"GF-Li byte access shape changed: {scheme[end:whole]!r}")
+        out.append(scheme[at:star])
+        out.append(f'{found.group(1)}[{inner[:-4]}]')
+        at = whole
+        count += 1
+    if count < 20:
+        raise ValueError(f"GF-Li byte accesses: found only {count}")
+    return ''.join(out)
+
+
+def _typed_parameters(scheme: str) -> str:
+    """Level arguments and the children's matching parameters take the stride pointer, in declarations and bodies."""
+    for name, parameters in _LEVEL_PARAMETERS.items():
+        signatures = list(re.finditer(r'\b' + name + r' \(GFWorkspace &workspace,[^\n]*\)', scheme))
+        signatures = [m for m in signatures if 'GFReal * ' in m.group(0) or 'int * ' in m.group(0)]
+        if len(signatures) != 2:
+            raise ValueError(f"GF-Li {name}: {len(signatures)} signatures")
+        for match in reversed(signatures):
+            text = match.group(0)
+            for parameter in parameters:
+                text, hits = re.subn(r'\bGFReal \* ' + parameter + r'\b', 'GFS ' + parameter, text)
+                if hits != 1:
+                    raise ValueError(f"GF-Li {name}: parameter {parameter}")
+            scheme = scheme[:match.start()] + text + scheme[match.end():]
+    return scheme
+
+
+def lower(support: str, scheme: str, entry: str) -> str:
+    """Return the lane-interleaved CUDA source (support + scheme + entry)."""
+    begin = support.index(_WORKSPACE_START)
+    end = support.index(_FRAME_END) + len(_FRAME_END)
+    support = support[:begin] + _WORKSPACE_NEW + support[end:]
+    support = support.replace("typedef char GFText[50];", "typedef char GFText[50];\n" + _POINTERS, 1)
+    if "GFLanePtr" not in support:
+        raise ValueError("GF-Li support changed")
+    # Character and logical arrays: their descriptors take the contiguous byte region.
+    held = set(re.findall(r'\b\w+ = \((?:GFText|bool) \*\) (D_\d+);', scheme))
+    if len(held) != 4:
+        raise ValueError(f"GF-Li byte arrays: {sorted(held)}")
+    for name in held:
+        pattern = name + ' = (char *) workspace.allocate ('
+        if scheme.count(pattern) != 1:
+            raise ValueError(f"GF-Li byte array {name}")
+        scheme = scheme.replace(pattern, name + ' = (char *) workspace.allocate_bytes (')
+    # The one fixed-size array handed to a callee stays a plain pointer there.
+    scheme, hits = re.subn(r'\bGFReal \* zuh2\b', 'GFRawP zuh2', scheme)
+    if hits != 2:
+        raise ValueError(f"GF-Li zuh2 parameter: {hits}")
+    scheme = _lower_byte_addressing(scheme)
+    scheme = _typed_parameters(scheme)
+    # Every other float/integer pointer in the scheme is a lane pointer. Fixed-size local arrays stay C arrays.
+    before = len(re.findall(r'\bGFReal \*|\bint \*', scheme))
+    scheme = re.sub(r'\bGFReal \*', 'GFP ', scheme)
+    scheme = re.sub(r'\bint \*', 'GIP ', scheme)
+    if before < 1000 or re.search(r'\bGFReal \*|\bint \*', scheme):
+        raise ValueError(f"GF-Li pointers: {before}")
+    return _DEFINES + support + "\n" + scheme + "\n" + entry
+
+
+# ---------------------------------------------------------------------------------------------------
+# how much one column can need
+# ---------------------------------------------------------------------------------------------------
+_FUNCTION = re.compile(r'^__device__ \w+ (\w+) \(GFWorkspace &workspace[^\n]*\)\n\{', re.M)
+_ALLOCATE = re.compile(r'workspace\.allocate \(gf_max\(\(unsigned long\) \((size_\d+) \* (\d+)\), 1\)\)')
+_SIZE_LINE = re.compile(r'^\s*((?:size|ubound|lbound|stride)_\d+) = (.*);\s*$', re.M)
+
+
+def _evaluate(expression: str, values: dict[str, int]) -> int:
+    text = re.sub(r'\(long long\)|\(unsigned long long\)|\(int\)', '', expression)
+    text = re.sub(r'\*(\w+)', r'\1', text.replace('gf_max', 'max').replace('gf_min', 'min'))
+    text = re.sub(r'(\w+)\s*\*\s*(\w+)', r'\1*\2', text)
+    return int(eval(text, {"__builtins__": {"max": max, "min": min}}, values))  # the pinned source's own size lines
+
+
+def _dimensions(nz: int, chem: int, kme: int | None = None) -> dict[str, int]:
+    kme = nz + 1 if kme is None else kme
+    return {'its': 1, 'ite': 1, 'itf': 1, 'jts': 1, 'jte': 1, 'ims': 1, 'ime': 1, 'jms': 1, 'jme': 1, 'ids': 1,
+            'ide': 2, 'jds': 1, 'jde': 2, 'kts': 1, 'kte': nz, 'ktf': nz, 'kms': 1, 'kme': kme, 'kds': 1,
+            'kde': kme, 'nchem': chem, 'num_chem': chem, 'n': 1, 'im': 1, 'ipr': 1, 'j': 1, 'itest': 1, 'kt': nz,
+            'kend': nz, 'kstart': 1, 'kpbli': 1, 'kb': 1, 'kbcon': 1, 'ktop': nz, 'ii': 1,
+            'mtp': chem, 'ens4': 9, 'nens3': 16, 'nv': max(chem, 1), 'maxens3': 16, 'ensdim': 16, 'maxiens': 1,
+            'M_1458': 1, 'M_1459': nz}
+
+
+def frames(scheme: str, nz: int, chem: int = 0, kme: int | None = None) -> tuple[dict[str, int], dict[str, set[str]]]:
+    """Bytes each scheme function allocates on entry, and whom it calls, from the source's own size lines."""
+    found = list(_FUNCTION.finditer(scheme))
+    sizes: dict[str, int] = {}
+    calls: dict[str, set[str]] = {}
+    for index, match in enumerate(found):
+        body = scheme[match.end():found[index + 1].start() if index + 1 < len(found) else len(scheme)]
+        values = dict(_dimensions(nz, chem, kme))
+        for line in _SIZE_LINE.finditer(body):
+            try:
+                values[line.group(1)] = _evaluate(line.group(2), values)
+            except (NameError, SyntaxError, TypeError):
+                # A bound read from a local (an index into a loop, not a dimension) never sizes an allocation here.
+                continue
+        total = 0
+        for allocation in _ALLOCATE.finditer(body):
+            total += (max(values[allocation.group(1)] * int(allocation.group(2)), 1) + 15) & ~15
+        sizes[match.group(1)] = total
+        calls[match.group(1)] = set(re.findall(r'\b(\w+) \(workspace', body)) & {m.group(1) for m in found}
+    return sizes, calls
+
+
+def deepest(scheme: str, nz: int, chem: int = 0, *, kme: int | None = None, root: str = 'cu_grell_freitas_li') -> int:
+    """The most bytes any call path holds: the root's frame plus the deepest chain of frames under it."""
+    sizes, calls = frames(scheme, nz, chem, kme)
+    memo: dict[str, int] = {}
+
+    def depth(name: str) -> int:
+        if name not in memo:
+            memo[name] = sizes[name] + max((depth(child) for child in calls[name]), default=0)
+        return memo[name]
+
+    return depth(root)
+
+
+class Levels:
+    """A level field where it lives, [level, column] (an MPAS pool array): the kernel reads and writes it in place."""
+    __slots__ = ('array',)
+
+    def __init__(self, array):
+        self.array = array
+
+
+#: The scalar arguments, by value in the kernel's own parameters: no upload, so no stream sync, on any call.
+_SCALARS = ('itimestep', 'dt', 'xlv', 'cp', 'g', 'r_v', 'ichoice_deep', 'ichoice_shallow', 'ishallow_g3', 'sub3d',
+            'num_chem')
+
+
+def _lane_entry():
+    """The column entry on the lane layout: a thread is a workspace slot looping over positions (the lane layout below).
+
+    The scheme call is ``_ENTRY``'s own, argument for argument, with each level field a stride pointer and each
+    scalar a word of the thread's stack.
+    """
+    call = _ENTRY[_ENTRY.index(' cu_grell_freitas_li(workspace'):]
+    call = call[:call.index('\n')]
+
+    def argument(match):
+        kind, index = match.group(1), int(match.group(2))
+        name = FIELDS[index]
+        if name in _SCALARS:
+            return f'&scalar_{name}'
+        if name in LEVEL_ARGUMENTS:
+            return f'GFS((GFReal*)(ptrs[{index}]+column*strides[{index}]),kstrides[{index}])'
+        return f'({kind}*)(ptrs[{index}]+column*strides[{index}])'
+
+    call, hits = re.subn(r'\((int|GFReal)\*\)\(ptrs\[(\d+)\]\+column\*strides\[\2\]\)', argument, call)
+    if hits != len(FIELDS):
+        raise ValueError(f'GF-Li entry: {hits} arguments for {len(FIELDS)} fields')
+    locals_ = ''.join(f' {"int" if name in INTEGER_FIELDS else "GFReal"} scalar_{name}=a_{name};' for name in _SCALARS)
+    parameters = ','.join(f'{"int" if name in INTEGER_FIELDS else "float"} a_{name}' for name in _SCALARS)
+    forwarded = ','.join(f'a_{name}' for name in _SCALARS)
+    return r"""
+// RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/MPAS/module_cu_gfl_mpas.F90:33-745
+__device__ void gfl_column(long long column,int nz,const unsigned long long* ptrs,const unsigned long long* strides,const long long* kstrides,const char* pbl,long long pbl_len,
+ GFWorkspace& workspace,""" + parameters + r""",int kms,int kme,int kds,int kde,int kts,int kte){
+""" + locals_ + r"""
+ int ims=1,ime=1,jms=1,jme=1,ids=1,ide=2,jds=1,jde=2,its=1,ite=1,jts=1,jte=1;
+""" + call + r"""
+}
+#ifndef GF_HOST_WITNESS
+// One thread per workspace slot, looping over positions slot, slot+T, ... (T = gridDim*blockDim, a multiple of
+// GF_LANES, so a slot keeps its lane); order (optional) maps a position to its column, so warps can hold columns of
+// like activity. Columns are independent; each executes the complete source order. The SAVE word is the source's.
+// MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/MPAS/module_cu_gfl_mpas.F90:33-745
+extern "C" __global__ void __launch_bounds__(GF_LANES,GF_MIN_BLOCKS) gfl_columns(int ncol,int nz,const unsigned long long* ptrs,const unsigned long long* strides,const long long* kstrides,const char* pbl,long long pbl_len,
+ char* scratch,unsigned long long capacity,unsigned int* diagnostics,unsigned long long* highwater,const float* row_dx_first,""" + parameters + r""",int kms,int kme,int kds,int kde,int kts,int kte,unsigned int* saved_fct_error,const int* order){
+ const long long slot=(long long)blockIdx.x*blockDim.x+threadIdx.x;
+ const long long slots=(long long)gridDim.x*blockDim.x;
+ const int lane=(int)(slot%GF_LANES);
+ char* slab=scratch+(slot/GF_LANES)*(capacity+GF_CHARACTER_BYTES)*GF_LANES;
+ for(long long position=slot;position<ncol;position+=slots){
+  const long long column=order?(long long)order[position]:position;
+  GFWorkspace workspace{slab+4*lane,capacity,0,0,0,GFReal(row_dx_first[0]),atomicAdd(saved_fct_error,0u)!=0,
+   slab+capacity*GF_LANES+(long long)lane*GF_CHARACTER_BYTES,GF_CHARACTER_BYTES,0};
+  gfl_column(column,nz,ptrs,strides,kstrides,pbl,pbl_len,workspace,""" + forwarded + r""",kms,kme,kds,kde,kts,kte);
+  diagnostics[column]=workspace.diagnostics;highwater[column]=workspace.highwater;
+  // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/module_cu_gfl_deep.F90:2641-2705
+  if(workspace.fct1d3_error)atomicOr(saved_fct_error,1u);
+ }
+}
+#endif
+
+"""
+
+
+def _word(value, kind):
+    """A scalar argument as a Python number (a one-word array from a replay's fields, or the driver's number)."""
+    import numpy as np
+    item = value.item() if hasattr(value, 'item') and np.size(value) == 1 else value
+    return kind(item)
+
+
+def launch_columns(fields, *, ncol, nz, pbl_scheme, row_dx_first, native_dimensions=None, saved_fct_error=None, order=None):
     """RRFS fork MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/MPAS/module_cu_gfl_mpas.F90:33-745 at 1d6e370e.
 
-    Boundary arrays have column-major batches: surface [ncol], level [ncol,nz+1],
-    chemistry [ncol,nchem,nz+1]. Scalar arguments are CUDA single-element arrays.
-    All inout fields, aliasing and held level words belong to the caller.
-    row_dx_first is the first owned cell's dx from the unsplit native row.
-    Captures may supply the original six vertical bounds through
-    native_dimensions; the driver uses its ordinary interface allocation.
-    Values are never decoded or processed on the host.
+    Fields are read and written where they are: :class:`Levels` wraps an MPAS pool array [level, column]; a plain
+    array is a column-major batch, surface [ncol], level [ncol,nz+1], chemistry [ncol,nchem,nz+1]; a scalar is a
+    number or a one-word array. All inout fields, aliasing and held level words belong to the caller. row_dx_first
+    is the first owned cell's dx from the unsplit native row. Captures may supply the original six vertical bounds
+    through native_dimensions; the driver uses its ordinary interface allocation. order: optional device int32
+    permutation (position -> column) placing columns of like activity in the same warps; every column's words are the
+    same in any order. Values are never decoded or processed on the host, and nothing here waits for the card.
     """
     import cupy as cp
     import numpy as np
     vertical_names = ('kms','kme','kds','kde','kts','kte')
     vertical = (1,nz+1,1,nz+1,1,nz) if native_dimensions is None else tuple(int(native_dimensions[name]) for name in vertical_names)
     storage_levels = vertical[1]-vertical[0]+1
+    device = cp.cuda.runtime.getDevice()
     if saved_fct_error is None:
-        saved_fct_error = _saved_fct_error(cp.cuda.runtime.getDevice())
+        saved_fct_error = _saved_fct_error(device)
     if not isinstance(saved_fct_error,cp.ndarray) or saved_fct_error.dtype!=cp.uint32 or saved_fct_error.size!=1:
         raise ValueError('GFL fct1d3 SAVE must be one CUDA logical word')
     if not isinstance(row_dx_first, cp.ndarray) or row_dx_first.dtype != cp.float32 or row_dx_first.size != 1:
         raise ValueError("GFL native row dx must be one CUDA float32 word")
-    pointers, strides = [], []
-    for name in FIELDS:
+    table = np.zeros((3, len(FIELDS)), dtype=np.uint64)
+    scalars = {}
+    for index, name in enumerate(FIELDS):
         array = fields.get(name)
         if array is None and name in ('gdc', 'gdc2', 'chem3d_in', 'rthften', 'rqvften'):
-            pointers.append(0); strides.append(0); continue
+            continue
         dtype = cp.int32 if name in INTEGER_FIELDS else cp.float32
-        if not isinstance(array, cp.ndarray) or array.dtype != dtype or not array.flags.c_contiguous:
-            raise ValueError(f'GFL {name} must be contiguous CUDA {dtype}')
         if name in SCALAR_FIELDS:
-            if array.size != 1:
+            if np.size(array) != 1:
                 raise ValueError(f'GFL scalar {name} must contain one word')
-            stride = 0
+            scalars[name] = _word(array, int if name in INTEGER_FIELDS else float)
+            continue
+        if isinstance(array, Levels):
+            array = array.array
+            if array.ndim != 2 or array.dtype != dtype or array.shape[0] < min(nz, storage_levels) or array.shape[1] < ncol:
+                raise ValueError(f'GFL pool field {name} must hold [{nz} levels, {ncol} columns] of {dtype}')
+            column_bytes, level_words = array.strides[1], array.strides[0] // array.itemsize
         else:
-            if array.ndim == 0 or array.shape[0] != ncol:
+            if not isinstance(array, cp.ndarray) or array.dtype != dtype:
+                raise ValueError(f'GFL {name} must be CUDA {dtype}')
+            if array.ndim == 0 or array.shape[0] < ncol:
                 raise ValueError(f'GFL {name} must have {ncol} columns')
-            words = array.size // max(1, ncol)
+            words = array.size // max(1, array.shape[0])
             if name in SURFACE_FIELDS and words != 1:
                 raise ValueError(f'GFL surface {name} must contain one word per column')
             if name not in SURFACE_FIELDS and name != 'chem3d_in' and words != storage_levels:
                 raise ValueError(f'GFL level {name} must contain {storage_levels} native allocation words per column')
-            stride = words * array.itemsize
-        pointers.append(array.data.ptr); strides.append(stride)
-    diagnostics = cp.zeros(ncol, dtype=cp.uint32)
-    highwater = cp.zeros(ncol, dtype=cp.uint64)
+            if name not in SURFACE_FIELDS and not array.flags.c_contiguous:
+                raise ValueError(f'GFL level {name} must be contiguous')
+            column_bytes, level_words = array.strides[0], 1
+        table[:, index] = (array.data.ptr, column_bytes, level_words)
+    held = _session(device, ncol, nz, vertical, scalars['num_chem'], table, pbl_scheme)
+    diagnostics, highwater, tables = held['diagnostics'], held['highwater'], held['tables']
+    tile, capacity = held['tile'], held['capacity']
+    result = {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error': saved_fct_error}
     if ncol == 0:
-        return {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error':saved_fct_error}
-    # Each column's share of the launch scratch: the deepest column of four 1-6 h hrrrv5 zoom-globe runs (IFS and GFS,
-    # 2026-10-31) used 45,136 bytes at 59 levels, 15 % of this share; a deeper column spills to the device heap
-    # (GFWorkspace.allocate) and stays exact.
-    capacity = SHARE_BYTES_PER_LEVEL * max(storage_levels,vertical[5]-vertical[4]+1) + 65536
-    tile, scratch = _column_scratch(cp.cuda.runtime.getDevice(), ncol, capacity)
-    pbl = pbl_scheme.encode('ascii')
-    pbl_device = cp.asarray(np.frombuffer(pbl, dtype=np.uint8))
-    strides_host = np.asarray(strides, dtype=np.uint64)
-    pointers_host = np.asarray(pointers, dtype=np.uint64)
-    strides_device = cp.asarray(strides_host)
-    vertical_device = cp.asarray(vertical,dtype=cp.int32)
-    kernel = _module(cp.cuda.runtime.getDevice()).get_function('gfl_columns')
-    # Pointer metadata, including null optionals, stays alive until the stream completes: every launch's table in
-    # one upload.
-    firsts = np.arange(0, ncol, tile, dtype=np.uint64)
-    tables = cp.asarray(np.where(pointers_host[None, :] == 0, np.uint64(0),
-                                 pointers_host[None, :] + firsts[:, None] * strides_host[None, :]))
-    for index, first in enumerate(range(0, ncol, tile)):
-        count = min(tile, ncol-first)
-        kernel(((count+31)//32,), (32,), (np.int32(count), np.int32(nz), tables[index],
-            strides_device, pbl_device, np.int64(len(pbl)), scratch, np.uint64(capacity),
-            diagnostics[first:first+count], highwater[first:first+count], row_dx_first, vertical_device, saved_fct_error))
-    cp.cuda.get_current_stream().synchronize()
-    _report_scratch(highwater, capacity, tile, ncol)
-    return {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error':saved_fct_error}
+        return result
+    kernel = _module(device).get_function('gfl_columns')
+    numbers = [np.int32(scalars[name]) if name in INTEGER_FIELDS else np.float32(scalars[name]) for name in _SCALARS]
+    kernel((tile // LANES,), (LANES,), (np.int32(ncol), np.int32(nz), tables[0], tables[1], tables[2], tables[3],
+        np.int64(len(pbl_scheme.encode('ascii'))), held['scratch'], np.uint64(capacity), diagnostics, highwater, row_dx_first,
+        *numbers, *(np.int32(word) for word in vertical), saved_fct_error, order if order is not None else np.uint64(0)))
+    if not held.get('reported'):
+        held['reported'] = True
+        _report_scratch(highwater, capacity, tile)
+    return result
 
 
-#: The most scratch the column launches hold at once (each column's bump allocator gets ``capacity`` bytes).
-SCRATCH_CAP_BYTES = 4 << 30
-#: Bytes per level of a column's share (launch_columns); a column needing more spills to the device heap.
-SHARE_BYTES_PER_LEVEL = 4096
-#: The device heap the spills come from: room for about 120 columns at once beyond their share at 60 levels (none
-#: spilled in the zoom-globe runs of 2026-10-31).
-SPILL_HEAP_BYTES = 256 << 20
-_SCRATCH = {}
+#: What one card's run holds for GF-Li, once: the column scratch, the two per-column records and the argument table.
+_SESSIONS = {}
+#: The most column scratch a card holds (the workspace slots fall back to fewer threads, never to a failure).
+SCRATCH_CAP_BYTES = 2 << 30
 
 
-def _column_scratch(device, ncol, capacity):
-    """Columns per launch and their scratch, sized once per card and kept for the run.
+def _column_bytes(storage_levels, kte, chem):
+    """The most bytes one column can hold, read off the source's own allocations (the lane layout below)."""
+    return deepest(_SCHEME_SOURCE, kte, chem, kme=storage_levels)
+
+
+def _workspace_slots(ncol, slot_bytes, kernel, device, free_bytes):
+    """Workspace slots: whole 128-column slabs, every resident block, within SCRATCH_CAP_BYTES and an eighth of free memory."""
+    from ..gf_mpas_v842 import _blocks_per_processor, _device_properties
+    properties = _device_properties(device)
+    budget = max(LANES * slot_bytes, min(SCRATCH_CAP_BYTES, free_bytes // 8))
+    affordable = max(LANES, (budget // slot_bytes // LANES) * LANES)
+    wanted = min(((ncol + LANES - 1) // LANES) * LANES,
+                 LANES * properties['multiProcessorCount'] * _blocks_per_processor(kernel, properties))
+    return min(max(LANES, wanted), affordable)
+
+
+def _session(device, ncol, nz, vertical, chem, table, pbl_scheme):
+    """Held for the run: scratch and records sized once, the argument table uploaded only when a pointer moves.
 
     THE BREAKAGE THIS FIXES (hrrrv5 + storm scheme on the 96 -> 3 km zoom globe, 90,320 columns, RTX 5090,
-    2026-10-31): a fixed 64 columns (two warps) per launch, each holding 2 MiB of scratch it used 2 % of, made 1,412
-    launches a step, and GF-Li took 943 s of a 982 s forecast hour (4.7 s of every 18 s step) on a mostly idle
-    card. Columns are independent (each has its own scratch), so the tile changes no output word; it is as many
-    columns as a quarter of the card's free memory holds at the first call, at most SCRATCH_CAP_BYTES, at least 64,
-    and the same for every later call of the run.
+    2026-10-31): each share was 311 KB for columns that use 45 KB, 13,797 columns a launch held 4 GiB, and the deepest
+    column could not be known from the run. The share is now what the source allocates (45,136 bytes at 59 levels) and
+    the scratch is one share per thread that can run at once.
     """
     import cupy as cp
-    held = _SCRATCH.get(device)
-    if held is None or held[1] != capacity:
+    import numpy as np
+    # A thread of its own for its own scratch: same-host rank threads run at once; a card holds one entry per rank.
+    key = (device, threading.get_ident(), ncol, nz, vertical, chem, pbl_scheme)
+    held = _SESSIONS.get(key)
+    if held is None:
+        kernel = _module(device).get_function('gfl_columns')
+        capacity = _column_bytes(vertical[1] - vertical[0] + 1, vertical[5], chem)
+        slot_bytes = capacity + CHARACTER_BYTES
         free, _ = cp.cuda.runtime.memGetInfo()
-        tile = max(64, min(SCRATCH_CAP_BYTES, free // 4) // capacity)
-        held = _SCRATCH[device] = (tile, capacity, cp.empty((tile, capacity), dtype=cp.uint8))
-    tile, _, scratch = held
-    return min(tile, max(ncol, 1)), scratch
+        tile = _workspace_slots(ncol, slot_bytes, kernel, device, free)
+        pbl = pbl_scheme.encode('ascii')
+        held = _SESSIONS[key] = {
+            'capacity': capacity, 'tile': tile, 'table': None, 'tables': None,
+            'scratch': cp.empty(tile * slot_bytes, dtype=cp.uint8),
+            'diagnostics': cp.zeros(ncol, dtype=cp.uint32), 'highwater': cp.zeros(ncol, dtype=cp.uint64),
+            'pbl': cp.asarray(np.frombuffer(pbl, dtype=np.uint8))}
+    if held['table'] is None or not np.array_equal(held['table'], table):
+        uploaded = cp.asarray(table)
+        held['table'], held['tables'] = table.copy(), (uploaded[0], uploaded[1], uploaded[2], held['pbl'])
+    return held
 
 
-def _report_scratch(highwater, capacity, tile, ncol):
-    """Once per run: the deepest column's scratch use against its capacity, with the tile (stderr)."""
-    if getattr(_report_scratch, 'done', False) or not ncol:
-        return
-    _report_scratch.done = True
+def _report_scratch(highwater, capacity, tile):
+    """Once per run: the deepest column's scratch use against its capacity, with the slots (stderr)."""
     import sys
-    deepest = int(highwater.max())
-    print(f'woof hex: GF-Li column scratch: deepest column used {deepest:,} of {capacity:,} bytes; '
-          f'{tile:,} columns per launch, {-(-ncol // tile):,} launches per call', file=sys.stderr)
+    print(f'woof hex: GF-Li column scratch: deepest column used {int(highwater.max()):,} of {capacity:,} bytes; '
+          f'{tile:,} workspace slots, {tile * capacity / 2**20:,.0f} MiB', file=sys.stderr)
+
+
+#: Device heap retained for a column that spills beyond its exact workspace.
+SPILL_HEAP_BYTES = 256 << 20
 
 
 def cells_on_cells_on_cell(mesh, *, nCellsSolve):

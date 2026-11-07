@@ -281,16 +281,17 @@ def test_rust_release_build_remaps_checkout_and_ignores_host_flags(
 
     assert "RUSTFLAGS" not in environment
     flags = environment["CARGO_ENCODED_RUSTFLAGS"].split("\x1f")
-    assert flags[0] == (
-        f"--remap-path-prefix={source.resolve()}=/usr/src/rw-wps"
-    )
+    assert flags[:2] == [
+        f"--remap-path-prefix={Path.home()}=/users",
+        f"--remap-path-prefix={source.resolve()}=/usr/src/rw-wps",
+    ]
     if sys.platform == "win32":
-        assert flags[1:] == [
+        assert flags[2:] == [
             "-C", "link-arg=/Brepro",
             "-C", "target-feature=+crt-static",
         ]
     else:
-        assert flags == [flags[0]]
+        assert len(flags) == 2
     assert environment["CARGO_TARGET_DIR"] == str(target)
     assert environment["SOURCE_DATE_EPOCH"] == "1784709589"
 
@@ -1081,6 +1082,8 @@ def test_standalone_auto_backend_reads_the_card_load(tmp_path, staged_project):
         "\n"
         "\n"
         "class _Runtime:\n"
+        "    is_hip = False\n"
+        "\n"
         "    @staticmethod\n"
         "    def memGetInfo():\n"
         "        return int(os.environ['SHADOW_FREE_GIB']) * GIB, 32 * GIB\n"

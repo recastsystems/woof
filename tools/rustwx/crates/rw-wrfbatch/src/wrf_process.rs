@@ -535,7 +535,20 @@ const CORE_FIELD_CATALOG: &[(&str, &str)] = &[
     ("wa", "vertical_velocity_1km_agl"),
     ("wa", "vertical_velocity_3km_agl"),
     ("UP_HELI_MAX", "updraft_helicity_2to5km"),
+    ("UP_HELI_MAX01", "updraft_helicity_0to1km"),
+    ("UP_HELI_MAX02", "updraft_helicity_0to2km"),
+    ("UP_HELI_MAX03", "updraft_helicity_0to3km"),
     ("apcp", "apcp"),
+];
+
+/// The low-level interval-max UH layers (`UP_HELI_MAX01/02/03`, HRRR/RRFS
+/// names; WOOF uh-layers, 2026-11-02): (WRF variable, store name, bottom
+/// m AGL, top m AGL). Read only from a file that carries the variable, so a
+/// frame without them imports exactly as before, with no note.
+const UH_LAYER_ROWS: [(&str, &str, u16, u16); 3] = [
+    ("UP_HELI_MAX01", "updraft_helicity_0to1km", 0, 1000),
+    ("UP_HELI_MAX02", "updraft_helicity_0to2km", 0, 2000),
+    ("UP_HELI_MAX03", "updraft_helicity_0to3km", 0, 3000),
 ];
 
 /// Optional core planes. The source-presence gate keeps chem-off plans and
@@ -634,6 +647,14 @@ pub(crate) fn core_field_selector(store_name: &str) -> FieldSelector {
         "updraft_helicity_2to5km" => {
             FieldSelector::height_layer_agl(CanonicalField::UpdraftHelicity, 2000, 5000)
         }
+        name if UH_LAYER_ROWS.iter().any(|(_, store, _, _)| *store == name) => {
+            let (_, _, bottom, top) = UH_LAYER_ROWS
+                .iter()
+                .find(|(_, store, _, _)| *store == name)
+                .copied()
+                .unwrap();
+            FieldSelector::height_layer_agl(CanonicalField::UpdraftHelicity, bottom, top)
+        }
         "apcp" => FieldSelector::surface(CanonicalField::TotalPrecipitation),
         other => panic!("core store field {other:?} has no row in core_field_selector"),
     }
@@ -641,7 +662,7 @@ pub(crate) fn core_field_selector(store_name: &str) -> FieldSelector {
 
 /// Chart planes use selector keys unless a shared writer table assigns a
 /// public store name to that selector.
-fn store_name_for_selector(selector: FieldSelector) -> String {
+pub fn store_name_for_selector(selector: FieldSelector) -> String {
     if let Some((name,_)) = derived_diagnostics::PRODUCTS.iter().find(|(_,field)| FieldSelector::surface(*field)==selector) {
         return name.to_string();
     }
@@ -698,6 +719,9 @@ fn surface_only_store_name(store_name: &str) -> bool {
             | "surface_pressure"
             | "apcp"
             | "updraft_helicity_2to5km"
+            | "updraft_helicity_0to1km"
+            | "updraft_helicity_0to2km"
+            | "updraft_helicity_0to3km"
             | "heat_index_2m"
             | "apparent_temperature_2m"
             | "wetbulb_2m"
@@ -860,6 +884,7 @@ const ISO_VOLUME_NAMES: &[&str] = &[
 /// engine's own precipitation inventory
 /// (gpuwm/physics_consumer_export_v1.json).
 pub const RAW_EXTRA_CATALOG: &[&str] = &[
+    "ALBEDO",
     "PBLH",
     "HFX",
     "LH",
@@ -913,14 +938,18 @@ const PROFILE_FNV64_PRIME: u64 = 0x0000_0100_0000_01b3;
 /// import that stored HAILNC or UP_HELI_MAX with no unit is not reused.
 /// v7 (two lines, merged in 2.9.4): hail extras and fixed-height W planes,
 /// including to a full import. v8 carries both, so an import made by
-/// either v7 alone is not reused.
-const WRF_PROCESS_SCIENCE_MARKER: &str = "wrf_science_v8_hail_vertical_velocity";
+/// either v7 alone is not reused. v9: a frame whose REFC holds more than its
+/// volume draws its composite from REFC (`composite_draws_refc`), so an import
+/// that took such a frame's composite from the volume is not reused.
+const WRF_PROCESS_SCIENCE_MARKER: &str = "wrf_science_v9_refc_holds_parameterised_rain";
 const COMPOSITE_REFLECTIVITY_FILTER: &str = "maxdbz";
 const COMPOSITE_REFLECTIVITY_STORE: &str = "composite_reflectivity";
 const REFLECTIVITY_1KM_FILTER: &str = "reflectivity_1km";
 const REFLECTIVITY_1KM_STORE: &str = "reflectivity_1km";
-const MIN_VALID_REFLECTIVITY_DBZ: f64 = -100.0;
-const MAX_VALID_REFLECTIVITY_DBZ: f64 = 120.0;
+// The reflectivity range and the composite live in rustwx-calc (shared with the any-point column store).
+use rustwx_calc::surface::{
+    MAX_VALID_REFLECTIVITY_DBZ, MIN_VALID_REFLECTIVITY_DBZ, composite_reflectivity_from_dbz, valid_reflectivity_dbz,
+};
 
 #[derive(Debug)]
 pub enum WrfProcessMessage {
@@ -1133,7 +1162,14 @@ pub fn spawn_process_paths(
     store_root: PathBuf,
     options: WrfProcessOptions,
 ) -> WrfProcessTask {
-    spawn_process_paths_inner(paths, store_root, options, None)
+    spawn_process_paths_inner(paths, store_root, options, None, false)
+}
+
+/// Append immutable single-frame sources to a persistent store. Source
+/// revisions and this executable are checked before any hour is reused.
+pub fn spawn_process_incremental_paths(paths: Vec<PathBuf>, store_root: PathBuf,
+    options: WrfProcessOptions) -> WrfProcessTask {
+    spawn_process_paths_inner(paths, store_root, options, None, true)
 }
 
 pub fn spawn_process_live_path(
@@ -1142,7 +1178,7 @@ pub fn spawn_process_live_path(
     options: WrfProcessOptions,
     target: LiveWrfTarget,
 ) -> WrfProcessTask {
-    spawn_process_paths_inner(vec![path], store_root, options, Some(target))
+    spawn_process_paths_inner(vec![path], store_root, options, Some(target), false)
 }
 
 fn spawn_process_paths_inner(
@@ -1150,6 +1186,7 @@ fn spawn_process_paths_inner(
     store_root: PathBuf,
     options: WrfProcessOptions,
     live_target: Option<LiveWrfTarget>,
+    incremental: bool,
 ) -> WrfProcessTask {
     let options = options.normalized();
     let label = if paths.len() == 1 {
@@ -1172,6 +1209,7 @@ fn spawn_process_paths_inner(
                         &options,
                         &worker_tx,
                         live_target.as_ref(),
+                        incremental,
                     )
                     .map_err(|err| {
                         if err.trim().is_empty() {
@@ -1632,7 +1670,7 @@ fn process_paths(
     options: &WrfProcessOptions,
     tx: &Sender<WrfProcessMessage>,
 ) -> Result<WrfProcessSummary, String> {
-    process_paths_with_target(paths, store_root, options, tx, None)
+    process_paths_with_target(paths, store_root, options, tx, None, false)
 }
 
 fn process_paths_with_target(
@@ -1641,6 +1679,7 @@ fn process_paths_with_target(
     options: &WrfProcessOptions,
     tx: &Sender<WrfProcessMessage>,
     live_target: Option<&LiveWrfTarget>,
+    incremental: bool,
 ) -> Result<WrfProcessSummary, String> {
     if paths.is_empty() {
         return Err("No WRF files selected".to_string());
@@ -1716,13 +1755,23 @@ fn process_paths_with_target(
         record.storage_slot = target.storage_slot;
         record.exact_time = Some(target.exact_time);
         target.run_name(options)?
+    } else if incremental {
+        if plans.iter().any(|p| p.kind != WrfSourceKind::Raw || p.records.len() != 1) || !history.is_empty() {
+            return Err("incremental imports require one raw frame per file and no snowfall replay".into());
+        }
+        use sha2::{Digest, Sha256};
+        let first = crate::local_import::capture_source_set_identity_with_history(&files[..1], &[])?;
+        let writer = import_writer_identity().ok_or("cannot identify incremental import executable")?;
+        let digest = Sha256::digest(format!("{}:{writer}:{processing_profile}", first.identity).as_bytes());
+        let stamp = discovered_run.split('_').nth(1).ok_or("incremental import has no initialization stamp")?;
+        format!("local_{stamp}_incremental_{digest:x}")
     } else {
         discovered_run
     };
     // The run name keys every byte of the sources and the processing plan, so
     // a complete run already published under it, by this same binary, is the
     // import this call would write.  It is answered from the store.
-    if live_target.is_none() {
+    if live_target.is_none() && !incremental {
         if let Some(record) = published_import_record(store_root, &model, &run, &plans) {
             let _ = tx.send(WrfProcessMessage::Progress(format!(
                 "{REUSED_IMPORT_PROGRESS} {model}/{run}: this store already holds these \
@@ -1745,7 +1794,7 @@ fn process_paths_with_target(
     // simulation instead appends one independently validated hour to a stable
     // case run; rw-store's per-run lock, atomic hour writer, grid identity,
     // exact-time remap guard, and manifest-last publication own that seam.
-    let publisher = if live_target.is_some() {
+    let publisher = if live_target.is_some() || incremental {
         None
     } else {
         Some(crate::local_import::RunStagingPublisher::new(
@@ -1763,6 +1812,16 @@ fn process_paths_with_target(
     } else {
         None
     };
+
+    if incremental && moves.is_some() {
+        return Err("incremental imports require a fixed grid".into());
+    }
+    let source_keys: Vec<Option<String>> = plans.iter().map(|plan| {
+        if incremental {
+            crate::local_import::capture_source_set_identity_with_history(&[plan.path.clone()], &[])
+                .map(|s| Some(s.identity))
+        } else { Ok(None) }
+    }).collect::<Result<_, String>>()?;
 
     // Frames are computed on lanes at once (bounded by the host's threads
     // and the frame budget) and written one at a time; the store's hour
@@ -1791,6 +1850,15 @@ fn process_paths_with_target(
             continue;
         }
         let lane_records = &plan.records[lo - first..hi - first];
+        if let Some(key) = &source_keys[plan_index] {
+            if let Some(record) = incremental_record(store_root, &model, &run, plan, key) {
+                let _ = tx.send(WrfProcessMessage::Progress(format!(
+                    "Reusing imported frame {}", display_name(&plan.path))));
+                all_vars.extend(record.variables);
+                all_notes.extend(record.notes);
+                continue;
+            }
+        }
         let _permit = FramePermit::acquire(plan_frame_bytes(plan));
         let shift = moves
             .as_ref()
@@ -2125,6 +2193,9 @@ fn process_paths_with_target(
             all_notes.extend(fields.notes);
             written.push(result);
         }
+        if let Some(key) = &source_keys[plan_index] {
+            write_incremental_record(store_root, &model, &run, plan, key, &all_vars, &all_notes)?;
+        }
     }
         Ok(LaneOutcome { written, all_vars, all_notes })
     };
@@ -2204,7 +2275,7 @@ fn process_paths_with_target(
         model,
         run,
         files_seen: files.len(),
-        hours_written: written.len(),
+        hours_written: if incremental { jobs } else { written.len() },
         variables: all_vars,
         notes: all_notes,
         frame_sources,
@@ -2357,6 +2428,48 @@ fn published_import_record(
         manifest.validate_hour_meta(slot, reader.meta()).ok()?;
     }
     Some(record)
+}
+
+// A cache entry is published only after the hour and run manifest. The
+// source digest includes every source byte; metadata of the stored hour
+// detects replacement, while the normal store validators check its binding.
+#[derive(Serialize, Deserialize)]
+struct IncrementalRecord {
+    source: String,
+    bytes: u64,
+    modified_ns: u128,
+    variables: Vec<String>,
+    notes: Vec<String>,
+}
+fn incremental_hour(store: &Path, model: &str, run: &str, plan: &WrfSourcePlan)
+    -> Option<(PathBuf, u64, u128)> {
+    let dir = store.join(model).join(run);
+    let manifest = rw_store::run::RwsRunManifest::load_for_run(&dir.join("run.json"), model, run).ok()?;
+    let slot = plan.records[0].storage_slot;
+    let path = dir.join(&manifest.hours.get(&slot)?.file);
+    let grid = rw_store::grid::GridFile::open(&dir.join("grid.rwg")).ok()?;
+    manifest.validate_grid(&grid.hash, grid.nx, grid.ny).ok()?;
+    let reader = rw_store::reader::HourReader::open(&path).ok()?;
+    manifest.validate_hour_meta(slot, reader.meta()).ok()?;
+    let stat = std::fs::metadata(path).ok()?;
+    Some((dir.join(format!("source-{slot:05}.json")), stat.len(),
+        stat.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos()))
+}
+fn incremental_record(store: &Path, model: &str, run: &str, plan: &WrfSourcePlan, source: &str)
+    -> Option<IncrementalRecord> {
+    let (path, bytes, modified_ns) = incremental_hour(store, model, run, plan)?;
+    let record: IncrementalRecord = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+    (record.source == source && record.bytes == bytes && record.modified_ns == modified_ns).then_some(record)
+}
+fn write_incremental_record(store: &Path, model: &str, run: &str, plan: &WrfSourcePlan,
+    source: &str, variables: &[String], notes: &[String]) -> Result<(), String> {
+    let (path, bytes, modified_ns) = incremental_hour(store, model, run, plan)
+        .ok_or("incremental import did not publish a valid hour")?;
+    let record = IncrementalRecord { source: source.into(), bytes, modified_ns,
+        variables: variables.to_vec(), notes: notes.to_vec() };
+    let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
+    std::fs::write(&temporary, serde_json::to_vec(&record).map_err(|e| e.to_string())?)
+        .and_then(|_| std::fs::rename(&temporary, &path)).map_err(|e| e.to_string())
 }
 
 fn read_wrf_products(
@@ -2671,6 +2784,17 @@ fn read_wrf_products(
                 };
             }
 
+            if file.has_var("TKE") && options.should_process("TKE", Some("tke_lowest"), WrfProductGroup::Core) {
+                match file.read_var("TKE", timeidx) {
+                    Ok(values) if values.len() == file.nz * grid.shape.len() && file.nz > 0 => {
+                        fields.derived.push(OwnedDerivedField {
+                            name: "tke_lowest".to_string(), units: "m2 s-2".to_string(),
+                            values: values[..grid.shape.len()].iter().map(|v| *v as f32).collect(),
+                        });
+                    },
+                    result => fields.notes.push(format!("TKE lowest mass level unavailable: {:?}", result.err())),
+                }
+            }
             crate::wrf_vertical_velocity::push(
                 &mut fields, file, timeidx, &grid, projection.clone(), options,
             );
@@ -2680,6 +2804,16 @@ fn read_wrf_products(
                 core_field_selector("updraft_helicity_2to5km"),
                 Some("m2/s2")
             );
+            for (wrf_name, store_name, _, _) in UH_LAYER_ROWS {
+                if file.has_var(wrf_name) {
+                    push_core!(
+                        wrf_name,
+                        store_name,
+                        core_field_selector(store_name),
+                        Some("m2/s2")
+                    );
+                }
+            }
         });
         scope.spawn(move |_| {
             let _timer = ImportStageTimer::new("gd-visibility-columns", report);
@@ -2799,6 +2933,14 @@ fn read_wrf_products(
                     continue;
                 }
                 if let Ok(mut output) = compute_var(file, raw, timeidx, None) {
+                    // Native WRF can emit ALBEDO=-9999 at night without a
+                    // fill attribute. Albedo outside its physical interval
+                    // is missing, so it must not enter maps or differences.
+                    if *raw == "ALBEDO" {
+                        for value in &mut output.data {
+                            if !(0.0..=1.0).contains(value) { *value = f64::NAN; }
+                        }
+                    }
                     // A raw extra is the file's own variable, read without any
                     // conversion, so the file's units attribute is what its values
                     // are in. wrf-core's fallback table is only a guess at WRF's
@@ -2808,6 +2950,12 @@ fn read_wrf_products(
                         .filter(|units| !units.trim().is_empty())
                     {
                         output.units = units;
+                    }
+                    // Native WRF uses "-" and the GPU writer uses an empty
+                    // attribute for this dimensionless fraction. Publish the
+                    // same unit so comparison panels accept either producer.
+                    if *raw == "ALBEDO" {
+                        output.units = "1".to_owned();
                     }
                     push_derived_output(&mut fields, raw, output, shape.len());
                 }
@@ -3116,6 +3264,27 @@ fn select_reflectivity_volume<T>(
     }
 }
 
+/// The global attribute a converted mesh frame says what its `REFC` holds in
+/// (`rw_mpas::convert::REFC_NOTE_ATTRIBUTE` writes it, on a frame carrying the
+/// cumulus scheme's rain rate; `main.rs` puts it on the composite map's title).
+const REFC_NOTE_ATTRIBUTE: &str = "GPUWM_REFC_NOTE";
+
+/// Whether the composite reflectivity is the frame's own `REFC`, not the
+/// column maximum of its volume: when there is no volume, or when the frame
+/// says its `REFC` holds more than the volume does.
+///
+/// THE BREAKAGE THIS PREVENTS (hrrrv5 + Grell-Freitas-Li zoom globe, f006 over
+/// 2,700 km, 2026-10-31; production run_c9412ffb836c65e3): rw_mpas_convert
+/// adds the cumulus scheme's rain to `REFC` and says so, but a frame that also
+/// has a `REFL_10CM` volume was drawn from the volume, which holds only the
+/// microphysics. The map read "incl. parameterised convection" and showed
+/// 1.2 % of the area above 10 dBZ against the same frame's REFC 27.4 %, missing
+/// rain bands its own rain map showed. A frame with no note (a WRF or ArWen
+/// file, a run with no cumulus scheme) still draws its volume, bit for bit.
+fn composite_draws_refc(refc_present: bool, volume_present: bool, refc_holds_more: bool) -> bool {
+    refc_present && (!volume_present || refc_holds_more)
+}
+
 fn checked_volume_cells(nz: usize, ny: usize, nx: usize) -> Result<usize, String> {
     checked_horizontal_cells(ny, nx)?
         .checked_mul(nz)
@@ -3194,44 +3363,6 @@ fn read_reflectivity_volume(
             })
         },
     )
-}
-
-fn valid_reflectivity_dbz(value: f64) -> bool {
-    // WRF and third-party NetCDF writers use several large-magnitude fill
-    // conventions (-999, -8888, -9999, +9999). A physical range rejects
-    // those sentinels before either a vertical maximum or linear-Z
-    // interpolation can turn them into a false echo.
-    value.is_finite() && (MIN_VALID_REFLECTIVITY_DBZ..=MAX_VALID_REFLECTIVITY_DBZ).contains(&value)
-}
-
-fn composite_reflectivity_from_dbz(
-    dbz_3d: &[f64],
-    nz: usize,
-    cells: usize,
-) -> Result<Vec<f64>, String> {
-    let expected = nz.checked_mul(cells).ok_or_else(|| {
-        "reflectivity volume length overflows the platform address space".to_string()
-    })?;
-    if dbz_3d.len() != expected {
-        return Err(format!(
-            "reflectivity volume requires {expected} values for {nz} levels and {cells} columns, got {}",
-            dbz_3d.len()
-        ));
-    }
-
-    let mut composite = vec![f64::NAN; cells];
-    for k in 0..nz {
-        let offset = k * cells;
-        for ij in 0..cells {
-            let value = dbz_3d[offset + ij];
-            if valid_reflectivity_dbz(value)
-                && (!composite[ij].is_finite() || value > composite[ij])
-            {
-                composite[ij] = value;
-            }
-        }
-    }
-    Ok(composite)
 }
 
 fn interpolate_dbz_in_linear_z(lower_dbz: f64, upper_dbz: f64, fraction: f64) -> f64 {
@@ -3342,6 +3473,37 @@ fn push_reflectivity_products(
         return;
     }
 
+    // A frame with no 3-D REFL_10CM but the model's own column-maximum
+    // reflectivity (REFD_MAX: WRF's diagnostic, and hex's MPAS diag
+    // refl10cm_max carried by rw_mpas_convert) draws composite reflectivity
+    // from that diagnostic, not from the renderer's hydrometeor fallback.
+    // THE BREAKAGE THIS PREVENTS: hex's 72 h TC run keeps only the diag
+    // plane, and its composite maps were the fallback's guess at the model.
+    let mut want_composite = want_composite;
+    if want_composite && !file.has_var("REFL_10CM") && file.has_var("REFD_MAX") {
+        match compute_var(file, "REFD_MAX", timeidx, None)
+            .and_then(|output| single_plane(output, grid.shape.len()))
+        {
+            Ok((values, _units)) => {
+                progress("Reading the model's column-maximum reflectivity REFD_MAX".to_string());
+                push_canonical_values(
+                    fields,
+                    grid,
+                    projection.clone(),
+                    COMPOSITE_REFLECTIVITY_STORE,
+                    composite_reflectivity_selector(),
+                    "dBZ",
+                    values,
+                );
+                want_composite = false;
+            }
+            Err(err) => fields.notes.push(format!("REFD_MAX unreadable, using the fallback: {err}")),
+        }
+        if !want_1km {
+            return;
+        }
+    }
+
     let native_present = file.has_var("REFL_10CM");
     // The model's own column maximum (REFC: an MPAS run's refl10cm_max from
     // its diagnostics stream, carried by rw_mpas_convert) draws the composite
@@ -3349,7 +3511,10 @@ fn push_reflectivity_products(
     // THE BREAKAGE THIS PREVENTS (case study 2025-05-19, H2, 2026-10-24): the
     // hex MPAS-physics route writes no 3-D refl10cm, so its composite maps
     // were the renderer's estimate, not the model's diagnostic.
-    if want_composite && !native_present && file.has_var("REFC") {
+    let refc_holds_more = file
+        .global_attr_str(REFC_NOTE_ATTRIBUTE)
+        .is_ok_and(|note| !note.trim().is_empty());
+    if want_composite && composite_draws_refc(file.has_var("REFC"), native_present, refc_holds_more) {
         let read = isolate_panics("native REFC", || {
             let values = file.read_var("REFC", timeidx).map_err(|err| err.to_string())?;
             if values.len() != grid.shape.len() {
@@ -3383,7 +3548,7 @@ fn push_reflectivity_products(
                 want_composite = false;
             }
             Err(err) => fields.notes.push(format!(
-                "native REFC unreadable ({err}); composite falls back to the hydrometeor dbz"
+                "native REFC unreadable ({err}); composite falls back to the volume or the hydrometeor dbz"
             )),
         }
     }
@@ -3910,6 +4075,11 @@ fn push_chem_products(
 }
 
 fn single_plane(output: VarOutput, cells: usize) -> Result<(Vec<f32>, String), String> {
+    single_plane_raw(output, cells).map(|(values, units)| (clean_values(&values), units))
+}
+
+/// [`single_plane`]'s shape checks, the values as wrf-core gave them.
+fn single_plane_raw(output: VarOutput, cells: usize) -> Result<(Vec<f64>, String), String> {
     let (ny, nx) = match output.shape.as_slice() {
         [ny, nx] | [1, ny, nx] => (*ny, *nx),
         other => return Err(format!("expected [ny,nx], got {other:?}")),
@@ -3928,7 +4098,7 @@ fn single_plane(output: VarOutput, cells: usize) -> Result<(Vec<f32>, String), S
             output.data.len()
         ));
     }
-    Ok((clean_values(&output.data), output.units))
+    Ok((output.data, output.units))
 }
 
 /// Split wrf-core's earth-rotated `uvmet10` result into canonical 2-D planes.
@@ -4054,39 +4224,23 @@ pub(crate) fn isolate_panics<T>(
     })
 }
 
+/// The run's total precipitation (`apcp`): RAINC + RAINNC + RAINSH, each plane that exists, by the shared sum
+/// ([`rustwx_calc::surface::total_precip`]) the any-point column store also writes, so a point forecast's
+/// precipitation is the map's.
 fn total_precip(file: &WrfFile, timeidx: usize, cells: usize) -> Option<Vec<f32>> {
-    let mut total = vec![0.0f32; cells];
-    let mut found = false;
-    for name in ["RAINC", "RAINNC", "RAINSH"] {
-        let Ok(output) = compute_var(file, name, timeidx, None) else {
-            continue;
-        };
-        let Ok((values, _)) = single_plane(output, cells) else {
-            continue;
-        };
-        for (accum, value) in total.iter_mut().zip(values) {
-            if value.is_finite() {
-                *accum += value;
-            } else {
-                *accum = f32::NAN;
-            }
-        }
-        found = true;
-    }
-    found.then_some(total)
+    let planes: Vec<Vec<f64>> = ["RAINC", "RAINNC", "RAINSH"]
+        .iter()
+        .filter_map(|name| {
+            let output = compute_var(file, name, timeidx, None).ok()?;
+            single_plane_raw(output, cells).ok().map(|(values, _)| values)
+        })
+        .collect();
+    let refs: Vec<&[f64]> = planes.iter().map(Vec::as_slice).collect();
+    rustwx_calc::surface::total_precip(&refs, cells)
 }
 
 fn clean_values(values: &[f64]) -> Vec<f32> {
-    values
-        .iter()
-        .map(|value| {
-            if !value.is_finite() || value.abs() >= 1.0e30 || *value <= -9998.0 {
-                f32::NAN
-            } else {
-                *value as f32
-            }
-        })
-        .collect()
+    rustwx_calc::surface::clean_values(values)
 }
 
 fn derived_name(wrf_name: &str, split_index: Option<usize>) -> String {
@@ -4458,7 +4612,7 @@ fn writer_build() -> &'static str {
         env!("CARGO_PKG_NAME"),
         " ",
         env!("CARGO_PKG_VERSION"),
-        " wrf_science_v8_hail_vertical_velocity"
+        " wrf_science_v9_refc_holds_parameterised_rain"
     )
 }
 
@@ -4599,6 +4753,24 @@ mod tests {
         assert_eq!(native_calls.get(), 0);
         assert_eq!(values, vec![12.0]);
         assert_eq!(source, ReflectivityVolumeSource::GenericDbzFallback);
+    }
+
+    #[test]
+    fn composite_draws_refc_only_without_a_volume_or_when_the_frame_says_it_holds_more() {
+        // A frame with no note and a volume: every WRF and ArWen file, and a hex run with no
+        // cumulus scheme. It keeps its volume.
+        assert!(!composite_draws_refc(true, true, false));
+        assert!(!composite_draws_refc(false, true, false));
+        // hrrrv5 + a cumulus scheme: the volume holds only the microphysics, REFC the scheme's rain too.
+        assert!(composite_draws_refc(true, true, true));
+        // MPAS physics: no volume in the frame, with or without a cumulus scheme.
+        assert!(composite_draws_refc(true, false, true));
+        assert!(composite_draws_refc(true, false, false));
+        // No REFC to draw: the note alone changes nothing.
+        assert!(!composite_draws_refc(false, true, true));
+        assert!(!composite_draws_refc(false, false, true));
+        // rw_mpas::convert::REFC_NOTE_ATTRIBUTE and main.rs pin the same literal.
+        assert_eq!(REFC_NOTE_ATTRIBUTE, "GPUWM_REFC_NOTE");
     }
 
     #[test]
@@ -5521,25 +5693,8 @@ fn push_gust_10m(
         fields.notes.push("10 m gust skipped: unexpected field shapes".to_string());
         return;
     }
-    let nz = hagl.shape[0];
-    let mut values = vec![f32::NAN; cells];
-    for (i, value) in values.iter_mut().enumerate() {
-        let zpbl = pblh.data[i];
-        let wind10 = w10.data[i];
-        if !zpbl.is_finite() || !wind10.is_finite() {
-            continue;
-        }
-        let mut k = 0;
-        while k + 1 < nz && hagl.data[k * cells + i] < zpbl {
-            k += 1;
-        }
-        let top = wspd.data[k * cells + i];
-        if !top.is_finite() {
-            continue;
-        }
-        let damp = 1.0 - (zpbl.max(0.0) / 2000.0).min(0.5);
-        *value = (wind10 + (top - wind10) * damp).max(wind10) as f32;
-    }
+    // The formula lives in rustwx-calc so the any-point column store's gust plane is this one.
+    let values = rustwx_calc::surface::gust_10m(&hagl.data, &wspd.data, &pblh.data, &w10.data, hagl.shape[0], cells);
     push_canonical_values(fields, grid, projection, &key, selector, "m/s", values);
 }
 

@@ -208,8 +208,13 @@ class MetInventory:
 
 
 #: The first guess's hydrometeor masses and numbers rw_mpas_init reads under
-#: ``--first-guess-hydrometeors yes`` (rw-mpas init ``FIRST_GUESS_SPECIES``).
-FIRST_GUESS_SPECIES = ("QC", "QR", "QI", "QS", "QG", "QNC", "QNI", "QNR")
+#: ``--first-guess-hydrometeors yes`` (rw-mpas init ``FIRST_GUESS_SPECIES``, engine 2.9.12 init/mod.rs:252-257).
+#: THE BREAKAGE THIS PREVENTS (engine d190ddd8c7e, 2026-11-02): the hurricane fold's storm merge writes its
+#: merged hydrometeors as QCLOUD/QRAIN/QICE/QSNOW/QGRAUP and QNG; the engine now reads those only under the flag
+#: (MPAS-A v8.4.2 case 7 with it off), and this list named only the short names, so a merged first guess never
+#: got the flag and the merged storm started dry.
+FIRST_GUESS_SPECIES = ("QC", "QR", "QI", "QS", "QG", "QNC", "QNI", "QNR",
+                       "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP", "QNG")
 HYDROMETEOR_FLAG = "--first-guess-hydrometeors"
 
 
@@ -254,6 +259,44 @@ def first_guess_hydrometeors(arguments, engine, fields) -> dict[str, Any]:
         print(f"woof hex init: named gap: {record['gap']}", file=sys.stderr)
         return record
     record.update(applied=True, argv=[HYDROMETEOR_FLAG, "yes"])
+    return record
+
+
+MASKED_SKINTEMP_FLAG = "--masked-skintemp"
+
+
+def masked_skintemp(arguments, engine) -> dict[str, Any]:
+    """The init's skin-temperature interpolation: ``argv`` for the engine plus the receipt record.
+
+    MPAS-A v8.4.2 case 7 interpolates SKINTEMP with no land-sea mask and copies it to sst (and to tmn and the
+    soil layers of water cells), so a water cell whose source stencil touches land takes the land's skin
+    temperature.  THE BREAKAGE THIS FIXES (test setup G02, 96->3 km zoom globe from GEFS 0.5 degree, 2026-11-02):
+    about 36 coastal water cells per member along the Gulf of California started with 308-344 K sea surface
+    (water neighbours 288-305 K) and the delayed-start soil-temperature guard refused the start; on the 60 km
+    global mesh from GFS 0.25 degree (2026-11-01 00Z) 19 water cells sat above 308 K, the hottest 321.5 K.
+    ``--masked-skintemp yes`` (rw-mpas init) takes each cell's value from source points of its own surface
+    type, the WPS METGRID.TBL SKINTEMP rule WRF uses (water max 307.8 K there, none above 308 K).
+
+    Default yes; no under strict numerics, the proof opt-in, where the init must be native case 7's.  An engine
+    that predates the flag is a loud named gap, never a refusal (woof.hex.correct_mode ruling)."""
+    from . import numerics
+
+    requested = getattr(arguments, "masked_skintemp", None)
+    chosen_by = MASKED_SKINTEMP_FLAG
+    if requested is None:
+        requested, chosen_by = ("no", "strict numerics (native case 7)") if numerics.is_strict() else ("yes", "default")
+    record: dict[str, Any] = {"requested": requested, "chosen_by": chosen_by, "applied": False, "argv": []}
+    if requested != "yes":
+        return record
+    probe = subprocess.run([str(engine), "--help"], capture_output=True, text=True, timeout=60)
+    if MASKED_SKINTEMP_FLAG not in (probe.stdout or "") + (probe.stderr or ""):
+        record["gap"] = (f"rw_mpas_init ({engine}) predates {MASKED_SKINTEMP_FLAG} (its usage does not name it); "
+                         "this init interpolates skin temperature with no land-sea mask, as MPAS-A v8.4.2 case 7, "
+                         "so coastal water cells can start with the land's skin temperature.  Install an engine "
+                         "inside this release's range")
+        print(f"woof hex init: named gap: {record['gap']}", file=sys.stderr)
+        return record
+    record.update(applied=True, argv=[MASKED_SKINTEMP_FLAG, "yes"])
     return record
 
 
@@ -819,6 +862,10 @@ def add_init_parser(commands: Any) -> None:
                         help="start from the first guess's own hydrometeors (QC QR QI QS QG) and numbers (QNC QNI "
                              "QNR) when it carries them (default yes; no under strict numerics, where the init is "
                              "MPAS-A v8.4.2 case 7's, which reads none)")
+    parser.add_argument(MASKED_SKINTEMP_FLAG, choices=("yes", "no"), default=None,
+                        help="interpolate skin temperature (and so sst) to water cells from water source points and "
+                             "to land cells from land points, the WPS rule (default yes; no under strict numerics, "
+                             "where the init is MPAS-A v8.4.2 case 7's unmasked interpolation)")
     parser.add_argument("--receipt", type=Path, default=None, help="provenance receipt path")
     parser.add_argument("--physics-profile", help="profile initialization row, including verified monthly aerosols")
     parser.add_argument("--land-surface", choices=("noah", "noahmp", "ruc"), default=None,
@@ -837,7 +884,11 @@ def add_init_parser(commands: Any) -> None:
                       help="source pin set of the suite route whose producer initializes this case")
     rrfs.add_argument("--lbc-met", action="append", default=None, metavar="TIME=MET",
                       help="a boundary time and its WPS intermediate (repeat per hour); writes lbc.*.nc")
+    rrfs.add_argument("--wait-for-all-boundaries",action="store_true",
+                      help="wait for the complete series (default: start after the initial boundary pair)")
     rrfs.add_argument("--lbc-dir", type=Path, default=None, help="where lbc.*.nc go (default: beside --out)")
+    from .mpasphys.rrfs.cold_start_rrfs import add_boundary_recipe_argument
+    add_boundary_recipe_argument(rrfs)
     rrfs.add_argument("--ugwp-oro", choices=("gsl-oro", "hex-ugwp-oro"), default=None,
                       help="who makes ugwp_oro_data.nc (default: the producer row's, the GSL generator)")
     rrfs.add_argument("--deep-soil-temperature", choices=("era5", "islscp-i"), default=None,
@@ -850,7 +901,34 @@ def add_init_parser(commands: Any) -> None:
     parser.add_argument("--soil-donor", type=Path, default=None,
                         help="co-located native soil analysis required by the hydraulic contract")
     parser.add_argument("--soil-contract", default=None, help="explicit packaged soil hydraulic table id")
+    parser.add_argument("--deep-soil-keep-above-m", type=float, default=None, metavar="M",
+                        help="the source row's deep-soil donor: levels below this depth carry the donor's moisture, "
+                             "moved onto the init's land-model hydraulics by relative wetness; levels above are kept")
+    parser.add_argument("--deep-soil-model", default=None,
+                        help="the deep-soil donor's soil model (a row of woof's land-state table, e.g. noah)")
+    parser.add_argument("--deep-soil-donor", default=None, help="the deep-soil donor's source id, for the receipt")
     parser.set_defaults(handler=run_init_command)
+
+
+def _deep_soil_remap(arguments: argparse.Namespace, out: Path, land_surface: str) -> dict[str, Any] | None:
+    """The source row's deep-soil donor levels, moved onto this init's land model (soil_wetness)."""
+
+    keep = getattr(arguments, "deep_soil_keep_above_m", None)
+    if keep is None:
+        return None
+    model = getattr(arguments, "deep_soil_model", None)
+    if not model:
+        _refuse("--deep-soil-keep-above-m needs --deep-soil-model, the donor's soil model")
+    from .cycle.soil_wetness import remap_deep_soil_levels
+    try:
+        return remap_deep_soil_levels(out, keep_above_m=float(keep), source_model=str(model),
+                                      source_id=str(getattr(arguments, "deep_soil_donor", None) or "deep donor"),
+                                      land_surface=land_surface)
+    except Exception as error:
+        # An init whose donor levels sit on another model's hydraulics is not
+        # the init the row declares; it is removed rather than forecast.
+        out.unlink(missing_ok=True)
+        _refuse(f"deep soil remap refused and the init was removed: {error}")
 
 
 def _require_switches(arguments: argparse.Namespace) -> None:
@@ -938,12 +1016,13 @@ def prepare_soil_remap(arguments, map_sources):
 def run_init_command(arguments: argparse.Namespace) -> int:
     started = time.time()
     from .init_physics import init_selection
-    from .mpasphys.rrfs.cold_start_rrfs import RrfsInitError
+    from .mpasphys.rrfs.cold_start_rrfs import RrfsInitError, require_boundary_producer
     try:
         selection = init_selection(getattr(arguments, "physics_suite", None),
                                    getattr(arguments, "land_surface", None),
                                    profile=getattr(arguments, "physics_profile", None),
                                    pin_set=getattr(arguments, "physics_pin_set", None))
+        require_boundary_producer(getattr(arguments, "boundary_recipe", None), selection.get("producer"))
     except RrfsInitError as error:
         _refuse(str(error))
     if selection.get("producer") is not None:
@@ -952,9 +1031,20 @@ def run_init_command(arguments: argparse.Namespace) -> int:
         # the v8.4.2 numerical switches below do not apply to it.
         from .mpasphys.rrfs.cold_start_rrfs import RrfsInitError, run_rrfs_init
         try:
-            return run_rrfs_init(arguments, selection["producer"])
+            code = run_rrfs_init(arguments, selection["producer"])
         except RrfsInitError as error:
             _refuse(str(error))
+        produced = Path(arguments.out).expanduser().absolute()
+        deep = _deep_soil_remap(arguments, produced, selection["producer"][1]["soil"]["land_surface"])
+        if deep is not None:
+            provenance = (Path(arguments.receipt).expanduser() if getattr(arguments, "receipt", None)
+                          else produced.with_name(produced.name + ".provenance.json"))
+            payload = json.loads(provenance.read_text())
+            payload["deep_soil_remap"] = deep
+            payload["output"] = {"path": str(produced), "bytes": produced.stat().st_size,
+                                 "sha256": _described(produced)["sha256"]}
+            provenance.write_text(json.dumps(payload, indent=2, default=str) + "\n")
+        return code
     _require_switches(arguments)
     arguments.land_surface = selection["land_surface"]
     _validate_spec_switch_agreement(arguments)
@@ -983,6 +1073,7 @@ def run_init_command(arguments: argparse.Namespace) -> int:
     soil_contract = prepare_soil_remap(arguments, inventory.map_sources)
     engine = resolve_engine(arguments.engine)
     hydrometeors = first_guess_hydrometeors(arguments, engine, inventory.fields)
+    skin = masked_skintemp(arguments, engine)
     vertical = prepare_vertical_source(arguments)
 
     argv = [
@@ -1021,6 +1112,7 @@ def run_init_command(arguments: argparse.Namespace) -> int:
     if arguments.land_surface != "noah":
         argv.extend(("--land-surface", arguments.land_surface))
     argv.extend(hydrometeors["argv"])
+    argv.extend(skin["argv"])
     # The inputs do not change while the engine reads them, so their digests
     # are taken on other cores while it runs instead of after it (the
     # constructed artifact alone is 24.6 GB at 15 km).
@@ -1081,7 +1173,7 @@ def run_init_command(arguments: argparse.Namespace) -> int:
         _refuse(
             f"rw_mpas_init wrote {written_soil} soil levels where --land-surface "
             f"{arguments.land_surface} needs {expected_soil}; the engine binary predates suite soil "
-            "geometry. Rebuild or re-stage rw_mpas_init from woof 2.9.0 or later"
+            "geometry. Rebuild or re-stage rw_mpas_init from gpuwm 2.9.0 or later"
         )
     soil_receipt = {"mode": getattr(arguments, "soil_remap", "auto"), "applied": False}
     if getattr(arguments, "soil_remap_reason", None):
@@ -1104,7 +1196,8 @@ def run_init_command(arguments: argparse.Namespace) -> int:
         else:
             if not result.get("applied", True):
                 print(f"init: cold soil remap had nothing to change: {result.get('reason')}", file=sys.stderr)
-            soil_receipt = {**soil_receipt, "applied": True, **result}
+            soil_receipt = {**soil_receipt, "target_land_surface": arguments.land_surface, "applied": True, **result}
+    deep_soil_receipt = _deep_soil_remap(arguments, out, arguments.land_surface)
     aerosol_receipt = None
     if selection["scalar_names"]:
         from .init_physics import initialize_species
@@ -1177,6 +1270,8 @@ def run_init_command(arguments: argparse.Namespace) -> int:
         "engine_receipt": engine_receipt,
         "cold_soil_remap": soil_receipt,
         "first_guess_hydrometeors": {key: value for key, value in hydrometeors.items() if key != "argv"},
+        "masked_skintemp": {key: value for key, value in skin.items() if key != "argv"},
+        "deep_soil_remap": deep_soil_receipt,
         "physics_initialization": (aerosol_receipt if aerosol_receipt is not None
                                    else selection.get("physics_initialization")),
         "run_declarations": declarations,

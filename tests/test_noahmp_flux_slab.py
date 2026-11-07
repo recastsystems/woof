@@ -218,7 +218,7 @@ def _vege_launch(calls, use_device_libm: bool = False):
 
             return spy
 
-    vege_gpu._module = lambda flag=False: _Proxy(real_module(flag))
+    vege_gpu._module = lambda flag=False, **options: _Proxy(real_module(flag, **options))
     try:
         states = vege_gpu.evaluate_vege_flux_calls(
             calls, use_device_libm=use_device_libm)
@@ -626,13 +626,12 @@ def test_the_slab_refuses_an_option_identity_it_does_not_transcribe():
     """The per-column guards are essential; the slab must carry them too."""
     calls = _vege_calls()
     fields = _vege_fields(calls)
-    for option in ("opt_sfc", "opt_crs", "opt_stc"):
-        with pytest.raises(NotImplementedError):
-            slab.pack_vege_flux_slab({**fields, option: 2}, len(calls))
+    with pytest.raises(ValueError, match="opt_sfc"):
+        slab.pack_vege_flux_slab({**fields, "opt_sfc": 3}, len(calls))
     with pytest.raises(ValueError):
         slab.pack_vege_flux_slab({**fields, "nsnow": 2}, len(calls))
 
     calls = _bare_calls()
     fields = _bare_fields(calls)
-    with pytest.raises(NotImplementedError):
-        slab.pack_bare_flux_slab({**fields, "opt_sfc": 2}, len(calls))
+    with pytest.raises(ValueError, match="opt_sfc"):
+        slab.pack_bare_flux_slab({**fields, "opt_sfc": 3}, len(calls))

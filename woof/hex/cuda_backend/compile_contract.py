@@ -170,6 +170,10 @@ def _observation(source: Any, options: Iterable[str], result: Any) -> "NvrtcObse
         else bytes(source).decode("utf-8", errors="replace")
     )
     normalized_options = tuple(str(option) for option in options)
+    from woof.hip_backend import requested
+    if requested()=='hip':
+        from woof.hip_source import options_for_amd
+        normalized_options=options_for_amd(normalized_options)
     flags = tuple(option for option in normalized_options if not option.startswith("-I"))
     return NvrtcObservation(
         source_sha256=source_sha256(source_text),
@@ -243,6 +247,19 @@ def validate_compile_platform_fingerprint(
         raise CompileContractError(
             "woof compile_platform_fingerprint did not return a mapping"
         )
+    if measured.get('backend') in ('hip','hip-nvidia'):
+        required=('compiler_build','compiler_library_sha256','portable_header_sha256',
+                  'translator_sha256','device_architecture','warp_size','gpu_runtime_version',
+                  'gpu_driver_version','cupy_version','numpy_version')
+        for key in required:
+            if not isinstance(measured.get(key),str) or measured[key] in ('',UNAVAILABLE):
+                raise CompileContractError(f'HIP compiler fingerprint missing {key}')
+        for key in ('compiler_library_sha256','portable_header_sha256','translator_sha256'):
+            if not _SHA256_RE.fullmatch(measured[key]):
+                raise CompileContractError(f'HIP compiler fingerprint invalid {key}')
+        if measured['warp_size'] not in ('32','64'):
+            raise CompileContractError('HIP warp_size must be measured as 32 or 64')
+        return dict(sorted(measured.items()))
     missing = [name for name in _REQUIRED_FINGERPRINT_FIELDS if name not in measured]
     if missing:
         raise CompileContractError(
@@ -335,6 +352,8 @@ def _object_record(blob: Any) -> dict[str, Any]:
             "status": STATUS_UNAVAILABLE,
             "reason": "NVRTC returned no string or byte image to the capture",
         }
+    from woof.hip_backend import requested
+    if kind=="cubin" and requested()=="hip": kind="hsaco"
     return {
         "status": STATUS_RESOLVED,
         "kind": kind,

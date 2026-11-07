@@ -1412,6 +1412,16 @@ extern "C" __global__ void add_inplace_f32(
     }
 }
 
+extern "C" __global__ void add_pair_inplace_f32(
+    const int nlevels, const int nowners,
+    const float *first, const float *second, float *target)
+{
+    DRIVER_ELEMENT_LOOP(nlevels * nowners) {
+        float intermediate = mpas_add(target[element], first[element]);
+        target[element] = mpas_add(intermediate, second[element]);
+    }
+}
+
 extern "C" __global__ void scale_f32(
     const int nlevels, const int nowners, const float scale,
     const float *source, float *target)
@@ -2663,6 +2673,7 @@ class CudaDryDycoreDriver:
     ) -> None:
         config.validate(**({"les_dissipation": les_dissipation} if les_dissipation is not None else {}))
         self.les_dissipation = les_dissipation
+        self.held_suarez_momentum = None
         self._validate_config(config)
         source_release = getattr(config, "source_release", "v8.2.3")
         if source_release == "v8.4.1" and v841_context is None:
@@ -3428,6 +3439,15 @@ class CudaDryDycoreDriver:
             (np.int32(nlevels), np.int32(nowners), increment, target),
         )
 
+    def _add_pair(self, target: Any, first: Any, second: Any) -> None:
+        nlevels, nowners = _level_owner_shape(target, "target")
+        if tuple(first.shape) != tuple(target.shape) or tuple(second.shape) != tuple(target.shape):
+            raise ValueError("increment shape differs from target")
+        self._launch(
+            "add_pair_inplace_f32", nlevels * nowners,
+            (np.int32(nlevels), np.int32(nowners), first, second, target),
+        )
+
     def _scale(self, source: Any, scale: float) -> Any:
         nlevels, nowners = _level_owner_shape(source, "source")
         result = self.cp.empty_like(source)
@@ -3794,10 +3814,17 @@ class CudaDryDycoreDriver:
         acoustic_steps: int,
         scalars: Any,
         *, diabatic_theta: Any | None = None, large_timestep: float = 0.0,
+        consume_acoustic: bool = False,
     ) -> tuple[DevicePrognosticState, DeviceSavedDiagnostics, Any, Any]:
         cp = self.cp
-        rho = cp.empty_like(saved_state.rho)
-        rtheta = cp.empty_like(saved_state.rho_theta)
+        # These recovery kernels read and write only their own indexed word.
+        # Once acoustic stepping is complete its cell increments and averaged
+        # fluxes can hold the recovered outputs. The caller's output callback
+        # still receives the unchanged ru_p and rw_p arrays.
+        rho = acoustic.rho_pp if consume_acoustic else cp.empty_like(saved_state.rho)
+        rtheta = acoustic.rtheta_pp if consume_acoustic else cp.empty_like(saved_state.rho_theta)
+        if consume_acoustic:
+            acoustic.rtheta_pp_old = None
         rho_p = cp.empty_like(saved_state.rho)
         rtheta_p = cp.empty_like(saved_state.rho_theta)
         theta = cp.empty_like(saved_state.rho)
@@ -3836,7 +3863,7 @@ class CudaDryDycoreDriver:
             ),
         )
         ru = cp.empty_like(saved_state.rho_u)
-        flux_u = cp.empty_like(saved_state.rho_u)
+        flux_u = acoustic.ru_avg if consume_acoustic else cp.empty_like(saved_state.rho_u)
         self._launch(
             "recover_edges_f32",
             self.nedges * self.nlev,
@@ -3852,7 +3879,7 @@ class CudaDryDycoreDriver:
             ),
         )
         rw = cp.empty_like(saved_state.rho_w)
-        flux_w = cp.empty_like(saved_state.rho_w)
+        flux_w = acoustic.ww_avg if consume_acoustic else cp.empty_like(saved_state.rho_w)
         self._launch(
             "recover_interfaces_f32",
             self.ncells * (self.nlev + 1),
@@ -4038,6 +4065,65 @@ class CudaDryDycoreDriver:
             source.vertical_velocity,
         )
 
+    def _rank_owned_extents_v841(self) -> tuple[int, int] | None:
+        """``(owned cells, owned edges)`` on a rank of a split mesh; None on one card and on LTS classes."""
+        tables = getattr(self.halo_exchanger_v841, "tables", None)
+        cells = getattr(tables, "n_owned_cells", None)
+        edges = getattr(tables, "n_owned_edges", None)
+        return None if cells is None or edges is None else (int(cells), int(edges))
+
+    def _column_flag_v841(self, flag: Any) -> Any:
+        """The word the local-extent kernels set: the step's own on one card, a scratch word on a rank.
+
+        THE BREAKAGE THIS PREVENTS (hex 1 km, 300 km core, Oklahoma, 399,875 cells, four cards, GFS 2026-10-31 12Z;
+        run_37b3a1671fb8a034, 5 of 5): a rank advances every local column, and the columns of its outermost halo ring
+        are missing edges and neighbours, so what it computes there is garbage until the owner's words arrive. At the
+        third stage of step 1 that garbage held rho as low as -0.089 and NaN exner in 32 columns of rank 3's ring 3
+        and in no other column of the rank, and the validation word refused a healthy forecast that one card runs
+        clean. Which forecast it stops depends on where the cut falls and what the winds do there, so it could stop
+        any multi-card forecast at any step. A rank therefore checks what it owns: every column is checked once, by
+        its owner, through _validate_recovered_stage_v841 and _validate_finite_scalars_v841 at the end of every stage.
+        A bad value in an owned column's moist coefficient or tendency reaches that column's state in the same stage.
+        """
+        if self._rank_owned_extents_v841() is None:
+            return flag
+        scratch = getattr(self, "_rank_column_scratch_v841", None)
+        if scratch is None:
+            scratch = self._rank_column_scratch_v841 = self.cp.zeros((1,), dtype=self.cp.int32)
+        return scratch
+
+    def _validate_recovered_stage_v841(self, state: Any, saved: Any, flag: Any) -> None:
+        """The recovered-state test over what this rank owns (all of it on one card), before the halo round."""
+        extents = self._rank_owned_extents_v841()
+        if self.regional_v841 is not None:
+            # The same test, term for term, over the elements native solves: the shared kernel is launched over the
+            # padded extent and would refuse the garbage element for holding the native allocation zero where it
+            # demands a positive density.  See CudaRegionalRuntimeV841.validate_recovered.
+            self.regional_v841.validate_recovered(state, saved, flag, extents=extents)
+        elif extents is None:
+            validate_recovered_state_cuda_v841(state, saved, invalid_flag=flag, kernel_cache=self.cache)
+        else:
+            from .cuda_solve_region_v841 import SolveRegionKernels
+
+            cells, edges = extents
+            SolveRegionKernels.for_cache(self.cache).validate(
+                flag,
+                positive=((state.rho, cells), (state.rho_theta, cells), (saved.theta_m, cells), (saved.exner, cells)),
+                finite=((saved.density_perturbation, cells), (saved.rho_theta_perturbation, cells),
+                        (saved.pressure_perturbation, cells), (state.rho_w, cells), (saved.vertical_velocity, cells),
+                        (state.rho_u, edges), (saved.normal_velocity, edges)),
+            )
+
+    def _validate_finite_scalars_v841(self, scalars: Any, flag: Any) -> None:
+        """The finite-scalars test over the columns this rank owns (all of them on one card)."""
+        extents = self._rank_owned_extents_v841()
+        if extents is None:
+            accumulate_finite_array_cuda_v841(scalars, invalid_flag=flag, kernel_cache=self.cache)
+        else:
+            from .cuda_solve_region_v841 import SolveRegionKernels
+
+            SolveRegionKernels.for_cache(self.cache).validate(flag, finite=((scalars, extents[0]),))
+
     def _advance_dynamics_subcycle_v841(
         self,
         state: DevicePrognosticState,
@@ -4066,6 +4152,7 @@ class CudaDryDycoreDriver:
         each set from the same arrays and kernels as before, so every value
         a stage reads is the same word -- only when the set exists changes.
         """
+        column_flag = self._column_flag_v841(validation_flag)
 
         if self.v841_context is None:
             raise RuntimeError("v8.4.1 device context is missing")
@@ -4168,7 +4255,7 @@ class CudaDryDycoreDriver:
             saved_diag.theta_m,
             saved_diag.rho_theta_perturbation,
             exner=saved_diag.exner,
-            validation_flag=validation_flag,
+            validation_flag=column_flag,
             cqw=None if moist_coefficients is None else moist_coefficients.cqw,
             qtot=None if moist_coefficients is None else moist_coefficients.qtot,
         )
@@ -4180,7 +4267,7 @@ class CudaDryDycoreDriver:
             dpdz = self._moist_dpdz_v841(
                 saved_diag.density_perturbation,
                 moist_coefficients.qtot,
-                validation_flag,
+                column_flag,
             )
         if self.les_dissipation is not None:
             if physics_stage_callback is not None:
@@ -4244,7 +4331,7 @@ class CudaDryDycoreDriver:
                 saved_diag.pressure_perturbation,
                 dpdz,
                 moist_coefficients.cqw,
-                validation_flag,
+                column_flag,
             )
         saved_euler_theta = None
         if self.les_dissipation is not None:
@@ -4254,7 +4341,7 @@ class CudaDryDycoreDriver:
             # from the LES pool, retaining its rounding and signed zero.
             saved_euler_rw = self._moist_euler_w_v841(
                 saved_diag.pressure_perturbation, dpdz, moist_coefficients.cqw,
-                validation_flag, mixing_seed=mixing_w)
+                column_flag, mixing_seed=mixing_w)
         if short_lifetimes:
             # LES rebuilds the w tendency with its mixing seed, so dpdz must
             # survive that final pressure-term read as well.
@@ -4278,6 +4365,7 @@ class CudaDryDycoreDriver:
                 cam_damping_levels=getattr(self.config,"config_number_cam_damping_levels",4),
                 n_cells_solve=None if self.regional_v841 is None else self.regional_v841.n_cells_solve,
                 initial_u_tendency=saved_euler_ru,
+                retain_scratch=False,
             )
             # The u filter accumulates into the pressure-gradient seed in
             # native order: (pressure + del2) - del4.  Its return is the
@@ -4317,7 +4405,7 @@ class CudaDryDycoreDriver:
                     current_diag.theta_m,
                     current_diag.rho_theta_perturbation,
                     exner=saved_diag.exner,
-                    validation_flag=validation_flag,
+                    validation_flag=column_flag,
                     cqw=None if moist_coefficients is None else moist_coefficients.cqw,
                     qtot=None if moist_coefficients is None else moist_coefficients.qtot,
                 )
@@ -4353,9 +4441,14 @@ class CudaDryDycoreDriver:
                 # allocated takes one whole diagnostic set off the stage's
                 # acoustic high-water.  (Stage 1's set is the caller's.)
                 diagnostics = None
-            self._add(tend_ru, saved_euler_ru)
             if physics_tendencies is not None:
-                self._add(tend_ru, physics_tendencies.rho_u)
+                self._add_pair(tend_ru, saved_euler_ru, physics_tendencies.rho_u)
+            else:
+                self._add(tend_ru, saved_euler_ru)
+            if self.held_suarez_momentum is not None:
+                self.held_suarez_momentum.apply(
+                    tend_ru, current_state.rho_u,
+                    current_diag.pressure_perturbation)
             tend_rt = self._theta_tendency(
                 current_state,
                 current_diag.theta_m,
@@ -4378,7 +4471,7 @@ class CudaDryDycoreDriver:
                         current_state.rho,
                         current_diag.theta_m,
                         final_modified_theta_dynamics_rate,
-                        validation_flag,
+                        column_flag,
                     ),
                 )
             diabatic_theta = getattr(physics_tendencies, "diabatic_theta", None)
@@ -4393,8 +4486,11 @@ class CudaDryDycoreDriver:
                 # tend_theta + tend_theta_euler + tend_rtheta_physics -- the
                 # saved mixing increment lands before the physics increment,
                 # and after rthdynten is formed (line 6941).
-                self._add(tend_rt, saved_euler_theta)
-            if physics_tendencies is not None:
+                if physics_tendencies is not None:
+                    self._add_pair(tend_rt, saved_euler_theta, physics_tendencies.rho_theta)
+                else:
+                    self._add(tend_rt, saved_euler_theta)
+            elif physics_tendencies is not None:
                 self._add(tend_rt, physics_tendencies.rho_theta)
             tend_rw = self._w_tendency(
                 current_state, current_diag.vertical_velocity
@@ -4601,6 +4697,11 @@ class CudaDryDycoreDriver:
                 stage.acoustic_steps,
                 stage_scalars,
                 diabatic_theta=diabatic_theta, large_timestep=stage.large_timestep,
+                # LTS wrappers can read the averaged acoustic flux again
+                # after the stock recovery. Keep their input ownership.
+                consume_acoustic=(short_lifetimes and
+                    getattr(self._recover_candidate, '__func__', None)
+                    is CudaDryDycoreDriver._recover_candidate),
             )
             stage_scalars = None
             if stage.stage == 3 and acoustic_output_callback is not None:
@@ -4614,22 +4715,7 @@ class CudaDryDycoreDriver:
                 # images; drop them before the final solve diagnostics allocate.
                 saved_state = None
                 saved_diag = None
-            if self.regional_v841 is None:
-                validate_recovered_state_cuda_v841(
-                    current_state,
-                    current_diag,
-                    invalid_flag=validation_flag,
-                    kernel_cache=self.cache,
-                )
-            else:
-                # The same test, term for term, over the elements native
-                # solves: the shared kernel is launched over the padded
-                # extent and would refuse the garbage element for holding
-                # the native allocation zero where it demands a positive
-                # density.  See CudaRegionalRuntimeV841.validate_recovered.
-                self.regional_v841.validate_recovered(
-                    current_state, current_diag, validation_flag
-                )
+            self._validate_recovered_stage_v841(current_state, current_diag, validation_flag)
             if self.halo_exchanger_v841 is not None:
                 # Round B (design 44-round schedule): the recovered state and
                 # saved diagnostics become owner truth on the halo BEFORE
@@ -4797,6 +4883,7 @@ class CudaDryDycoreDriver:
             )
         cp = self.cp
         validation_flag = cp.zeros((1,), dtype=cp.int32)
+        column_flag = self._column_flag_v841(validation_flag)
         if self.regional_v841 is not None:
             # driver.py:3085-3089 -- mpas_atm_core.F:735-781 reads lbc_in and
             # re-forms the boundary tendencies at the start of any step whose
@@ -4910,7 +4997,7 @@ class CudaDryDycoreDriver:
             moist_coefficients = self._compute_moist_dynamics_coefficients_v841(
                 outer_saved.scalars,
                 scalar_names=scalar_names,
-                validation_flag=validation_flag,
+                validation_flag=column_flag,
             )
         outer_dt = float(self.config.config_dt)
         dynamics_splits = int(self.config.config_dynamics_split_steps)
@@ -4979,7 +5066,7 @@ class CudaDryDycoreDriver:
                 n_mass_loading=(int(outer_saved.scalars.shape[0])
                     if physics_mass_loading_count is None
                     else int(physics_mass_loading_count)),
-                validation_flag=validation_flag,
+                validation_flag=column_flag,
             )
         current = outer_saved
         carried = time_level_one
@@ -5114,7 +5201,7 @@ class CudaDryDycoreDriver:
                             config_coef_3rd_order=self.config.config_coef_3rd_order,
                             coefficients=self.coefficients, fzm=self.atmosphere.vertical.fzm,
                             fzp=self.atmosphere.vertical.fzp, rdzw=self.atmosphere.vertical.rdzw,
-                            validation_flag=validation_flag, indices_prevalidated=True,
+                            validation_flag=column_flag, indices_prevalidated=True,
                             rho_old_prevalidated=True, kernel_cache=self.cache,
                             config_apply_lbcs=True,
                             bdy_mask_cell=self.regional_v841.bdy_mask_cell,
@@ -5129,9 +5216,7 @@ class CudaDryDycoreDriver:
                         )
                         scalar_stage = transported.scalars
                         self.regional_v841.bdy_adjust_scalars(scalar_stage, stage.stage)
-                        accumulate_finite_array_cuda_v841(
-                            scalar_stage, invalid_flag=validation_flag, kernel_cache=self.cache,
-                        )
+                        self._validate_finite_scalars_v841(scalar_stage, validation_flag)
                         continue
                     scalar_stage, _target = advance_scalars_regional_cuda_v841(
                         self.regional_v841,
@@ -5153,17 +5238,13 @@ class CudaDryDycoreDriver:
                         config_coef_3rd_order=(
                             self.config.config_coef_3rd_order
                         ),
-                        validation_flag=validation_flag,
+                        validation_flag=column_flag,
                         scalar_tendency=scalar_source,
                     )
                     self.regional_v841.bdy_adjust_scalars(
                         scalar_stage, stage.stage
                     )
-                    accumulate_finite_array_cuda_v841(
-                        scalar_stage,
-                        invalid_flag=validation_flag,
-                        kernel_cache=self.cache,
-                    )
+                    self._validate_finite_scalars_v841(scalar_stage, validation_flag)
                     continue
                 transported = advance_scalar_transport_cuda_v841(
                     self.atmosphere.mesh,
@@ -5188,7 +5269,7 @@ class CudaDryDycoreDriver:
                     config_scalar_adv_order=3,
                     config_scalar_vadv_order=3,
                     config_coef_3rd_order=self.config.config_coef_3rd_order,
-                    validation_flag=validation_flag,
+                    validation_flag=column_flag,
                     indices_prevalidated=True,
                     rho_old_prevalidated=True,
                     kernel_cache=self.cache,
@@ -5200,11 +5281,7 @@ class CudaDryDycoreDriver:
                     ),
                 )
                 scalar_stage = transported.scalars
-                accumulate_finite_array_cuda_v841(
-                    scalar_stage,
-                    invalid_flag=validation_flag,
-                    kernel_cache=self.cache,
-                )
+                self._validate_finite_scalars_v841(scalar_stage, validation_flag)
             if self.halo_exchanger_v841 is not None:
                 # Final D round: the last stage's transported scalars become
                 # owner truth on the halo BEFORE phase-2 (WSM6) consumes the
@@ -5267,7 +5344,7 @@ class CudaDryDycoreDriver:
                     current.scalars[0],
                     rthdynten,
                     rqvdynten,
-                    validation_flag,
+                    column_flag,
                 ),
             )
             gf_rate_arrays = (rthdynten, rqvdynten)
@@ -5575,31 +5652,11 @@ class CudaDryDycoreDriver:
         # and WSM6 recovery gates.  Validate every committed prognostic and
         # rebuilt saved field while all arrays are still resident.
         final_validation_flag = self.cp.zeros((1,), dtype=self.cp.int32)
-        if self.regional_v841 is None:
-            validate_recovered_state_cuda_v841(
-                committed.state,
-                committed.saved,
-                invalid_flag=final_validation_flag,
-                kernel_cache=self.cache,
-            )
-        else:
-            # The same test, term for term, over the elements native solves.
-            # The shared kernel is launched over the PADDED extent and would
-            # refuse the garbage element for holding the native allocation
-            # zero where it demands a positive density -- the identical
-            # reason the dycore's own recovered-state gate is routed through
-            # this method at the end of every RK stage.  This site is the
-            # full-physics commit, and before 2026-08-26 it was the only
-            # recovered-state gate the regional lane did NOT route, because
-            # no limited-area run had ever reached it.
-            self.regional_v841.validate_recovered(
-                committed.state, committed.saved, final_validation_flag
-            )
-        accumulate_finite_array_cuda_v841(
-            committed.state.scalars,
-            invalid_flag=final_validation_flag,
-            kernel_cache=self.cache,
-        )
+        # On a limited-area run the test covers the elements native solves (the dycore's own
+        # recovered-state gate is routed the same way at the end of every RK stage), on a split
+        # mesh what this rank owns.
+        self._validate_recovered_stage_v841(committed.state, committed.saved, final_validation_flag)
+        self._validate_finite_scalars_v841(committed.state.scalars, final_validation_flag)
         final_validation_started = time.perf_counter()
         # Forecast can read this word with its endpoint health envelope.
         # The hook must finish before the existing numeric refusal or publish.

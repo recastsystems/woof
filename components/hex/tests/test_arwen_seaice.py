@@ -37,7 +37,7 @@ def test_energy_changes_ice_and_preserves_nonice_words(cp):
     mask=cp.asarray([[False,False,True,True]])
     for key,b in base._driver.fields.items():
         if b.ndim<2 or b.shape[-2:]!=(1,4):continue
-        # woof 2.9.4's own sea-ice state exists only on the seam without the hex owner (retire_engine_seaice).
+        # gpuwm 2.9.4's own sea-ice state exists only on the seam without the hex owner (retire_engine_seaice).
         if key not in fixed._driver.fields:continue
         index=cp.broadcast_to(mask,b.shape)
         assert bool(cp.array_equal(b[index].view(cp.uint8),fixed._driver.fields[key][index].view(cp.uint8))),key
@@ -84,7 +84,7 @@ def test_component_state_is_in_actual_restart_manifest(cp):
 
 
 def test_engine_prognostic_seaice_retires_and_hex_owns_the_census(cp):
-    # Breakage: woof 2.9.4's default-on prognostic sea ice changed XICE after the land call, so the
+    # Breakage: gpuwm 2.9.4's default-on prognostic sea ice changed XICE after the land call, so the
     # next Noah-MP census disagreed with the hex owner's classification and every s2s run on 0.4.2 stopped
     # at its first composite step.
     from woof.core.noahmp_runtime import classify_noahmp_surface

@@ -79,7 +79,7 @@ def test_parsed_explicit_source_text_refuses_unknown_carried_selector(tmp_path):
 
 
 def test_parsed_empty_snapshot_keeps_the_provenance_label_independent(tmp_path):
-    # 4e3480479, lane/283-namelist-tolerance-2, keeps snapshots independent
+    # 4e3480479, development branch, keeps snapshots independent
     # of labels. An explicit empty snapshot retains that rule while the
     # missing-snapshot existing-file refusal remains required at this gate.
     wps, inp = _registry_default_pair()

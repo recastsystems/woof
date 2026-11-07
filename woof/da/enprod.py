@@ -299,6 +299,22 @@ def _extract_uh(wrf, wrffile, timeidx):
     return np.asarray(wrf.getvar(wrffile, "UP_HELI_MAX", timeidx=timeidx))
 
 
+def _uh_layer(variable):
+    """A low-level updraft helicity layer's stored interval max (``UP_HELI_MAX01/02/03``, WOOF uh-layers 2026-11-02)."""
+
+    def extract(wrf, wrffile, timeidx):
+        return np.asarray(wrf.getvar(wrffile, variable, timeidx=timeidx))
+
+    return extract
+
+
+def _extract_uh_band(name):
+    def extract(wrf, wrffile, timeidx):
+        """Low-level updraft helicity: the stored interval maximum ``name``."""
+        return np.asarray(wrf.getvar(wrffile, name, timeidx=timeidx))
+    return extract
+
+
 def _extract_t2(wrf, wrffile, timeidx):
     return np.asarray(
         wrf.getvar(wrffile, "t2", timeidx=timeidx, units="degC"))
@@ -378,6 +394,25 @@ FIELDS: dict[str, FieldSpec] = {
         name="uh", title="updraft helicity", units="m2 s-2",
         unit_slug="m2s2", default_threshold=75.0, extract=_extract_uh,
         cmap="YlOrRd"),
+    # The low-level layers (WOOF uh-layers, 2026-11-02): an export carries them when its run wrote them; the Rust
+    # engine's own rows (rw_ensbatch) name the same fields.
+    "uh01": FieldSpec(
+        name="uh01", title="0-1 km updraft helicity", units="m2 s-2",
+        unit_slug="m2s2", default_threshold=10.0, extract=_uh_layer("UP_HELI_MAX01"),
+        cmap="YlOrRd", default_thresholds=(10.0, 20.0, 40.0)),
+    "uh02": FieldSpec(
+        name="uh02", title="0-2 km updraft helicity", units="m2 s-2",
+        unit_slug="m2s2", default_threshold=50.0, extract=_uh_layer("UP_HELI_MAX02"),
+        cmap="YlOrRd", default_thresholds=(25.0, 50.0, 75.0)),
+    "uh03": FieldSpec(
+        name="uh03", title="0-3 km updraft helicity", units="m2 s-2",
+        unit_slug="m2s2", default_threshold=50.0, extract=_uh_layer("UP_HELI_MAX03"),
+        cmap="YlOrRd", default_thresholds=(25.0, 50.0, 75.0)),
+    **{f"uh{suffix}": FieldSpec(
+        name=f"uh{suffix}", title=f"0-{top} km updraft helicity", units="m2 s-2",
+        unit_slug="m2s2", default_threshold=25.0,
+        extract=_extract_uh_band(f"UP_HELI_MAX{suffix}"), cmap="YlOrRd")
+       for suffix, top in (("01", 1), ("02", 2), ("03", 3))},
     "precip": FieldSpec(
         name="precip", title="accumulated precipitation", units="mm",
         unit_slug="mm", default_threshold=25.0, extract=_extract_precip,
@@ -393,7 +428,7 @@ FIELDS: dict[str, FieldSpec] = {
 }
 
 #: The suite, in the order ``all`` expands to.
-PRODUCTS = ("mean", "spread", "prob", "paintball", "pmm")
+PRODUCTS = ("mean", "spread", "prob", "paintball", "pmm", "max")
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +566,26 @@ def ensemble_mean(stack, *, nan_policy: str = DEFAULT_NAN_POLICY,
         values, counts = _finite_counts(array)
         out = values.sum(axis=0) / np.where(counts > 0, counts, 1)
         return np.where(counts > 0, out, np.nan)
+
+
+def ensemble_max(stack, *, nan_policy: str = DEFAULT_NAN_POLICY,
+                 member_numbers=None) -> np.ndarray:
+    """Member maximum at each point, under the stated NaN policy.
+
+    The "ensemble max" map (max composite reflectivity, max updraft
+    helicity).  ``mask`` takes the maximum over the finite members only,
+    infinities excluded exactly as in :func:`ensemble_mean`, and leaves a
+    point no member has NaN.  ``refuse`` fails the product outright.
+    Mirrors ``rustwx_ensemble::ensemble_max``.
+    """
+
+    array = _as_stack(stack, nan_policy=nan_policy,
+                      member_numbers=member_numbers)
+    if nan_policy == "refuse":
+        return array.max(axis=0)
+    finite = np.isfinite(array)
+    out = np.where(finite, array, -np.inf).max(axis=0)
+    return np.where(finite.any(axis=0), out, np.nan)
 
 
 def ensemble_spread(stack, *, ddof: int = 1,
@@ -872,11 +927,11 @@ def ensemble_token(product: str, *, threshold: float | None = None,
                    radius_km: float | None = None) -> str:
     """The ensemble half of the filename's product slot.
 
-    ``ens-mean``, ``ens-spread``, ``ens-pmm``, ``ens-p40dbz``,
+    ``ens-mean``, ``ens-spread``, ``ens-pmm``, ``ens-max``, ``ens-p40dbz``,
     ``ens-p40dbz-r5km``, ``ens-paintball40dbz``.
     """
 
-    if product in ("mean", "spread", "pmm"):
+    if product in ("mean", "spread", "pmm", "max"):
         return f"ens-{product}"
     if threshold is None or unit_slug is None:
         raise ValueError(
@@ -1921,6 +1976,17 @@ def render_mean(stack, spec, *, lat, lon, plt, context, out_png, dpi,
     plt.close(fig)
 
 
+def render_max(stack, spec, *, lat, lon, plt, context, out_png, dpi,
+               nan_policy=DEFAULT_NAN_POLICY):
+    values = ensemble_max(stack, nan_policy=nan_policy)
+    fig, axis = _figure(plt, lat, lon)
+    mesh, ticks = _shaded_mesh(axis, lon, lat, values, spec)
+    _finish(fig, axis, mesh,
+            title=f"ensemble max {spec.title}\n{context}",
+            cbar_label=spec.units, out_png=out_png, dpi=dpi, ticks=ticks)
+    plt.close(fig)
+
+
 def render_spread(stack, spec, *, lat, lon, plt, context, out_png, dpi,
                   nan_policy=DEFAULT_NAN_POLICY):
     values = ensemble_spread(stack, nan_policy=nan_policy)
@@ -2038,7 +2104,7 @@ def expand_requests(fields, products, thresholds, radii, *,
                     pmm_explicit: bool = True) -> list[ProductRequest]:
     """The cross product of fields x products x thresholds x radii.
 
-    Non-threshold products (mean/spread/pmm) appear once per field, not
+    Non-threshold products (mean/spread/pmm/max) appear once per field, not
     once per threshold: they do not depend on one.
 
     ``pmm_explicit=False`` (the ``--products all`` case) drops ``pmm``
@@ -2056,7 +2122,7 @@ def expand_requests(fields, products, thresholds, radii, *,
         for product in products:
             if product == "pmm" and not pmm_explicit and not spec.pmm_in_all:
                 continue
-            if product in ("mean", "spread", "pmm"):
+            if product in ("mean", "spread", "pmm", "max"):
                 requests.append(ProductRequest(field=name, product=product))
                 continue
             for threshold in field_thresholds:
@@ -2239,6 +2305,9 @@ def _draw(request: ProductRequest, spec: FieldSpec, stack, members, *,
     if request.product == "mean":
         render_mean(stack, spec, lat=lat, lon=lon, plt=plt, context=context,
                     out_png=out_png, dpi=dpi, nan_policy=nan_policy)
+    elif request.product == "max":
+        render_max(stack, spec, lat=lat, lon=lon, plt=plt, context=context,
+                   out_png=out_png, dpi=dpi, nan_policy=nan_policy)
     elif request.product == "spread":
         render_spread(stack, spec, lat=lat, lon=lon, plt=plt,
                       context=context, out_png=out_png, dpi=dpi,
@@ -3097,7 +3166,8 @@ __all__ = [
     "NAN_POLICIES", "PAINTBALL_PALETTE", "PMM_TIE_RULES", "PRODUCTS",
     "EnsembleManifest", "EnsembleMember", "EnsembleRefusal", "FieldSpec",
     "MemberFrames", "ProductRequest", "coverage_caption", "disc_offsets",
-    "ensemble_mean", "ensemble_plot_context", "ensemble_spread",
+    "ensemble_max", "ensemble_mean", "ensemble_plot_context",
+    "ensemble_spread",
     "ensemble_token", "exceedance_probability", "expand_requests",
     "resolve_enprod_engine", "run_suite_rust",
     "index_ensemble", "index_member_frames", "load_manifest",

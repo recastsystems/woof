@@ -41,6 +41,8 @@ reuses what is already there and verified, so a repeat build costs only the
 hashing.  The packet file is named by the SHA-256 of its own text.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target, image_target as _image_target
 from woof.hex import numerics as _hex_numerics
 
 import argparse
@@ -169,14 +171,14 @@ HOST_MATH_COMPILE = ("g++", "-O2", "-ffp-contract=off", "-fno-fast-math", "-fPIC
 # The shared device maths each scheme binds, and the SHA-256 its lane certified.
 MATHS = {
     "bl_mynn": ("bl-mynn-shared-maths.cuh",
-                "90d9c883180c2edc7ca26f9067d06519228c55e88252edc1e857f0351c302fea"),
+                "968ce2a44ba2f157ec8b3efaf21e7f64505efba8f793ef5b1dab6182d86a649b"),
     "mp_thompson": ("mp-thompson-glibc243-log10-maths.cuh",
-                    "1819ce9648539d700544837ff3f81e017f045f153dc51725fbca08920258a49e"),
+                    "9c8452218ca53330b4c112e0d1cfe5c0873d969c091eafd5ea0551aff9c047c2"),
     # The RRFS fork's TEMPO v3.0.3 port (rrfs.tempo_v303): the maths its real
     # replay and forecast packet certified (tests/tempo_rrfs/prepare_shared_math.py
     # plus gpu_replay.shared_math).
     "mp_tempo": ("mp-tempo-rrfs-maths.cuh",
-                 "13b194710cacf584f00a794dd311dcb6bf6d351179609a5feb1c10e23bd233c4"),
+                 "55520aa6dd47693bd83a3eb565d8b8a16c7efe717ce59a2f8895cf9e1fc9d66e"),
 }
 
 DECODERS = ("lookup_decode", "table_decode", "rw_mpas_rrtmg_lw_tables", "rw_mpas_rrtmg_sw_tables",
@@ -1071,7 +1073,7 @@ def _source_manifest() -> dict[str, Any]:
     return source_manifest()
 
 
-def assemble_mpas_source(cache: Path, *, mpas_source: Path | None = None, offline: bool = False,
+def _assemble_mpas_source_unlocked(cache: Path, *, mpas_source: Path | None = None, offline: bool = False,
                          log: Callable[[str], None] = _log) -> dict[str, str]:
     """The pinned MPAS-Model tree the route reads at run time, from fetched files.
 
@@ -1099,7 +1101,7 @@ def assemble_mpas_source(cache: Path, *, mpas_source: Path | None = None, offlin
     return {"path": str(root), "sha256": digest}
 
 
-def assemble_rrfs_source(cache: Path, *, rrfs_source: Path | None = None, offline: bool = False,
+def _assemble_rrfs_source_unlocked(cache: Path, *, rrfs_source: Path | None = None, offline: bool = False,
                          log: Callable[[str], None] = _log, jobs: int | None = None,
                          pin_set: str = "rrfs") -> dict[str, str]:
     """The RRFS fork tree the RRFS route reads at run time: its Registry and its physics tables.
@@ -1146,6 +1148,32 @@ def assemble_rrfs_source(cache: Path, *, rrfs_source: Path | None = None, offlin
     return {"path": str(root), "sha256": digest}
 
 
+def _assembly_lock(cache: Path) -> Path:
+    """The one lock every source-tree assembly and installed-record write in ``cache`` takes.
+
+    THE BREAKAGE THIS PREVENTS: eight same-host rank threads assembling ``physics-resources/rrfs-source`` at
+    once raced in ``_link_relative`` (one unlinked the table link another had just checked, FileNotFoundError on
+    CCN_ACTIVATE_DATA; restart-check box 2, 2026-11-06, attempt 6), and concurrent ``record_installed`` calls
+    each wrote back a record missing the other's row.  One assembler works; the others wait, then find the
+    finished tree (assembly is idempotent: verified files are reused and matching links are kept).
+    """
+    return Path(cache) / ".assembly.lock"
+
+
+def assemble_mpas_source(cache: Path, **options) -> dict[str, str]:
+    """The pinned MPAS-Model tree, assembled by one process at a time (``_assembly_lock``)."""
+    from ..file_lock import held
+    with held(_assembly_lock(cache)):
+        return _assemble_mpas_source_unlocked(cache, **options)
+
+
+def assemble_rrfs_source(cache: Path, **options) -> dict[str, str]:
+    """The RRFS fork tree, assembled by one process at a time (``_assembly_lock``)."""
+    from ..file_lock import held
+    with held(_assembly_lock(cache)):
+        return _assemble_rrfs_source_unlocked(cache, **options)
+
+
 def installed_record_path(cache: Path | None = None) -> Path:
     return (Path(cache) if cache is not None else default_cache()) / "installed.json"
 
@@ -1161,7 +1189,13 @@ def read_installed(cache: Path | None = None) -> dict[str, Any]:
 
 
 def record_installed(cache: Path, rows: dict[str, dict[str, str]]) -> Path:
-    """Merge ``rows`` into the cache's installed-resources record (atomically)."""
+    """Merge ``rows`` into the cache's installed-resources record (atomically, one writer at a time)."""
+    from ..file_lock import held
+    with held(installed_record_path(cache).with_name(".installed.lock")):
+        return _record_installed_unlocked(cache, rows)
+
+
+def _record_installed_unlocked(cache: Path, rows: dict[str, dict[str, str]]) -> Path:
     record = read_installed(cache)
     current = (Path(cache) if cache is not None else default_cache()).resolve()
     recorded = _recorded_root(record)
@@ -1287,8 +1321,18 @@ def ensure_route_resources(keys: tuple[str, ...], *, cache: Path | None = None,
     if pin_set.startswith('rrfs') and source_key in missing:
         # The fork's DATA (Registry and tables, fetched by SHA-256): no compiler, no native library.
         root = Path(cache if cache is not None else default_cache()).resolve()
-        record_installed(root, {source_key: assemble_rrfs_source(root, log=log, pin_set=pin_set)})
-        out[source_key] = resolve_resource(source_key, root)
+        from ..file_lock import held
+        # Its own lock file: assemble_rrfs_source takes the assembly lock and record_installed the record lock inside.
+        with held(_assembly_lock(root).with_name(".first-use.lock")):
+            # Another rank or process may have finished it while this one waited for the lock: take it only whole.
+            try:
+                resolved = resolve_resource(source_key, root)
+            except PhysicsResourceError:
+                resolved = None
+            if resolved is None or source_tables_missing(resolved, pin_set):
+                record_installed(root, {source_key: assemble_rrfs_source(root, log=log, pin_set=pin_set)})
+                resolved = resolve_resource(source_key, root)
+            out[source_key] = resolved
         missing.remove(source_key)
         if not missing:
             return out
@@ -1442,7 +1486,7 @@ def build_mynnedmf_image(cache: Path, log: Callable[[str], None] = _log, *,
     try:
         if arch is None:
             import cupy
-            arch = "sm_" + cupy.cuda.Device().compute_capability
+            arch = _image_target(xp=cupy)
     except Exception as error:  # no CUDA device or no cupy in this process
         raise PhysicsResourceError(f"the RRFS MYNN-EDMF CUDA image compiles for the run's device and this "
                                    f"process has none ({type(error).__name__}); the forecast's first use "
@@ -1457,7 +1501,14 @@ def build_mynnedmf_image(cache: Path, log: Callable[[str], None] = _log, *,
     # The options (numerics mode) are part of the entry's name: without them a strict run and a fast run
     # (WOOF_HEX_NUMERICS) wrote one directory, each overwriting the other's image on every switch.
     options_sha = hashlib.sha256(json.dumps(options).encode()).hexdigest()
-    image = cache / "rrfs-mynnedmf" / f"{source_sha[:16]}-{arch}-{options_sha[:12]}" / "mynnedmf.cubin"
+    directory = "rrfs-mynnedmf"
+    from woof.hip_backend import active, compiler_binding
+    if active():
+        # The original CUDA cache stays unchanged. A HIP translation must
+        # neither consume its image nor replace the next CUDA run's image.
+        binding_sha = hashlib.sha256(json.dumps(compiler_binding(), sort_keys=True).encode()).hexdigest()
+        directory += "-hip-" + binding_sha[:20]
+    image = cache / directory / f"{source_sha[:16]}-{arch}-{options_sha[:12]}" / "mynnedmf.cubin"
     metadata = image.with_suffix(".json")
     if image.is_file() and metadata.is_file():
         try:

@@ -7,8 +7,9 @@ Nothing on the console or in the receipt said so, so a run (or a box built from 
 be sold without anyone having chosen it.  The owner ruling of 2026-10-14: the package stays Apache-2.0 and no
 default routes into code that cannot be sold or is limited.
 
-Not gated (owner ruling 2026-10-14): UGWP and the RRFS fork's NOAA GSL physics (MYNN-EDMF, MYNN-SFC, RUC, GFL,
-smoke) are treated as US Government code; they ship and the fork-exact RRFS stage (hrrrv5) runs with no opt-in.
+Not gated: UGWP (Apache-2.0 upstream since 2026-11-04, NOTICE section 8) and, by the owner ruling of 2026-10-14,
+the RRFS fork's NOAA GSL physics (MYNN-EDMF, MYNN-SFC, RUC, GFL, smoke), treated as US Government code; they ship
+and the fork-exact RRFS stage (hrrrv5) runs with no opt-in.
 The table records them under ``not_gated``.  Their former opt-in names, ``noaa-gsl-unlicensed`` and ``ugwp-held``,
 are listed under ``retired_terms``: a run that still names one gets one line saying so and runs exactly as it would
 without it (scripts written while it gated are not broken by it).
@@ -224,10 +225,25 @@ def _annotated_type(base: type) -> type:
             result = base.receipt(self)
             result["licence_opt_in"] = [dict(row) for row in self.__dict__["_licence_opt_in"]]
             return result
-        kind = type(base.__name__, (base,), {"receipt": receipt, "__module__": base.__module__,
-                                              "__doc__": base.__doc__})
+
+        def __reduce__(self):
+            # THE BREAKAGE THIS PREVENTS: this class shares its base's name and module, so pickle's lookup finds the
+            # base and refuses ("not the same object"), and a run under an opt-in could not hand its configuration
+            # to a rank process.  The same fault as the suite configuration (cuda_suite_physics_v841.suite_config).
+            values = {field.name: getattr(self, field.name) for field in dataclasses.fields(self) if field.init}
+            return _restore_annotated, (base, values, self.__dict__["_licence_opt_in"])
+
+        kind = type(base.__name__, (base,), {"receipt": receipt, "__reduce__": __reduce__,
+                                              "__module__": base.__module__, "__doc__": base.__doc__})
         _ANNOTATED[base] = kind
     return kind
+
+
+def _restore_annotated(base: type, values: Mapping[str, Any], record: tuple) -> Any:
+    """Pickle's way back to an annotated configuration, this process's own copy of the class."""
+    annotated = _annotated_type(base)(**values)
+    object.__setattr__(annotated, "_licence_opt_in", record)
+    return annotated
 
 
 def admit(config: Any, arguments: Any, *, stream: TextIO | None = None,

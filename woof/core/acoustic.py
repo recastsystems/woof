@@ -21,6 +21,8 @@ from woof.core.kernels import (get_kernel, get_kernel_int_defines,
                                 module_source, module_source_int_defines)
 from woof.core.state import DTYPE, DomainState
 from woof.microphysics_schemes import mass_loading_species as _mass_loading_species
+from woof.core.mp_column_schemes import (SIX_MASS_TABLE_SCHEMES,
+                                         TABLE_SCHEMES)
 
 _THREADS = 256
 # A column solve does not share work between threads.  Smaller fast mapped
@@ -78,9 +80,16 @@ def _uv_emdiv_args(state: DomainState, cfg: RunConfig, mudf) -> tuple:
     if not WRF_EXACT:
         return ()
     use = mudf is not None and cfg.emdiv > 0.0
+    # advance_uv reconstructs dx/dy from the stored REAL rdx/rdy, rather
+    # than using the namelist spacing. At 1000 m that round trip is
+    # 999.99993896484375 m, changing the external-mode damping by one ULP.
+    # The first acoustic iteration has zero MUDF; the difference first
+    # enters at RK stage 2, even before the first child feedback barrier.
+    dx = DTYPE(DTYPE(1.0) / DTYPE(1.0 / cfg.dx))
+    dy = DTYPE(DTYPE(1.0) / DTYPE(1.0 / cfg.dy))
     return (mudf if use else state.mup, state.msfu, state.msfv_inv,
-            DTYPE(DTYPE(-cfg.emdiv) * DTYPE(cfg.dx)),
-            DTYPE(DTYPE(-cfg.emdiv) * DTYPE(cfg.dy)),
+            DTYPE(DTYPE(-cfg.emdiv) * dx),
+            DTYPE(DTYPE(-cfg.emdiv) * dy),
             np.int32(use), np.int32(state.has_msf))
 
 
@@ -173,7 +182,11 @@ def prepare_moist_cq(state: DomainState, cfg: RunConfig) -> tuple:
     cqu = state.scratch((nz, ny, nx + 1), "acoustic_cqu")
     cqv = state.scratch((nz, ny + 1, nx), "acoustic_cqv")
     cqw = state.scratch((nz + 1, ny, nx), "acoustic_cqw")
-    if cfg.mp_physics == 0:
+    registered = getattr(state, "_registered_mass_slots", ())
+    if registered:
+        qi, qs, qg = (getattr(state, n) for n in registered)
+        n_mass = 6
+    elif cfg.mp_physics == 0:
         qi = qs = qg = state.qv              # placeholders are never read
         n_mass = 1
     elif cfg.mp_physics in (1, 3):
@@ -201,10 +214,35 @@ def prepare_moist_cq(state: DomainState, cfg: RunConfig) -> tuple:
         from woof.core.moist import absent_mass_plane
         qi = state.qi
         zero = absent_mass_plane(state)
-        qs = state.qs if getattr(state, "qs", None) is not None else zero
+        qs = getattr(state, "qs", None)
+        if qs is None:
+            qs = getattr(state, "qi2", None)
+        if qs is None:
+            qs = zero
         qg = zero
         n_mass = 6
-    elif cfg.mp_physics in (2, 6, 8, 9, 10, 16, 18, 24, 28, 30, 106):
+    elif cfg.mp_physics == 13:
+        # A five-class scheme (SBU-YLin, mp=13: moist:qv,qc,qr,qi,qs,
+        # Registry.EM_COMMON:3029) carries ice and snow and NO graupel.
+        # The absent qg takes the shared zero plane at n_mass=6, the P3
+        # argument above: an add.rn of +0.0 is an identity.
+        from woof.core.moist import absent_mass_plane
+        qi, qs = state.qi, state.qs
+        qg = absent_mass_plane(state)
+        n_mass = 6
+    elif getattr(state, "qi", None) is None \
+            and getattr(state, "qs", None) is not None:
+        # Eta Ferrier (mp=95, Registry.EM_COMMON:3045): moist:qv,qc,qr,qs
+        # -- ONE ice mass, the scheme's total ice, and no qi or qg.  The
+        # mirror image of P3's arm above: the absent qi/qg take the shared
+        # zero plane at n_mass=6 (moist.absent_mass_plane: a zero addend
+        # is an identity in calc_cq's add.rn.f32 sum).  qt stays out: it
+        # is Registry ``scalar``, and it is the SAME water as qc+qr+qs.
+        from woof.core.moist import absent_mass_plane
+        qi = qg = absent_mass_plane(state)
+        qs = state.qs
+        n_mass = 6
+    elif cfg.mp_physics in (2, 6, 7, 8, 9, 10, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 56, 106) + SIX_MASS_TABLE_SCHEMES:
         # mp=28 is numerically IDENTICAL to mp=8 here.  WRF's calc_cq sums
         # the Registry ``moist`` package only, and Registry.EM_COMMON:3036
         # gives aerosol-aware Thompson
@@ -227,7 +265,9 @@ def prepare_moist_cq(state: DomainState, cfg: RunConfig) -> tuple:
         # ran mode 3).
         qi = state.qi
         qs, qg = state.qs, state.qg
-        n_mass = 7 if cfg.mp_physics in (9, 18, 24) else 6
+        # UDM (27, Registry.EM_COMMON:3040) likewise declares hail in
+        # moist; its CCN/cloud/rain numbers remain in scalar.
+        n_mass = 7 if cfg.mp_physics in (7, 9, 18, 24, 26, 27, 56) else 6
     elif _mass_loading_species(cfg.mp_physics) == ("qi", "qs", "qg"):
         # A NAMED scheme whose capability row declares the six-mass moist
         # package: the same calc_cq call as the Thompson family.
@@ -236,7 +276,7 @@ def prepare_moist_cq(state: DomainState, cfg: RunConfig) -> tuple:
         n_mass = 6
     else:
         raise ValueError(f"unsupported mp_physics={cfg.mp_physics} for cq")
-    qh = state.qh if cfg.mp_physics in (9, 18, 24) else state.qv
+    qh = state.qh if cfg.mp_physics in (7, 9, 18, 24, 26, 27, 56) else state.qv
     n = (nz + 1) * (ny + 1) * (nx + 1)
     blocks = (n + _THREADS - 1) // _THREADS
     get_kernel("acoustic", "calc_cq")(
@@ -766,6 +806,11 @@ def _prepare_joined(state, cfg, mu_name, mu_args, w_name, w_args,
         return None, None, {}, False
     unit, uv_names, column_names, receipt = fusion.joined_unit(
         source, bool(state.has_msf), frame, sumflux is not None, options)
+    if state.has_msf:
+        from woof.core.kernel_shape import shape_defines, specialize_source
+        unit = specialize_source("acoustic", unit,
+            shape_defines("acoustic", "advance_w_phi_msf", (cfg.nz, cfg.ny, cfg.nx)),
+            functions=(fusion.COLUMN_ENTRY,))
     joined_uv = joined_column = None
     if emdiv_args is not None:
         emdiv = (params("apply_emdiv"), emdiv_args, {"spec_zone": "emdiv_spec_zone"})

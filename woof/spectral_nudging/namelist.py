@@ -9,8 +9,8 @@ def translate(section, grid_ids, drop):
 
     def column(key):
         spec = registry[('fdda', key)]
-        convert = int if spec['type'] == 'integer' else float
-        default = convert(spec['default'])
+        convert = int if spec['type'] == 'integer' else (str if spec['type'] == 'character' else float)
+        default = str(spec['default']).strip('"\'') if convert is str else convert(spec['default'])
         values = (section.registry_col(key, count, default)
                   if spec['nentries'] == 'max_domains' else
                   [section.scalar(key, default)] * count)
@@ -26,15 +26,13 @@ def translate(section, grid_ids, drop):
     values = {key: column(key) for key in keys}
     values['cutoff_x'] = column('xwavenum')
     values['cutoff_y'] = column('ywavenum')
-    for key in ('grid_sfdda', 'obs_nudge_opt'):
-        entries = section.take(key, [0])
-        if any(value != 0 for value in entries):
-            raise ValueError(f'FDDA_OBSERVATION_INPUT: {key} needs surface or point-observation forcing, which the gridded analysis source does not supply')
-        if key in section.consumed:
-            drop('fdda',key,entries,'inactive observation-nudging selector')
+    if any(value not in (0, 1, 2) for value in values['grid_sfdda']):
+        error = ValueError('&fdda/grid_sfdda supports 0 (off), 1 (surface analysis nudging) or 2 (FASDAS)')
+        error.fdda_key = 'grid_sfdda'
+        raise error
     for key in ('gfdda_inname','io_form_gfdda'):
-        entries = section.take(key)
-        if entries is not None:
+        entries = section.entries.get(key)
+        if entries is not None and not any(values['grid_sfdda']):
             drop('fdda',key,entries,'the engine reads its own prepared analysis store')
     # Date-component alternatives change the forcing window. Do not silently
     # accept them as aliases of gfdda_end_h / gfdda_interval_m.
@@ -47,9 +45,17 @@ def translate(section, grid_ids, drop):
     section.finish()
     domains = {}
     for index, grid_id in enumerate(grid_ids):
+        if values["grid_sfdda"][index] and modes[index] != 1:
+            error = ValueError("WRF_SURFACE_FDDA_PARENT: grid_sfdda requires grid_fdda=1; native spectral FDDA does not call SFDDAGD")
+            error.fdda_key = 'grid_sfdda'
+            raise error
         if modes[index] == 0:
             continue
         row = {key: entries[index] for key,entries in values.items()}
+        if not row['grid_sfdda']:
+            from .config import SURFACE_KEYS
+            for key in SURFACE_KEYS:
+                row.pop(key,None)
         row.update(enabled=True, mode='grid' if modes[index] == 1 else 'spectral',
                    convention='wrf', boundary_cells=1)
         NudgingConfig(**row)

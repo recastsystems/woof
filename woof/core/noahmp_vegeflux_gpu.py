@@ -128,7 +128,7 @@ def _copy_constant(module, name: str, value: np.ndarray) -> None:
 
 @lru_cache(maxsize=None)
 def _module_on(_device: int, use_device_libm: bool = False,
-               atan_profile: str = "glibc_2_39"):
+               atan_profile: str = "glibc_2_39", selected_options: bool = False):
     """The VEGE_FLUX translation unit on ONE card, constants uploaded.
 
     ``_device`` is a cache key and nothing else: it is the CURRENT device,
@@ -153,19 +153,22 @@ def _module_on(_device: int, use_device_libm: bool = False,
     module = compile_runtime_unit(
         "noahmp_vegeflux",
         module_key="woof.core.noahmp_vegeflux_gpu:vegeflux"
+        + ("(selected-options)" if selected_options else "")
         + ("(device-libm)" if use_device_libm else "")
         + (":" + atan_profile if atan_profile != "glibc_2_39" else ""),
-        options=options, atan_profile=atan_profile)
+        options=options, atan_profile=atan_profile,
+        selected_options=selected_options)
     for name, value in _constant_tables().items():
         _copy_constant(module, name, value)
     return module
 
 
 def _module(use_device_libm: bool = False, *,
-            atan_profile: str = "glibc_2_39"):
+            atan_profile: str = "glibc_2_39", selected_options: bool = False):
     import cupy as cp
 
-    return _module_on(cp.cuda.runtime.getDevice(), use_device_libm, atan_profile)
+    return _module_on(cp.cuda.runtime.getDevice(), use_device_libm, atan_profile,
+                      selected_options)
 
 
 def _bind_call(args, kwargs) -> dict:

@@ -12,3 +12,4 @@ pub mod tables;
 pub mod batch;
 pub mod columns;
 pub mod input;
+pub mod surface;

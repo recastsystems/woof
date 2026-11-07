@@ -132,7 +132,9 @@ ROUTE_TABLE_SHA256 = (
     # records by the ECMWF .index (record_index, gh preferred over the
     # pressure-level z the way the mapping reads them), and record_subset
     # is supported.
-    "77e2d33b334057fce82a61da4eca03889dfca1833cc86c80d82f45d0c6e615b8"
+    # Moved by feat/hrdps-source: the gem-hrdps and gem-rdps rows (ECCC MSC
+    # Datamart, one object per variable and level).
+    "d3ec8ec864c133a12a3ca400d5d52c5d42a3ccfbcc01ab65f18295403c156a28"
 )
 
 #: Sources whose acquisition predates the route table and keeps its own
@@ -333,6 +335,7 @@ class Route:
     #: (:class:`PostingRow`).  Every loaded route has one: the loader
     #: refuses a row without it.
     posting: "PostingRow | None" = None
+    parameters: Mapping[str, object] | None = None
 
     def lag_rule(self, cycle_hour: int, lead: int = 0) -> LagRule:
         """The publication rule for one UTC cycle hour and lead."""
@@ -806,6 +809,7 @@ def _build_routes() -> Mapping[str, Route]:
              tuple((int(step[0]), int(step[1])) for step in entry["steps"]))
             for entry in raw["ladders"])
         routes[source_id] = Route(
+            parameters=raw.get("parameters"),
             first_lead=int(raw.get("first_lead", 0)),
             source_id=source_id,
             label=str(raw["label"]),
@@ -877,7 +881,8 @@ def _build_routes() -> Mapping[str, Route]:
         files = route.files + tuple(
             row for era in route.publication_eras for row in era.files)
         for row in files:
-            bad = unknown_tokens(row.path)
+            bad = tuple(token for token in unknown_tokens(row.path)
+                        if token not in (route.parameters or {}))
             if bad:
                 raise ValueError(
                     f"{ROUTE_TABLE_NAME}: route {route.source_id} file "
@@ -1788,6 +1793,8 @@ class FetchPlan:
     #: decision: it disables fall-through and it IS the request's
     #: identity, where an unpinned request's identity is the ladder.
     pinned_host: str | None = None
+    source_parameters: tuple[tuple[str, str], ...] = ()
+    record_profile: str | None = None
 
     @property
     def source_id(self) -> str:
@@ -1909,10 +1916,44 @@ def endpoint_ladder(route: Route, cycle: datetime, *,
         throttle_fallthrough=True)
 
 
+def resolve_parameters(route: Route, value: str | None) -> dict[str, str]:
+    """Resolve table-declared object selectors, independent of model identity.
+
+    Values are single safe path components. They cannot inject a URL, slash,
+    traversal, or overwrite cycle/lead/member tokens. Defaults are table data.
+    """
+    supplied = {}
+    for item in (value.split(",") if value else ()):
+        key, separator, parameter = item.partition("=")
+        key = key.strip().upper()
+        parameter = parameter.strip()
+        if not separator or key in supplied:
+            raise ValueError("source_parameters requires unique KEY=VALUE pairs")
+        supplied[key] = parameter
+    declarations = route.parameters or {}
+    unknown = set(supplied) - set(declarations)
+    if unknown:
+        raise ValueError(f"{route.source_id}: undeclared source parameters {sorted(unknown)}")
+    resolved = {}
+    for key, row in declarations.items():
+        if key in PATH_TOKENS or not re.fullmatch(r"[A-Z_]+", key):
+            raise ValueError(f"{route.source_id}: invalid parameter token {key}")
+        parameter = supplied.get(key, row.get("default"))
+        if parameter is None:
+            raise ValueError(f"{route.source_id}: --source-parameters requires {key}=VALUE ({row.get('why', '')})")
+        if (not re.fullmatch(r"[A-Za-z0-9_-]+", parameter)
+                or not re.fullmatch(row.get("pattern", r"[A-Za-z0-9_-]+"), parameter)
+                or (row.get("choices") and parameter not in row["choices"])):
+            raise ValueError(f"{route.source_id}: invalid {key}={parameter!r}: {row.get('why', '')}")
+        resolved[key] = parameter
+    return resolved
+
+
 def resolve_request(source: str, *, cycle: datetime, hours: int,
                     cadence: int | None = None, start_hour: int = 0,
                     host: str | None = None, member: str | None = None,
                     area: str | None = None,
+                    source_parameters: str | None = None,
                     out: Path | None = None,
                     now: datetime | None = None) -> FetchPlan:
     """Everything a fetch will do, decided before a single byte moves."""
@@ -1955,6 +1996,8 @@ def resolve_request(source: str, *, cycle: datetime, hours: int,
 
     context = _cycle_context(cycle)
     context["MEMBER"] = member_token
+    parameters = resolve_parameters(route, source_parameters)
+    context.update(parameters)
 
     objects: list[PlannedObject] = []
     by_role: dict[str, list[tuple[int, str]]] = {}
@@ -2097,7 +2140,8 @@ def resolve_request(source: str, *, cycle: datetime, hours: int,
         supplement_role=supplement_role,
         member_set=(str(route.prep["member_prep"])
                     if route.prep.get("member_prep") else None),
-        out=out, ladder=ladder, pinned_host=host)
+        out=out, ladder=ladder, pinned_host=host,
+        source_parameters=tuple(sorted(parameters.items())))
 
 
 def donor_records_plan(plan: FetchPlan, records: Mapping[str, object]) -> FetchPlan:
@@ -2250,10 +2294,10 @@ def _download_object(url: str, dest: Path, *, magic: str, opener=None,
         written, digest = download(url, part, user_agent=_USER_AGENT,
             streams=streams, timeout=timeout, opener=opener,
             progress=progress, declared_size=declared_size)
+        _verify_payload(part, magic=magic, label=dest.name)
     except BaseException:
         part.unlink(missing_ok=True)
         raise
-    _verify_payload(part, magic=magic, label=dest.name)
     part.replace(dest)
     return {"name": dest.name, "bytes": written, "sha256": digest,
             "url": url}
@@ -2342,7 +2386,8 @@ def _download_along_ladder(plan: FetchPlan, obj: PlannedObject, dest: Path, *,
             try:
                 return download_records(
                     url, endpoint.url(obj.index_key), dest,
-                    declaration=obj.record_index, opener=opener)
+                    declaration=obj.record_index, opener=opener,
+                    progress=lambda line: progress(f"fetch {plan.source_id}: {line}"))
             except IndexAbsent as error:
                 # The object may still be there: move it whole (the decode
                 # reads the same records from it) rather than fail it.
@@ -2454,6 +2499,16 @@ def _recovery_path(out: Path, obj: PlannedObject) -> Path:
     return _io_path(out / _RECOVERY_DIRECTORY / f"{token}.json")
 
 
+#: The request identity a recovery receipt is matched on.  ``record_profile``
+#: is recorded only by a request that names one (a packaged state road such
+#: as RRFS v1's), so it is read with ``.get``: absent on both sides is a
+#: match.  Indexing it raised KeyError on every profile-less request that met
+#: a receipt -- an ensemble member reusing another member's download
+#: (WOOF 2026-11-01 run_f6d6c7bb888f5f85, "member 5's preparation failed:
+#: KeyError: 'record_profile'") and every managed retry.
+_RECOVERY_IDENTITY_KEYS = ("source", "cycle", "host", "member", "record_profile")
+
+
 def has_recovery_request(out: Path) -> bool:
     """Whether an interrupted managed download recorded its input identity."""
     out = _io_path(out)
@@ -2472,8 +2527,8 @@ def _recovery_entry(out: Path, plan: FetchPlan, obj: PlannedObject) -> dict | No
         record = json.loads(_recovery_path(out, obj).read_text(encoding="utf-8"))
         wanted = _request_identity(plan)
         if (record.get("key") != obj.key
-                or any(record.get("request", {}).get(key) != wanted[key]
-                       for key in ("source", "cycle", "host", "member"))):
+                or any(record.get("request", {}).get(key) != wanted.get(key)
+                       for key in _RECOVERY_IDENTITY_KEYS)):
             return None
         entry = record.get("file")
         return entry if isinstance(entry, dict) else None
@@ -2546,13 +2601,19 @@ def _request_identity_fields(source: str, cycle: datetime, host: str | None,
 
 
 def _request_identity(plan: FetchPlan) -> dict:
-    return _request_identity_fields(plan.source_id, plan.cycle, plan.pinned_host,
-                                    plan.member, plan.leads)
+    identity = _request_identity_fields(plan.source_id, plan.cycle, plan.pinned_host,
+                                        plan.member, plan.leads)
+    if plan.source_parameters:
+        identity["source_parameters"] = dict(plan.source_parameters)
+    if plan.record_profile:
+        identity["record_profile"] = plan.record_profile
+    return identity
 
 
 def check_prior_request(out: Path, plan: FetchPlan | None = None, *,
                         source: str | None = None, cycle: datetime | None = None,
-                        host: str | None = None, member: str | None = None) -> None:
+                        host: str | None = None, member: str | None = None,
+                        source_parameters: str | None = None) -> None:
     """Refuse two requests in one directory, also during managed cache selection.
 
     The explicit identity form checks the same source/cycle/host/member
@@ -2560,7 +2621,7 @@ def check_prior_request(out: Path, plan: FetchPlan | None = None, *,
     """
     out = _io_path(out)
     if plan is not None:
-        if any(value is not None for value in (source, cycle, host, member)):
+        if any(value is not None for value in (source, cycle, host, member, source_parameters)):
             raise ValueError("Supply a fetch plan or request identity, not both")
         wanted = _request_identity(plan)
         route = plan.route
@@ -2573,9 +2634,14 @@ def check_prior_request(out: Path, plan: FetchPlan | None = None, *,
             route.host(host)
         resolved_member, _ = resolve_member(route, member)
         wanted = _request_identity_fields(route.source_id, cycle, host, resolved_member, ())
+        parameters = resolve_parameters(route, source_parameters)
+        if parameters:
+            wanted["source_parameters"] = parameters
 
     def differs(recorded: dict, key: str) -> bool:
-        if recorded.get(key) == wanted[key]:
+        if key == "source_parameters":
+            return recorded.get(key, {}) != wanted.get(key, {})
+        if recorded.get(key) == wanted.get(key):
             return False
         if key != "host":
             return True
@@ -2592,11 +2658,11 @@ def check_prior_request(out: Path, plan: FetchPlan | None = None, *,
         except (OSError, ValueError):
             continue
         recorded = prior.get("request", {})
-        differing = [key for key in ("source", "cycle", "host", "member")
+        differing = [key for key in ("source", "cycle", "host", "member", "source_parameters", "record_profile")
                      if differs(recorded, key)]
         if differing:
             detail = ", ".join(
-                f"{key} {recorded.get(key)!r} -> {wanted[key]!r}"
+                f"{key} {recorded.get(key)!r} -> {wanted.get(key)!r}"
                 for key in differing)
             raise ValueError(
                 f"--out {out} already holds a different request ({detail}).\n"

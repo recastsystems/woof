@@ -100,6 +100,17 @@ class SpectralNudger:
                 with self.plans[name]:
                     cp.fft.ifft2(cp.fft.fft2(work, axes=(-2, -1)), axes=(-2, -1))
         self.stream.synchronize()
+        from woof.hip_backend import supports_graphs
+        if not supports_graphs():
+            owner = self
+            class OrderedLaunch:
+                def launch(self, stream=None):
+                    with (stream or cp.cuda.get_current_stream()), cp.cuda.using_allocator(owner.pool.malloc):
+                        if record_before is not None: record_before()
+                        owner._record()
+                        if record_after is not None: record_after()
+            self.graph = OrderedLaunch()
+            return
         with self.stream, cp.cuda.using_allocator(self.pool.malloc):
             self.stream.begin_capture()
             try:

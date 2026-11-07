@@ -51,7 +51,7 @@ _WHEEL_BROKEN = {
 }
 
 #: What CuPy 14 ACTUALLY says on a driver-only box, verbatim.  MEASURED
-#: 2026-08-17 on a development machine (Ubuntu, 610.43.02 driver, no nvcc, no
+#: 2026-08-17 on test host 1 (Ubuntu, 610.43.02 driver, no nvcc, no
 #: /usr/local/cuda, cupy-cuda13x 14.1.1 on python3.14): every one of
 #: cuBLAS, a self-contained ``RawModule`` and a ``cupy.arange().sum()``
 #: reduction failed with this one string.
@@ -260,7 +260,7 @@ def _execute_probe_with_failure(monkeypatch, fault):
 
     fake = ModuleType("cupy")
     fake.cuda = SimpleNamespace(
-        runtime=SimpleNamespace(getDeviceCount=lambda: 1),
+        runtime=SimpleNamespace(is_hip=False, getDeviceCount=lambda: 1),
         get_current_stream=lambda: SimpleNamespace(synchronize=lambda: trip("synchronize")))
     fake.RawModule = lambda **_kwargs: SimpleNamespace(
         get_function=lambda _name: trip("compile", lambda *_args: trip("launch")))

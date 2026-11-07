@@ -1,0 +1,12 @@
+{
+  "schema": "gpuwm.generated-table-assets.v1",
+  "source": "WRF v4.6.1 module_gfs_funcphys.F GFUNCPHYS",
+  "assets": {
+    "fpvs_table.bin": {
+      "bytes": 60024,
+      "sha256": "bef4a54b636c57f74951560d3f5f0a65e12337cbedeae1ac17be1376f66e2235",
+      "dtype": "<f8",
+      "words": 7503
+    }
+  }
+}

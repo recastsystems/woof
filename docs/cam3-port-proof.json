@@ -1,0 +1,387 @@
+{
+  "schema": "gpuwm-cam3-port-proof-v1",
+  "lane": "port-ra3-cam",
+  "native_pin": "WRF v4.6.1",
+  "selectors": {
+    "ra_lw_physics=3": {
+      "columns": 48,
+      "returned_words": 72720,
+      "native_defined_words": 69648,
+      "native_undefined_tau_words": 3072,
+      "defined_differing_words": 0,
+      "basis": "Subset of the complete strict replay; all defined words in the complete replay have zero differences.",
+      "fold_ready": false,
+      "readiness_reason": "Native replay and whole forecast pass, but LW refresh is 55.305 ms versus nearest legacy RRTMG LW 16.091 ms (3.437x) on the RTX 5090; 51.311 versus 10.886 ms (4.714x) on the RTX 4090. The remaining serial column prefix/finish has low occupancy and memory stalls. A physics-only exception is not established."
+    },
+    "ra_sw_physics=3": {
+      "columns": 48,
+      "returned_words": 72720,
+      "native_defined_words": 72720,
+      "native_undefined_tau_words": 0,
+      "defined_differing_words": 0,
+      "basis": "Subset of the complete strict replay; all defined words in the complete replay have zero differences.",
+      "fold_ready": false,
+      "readiness_reason": "Native replay and whole forecast pass, but SW is 30.559 ms versus nearest legacy RRTMG SW 17.561 ms (1.740x) on the RTX 5090; 22.651 versus 13.971 ms (1.621x) on the RTX 4090. The remaining single-column transport recurrence has low occupancy and memory stalls. A physics-only exception is not established."
+    }
+  },
+  "licence": {
+    "wrf": "public domain, preserved WRF-LICENSE.txt",
+    "rust_dependencies": "MIT, Apache-2.0, Unlicense or Unicode-3.0; exact source notices bundled",
+    "held_inputs": []
+  },
+  "module_replay": {
+    "columns": 96,
+    "layers": 32,
+    "returned_words": 145440,
+    "defined_words": 142368,
+    "defined_differing_words": 0,
+    "native_undefined_words": 3072,
+    "native_undefined_witness": "WRF module_ra_cam.F camrad locals tauxcl/tauxci have no initialization; radctl assigns them only inside if(dosw), camrad copies them unconditionally. Mask only kts:kte in taucldc/taucldi when captured dosw is false; untouched upper slots remain compared.",
+    "capture_sha256": {
+      "columns.tsv": "385a3aeb17057f65f4558c9497a680924b02e8a432ba5dcb30e53f6320758308",
+      "columns.bin": "7f3a22045aa493492a4f32b2a587af513352093a5f587006ec3f28ffe167b363",
+      "state.bin": "3a3a522caee681260a81572f495a148e3407910373188b2c73ef6940f4e0ed10"
+    },
+    "receipt": {
+      "file": "speed-real-replay-final.json",
+      "sha256": "557ddef7d81e5e02b22d423095c0bcb7e7f7d7b9489b116ded0cbed83698a4e0"
+    }
+  },
+  "rust_initialization": {
+    "state_bytes": 21962220,
+    "differing_bytes": 0,
+    "gas_words": 480,
+    "differing_gas_words": 0,
+    "receipt": {
+      "file": "real-production-state.json",
+      "sha256": "86549cdefc93dda2c7afcddff557b936a2d4c0963197a7035dc8a307531274d1"
+    }
+  },
+  "forecast": {
+    "case": "public UCAR WPS January 2000 30 km real-data case",
+    "start": "2000-01-24T12:00:00Z",
+    "end": "2000-01-24T15:00:00Z",
+    "grid": [
+      73,
+      60,
+      32
+    ],
+    "step_seconds": 180,
+    "steps": 60,
+    "physics": {
+      "mp_physics": 5,
+      "cu_physics": 1,
+      "bl_pbl_physics": 1,
+      "sf_sfclay_physics": 1,
+      "sf_surface_physics": 2,
+      "ra_lw_physics": 3,
+      "ra_sw_physics": 3
+    },
+    "command": "bash ../evidence/speed-run.sh forecast",
+    "log": {
+      "file": "speed-go-final.log",
+      "sha256": "b12cfe15743c94815535db5e378e69697cbc9c97a76c22f023076927ed9963fc"
+    },
+    "native_log": {
+      "file": "speed-native-rsl.error.0000",
+      "sha256": "fa12d0094b362e2c2be56a497064b5ed1f935bc5f27daf6e531e75de730a1138"
+    },
+    "visual_hours": [
+      13,
+      14,
+      15
+    ],
+    "renderer": "gpuwm.rustwx: rw_wrfbatch and Rust observation verification",
+    "observations": "Iowa ASOS surface observations; 108 temperature/wind stations and 107 dewpoint stations in the domain",
+    "visual_findings": "The 13, 14 and 15 UTC temperature panels preserve the inland cold pool, the Appalachian gradient and the warmer Atlantic and Gulf coasts; both arms show morning warming over the Southeast. At 15 UTC the dewpoint panels retain the dry inland air and the moist Florida/Gulf and offshore bands. The wind panels retain the stronger Carolinas/offshore winds and the weaker inland corridor. No displaced feature, tile seam, striping or visible change from the earlier fast run was found. Station dots show local temperature and wind departures in both arms, with no broad visual improvement claimed. Temperatures, dewpoints and winds are byte-identical to the pre-optimization history; the numeric comparison finds only 376 changed diagnostic words across 16,302,824 words, at most 3.64e-12 in SWCF and 2.28e-13 in total heating.",
+    "visual_receipt": {
+      "file": "speed-visual-review.json",
+      "sha256": "a3c997ab5bf8202906cbb4f639c10b905af22f2079f429b56434a2faa3b604c9"
+    },
+    "metrics_receipt": {
+      "file": "speed-final-maps/summary.json",
+      "sha256": "ff179ae5a7f8290b7192b890c0a878d809be9b22c9e3f2bcdea95430997a511c"
+    },
+    "whole_model_bitwise_claim": false,
+    "fast_before_after_receipt": {
+      "file": "speed-forecast-final-compare.json",
+      "sha256": "33907bdbd0272cb3b5cebbb87b650e35d875f71a7951761ab25f30003a02a682"
+    },
+    "input_inventory": {
+      "file": "speed-native-inputs.json",
+      "sha256": "bc8c168229c0ebaff52b768245afdb447f912d4e1172d55a32cea37fe66dcf10"
+    },
+    "native_numeric_receipt": {
+      "file": "speed-native-forecast-compare.json",
+      "sha256": "4660a156c8c6fd8478b1d04375cc5f18122f805bed38ee09e1ce273f9a4f5f2d"
+    },
+    "padding_initialization_history_receipt": {
+      "file": "speed-padding-forecast-proof.json",
+      "sha256": "4f104bb3427eb92d6a6cc26538df16ab5a58d27dd00a665ddafbf5417cacc5d6"
+    }
+  },
+  "lifecycle": {
+    "gpu_tests": "11 passed, 82 deselected; both nested feedback modes, independent private member streams, mixed spectra, held rates and checkpoint continuation",
+    "test_receipt": {
+      "file": "speed-validation-gpu-final.log",
+      "sha256": "e9145d2449298405b272bce32042b862408a83551ce4a89825d06f0c7a9ed983"
+    },
+    "real_checkpoint_words": 22291786,
+    "real_checkpoint_differing_words": 0,
+    "real_checkpoint_receipt": {
+      "file": "real-checkpoint-continuation.json",
+      "sha256": "d0178f862659f64ddb9f2273ea36481b21075b156084c6e88d484bc231cf86bf"
+    },
+    "native_wrfrst_continuation": "native 13 UTC restart continued to 15 UTC; native cache rebuild policy and retained Ferrier rime factor restored",
+    "native_wrfrst_log": {
+      "file": "gpu-native-warm-final.log",
+      "sha256": "6a65f44787110cb739fd79487fb0d0b0c36a3d4794f7fcf7c8348fb81b73861d"
+    },
+    "native_wrfrst_overlay": {
+      "file": "native-warm-overlay.json",
+      "sha256": "2632045c4e2100801fa16a49b1471957f940e0bd5ed51a538a685b1086c845a4"
+    }
+  },
+  "default_off": {
+    "base": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+    "words": 12829560,
+    "differing_words": 0,
+    "whole_history_files_byte_identical": 4,
+    "receipt": {
+      "file": "default-forecast.json",
+      "sha256": "e1967a99842c3bfdde283d14c41b83fb1c9d87187516896ad0cd37ba4f368dcc"
+    }
+  },
+  "speed": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "columns": 4096,
+    "layers": 32,
+    "numerics": "fast default",
+    "units": "ms per radiation call, complete adapter CUDA events",
+    "stages": {
+      "refresh": {
+        "baseline_ms": [
+          117.13609313964844,
+          126.06950378417969,
+          117.1975326538086,
+          116.83174133300781,
+          116.99734497070312
+        ],
+        "optimized_ms": [
+          52.14329528808594,
+          50.29625701904297,
+          50.098175048828125,
+          49.96793746948242,
+          49.62163162231445
+        ],
+        "reference_ms": [
+          10.616255760192871,
+          10.559647560119629,
+          13.937472343444824,
+          10.31116771697998,
+          10.221695899963379
+        ],
+        "baseline_median_ms": 117.13609313964844,
+        "optimized_median_ms": 50.098175048828125,
+        "reference_median_ms": 10.559647560119629,
+        "baseline_ratio": 11.09280328465067,
+        "optimized_ratio": 4.744303705554787,
+        "speedup": 2.3381309404081465
+      },
+      "cached": {
+        "baseline_ms": [
+          29.133983612060547,
+          29.015071868896484,
+          29.043840408325195,
+          28.788448333740234,
+          28.93529510498047
+        ],
+        "optimized_ms": [
+          19.233600616455078,
+          19.525951385498047,
+          19.540159225463867,
+          19.089920043945312,
+          19.290048599243164
+        ],
+        "reference_ms": [
+          10.154399871826172,
+          10.996288299560547,
+          15.664799690246582,
+          10.52467155456543,
+          12.08950424194336
+        ],
+        "baseline_median_ms": 29.015071868896484,
+        "optimized_median_ms": 19.290048599243164,
+        "reference_median_ms": 10.996288299560547,
+        "baseline_ratio": 2.638624150119458,
+        "optimized_ratio": 1.754232707777775,
+        "speedup": 1.504147162699988
+      },
+      "lw_refresh": {
+        "baseline_ms": [
+          102.41097259521484,
+          102.4310073852539,
+          103.39888000488281,
+          124.93971252441406,
+          121.10249328613281
+        ],
+        "optimized_ms": [
+          42.759552001953125,
+          41.914302825927734,
+          61.47123336791992,
+          55.304832458496094,
+          57.40496063232422
+        ],
+        "reference_ms": [
+          8.737279891967773,
+          11.645088195800781,
+          29.079647064208984,
+          17.96758460998535,
+          16.09071922302246
+        ],
+        "baseline_median_ms": 103.39888000488281,
+        "optimized_median_ms": 55.304832458496094,
+        "reference_median_ms": 16.09071922302246,
+        "baseline_ratio": 6.425994921155581,
+        "optimized_ratio": 3.4370640424429517,
+        "speedup": 1.8696174530947045
+      },
+      "sw": {
+        "baseline_ms": [
+          40.932640075683594,
+          34.10396957397461,
+          39.96140670776367,
+          41.05215835571289,
+          34.289791107177734
+        ],
+        "optimized_ms": [
+          30.756383895874023,
+          30.559167861938477,
+          33.701534271240234,
+          21.021472930908203,
+          23.26838493347168
+        ],
+        "reference_ms": [
+          15.184320449829102,
+          26.084928512573242,
+          32.240447998046875,
+          13.195743560791016,
+          17.561023712158203
+        ],
+        "baseline_median_ms": 39.96140670776367,
+        "optimized_median_ms": 30.559167861938477,
+        "reference_median_ms": 17.561023712158203,
+        "baseline_ratio": 2.275573871020787,
+        "optimized_ratio": 1.7401700699704161,
+        "speedup": 1.3076732615332667
+      }
+    },
+    "within_1_2x": false,
+    "readiness": {
+      "schema": "cam-speed-readiness-v1",
+      "functional_tip": "87b60194424f25d9907b477c5151a8f91d8d687a",
+      "rows": {
+        "ra_lw_physics=3": {
+          "fold_ready": false,
+          "reason": "Native replay and whole forecast pass, but LW refresh is 55.305 ms versus nearest legacy RRTMG LW 16.091 ms (3.437x) on the RTX 5090; 51.311 versus 10.886 ms (4.714x) on the RTX 4090. The remaining serial column prefix/finish has low occupancy and memory stalls. A physics-only exception is not established."
+        },
+        "ra_sw_physics=3": {
+          "fold_ready": false,
+          "reason": "Native replay and whole forecast pass, but SW is 30.559 ms versus nearest legacy RRTMG SW 17.561 ms (1.740x) on the RTX 5090; 22.651 versus 13.971 ms (1.621x) on the RTX 4090. The remaining single-column transport recurrence has low occupancy and memory stalls. A physics-only exception is not established."
+        }
+      },
+      "profile_findings": "The baseline monolithic CAM driver took 113.27 ms in its one-off NCU profile, used 255 registers, and reached only 2.08% achieved occupancy. The implemented fixes specialize immutable one-column dimensions and spectra; retain small scratch in CUDA local/register storage; separate independent longwave absorption rows while preserving each native reduction; fuse sequential shortwave optics/flux loops and reuse one transport plane; coalesce five private flux arrays; cache immutable input tables and fill all scalar ABI parameters with one launch. Nsight Systems counts CAM refresh launches falling from 144 to 100 and reuse from 143 to 98, with no CAM synchronization calls or device-to-host copies. A separate final NCU run measures prefix/absorption/finish/SW kernels at 13.06/18.43/14.88/12.29 ms. Absorption uses 128 registers, 28.43% occupancy and 76.30% FP64 pipeline throughput, with zero measured spill requests. The prefix/finish still achieve 2.08% occupancy with 255 registers; the SW-only driver uses 168 registers, 2.08% occupancy and 13.14% SM throughput, with 42.66% long-scoreboard and 41.10% short-scoreboard stalls. These counters do not establish that the remaining cost is intrinsic physics. Parallel spectral variants, eight-thread blocks and broader scratch coalescing were tried and rejected after measured regressions; no slower or numerically invalid variant is selected. The 1.2x speed gate remains unmet for both rows.",
+      "measurement_limit": "Shared cards with bursty other workloads; no exclusive lease or clock/cache changes. Interleaved complete adapters, two warmups and five timed samples, all samples retained. One-off profiler durations are diagnostic, not replacements for adapter medians.",
+      "evidence": [
+        "speed-before-after.json",
+        "speed-node1-before-after.json",
+        "speed-nsys-final-host-audit.json",
+        "speed-ncu-complete-final-details.txt"
+      ],
+      "next_required_cause": "Remove the remaining memory/occupancy bottleneck in native column setup and shortwave recurrence without changing defined strict outputs. Revalidate speed and the real forecast before restoring any FOLD-READY claim.",
+      "profiled_tip": "777b682c5520a8ae9152885ecbd5206199d69160",
+      "measurement_code_delta": "After the measured/profiled tip, one forward commit initializes four state-header padding bytes read by the compiler copy. It changes no physics expression, launch schedule, argument shape, or allocation budget. The final strict replay, sanitizers and complete forecast cover that fix; adapter timings describe the preceding performance implementation."
+    },
+    "measurement_limit": "shared GPU; interleaved before/after/reference, two warmups and five samples, no clock or lease changes",
+    "receipts": [
+      {
+        "file": "speed-before-after.json",
+        "sha256": "d1791d5f04b2f7c42199e5d4626c1ef989e8057710867c4670c60695cd9b6cbc"
+      },
+      {
+        "file": "speed-node1-before-after.json",
+        "sha256": "11b925c3720aacf58b674487c3c83484b2e2ac6a51708e9bfdf10d7caac42f09"
+      },
+      {
+        "file": "speed-nsys-before-stats.csv",
+        "sha256": "72f58f8f06a41ff39cab5d021342e27515b528447d893610972f01960b84f9a0"
+      },
+      {
+        "file": "speed-nsys-final-stats.csv",
+        "sha256": "9c5755a44df1d3615b4bb5a29c1587370ddaeef1a7c6f083f5922e53ee4b2f6f"
+      },
+      {
+        "file": "speed-nsys-final-host-audit.json",
+        "sha256": "b64cd8120788c32b816b117fc5f4043c66d9541d8f0522c7cb5538b540bf409f"
+      },
+      {
+        "file": "speed-ncu-before-details.txt",
+        "sha256": "0eed27c8d2a15e4727d767ab429ea62cdb5604ee5edc9bf944bbe4b005fb2f32"
+      },
+      {
+        "file": "speed-ncu-complete-final-details.txt",
+        "sha256": "9106e6bf890d241ad75e8b9e5bd6fca78c04a9a7d9836a7bc4a2acf66b11c61a"
+      },
+      {
+        "file": "speed-source-schedule.json",
+        "sha256": "2050ecbadac9a43704796bcfa54a2f5e9f508108f59824f7f36d99707d6d000c"
+      },
+      {
+        "file": "speed-sanitizer-final.log",
+        "sha256": "eb3a49e1d62db91f265ed96b8b854fe87cb2a359335969a02c1ded045524b578"
+      },
+      {
+        "file": "speed-readiness.json",
+        "sha256": "d325c8f4d20fb66d52f3080afc5a56c1e2afdceacdf6e09c6083fb1cab4ee50e"
+      }
+    ],
+    "profiled_tip": "777b682c5520a8ae9152885ecbd5206199d69160",
+    "functional_tip": "87b60194424f25d9907b477c5151a8f91d8d687a",
+    "measurement_code_delta": "After the measured/profiled tip, one forward commit initializes four state-header padding bytes read by the compiler copy. It changes no physics expression, launch schedule, argument shape, or allocation budget. The final strict replay, sanitizers and complete forecast cover that fix; adapter timings describe the preceding performance implementation."
+  },
+  "checks": {
+    "host": "298 passed, 2 skipped",
+    "rust": "1 unit test passed",
+    "registry": "registry and consumer export reproduce",
+    "receipts": [
+      {
+        "file": "speed-validation-host-final.log",
+        "sha256": "e7a70f09541a8a810cce64d752624dddbfa5a5841afdfb998919a0bc7fdb2e8d"
+      },
+      {
+        "file": "cargo-test-final-parallel.log",
+        "sha256": "08d411f8729d0e350998f523597adb15b0bf6cf5f2935f4d3fb8aa21b924dae4"
+      },
+      {
+        "file": "registry-final-check.log",
+        "sha256": "c6267e6f9aa5071554ebd84e093dbf4742d34b60e8ce4ea5daf39f95611c2389"
+      },
+      {
+        "file": "speed-registry-final-check.log",
+        "sha256": "c6267e6f9aa5071554ebd84e093dbf4742d34b60e8ce4ea5daf39f95611c2389"
+      },
+      {
+        "file": "speed-sanitizer-final.log",
+        "sha256": "eb3a49e1d62db91f265ed96b8b854fe87cb2a359335969a02c1ded045524b578"
+      },
+      {
+        "file": "speed-package-data-check.log",
+        "sha256": "769b441f7a1d0d5364219e48b61561983f6854144ae87edcc1b8fb26154ee728"
+      }
+    ],
+    "package_data": "3 passed; CAM column ABI metadata is included by cam3_*.json and checked from the whole wheel"
+  },
+  "evidence_directory": "<reports>/WRF-PORTS-2026-11-01/evidence/port-ra3-cam/",
+  "report": "<reports>/WRF-PORTS-2026-11-01/port-ra3-cam.md",
+  "scope": "CAM radiation options 3 only. Separate CAM5 cloud/aerosol suite is not claimed as delivered by this lane. One real case establishes the exercised forecast; it does not establish general forecast skill."
+}

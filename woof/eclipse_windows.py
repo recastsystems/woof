@@ -96,7 +96,7 @@ def besselian_rows():
                  if line.split())
 
 
-def besselian_row_at(valid_time):
+def besselian_row_at(valid_time, native_hour=None):
     """Select by UTC date and hour, including both table endpoints."""
     from datetime import timezone
     if valid_time.tzinfo is not None:
@@ -104,6 +104,8 @@ def besselian_row_at(valid_time):
     doy = valid_time.timetuple().tm_yday
     hour = (valid_time.hour + valid_time.minute / 60
             + (valid_time.second + valid_time.microsecond / 1e6) / 3600)
+    if native_hour is not None:
+        hour = native_hour
     for row in besselian_rows():
         if (int(row[0]) == valid_time.year and int(row[1]) == doy
                 and row[3] <= hour <= row[4]):
@@ -111,43 +113,7 @@ def besselian_row_at(valid_time):
     return None, hour
 
 
-_CUDA = r"""
-extern "C" __global__ void eclipse_obscuration(
-    const float* lat, const float* lon, const double* b,
-    const double hour, const long long n, float* obscur, int* mask) {
-    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    const double rad = 0.017453292519943295769;
-    const double eps = 0.0818192, E = sqrt(1.0 - eps*eps);
-    const double t = hour + b[31]/3600.0 - b[2];
-    double v[6] = {0,0,0,0,0,0};
-    for (int k=0; k<4; ++k) {
-        double tk = k==0 ? 1.0 : (k==1 ? t : (k==2 ? t*t : t*t*t));
-        for (int j=0; j<6; ++j) v[j] += b[5+4*j+k]*tk;
-    }
-    const double rd=v[2]*rad, rd1=atan(tan(rd)/E), rd2=atan(E*tan(rd));
-    // Stable sin(rd)/sin(rd1), including zero declination.
-    const double rho1=sqrt(E*E*cos(rd)*cos(rd)+sin(rd)*sin(rd));
-    const double rlat=lat[i]*rad;
-    const double longitude=-lon[i]-1.002738*15.0*b[31]/3600.0;
-    const double H=v[5]*rad-longitude*rad;
-    const double A=sqrt(1.0-eps*eps*sin(rlat)*sin(rlat));
-    const double clat=cos(rlat)/A, slat=sin(rlat)*E/A;
-    const double xi=clat*sin(H);
-    const double eta=slat*cos(rd1)*E-clat*sin(rd1)*cos(H);
-    const double zeta=slat*sin(rd2)*E+clat*cos(rd2)*cos(H);
-    const double dx=xi-v[0], dy=eta-v[1]/rho1;
-    const double delta=sqrt(dx*dx+dy*dy);
-    const double l1=v[3]-zeta*b[29], l2=v[4]-zeta*b[30];
-    double obsc=0.0; int kind=0;
-    // Do not project the visible-sun shadow onto the night side.
-    if (zeta>0.0 && delta<=l1) {
-        if (delta<=fabs(l2) && l2<0.0) { obsc=1.0; kind=2; }
-        else { obsc=(l1-delta)/(l1+l2); kind=delta<=fabs(l2)?3:1; }
-    }
-    obscur[i]=(float)fmin(1.0,fmax(0.0,obsc)); mask[i]=kind;
-}
-"""
+
 
 
 class EclipseGeometry:
@@ -162,37 +128,38 @@ class EclipseGeometry:
         self.mask = cp.zeros(self.latitude.shape, dtype=cp.int32)
         self._row = None
         self._device_row = None
-        from woof.certify.kernel_manifest import record_module
-        module = cp.RawModule(code=_CUDA, options=())
-        record_module("woof.eclipse_windows:obscuration", source=_CUDA,
-                      options=(), module=module)
-        self._kernel = module.get_function("eclipse_obscuration")
+        from woof.core.kernels import get_kernel
+        self._kernel = get_kernel("solar_eclipse", "solar_eclipse")
+        self.track_latitude = cp.empty(1,cp.float32)
+        self.track_longitude = cp.empty(1,cp.float32)
 
-    def at(self, valid_time):
+    def at(self, valid_time, native_hour=None):
         import cupy as cp
         import numpy as np
-        row, hour = besselian_row_at(valid_time)
+        row, hour = besselian_row_at(valid_time,native_hour)
         if row is None:
             self.obscuration.fill(0)
             self.mask.fill(0)
+            self.track_latitude.fill(1.e30)
+            self.track_longitude.fill(1.e30)
         else:
             if row != self._row:
-                self._device_row = cp.asarray(row, dtype=cp.float64)
+                self._device_row = cp.asarray(row, dtype=cp.float32)
                 self._row = row
             n = self.latitude.size
             if n:
                 self._kernel(((n+255)//256,), (256,),
-                             (self.latitude, self.longitude, self._device_row,
-                              np.float64(hour), np.int64(n), self.obscuration, self.mask))
+                             (np.int32(n), self._device_row, np.float32(hour),
+                              self.latitude, self.longitude,self.obscuration,self.mask,
+                              self.track_latitude,self.track_longitude))
         return self.obscuration
 
 
 class EclipseRadiation:
-    """Per-step shadow on shortwave heating, surface and boundary fluxes.
+    """WRF eclipse geometry at radiation cadence, using xtime+radt.
 
-    SWINT fits undimmed sunlight; obscuration applies after interpolation.
-    No division by transmission occurs. Undimmed fields live in the driver
-    field inventory, so restart retains the exact cache and radiation cadence.
+    Native adapters dim incoming solar flux. The retained clear-flux storage
+    supports adapters that apply the linear transmission to their outputs.
     """
     @classmethod
     def for_run(cls, cfg, radiation):
@@ -227,7 +194,7 @@ class EclipseRadiation:
     def bind(self, driver):
         """Allocate stable checkpoint-owned storage before the first step."""
         import cupy as cp
-        names = {"swdown", "gsw", "swddir", "swddif", "swddni",
+        names = {"swdown", "gsw", "rswtoa", "swddir", "swddif", "swddni",
                  "swupt", "swdnt", "swupb", "swdnb",
                  "swuptc", "swdntc", "swupbc", "swdnbc"}
         self.base_fields = {name: driver.fields.setdefault(
@@ -244,12 +211,33 @@ class EclipseRadiation:
         # Geometry output aliases also stay stable across checkpoint restore.
         driver.fields["ecobsc"] = self.geometry.obscuration
         driver.fields["ecmask"] = self.geometry.mask
+        # Uniform GPU planes participate in the existing nest/ensemble carrier
+        # contract; history emits their scalar views on WRF's Time dimension.
+        self.track_fields = {name: driver.fields.setdefault(name,cp.full_like(
+            self.geometry.obscuration,1.e30)) for name in ("elat_track","elon_track")}
         self._ready = None
 
     def ready(self):
         if self._ready is None:
             self._ready = bool(self.initialized.ravel()[0])
         return self._ready
+
+    def update(self, state, cfg):
+        # module_ra_eclipse.F:150-156: single precision MOD and hour sum.
+        import numpy as np
+        from woof.core.swint import calendar_scalars
+        from woof.config import effective_radt_minutes
+        F=np.float32
+        _,xtime,gmt=calendar_scalars(self.start_time,state.elapsed_seconds)
+        hour=F(gmt+F(F(np.fmod(F(xtime+F(effective_radt_minutes(cfg))),F(1440)))/F(60)))
+        if hour>=F(24): hour=F(hour-F(24))
+        result = self.geometry.at(self.start_time+timedelta(
+            seconds=float(state.elapsed_seconds)),native_hour=float(hour))
+        self.track_fields["elat_track"][...] = self.geometry.track_latitude[0]
+        self.track_fields["elon_track"][...] = self.geometry.track_longitude[0]
+        self.initialized.fill(1)
+        self._ready = True
+        return result
 
     def capture(self, driver):
         if self.base_fields is None:
@@ -266,7 +254,7 @@ class EclipseRadiation:
         import cupy as cp
         from woof.core.physics import couple_column_tendencies
         DTYPE = cp.float32
-        obscur = self.geometry.at(self.start_time+timedelta(seconds=float(state.elapsed_seconds)))
+        obscur = self.update(state,cfg)
         transmission = DTYPE(1.0)-obscur
         driver.fields["ecobsc"] = self.geometry.obscuration
         driver.fields["ecmask"] = self.geometry.mask

@@ -1,0 +1,74 @@
+--- a/phys/module_bl_temf.F
++++ b/phys/module_bl_temf.F
+@@ -383,7 +383,7 @@
+    real, dimension( its:ite)    ::  z0t
+    integer, dimension( its:ite) ::  hdidx,lclidx,hctidx,htidx
+    integer, dimension( its:ite) ::  hmax_idx
+-   integer, dimension( its:ite) ::  tval
++   real, dimension( its:ite)    ::  tval   ! WOOF F1: was INTEGER
+    real, dimension( its:ite, kts:kte) :: thetal, qt
+    real, dimension( its:ite, kts:kte) :: u_temf, v_temf
+    real, dimension( its:ite, kts:kte) :: rv, rl, rt
+@@ -487,7 +487,7 @@
+          thetal(i,k) = thx(i,k-1) * &
+             ((ep2+rv(i,k))/(ep2+rt(i,k)))**chi_poisson(i,k) * &
+             (rv(i,k)/rt(i,k))**(-gam(i,k)) * exp( -xlv*rl(i,k) / &
+-            ((cp + rt(i,k)*cpv) * tx(i,k)))
++            ((cp + rt(i,k)*cpv) * tx(i,k-1)))  ! WOOF F4
+          qt(i,k) = qvx(i,k-1) + qcx(i,k-1)
+          thetav(i,k) = thetal(i,k) * (1. + 0.608*qt(i,k) - qcx(i,k-1))  ! WA 4/6/10 allow environment liquid
+       end do
+@@ -510,7 +510,7 @@
+          zm(i,kt) = z2d(i,kt-1) - zsrf(i) ! Convert indexing from WRF to TEMF
+          zt(i,kt) = (zm(i,kt) + z2d(i,kt) - zsrf(i)) / 2.
+          dzm(i,kt) = zt(i,kt) - zt(i,kt-1)
+-         dzt(i,kt) = z2d(i,kt+1) - z2d(i,kt)
++         dzt(i,kt) = z2d(i,kt) - z2d(i,kt-1)  ! WOOF F6
+       end do
+       dzm(i,1) = dzm(i,2)  ! WA why?
+       dzt(i,kte) = dzt(i,kte-1)    ! WA 12/23/09
+@@ -721,7 +721,7 @@
+                ! Need thetavUPDmoist, qlUPD
+                rUPD(i,k) = qtup_temfx(i,k) / (1. - qtup_temfx(i,k))
+                ! WA Updraft temperature assuming no liquid
+-               TUPD(i,k) = thup_temfx(i,k) * pi2d(i,k)   
++               TUPD(i,k) = thup_temfx(i,k) * pi2d(i,k-1)  ! WOOF F5
+                ! Updraft saturation mixing ratio 
+                rstUPD(i,k) = rsat(p2d(i,k-1),TUPD(i,k),ep2)  
+                ! Correct to actual temperature (Sommeria & Deardorff 1977)
+@@ -731,7 +731,7 @@
+                if (rUPD(i,k) > rstUPD(i,k)) then
+                   rlUPD(i,k) = rUPD(i,k) - rstUPD(i,k)
+                   qlUPD(i,k) = rlUPD(i,k) / (1. + rlUPD(i,k))
+-                  thetavUPDmoist(i,k) = (thup_temfx(i,k) + ((xlv/cp)*qlUPD(i,k)/pi2d(i,k))) * &
++                  thetavUPDmoist(i,k) = (thup_temfx(i,k) + ((xlv/cp)*qlUPD(i,k)/pi2d(i,k-1))) * &  ! WOOF F5
+                                         (1. + 0.608*qstUPD(i,k) - qlUPD(i,k))
+                else
+                   rlUPD(i,k) = 0.
+@@ -1331,7 +1331,7 @@
+    real,    dimension( kbot:ktop ) :: AU, BU, CU, YU
+ !
+    AU(kbot) = Khlf(kbot) / (dzm(kbot)*dzt(kbot))
+-   BU(kbot) = -1.0/dt - Khlf(kbot+1)/(dzm(kbot+1)*dzt(kbot+1))
++   BU(kbot) = -1.0/dt - Khlf(kbot+1)/(dzm(kbot)*dzt(kbot+1))  ! WOOF F2
+    CU(kbot) = Khlf(kbot+1)/(dzm(kbot)*dzt(kbot+1))
+    YU(kbot) = -psi_n(kbot)/dt - srf_flux/dzm(kbot)
+ 
+--- a/phys/module_sf_temfsfclay.F
++++ b/phys/module_sf_temfsfclay.F
+@@ -348,8 +348,13 @@
+       ! flux from surface temperature and specific humidity.
+       flhc(i) = rho(i) * cp * fth(i)/fth0 * wm(i) * leps(i) / PrT0 / log(zm(i)/z0t(i)) / zt(i)
+       flqc(i)  = rho(i) * fth(i)/fth0 * wm(i) * leps(i) / PrT0 / log(zm(i)/z0t(i)) / zt(i) * mavail(i)
+-      exch_temfx(i)  = flqc(i) / mavail(i)
+-      chs(i) = flqc(i) / rho(i) / mavail(i) 
++      if (mavail(i) /= 0.) then   ! WOOF F3
++         exch_temfx(i)  = flqc(i) / mavail(i)
++         chs(i) = flqc(i) / rho(i) / mavail(i) 
++      else
++         exch_temfx(i) = rho(i) * fth(i)/fth0 * wm(i) * leps(i) / PrT0 / log(zm(i)/z0t(i)) / zt(i)
++         chs(i) = exch_temfx(i) / rho(i)
++      end if
+       ! WA Must exchange coeffs be limited to avoid runaway in some 
+       ! (convective?) conditions?  Something like this is done in sfclay.
+       ! Doing nothing for now.

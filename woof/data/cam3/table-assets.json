@@ -1,0 +1,45 @@
+{
+  "source": "WRF v4.6.1 run/",
+  "assets": [
+    {
+      "filename": "CAM_ABS_DATA",
+      "size_bytes": 20580056,
+      "sha256": "91ee3079e43a6d908256fe3d1bd4bc5f3ac5662d2a8a1ed6ac9685be0555ad87"
+    },
+    {
+      "filename": "CAM_AEROPT_DATA",
+      "size_bytes": 18208,
+      "sha256": "9782ca59f2ebd12128e23f775e74665d7eb3dc386f53aaa053adfd926a388049"
+    },
+    {
+      "filename": "CAMtr_volume_mixing_ratio",
+      "size_bytes": 42780,
+      "sha256": "9a427fd106f8e36b30e0b29266bff1398b025b82af5b878e5a7a8e9dfe268ca7",
+      "source_filename": "CAMtr_volume_mixing_ratio.SSP245"
+    },
+    {
+      "filename": "ozone_plev.formatted",
+      "size_bytes": 708,
+      "sha256": "df26a938273b22d2d04ec52b7297827a316cac0061fab020519241cdc0e61d48",
+      "source_filename": "ozone_plev.formatted"
+    },
+    {
+      "filename": "ozone_lat.formatted",
+      "size_bytes": 536,
+      "sha256": "761597f3454b99e3dbf15d2621b1ede88269948e96e47f4695b79fabd3cc6348",
+      "source_filename": "ozone_lat.formatted"
+    },
+    {
+      "filename": "ozone.formatted",
+      "size_bytes": 543744,
+      "sha256": "2a13ee25809672e0419e40062c1fc753580adbf604bfc67a9166ef77c815dbc0",
+      "source_filename": "ozone.formatted"
+    }
+  ],
+  "license": {
+    "status": "public-domain",
+    "notice": "WRF-LICENSE.txt",
+    "source_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+    "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+  }
+}

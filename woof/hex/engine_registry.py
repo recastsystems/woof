@@ -396,7 +396,7 @@ def generic_seam_problem(checkout: str | Path | None = None) -> str | None:
             f"{GENERIC_SEAM_FUNCTION}: it takes five slot names, not a physics "
             "mapping, so a registry-resolved selection could not reach its "
             "RunConfig.  REMEDY: an engine carrying the generic column seam "
-            "(lane/hex-arbitrary-physics-engine or the release that lands it)")
+            "(development branch or the release that lands it)")
     return None
 
 
@@ -428,7 +428,8 @@ def describe_selection(
         origin = getattr(loaded, "__file__", None)
         if origin is not None and Path(origin).resolve().parent.parent != root:
             return None
-    elif str(root) not in sys.path:
+    elif not any(isinstance(entry, str) and Path(entry or ".").resolve() == root.resolve()
+                     for entry in sys.path):
         sys.path.insert(0, str(root))
     try:
         import importlib

@@ -22,7 +22,7 @@ pub fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
 fn main() -> Result<()> {
     let start = Instant::now();
     let started=chrono::Utc::now().to_rfc3339();
-    if std::env::args().nth(1).as_deref()==Some("--version"){println!("rw_waves_data gpuwm.waves.prepared/v1 GPUWM_BRIDGE_SOURCE_REV={REV}");return Ok(());}
+    if std::env::args().nth(1).as_deref()==Some("--version"){println!("rw_waves_data gpuwm.waves.prepared/v1 {}", concat!("GPUWM_BRIDGE_SOURCE_REV=", env!("GPUWM_BRIDGE_SOURCE_REV")));return Ok(());}
     let request = std::env::args().nth(1).ok_or("rw_waves_data REQUEST.json")?;
     let mut r: Value = serde_json::from_slice(&fs::read(&request)?)?;
     if let Some(source_file) = r["sources_file"].as_str() {

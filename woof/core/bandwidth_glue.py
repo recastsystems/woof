@@ -78,7 +78,8 @@ def total_theta(state):
     if (not _supported((thb, thp)) or thp.ndim != 3
             or thb.shape not in (thp.shape, (thp.shape[0],))
             or not thp.size):
-        return state.total_theta()
+        return (state.prognostic_theta() if getattr(state, "use_theta_m", 0)
+                else state.total_theta())
     # Keep the original total_theta temporary's lifetime and pool reuse.
     out = cp.empty_like(thp)
     kernel = get_kernel('bandwidth_glue', 'glue_total_theta')

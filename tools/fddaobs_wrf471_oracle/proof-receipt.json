@@ -1,0 +1,234 @@
+{
+  "schema": "gpuwm-fddaobs-qualification-v1",
+  "selector": {
+    "obs_nudge_opt": 1
+  },
+  "native_source_pin": "source-pin.json",
+  "native_replay": {
+    "compared_words": 455408,
+    "differing_words": 0,
+    "native_inputs": [
+      {
+        "file": "lane-errob-0001-0001-in.bin",
+        "bytes": 71341452,
+        "sha256": "c9655a88d6b4716cb06661cddd1adde9a00b39e25ba1e7018c0feeb62f091150"
+      },
+      {
+        "file": "lane-errob-0151-0001-in.bin",
+        "bytes": 71781828,
+        "sha256": "9d69a27f1b6f8559437cb5cb3de60f071ce6c57233c3d33859fb9a0fb495eae8"
+      },
+      {
+        "file": "lane-nudob-0001-0150-1-in.bin",
+        "bytes": 362488,
+        "sha256": "979e6adb781cd11cc5ba06ef9f925dd82114ee291ed6f46b0479f2278e817e5f"
+      },
+      {
+        "file": "lane-nudob-0001-0150-2-in.bin",
+        "bytes": 362488,
+        "sha256": "5f7b8b0a934d5b946ed8aa82ff085d8b36047e7cbfad31f603b1b6182fd2bad1"
+      },
+      {
+        "file": "lane-nudob-0001-0150-3-in.bin",
+        "bytes": 362488,
+        "sha256": "f428896540ee9aee7dbd750ced484c2ea59b689b45bf83031e84871014bbeb04"
+      },
+      {
+        "file": "lane-nudob-0001-0150-4-in.bin",
+        "bytes": 362488,
+        "sha256": "b5c8f5ea5123f19a26780a1c5442cb9e46354e65f6509612ac7bd9ea00e076f4"
+      },
+      {
+        "file": "lane-nudob-0151-0150-1-in.bin",
+        "bytes": 364708,
+        "sha256": "91a5048ec63256bf1aa5868d600c3f102b13bb11f3133407c4346bf80e352e37"
+      },
+      {
+        "file": "lane-nudob-0151-0150-2-in.bin",
+        "bytes": 364708,
+        "sha256": "fb44b64b34433e52e6f1cc3d3cbb2d46381755d4df8adf09645b0b5d2c8e0733"
+      },
+      {
+        "file": "lane-nudob-0151-0150-3-in.bin",
+        "bytes": 364708,
+        "sha256": "afbc3f1fbd7a822620d770697dea3921f0ea1e05dc51c0f3be564a0a50403f21"
+      },
+      {
+        "file": "lane-nudob-0151-0150-4-in.bin",
+        "bytes": 364708,
+        "sha256": "eda020c518cffe20af41198133e56c22c4cdda101349f659a39b289f5fcac2b3"
+      }
+    ],
+    "strict_compile": {
+      "enabled": true,
+      "controls": {
+        "diagnostics": true,
+        "advection": true,
+        "diffusion": true,
+        "bigstep": true
+      },
+      "strict_options": [
+        "--fmad=false",
+        "--ftz=false",
+        "--prec-div=true",
+        "--prec-sqrt=true",
+        "-DGPUWM_WRF_EXACT=1",
+        "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+        "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+        "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+        "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+      ],
+      "records": [
+        {
+          "kind": "cache_request",
+          "source_sha256": "74fcf8427fb8fe6234de12070a0d88f840be33467fd9b4706802dca8575785e6",
+          "options": [
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/cub",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/thrust",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/libcudacxx",
+            "--std=c++17",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include",
+            "-I<venv>/lib/python3.14t/site-packages/nvidia/cuda_runtime/include",
+            "--fmad=false",
+            "--ftz=false",
+            "--prec-div=true",
+            "--prec-sqrt=true",
+            "-DGPUWM_WRF_EXACT=1",
+            "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+            "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+            "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+            "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+          ]
+        },
+        {
+          "kind": "nvrtc_compile",
+          "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "options": [
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/cub",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/thrust",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/libcudacxx",
+            "--std=c++17",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include",
+            "-I<venv>/lib/python3.14t/site-packages/nvidia/cuda_runtime/include",
+            "-arch=compute_120",
+            "--fmad=false",
+            "--ftz=false",
+            "--prec-div=true",
+            "--prec-sqrt=true",
+            "-DGPUWM_WRF_EXACT=1",
+            "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+            "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+            "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+            "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+          ]
+        },
+        {
+          "kind": "nvrtc_compile",
+          "source_sha256": "74fcf8427fb8fe6234de12070a0d88f840be33467fd9b4706802dca8575785e6",
+          "options": [
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/cub",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/thrust",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include/cupy/_cccl/libcudacxx",
+            "--std=c++17",
+            "-I<venv>/lib/python3.14t/site-packages/cupy/_core/include",
+            "-I<venv>/lib/python3.14t/site-packages/nvidia/cuda_runtime/include",
+            "-arch=sm_120",
+            "--device-as-default-execution-space",
+            "--fmad=false",
+            "--ftz=false",
+            "--prec-div=true",
+            "--prec-sqrt=true",
+            "-DGPUWM_WRF_EXACT=1",
+            "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+            "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+            "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+            "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+          ]
+        }
+      ]
+    }
+  },
+  "rust_policy_replay": {
+    "compared_words": 108,
+    "differing_words": 0
+  },
+  "forecast": {
+    "initial_time": "2026-10-16T09:00:00Z",
+    "end_time": "2026-10-16T11:00:00Z",
+    "shape": [
+      49,
+      300,
+      300
+    ],
+    "dt": 15,
+    "steps": 480,
+    "native_complete": true,
+    "gpu_complete": true,
+    "visual_receipt": "WRF-PORTS-2026-11-01/evidence/port-fdda-obs/visual-review.json",
+    "observations": "25 real ASOS surface reports; not a sounding-branch replay or a withheld-observation skill claim"
+  },
+  "timing": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "shape": [
+      49,
+      300,
+      300
+    ],
+    "observations": 25,
+    "observation_ms": 3.917515182495117,
+    "nearest_grid_fdda_ms": 3.7324798583984373,
+    "ratio": 1.0495743664042372,
+    "repeat": 20,
+    "method": "CUDA events, real final forecast state, resident captured operators, fast numerics"
+  },
+  "continuation": {
+    "method": "actual dycore.step, NestCoupler, execute_experiment, public tree write/restore",
+    "results": [
+      {
+        "feedback": 0,
+        "arrays": 56,
+        "differing_arrays": [],
+        "steps": [
+          2,
+          6
+        ],
+        "nonzero_innovations": [
+          90,
+          40
+        ],
+        "feedback_count": 0
+      },
+      {
+        "feedback": 1,
+        "arrays": 56,
+        "differing_arrays": [],
+        "steps": [
+          2,
+          6
+        ],
+        "nonzero_innovations": [
+          90,
+          40
+        ],
+        "feedback_count": 1
+      }
+    ],
+    "independent_member_storage": true
+  },
+  "option_off": {
+    "arrays": 126,
+    "words": 13240,
+    "differing_bytes": 0,
+    "candidate": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850"
+  },
+  "native_restart": {
+    "ratio_words": 152568,
+    "differing_words": 0,
+    "off_cadence_first_refresh": true
+  },
+  "limits": [
+    "No whole-model bitwise claim",
+    "Surface observations provide the real native replay coverage",
+    "Native obs_nudge_pstr / obs_coef_pstr are obsolete no-ops"
+  ]
+}

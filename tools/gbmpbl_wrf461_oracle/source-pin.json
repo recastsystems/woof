@@ -1,0 +1,17 @@
+{
+  "upstream": "https://github.com/wrf-model/WRF",
+  "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "release": "4.7.1",
+  "license": "public domain under WRF LICENSE.txt",
+  "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/LICENSE.txt",
+  "files_sha256": {
+    "module_physics_init.F": "f48cf9793f782a72c3969e986eef24746252f030cd33cfba71cc82b81d128d90",
+    "module_model_constants.F": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+    "module_bl_gbmpbl.F": "92d318297a54b3e89a2735da1bf6cfcef27b053c02339c3fb82dbbc4ca59a4cf",
+    "Registry.EM_COMMON": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+    "module_pbl_driver.F": "42ff53571ba1fb926fa6063108806d9a2f8ff5fdd1fa2ecfc1fdde60f2bf65fb",
+    "LICENSE.txt": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6"
+  },
+  "tables": "No external scheme tables. constants.cuh transcribes module_model_constants.F and module_bl_gbmpbl.F. Existing glibc_flt32.cuh has its own retained repository notices.",
+  "source_identity": "module_bl_gbmpbl.F is byte-identical to the existing WRF 4.6.1 oracle pin."
+}

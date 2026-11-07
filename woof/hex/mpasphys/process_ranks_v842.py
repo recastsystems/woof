@@ -6,6 +6,11 @@ own card with its own interpreter, so the ranks' Python launch work runs on N co
 the GIL (``woof.hex.rank_processes`` names the breakage).  Every rank runs the same ``run_native_dynamics`` on the
 same inputs as on the thread executor; halos move the same bytes in the same round order
 (``partition_process_transport_v841``) and gathers keep rank order, so the output words do not change.
+
+With ``--samehost-transport nccl`` the halos go through NCCL (``partition_nccl_transport_v841``), and with
+``--hosts`` the ranks span several hosts (``woof.hex.multihost``): each host's leader (rank 0 on the first host, its
+lowest rank on any other) starts that host's other ranks here, from that host's own preparation.  Ranks on rank 0's
+host link to it over socketpairs and shared memory as before; ranks on other hosts link to it over TCP.
 """
 from __future__ import annotations
 
@@ -26,7 +31,6 @@ MODULE = "woof.hex.mpasphys.process_ranks_v842"
 class ProcessRankExecution(SameHostRankExecution):
     """A same-host rank in its own process: its own halo transport, its own communicators."""
 
-    #: The run's last step (set by _run_rank from the request), where the stepping CPU window closes.
     last_step = None
 
     def before_step(self, step):
@@ -37,6 +41,8 @@ class ProcessRankExecution(SameHostRankExecution):
             cpu_mark(f'step {step} begin')
         super().before_step(step)
 
+    transport_label = 'same-host shared host memory between rank processes'
+
     def after_step(self, dycore):
         super().after_step(dycore)
         self.step_stages[-1]['parallelism'] = f'rank process {self.rank} (pid {os.getpid()}); GPU {self.devices[self.rank]}'
@@ -46,8 +52,9 @@ class ProcessRankExecution(SameHostRankExecution):
 
     def receipt(self):
         receipt = super().receipt()
-        receipt.update(transport='same-host shared host memory between rank processes',
-                       parallelism=_rank_parallelism(self.devices, 'processes'), pid=os.getpid())
+        receipt.update(transport=self.transport_label,
+                       parallelism=_rank_parallelism(self.devices, 'processes'), pid=os.getpid(),
+                       host=socket.gethostname(), nccl_hostid=os.environ.get('NCCL_HOSTID'))
         transport = self.shared_transport
         if transport is not None:
             try:
@@ -74,31 +81,47 @@ def _rank_hooks(execution, request, comm):
 
 
 def _run_rank(rank, request, local, comm, output_comm, halo_links, devices_here, holder=None):
-    """One rank's forecast on this process's card: the thread executor's ``operation`` for one rank.
-
-    ``holder`` (rank 0 only) receives the transport, so a child's failure can abort it from the watcher thread.
-    """
+    """One rank's forecast on this process's card: the thread executor's ``operation`` for one rank."""
     import cupy as cp
     from . import runtime_v842 as runtime
-    from ..partition_process_transport_v841 import ProcessHaloTransport
+    from ..process_transport import process_halo_transport as ProcessHaloTransport
 
     local_layout, local_payload, local_inputs = local
     execution = ProcessRankExecution(comm, request['partitions'], local_inputs, request['field_indices'],
         transport=None, global_layout=request['global_layout'], devices=request['devices'])
     execution.analysis_receipt = request['analysis_receipt']
-    try:
-        execution.last_step = int(request['steps'])
-    except (KeyError, TypeError, ValueError):
-        execution.last_step = None
+    execution.last_step = request.get('steps')
     execution.output_comm = output_comm
     device = devices_here[rank]
+    from ..device_share import rank_process_card
+    with rank_process_card(device, int((request.get('card_ranks') or {}).get(rank, 1)),
+                           request.get('card_share_dir')):
+        return _run_rank_on_card(rank, request, local_layout, local_payload, execution, comm, output_comm,
+                                 halo_links, devices_here, device, holder)
+
+
+def _run_rank_on_card(rank, request, local_layout, local_payload, execution, comm, output_comm, halo_links,
+                      devices_here, device, holder):
+    import cupy as cp
+    from . import runtime_v842 as runtime
+    from ..process_transport import process_halo_transport as ProcessHaloTransport
     with cp.cuda.Device(device):
-        transport = ProcessHaloTransport(execution.tables, devices_here, rank, halo_links, xp=cp,
-                                         timeout=request['timeout'], field_halo_indices=request['field_indices'])
+        if request.get('halo', 'process') == 'nccl':
+            from ..nccl_runtime import NcclCommunicator
+            from ..partition_nccl_transport_v841 import NcclHaloTransport
+            # ncclCommInitRank waits for every rank of the run, on every host.
+            communicator = NcclCommunicator(len(request['devices']), request['nccl_uid'], rank,
+                                            timeout=request['timeout'])
+            transport = NcclHaloTransport(execution.tables, devices_here, rank, communicator, xp=cp,
+                                          timeout=request['timeout'], field_halo_indices=request['field_indices'])
+            execution.transport_label = ('NCCL point-to-point between rank processes'
+                                         + (f' on {request["hosts"]} hosts' if request.get('hosts', 1) > 1 else ''))
+        else:
+            transport = ProcessHaloTransport(execution.tables, devices_here, rank, halo_links, xp=cp,
+                                             timeout=request['timeout'], field_halo_indices=request['field_indices'])
     execution.shared_transport = transport
     if holder is not None:
-        holder['transport'] = transport
-        holder['execution'] = execution   # its deferred checks (runtime_v842) stop queuing device work on an abort
+        holder.update(transport=transport, execution=execution)
     try:
         moving = _rank_hooks(execution, request, comm)
         stream = None
@@ -115,7 +138,9 @@ def _run_rank(rank, request, local, comm, output_comm, halo_links, devices_here,
         return execution
     except BaseException as error:
         reason = f'rank {rank}: {type(error).__name__}: {error}'
-        for item in (comm, output_comm, transport):
+        if holder is not None:
+            holder['group'].abort(reason)
+        for item in (comm, output_comm, execution.shared_transport):
             try:
                 item.abort(reason)
             except Exception:
@@ -125,20 +150,39 @@ def _run_rank(rank, request, local, comm, output_comm, halo_links, devices_here,
 
 def run_process_ranks(*, arguments, config, layout, streams, start, stop, dt, steps, out, job, devices,
                       partitions, tables, indices, prepared, analysis_receipt, moving_state, timeout, receipt,
-                      shared_future=None):
-    """Rank 0 here, ranks 1..N-1 as child processes; returns when every rank has finished."""
+                      shared_future=None, halo='process', nccl_uid=None, session=None, local_ranks=None):
+    """This host's ranks: its leader here, the others as child processes; returns when they have all finished.
+
+    One host (``session`` None): rank 0 here, ranks 1..N-1 as children.  Several hosts (``woof.hex.multihost``):
+    ``local_ranks`` are this host's ranks, the first of them runs here; rank 0's host also gathers every other
+    host's rank receipts at the end, and every other host sends its own.
+    """
     import cupy as cp
     from .. import numerics
     from ..rank_processes import Link, ProcessComm, RankProcesses, SharedObjects, process_cpu_record
 
     size = len(devices)
-    neighbours = {rank: [int(peer.peer) for peer in tables[rank].peers] for rank in range(size)}
-    group = RankProcesses(devices, neighbours, module=MODULE, timeout=timeout, job=job)
+    local_ranks = list(range(size)) if local_ranks is None else [int(rank) for rank in local_ranks]
+    leader, children = local_ranks[0], local_ranks[1:]
+    joined = session is not None and session.joined
+    if joined and leader == 0:
+        raise ValueError('rank 0 runs on the first host of --hosts; prevents two hosts writing the output')
+    if halo == 'process':
+        if session is not None and len(session.hosts) > 1:
+            raise ValueError('shared-memory halos cannot cross hosts; prevents a halo that never arrives')
+        # Links only between ranks that share halo words (partition_samehost_tables_v841.active_peers).
+        from ..partition_samehost_tables_v841 import active_peers
+        neighbours = {rank: list(active_peers(tables[rank])) for rank in range(size)}
+    else:
+        neighbours = {}   # NCCL moves every halo; no socket or flag page per pair
+    group = RankProcesses(devices, neighbours, module=MODULE, timeout=timeout, job=job, ranks=children,
+                          connect=session.connect_spec() if joined else None,
+                          owner_paths=(getattr(arguments, 'scratch', None) or Path(out) / 'scratch',))
     # The global mesh every child's partition was cut from goes to the children once (SharedObjects), not once per
     # request.
     shared_objects = None
     sources = {}
-    for rank in range(1, size):
+    for rank in children:
         source = getattr(prepared[rank][2][0], 'partition_source_mesh', None)
         if source is not None and source is not prepared[rank][2][0]:
             sources.setdefault(id(source), source)
@@ -158,40 +202,63 @@ def run_process_ranks(*, arguments, config, layout, streams, start, stop, dt, st
         group.shared_fd = shared_objects.fd
         receipt.update(shared_objects_wait_seconds=time.perf_counter() - began_shared,
                        shared_objects_bytes=shared_objects.nbytes)
+    hosts = 1 if session is None else len(session.hosts)
+    # Every rank process is told how many of this host's ranks share its card: the radiation budgets divide by it
+    # and the read-only tables are mapped once per card (woof.hex.device_share names the breakage).  A process
+    # cannot see the others, so without this each counted 1.
+    from collections import Counter
+    on_card = Counter(int(devices[rank]) for rank in local_ranks)
+    card_ranks = {int(rank): on_card[int(devices[rank])] for rank in local_ranks}
     shared = dict(arguments=arguments, config=config, partitions=partitions, field_indices=indices,
                   streams=streams, start=start, stop=stop, dt=dt, steps=steps, out=out, devices=list(devices),
                   numerics=numerics.mode(), moving=moving_state, global_layout=layout,
-                  analysis_receipt=analysis_receipt, timeout=timeout)
+                  analysis_receipt=analysis_receipt, timeout=timeout, halo=halo, nccl_uid=nccl_uid, hosts=hosts,
+                  card_ranks=card_ranks, card_share_dir=str(Path(job) / 'card-share'))
     began = time.perf_counter()
     group.start()
     receipt.update(rank_processes=[dict(rank=rank, pid=process.pid) for rank, process in group.processes.items()],
                    rank_process_parent_pid=os.getpid(),
-                   transport='same-host shared host memory between rank processes (GPU-side flags)')
-    comm = ProcessComm(0, size, group.step_links)
-    output_comm = ProcessComm(0, size, group.output_links)
-    halo_links = {peer: (group.halo_sockets[peer], group.halo_flags.pop(peer)) for peer in neighbours[0]}
+                   transport=('NCCL point-to-point between rank processes' if halo == 'nccl' else
+                              'same-host shared host memory between rank processes (GPU-side flags)'))
+    remote_links = []
+    if joined:
+        from ..multihost import rank_links
+        step_link, output_link = rank_links(session.connect_spec(), leader, timeout)
+        remote_links = [step_link, output_link]
+        comm = ProcessComm(leader, size, {0: step_link})
+        output_comm = ProcessComm(leader, size, {0: output_link})
+    else:
+        step_links, output_links = dict(group.step_links), dict(group.output_links)
+        if session is not None:
+            # Every rank on another host links to rank 0 over TCP when its process starts (after its host prepared).
+            waited = time.perf_counter()
+            for rank in range(size):
+                if rank in local_ranks:
+                    continue
+                step_links[rank] = session.rank_link('step', rank, session.timeout)
+                output_links[rank] = session.rank_link('output', rank, session.timeout)
+                remote_links.extend((step_links[rank], output_links[rank]))
+            receipt['remote_rank_links_wait_seconds'] = time.perf_counter() - waited
+        comm = ProcessComm(0, size, step_links)
+        output_comm = ProcessComm(0, size, output_links)
+    halo_links = ({peer: (group.halo_sockets[peer], group.halo_flags.pop(peer)) for peer in neighbours[0]}
+                  if halo == 'process' else {})
 
-    rank0 = {}
+    rank0 = {'group': group}
 
     def stop_all(reason):
-        # Rank 0's halo transport too: with headers only in each schema's first round, rank 0's host may be in a
-        # card synchronization rather than a socket read when a child dies; its abort releases the flags rank 0's
-        # card waits on, so that synchronization returns and the next round raises (the v841 group does the same).
-        # The supervisor (rank_processes.RankProcesses._watch) has already stopped and reaped every other rank
-        # process, so no peer's card can write over the released flags.  Rank 0's deferred checks stop queuing device
-        # work too: a flush after the abort would load a kernel module, and a module load synchronizes the context.
         checks = getattr(rank0.get('execution'), 'deferred_checks', None)
         for item in (comm, output_comm, rank0.get('transport'), checks):
             if item is not None:
-                try:
-                    item.abort(reason)
-                except Exception:
-                    pass
+                try:item.abort(reason)
+                except Exception:pass
         for sock, _ in halo_links.values():
             try:
                 sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
+        if session is not None and not joined:
+            session.kill()
 
     group.on_failure(stop_all)
     execution = None
@@ -205,29 +272,32 @@ def run_process_ranks(*, arguments, config, layout, streams, start, stop, dt, st
         # 4 and 16.2 s on 8, one host thread on the critical path while every card waited. Each link has its own
         # socket and memfd, and Link.send copies out-of-band buffers with os.pwrite (GIL released), so the copies
         # run side by side; the messages and their bytes are unchanged.
+        requests = group.request_links if joined else group.step_links
+
         def send_request(rank):
             local_layout, local_payload, local, _ = prepared[rank]
-            group.step_links[rank].send(dict(shared, rank=rank, local=(local_layout, local_payload, local)),
-                                        None if shared_objects is None else shared_objects.persistent_id)
-            # The child holds its own copy now; this process keeps only rank 0's inputs.
+            requests[rank].send(dict(shared, rank=rank, local=(local_layout, local_payload, local)),
+                                None if shared_objects is None else shared_objects.persistent_id)
+            # The child holds its own copy now; this process keeps only its own rank's inputs.
             prepared[rank] = None
 
-        if size > 1:
+        if children:
             from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=size - 1, thread_name_prefix='rank-request') as senders:
-                list(senders.map(send_request, range(1, size)))
+            with ThreadPoolExecutor(max_workers=len(children), thread_name_prefix='rank-request') as senders:
+                list(senders.map(send_request, children))
         receipt['rank_request_seconds'] = time.perf_counter() - began
         if shared_objects is not None:
             # Every child inherited the memfd at start; this process's copy is no longer needed.
             shared_objects.close()
-        local_layout, local_payload, local, _ = prepared[0]
-        with cp.cuda.Device(devices[0]):
-            execution = _run_rank(0, shared, (local_layout, local_payload, local), comm, output_comm, halo_links,
-                                  list(devices), holder=rank0)
+        local_layout, local_payload, local, _ = prepared[leader]
+        with cp.cuda.Device(devices[leader]):
+            execution = _run_rank(leader, shared, (local_layout, local_payload, local), comm, output_comm,
+                                  halo_links, list(devices), holder=rank0)
     except BaseException as error:
         failure = error
-        stop_all(f'rank 0: {type(error).__name__}: {error}')
-    # Rank 0's thread is back: a child's failure from here on is reported by the join below, not by ending the process.
+        group.abort(f'rank {leader}: {type(error).__name__}: {error}')
+        stop_all(f'rank {leader}: {type(error).__name__}: {error}')
+    # The local leader returned; subsequent child failures are reported by join.
     group.rank0_responded()
     if shared_objects is not None:
         shared_objects.close()
@@ -235,20 +305,29 @@ def run_process_ranks(*, arguments, config, layout, streams, start, stop, dt, st
     if failure is not None or any(code != 0 for code in codes.values()):
         group.kill()
     group.close()
+    # Every child has exited, so nothing maps this process's shared tables any more.
+    from ..device_share import release_exports
+    release_exports(wait=0)
     records = []
-    for rank in range(1, size):
+    for rank in children:
         path = Path(out) / f'rank-process.rank{rank}.json'
         try:
             records.append(json.loads(path.read_text()))
             path.unlink()
         except (OSError, ValueError):
             records.append(dict(rank=rank, missing=True))
-    records.insert(0, process_cpu_record(0))
+    records.insert(0, process_cpu_record(leader))
+    if session is not None:
+        records = _exchange_host_receipts(session, out, local_ranks, records, failure, codes, receipt)
+    for link in remote_links:
+        link.close()
     receipt.update(rank_process_records=records, rank_process_exit_codes={str(k): v for k, v in codes.items()},
                    execution_parallelism=_rank_parallelism(devices, 'processes'))
     if failure is not None:
         if group.failure is not None:
             BaseException.add_note(failure, group.failure)
+        if session is not None and not joined and session.failure():
+            BaseException.add_note(failure, session.failure())
         raise failure
     bad = {rank: code for rank, code in codes.items() if code != 0}
     if bad:
@@ -258,24 +337,65 @@ def run_process_ranks(*, arguments, config, layout, streams, start, stop, dt, st
     return 0
 
 
+def _exchange_host_receipts(session, out, local_ranks, records, failure, codes, receipt):
+    """Every other host sends rank 0 its ranks' receipts; rank 0 writes them beside its own (same names)."""
+    out = Path(out)
+    if session.joined:
+        receipts = {}
+        for rank in local_ranks:
+            path = out / f'native-physics-receipt.rank{rank}.json'
+            if path.is_file():
+                receipts[rank] = path.read_text()
+        try:
+            session.host_link().send(dict(host=session.host_index, ranks=list(local_ranks), records=records,
+                                          receipts=receipts, failed=None if failure is None else str(failure),
+                                          exit_codes={str(k): v for k, v in codes.items()},
+                                          host_receipt=session.receipt()))
+        except Exception as error:   # rank 0 has stopped; its own error names why
+            receipt['host_receipt_send_error'] = str(error)
+        return records
+    hosts = []
+    for host in range(1, len(session.hosts)):
+        try:
+            message = session.host_link(host).recv()
+        except Exception as error:
+            hosts.append(dict(host=host, missing=f'{type(error).__name__}: {error}'))
+            continue
+        for rank, text in message.get('receipts', {}).items():
+            (out / f'native-physics-receipt.rank{int(rank)}.json').write_text(text)
+        records = records + list(message.get('records', []))
+        hosts.append(dict(host=host, ranks=message.get('ranks'), failed=message.get('failed'),
+                          exit_codes=message.get('exit_codes'), host_receipt=message.get('host_receipt')))
+    receipt['hosts'] = hosts
+    session.finish()
+    return records
+
+
 def worker(job, rank, spec_text):
-    """A rank process: read its request from rank 0, run its rank, record its CPU seconds."""
-    from ..rank_processes import (Link, ProcessComm, SharedObjectsView, install_parent_kernel_store,
-                                  process_cpu_record, set_parent_death_signal)
+    """A rank process: read its request from its host's leader, run its rank, record its CPU seconds."""
+    from ..rank_processes import (Link, ProcessComm, SharedObjectsView, process_cpu_record,
+                                   set_parent_death_signal, install_parent_kernel_store)
     set_parent_death_signal()
-    # Before the request arrives (rank 0 is still sending it): the forecast process's warm kernel store.
     install_parent_kernel_store()
     rank = int(rank)
     spec = json.loads(spec_text)
     timeout = float(os.environ.get('WOOF_HEX_MPAS_SAMEHOST_TIMEOUT', '1800'))
-    step_link = Link(socket.socket(fileno=int(spec['step'])), timeout=timeout, name=f'step-{rank}-0')
-    output_link = Link(socket.socket(fileno=int(spec['output'])), timeout=timeout, name=f'output-{rank}-0')
     comm = output_comm = None
     out_dir = None
     halo_links = {}
     try:
+        if 'connect' in spec:
+            # A rank on a host other than rank 0's: its request comes from this host's leader, its step and output
+            # links go to rank 0 over TCP (woof.hex.multihost).
+            from ..multihost import rank_links
+            request_link = Link(socket.socket(fileno=int(spec['request'])), timeout=timeout, name=f'request-{rank}')
+            step_link, output_link = rank_links(spec['connect'], rank, timeout)
+        else:
+            request_link = step_link = Link(socket.socket(fileno=int(spec['step'])), timeout=timeout,
+                                            name=f'step-{rank}-0')
+            output_link = Link(socket.socket(fileno=int(spec['output'])), timeout=timeout, name=f'output-{rank}-0')
         shared = spec.get('shared')
-        request = step_link.recv(None if shared is None else SharedObjectsView(int(shared)).resolve)
+        request = request_link.recv(None if shared is None else SharedObjectsView(int(shared)).resolve)
         out_dir = request['out']
         size = len(request['devices'])
         comm = ProcessComm(rank, size, {0: step_link})
@@ -301,7 +421,8 @@ def worker(job, rank, spec_text):
         code = 1
     try:
         record = process_cpu_record(rank)
-        record.update(finished_utc=datetime.now(timezone.utc).isoformat(), exit_code=code)
+        record.update(finished_utc=datetime.now(timezone.utc).isoformat(), exit_code=code,
+                      host=socket.gethostname(), nccl_hostid=os.environ.get('NCCL_HOSTID'))
         if out_dir is not None:
             (Path(out_dir) / f'rank-process.rank{rank}.json').write_text(json.dumps(record, indent=2) + '\n')
     except Exception:

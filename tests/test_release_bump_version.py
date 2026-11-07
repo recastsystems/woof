@@ -64,6 +64,8 @@ def test_bumping_moves_every_declaration_and_opens_the_changelog(tmp_path):
     assert f"## {before}" in changelog  # the previous section stays
     # The pin the engine places on its data package moved with it.
     assert f'"recast-woof-data=={to}"' in (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'"gpuwm-kernels=={to}"' in (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'"gpuwm-kernels-startup=={to}"' in (root / "pyproject.toml").read_text(encoding="utf-8")
     # The terminal's lockfile entry moved, and only that entry.
     lock = (root / "tools/arwen-tui/Cargo.lock").read_text(encoding="utf-8")
     assert f'name = "arwen-tui"\nversion = "{to}"' in lock

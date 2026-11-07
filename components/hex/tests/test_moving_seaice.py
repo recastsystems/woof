@@ -28,6 +28,13 @@ def test_optional_classes_keep_real_stores_and_fill_only_ice_free_columns():
         complete_source_ice(payload)
 
 
+def test_every_carrier_the_engine_creates_moves():
+    """run_84cabe12ce57b858: the engine's two newer carriers were missing from a copied list, so a roster member stopped."""
+    from woof.ocean.seaice import STATE
+    assert {'fields/'+name for name in STATE}<=SEAICE_FIELDS
+    assert {'fields/ice_ocean_owed','fields/ice_ocean_coupled'}<=SEAICE_FIELDS
+
+
 def test_unknown_and_partial_carriers_are_not_generalized():
     s=source([0])
     p=dict(backends=[s])
@@ -97,9 +104,11 @@ def test_coastline_transfer_conserves_ice_and_never_enables_glaciers():
     s['seam']['arrays']['fields/ice_volume']=np.array([[2.,1.,0]],np.float32)
     s['seam']['arrays']['fields/ice_snow_mass']=np.array([[30.,10.,0]],np.float32)
     s['seam']['arrays']['fields/ice_skin']=np.array([[260.,270.,273.15]],np.float32)
+    s['seam']['arrays']['fields/ice_ocean_coupled']=np.array([[1.,1.,0]],np.float32)
     p=dict(backends=[s],layouts=[SimpleNamespace(cell_l2g=np.arange(3),n_owned_cells=3)],mesh=mesh)
     out,r=remap_ocean_ice(p,w,mesh,np.array([1,0,0]))
     np.testing.assert_array_equal(out['fields/ice_ocean_mask'],[[0,1,1]])
+    np.testing.assert_array_equal(out['fields/ice_ocean_coupled'],[[0,1,1]])   # a 0/1 flag, not an overlap average
     assert out['fields/ice_volume'][0,0]==out['fields/ice_snow_mass'][0,0]==0
     for key in ('fields/ice_volume','fields/ice_snow_mass'):
         np.testing.assert_allclose((out[key]*w.target_area).sum(),s['seam']['arrays'][key].sum(),rtol=1e-7)

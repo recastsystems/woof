@@ -428,7 +428,7 @@ It is closed. The parent's own history already carries the nine surface
 fields and the landuse identity attributes -- any run with a land-surface
 scheme publishes them -- and the child grid is an exact refinement of a
 parent window, so `woof downscale` puts them where the child needs them
-itself. Measured on a development machine (RTX 5070 Ti), the 12 km ERA5 parent from
+itself. Measured on test host 1 (RTX 5070 Ti), the 12 km ERA5 parent from
 `configs/era5_demo.toml` downscaled to a 72 x 54 child at 4 km with
 `sf_surface_physics = 2`, `sf_sfclay_physics = 91`, `bl_pbl_physics = 1`
 and both radiation streams:

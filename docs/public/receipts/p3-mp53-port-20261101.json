@@ -1,0 +1,1912 @@
+{
+  "benchmark": {
+    "contended_first_pair_ratio": 1.1510345107204463,
+    "device": "NVIDIA GeForce RTX 5090",
+    "first120_ratio": 1.0995575101577952,
+    "method": "deferred CUDA events; median after first call; actual gpuwm go forecasts; fast numerics",
+    "min_ratio": 1.0865979380206023,
+    "notes": "First pair overlapped other GPU work and native replay compilation; full three-hour pair started with 32146 MiB free, 0% GPU utilization. All samples retained. No strict physics arithmetic changed.",
+    "order": [
+      "final53-r1",
+      "final50-r1",
+      "full53",
+      "full50"
+    ],
+    "ratio": 1.0967272477893788,
+    "runs": {
+      "baseline53.stage": {
+        "calls": 120,
+        "mean_ms": 1.868887930858035,
+        "median_first120_ms": 1.8636800050735474,
+        "median_ms": 1.8636800050735474,
+        "min_ms": 0.7659839987754822
+      },
+      "final50-r1.stage": {
+        "calls": 120,
+        "mean_ms": 2.3272519021475015,
+        "median_first120_ms": 1.4847999811172485,
+        "median_ms": 1.4847999811172485,
+        "min_ms": 1.0434240102767944
+      },
+      "final53-r1.stage": {
+        "calls": 120,
+        "mean_ms": 2.2201091802420736,
+        "median_first120_ms": 1.70905601978302,
+        "median_ms": 1.70905601978302,
+        "min_ms": 0.5509120225906372
+      },
+      "full50.stage": {
+        "calls": 180,
+        "mean_ms": 1.3906329400712552,
+        "median_first120_ms": 1.388543963432312,
+        "median_ms": 1.4079999923706055,
+        "min_ms": 0.9932799935340881
+      },
+      "full53.stage": {
+        "calls": 180,
+        "mean_ms": 1.5044685555569952,
+        "median_first120_ms": 1.5267839431762695,
+        "median_ms": 1.5441919565200806,
+        "min_ms": 1.0792959928512573
+      }
+    },
+    "runtime_commit": "8b87386014a",
+    "stage": "gpuwm.core.dycore.apply_microphysics"
+  },
+  "date": "2026-11-02",
+  "forecast": {
+    "benchmark_timing": {
+      "excluded": [
+        "render",
+        "observation verification"
+      ],
+      "first_step": 1,
+      "first_valid_time": "2000-01-24_12:01:00",
+      "kernel_prewarm": {
+        "errors": {},
+        "modules": [
+          "smag2d",
+          "diff_opt1",
+          "diff6"
+        ],
+        "seconds": {
+          "diff6": 0.001,
+          "diff_opt1": 0.001,
+          "smag2d": 0.161
+        },
+        "wall_seconds": 0.171
+      },
+      "last_step": 180,
+      "last_valid_time": "2000-01-24_15:00:00",
+      "max_step_seconds": 0.028216,
+      "mean_step_seconds": 0.010487,
+      "median_step_seconds": 0.010221,
+      "phases_seconds": {
+        "finish": 0.113,
+        "first_step": 0.291,
+        "forecast": 14.845,
+        "init": 2.794,
+        "read": 2.082,
+        "startup": 2.032,
+        "steps": 9.469,
+        "total": 16.99,
+        "write": 0.209
+      },
+      "restart": null,
+      "schema": "gpuwm.benchmark-timing.v1",
+      "startup_split_seconds": {
+        "init_to_first_step": 2.794,
+        "input_read": 0.398,
+        "worker_imports": 2.03,
+        "worker_plan_review": 1.684
+      },
+      "status": "SUCCESS",
+      "steps": 180,
+      "steps_after_first": 179
+    },
+    "config_sha256": "d45222670b3643565287b333f05dfb44f1c8ac4ec53ef2407e3a10407c56e8ff",
+    "cumulus": 0,
+    "dt_s": 60,
+    "dx_m": 30000,
+    "end": "2000-01-24T15:00:00Z",
+    "fast_numerics": true,
+    "grid": [
+      73,
+      60,
+      34
+    ],
+    "history": [
+      {
+        "arm": "ArWen",
+        "bytes": 17490288,
+        "fields": {
+          "QCLOUD": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIB": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QICE": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIR": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNCLOUD": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNICE": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QRAIN": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QZI": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "RAINNC": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "REFL_10CM": {
+            "maximum": -36.98970031738281,
+            "mean": -36.98970031738281,
+            "minimum": -36.98970031738281,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "9f15e70d94c727c9c952e19ad3273ca3de5b58d602dcee894c69b40fa4054ba7",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "SNOWNC": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "T2": {
+            "maximum": 296.914306640625,
+            "mean": 277.76521944368267,
+            "minimum": 245.7227783203125,
+            "nonfinite": 0,
+            "positive": 4380,
+            "sha256": "75a27a78b15ed74134c080a21360b6b8d189ba7641d010ca7b3c79ae3eca8366",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          }
+        },
+        "frame": "wrfout_d01_2000-01-24_12_00_00",
+        "sha256": "aaf3acd1db8678317085e186987971a45a08c486dd337f9524f90eaf7fbde34e"
+      },
+      {
+        "arm": "ArWen",
+        "bytes": 17543656,
+        "fields": {
+          "QCLOUD": {
+            "maximum": 0.0006606402457691729,
+            "mean": 3.7099590074516355e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 9983,
+            "sha256": "52c99d1374b95441f36339cb659a34e404e3c6b4cb6b4149b648a4faedcb8cff",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIB": {
+            "maximum": 1.630645328987157e-06,
+            "mean": 2.8472069886782396e-09,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 12647,
+            "sha256": "fff1c448a20f8d7079daeba66c4563593843b51ff4ef6d0a20346d11afc0379f",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QICE": {
+            "maximum": 0.0010513581801205873,
+            "mean": 8.652030163436701e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 33379,
+            "sha256": "987bfce180176f9d95913853cf888b71dbfa8e2d8a076d1f37e7d5579db0ae81",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIR": {
+            "maximum": 0.0003473317774478346,
+            "mean": 5.899554473986027e-07,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 12707,
+            "sha256": "66a846de190f060d7fcf5670b6cfa3ed102fbe135929d9d95eb4785cd510767b",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNCLOUD": {
+            "maximum": 283557760.0,
+            "mean": 3571152.7174841277,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 10281,
+            "sha256": "7bbf9802fdc591a0df3823ae75c4a6a52e00821a66fd5494a206cc3633895637",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNICE": {
+            "maximum": 482367.28125,
+            "mean": 11666.723648479203,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 33423,
+            "sha256": "30914c62a891e5372d2c2158bcbe804577805d69e958a19cb22305094bbbc640",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QRAIN": {
+            "maximum": 0.00022888054081704468,
+            "mean": 6.864979314426853e-07,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 22471,
+            "sha256": "eb6845acb09b90bc138a28f00d31b24cfc41966c7ca3812c020bcb183a0b5dcc",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QZI": {
+            "maximum": 0.0018781153485178947,
+            "mean": 1.0283509367145922e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 33197,
+            "sha256": "a27ce55dfc918a7e19b39c3e8e6c31b3185108b5678e9da99a25a4b0e60ba991",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "RAINNC": {
+            "maximum": 0.6525066494941711,
+            "mean": 0.005727788780184775,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 2997,
+            "sha256": "2091d2c9fbc12d2ed0b6bf44e1b13c1e2948fb57805c65921d347f867bf31c74",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "REFL_10CM": {
+            "maximum": 54.28569793701172,
+            "mean": -37.29346345043178,
+            "minimum": -99.0,
+            "nonfinite": 0,
+            "positive": 9124,
+            "sha256": "78c3e516ba3bb4a372737c23e372674bfd79219787774e1b84891b5012110940",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "SNOWNC": {
+            "maximum": 0.0749419555068016,
+            "mean": 0.00032612389719936504,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 1626,
+            "sha256": "8fef02cfba8803133171b0a56124a9c17539dfe134e6dd05dcfb458db316b899",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "T2": {
+            "maximum": 297.10406494140625,
+            "mean": 277.2736867756604,
+            "minimum": 243.9331512451172,
+            "nonfinite": 0,
+            "positive": 4380,
+            "sha256": "dd767ff110f9c8d8837d69e18fb3ebe244d1a9a4bf9177e77c3368159a63ea4a",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          }
+        },
+        "frame": "wrfout_d01_2000-01-24_13_00_00",
+        "sha256": "3e1747c28d5b7700d8ce0e9e23ffe0e75adb20cacd0d0d52fe362ceca7bb2a9a"
+      },
+      {
+        "arm": "ArWen",
+        "bytes": 17543656,
+        "fields": {
+          "QCLOUD": {
+            "maximum": 0.0008585245232097805,
+            "mean": 5.596300895791062e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 10671,
+            "sha256": "3b7b3854a7979e11ae57174ba35648e8a80873db7ca05b476edf2ec2ae6dcbcb",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIB": {
+            "maximum": 6.380531658578548e-07,
+            "mean": 1.5644791668352647e-09,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 15987,
+            "sha256": "d3f3563e64fd06d6b124e4340983c605e026d03ac1e9863f3b88b25ce69f175a",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QICE": {
+            "maximum": 0.001118118641898036,
+            "mean": 1.596146114503781e-05,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 35600,
+            "sha256": "223ed91c5d59e3796b27c87b946f9cbc71c0d066c4884727926a90c2f0f99be5",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIR": {
+            "maximum": 0.0002345718676224351,
+            "mean": 5.185815121260164e-07,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 16063,
+            "sha256": "98a0f95a9e476d20ff0a1e0ce347653028e57ff10ecab80dc7332b1df6cbd845",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNCLOUD": {
+            "maximum": 276893056.0,
+            "mean": 2838720.8622096274,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 10978,
+            "sha256": "d9b57b38833922201a69a288d92f50fb0f15dcbc464ff4043f67181345d02422",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNICE": {
+            "maximum": 457567.46875,
+            "mean": 13434.613733050921,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 35732,
+            "sha256": "ad563cf844af16c4129d369939e9f6c3079907ac6afa7524acd148bd063470c2",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QRAIN": {
+            "maximum": 0.00043706578435376287,
+            "mean": 2.997700131588637e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 25322,
+            "sha256": "b0efa16591357602b9536abaa1d2c9d5824825d907c03ab68680e0dd2c59f843",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QZI": {
+            "maximum": 0.0015418851980939507,
+            "mean": 1.4082877530852702e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 35444,
+            "sha256": "bb930655619e283acc98396ca9f3130a6068cb7524716fee5eccaadfaaa7610c",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "RAINNC": {
+            "maximum": 5.080814361572266,
+            "mean": 0.09575787256172776,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 3342,
+            "sha256": "7790fba780481fdf8d8d3d324c547f00eaaa1ee45b3953ecc1e93e03499fe387",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "REFL_10CM": {
+            "maximum": 60.364524841308594,
+            "mean": -36.86941399656464,
+            "minimum": -99.0,
+            "nonfinite": 0,
+            "positive": 13793,
+            "sha256": "317d62102b84bef85b87f29d51353fc9f2ab7de91bd1f8f93e323eaed1014b1d",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "SNOWNC": {
+            "maximum": 0.20348726212978363,
+            "mean": 0.0016347700106208274,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 1942,
+            "sha256": "0e9e39e1fd5a8f81f708194381e184d7e585281921d5b0ba99fd4e996cd3cc02",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "T2": {
+            "maximum": 297.25567626953125,
+            "mean": 277.96226002244646,
+            "minimum": 246.55075073242188,
+            "nonfinite": 0,
+            "positive": 4380,
+            "sha256": "84ba35e072e5c4e162ad557efb1d23be356e164f79502f0bae58fba0abdb1b0b",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          }
+        },
+        "frame": "wrfout_d01_2000-01-24_14_00_00",
+        "sha256": "926cd210adde90158e21c4a5c88fce5c9d683914ccd2bb341fc967f7d9dda17a"
+      },
+      {
+        "arm": "ArWen",
+        "bytes": 17543656,
+        "fields": {
+          "QCLOUD": {
+            "maximum": 0.0008196368580684066,
+            "mean": 5.900797646211766e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 12186,
+            "sha256": "9b39d13ad7cb7b3bb8cfd2db16792a0a099b30881c0bac69f70d79962d74f534",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIB": {
+            "maximum": 9.15249302124721e-07,
+            "mean": 1.0674744506667984e-09,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 16678,
+            "sha256": "49a9ce9e4eda860b2ad642099754e0caa444837ed5181d507baaed48101204c4",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QICE": {
+            "maximum": 0.0016556710470467806,
+            "mean": 2.08068649555629e-05,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 36143,
+            "sha256": "6ab1fe956a834847b57e80c5ceebb1a3b3a9950520787880ac88a7fe9492034f",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIR": {
+            "maximum": 0.000518487417139113,
+            "mean": 4.282246575558007e-07,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 16753,
+            "sha256": "fbc5402302cc1d8bdb304b548a75d5e29534f8544ea7f974aa6d4b3be05ec009",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNCLOUD": {
+            "maximum": 277836512.0,
+            "mean": 2706170.447282034,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 12454,
+            "sha256": "7cc99aff5c7f2423e9eaf75554ee1870fd5655252f23023799f2d33ce4ef7b49",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNICE": {
+            "maximum": 502391.21875,
+            "mean": 14758.991539545179,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 36254,
+            "sha256": "1e3506ca35f64f4b1687e5524e6ad6209d89a547e8ede5582d471d2cad092462",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QRAIN": {
+            "maximum": 0.0006593788275495172,
+            "mean": 5.87040900470431e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 26912,
+            "sha256": "a5c4b258428725e12ac37aa4ae070b116604589bd779af37ec9b6cedb7495d1a",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QZI": {
+            "maximum": 0.0010518470080569386,
+            "mean": 1.6174255561511163e-06,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 35916,
+            "sha256": "64cacfc7b72903a71091a747445dea85236691b17a951f1ca497e2968a00bc72",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "RAINNC": {
+            "maximum": 11.292990684509277,
+            "mean": 0.2999784597808429,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 3488,
+            "sha256": "5d3115e5f22959f68abb72ffb7a2584917f01b7f748d9e548abddbe3e88f729a",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "REFL_10CM": {
+            "maximum": 48.223289489746094,
+            "mean": -37.50506350295499,
+            "minimum": -99.0,
+            "nonfinite": 0,
+            "positive": 16662,
+            "sha256": "c0c45d991afa98ab04c9d72ec93092f81ddbdc544bf31c7d8d65cfbdd736aff0",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "SNOWNC": {
+            "maximum": 1.1696672439575195,
+            "mean": 0.007763528433516718,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 2191,
+            "sha256": "f083d6396bbf66ad3c76bf229c96beb08045b50f80dba0e6d2649157618f3ba0",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "T2": {
+            "maximum": 297.42401123046875,
+            "mean": 278.4579899827095,
+            "minimum": 249.29058837890625,
+            "nonfinite": 0,
+            "positive": 4380,
+            "sha256": "d6ee00326db5302f88b651117d428cafe2936af5f8e4bbbf89c593621a550a30",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          }
+        },
+        "frame": "wrfout_d01_2000-01-24_15_00_00",
+        "sha256": "48f5cfe9240d63e07a1d99b3f48a809128e18ed94592694b0bdbd283c24eda63"
+      },
+      {
+        "arm": "native",
+        "bytes": 5257834,
+        "fields": {
+          "QCLOUD": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIB": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QICE": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIR": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNCLOUD": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNICE": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QRAIN": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QZI": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "RAINNC": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "REFL_10CM": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "6d755395e6854346c84b348b544010d66576bbc8930ce778c8b895898b9ee235",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "SNOWNC": {
+            "maximum": 0.0,
+            "mean": 0.0,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 0,
+            "sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "T2": {
+            "maximum": 296.914306640625,
+            "mean": 277.76521944368267,
+            "minimum": 245.7227783203125,
+            "nonfinite": 0,
+            "positive": 4380,
+            "sha256": "75a27a78b15ed74134c080a21360b6b8d189ba7641d010ca7b3c79ae3eca8366",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          }
+        },
+        "frame": "wrfout_d01_2000-01-24_12:00:00",
+        "sha256": "f3543d9756cf5f97dab752f3bb971e499069885988dc90afe42f82125dd5ff26"
+      },
+      {
+        "arm": "native",
+        "bytes": 7642531,
+        "fields": {
+          "QCLOUD": {
+            "maximum": 0.0006690892623737454,
+            "mean": 3.6966008740284767e-06,
+            "minimum": -3.493730441497545e-19,
+            "nonfinite": 0,
+            "positive": 9896,
+            "sha256": "9a133c05d9a447f576d83313eba6c58752ff429d5752bc4bd9141473daa89c18",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIB": {
+            "maximum": 1.629411599424202e-06,
+            "mean": 2.8134691541849126e-09,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 12485,
+            "sha256": "dc0a40f8b85b58e9139b3e8ad5d78d5b523af564f45d0753d3df82dcb18f054b",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QICE": {
+            "maximum": 0.0010508144041523337,
+            "mean": 8.647738606603002e-06,
+            "minimum": -5.948399976020522e-22,
+            "nonfinite": 0,
+            "positive": 33260,
+            "sha256": "c4660f7fe436d057e716a5ddefe8a43e8af73621a11b9a39154b694c1c58483d",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIR": {
+            "maximum": 0.00034582652733661234,
+            "mean": 5.863752692901911e-07,
+            "minimum": -4.886600913371283e-33,
+            "nonfinite": 0,
+            "positive": 12539,
+            "sha256": "55f20e601c8b2bbf25aa26c4c748b172109dfe13df19e55bd4f703852443caca",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNCLOUD": {
+            "maximum": 283268704.0,
+            "mean": 3558942.202728298,
+            "minimum": -4.855458483193908e-13,
+            "nonfinite": 0,
+            "positive": 10101,
+            "sha256": "db9fbe7665c857401f9c48609be01104db846c25ef10f550e6d07680a4dfbf78",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNICE": {
+            "maximum": 480483.46875,
+            "mean": 11679.515626318134,
+            "minimum": -7.91038563726634e-15,
+            "nonfinite": 0,
+            "positive": 33220,
+            "sha256": "0877180ebf35dcf6ea437c53f3956adece32db85b74e2c25693cf8d0af119f98",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QRAIN": {
+            "maximum": 0.00022964252275414765,
+            "mean": 6.874545288895137e-07,
+            "minimum": -3.351640316599143e-32,
+            "nonfinite": 0,
+            "positive": 22545,
+            "sha256": "717ba21cf4e3fb2fcd289e6e8d9782b454dcff87ded208d8e073f4aaa437537e",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QZI": {
+            "maximum": 0.0025612523313611746,
+            "mean": 1.0937638787082509e-06,
+            "minimum": -5.255117205640598e-22,
+            "nonfinite": 0,
+            "positive": 33031,
+            "sha256": "f717403d95dde2afec45a7e6c1c4e9f92dddfed1f5c8421bbf50441ce616a286",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "RAINNC": {
+            "maximum": 0.6539766788482666,
+            "mean": 0.005778175174839563,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 2998,
+            "sha256": "f6741def8720918c5657336d9e7e9985459ae7e8353d7b0a4b158d7f24294b09",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "REFL_10CM": {
+            "maximum": 54.525421142578125,
+            "mean": -37.732037445132704,
+            "minimum": -99.0,
+            "nonfinite": 0,
+            "positive": 9174,
+            "sha256": "f90a41e1dccb8eaf3932c3180698d18f85e5d205c95263379a38dd71cd313bab",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "SNOWNC": {
+            "maximum": 0.10175784677267075,
+            "mean": 0.00033328784414539235,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 1631,
+            "sha256": "5883ca9169def2bff13aa84b9e1b4bedadfec7336b266d56acc142dc7acae5b6",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "T2": {
+            "maximum": 297.10516357421875,
+            "mean": 277.2748802289571,
+            "minimum": 243.9524383544922,
+            "nonfinite": 0,
+            "positive": 4380,
+            "sha256": "719c873822be9d84c27c2c84310df6a610057e9a1ee77a6d08730dda2f10bcd3",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          }
+        },
+        "frame": "wrfout_d01_2000-01-24_13:00:00",
+        "sha256": "4d51dc00f30124f18e503ca0c409ffff6068aa6c32145a833d6cfe0c0c7893df"
+      },
+      {
+        "arm": "native",
+        "bytes": 7864994,
+        "fields": {
+          "QCLOUD": {
+            "maximum": 0.0008663276676088572,
+            "mean": 5.617606638504314e-06,
+            "minimum": -3.2187384877705176e-21,
+            "nonfinite": 0,
+            "positive": 10453,
+            "sha256": "ceaa4842f8ccdd214768171b05a44c22f8c358a4bcd859adb0e2973f769d37d3",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIB": {
+            "maximum": 6.146162832010305e-07,
+            "mean": 1.5262408915125462e-09,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 15891,
+            "sha256": "d2a4bfaf3957e0b8aba362fe6aeeb06d043725507577b7c30fa80199ff92cbdd",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QICE": {
+            "maximum": 0.0011189304059371352,
+            "mean": 1.5894324679364642e-05,
+            "minimum": -2.6697110888824617e-28,
+            "nonfinite": 0,
+            "positive": 35653,
+            "sha256": "3e1250c6c680fbf4b170959e75cf78aa16ac861135b1066916807adb0c778904",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIR": {
+            "maximum": 0.00026789121329784393,
+            "mean": 5.127079101918341e-07,
+            "minimum": -6.832917775431546e-28,
+            "nonfinite": 0,
+            "positive": 15968,
+            "sha256": "baf896159246a15676371e72494df661666bd825bfe2daf1d4ceff1bba3c7330",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNCLOUD": {
+            "maximum": 276108352.0,
+            "mean": 2854354.445075132,
+            "minimum": -9.839570047631696e-09,
+            "nonfinite": 0,
+            "positive": 10759,
+            "sha256": "bc5d25d63fddc18d426c3056c1f8b92ae77954e5f2d7b3cce73726c116959219",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNICE": {
+            "maximum": 462508.375,
+            "mean": 13448.295181538346,
+            "minimum": -1.0963068233768757e-18,
+            "nonfinite": 0,
+            "positive": 35575,
+            "sha256": "548572b55330fd54079d888d0ef228d416b521f576b63b176184c21bc41f322d",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QRAIN": {
+            "maximum": 0.00037526217056438327,
+            "mean": 2.977882551435148e-06,
+            "minimum": -1.0992117083248847e-27,
+            "nonfinite": 0,
+            "positive": 25428,
+            "sha256": "8b881494e2c208e1b5bfc13857880b613602481d98e958c2cd1267948f7dcec9",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QZI": {
+            "maximum": 0.001627675723284483,
+            "mean": 1.3837144516991749e-06,
+            "minimum": -6.248249379592438e-29,
+            "nonfinite": 0,
+            "positive": 35376,
+            "sha256": "fb043a4a0b6bba725746e00d3efb6b2700a029d284ce75a62babf3ade6778ab4",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "RAINNC": {
+            "maximum": 5.063498497009277,
+            "mean": 0.09635573003534147,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 3338,
+            "sha256": "26067b0f40e0192f1bd88e095a118596a5aefdcffe45a362d8e6ac87bb5865bf",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "REFL_10CM": {
+            "maximum": 59.025665283203125,
+            "mean": -36.92855165278331,
+            "minimum": -99.0,
+            "nonfinite": 0,
+            "positive": 13564,
+            "sha256": "34916662cb425acbe466220a12b9f41e59d39f50c6ee97218a479b564b6fae30",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "SNOWNC": {
+            "maximum": 0.2125992327928543,
+            "mean": 0.001581701869964635,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 1955,
+            "sha256": "4c7b843867b7795661b9b13c9bd3c5b0e3cfd2891817ca565d298c2df2469253",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "T2": {
+            "maximum": 297.2554931640625,
+            "mean": 277.96788153452417,
+            "minimum": 246.6063995361328,
+            "nonfinite": 0,
+            "positive": 4380,
+            "sha256": "c9aafff7bcae2386e0322be086590dc788ed00eb4f034d9b83e2aa3a243dc597",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          }
+        },
+        "frame": "wrfout_d01_2000-01-24_14:00:00",
+        "sha256": "fada50dfa1d50ab70e1dfa618428a72af06cfd17e6bfef5ad36d94acb19a8ec8"
+      },
+      {
+        "arm": "native",
+        "bytes": 7933492,
+        "fields": {
+          "QCLOUD": {
+            "maximum": 0.0008149144123308361,
+            "mean": 5.873045091856149e-06,
+            "minimum": -2.0532469668940232e-24,
+            "nonfinite": 0,
+            "positive": 11838,
+            "sha256": "8d7e3755066de4bf512eda12db69e8805a8c9c31ba34734959b8e06ed71ec8aa",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIB": {
+            "maximum": 9.192658581014257e-07,
+            "mean": 1.068167866992193e-09,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 16896,
+            "sha256": "f521be8f393e2ef6e2c46c7b3708b8aabd791da091045bdbc433dcc2d8c0cc13",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QICE": {
+            "maximum": 0.0016724718734622002,
+            "mean": 2.074139736973291e-05,
+            "minimum": -9.349246839678242e-21,
+            "nonfinite": 0,
+            "positive": 36312,
+            "sha256": "8122dbb115d48ac963161231dd732122cc1dd8820148c2f8d3578cfceea20921",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QIR": {
+            "maximum": 0.000521713518537581,
+            "mean": 4.2851972773450244e-07,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 16973,
+            "sha256": "4a281ec0cb3d73cb9c5fbab59d331a85a06d9cd27259215b89bfcaffec57702e",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNCLOUD": {
+            "maximum": 288786688.0,
+            "mean": 2700069.617672322,
+            "minimum": -1.0143419090780093e-11,
+            "nonfinite": 0,
+            "positive": 12100,
+            "sha256": "92b26fa37523c69fcd327323193d3f9cc5e3146bbcb10f6f45116fa5d5e23785",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QNICE": {
+            "maximum": 503743.65625,
+            "mean": 14768.87427832243,
+            "minimum": -3.526014565028335e-15,
+            "nonfinite": 0,
+            "positive": 36221,
+            "sha256": "1182313231b5054bea20cd42635818cd4f8b6a67d1003821f704efabe53b3000",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QRAIN": {
+            "maximum": 0.0006561228656210005,
+            "mean": 5.885683830375569e-06,
+            "minimum": -1.8953760287845045e-28,
+            "nonfinite": 0,
+            "positive": 27063,
+            "sha256": "0c52e1d0251a6f09fce1431fd542ee9c42b8a91b7c10619f93af9dd67cc07254",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "QZI": {
+            "maximum": 0.0006825616001151502,
+            "mean": 1.5950614450586562e-06,
+            "minimum": -1.7419859161427665e-26,
+            "nonfinite": 0,
+            "positive": 35993,
+            "sha256": "9b7a2758eb908a27c5cb816a2341c19c419213b12d0c1dbfd472763589a68b5f",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "RAINNC": {
+            "maximum": 11.065500259399414,
+            "mean": 0.29998933213640605,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 3481,
+            "sha256": "894f5a21610dffde7bcdd4c22206a03a1928e498e36a379fa7ad8e61ca02a963",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "REFL_10CM": {
+            "maximum": 55.85334396362305,
+            "mean": -37.69337476750495,
+            "minimum": -99.0,
+            "nonfinite": 0,
+            "positive": 16757,
+            "sha256": "ec3bf2c6f5bf7e72227802bafd5cb37c8e89cad54b1690adee29b8b89f71e147",
+            "shape": [
+              1,
+              34,
+              60,
+              73
+            ]
+          },
+          "SNOWNC": {
+            "maximum": 1.1054104566574097,
+            "mean": 0.007709641411901345,
+            "minimum": 0.0,
+            "nonfinite": 0,
+            "positive": 2222,
+            "sha256": "abebe9baf7237c9a7ff1e0a5900e2c2b214b862a9b5b0db783417feb70aa3ce4",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          },
+          "T2": {
+            "maximum": 297.42474365234375,
+            "mean": 278.465590500505,
+            "minimum": 249.37106323242188,
+            "nonfinite": 0,
+            "positive": 4380,
+            "sha256": "9279b8aada2050ac92be266a0c03468152aa587e304ecc1bb42ee8b55fc0fa31",
+            "shape": [
+              1,
+              60,
+              73
+            ]
+          }
+        },
+        "frame": "wrfout_d01_2000-01-24_15:00:00",
+        "sha256": "ed9bcb6d5d25d72e102a2d5f520b28e8ebf091516c8ca6eb7cb68940a3893b48"
+      }
+    ],
+    "history_frames_per_arm": 4,
+    "input_hashes": [
+      {
+        "bytes": 5713909,
+        "path": "<lanes>/port-mp53-p3-3mom/skeptic2/mp53/wrfinput_d01",
+        "sha256": "172841ff591f59af47179ef05c0532972a5d3609ee1ea72a90a0f3ba9b1784e0"
+      },
+      {
+        "bytes": 2196751,
+        "path": "<lanes>/port-mp53-p3-3mom/skeptic2/mp53/wrfbdy_d01",
+        "sha256": "434b22d1669274d9d89d02c6cda1b4d4d2a0cb4680895fc0745b602f815c8b95"
+      },
+      {
+        "bytes": 1594,
+        "path": "<lanes>/port-mp53-p3-3mom/skeptic2/mp53/namelist.input",
+        "sha256": "d45222670b3643565287b333f05dfb44f1c8ac4ec53ef2407e3a10407c56e8ff"
+      },
+      {
+        "bytes": 5696994,
+        "path": "<lanes>/port-mp53-p3-3mom/skeptic2/mp50/wrfinput_d01",
+        "sha256": "51f62a3760ec312d54575f18d502f5b26848f51cf6bfbdab433e2983718e1fad"
+      },
+      {
+        "bytes": 2115125,
+        "path": "<lanes>/port-mp53-p3-3mom/skeptic2/mp50/wrfbdy_d01",
+        "sha256": "4c80d9c5158cc170f650fa59503b0c6336926ec36518efedd6fd7f892193c9aa"
+      },
+      {
+        "bytes": 1594,
+        "path": "<lanes>/port-mp53-p3-3mom/skeptic2/mp50/namelist.input",
+        "sha256": "3f812352ad31762a0d477b749ec54b55effe8556b4f2c5dd5ec9afba8ba42fdf"
+      }
+    ],
+    "land_surface": 2,
+    "mp_physics": 53,
+    "namelist": "evidence/port-skeptic2-mp/namelist-mp53.input",
+    "pbl": 1,
+    "radiation": [
+      4,
+      4
+    ],
+    "start": "2000-01-24T12:00:00Z",
+    "status": "PASS",
+    "steps": 180,
+    "strict_numerics": false,
+    "surface_layer": 1,
+    "timing_seconds": {
+      "allocate_shared_workspaces": 1.2010103091597557e-05,
+      "forecast_execution": 4.703025266993791,
+      "restore_tree_and_initialize_physics": 0.4555935689713806,
+      "total": 5.691512607969344
+    },
+    "wall_seconds": 5.691512607969344
+  },
+  "historical_kernel_benchmark": {
+    "device": "NVIDIA GeForce RTX 5070 Ti",
+    "exact_environment": "0",
+    "input_sha256": "08e6dfc9d070fd1358c0ada85ac4ca24fa108ab77f7d86712040774444b85993",
+    "kernel_ratio": 1.2145359731885554,
+    "kernel_source_sha256": "9daef80fa54800a13fc4ed1ba8c5626ec1c3812adc0986db32323e2442be4de9",
+    "ncol": 4544,
+    "nk": 34,
+    "repeated_real_columns": 64,
+    "requested_options": [
+      "-std=c++17",
+      "-fmad=false",
+      "--ftz=false"
+    ],
+    "results": {
+      "50": {
+        "stage_median_ms": {
+          "p3k_levels_finish": 0.04187200032174587,
+          "p3k_levels_prepare": 0.08444800227880478,
+          "p3k_levels_process": 0.342288002371788,
+          "p3k_levels_sed": 0.13414400070905685
+        },
+        "sum_stage_median_ms": 0.6027520056813955,
+        "total_median_ms": 0.6195200085639954
+      },
+      "53": {
+        "stage_median_ms": {
+          "p3k_levels_finish": 0.06063999980688095,
+          "p3k_levels_prepare": 0.08665599673986435,
+          "p3k_levels_process": 0.3728159964084625,
+          "p3k_levels_sed": 0.21195200085639954
+        },
+        "sum_stage_median_ms": 0.7320639938116074,
+        "total_median_ms": 0.7372639775276184
+      }
+    },
+    "samples": 20,
+    "scope": "Historical kernel-only interval; this does not satisfy the whole production stage speed gate.",
+    "total_ratio": 1.1900567654570922
+  },
+  "integration_base": "c36c3b166676aa94b59c1a28ab4e02cb2fd9793e",
+  "lifecycle": {
+    "current_integration_tests": "tests/test_p3_three_moment_state_gpu.py tests/test_p3_lifecycle_gpu.py: 5 passed; skeptic2/lifecycle-tests.log",
+    "ensemble_carriers": "two independent device-member views for Nc and QZI",
+    "launch_binding": "warm steps upload no pointer metadata; changed arrays rebind and match a fresh workspace",
+    "restart": "two actual dycore/physics steps, moist fields restored bitwise",
+    "same_scheme_nest_feedback_modes": [
+      0,
+      1
+    ]
+  },
+  "limitations": [
+    "One three-hour 30 km case does not establish general forecast skill or whole-model bitwise parity.",
+    "No historical radar verification was performed.",
+    "Mixed microphysics nest edges involving option 53 remain refused because no sixth-moment and droplet-number conversion has been ratified.",
+    "Same-scheme nesting uses production coupling tests; a whole nested forecast was not run.",
+    "Ensemble carriers and member-local GPU execution are covered; a native packed multi-member option-53 physics graph was not qualified.",
+    "New whole-stage speed acceptance is measured on one RTX 5090; the RTX 4090 was not retimed after this fix."
+  ],
+  "option_off": {
+    "fast": {
+      "arm": "sedlevels",
+      "baseline": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+      "byte_identical": true,
+      "differing": 0,
+      "exact_environment": "0",
+      "total_words": 2762454,
+      "variant": 50
+    },
+    "strict": {
+      "arm": "sedlevels",
+      "baseline": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+      "byte_identical": true,
+      "differing": 0,
+      "total_words": 2762454,
+      "variant": 50
+    }
+  },
+  "real_input_replay": {
+    "capture_index": {
+      "cases": [
+        {
+          "dt": 60.0,
+          "in_claim": true,
+          "input_bytes": 83952,
+          "name": "p3_capture_00002_00002_00000031",
+          "native_itimestep": 31,
+          "ncol": 36,
+          "nk": 34,
+          "nsteps": 1,
+          "origin": "captured native WRF v4.7.1 forecast wrapper",
+          "reference_bytes": 187488,
+          "reference_sha256": "5ee4c8f043c0d1dfbf2b7d0e47dde88997c2ce5e6e0f7c9eb1de293bb2dd1d79",
+          "sha256": "8dd4ac233e631a2fa1fb99d0efdad2368293d8fcf7c6c5289f6abe3ecaf7eba3",
+          "x": 2,
+          "y": 16
+        },
+        {
+          "dt": 60.0,
+          "in_claim": true,
+          "input_bytes": 83952,
+          "name": "p3_capture_00002_00031_00000031",
+          "native_itimestep": 31,
+          "ncol": 36,
+          "nk": 34,
+          "nsteps": 1,
+          "origin": "captured native WRF v4.7.1 forecast wrapper",
+          "reference_bytes": 187488,
+          "reference_sha256": "50db836c8856b79fed626f5c681736143c912f1ad8fcca57c4b0245b78996e44",
+          "sha256": "8cee53194ae8a8805a5f76e8efdfdb9cfd2df1afda1bebf9d7186f616f5d4415",
+          "x": 2,
+          "y": 45
+        },
+        {
+          "dt": 60.0,
+          "in_claim": true,
+          "input_bytes": 81620,
+          "name": "p3_capture_00038_00002_00000031",
+          "native_itimestep": 31,
+          "ncol": 35,
+          "nk": 34,
+          "nsteps": 1,
+          "origin": "captured native WRF v4.7.1 forecast wrapper",
+          "reference_bytes": 182280,
+          "reference_sha256": "e1956b78d26dff52548380da764b2030f66e9ff51e7c1d868f897aadefc58c8f",
+          "sha256": "3d9d45c5d19cefdd7e59454bc3a719de94149ad0abdb9cb67ebfb8bd927bf0e2",
+          "x": 38,
+          "y": 16
+        },
+        {
+          "dt": 60.0,
+          "in_claim": true,
+          "input_bytes": 81620,
+          "name": "p3_capture_00038_00031_00000031",
+          "native_itimestep": 31,
+          "ncol": 35,
+          "nk": 34,
+          "nsteps": 1,
+          "origin": "captured native WRF v4.7.1 forecast wrapper",
+          "reference_bytes": 182280,
+          "reference_sha256": "8aadf8692e97a605a6c1b028a8f7af59cbd1a64a1ced386039fa839577f216ab",
+          "sha256": "1318eeb90967bc4196e6087fd4e8963b63ca7d137b5ef00f96ba935f7f7598da",
+          "x": 38,
+          "y": 45
+        }
+      ],
+      "in3d": [
+        "th",
+        "qv",
+        "qc",
+        "qr",
+        "nr",
+        "qi",
+        "ni",
+        "qir",
+        "qib",
+        "th_old",
+        "qv_old",
+        "pii",
+        "p",
+        "dz",
+        "w",
+        "nc",
+        "qzi"
+      ],
+      "out2d": [
+        "rainnc",
+        "rainncv",
+        "sr",
+        "snownc",
+        "snowncv"
+      ],
+      "out3d": [
+        "th",
+        "qv",
+        "qc",
+        "qr",
+        "nr",
+        "qi",
+        "ni",
+        "qir",
+        "qib",
+        "th_old",
+        "qv_old",
+        "zdbz",
+        "effc",
+        "effi",
+        "vmi",
+        "di",
+        "rhopo",
+        "nc",
+        "qzi"
+      ],
+      "predict_nc": true,
+      "source_sha256": "716950a3081ec4e338c9a918d26ec80f7ee0e40b3e284283f070423237f6a3c6",
+      "variant": 53
+    },
+    "cases": 4,
+    "claim_bit_identical": true,
+    "claim_cases": 4,
+    "claim_differing": 0,
+    "claim_elements": 92442,
+    "claim_max_abs": 0.0,
+    "claim_max_rel": 0.0,
+    "claim_max_ulp": 0,
+    "claim_nan_mismatch": 0,
+    "missing_cases": [],
+    "native_capture": "tools/p3_wrf461_oracle/capture_real_wrf.py, native step 31, four MPI slabs, 142 columns, 34 levels",
+    "native_p3_flags": "-O0 -ffp-contract=off -fno-unsafe-math-optimizations -fno-tree-vectorize",
+    "native_undefined_residue": false,
+    "paper_archive": "<paper-archive>/wrf-ports/port-mp53-p3-3mom/mp53-step31-20261102",
+    "replay_receipt_sha256": "2a394695792b5b359ffb853735e4dd719fe3f95651c4bbd523da1d35ef1962ae",
+    "retained_capture": "<reports>/WRF-PORTS-2026-11-01/evidence/port-mp53-p3-3mom/skeptic2/native-capture",
+    "strict_numerics": true
+  },
+  "runtime_commit": "8b87386014a7529a201abaebd2a6fd6e3a390888",
+  "schema": "gpuwm.p3-mp53-port-receipt/v1",
+  "selector": 53,
+  "skeptic2_fix": {
+    "adapter_wordcheck": [
+      {
+        "differing": {
+          "dz": 0,
+          "saved": 0,
+          "ssat": 0,
+          "theta": 0,
+          "vapour": 0
+        },
+        "moist": 0,
+        "terrain": false,
+        "words": 744600
+      },
+      {
+        "differing": {
+          "dz": 0,
+          "saved": 0,
+          "ssat": 0,
+          "theta": 0,
+          "vapour": 0
+        },
+        "moist": 0,
+        "terrain": true,
+        "words": 744600
+      },
+      {
+        "differing": {
+          "dz": 0,
+          "saved": 0,
+          "ssat": 0,
+          "theta": 0,
+          "vapour": 0
+        },
+        "moist": 1,
+        "terrain": false,
+        "words": 744600
+      },
+      {
+        "differing": {
+          "dz": 0,
+          "saved": 0,
+          "ssat": 0,
+          "theta": 0,
+          "vapour": 0
+        },
+        "moist": 1,
+        "terrain": true,
+        "words": 744600
+      }
+    ],
+    "cause": "Repeated elementwise launches in resident wrapper preparation and duplicate dry-theta evaluation.",
+    "change": "MP53-only preparation saves theta and vapour, differences geopotential and zeros saturation in one CUDA launch; one radii launch handles both radii. Column physics unchanged.",
+    "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/port-mp53-p3-3mom/skeptic2",
+    "forecast_bytecheck": {
+      "differing_bytes": 0,
+      "frames": 3
+    }
+  },
+  "upstream": {
+    "dependencies": [
+      {
+        "archive_sha256": "d673a11333485e7d8b93d62a9a5b07b22daf5e8a8655a44c1bb18aa4bf3d1524",
+        "crate": "lzma-rust2-0.16.1",
+        "license": "Apache-2.0"
+      },
+      {
+        "archive_sha256": "9710d3b3739c2e349eb44fe848ad0b7c8cb1e42bd87ee49371df2f7acaf3e675",
+        "crate": "crc-3.3.0",
+        "license": "MIT OR Apache-2.0"
+      },
+      {
+        "archive_sha256": "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5",
+        "crate": "crc-catalog-2.4.0",
+        "license": "MIT OR Apache-2.0"
+      }
+    ],
+    "license": "WRF public domain distribution statement",
+    "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+    "module_pin_version": "4.6.1",
+    "module_sha256": "716950a3081ec4e338c9a918d26ec80f7ee0e40b3e284283f070423237f6a3c6",
+    "module_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_mp_p3.F",
+    "table_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/run/p3_lookupTable_1.dat-v5.4_3momI",
+    "wrf_native_version": "4.7.1"
+  },
+  "visual_review": {
+    "fields_reviewed_by_eye": [
+      "temperature_2m",
+      "composite_reflectivity"
+    ],
+    "hours_utc": [
+      "2000-01-24T13:00:00Z",
+      "2000-01-24T14:00:00Z",
+      "2000-01-24T15:00:00Z"
+    ],
+    "limitations": [
+      "Single three-hour 30 km case; no general forecast-skill or whole-model bitwise claim.",
+      "Reflectivity is compared with native WRF only; surface observations do not validate radar echoes."
+    ],
+    "observations": "Reused public IEM ASOS observations: 13 stations per reviewed hour; surface temperature, dewpoint and wind speed. No historical observed radar grid.",
+    "reflectivity": [
+      "13 UTC: broad Georgia/Florida/Atlantic systems agree; Florida Gulf-coast strong cells are displaced and a few Great Lakes cells differ.",
+      "14 UTC: the GPU has a stronger individual coastal South Carolina cell; Atlantic and Florida cores differ while broad placement agrees.",
+      "15 UTC: native has a stronger local coastal Carolina core and the GPU has a weaker south Florida core; main Georgia/Atlantic bands agree."
+    ],
+    "renderer": "gpuwm.rustwx -> rw_wrfbatch, Rust rw_verify and rw_netcdf",
+    "temperature": "Cold inland air, coastal gradient and warmer Gulf/Atlantic agree closely at all three reviewed hours; station dots mostly align.",
+    "temperature_rmse_k": {
+      "13": {
+        "gpu": 1.9350948755080413,
+        "native": 1.9315702433710598
+      },
+      "14": {
+        "gpu": 1.854815151381514,
+        "native": 1.8529401418482159
+      },
+      "15": {
+        "gpu": 1.7814939260249114,
+        "native": 1.7657418185696445
+      }
+    },
+    "verification_receipts": [
+      {
+        "path": "review/verification-13.json",
+        "sha256": "d886b87cb85f1dc490a27769fd90aa7982e1efcdde1c2e20588ddc3c4e1ed511"
+      },
+      {
+        "path": "review/verification-14.json",
+        "sha256": "631953eebd4b40fd449607f93a4cc57965f56bdd88d37614a6ea717561f147be"
+      },
+      {
+        "path": "review/verification-15.json",
+        "sha256": "8e0c894548214e228608229ff8651fc85dbce27a9cd6c4f78e6484260f92732b"
+      }
+    ]
+  }
+}

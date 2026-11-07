@@ -127,7 +127,7 @@ _PRE_TIEDTKE_KEY_FINGERPRINT = (
 #: hash moved, and it is measured rather than asserted: the test below
 #: drops the key from the identity payload and recovers the pre-2.6.4
 #: anchor byte for byte, then flips SASE back and recovers the original.
-#: Re-pinned on lane/release-reds-266; the port re-pinned nothing.
+#: Re-pinned on development branch; the port re-pinned nothing.
 _PRE_CQ_DEFAULT_FINGERPRINT = (
     "b288ea01ca75ea49b0c3d0d8c4779d2997fb550b5af8b32bcb6f7236315a3b76")
 
@@ -139,7 +139,7 @@ _PRE_CAPABILITY_KEYS_FINGERPRINT = (
 
 #: The anchor while the 2.9.4 capabilities campaign's RunConfig keys
 #: (CAPABILITY_CAMPAIGN_RUN_KEYS) were bound unscoped at their defaults, on
-#: the lane/cap-base tip before the lanes' document rules merged.  Kept as
+#: the development branch tip before the lanes' document rules merged.  Kept as
 #: the record of that move; nothing produces it any more.
 _CAMPAIGN_KEYS_BOUND_FINGERPRINT = (
     "415c6ad0e3e28cdc5247f031c4b65818e44415c873dfd2e6cae8084529cc0d10")
@@ -150,13 +150,13 @@ _CAMPAIGN_KEYS_BOUND_FINGERPRINT = (
 #: defaults, ocean_config and the three lake_state_* keys at their defaults
 #: (woof.checkpoint_identity.drop_capability_campaign_keys), the four
 #: seaice_* keys where no land surface runs sea ice, ra_sw_eclipse at its
-#: default-on 1, and lane/cap-slab-ocean's PWP controls (SLAB_OCEAN_RUN_KEYS
+#: default-on 1, and development branch's PWP controls (SLAB_OCEAN_RUN_KEYS
 #: below) at their defaults while the ocean is off.  So a default run keeps
 #: the 2.9.3 bytes and the anchor is the pre-campaign anchor again; the
 #: test below proves the keys are absent and that an active value binds.
 _ANCHOR_FINGERPRINT = _PRE_CAPABILITY_KEYS_FINGERPRINT
 
-#: lane/cap-slab-ocean's PWP controls, absent while sf_ocean_physics = 0.
+#: development branch's PWP controls, absent while sf_ocean_physics = 0.
 SLAB_OCEAN_RUN_KEYS = ("ocean_levels", "ocean_analysis",
                        "ocean_analysis_source", "ocean_mld_climatology",
                        "omdt", "ocean_z", "ocean_t", "ocean_s")

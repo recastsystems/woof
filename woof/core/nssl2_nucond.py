@@ -17,8 +17,9 @@ import math
 
 import numpy as np
 
-from woof.core.kernels import get_kernel
+from woof.core.kernels import get_kernel, get_kernel_int_defines
 from woof.core.state import DTYPE
+from woof.core.nssl2_shape import DEFAULT_SHAPES, shape_kernel
 
 
 _TPB = 256
@@ -62,8 +63,9 @@ def launch_nucond(
         supersaturation_scratch=None,
         concentration_space: bool = False,
         predicted_ccn: bool = True,
+        nssl_cccn: float = 0.5e9,
         validate_values: bool = True,
-        frozen=None) -> None:
+        frozen=None, shapes=DEFAULT_SHAPES) -> None:
     """Advance the exact default MP18 warm ``NUCOND`` stage in place.
 
     Cell fields use contiguous FP32 ``(nz, ny, nx)`` storage.  ``w_interface``
@@ -99,6 +101,10 @@ def launch_nucond(
     ``validate_values=False`` to avoid the redundant reductions; structural
     shape/dtype/contiguity and timestep checks are never optional.
     """
+    from woof.core.nssl2_contract import (
+        nssl2_background_ccn_per_kg, nssl2_cccn_concentration,
+    )
+    background_ccn_per_kg = nssl2_background_ccn_per_kg(nssl_cccn)
     fields = {
         "full_theta": full_theta,
         "air_density": air_density,
@@ -183,13 +189,24 @@ def launch_nucond(
     else:
         frozen_args = frozen
     from woof.wrf_exact import ENABLED
-    frozen_kernel_args = (*frozen_args, np.int32(0 if frozen is None else 1)) if ENABLED else ()
+    frozen_kernel_args = (*frozen_args, np.int32(0 if frozen is None else 1)) if ENABLED or shapes != DEFAULT_SHAPES else ()
     blocks = (size + _TPB - 1) // _TPB
-    get_kernel("nssl2_nucond", "nssl2_nucond_supersaturation")(
+    shape_kernel("nssl2_nucond", "nssl2_nucond_supersaturation", shapes)(
         (blocks,), (_TPB,),
         (full_theta, pressure_pa, exner, qv, supersaturation_scratch,
          np.int32(size)))
-    get_kernel("nssl2_nucond", "nssl2_nucond_default")(
+    coefficient = nssl2_cccn_concentration(nssl_cccn)
+    # The default ABI keeps literal constants so fast CUDA retains its
+    # established contraction and rounding. Only an override takes scalars.
+    coefficient_args = ()
+    if coefficient == np.float32(0.5e9):
+        kernel = shape_kernel("nssl2_nucond", "nssl2_nucond_default", shapes)
+    else:
+        kernel = shape_kernel(
+            "nssl2_nucond", "nssl2_nucond_default", shapes,
+            (("NSSL2_VARIABLE_CCCN", 1),))
+        coefficient_args = (background_ccn_per_kg, coefficient)
+    kernel(
         (blocks,), (_TPB,),
         (full_theta, air_density, pressure_pa, exner, w_interface,
          supersaturation_scratch,
@@ -198,7 +215,7 @@ def launch_nucond(
          np.int32(concentration_space),
          np.int32(size), np.int32(shape[0]),
          np.int32(shape[1] * shape[2]),
-         np.int32(1 if predicted_ccn else 0)))
+         np.int32(1 if predicted_ccn else 0), *coefficient_args))
 
 
 __all__ = ["launch_nucond"]

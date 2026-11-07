@@ -227,9 +227,13 @@ def format_stamp(*, launch: datetime.datetime,
     caller can predict the collision spelling too.
     """
 
-    name = RUN_PREFIX + f"{_as_utc(launch):{LAUNCH_FORMAT}}Z"
+    when = _as_utc(launch)
+    name = RUN_PREFIX + (f"{when.year:04d}{when.month:02d}{when.day:02d}-"
+                         f"{when.hour:02d}{when.minute:02d}{when.second:02d}Z")
     if init is not None:
-        name += f"_i{_as_utc(init):{INIT_FORMAT}}Z"
+        start = _as_utc(init)
+        name += (f"_i{start.year:04d}{start.month:02d}{start.day:02d}"
+                 f"{start.hour:02d}{start.minute:02d}Z")
     if ordinal > 1:
         name += f"-{ordinal:02d}"
     return name

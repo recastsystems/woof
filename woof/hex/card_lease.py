@@ -1,6 +1,6 @@
 """Give a queued card back the moment a composing door's GPU work ends.
 
-THE BREAKAGE THIS PREVENTS (V5090 overflow box, 2026-10-27 21:05-21:28Z): zoom-globe arms
+THE BREAKAGE THIS PREVENTS (reference system overflow box, 2026-10-27 21:05-21:28Z): zoom-globe arms
 (``woof hex mesh-plan --global-mesh --generate --run``) held exclusive cards 6 and 7 at 0 % GPU through their
 products stage (the Rust renderers and the ``rw_soundings --columns`` writer: 188 s of a 652 s lease on the
 3 h 96 -> 3 km arm) while other jobs queued for those cards. The card queue (``run.sh``) could give a card back

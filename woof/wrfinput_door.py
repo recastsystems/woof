@@ -206,7 +206,8 @@ def refuse_latlon_files(metadata: Mapping[int, object]) -> None:
                 f"{latlon_refusal()}")
 
 
-def synthesize_wps_namelist(metadata: Mapping[int, WrfinputMetadata]) -> str:
+def synthesize_wps_namelist(metadata: Mapping[int, WrfinputMetadata], *,
+                            record_times=None) -> str:
     """Write the ``&share``/``&geogrid`` facts out of the wrfinput files.
 
     This is the whole difference between this door and
@@ -283,7 +284,9 @@ def synthesize_wps_namelist(metadata: Mapping[int, WrfinputMetadata]) -> str:
         "&share",
         " wrf_core = 'ARW',",
         f" max_dom = {len(ordered)},",
-        " start_date = " + ", ".join(f"'{start}'" for _ in ordered) + ",",
+        " start_date = " + ", ".join(
+            f"'{record_times[item.grid_id].strftime('%Y-%m-%d_%H:%M:%S')}'"
+            if record_times is not None else f"'{start}'" for item in ordered) + ",",
         "/",
         "",
         "&geogrid",
@@ -380,26 +383,14 @@ def check_projection_agreement(experiment, metadata: Mapping[
 #: terminal.  A row here is the ONLY way a substitution survives this
 #: gate, and adding one is table work rather than another branch.
 #:
-#: * ``use_theta_m`` 1 -> 0: the moist theta_m prognostic is implemented
-#:   nowhere in the engine, and the initial and boundary state is
-#:   recovered exactly on every import route.
 #: * ``fine_input_stream`` 2 -> 0: WRF's delayed-nest-start stream.  The
 #:   child still starts at its declared start time; only the provenance
 #:   of its masked surface state differs
 #:   (:func:`woof.namelist_import.fine_input_stream_decision`, the one
 #:   function this door, the importer and the RW-WPS support report all
 #:   read the answer from).
-#: * ``fractional_seaice`` 1 -> 0 under a non-RUC land surface: the
-#:   fractional ice/water flux blend is ported in the RUC seam only.  Until
-#:   2026-10-12 this door accepted it with no word (the importer booked it
-#:   as "fixed"); it is now announced, with the only cells it changes
-#:   (sea-ice fraction strictly between 0.02 and 1).  Admitted rather than
-#:   refused because most WRF namelists set it and most domains have no
-#:   such cell; the Noah fractional-ice port is the fix that retires it.
 ADMITTED_DECLARED_DIVERGENCES = frozenset({
-    ("use_theta_m", 1, 0),
     ("fine_input_stream", 2, 0),
-    ("fractional_seaice", 1, 0),
 })
 
 
@@ -573,7 +564,7 @@ def resolve_wrfinput_run(directory: str | Path, *, name: str | None = None,
                 f"for domain {grid_id}; the file and its name disagree "
                 "about which domain it initializes")
     refuse_latlon_files(metadata)
-    identities = {grid_id: read_wrfinput_identity(path, restart=warm)
+    identities = {grid_id: read_wrfinput_identity(path, restart=warm, child=grid_id > 1)
                   for grid_id, path in state_files.items()}
     landuse_identity = None
     for item in metadata.values():
@@ -581,7 +572,8 @@ def resolve_wrfinput_run(directory: str | Path, *, name: str | None = None,
         if landuse_identity is not None and identity != landuse_identity:
             raise ConfigurationRefused('WRF input files disagree on the producing run land-use identity')
         landuse_identity = identity
-    wps_text = synthesize_wps_namelist(metadata)
+    wps_text = synthesize_wps_namelist(metadata, record_times=(None if warm else {
+        grid_id: identity.start_time for grid_id, identity in identities.items()}))
     line, title = producing_wrf_line_and_title(metadata)
     if line == "4":
         line = producing_wrf_release(metadata) or line
@@ -770,11 +762,17 @@ def _import_with_synthesized_wps(wps_text: str, namelist: Path, *, inherited_eta
         if edited:
             effective_input = Path(scratch) / "namelist.input"
             effective_input.write_text(text, encoding="utf-8")
+            # Trajectory point namelists are sibling authorities, just as
+            # wrf.exe opens them beside the original namelist.input.
+            if (parsed.get("physics", {}).get("traj_opt") or [0])[0] == 1:
+                for point_file in namelist.parent.glob("wrfinput_traj_d[0-9][0-9]"):
+                    (Path(scratch) / point_file.name).write_bytes(point_file.read_bytes())
         # Both metric mixing values are implemented for real-data input.
         # The file door checks nonzero idealized base profiles separately;
         # ordinary importer normalization must not replace an authored value.
         return import_namelists(wps_path, effective_input,
-                                preserve_wrf_mixing=True, **kwargs)
+                                tslist_path=namelist.resolve().parent / "tslist",
+                                preserve_wrf_mixing=True, wind_input_directory=namelist.resolve().parent, observation_input_root=namelist.parent, **kwargs)
 
 
 def _check_start_time(experiment, metadata, coverage, *, source: str) -> None:

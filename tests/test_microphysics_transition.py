@@ -114,14 +114,14 @@ def test_every_ordered_edge_requires_its_explicit_policy():
     # mp=9 with the scheme's own consistency-block closure, and mp=16 and
     # mp=28 with their entry closures -- give 72 ordered mixed edges plus
     # 9 same-scheme edges.
-    assert len(resolved) == 121
+    assert len(resolved) == 144
 
     with pytest.raises(ValueError, match="closure of another edge"):
         resolve_microphysics_transition(
             _run(18),
             _run(8, nested=True, transition=MP8_TO_MP18_POLICY),
         )
-    with pytest.raises(ValueError, match="ported selectors"):
+    with pytest.raises(ValueError, match="MP55.*entry"):
         resolve_microphysics_transition(
             _run(18),
             _run(55, nested=True, transition=EDGE_MATRIX_POLICY),
@@ -341,7 +341,7 @@ def test_a_mixed_p3_edge_resolves_both_directions_with_the_matrix_policy():
     from woof.core import microphysics_transition as mt
 
     partners = [mp for mp in mt.PORTED_MP_PHYSICS if mp != 50]
-    assert partners == [1, 6, 8, 10, 18, 9, 16, 28, 2, 24]
+    assert partners == [1, 6, 8, 10, 18, 9, 16, 28, 2, 24, 13]
     for other in partners:
         for source, target in ((other, 50), (50, other)):
             contract = resolve_microphysics_transition(
@@ -941,7 +941,7 @@ def test_the_windowed_donor_carries_every_plane_a_launcher_reads():
     # thb is borrowed rather than cut (a base profile has no horizontal
     # extent) and c1h/c2h are vertical coefficients; all three are on the
     # namespace, just not in the windowed tuple.
-    carried = set(_WINDOWED_EDGE_PLANES) | {"thb", "c1h", "c2h"}
+    carried = set(_WINDOWED_EDGE_PLANES) | {"thb", "c1h", "c2h", "use_theta_m"}
     read = _parent_planes_a_launcher_reads()
     assert read <= carried, (
         "the edge launchers read parent planes the windowed donor namespace "
@@ -978,7 +978,7 @@ def test_no_selector_is_refused_for_a_missing_closure():
     no phase-split closure, Ferrier-Aligo (mp=5) no rime-factor closure, and
     FAST_SBM (mp=30): a mixed edge would have to build 142 spectral distributions
     from another scheme's bulk moments, and no such entry closure is
-    validated.  Every bulk scheme stays out.
+    validated.  MP38 also requires a density-consistent number and volume closure.
     """
     from woof.core import microphysics_transition as mt
     from woof.core.fast_sbm_contract import BIN_SPECIES
@@ -989,13 +989,36 @@ def test_no_selector_is_refused_for_a_missing_closure():
     # for the RRFS v2 hex preset) run same-scheme nests and are refused at
     # a mixed edge by name, with their own moment list.
     named = tuple(s.mp_id for s in NAMED_SCHEMES.values())
-    assert mt.UNVALIDATED_MIXED_EDGE_SELECTORS == (3, 5, 30) + named
+    # 3.0 ports UDM (27), RCON (29) and old Eta Ferrier (95) run same-scheme
+    # nests; a mixed edge needs their moments and is refused by name.
+    assert mt.UNVALIDATED_MIXED_EDGE_SELECTORS == (3, 5, 14, 15, 26, 27, 29, 30, 38, 40, 52, 55, 56, 95, 97, 51) + named + (53,)
     assert mt.UNVALIDATED_MIXED_EDGE_MOMENTS == {
         3: (),
         5: ("f_rimef",),
+        14: ("nn", "nc", "nr"),
+        15: ("qrimef",),
+        26: ("qh", "nn", "nc", "nr"),
+        27: ("qh", "nn", "nc", "nr"),
+        29: ("nc", "nr", "ni", "nwfa", "nifa"),
+        95: ("qt", "f_ice_phy", "f_rain_phy", "f_rimef_phy"),
+        40: ("nr", "ni", "ns", "ng", "nc"),
+        51: ("nc", "nr", "ni", "qir", "qib"),
+        52: ("nc", "ni", "qir", "qib", "ni2", "qir2", "qib2"),
+        53: ("nr", "ni", "qir", "qib", "nc", "qzi"),
+        55: ("nr", "ni", "ni2", "ni3", "qvoli", "qaoli", "qvoli2", "qaoli2", "qvoli3", "qaoli3"),
+        97: (),
         30: BIN_SPECIES,
+        38: ("ng", "qvolg"),
+        56: mt.UNVALIDATED_MIXED_EDGE_MOMENTS[56],
         **{s.mp_id: s.moment_species + s.aerosol_species
            for s in NAMED_SCHEMES.values()}}
+def test_ntu_missing_cross_scheme_closure_names_the_moments():
+    from woof.core import microphysics_transition as mt
+    assert 56 in mt.UNVALIDATED_MIXED_EDGE_SELECTORS
+    assert set(mt.UNVALIDATED_MIXED_EDGE_MOMENTS[56]) >= {"qdcn", "fi", "ai", "i3m"}
+    assert not resolve_microphysics_transition(_run(56), _run(56, nested=True)).mixed
+    with pytest.raises(ValueError, match="volume|shape|moment|CCN"):
+        resolve_microphysics_transition(_run(8), _run(56, nested=True, transition=EDGE_MATRIX_POLICY))
 
 
 def test_the_wdm6_and_aerosol_entry_closures_seed_the_ported_values():
@@ -1087,7 +1110,7 @@ def test_the_registry_publishes_every_ratified_cross_edge():
          ).read_text(encoding="utf-8"))
     rows = registry["transitions"]["microphysics-one-way-v1"]["cross_options"]
     n = len(mt.PORTED_MP_PHYSICS)
-    assert len(rows) == n * (n - 1) == 110
+    assert len(rows) == n * (n - 1) == 132
     published = {(row["parent_option_id"], row["child_option_id"])
                  for row in rows}
     assert ("wdm6-mp16", "thompson-aerosol-mp28") in published

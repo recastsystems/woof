@@ -41,9 +41,12 @@ pub(crate) fn push(
         let t = file.temperature(ti).map_err(|e| e.to_string())?;
         let q = read("QVAPOR")?;
         let c = read("QCLOUD")?;
-        let r = optional("QRAIN")?;
+        // Rain and snow are required, not optional: without them the extinction reads clear air through
+        // precipitation. THE BREAKAGE THIS PREVENTS: a hex surface export carries QCLOUD and QICE (cloud cover)
+        // but no rain or snow, and would draw a visibility map with every shower left out.
+        let r = Some(read("QRAIN")?);
         let ice = optional("QICE")?;
-        let s = optional("QSNOW")?;
+        let s = Some(read("QSNOW")?);
         let g = optional("QGRAUP")?;
         compute_visibility(VisibilityInputs {
             grid: grid.shape,

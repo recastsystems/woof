@@ -673,7 +673,7 @@ def test_a_static_that_does_not_hold_its_declaration_stops_the_door_at_the_build
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """2026-10-15: a static builder that reads its grid
-    through binary32 (woof 2.9.0's) wrote a static declaring binary64
+    through binary32 (gpuwm 2.9.0's) wrote a static declaring binary64
     coordinates it did not hold, and the door refused later, twice, blaming
     the mesh.  It now refuses right after the first static, naming the
     builder, and does not fall back to a wider halo or the parent's geography,

@@ -1,0 +1,2173 @@
+{
+  "radems": {
+    "workspace_expression": "(24488+((64+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)+1-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+(((CAM_LEVELS-(0)+1))*8+7)+(((CAM_LEVELS-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((CAM_LEVELS-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(11-(1)+1))*8+7)+7)&~7))",
+    "fields": [
+      "s2c",
+      "tcg",
+      "w",
+      "tplnke",
+      "plh2o",
+      "pnm",
+      "plco2",
+      "tint",
+      "tint4",
+      "tlayr",
+      "tlayr4",
+      "plol",
+      "plos",
+      "ucfc11",
+      "ucfc12",
+      "un2o0",
+      "un2o1",
+      "uch4",
+      "uco211",
+      "uco212",
+      "uco213",
+      "uco221",
+      "uco222",
+      "uco223",
+      "uptype",
+      "bn2o0",
+      "bn2o1",
+      "bch4",
+      "co2em",
+      "co2eml",
+      "co2t",
+      "h2otr",
+      "abplnk1",
+      "abplnk2",
+      "emstot",
+      "plh2ob",
+      "wb",
+      "aer_trn_ttl"
+    ],
+    "parameters": [
+      {
+        "name": "s2c",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "tcg",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "w",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "tplnke",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "plh2o",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "pnm",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "plco2",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "tint",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "tint4",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "tlayr",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "tlayr4",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "plol",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "plos",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "ucfc11",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "ucfc12",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "un2o0",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "un2o1",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "uch4",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "uco211",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "uco212",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "uco213",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "uco221",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "uco222",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "uco223",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "uptype",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "bn2o0",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "bn2o1",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "bch4",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "co2em",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "co2eml",
+        "dtype": "double",
+        "count": 32,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "co2t",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "h2otr",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "abplnk1",
+        "dtype": "double",
+        "count": 462,
+        "output": true,
+        "count_expression": "(14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "abplnk2",
+        "dtype": "double",
+        "count": 462,
+        "output": true,
+        "count_expression": "(14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "emstot",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "plh2ob",
+        "dtype": "double",
+        "count": 66,
+        "output": false,
+        "count_expression": "(2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "wb",
+        "dtype": "double",
+        "count": 66,
+        "output": false,
+        "count_expression": "(2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "aer_trn_ttl",
+        "dtype": "double",
+        "count": 7623,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1)"
+      }
+    ],
+    "levels": 32,
+    "source": "WRF v4.6.1 radems"
+  },
+  "radclwmx": {
+    "workspace_expression": "(24488+((64+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)+1-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+(((CAM_LEVELS-(0)+1))*8+7)+(((CAM_LEVELS-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((CAM_LEVELS-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(11-(1)+1))*8+7)+7)&~7))",
+    "fields": [
+      "lwupcgs",
+      "tnm",
+      "qnm",
+      "o3vmr",
+      "pmid",
+      "pint",
+      "pmln",
+      "piln",
+      "n2o",
+      "ch4",
+      "cfc11",
+      "cfc12",
+      "cld",
+      "emis",
+      "pmxrgn",
+      "nmxrgn",
+      "qrl",
+      "qrlcs",
+      "doabsems",
+      "abstot",
+      "absnxt",
+      "emstot",
+      "flns",
+      "flnt",
+      "flnsc",
+      "flntc",
+      "flwds",
+      "flut",
+      "flutc",
+      "flup",
+      "flupc",
+      "fldn",
+      "fldnc",
+      "aer_mass"
+    ],
+    "parameters": [
+      {
+        "name": "lwupcgs",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "tnm",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "qnm",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "o3vmr",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "pmid",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "pint",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "pmln",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "piln",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "n2o",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "ch4",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "cfc11",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "cfc12",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "cld",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "emis",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "pmxrgn",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "nmxrgn",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "qrl",
+        "dtype": "double",
+        "count": 32,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "qrlcs",
+        "dtype": "double",
+        "count": 32,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "doabsems",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "abstot",
+        "dtype": "double",
+        "count": 1089,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "absnxt",
+        "dtype": "double",
+        "count": 128,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1)"
+      },
+      {
+        "name": "emstot",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "flns",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "flnt",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "flnsc",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "flntc",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "flwds",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "flut",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "flutc",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "flup",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "flupc",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fldn",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fldnc",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "aer_mass",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      }
+    ],
+    "levels": 32,
+    "source": "WRF v4.6.1 radclwmx"
+  },
+  "radcswmx": {
+    "workspace_expression": "(24488+((64+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)+1-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+(((CAM_LEVELS-(0)+1))*8+7)+(((CAM_LEVELS-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((CAM_LEVELS-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(11-(1)+1))*8+7)+7)&~7))",
+    "fields": [
+      "jj",
+      "pint",
+      "pmid",
+      "h2ommr",
+      "rh",
+      "o3mmr",
+      "aermmr",
+      "cld",
+      "cicewp",
+      "cliqwp",
+      "rel",
+      "rei",
+      "tauxcl",
+      "tauxci",
+      "eccf",
+      "coszrs",
+      "scon",
+      "solin",
+      "solcon",
+      "asdir",
+      "asdif",
+      "aldir",
+      "aldif",
+      "nmxrgn",
+      "pmxrgn",
+      "qrs",
+      "qrscs",
+      "fsnt",
+      "fsntc",
+      "fsntoa",
+      "fsntoac",
+      "fsnirtoa",
+      "fsnrtoac",
+      "fsnrtoaq",
+      "fsns",
+      "fsnsc",
+      "fsdsc",
+      "fsds",
+      "sols",
+      "soll",
+      "solsd",
+      "solld",
+      "frc_day",
+      "fsup",
+      "fsupc",
+      "fsdn",
+      "fsdnc",
+      "fsdndir",
+      "fsdncdir",
+      "fsdndif",
+      "fsdncdif",
+      "fsdsdir",
+      "fsdsdif",
+      "fsdscdir",
+      "fsdscdif",
+      "aertau",
+      "aerssa",
+      "aerasm",
+      "aerfwd"
+    ],
+    "parameters": [
+      {
+        "name": "jj",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "pint",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "pmid",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "h2ommr",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "rh",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "o3mmr",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "aermmr",
+        "dtype": "double",
+        "count": 416,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1)"
+      },
+      {
+        "name": "cld",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "cicewp",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "cliqwp",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "rel",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "rei",
+        "dtype": "double",
+        "count": 32,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "tauxcl",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(0)+1)"
+      },
+      {
+        "name": "tauxci",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(0)+1)"
+      },
+      {
+        "name": "eccf",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "coszrs",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "scon",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "solin",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "solcon",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "asdir",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "asdif",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "aldir",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "aldif",
+        "dtype": "double",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "nmxrgn",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "pmxrgn",
+        "dtype": "double",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "qrs",
+        "dtype": "double",
+        "count": 32,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "qrscs",
+        "dtype": "double",
+        "count": 32,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(CAM_LEVELS-(1)+1)"
+      },
+      {
+        "name": "fsnt",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsntc",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsntoa",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsntoac",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsnirtoa",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsnrtoac",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsnrtoaq",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsns",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsnsc",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsdsc",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsds",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "sols",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "soll",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "solsd",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "solld",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "frc_day",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsup",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fsupc",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fsdn",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fsdnc",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fsdndir",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fsdncdir",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fsdndif",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fsdncdif",
+        "dtype": "double",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)"
+      },
+      {
+        "name": "fsdsdir",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsdsdif",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsdscdir",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "fsdscdif",
+        "dtype": "double",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)"
+      },
+      {
+        "name": "aertau",
+        "dtype": "double",
+        "count": 133,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(19-(1)+1)*(7-(1)+1)"
+      },
+      {
+        "name": "aerssa",
+        "dtype": "double",
+        "count": 133,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(19-(1)+1)*(7-(1)+1)"
+      },
+      {
+        "name": "aerasm",
+        "dtype": "double",
+        "count": 133,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(19-(1)+1)*(7-(1)+1)"
+      },
+      {
+        "name": "aerfwd",
+        "dtype": "double",
+        "count": 133,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(19-(1)+1)*(7-(1)+1)"
+      }
+    ],
+    "levels": 32,
+    "source": "WRF v4.6.1 radcswmx"
+  },
+  "camrad": {
+    "workspace_expression": "(24488+((64+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7)+((((CAM_LEVELS+1)+1-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(1)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+((((CAM_LEVELS+1)-(0)+1))*4+7)+(((CAM_LEVELS-(0)+1))*8+7)+(((CAM_LEVELS-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+(((19-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+((((CAM_LEVELS+1)-(0)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7)+(((CAM_LEVELS-(1)+1))*4+7)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(11-(1)+1))*8+7)+7)&~7))",
+    "fields": [
+      "rthratenlw",
+      "rthratensw",
+      "rthratenlwc",
+      "rthratenswc",
+      "dolw",
+      "dosw",
+      "swupt",
+      "swuptc",
+      "swdnt",
+      "swdntc",
+      "lwupt",
+      "lwuptc",
+      "lwdnt",
+      "lwdntc",
+      "swupb",
+      "swupbc",
+      "swdnb",
+      "swdnbc",
+      "lwupb",
+      "lwupbc",
+      "lwdnb",
+      "lwdnbc",
+      "swcf",
+      "lwcf",
+      "olr",
+      "cemiss",
+      "taucldc",
+      "taucldi",
+      "coszr",
+      "gsw",
+      "glw",
+      "xlat",
+      "xlong",
+      "albedo",
+      "t_phy",
+      "tsk",
+      "emiss",
+      "qv3d",
+      "qc3d",
+      "qr3d",
+      "qi3d",
+      "qs3d",
+      "qg3d",
+      "alswvisdir",
+      "alswvisdif",
+      "alswnirdir",
+      "alswnirdif",
+      "swvisdir",
+      "swvisdif",
+      "swnirdir",
+      "swnirdif",
+      "sf_surface_physics",
+      "swddir",
+      "swddif",
+      "swddni",
+      "f_qv",
+      "f_qc",
+      "f_qr",
+      "f_qi",
+      "f_qs",
+      "f_qg",
+      "f_ice_phy",
+      "f_rain_phy",
+      "p_phy",
+      "p8w",
+      "z",
+      "pi_phy",
+      "rho_phy",
+      "dz8w",
+      "cldfra",
+      "xland",
+      "xice",
+      "snow",
+      "ozmixm",
+      "pin0",
+      "levsiz",
+      "num_months",
+      "m_psp",
+      "m_psn",
+      "aerosolcp",
+      "aerosolcn",
+      "m_hybi0",
+      "cam_abs_dim1",
+      "cam_abs_dim2",
+      "paerlev",
+      "naer_c",
+      "gmt",
+      "julday",
+      "julian",
+      "yr",
+      "dt",
+      "xtime",
+      "declin",
+      "solcon",
+      "radt",
+      "degrad",
+      "n_cldadv",
+      "abstot_3d",
+      "absnxt_3d",
+      "emstot_3d",
+      "doabsems",
+      "ghg_input",
+      "ids",
+      "ide",
+      "jds",
+      "jde",
+      "kds",
+      "kde",
+      "ims",
+      "ime",
+      "jms",
+      "jme",
+      "kms",
+      "kme",
+      "its",
+      "ite",
+      "jts",
+      "jte",
+      "kts",
+      "kte",
+      "coszen",
+      "gases"
+    ],
+    "parameters": [
+      {
+        "name": "rthratenlw",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "rthratensw",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "rthratenlwc",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "rthratenswc",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "dolw",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "dosw",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "swupt",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swuptc",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swdnt",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swdntc",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwupt",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwuptc",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwdnt",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwdntc",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swupb",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swupbc",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swdnb",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swdnbc",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwupb",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwupbc",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwdnb",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwdnbc",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swcf",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "lwcf",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "olr",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "cemiss",
+        "dtype": "float",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "taucldc",
+        "dtype": "float",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "taucldi",
+        "dtype": "float",
+        "count": 33,
+        "output": true,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "coszr",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "gsw",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "glw",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "xlat",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "xlong",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "albedo",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "t_phy",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "tsk",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "emiss",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "qv3d",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "qc3d",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "qr3d",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "qi3d",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "qs3d",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "qg3d",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "alswvisdir",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "alswvisdif",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "alswnirdir",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "alswnirdif",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swvisdir",
+        "dtype": "float",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swvisdif",
+        "dtype": "float",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swnirdir",
+        "dtype": "float",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swnirdif",
+        "dtype": "float",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "sf_surface_physics",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "swddir",
+        "dtype": "float",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swddif",
+        "dtype": "float",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "swddni",
+        "dtype": "float",
+        "count": 1,
+        "output": true,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "f_qv",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "f_qc",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "f_qr",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "f_qi",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "f_qs",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "f_qg",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "f_ice_phy",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "f_rain_phy",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "p_phy",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "p8w",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "z",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "pi_phy",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "rho_phy",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "dz8w",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "cldfra",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "xland",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "xice",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "snow",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "ozmixm",
+        "dtype": "float",
+        "count": 767,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(59-(1)+1)*(1-(1)+1)*(13-(1)+1)"
+      },
+      {
+        "name": "pin0",
+        "dtype": "float",
+        "count": 59,
+        "output": false,
+        "count_expression": "(59-(1)+1)"
+      },
+      {
+        "name": "levsiz",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "num_months",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "m_psp",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "m_psn",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "aerosolcp",
+        "dtype": "float",
+        "count": 377,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(29-(1)+1)*(1-(1)+1)*(13-(1)+1)"
+      },
+      {
+        "name": "aerosolcn",
+        "dtype": "float",
+        "count": 377,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(29-(1)+1)*(1-(1)+1)*(13-(1)+1)"
+      },
+      {
+        "name": "m_hybi0",
+        "dtype": "float",
+        "count": 29,
+        "output": false,
+        "count_expression": "(29-(1)+1)"
+      },
+      {
+        "name": "cam_abs_dim1",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "cam_abs_dim2",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "paerlev",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "naer_c",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "gmt",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "julday",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "julian",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "yr",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "dt",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "xtime",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "declin",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "solcon",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "radt",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "degrad",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "n_cldadv",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "abstot_3d",
+        "dtype": "float",
+        "count": 1089,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "absnxt_3d",
+        "dtype": "float",
+        "count": 132,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(4-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "emstot_3d",
+        "dtype": "float",
+        "count": 33,
+        "output": false,
+        "count_expression": "(1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "doabsems",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "ghg_input",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "ids",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "ide",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "jds",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "jde",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "kds",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "kde",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "ims",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "ime",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "jms",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "jme",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "kms",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "kme",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "its",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "ite",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "jts",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "jte",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "kts",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "kte",
+        "dtype": "int",
+        "count": 1,
+        "output": false,
+        "count_expression": "1"
+      },
+      {
+        "name": "coszen",
+        "dtype": "float",
+        "count": 1,
+        "output": false,
+        "count_expression": "(1-(1)+1)*(1-(1)+1)"
+      },
+      {
+        "name": "gases",
+        "dtype": "double",
+        "count": 5,
+        "output": false
+      }
+    ],
+    "levels": 32,
+    "source": "WRF v4.6.1 camrad",
+    "absorption_workspace_expression": "(2048+((64+7)&~7))",
+    "absorption_lanes_expression": "CAM_LEVELS+1",
+    "absorption_operands": 41,
+    "coalesced_flux_values_expression": "(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1)+((CAM_LEVELS+1)-(0)+1)*(15-(1)+1)+((CAM_LEVELS+1)-(0)+1)*(15-(1)+1)+((CAM_LEVELS+1)-(0)+1)*(15-(1)+1)+((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))",
+    "local_frame_bound_expressions": [
+      "0",
+      "0+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((4)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((19)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((15)*8)+((15)*8)+((1)*8)+((1)*8)+((((CAM_LEVELS+1)+1-(1)+1))*8)+((15)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((15)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((1)*8)+((1)*8)+((1)*8)+((CAM_LEVELS+1)*8)+((4)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((19)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((4)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+0",
+      "0+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((4)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((19)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((15)*8)+((15)*8)+((1)*8)+((1)*8)+((((CAM_LEVELS+1)+1-(1)+1))*8)+((15)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((15)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((1)*8)+((1)*8)+((1)*8)+((CAM_LEVELS+1)*8)+((4)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((19)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((4)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+0+((1)*8)+((1)*8)",
+      "0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0",
+      "0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+0",
+      "0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+0+(((CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)",
+      "0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+0+0",
+      "0+(((CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)",
+      "0+((1)*8)+((1)*8)",
+      "0+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+0",
+      "0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0",
+      "0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)",
+      "0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0+0",
+      "0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0",
+      "0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+0",
+      "0+((1)*8)+((6)*8)+((1)*8)",
+      "0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+((1)*8)+0",
+      "0+((11)*8)+0",
+      "0+((11)*8)+0+((1)*8)+0",
+      "0+((11)*8)+0+0",
+      "0+0",
+      "0+0+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((4)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((19)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((15)*8)+((15)*8)+((1)*8)+((1)*8)+((((CAM_LEVELS+1)+1-(1)+1))*8)+((15)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((15)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((1)*8)+((1)*8)+((1)*8)+((CAM_LEVELS+1)*8)+((4)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((19)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((4)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+0",
+      "0+0+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((4)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((19)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((15)*8)+((15)*8)+((1)*8)+((1)*8)+((((CAM_LEVELS+1)+1-(1)+1))*8)+((15)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((15)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((1)*8)+((1)*8)+((1)*8)+((CAM_LEVELS+1)*8)+((4)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((19)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((4)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+0+((1)*8)+((1)*8)",
+      "0+0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0",
+      "0+0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+0",
+      "0+0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+0+(((CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)",
+      "0+0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((1)*8)+((1)*8)+0+0",
+      "0+0+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+0",
+      "0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0",
+      "0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)",
+      "0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0+0",
+      "0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0",
+      "0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+0",
+      "0+0+((1)*8)+0",
+      "0+0+((11)*8)+0",
+      "0+0+((11)*8)+0+((1)*8)+0",
+      "0+0+((11)*8)+0+0",
+      "0+0+0",
+      "0+0+0+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((4)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((19)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((15)*8)+((15)*8)+((1)*8)+((1)*8)+((((CAM_LEVELS+1)+1-(1)+1))*8)+((15)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((15)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((1)*8)+((1)*8)+((1)*8)+((CAM_LEVELS+1)*8)+((4)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((19)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((4)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+0",
+      "0+0+0+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((4)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((19)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((15)*8)+((15)*8)+((1)*8)+((1)*8)+((((CAM_LEVELS+1)+1-(1)+1))*8)+((15)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((15)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((4-(1)+1)*(1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((1)*8)+((1)*8)+((1)*8)+((CAM_LEVELS+1)*8)+((4)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((19)*8)+((1)*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+((19)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(0)+1))*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+(((CAM_LEVELS-(0)+1))*8)+((4)*8)+((CAM_LEVELS+1)*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+((((CAM_LEVELS+1)-(0)+1))*8)+0+((1)*8)+((1)*8)",
+      "0+0+0+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0",
+      "0+0+0+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+0",
+      "0+0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0",
+      "0+0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)",
+      "0+0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0+0",
+      "0+0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0",
+      "0+0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+0",
+      "0+0+0+((1)*8)+0",
+      "0+0+0+((11)*8)+0",
+      "0+0+0+((11)*8)+0+((1)*8)+0",
+      "0+0+0+((11)*8)+0+0",
+      "0+0+0+0",
+      "0+0+0+0+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+0",
+      "0+0+0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0",
+      "0+0+0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)",
+      "0+0+0+0+((1)*8)+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((2)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((2)*8)+((2)*8)+((2)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((14)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+0+0",
+      "0+0+0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0",
+      "0+0+0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+0+0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+((1)*8)+((6)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)",
+      "0+0+0+0+((1)*8)+((1)*8)+((2)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((7)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((2)*8)+((2)*8)+((56)*8)+((1)*8)+((2)*8)+((1)*8)+((4)*8)+((4)*8)+((4)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+((4)*8)+((1)*8)+((1)*8)+((1)*8)+((4)*8)+((1)*8)+((1)*8)+(((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8)+(((1-(1)+1)*(CAM_LEVELS-(1)+1))*8)+0+0",
+      "0+0+0+0+0",
+      "0+0+0+0+0+0"
+    ],
+    "arena_frame_bound_expressions": [
+      "0",
+      "0+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+(((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7+0",
+      "0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0",
+      "0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0+0",
+      "0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0+0+0",
+      "0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(11-(1)+1))*8+7+0",
+      "0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0",
+      "0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(11-(1)+1))*8+7+0",
+      "0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+(((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0+0+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(11-(1)+1))*8+7+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+0+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+0",
+      "0+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1)*(3-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(377)*8+7+(377)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(59)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+(59)*8+7+(29)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(1)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+1-(0)+1))*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*4+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(4-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS+1-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+((1-1+1-(1)+1)*(CAM_LEVELS-1+2-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(767)*8+7+0+0+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+(((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15-(1)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7+(((CAM_LEVELS+1)-(0)+1)*(15+1-(0)+1))*4+7+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(0)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(7-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*4+7+(1)*4+7+((1-(1)+1)*(CAM_LEVELS-(-1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(0)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(((CAM_LEVELS+1)-(0)+1))*4+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((2-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+(((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((14-(1)+1)*(1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+0+0+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1)*(11-(1)+1))*8+7+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(11-(1)+1))*8+7+0+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+0",
+      "0+(1)*8+7+(1)*8+7+(1)*4+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*((CAM_LEVELS+1)-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1))*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(133)*8+7+(133)*8+7+(13)*8+7+(133)*8+7+(133)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+(1)*8+7+((1-(1)+1)*(CAM_LEVELS-(1)+1)*(13-(1)+1))*8+7+(1)*8+7+0+0+0",
+      "0+0",
+      "0+0+0"
+    ]
+  }
+}

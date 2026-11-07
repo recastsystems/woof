@@ -677,7 +677,7 @@ class RegionalContract:
 #: of package-data packs. Compiler checks, cubin checks, CUDA source and
 #: arithmetic are unchanged. This source-table refresh is not a new regional
 #: forecast mint; archived evidence retains its recorded scope.
-#: (19) 2026-10-20 (capabilities campaign landing, lane/hexcap-base):
+#: (19) 2026-10-20 (capabilities campaign landing, development branch):
 #: cuda_dynamics_v841.py keys unspecialized kernels by (cache, name) so the
 #: moving-LTS interface taps (b6ebb526) replace the same entry the step
 #: launches. A host-side cache key only; no CUDA source string or
@@ -777,8 +777,32 @@ class RegionalContract:
 #: and cuda_backend/runtime.py + containers.py reuse unstepped predicted-class arrays with exact incremental uploads;
 #: host upload bookkeeping only, no CUDA source string or arithmetic changed (the row's whole run: 0 of 1,240,994,505
 #: words vs A2). Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (37) 2026-10-31 (fix/hex-1km-split): on a rank of a split mesh, cuda_driver.py and cuda_driver_rrfs.py run the
+#: end-of-stage recovered-state and finite-scalars tests over the columns the rank owns (the existing solve-region
+#: kernels) and the local-extent kernels' flag goes to a scratch word; one card keeps its calls;
+#: cuda_regional_forecast_v841.validate_recovered takes the rank's extents. Host routing only, no CUDA source string
+#: or arithmetic changed. Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (38) 2026-10-29 (hex 0.4.11 row, rrfs/s6-scalar-default 04b17ec0 + fix/s6-scalar-lts-layout): the shared v841
+#: scalar transport reads its edge and cell stencils slot-major from per-stream copies and reuses one edge stencil
+#: across every scalar of a launch (cuda_transport_v841.py: indexing and loop nesting only, every element's
+#: arithmetic and order unchanged; lane: tiled 3 km and x1.2562 steps 1/12/24, fast and strict, 0 words; strict
+#: 6 h hrrrv5 vs native 44c0849 history+diag 0 of 29,646,610); the copies are made below the kernel taps, so the
+#: LTS hooks keep the native tables; cuda_driver.py fuses one ordered add pair (same order). The only changed
+#: member of this set since (34): cuda_transport_v841.py. Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (39) 2026-10-29 (fix/rrfs-v841-acoustic-split): cuda_regional_v841.py adds five entrypoints the limited-area
+#: substep now launches -- acoustic_column_{pre,sweep,post_w,post_rt}_regional_v841 (the one-kernel column solve
+#: split at its level-independent loops, the global substep's shape) and acoustic_rs_ts_slot_regional_v841 (the
+#: rs/ts kernel's own text with its two edgesOnCell reads slot-major) -- and cuda_regional_forecast_v841.py launches
+#: them (WOOF_HEX_REGIONAL_ACOUSTIC_SPLIT=0 keeps the one-kernel forms). Same helper sequence on the same operands
+#: per element; measured equal, not assumed: lam7k hrrrv5 44c0849 1 h, every one of 4,320 substeps compared in
+#: process against the one-kernel forms (fast and strict), strict 0 of 112,584,002 history/diag/restart words vs
+#: native 44c0849, fast 0 of 112,584,002 vs HB18 6f335af8. Re-derived by tools/repin_source_tables.py.
+#: (40) 2026-11-06 (hex-0414/restart-warm): cuda_backend/aot.py words the missing-prebuilt-pack line as a one-line
+#: DEFECT naming the loaded NVRTC (pack_defect_line); the message text only, no CUDA source string, compile
+#: request or arithmetic changed. The only changed member of this set since (39). Re-derived by
+#: tools/repin_source_tables.py; not a new mint.
 MINTED_KERNEL_SET_SHA256 = (
-    "52270f7233996893bbd8358ae24d445b96ab9df87a3e3356c86c8d684f4ac21a"
+    "f2544037f7c6796cc5eb2f5875861e9251d7704fd320d2e9b5d0e13a684bea61"
 )
 
 _DRY_MINT_CAVEAT = (

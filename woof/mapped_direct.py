@@ -952,7 +952,7 @@ class _PostedMappedSource:
         long ago is still decoded a few leads at a time, ahead of the
         forcing times that read them.
 
-        Named breakages the bound prevents (V59/V60, 2026-10-21): with every
+        Named breakages the bound prevents (test host/test host, 2026-10-21): with every
         posted lead in one batch, the start state's inland-water mean asked
         for f013 and the root stage composed all 36 boundary frames of a
         48 h RAP window before the first step, which needs two; and once
@@ -1561,6 +1561,8 @@ def prepare_mapped_wrf(
     statics_corridor=None,
     as_posted: str | Path | None = None,
     initial_inputs: str | Path | None = None,
+    storm_merge: dict | None = None,
+    vortex_init: dict | None = None,
     _source_manifest: str | Path | None = None,
     _source_manifest_sha256: str | None = None,
     _source_adapter: str = "rw-wps-mapped-composition-v2",
@@ -1890,6 +1892,19 @@ def prepare_mapped_wrf(
         exp, "mapped-adapter prepared-cache")
     hierarchy = len(exp.domains) > 1
     initial_request = None
+    storm_merge_binding = storm_merge_evidence = None
+    vortex_binding = vortex_evidence = None
+    if vortex_init is not None and storm_merge is not None:
+        raise ValueError("choose one inner-core initialization: storm merge or vortex relocation")
+    if vortex_init is not None and (as_posted is not None or initial_inputs is not None
+            or boundary_prestage is not None or physical_input_store is not None
+            or physical_input_provider is not None or physical_output_store is not None):
+        raise ValueError("vortex relocation requires a complete canonical forcing window without a separate "
+                         "initial-state override")
+    if storm_merge is not None and (as_posted is not None or initial_inputs is not None
+            or boundary_prestage is not None or physical_input_store is not None
+            or physical_input_provider is not None or physical_output_store is not None):
+        raise ValueError("storm merge requires a complete canonical forcing window without a separate initial-state override")
     if initial_inputs is not None or boundary_prestage is not None:
         # The independent start must be applied to every child before a tree
         # can use it. Refuse a tree here instead of silently starting children
@@ -2078,6 +2093,8 @@ def prepare_mapped_wrf(
                 # with a quota smaller than the biggest registered sources.
                 scratch_destination=output_root,
                 atmospheric_grids=grids,
+                **({"full_initial_frame": True}
+                   if storm_merge is not None or vortex_init is not None else {}),
                 # An explicit --preprocess-workers is the count every host
                 # step takes, the source decode included; without one the
                 # engine uses every core it may run on.  Either way the
@@ -2103,6 +2120,17 @@ def prepare_mapped_wrf(
             composition_receipt.get("alignment") or {}).get("derived")
         if derived_terrain is not None:
             _announce_derived_terrain(derived_terrain)
+        if storm_merge is not None:
+            from woof.storm_merge import apply_to_bundle
+            bundle, storm_merge_binding, storm_merge_evidence = apply_to_bundle(
+                bundle, storm_merge, valid_time=exp.start_time.isoformat(),
+                scratch=output_root.parent, workers=preprocess_workers, native_grids=grids)
+        if vortex_init is not None:
+            # TC-VI1 (woof/tc/mapped_vortex.py): relocation and intensity correction toward TC vitals, once,
+            # on this member's own canonical initial frame, before any domain interpolates it
+            from woof.tc.mapped_vortex import apply_to_bundle as relocate_vortex
+            bundle, vortex_binding, vortex_evidence = relocate_vortex(
+                bundle, vortex_init, valid_time=exp.start_time.isoformat(), scratch=output_root.parent)
         snapshots = _forcing_series(bundle)
     else:
         # The receipt, its alignment and the vertical ladder read every
@@ -2463,10 +2491,10 @@ def prepare_mapped_wrf(
                 **({"aerosol_snapshot": aerosol_snapshot}
                    if aerosol_snapshot is not None else {}),
                 # THE FRONT DOOR for the mp=28 aerosol default is the "grid="
-                # above (lane/static-dataset-door), and it is the SAME door the
+                # above (development branch), and it is the SAME door the
                 # other ten real routes now use.
                 #
-                # lane/wif-default wired this one route by EVALUATING both
+                # development branch wired this one route by EVALUATING both
                 # runtime inputs here -- wif_grid_latlon=grid.latlon_mass() and
                 # wif_valid_date=source.valid_time.isoformat() -- and doing it
                 # unconditionally, on the argument that both were already to
@@ -2687,6 +2715,12 @@ def prepare_mapped_wrf(
         wrf_path = staging / "wrf-native-input"
         evidence_path = staging / "source-evidence"
         evidence_path.mkdir()
+        if storm_merge_evidence is not None:
+            from woof.storm_merge import write_evidence
+            write_evidence(evidence_path, storm_merge_evidence)
+        if vortex_evidence is not None:
+            from woof.tc.mapped_vortex import write_evidence as write_vortex_evidence
+            write_vortex_evidence(evidence_path, vortex_evidence)
         if initial_source_evidence is not None:
             from woof.initial_source import write_initial_evidence
             write_initial_evidence(evidence_path, initial_source_evidence)
@@ -2775,6 +2809,8 @@ def prepare_mapped_wrf(
         )
         source_identity = {
             "adapter": _source_adapter,
+            **({"storm_merge": storm_merge_binding} if storm_merge_binding is not None else {}),
+            **({"vortex_initialization": vortex_binding} if vortex_binding is not None else {}),
             **({"static_highres": static_highres_identity(static_highres)}
                if static_highres is not None else {}),
             "mapping_sha256": bundle.mapping_sha256,
@@ -2830,6 +2866,8 @@ def prepare_mapped_wrf(
                 bundle=bundle, composition_receipt=composition_receipt,
                 vertical_ladder=vertical_ladder,
                 source_identity=source_identity,
+                storm_merge_binding=storm_merge_binding,
+                vortex_binding=vortex_binding,
                 published_manifest_sha256=published_manifest_sha256,
                 staging=staging, output_root=output_root,
                 experiment_config=experiment_config,
@@ -2933,6 +2971,8 @@ def prepare_mapped_wrf(
                 )
             proof = {
                 "schema": HIERARCHY_PROOF_SCHEMA,
+                **({"storm_merge": storm_merge_binding} if storm_merge_binding is not None else {}),
+                **({"vortex_initialization": vortex_binding} if vortex_binding is not None else {}),
                 "status": "READY_NOT_YET_STOCK_WRF_GATED",
                 "stock_wrf_export": stock_wrf_export,
                 "domain_count": len(exp.domains),
@@ -3058,6 +3098,8 @@ def prepare_mapped_wrf(
         # differs from this head anywhere else.
         proof_head = {
             "schema": PROOF_SCHEMA,
+            **({"storm_merge": storm_merge_binding} if storm_merge_binding is not None else {}),
+            **({"vortex_initialization": vortex_binding} if vortex_binding is not None else {}),
             **({"initial_source": initial_source_receipt}
                if initial_source_receipt is not None else {}),
             "status": "READY_NOT_YET_STOCK_WRF_GATED",
@@ -3476,6 +3518,9 @@ def _prepare_chained_mapped_tree(c) -> dict[str, object]:
         # (boundary_stream.SEAL_ONLY_PROOF_KEYS).
         proof_head = {
             "schema": HIERARCHY_PROOF_SCHEMA,
+            **({"storm_merge": c.storm_merge_binding} if c.storm_merge_binding is not None else {}),
+            **({"vortex_initialization": c.vortex_binding}
+               if getattr(c, "vortex_binding", None) is not None else {}),
             "status": "READY_NOT_YET_STOCK_WRF_GATED",
             "stock_wrf_export": c.stock_wrf_export,
             "domain_count": len(exp.domains),
@@ -3875,6 +3920,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input-manifest", type=Path, required=True)
     parser.add_argument("--initial-inputs", type=Path)
+    from woof.storm_merge import add_arguments
+    add_arguments(parser)
+    from woof.tc.mapped_vortex import add_arguments as add_vortex_arguments
+    add_vortex_arguments(parser)
     parser.add_argument("--input-manifest-sha256")
     parser.add_argument(
         "--inland-air-mean-hours", type=float, default=None, metavar="HOURS",
@@ -4161,7 +4210,13 @@ def _main(argv: Sequence[str] | None = None) -> int:
     except ValueError as error:
         parser.error(str(error))
     try:
+        from woof.storm_merge import declaration as merge_declaration
+        merge = merge_declaration(args)
+        from woof.tc.mapped_vortex import declaration as vortex_declaration
+        vortex = vortex_declaration(args)
         proof = prepare_mapped_wrf(
+            **({"storm_merge": merge} if merge is not None else {}),
+            **({"vortex_init": vortex} if vortex is not None else {}),
             composition=args.composition,
             mapping=args.mapping,
             primary_files=args.primary_files,

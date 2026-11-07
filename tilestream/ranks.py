@@ -23,7 +23,7 @@ def spans_numa_nodes(nodes):
                 if n is not None and int(n) >= 0}) > 1
 
 
-def choose_transports(devices, requested, peers, nodes=None):
+def choose_transports(devices, requested, peers, nodes=None, links=None):
     """Resolve ordered card pairs without allocating or importing CUDA.
 
     ``auto`` takes peer copies when both directions can reach the other card,
@@ -53,8 +53,13 @@ def choose_transports(devices, requested, peers, nodes=None):
                     "directions must support peer access to prevent a staged "
                     "copy being reported as direct peer transport")
             else:
-                paths[pair] = ("peer" if both and not cross_node else "staged") \
+                direct_link = links is not None and links.get(pair, {}).get("type") == "xgmi"
+                paths[pair] = ("peer" if both and (not cross_node or direct_link) else "staged") \
                     if requested == "auto" else requested
+                if links is not None and paths[pair] == "staged":
+                    # HIP need not stage memcpyPeerAsync when peer access is
+                    # unavailable. The explicit pinned two-leg route does.
+                    paths[pair] = "host"
     return paths
 
 
@@ -204,8 +209,13 @@ class RankedRun(multigpu.MultiGPUDomain):
         peers = multigpu.peer_access_matrix(self.devices)
         self._peers = peers
         self._card_nodes = {row["card"]: row["numa_node"] for row in self.placements}
+        links = None
+        if cp.cuda.runtime.is_hip:
+            from woof.hip_runtime import peer_links
+            links = peer_links(self.devices)
         self._paths = choose_transports(self.devices, self.transport, peers,
-                                        nodes=self._card_nodes)
+                                        nodes=self._card_nodes, links=links)
+        self._links = links
         original_inventory = streaming.streamed_store_inventory()
         self.global_keys = tuple(global_keys)
         if not self.global_keys:
@@ -249,7 +259,7 @@ class RankedRun(multigpu.MultiGPUDomain):
         self._nest_attached = [False] * len(self.devices)
         flags = driver.geography_scalars(geography)
         # Where the time before step 1 goes, per rank: the buffer build and
-        # the two gathers.  The lane/pi-startup-idle profile had 84-92 s of
+        # the two gathers.  The startup profile had 84-92 s of
         # idle cards here on HRRR's lattice and could not say in what.
         self.build_report = []
         for rank, dev in enumerate(self.devices):
@@ -378,6 +388,8 @@ class RankedRun(multigpu.MultiGPUDomain):
                                   for cfg in self.sub_cfgs]
         self._store_guards = []
         self.output_report = dict(full_drains=0, full_drain_seconds=0.0,
+                                  window_reads=0, window_read_bytes=0,
+                                  window_read_seconds=0.0,
                                   full_gathers=0, frame_downloads=0,
                                   frame_download_bytes=0, frame_issue_seconds=[],
                                   frame_wait_seconds=[], scratch_zeroes=0,
@@ -427,8 +439,9 @@ class RankedRun(multigpu.MultiGPUDomain):
                      can_access_peer=bool(self._peers.get((src, dst), False)),
                      actual=path, transfer_legs=2 if path == "host" else 1,
                      host_legs=(2 if path == "host" else 1 if path == "staged" else 0),
+                     **({"hip_link": self._links.get((src, dst))} if self._links is not None else {}),
                      **({"auto_staged_reason": f"cards span NUMA nodes {nodes}"}
-                        if across and src != dst else {}))
+                        if across and src != dst and path in ("staged", "host") else {}))
                 for (src, dst), path in sorted(self._paths.items())]
 
     def devices_report(self):
@@ -785,21 +798,27 @@ class RankedRun(multigpu.MultiGPUDomain):
         pre-reset values while its download continues. The host copy
         is then stale and is marked so.
         """
+        self.fill_scratch(key, 0)
+
+    def fill_scratch(self, key, value, *, plane=None):
+        """Fill a carrier (or one leading plane) after its frame snapshot."""
         import cupy as cp
         self._require_open()
         if self._exposed:
             # The store is the authority until the next sweep gathers it.
             self._await_download()
             self._guard_store()
-            self._home[key][...] = 0
+            target = self._home[key]
+            (target if plane is None else target[plane])[...] = value
             return
         for rank, dev in enumerate(self.devices):
             with cp.cuda.Device(dev):
                 arrays = self.inventory_fn(self.tiles[rank], [key])
             if key not in arrays:
-                raise RankedRunError(f"slab {rank} carries no {key!r} to zero")
+                raise RankedRunError(f"slab {rank} carries no {key!r} to fill")
             with cp.cuda.Device(dev), self.compute_streams[rank]:
-                arrays[key].fill(0)
+                target = arrays[key]
+                (target if plane is None else target[plane]).fill(value)
         self._fresh.discard(key)
         self._ahead = True
         self.output_report["scratch_zeroes"] += 1
@@ -891,7 +910,125 @@ class RankedRun(multigpu.MultiGPUDomain):
                     inventory_fn=self.inventory_fn, nz=self.nz)
         self.sync_compute()
 
-    def drain(self):
+    def read_store(self):
+        """Refresh a read-only snapshot without invalidating resident slabs.
+
+        Preserve earlier writable exposure: a reader cannot cancel a
+        pending host mutation that the next sweep must upload.
+        """
+        self._require_open()
+        self.drain(read_only=True)
+        return self._home
+
+    def read_windows(self, requests):
+        """Read one FORCE transaction using a cached staged rank batch."""
+        from tilestream.window_batch import read_windows
+        return read_windows(self, requests)
+
+    def read_window(self, key, window):
+        """Read owned slab cells without exposing or refreshing the host store.
+
+        Return None when the canonical store must supply the operand. Use
+        scatter's ownership, including terminal staggered faces and periodic
+        aliases, so every word comes from the same rank as a full drain.
+        One pinned buffer per overlapping rank holds only requested cells.
+        """
+        import math
+        import cupy as cp
+
+        self._require_open()
+        if self._exposed or not self._ahead or key not in self._home:
+            return None
+        meta = self._home[key]  # Shapes/dtypes only; these values may be stale.
+        if meta.ndim < 2 or key in self.global_keys or key.startswith('fire/'):
+            return None
+        try:
+            kind = gather.classify(meta.shape, self.nz, self.ny, self.nx,
+                                   layers_ok=True)
+        except gather.SpecError:
+            return None
+        if not isinstance(window, tuple) or len(window) != 2:
+            raise ValueError('rank window must be two bounded slices')
+        for sl, extent in zip(window, meta.shape[-2:]):
+            if (not isinstance(sl, slice) or sl.step not in (None, 1)
+                    or sl.start is None or sl.stop is None
+                    or not 0 <= sl.start < sl.stop <= extent):
+                raise ValueError('rank window is outside the domain')
+        y, x = window
+        shape = (*meta.shape[:-2], y.stop-y.start, x.stop-x.start)
+        depth = math.prod(meta.shape[:-2])
+        start = perf_counter()
+        self.sync_compute()
+        # Re-read the selected inventory: physics may rebind carrier arrays.
+        # Plan every rank before issuing any copy, so a missing slab member
+        # can fall back without leaving partially issued transfers behind.
+        ranks = []
+        rects = []
+        for rank, dev in enumerate(self.devices):
+            blocks = []
+            for src_sl, dst_sl in gather.segments_for(self.specs[rank], 'scatter', kind):
+                sy, sx = src_sl[-2:]
+                dy, dx = dst_sl[-2:]
+                j0, j1 = max(y.start, dy.start), min(y.stop, dy.stop)
+                i0, i1 = max(x.start, dx.start), min(x.stop, dx.stop)
+                if j0 >= j1 or i0 >= i1:
+                    continue
+                blocks.append((sy.start+j0-dy.start, sx.start+i0-dx.start,
+                               j0-y.start, i0-x.start, j1-j0, i1-i0))
+                rects.append((j0-y.start, j1-y.start, i0-x.start, i1-x.start))
+            if not blocks:
+                continue
+            with cp.cuda.Device(dev), self.compute_streams[rank]:
+                source = self.inventory_fn(self.tiles[rank], (key,)).get(key)
+            if source is None:
+                return None
+            expected = gather.tile_shape_for(kind, meta.shape,
+                                             self.specs[rank].cny, self.specs[rank].cnx)
+            if (source.shape != expected or source.dtype != meta.dtype
+                    or not source.flags.c_contiguous):
+                return None
+            ranks.append((rank, dev, source, blocks))
+        gather._check_destination_rects(rects, shape, require_full=True,
+                                        what=f'rank window {key}')
+        # Allocation and assembly stay on the caller's coordinator device
+        # and stream. Only exact owned overlaps ever leave a slab.
+        result = cp.empty(shape, dtype=meta.dtype, order='C')
+        coordinator = cp.cuda.get_current_stream()
+        for rank, dev, source, blocks in ranks:
+            count = depth * sum(h*w for _, _, _, _, h, w in blocks)
+            staging = gather.pinned_empty((count,), meta.dtype)
+            pieces = []
+            offset = 0
+            with cp.cuda.Device(dev):
+                stream = self.compute_streams[rank]
+                for sy, sx, dy, dx, h, w in blocks:
+                    size = depth*h*w
+                    host = staging[offset:offset+size].reshape((*meta.shape[:-2], h, w))
+                    offset += size
+                    copy = gather._FieldCopy(
+                        key, kind, int(meta.dtype.itemsize),
+                        cp.cuda.runtime.memcpyDeviceToHost, source.shape, host.shape,
+                        sy, sx, 0, 0, h, w, depth)
+                    plan = gather.TilePlan('scatter', self.specs[rank], [copy], None, (key,))
+                    plan.execute({key: source}, {key: host}, stream)
+                    pieces.append((host, dy, dx, h, w))
+                stream.synchronize()
+            for host, dy, dx, h, w in pieces:
+                copy = gather._FieldCopy(
+                    key, kind, int(meta.dtype.itemsize),
+                    cp.cuda.runtime.memcpyHostToDevice, host.shape, result.shape,
+                    0, 0, dy, dx, h, w, depth)
+                plan = gather.TilePlan('gather', self.specs[rank], [copy], None, (key,))
+                plan.execute({key: host}, {key: result}, coordinator)
+            # Complete uploads before releasing this rank's pinned buffer.
+            # No intermediate device array or conversion kernel is needed.
+            coordinator.synchronize()
+        self.output_report['window_reads'] += 1
+        self.output_report['window_read_bytes'] += int(result.nbytes)
+        self.output_report['window_read_seconds'] += perf_counter() - start
+        return result
+
+    def drain(self, *, read_only=False):
         import cupy as cp
         if self._closed:
             return
@@ -911,7 +1048,7 @@ class RankedRun(multigpu.MultiGPUDomain):
             self._ahead = False
             self.output_report["full_drains"] += 1
             self.output_report["full_drain_seconds"] += perf_counter() - start
-        self._exposed = True
+        self._exposed = self._exposed or not read_only
 
     def sync_compute(self):
         import cupy as cp
@@ -1083,6 +1220,12 @@ class RankedRun(multigpu.MultiGPUDomain):
         self._snapshot_budgets = []
         self._snapshot_done = []
         self._frame_streams = None
+        for batch in getattr(self, '_window_batches', {}).values():
+            if batch.done is not None:
+                import cupy as cp
+                with cp.cuda.Device(batch.coordinator_device):
+                    batch.done.synchronize()
+        self._window_batches = {}
         self._home = None
         self.observer = self.post_step_hook = None
         import gc

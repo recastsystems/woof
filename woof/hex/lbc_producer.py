@@ -170,8 +170,12 @@ def source_endpoint_commands(*, source, cycle, hours, out_dir, staged=(), member
     return commands
 
 
-def produce_source_endpoints(commands, met_dir, *, workers=2, runner=None):
-    """Acquire/decode endpoints concurrently; only Rust touches field data."""
+def produce_source_endpoints(commands, met_dir, *, workers=2, runner=None, on_ready=None):
+    """Acquire/decode endpoints concurrently; only Rust touches field data.
+
+    ``on_ready(item, record)`` is called as each endpoint is verified and published, so a stage that reads one
+    endpoint's directory (the region's init reads endpoint 0's decode) can start when that endpoint is done
+    instead of writing the same directory beside it."""
     from concurrent.futures import ThreadPoolExecutor
     from .errors import MpasPortError
     from .init_sources import load_table
@@ -194,7 +198,10 @@ def produce_source_endpoints(commands, met_dir, *, workers=2, runner=None):
             expected_lead = int(argv[argv.index("--lead-hours") + 1])
             expected_table = load_table(Path(argv[argv.index("--table") + 1]) if "--table" in argv else None)
             met = Path(candidate.get("decode", {}).get("met", ""))
-            if (candidate.get("table", {}).get("sha256") == expected_table["_sha256"]
+            # A receipt that went on to build an init (parent/init after an earlier run in this work dir) is not a
+            # decode receipt: the init stage's --from-decoded refuses it, so the endpoint decodes again.
+            if ("init" not in candidate and not candidate.get("failed")
+                    and candidate.get("table", {}).get("sha256") == expected_table["_sha256"]
                     and candidate.get("source") == argv[argv.index("--source") + 1]
                     and candidate.get("source_cycle") == expected_cycle
                     and candidate.get("lead_hours") == expected_lead
@@ -217,7 +224,10 @@ def produce_source_endpoints(commands, met_dir, *, workers=2, runner=None):
         elif dest.exists():
             raise MpasPortError(f"boundary destination already exists: {dest}")
         dest.symlink_to(source)
-        return {"valid_time": item["valid_time"], "receipt": str(receipt), "met": str(dest)}
+        record = {"valid_time": item["valid_time"], "receipt": str(receipt), "met": str(dest)}
+        if on_ready is not None:
+            on_ready(item, record)
+        return record
     with ThreadPoolExecutor(max_workers=workers) as pool:
         result = list(pool.map(produce, commands))
     atomic_json(met_dir / "source-endpoints.json", {"schema": "gpuwm-hex.source-endpoints/v1",

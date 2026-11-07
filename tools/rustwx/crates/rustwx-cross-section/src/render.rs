@@ -1885,7 +1885,7 @@ fn draw_footer(
     request: &CrossSectionRenderRequest,
     _scene: &ResolvedRenderScene,
 ) {
-    let center_label = "Distance (km)";
+    let center_label = section.metadata().attribute("distance_label").unwrap_or("Distance (km)");
     let center_x = plot.x as i32
         + (plot.width as i32 - measure_text_width(center_label, 1, canvas.type_scale) as i32) / 2;
     canvas.draw_text(

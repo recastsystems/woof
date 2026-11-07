@@ -167,7 +167,7 @@ def wsm6_device_math_header() -> str:
 //
 // The contraction pins travel WITH the block because the block uses all
 // nine of them 294 times and they are what makes its rounding reproducible
-// (the project rules: __fmaf_rn/__fmul_rn/__fadd_rn are NVIDIA-guaranteed never
+// (project rules: __fmaf_rn/__fmul_rn/__fadd_rn are NVIDIA-guaranteed never
 // merged, so pinning to the fused form is free).  gf.cu KEEPS its own
 // copies at 235-238; identical redefinition of an object-like or
 // function-like macro is legal C++ and nothing else in gf.cu moves.

@@ -91,7 +91,12 @@ def test_host_impossible_streaming_can_keep_that_domain_resident(tmp_path):
     # frame, the widest in the process, and its diagnostic slots, moving the
     # tree to 22.41 GiB: the card is 22.75 GiB, whose 22.25 GiB admission
     # budget the tree exceeds while fitting the card (from 23.0 GiB it fits
-    # the budget outright).
+    # the budget outright).  The NWP diagnostics port (9ebcd8d0ac6, fitted
+    # in fix/seal4-fit) prices its time-t density and output windows on the
+    # child, moving the tree to 22.55 GiB; the auto walk keeps its 22.75 GiB
+    # card (resident inside the margin), and the knob walk moves from 22.25
+    # to 22.5 GiB, whose 22.0 GiB budget the 21.97 GiB mixed road fits
+    # (measured 22.25: refused; 22.5 to 23.0: this road; 23.25: resident).
     assert st._inbound_stream_tiling(st._config_tree_nodes(exp.domains)[1],
                                      exp.tiles) is None
     result, rows = _walk(exp, free_gib=22.75)
@@ -100,9 +105,9 @@ def test_host_impossible_streaming_can_keep_that_domain_resident(tmp_path):
     # The road this test is about -- the host-blocked root resident beside
     # a streamed child -- is the one the explicit knob asks for by name.
     exp = replace(exp, tiles=replace(exp.tiles, max_redundancy=False))
-    result, rows = _walk(exp, free_gib=22.25)
+    result, rows = _walk(exp, free_gib=22.5)
     assert not rows[1].stream and rows[2].stream
-    assert result.configured_mixed_envelope_bytes <= int(21.75 * GIB)
+    assert result.configured_mixed_envelope_bytes <= int(22.0 * GIB)
     assert result.host_spent_bytes <= exp.tiles.host_budget_bytes
 
 
@@ -121,10 +126,13 @@ def test_two_shadow_stores_are_required_while_ring_alternative_remains(tmp_path)
 
 def test_ample_host_preserves_the_existing_fitting_alternative(tmp_path):
     exp = _experiment(tmp_path, 8, host_gib=None)
-    result, rows = _walk(exp)
+    # 24.5 GiB since the NWP diagnostics port priced its child cost (fixed in
+    # fix/seal4-fit): at 24 GiB the second domain streams too (measured 24 and
+    # 24.25: [F, T, ...]; 24.5 and 24.75: these roads).
+    result, rows = _walk(exp, free_gib=24.5)
     # Same roads as the committed-before control on this public configuration.
     assert [row.stream for row in rows.values()] == [False, False, True, True, True, True, True, True]
-    assert result.configured_mixed_envelope_bytes <= int(23.5 * GIB)
+    assert result.configured_mixed_envelope_bytes <= int(24.0 * GIB)
     assert result.host_spent_bytes <= result.host_budget_bytes
 
 

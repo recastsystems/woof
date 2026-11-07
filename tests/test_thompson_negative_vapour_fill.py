@@ -5,7 +5,7 @@ k loop, after ``qv(i,k,j) = qv1d(k)``, a negative ``qv1d(k)`` becomes
 ``MAX(1.E-7, 0.5*(qv(i,k-1,j) + qv(i,k+1,j)))`` for ``kts+1 < k < kte-2`` and
 ``1.E-7`` elsewhere.  The breakage this prevents: without the fill, a dry level
 the advection took a few 1e-13 below zero stayed negative in WOOF while the
-strict wrf.exe 4.6.1 set it to about 1e-3, and a strict 9 km pair parted
+strict wrf.exe 4.6.1 set it to about 1e-3, and the strict nested-domain 9 km pair parted
 at step 2.
 """
 

@@ -3,7 +3,7 @@
 The fixture (tests/data/oracles/gwdo_kim/, PROVENANCE.md) is SUBROUTINE gwdo
 of the byte-unmodified ``phys/module_bl_gwdo.F`` calling ``bl_gwdo_run`` of
 ``phys/physics_mmm/bl_gwdo.F90`` (WRF v4.6.1, commit d66e442f), built by
-gfortran 13.3.0 -O0 on the reference platform (box W1: Ubuntu 24.04,
+gfortran 13.3.0 -O0 on the reference platform (test host: Ubuntu 24.04,
 glibc 2.39, scalar libm, no FMA) and run on 149 columns in 12 regimes on two
 vertical grids (50 and 90 levels) at six (dx, dt) cases from 1 km / 6 s to
 50 km / 300 s.  WRF's stock -O2 -ftree-vectorize -funroll-loops build writes
@@ -11,7 +11,7 @@ the same bytes.  The production launcher
 ``woof.core.terrain_drag.launch_gwdo`` must land on every output word:
 RUBLTEN, RVBLTEN, DTAUX3D, DTAUY3D, DUSFCG and DVSFCG.
 
-What made it exact (lane/verify-gwdo-kim), default-on: the wind-sector
+What made it exact (development branch), default-on: the wind-sector
 atan2 (bl_gwdo.F90:338) is ``td_atan2f``, WOOF's own float32 atan2f with the
 reference platform's words, where it used to be the double atan2 rounded
 once (the correctly rounded angle, glibc 2.43's).  The two disagree by

@@ -1,0 +1,176 @@
+{
+  "schema": "gpuwm-mapped-composition-v2",
+  "name": "gfs-pgrb2-in-band-surface",
+  "mapping_binding": "input_manifest_sha256",
+  "soil_layers": {
+    "temperature_field": "soil_temperature",
+    "moisture_field": "volumetric_soil_moisture",
+    "depth_units": "m",
+    "source_layers": [
+      {
+        "top": 0.0,
+        "bottom": 0.1,
+        "selectors": {
+          "soil_temperature": {
+            "format": "grib2",
+            "discipline": 2,
+            "category": 0,
+            "parameter": 2,
+            "level_type": 106,
+            "level_value": 0.0,
+            "second_level_type": 106,
+            "second_level_value": 0.1
+          },
+          "volumetric_soil_moisture": {
+            "format": "grib2",
+            "discipline": 2,
+            "category": 0,
+            "parameter": 192,
+            "center": 7,
+            "subcenter": 0,
+            "master_table_version": 2,
+            "local_table_version": 1,
+            "level_type": 106,
+            "level_value": 0.0,
+            "second_level_type": 106,
+            "second_level_value": 0.1
+          }
+        }
+      },
+      {
+        "top": 0.1,
+        "bottom": 0.4,
+        "selectors": {
+          "soil_temperature": {
+            "format": "grib2",
+            "discipline": 2,
+            "category": 0,
+            "parameter": 2,
+            "level_type": 106,
+            "level_value": 0.1,
+            "second_level_type": 106,
+            "second_level_value": 0.4
+          },
+          "volumetric_soil_moisture": {
+            "format": "grib2",
+            "discipline": 2,
+            "category": 0,
+            "parameter": 192,
+            "center": 7,
+            "subcenter": 0,
+            "master_table_version": 2,
+            "local_table_version": 1,
+            "level_type": 106,
+            "level_value": 0.1,
+            "second_level_type": 106,
+            "second_level_value": 0.4
+          }
+        }
+      },
+      {
+        "top": 0.4,
+        "bottom": 1.0,
+        "selectors": {
+          "soil_temperature": {
+            "format": "grib2",
+            "discipline": 2,
+            "category": 0,
+            "parameter": 2,
+            "level_type": 106,
+            "level_value": 0.4,
+            "second_level_type": 106,
+            "second_level_value": 1.0
+          },
+          "volumetric_soil_moisture": {
+            "format": "grib2",
+            "discipline": 2,
+            "category": 0,
+            "parameter": 192,
+            "center": 7,
+            "subcenter": 0,
+            "master_table_version": 2,
+            "local_table_version": 1,
+            "level_type": 106,
+            "level_value": 0.4,
+            "second_level_type": 106,
+            "second_level_value": 1.0
+          }
+        }
+      },
+      {
+        "top": 1.0,
+        "bottom": 2.0,
+        "selectors": {
+          "soil_temperature": {
+            "format": "grib2",
+            "discipline": 2,
+            "category": 0,
+            "parameter": 2,
+            "level_type": 106,
+            "level_value": 1.0,
+            "second_level_type": 106,
+            "second_level_value": 2.0
+          },
+          "volumetric_soil_moisture": {
+            "format": "grib2",
+            "discipline": 2,
+            "category": 0,
+            "parameter": 192,
+            "center": 7,
+            "subcenter": 0,
+            "master_table_version": 2,
+            "local_table_version": 1,
+            "level_type": 106,
+            "level_value": 1.0,
+            "second_level_type": 106,
+            "second_level_value": 2.0
+          }
+        }
+      }
+    ],
+    "target_layers": [
+      {
+        "top": 0.0,
+        "bottom": 0.1
+      },
+      {
+        "top": 0.1,
+        "bottom": 0.4
+      },
+      {
+        "top": 0.4,
+        "bottom": 1.0
+      },
+      {
+        "top": 1.0,
+        "bottom": 2.0
+      }
+    ],
+    "remap": {
+      "kind": "conservative_layer_means",
+      "source_value_location": "layer_mean",
+      "target_value_location": "layer_mean",
+      "coverage": "require_complete"
+    },
+    "missing": {
+      "land": "reject",
+      "ocean": {
+        "stage": "after_horizontal_interpolation",
+        "temperature": "skin_temperature",
+        "moisture": 1.0
+      }
+    }
+  },
+  "supplements": {
+    "terrain_height": {
+      "data_role": "native_surface",
+      "provenance_role": "native_surface_provenance",
+      "format": "grib2",
+      "field": "terrain_height",
+      "selector_authority": "mapping_field_exact",
+      "grid_alignment": "exact_coordinate_subset",
+      "time_alignment": "valid_time_exact",
+      "require_invariant_across_time": true
+    }
+  }
+}

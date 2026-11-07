@@ -263,6 +263,8 @@ def run_nssl2_production_step(
     validate_values: bool = True,
     workspace: NSSL2DriverWorkspace | None = None,
     mode: NSSL2Mode = DEFAULT_MODE,
+    nssl_cccn: float = 0.5e9,
+    shapes=(0.0, 1.0),
 ) -> NSSL2DriverWorkspace:
     """Run one fail-closed NSSL production step in official driver order.
 
@@ -326,6 +328,8 @@ def run_nssl2_production_step(
         "qicuten": qicuten,
         "qccuten": qccuten,
         "predicted_ccn": mode.predicted_ccn,
+        "nssl_cccn": nssl_cccn,
+        "shapes": shapes,
     }
     if workspace is not None:
         # Keep the direct/oracle path backward compatible while making the
@@ -367,6 +371,7 @@ def run_nssl2_production_step(
             refl_10cm,
             output_due=True,
             concentration_space=True,
+            shapes=shapes,
             validate_values=validate_values,
         )
 

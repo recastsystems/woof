@@ -24,7 +24,7 @@ at the most elongated rectangle a tiling can legally produce instead of a
 one-row one.  The refusal prints every term, so a screenshot of it
 carries the arithmetic (FU-009 item 1).
 
-MEASURED (2026-09-10, a development machine RTX 5070 Ti, real icon-eu 2026-09-10T12
+MEASURED (2026-09-10, test host 1 RTX 5070 Ti, real icon-eu 2026-09-10T12
 data, nvidia-smi per-process at 0.2 s): the user's tiling with two
 buffers reaches 11.11 GiB at each radiation call against the corrected
 15.54 GiB envelope for that card; one buffer of the same tile reaches

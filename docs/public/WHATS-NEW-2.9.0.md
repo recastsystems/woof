@@ -86,7 +86,7 @@ option off, output is byte-identical. `rand_perturb`, `multi_perturb` and
 
 ## The engine for woof hex
 
-woof 2.9.0 carries what the global model needs: the generic MPAS column
+gpuwm 2.9.0 carries what the global model needs: the generic MPAS column
 physics entry, New Tiedtke at each cell's own spacing, the ICON global source,
 the product renderer pieces (including the `global-mesh` and `region:NAME`
 render windows hex's product views ask for) and the RRFS v2 preset lookup

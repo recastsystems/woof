@@ -104,7 +104,7 @@ def test_prepared_activation_uses_exact_clock_and_shared_feedback(
         assert "commit" not in coupler.calls
     child_frames = [(ticks, refl) for gid, ticks, refl in writers.frames if gid == 2]
     assert [ticks for ticks, _ in child_frames] == [120, 180, 240, 300]
-    # The birth frame writes the child's analysis reflectivity (S1, lane/hrrr-auto-nests
+    # The birth frame writes the child's analysis reflectivity (S1, development branch
     # 1bce11263f: a newborn's first picture used to carry no REFL_10CM), and every later
     # frame the microphysics stash.
     assert all(refl is not None for _, refl in child_frames)

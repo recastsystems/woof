@@ -486,7 +486,7 @@ def test_built_intervals_are_written_while_the_next_lead_is_awaited(tmp_path):
     """The build loop's collection runs between waits for a lead not posted.
 
     Collected only when a slot came round again, interval k waited for lead
-    k + slots instead of k + 1 (a development machine, HRRR 2026-10-01T08).
+    k + slots instead of k + 1 (test host 4, HRRR 2026-10-01T08).
     """
 
     from tools.hrrr_single_domain_benchmark import _await_admitted

@@ -135,6 +135,32 @@ def test_the_projection_counts_what_the_real_resumed_clock_writes(elapsed, delay
     assert projection["checkpoint_sets_held"] == report.restarts
 
 
+@pytest.mark.parametrize("elapsed,stop", [(0, 360), (120, 360), (360, 600)])
+def test_restart_cycle_prices_the_actual_schedule_without_changing_identity(elapsed, stop):
+    from woof.core.clock import build_schedule, execute_schedule, resolve_clock
+    from test_clock import _chain_experiment
+
+    exp = replace(_chain_experiment((1, 3), run_seconds=600, history_s=120),
+                  restart_interval_s=120)
+    clock = resolve_clock(exp, lbc_interval_s=60)
+    schedule = build_schedule(exp, clock)
+    clocks = clock.clocks()
+    for item in clocks.values():
+        item.ticks = elapsed * clock.tick_den
+    report = execute_schedule(
+        schedule, clocks=clocks,
+        start_period=elapsed * clock.tick_den // schedule.period_ticks,
+        started_grid_ids=set(clocks) if elapsed else set(),
+        committed_initial_history_grid_ids=set(clocks) if elapsed else set(),
+        stop_at_restart_ticks=stop * clock.tick_den)
+    projection = disk_budget.projected_run_bytes(
+        exp, keep_checkpoints=None, fetch=None, chain=None, render=False,
+        resume_seconds=elapsed, stop_seconds=stop)
+    assert {row["grid_id"]: row["history_frames"] for row in projection["domains"]} == dict(report.histories)
+    assert projection["checkpoint_sets_held"] == report.restarts
+    assert exp.run_seconds == 600
+
+
 def test_a_prepared_resume_is_not_charged_a_preparation_or_its_frame_stream(
         tmp_path, monkeypatch):
     """A resume runs on the bundle that wrote its checkpoint and prepares nothing.

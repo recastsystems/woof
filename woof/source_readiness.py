@@ -104,6 +104,7 @@ class Window:
 
 def resolve_window(source: str, cycle: datetime, hours: int, *,
                    cadence: int | None = None, start_hour: int | None = None,
+                   source_parameters: str | None = None,
                    member: str | None = None, transport: str | None = None,
                    provider: str | None = None,
                    now: datetime | None = None) -> Window:
@@ -129,7 +130,7 @@ def resolve_window(source: str, cycle: datetime, hours: int, *,
         if source in fetch_routes.route_ids():
             plan = fetch_routes.resolve_request(
                 source, cycle=cycle, hours=hours, cadence=cadence,
-                start_hour=start, host=transport, member=member, now=now)
+                start_hour=start, host=transport, member=member, source_parameters=source_parameters, now=now)
             return Window(source=source, cycle=cycle, leads=tuple(plan.leads),
                           cadence=cadence, member=plan.member,
                           transport=transport, provider=provider, plan=plan,
@@ -537,6 +538,7 @@ def archive_end_refusal(window: Window, *, now: datetime) -> str | None:
 
 
 def readiness(source: str, cycle: datetime | str, hours: int, *,
+              source_parameters: str | None = None,
               cadence: int | None = None, start_hour: int | None = None,
               member: str | None = None, transport: str | None = None,
               provider: str | None = None, as_posted: bool = True,
@@ -582,12 +584,12 @@ def readiness(source: str, cycle: datetime | str, hours: int, *,
                 if no_probe:
                     resolved = startable_by_schedule(
                         source, start_hour=start, hours=hours,
-                        cadence=cadence, now=checked)
+                        cadence=cadence, source_parameters=source_parameters, now=checked)
                     basis = "latest (the posting schedule; no host asked)"
                 elif as_posted:
                     resolved = resolve_startable_cycle(
                         source, start_hour=start, hours=hours, cadence=cadence,
-                        member=member, transport=transport, now=checked,
+                        member=member, source_parameters=source_parameters, transport=transport, now=checked,
                         probe=probe)
                     basis = "latest (newest cycle whose start needs are posted)"
                 else:
@@ -595,13 +597,13 @@ def readiness(source: str, cycle: datetime | str, hours: int, *,
                         source, start + hours, now=checked,
                         **({} if probe is None else {"probe": probe}),
                         transport=transport, cadence=cadence,
-                        start_hour=start, member=member, provider=provider)
+                        start_hour=start, member=member, source_parameters=source_parameters, provider=provider)
                     basis = "latest (newest cycle whose final lead is posted)"
                 cycle = resolved
             else:
                 cycle = fetch.parse_cycle(cycle, source)
         window = resolve_window(source, cycle, hours, cadence=cadence,
-                                start_hour=start_hour, member=member,
+                                start_hour=start_hour, member=member, source_parameters=source_parameters,
                                 transport=transport, provider=provider,
                                 now=checked)
     except (ReadinessRefusal, ValueError, RuntimeError) as error:
@@ -745,6 +747,7 @@ def _candidates(source: str, *, start_hour: int, hours: int,
 
 
 def startable_by_schedule(source: str, *, start_hour: int, hours: int,
+                          source_parameters: str | None = None,
                           cadence: int | None = None,
                           now: datetime | None = None) -> datetime:
     """``latest`` from the table alone: the newest cycle whose start needs are due."""
@@ -755,7 +758,7 @@ def startable_by_schedule(source: str, *, start_hour: int, hours: int,
     for cycle in candidates:
         try:
             window = resolve_window(source, cycle, hours, cadence=cadence,
-                                    start_hour=start_hour, now=now)
+                                    start_hour=start_hour, source_parameters=source_parameters, now=now)
         except ReadinessRefusal:
             continue
         needs = start_needs(window)
@@ -768,6 +771,7 @@ def startable_by_schedule(source: str, *, start_hour: int, hours: int,
 
 def resolve_startable_cycle(source: str, *, start_hour: int = 0, hours: int,
                             cadence: int | None = None,
+                            source_parameters: str | None = None,
                             member: str | None = None,
                             transport: str | None = None,
                             now: datetime | None = None, probe=None,
@@ -789,7 +793,7 @@ def resolve_startable_cycle(source: str, *, start_hour: int = 0, hours: int,
             rows.posting(source).waited:
         return fetch.resolve_latest_cycle(
             source, start_hour + hours, now=now, transport=transport,
-            cadence=cadence, start_hour=start_hour, member=member)
+            cadence=cadence, start_hour=start_hour, member=member, source_parameters=source_parameters)
     probe = fetch._head_ok if probe is None else probe
     grid, _route, cadence, candidates = _candidates(
         source, start_hour=start_hour, hours=hours, cadence=cadence, now=now)
@@ -810,7 +814,7 @@ def resolve_startable_cycle(source: str, *, start_hour: int = 0, hours: int,
         try:
             windows.append(resolve_window(
                 source, cycle, hours, cadence=cadence, start_hour=start_hour,
-                member=member, transport=transport, now=now))
+                member=member, source_parameters=source_parameters, transport=transport, now=now))
         except ReadinessRefusal as error:
             errors.append(str(error))
     if not windows:

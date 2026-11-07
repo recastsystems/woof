@@ -8,7 +8,7 @@ reported, before private fields are copied to an admitted member bank.
 from __future__ import annotations
 
 import ast
-from copy import deepcopy
+from copy import copy, deepcopy
 from dataclasses import dataclass, is_dataclass, fields as dataclass_fields, replace
 from hashlib import sha256
 import inspect
@@ -273,7 +273,7 @@ class InitializedMemberPhysics:
         # The original scalar adapter mutates only these prognostic/state
         # fields. Packing masks/temporaries cannot become a state update.
         from woof.core.physics_inventory import ring_guard_row
-        changed = tuple(ring_guard_row(8)["state_fields"]) + ("h_diabatic",)
+        changed = tuple(ring_guard_row(getattr(self.batch.cfg, "mp_physics", 8))["state_fields"]) + ("h_diabatic",)
         for name in changed:
             if name in self.receipt["model_member_fields"]:
                 self.bank.unpack(name, self.batch.storage.arrays[name])
@@ -282,6 +282,11 @@ class InitializedMemberPhysics:
 
 _BOOTSTRAP_SHARED_OWNERS = frozenset({"noah_params", "radiation_callable", "cumulus_callable",
                                      "noahmp_params", "noahmp_geometry", "ruc_params", "state"})
+
+
+def _bootstrap_shared_owners(cfg):
+    return (_BOOTSTRAP_SHARED_OWNERS - {"cumulus_callable"}
+            if getattr(cfg, "cu_physics", 0) == 99 else _BOOTSTRAP_SHARED_OWNERS)
 #: Static surface fields the packed land launch can take per member when the
 #: members' bootstraps disagree on them. xland, lakemask and landmask stay
 #: shared: the radiation and surface-layer launches bind them as one bank.
@@ -337,7 +342,14 @@ def _bootstrap_array_inventory(cfg, bootstrap, array_type, *, alias_paths=None, 
             for pos, item in enumerate(value):
                 inspect_tree(item, f"{path}/{pos}")
     for name, value in bootstrap.__dict__.items():
-        if name not in _BOOTSTRAP_SHARED_OWNERS:
+        if name == "cumulus_callable" and getattr(cfg, "cu_physics", 0) == 99:
+            from woof.core.kf import KainFritsch
+            from woof.ensemble.batch_kf import KF_OLD_CARRIERS
+            if type(value) is not KainFritsch or value.scheme != 99:
+                raise ValueError("packed CU99 needs the native KainFritsch adapter")
+            for carrier in KF_OLD_CARRIERS:
+                inspect_tree(getattr(value, carrier), f"driver/cumulus_callable/{carrier}")
+        elif name not in _BOOTSTRAP_SHARED_OWNERS:
             inspect_tree(value, f"driver/{name}")
     return entries, pointers, surface_shared
 
@@ -428,7 +440,7 @@ def bootstrap_physics_snapshot(cfg, bootstrap_driver, *, array_module=None):
         structure.append((path, tuple(int(n) for n in value.shape), value.dtype.str, ownership))
     names = {name: path for name, _value, path, _ownership in entries}
     digests = {owner: _owner_digest(getattr(bootstrap_driver, owner, None), array_module.ndarray)
-               for owner in sorted(_BOOTSTRAP_SHARED_OWNERS - {"state"})}
+               for owner in sorted(_bootstrap_shared_owners(cfg) - {"state"})}
     return PhysicsBootstrapSnapshot(tuple(structure), MappingProxyType(arrays),
         MappingProxyType({path: names[name] for path, name in aliases.items()}),
         MappingProxyType(digests))
@@ -443,7 +455,7 @@ def bootstrap_physics_structure(cfg, bootstrap_driver, *, array_module=None):
                       for _name, value, path, ownership in entries)
     shared = {path: value for _name, value, path, ownership in entries if ownership == "shared"}
     digests = {owner: _owner_digest(getattr(bootstrap_driver, owner, None), array_module.ndarray)
-               for owner in sorted(_BOOTSTRAP_SHARED_OWNERS - {"state"})}
+               for owner in sorted(_bootstrap_shared_owners(cfg) - {"state"})}
     return structure, shared, digests
 
 
@@ -459,13 +471,20 @@ class NativeBootstrapAllocationPlans:
 
 
 def _bootstrap_allocation_declarations(cfg, state_specs, entries):
-    from woof.ensemble.batch_physics import ColumnField, column_memory_plan, thompson_column_scratch_fields
-    scratch_fields = thompson_column_scratch_fields(
-        nz=cfg.nz, ny=cfg.ny, nx=cfg.nx, reflectivity=True,
-        cloud_booking=getattr(cfg, "thompson_cloud_surface_booking", False) is True)
+    from woof.ensemble.batch_physics import (
+        ColumnField, column_memory_plan, thompson_column_scratch_fields,
+        registered_column_scratch_fields)
+    if cfg.mp_physics == 55:
+        scratch_fields = registered_column_scratch_fields(cfg, nz=cfg.nz, ny=cfg.ny, nx=cfg.nx, reflectivity=True)
+    else:
+        scratch_fields = thompson_column_scratch_fields(
+            nz=cfg.nz, ny=cfg.ny, nx=cfg.nx, reflectivity=True,
+            cloud_booking=getattr(cfg, "thompson_cloud_surface_booking", False) is True,
+            use_theta_m=getattr(cfg, "use_theta_m", 0))
     model_names = tuple(name for name in (
         "p", "alt", "thp", "php", "u", "v", "w", "mup", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "nr",
-        "h_diabatic", "effc", "effi", "effs", "effr", "rthften", "rqvften")
+        "h_diabatic", "effc", "effi", "effs", "effr", "rthften", "rqvften",
+        "qi2", "qi3", "qvoli", "qaoli", "ni2", "qvoli2", "qaoli2", "ni3", "qvoli3", "qaoli3")
         if name in state_specs and state_specs[name].ownership == "member")
     declarations = tuple(ColumnField(name, state_specs[name].shape, state_specs[name].dtype) for name in model_names)
     declarations += tuple(scratch_fields)
@@ -501,8 +520,9 @@ def _native_bootstrap_requirements(batch):
     if not isinstance(batch, BatchedDomainState):
         raise TypeError("physics initialization needs admitted BatchedDomainState")
     cfg, members = batch.cfg, batch.members
-    if (cfg.mp_physics, cfg.sf_surface_physics, cfg.bl_pbl_physics) != (8, 2, 1) or cfg.sf_sfclay_physics not in (1, 91):
-        raise ValueError("this initializer owns the Thompson/Noah/YSU/MM5 column suite")
+    if (cfg.mp_physics not in (8, 55) or (cfg.sf_surface_physics, cfg.bl_pbl_physics) != (2, 1)
+            or cfg.sf_sfclay_physics not in (1, 91)):
+        raise ValueError("this initializer owns Thompson or ISHMAEL with Noah/YSU/MM5")
     if members == 1:
         raise ValueError("one member uses its ordinary prepared physics driver and original initializer")
     from woof.physics_compat import rrtmg_variant, RRTMG_VARIANT_LEGACY
@@ -535,7 +555,9 @@ def initialize_wrfinput_member_physics(batch, restored, *, start_time, landuse=N
     radiation = make_radiation(cfg, start_time, restored.raw["XLAT"], restored.raw["XLONG"],
                                p_top=bootstrap_state.p_top, column_chunk=column_chunk,
                                trace_gas_overrides=trace_gas_overrides)
-    if column_chunk is not None:
+    # The RRTMGP chunk is not the column count of engines that size their
+    # own workers (CAM: priced by preflight at its own DEFAULT_WORKERS).
+    if column_chunk is not None and not getattr(radiation, "sizes_own_columns", False):
         radiation.column_chunk = _positive(column_chunk, "radiation column chunk")
     bootstrap = initialize_wrfinput_physics(bootstrap_state, restored, cfg,
         radiation=radiation, radiation_start_time=start_time,
@@ -600,7 +622,7 @@ def initialize_member_physics_from_bootstrap(batch, bootstrap_state, bootstrap_d
     from woof.ensemble.batch_physics import (
         ColumnField, ColumnBuffers, PackedThompsonState, PreparedPackedPhysicsAtmosphere,
         PreparedPhysicsCoupling, bind_owned_default_column_driver,
-        prepare_thompson_column_batch, thompson_column_scratch_fields,
+        prepare_thompson_column_batch, prepare_registered_column_batch,
     )
     from woof.core.radiation_composition import legacy_radiation_adapter
     from woof.core.physics import PhysicsDriver
@@ -683,44 +705,70 @@ def initialize_member_physics_from_bootstrap(batch, bootstrap_state, bootstrap_d
 
     arrays = {name: bank.packed(name) for name in model_names}
     arrays.update({name: batch.storage.arrays[name] for name in needed_shared})
-    arrays.update(p_top=bootstrap_state.p_top, elapsed_seconds=float(batch.elapsed_seconds), has_msf=bool(batch.has_msf))
+    arrays.update(p_top=bootstrap_state.p_top, elapsed_seconds=float(batch.elapsed_seconds),
+                  has_msf=bool(batch.has_msf), use_theta_m=int(getattr(cfg, "use_theta_m", 0)))
     # The physics validator uses a compact one-word control buffer; it has
     # no member arithmetic and is explicitly counted outside column fields.
     status = BatchStorage(status_plan, members, array_module=array_module,
                           available_bytes=available_bytes - bank_plan.required_bytes(members) - shared_bytes)
     scratch = {field.name: bank.packed(field.name) for field in scratch_fields}
+    if cfg.cu_physics == 99:
+        # These are the ordinary driver's canonical restart/health slots.
+        # They have already been counted through the driver's array aliases;
+        # bind them to that same packed backing rather than a second copy.
+        for slot, value in bootstrap_state._scratch.items():
+            if slot.startswith("cu_"):
+                scratch[slot] = resolve_array(value)
     scratch["physics_validation_status"] = status.arrays["physics:validation_status"]
     state = PackedThompsonState(arrays, scratch)
     state.qh = None
+    if cfg.mp_physics == 55:
+        state.qs = state.qg = None
     driver = PhysicsDriver.__new__(PhysicsDriver)
     for name, value in bootstrap.__dict__.items():
         setattr(driver, name, value if name in shared_names else _clone_tree(value, array_module.ndarray, resolve_array))
     driver.state, state.physics = state, driver
+    if cfg.cu_physics == 99:
+        from woof.ensemble.batch_kf import KF_OLD_CARRIERS
+        adapter = copy(bootstrap.cumulus_callable)
+        for name in KF_OLD_CARRIERS:
+            value = getattr(adapter, name)
+            setattr(adapter, name, None if value is None else resolve_array(value))
+        adapter._history_state = state
+        adapter._driver_ref = None
+        adapter.bind_driver(driver)
+        driver.cumulus_callable = adapter
     # The common initializer's post-RK diagnostic contract aliases exactly
     # the admitted microphysics accumulators, not a duplicated bootstrap set.
     from woof.core.microphysics import MicrophysicsDiagnostics
     driver.microphysics = MicrophysicsDiagnostics(
-        **{name: scratch[slot] for name, slot in (
+        **{name: scratch.get(slot) for name, slot in (
             ("rainnc", "mp_rainnc"), ("rainncv", "mp_rainncv"), ("sr", "mp_sr"),
             ("snownc", "mp_snownc"), ("snowncv", "mp_snowncv"),
             ("graupelnc", "mp_graupelnc"), ("graupelncv", "mp_graupelncv"))})
-    # Correct mode WB1: a member restored with its booked CLOUDNC total keeps
-    # it, as the ordinary restore does; the batch slot carries the restored
-    # (or zero) words, the packed bank books from here on.
-    from woof.ensemble.batch_physics import THOMPSON_CLOUD_BOOKING_SLOTS
-    for slot in THOMPSON_CLOUD_BOOKING_SLOTS:
-        restored = batch.storage.arrays.get("scratch:" + slot)
-        if slot in scratch and restored is not None:
-            array_module.copyto(scratch[slot].reshape(members, cfg.ny, cfg.nx),
-                                restored.reshape(members, cfg.ny, cfg.nx))
     for name, slot in (("rainnc", "mp_rainnc"), ("snownc", "mp_snownc"), ("graupelnc", "mp_graupelnc")):
         original_value = getattr(bootstrap.microphysics, name)
+        if original_value is None:
+            continue
         target = scratch[slot].reshape(members, cfg.ny, cfg.nx)
         if member_bootstraps is None:
             array_module.copyto(target, original_value[None])
         else:
             for member in range(members):
                 target[member] = slot_words(member, original_value, f"driver/microphysics/{name}")
+    # Restore each scheme's persistent diagnostic and surface owner into
+    # the packed level/member layout used by output and checkpoint views.
+    from woof.ensemble.batch_physics import THOMPSON_CLOUD_BOOKING_SLOTS
+    slots = THOMPSON_CLOUD_BOOKING_SLOTS
+    if cfg.mp_physics == 55:
+        from woof.physics_registry import consumer_row_for_selector
+        native = consumer_row_for_selector("microphysics", "native_column", 55)
+        slots += tuple(native["surfaces"].values()) + tuple(native["diagnostics"].values())
+    for slot in slots:
+        restored_words = batch.storage.arrays.get("scratch:" + slot)
+        if slot in scratch and restored_words is not None:
+            field = bank.fields[slot]
+            bank.pack(slot, restored_words.reshape((members,) + field.shape))
     driver.tendencies = driver.pbl_tendencies if bootstrap.tendencies is bootstrap.pbl_tendencies else driver.tendencies
     driver.sfclay_result = type(bootstrap.sfclay_result)(**{field.name: driver.fields[field.name]
         for field in dataclass_fields(bootstrap.sfclay_result)})
@@ -740,16 +788,28 @@ def initialize_member_physics_from_bootstrap(batch, bootstrap_state, bootstrap_d
     budget_left -= pbl.plan.required_bytes(members)
     rad = PreparedPhysicsCoupling(**common, available_bytes=budget_left)
     budget_left -= rad.plan.required_bytes(members)
+    cu = None
+    if cfg.cu_physics == 99:
+        cu = PreparedPhysicsCoupling(**common, available_bytes=budget_left)
+        budget_left -= cu.plan.required_bytes(members)
+        from woof.ensemble.batch_kf import kf_old_driver_reservation
+        budget_left -= kf_old_driver_reservation(cfg.nz, cfg.ny, cfg.nx,
+            members=members, edrates=cfg.kf_edrates,
+            multiprocessors=array_module.cuda.Device().attributes["MultiProcessorCount"])
+        if budget_left < 0:
+            raise MemoryError("packed CU99 due-call workspace exceeds admitted memory")
     native_radiation = prepare_legacy_member_radiation(legacy_radiation_adapter(radiation), members=members,
                                                        available_bytes=budget_left, array_module=array_module,
                                                        shared_surface_fields=("xland",))
     driver.radiation_callable = native_radiation
     budget_left -= native_radiation._ensemble_radiation_owners[2].plan.required_bytes(members)
     bind_owned_default_column_driver(driver, cfg, atmosphere, members=members, ny=cfg.ny, nx=cfg.nx,
-        pbl_coupling=pbl, radiation_coupling=rad, available_bytes=budget_left, array_module=array_module)
+        pbl_coupling=pbl, radiation_coupling=rad, cumulus_coupling=cu,
+        available_bytes=budget_left, array_module=array_module)
     budget_left -= driver._ensemble_native_column_receipt["required_binding_bytes"]
-    microphysics = prepare_thompson_column_batch(state, cfg, members=members, ny=cfg.ny, nx=cfg.nx, dt=cfg.dt,
-                                                 available_bytes=budget_left, array_module=array_module)
+    prepare_microphysics = prepare_registered_column_batch if cfg.mp_physics == 55 else prepare_thompson_column_batch
+    microphysics = prepare_microphysics(state, cfg, members=members, ny=cfg.ny, nx=cfg.nx, dt=cfg.dt,
+                                       available_bytes=budget_left, array_module=array_module)
     receipt = {"members": members, "model_member_fields": list(model_names),
         "initialization_source": initialization_source,
         "bootstrap_pool_live_increment_bytes": bootstrap_pool_live_increment_bytes,

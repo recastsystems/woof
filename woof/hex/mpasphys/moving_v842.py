@@ -183,6 +183,9 @@ def load_carrier(path) -> dict[str, Any]:
         # Handed over in memory by the previous segment of this resident process (its file was never written).
         return carried
     receipt = json.loads(path.with_suffix(path.suffix + ".json").read_text())
+    if receipt.get('resident') and (receipt.get('bytes') is None or not path.is_file()):
+        raise RuntimeError('resident move carrier belongs to an exited forecast process; '
+                           'resume from a durable recovery seal')
     data = _read_verified(path, int(receipt["bytes"]), receipt["sha256"])
     payload = pickle.loads(memoryview(data))
     del data
@@ -325,7 +328,10 @@ def build_weights(*, source_mesh, source_vertical, operator, source_grid, target
     weights = ConservativeMap.load(operator, source=source, target=target)
     weights = ConservativeMap(weights.overlap * scale, weights.source_area * scale, weights.target_area * scale,
                               dict(weights.receipt, effective_area_radius_m=radius, generator_area_scale=scale))
-    weights = weights.with_physical_areas(source_mesh.arrays["areaCell"], mesh.arrays["areaCell"])
+    # RKIND prepared areas are admitted through the generator geometry, as moving_checkpoint and analysis_remap do
+    # (G03 moved member refused, 2026-11-02).
+    weights = weights.with_physical_areas(source_mesh.arrays["areaCell"], mesh.arrays["areaCell"],
+                                          generator_areas=(source.area, target.area), generator_area_scale=scale)
     height = os.environ.get("WOOF_HEX_MOVING_HEIGHT_REMAP")
     if height in ("1", "absolute"):
         from ..moving_vertical import HeightConservativeMap
@@ -370,10 +376,18 @@ class MovingRoute:
     export_receipt: dict | None = None
     frames: list = field(default_factory=list)
     _pressure: Any = None
+    #: The active schemes' declared persistent words (checkpoint_v842.persistent_names), bound by resolve_route:
+    #: every carrier holds them, so a same-mesh resume of any carrier continues them.
+    persistent: frozenset = frozenset()
 
     # ----------------------------------------------------------------- construction
     @classmethod
     def from_environ(cls, arguments, environ=os.environ) -> "MovingRoute":
+        if any(environ.get(name) for name in
+               ("GPUWM_HEX_MOVING_ANALYSIS", "GPUWM_HEX_MOVING_BACKGROUND")):
+            from ..fullstep_lts_admission import MOVING_ROUTE_REFUSAL
+            raise ValueError(f"{MOVING_ROUTE_REFUSAL}, but moving analysis insertion and background "
+                             "export require the single-card active-LTS WOOF route")
         if environ.get("WOOF_HEX_MOVING_ZONE"):
             # THE BREAKAGE THIS PREVENTS: the frozen-far-field zone transfer (woof.hex.moving_zone_state) maps the
             # atmosphere only; on this route every carried physics field would be left on the old member's
@@ -501,7 +515,19 @@ class MovingRoute:
 
     # ----------------------------------------------------------------- remapped resume (physics)
     def restore_physics(self, session, layout, weights, mesh) -> dict[str, Any]:
-        """Carried physics state into this member's native pools, before the (restart) physics init."""
+        """Carried physics state into this member's native pools, before the (restart) physics init.
+
+        A remapped move (an operator) restores the move set: the new member keeps its own geography, SST and ice.
+        A same-mesh resume (a checkpoint, or a moving segment resumed on its own member: crash recovery, a stay)
+        restores every word of ``carried_rows`` the carrier holds, as the uninterrupted run holds them.
+        """
+        self._restoring, self._restoring_moving = True, bool(self.operator)
+        try:
+            return self._restore_physics(session, layout, weights, mesh)
+        finally:
+            self._restoring = self._restoring_moving = False
+
+    def _restore_physics(self, session, layout, weights, mesh) -> dict[str, Any]:
         began = time.perf_counter()
         carrier, native = self.carrier, session.native
         physics = carrier["physics"]
@@ -682,6 +708,13 @@ class MovingRoute:
         service = getattr(session, "surface_service", None)
         if service is not None and physics.get("surface_service") is not None:
             service.restore_restart_state(physics["surface_service"])
+        ocean = getattr(session, "ocean_pwp", None)
+        if ocean is None and physics.get("ocean_pwp") is not None:
+            # THE BREAKAGE THIS PREVENTS: the carried ocean columns would be dropped and the SST would jump
+            # back to the member's initial field.
+            raise ValueError("the moving carrier ran the PWP ocean; this member does not select --ocean-mode pwp")
+        if ocean is not None:
+            ocean.restore_state(physics.get("ocean_pwp"), donors if weights is not None else None)
 
     @staticmethod
     def _pool_name(layout, pool, name):
@@ -692,12 +725,50 @@ class MovingRoute:
 
     # ----------------------------------------------------------------- export
     def carried_rows(self, layout):
-        """Moving remaps keep target geography; same-mesh checkpoints may carry it."""
-        return carried_rows(layout)
+        """The physics rows a carrier seals and a resume restores.
+
+        The move set (``carried_rows``), plus every sfc_input cell field (a same-mesh resume keeps evolving SST/ice
+        and surface roles) and every word an active scheme reads back on its next call (``persistent``), the ones
+        the restart stream omits too.  A remapped move restores the move set only (``restore_physics``).  A resume
+        restores the extra words its carrier holds: a carrier sealed before they were carried resumes as it did.
+        THE BREAKAGES THIS FIXES: RUC's frozen-soil flag keepfr3d is not in the RRFS fork's restart stream, so a
+        restart began it again from the init (hrrrv5 x1.2562); and a moving segment's carrier held neither these
+        words nor the continuation, so a same-mesh resume of a moving run (crash recovery, a stay on the carrier
+        member) was not the uninterrupted run (x-build-moving-mpasphys, "NOT bit for bit"; fix0414/resume).
+        """
+        selected = carried_rows(layout)
+        if getattr(self, '_restoring_moving', False):
+            return selected
+        seen = {(row['pool'], row['name']) for row in selected}
+        cells = lambda row: (row['kind'] != 'character'
+                             and row['dimensions'] and row['dimensions'][-1] == 'nCells'
+                             and not any(size == 0 for size in row['shape']))
+        surface = [row for row in layout.fields
+                   if row['pool'] == 'sfc_input' and cells(row) and (row['pool'], row['name']) not in seen]
+        seen.update((row['pool'], row['name']) for row in surface)
+        persistent = [row for row in layout.fields
+                      if row['pool'] not in DYCORE_POOLS and cells(row) and not row.get('components')
+                      and (row['pool'], row['name']) not in seen
+                      and ((row['pool'], row['name']) in self.persistent or (None, row['name']) in self.persistent)]
+        extra = surface + persistent
+        if getattr(self, '_restoring', False) and self.carrier is not None:
+            held = self.carrier['physics']['fields']
+            extra = [row for row in extra if f"{row['pool']}.{row['name']}" in held]
+        return selected + extra
 
     def continuation_state(self, session) -> dict[str, Any]:
-        """Carrier words a same-mesh checkpoint continuation adds (``CheckpointRoute``); a move adds none."""
-        return {}
+        """The start-of-run state a continuation resumes: scheme SAVE flags, the running accumulators and the
+        physics clock's start hour.
+
+        A native run starts every scheme's first-call SAVE flags and the diagnostics accumulators again, and takes
+        its physics start hour (gmt) from its own start; the uninterrupted run is past both and keeps its start
+        hour.  Sealed in every carrier (a checkpoint, a moving seal); read only by a same-mesh continuation
+        (``CheckpointRoute.resume_continues``).  Same-host ranks seal the words their snapshot assembled from every
+        rank (``session.continuation``, moving_mpi_v842.DistributedMoving._snapshot).
+        """
+        from .checkpoint_v842 import rank_continuation
+        assembled = getattr(session, 'continuation', None)
+        return dict(continuation=rank_continuation(session) if assembled is None else assembled)
 
     def physics_clock_offset(self, dt):
         """(steps, seconds) the physics clock starts at: a move starts its own clock (``CheckpointRoute``)."""
@@ -757,6 +828,8 @@ class MovingRoute:
                        manager=_manager_state(session),
                        manager_elapsed=str(Fraction(str(self.physics_clock_offset(dt)[1]))
                                            + Fraction(str(step)) * Fraction(str(dt))))
+        physics['ocean_pwp'] = (None if getattr(session, 'ocean_pwp', None) is None
+                                else session.ocean_pwp.restart_state())
         physics.update(self.continuation_state(session))
         valid = (datetime.strptime(self.origin_time, TIME_FORMAT) + timedelta(seconds=model_seconds)).strftime(TIME_FORMAT)
         payload = dict(schema=SCHEMA, route="mpas-suite", time_seconds=float(model_seconds),
@@ -765,12 +838,27 @@ class MovingRoute:
                        stochastic=(None if getattr(dycore, 'stochastic', None) is None else
                                    dycore.stochastic.process.snapshot()),
                        chemistry=(None if getattr(dycore, 'chemistry', None) is None else
-                                  dycore.chemistry.restart_state()))
+                                  dycore.chemistry.restart_state()),
+                       waves=(None if getattr(session, 'wave_binding', None) is None else
+                              session.wave_binding.service.snapshot()))
         return payload, dict(
             physics_fields=len(rows), physics_words=int(sum(np.asarray(v).size for v in pools.values())),
             state={k: list(v.shape) for k, v in state.items()})
 
     # ----------------------------------------------------------------- per step: shock series, frames, stop
+    def host_publication_required(self, step, *, steps, dt) -> bool:
+        """Only tracker frames and the final carrier consume host pool mirrors.
+
+        Shock diagnostics read resident columns directly. Stream capture also
+        reads device buffers; neither needs the full compatibility publication.
+        Keep the same exact frame predicate as after_step, including restarts.
+        """
+        if step >= steps:
+            return True
+        seconds = self.offset_seconds + step * dt
+        return (self.control is not None and seconds % self.frame_seconds == 0
+                and not (step == 0 and self.carrier is not None))
+
     def after_step(self, step, *, steps, dt, columns, session, dycore, mesh, vertical, names, layout, out) -> bool:
         """Shock series, tracker frame and the controller's verdict after a completed step; True stops."""
         model_seconds = self.offset_seconds + step * dt
@@ -802,12 +890,15 @@ class MovingRoute:
             # As on the ArWen route, the start frame is only reported: a stop, a verdict or a seal is taken
             # after a completed step, never before the first (a move at the start has nothing to carry).
             return False
-        seal = lambda target: self.export(target, session=session, dycore=dycore, mesh=mesh, vertical=vertical,
-                                          names=names, layout=layout, step=step, dt=dt)
+        def seal(target):
+            publish_after_output(session)
+            return self.export(target, session=session, dycore=dycore, mesh=mesh, vertical=vertical,
+                               names=names, layout=layout, step=step, dt=dt)
         return bool(self.control.at_frame(model_seconds=model_seconds, final=final, seal=seal))
 
     def finish(self, *, step, session, dycore, mesh, vertical, names, layout, dt) -> None:
         if self.export_path:
+            publish_after_output(session)
             # A move whose next segment runs in this resident process hands the carrier over in memory
             # (moving_resident_v842); every other stop seals it to its file as before.
             from . import moving_resident_v842 as resident
@@ -820,6 +911,20 @@ class MovingRoute:
                 "moving_control": None if self.control is None else self.control.receipt(),
                 "clock_offset_seconds": self.offset_seconds, "remap_shock_series": self.shock_rows,
                 "moving_origin_time": self.origin_time, "tracker_frames": self.frames}
+
+
+def publish_after_output(session) -> None:
+    """Publish the device words to the host pools before a seal reads them.
+
+    The step's publication ran before its output event, whose resets (refl10cm_1km_max, the hail maxima:
+    mpas_atm_core.F:877-890,968-990) changed the device words since; a seal holds what the next step reads, as
+    CheckpointRoute.after_step does.  THE BREAKAGE THIS FIXES: a same-mesh moving resume carried the last frame's
+    1 km reflectivity maximum into the next frame (x1.2562 convection_permitting, 18 diag words at the first frame
+    after the resume; fix0414/resume).
+    """
+    publish = getattr(session, 'publish', None)
+    if callable(publish):
+        publish()
 
 
 def _manager_state(session):

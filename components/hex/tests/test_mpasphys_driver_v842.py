@@ -192,6 +192,28 @@ def test_driver_order_switch_and_post_transport_boundary():
     assert [c['operation'] for c in driver.calls].count('physics_get_tend') == 1
 
 
+def test_tendency_handoff_releases_driver_reference_and_refuses_second_consumer():
+    import weakref
+    class Sources:
+        pass
+    config = resolve_namelist(deck())
+    hooks = RecordingHooks()
+    driver = PhysicsDriver(config, PhysicsManager(config,360), SlotRegistry(), hooks)
+    driver.initialize(None)
+    driver.begin_step(itimestep=1,time_seconds=0,pools=None)
+    sources = Sources()
+    reference = weakref.ref(sources)
+    driver._call = lambda *args, **kwargs: sources
+    runtime_sources = driver.physics_get_tend(rk_step=1,dynamics_substep=1,pools=None)
+    del sources
+    driver.release_held_tendencies()
+    assert reference() is runtime_sources
+    with pytest.raises(RuntimeError, match='already handed'):
+        driver.physics_get_tend(rk_step=2,dynamics_substep=1,pools=None)
+    del runtime_sources
+    assert reference() is None
+
+
 def test_suite_none_assembles_zero_sources_and_missing_registration_fails_early():
     config=resolve_namelist(deck())
     hooks=RecordingHooks()

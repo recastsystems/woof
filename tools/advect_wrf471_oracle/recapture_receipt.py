@@ -120,9 +120,18 @@ def write_index(fixture: Path, index: dict) -> None:
 
 
 def select_receipt(index: dict, fixture: Path, gpu: str,
-                   capability) -> tuple[str, str | None]:
-    """``(mode, receipt name)`` for a card, as the device tests select it."""
+                   capability, nvrtc: str | None = None) -> tuple[str, str | None]:
+    """``(mode, receipt name)`` for a card, as the device tests select it.
 
+    A receipt recorded for this NVRTC build and architecture (the index's
+    ``compilers``) comes first: the production compile allows multiply-add
+    contraction, so its words follow the compiler as well as the card."""
+
+    if nvrtc is not None:
+        name = index.get("compilers", {}).get(nvrtc, {}).get(
+            f"{int(capability[0])}.{int(capability[1])}")
+        if name is not None:
+            return "compiler", name
     name = index["cards"].get(gpu)
     if name is not None:
         return "card", name
@@ -247,7 +256,8 @@ def _sums_update(sums: Path, written: list[Path], add_missing: bool) -> list[str
 
 def settle(fixture: Path, captured_receipt: Path, captured_words: Path, *,
            install: bool, as_card: bool = False,
-           native_fix_verified: bool = False) -> tuple[int, dict]:
+           native_fix_verified: bool = False,
+           nvrtc: str | None = None, as_compiler: bool = False) -> tuple[int, dict]:
     """Compare a finished capture with the fixture and install it if allowed.
 
     Separated from the capture so the comparison and the install rules are
@@ -258,9 +268,17 @@ def settle(fixture: Path, captured_receipt: Path, captured_words: Path, *,
     captured = _read_json(captured_receipt)
     gpu, capability = captured["gpu"], tuple(captured["compute_capability"])
     index = load_index(fixture)
-    mode, name = select_receipt(index, fixture, gpu, capability)
+    mode, name = select_receipt(index, fixture, gpu, capability, nvrtc)
     if as_card and mode == "architecture":
         mode, name = "first", None
+    if as_compiler:
+        if nvrtc is None:
+            return 2, {"refused": "--as-compiler needs the capture's NVRTC version",
+                       "installed": False, "mode": mode, "receipt": name, "gpu": gpu}
+        if mode != "compiler":
+            # This compiler's words are recorded beside the card receipt the
+            # other compilers keep; the comparison still reads that receipt.
+            mode = "compiler-first"
     record = {"tool": "tools/advect_wrf471_oracle/recapture_receipt.py",
               "fixture": fixture.relative_to(REPO).as_posix() if fixture.is_relative_to(REPO) else str(fixture),
               "gpu": gpu, "compute_capability": list(capability),
@@ -289,14 +307,23 @@ def settle(fixture: Path, captured_receipt: Path, captured_words: Path, *,
             record["finding"] = (
                 "production output on this card differs from the committed receipt: "
                 "the kernels' default compile changed words here; nothing was installed")
-            if not native_fix_verified:
+            if mode == "compiler-first":
+                record["finding"] = (
+                    f"production words under NVRTC {nvrtc} differ from {name}; "
+                    "recorded as this compiler's own receipt")
+            elif not native_fix_verified:
                 return 1, record
-            if fixture.name != "wrf_legacy_advect" or mode != "card":
+            elif fixture.name != "wrf_legacy_advect" or mode != "card":
                 record["refused"] = "a native fix can requalify only this card's fork receipt"
                 return 2, record
-            record["finding"] = "production words changed with a bitwise native fork fix; requalified on this card"
+            else:
+                record["finding"] = "production words changed with a bitwise native fork fix; requalified on this card"
     else:
         record["production_reproduced"] = None
+    if mode == "compiler-first" and record.get("production_reproduced"):
+        record["refused"] = (f"production reproduces {name}; NVRTC {nvrtc} needs no "
+                             "receipt of its own")
+        return 2, record
     if not install:
         return 0, record
     if mode == "architecture" and not record["every_variant_reproduced"]:
@@ -307,7 +334,34 @@ def settle(fixture: Path, captured_receipt: Path, captured_words: Path, *,
         return 2, record
     written: list[Path] = []
     captured_words = Path(captured_words)
-    if mode == "first":
+    if mode == "compiler-first":
+        arch = f"{capability[0]}.{capability[1]}"
+        tag = f"sm{capability[0]}{capability[1]}-nvrtc{nvrtc}"
+        name, folder = f"gpu-receipt-{tag}.json", f"gpu-words-{tag}"
+        if (fixture / name).exists() or (fixture / folder).exists():
+            record["refused"] = f"{name} or {folder} already exists; the index does not map this compiler to it"
+            return 2, record
+        (fixture / folder).mkdir()
+        receipt = dict(captured, words_directory=folder,
+                       nvrtc=[int(part) for part in nvrtc.split(".")])
+        # Store what the receipt it sits beside stores (production only for
+        # the HRRR-fork sm_120 folder), so a compiler adds no control words.
+        stored = (None if committed is None
+                  else fixture / committed["words_directory"])
+        for rows in _variants(receipt).values():
+            for row in rows.values():
+                if stored is not None and not (stored / row["words_file"]).is_file():
+                    continue
+                target = fixture / folder / row["words_file"]
+                shutil.copyfile(captured_words / row["words_file"], target)
+                written.append(target)
+        _write_receipt(fixture / name, receipt)
+        written.append(fixture / name)
+        index.setdefault("compilers", {}).setdefault(nvrtc, {})[arch] = name
+        write_index(fixture, index)
+        written.append(fixture / INDEX_NAME)
+        record["receipt"] = name
+    elif mode == "first":
         tag = f"sm{capability[0]}{capability[1]}"
         if (fixture / f"gpu-receipt-{tag}.json").exists() or (fixture / f"gpu-words-{tag}").exists():
             # The architecture's name is taken by another card's receipt
@@ -333,7 +387,7 @@ def settle(fixture: Path, captured_receipt: Path, captured_words: Path, *,
         write_index(fixture, index)
         written.append(fixture / INDEX_NAME)
         record["receipt"] = name
-    elif mode == "card":
+    elif mode in ("card", "compiler"):
         folder = committed["words_directory"]
         receipt = dict(captured, words_directory=folder)
         for rows in _variants(receipt).values():
@@ -413,6 +467,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scratch", type=Path, required=True)
     parser.add_argument("--install", action="store_true")
     parser.add_argument("--as-card", action="store_true")
+    parser.add_argument("--as-compiler", action="store_true",
+                        help="record this NVRTC build's own receipt for the card's architecture "
+                             "(the production compile's words follow the compiler)")
     parser.add_argument("--native-fix", action="store_true",
                         help="fork only: require the bitwise native total-tendency gate before recording an intentional fix")
     parser.add_argument("--record", type=Path)
@@ -445,10 +502,14 @@ def main(argv: list[str] | None = None) -> int:
     if subprocess.run(command, env=env, cwd=REPO).returncode != 0:
         print("capture failed", file=sys.stderr)
         return 3
+    environment = _environment()
+    nvrtc = (f"{environment['nvrtc'][0]}.{environment['nvrtc'][1]}"
+             if "nvrtc" in environment else None)
     status, record = settle(fixture, staged / CAPTURED_RECEIPT, staged / CAPTURED_WORDS,
                             install=args.install, as_card=args.as_card,
-                            native_fix_verified=args.native_fix)
-    record["environment"] = _environment()
+                            native_fix_verified=args.native_fix,
+                            nvrtc=nvrtc, as_compiler=args.as_compiler)
+    record["environment"] = environment
     text = json.dumps(record, indent=1, sort_keys=True) + "\n"
     (scratch / "recapture.json").write_text(text, encoding="utf-8")
     if args.record:
@@ -456,6 +517,8 @@ def main(argv: list[str] | None = None) -> int:
     if record["installed"]:
         slug = re.sub(r"[^a-z0-9]+", "-", record["gpu"].lower()).strip("-")
         pin = record["kernels_captured"]["advection"][:8]
+        if record["mode"] == "compiler-first":
+            slug += f"-nvrtc{nvrtc}"
         out = REPO / "tools" / FIXTURE_ORACLES[fixture.name] / "receipts" / f"{slug}-{fixture.name}-{pin}-recapture.json"
         out.write_text(text, encoding="utf-8")
         print("record:", out.relative_to(REPO).as_posix())

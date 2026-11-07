@@ -51,7 +51,8 @@ import numpy as np
 # hexcore package this file belongs to.
 SRC = Path(__file__).resolve().parents[2]
 ROOT = SRC.parent
-if str(SRC) not in sys.path:
+if not any(isinstance(entry, str) and Path(entry or ".").resolve() == SRC.resolve()
+                     for entry in sys.path):
     sys.path.insert(0, str(SRC))
 
 from woof.hex.host_identity import host_record  # noqa: E402
@@ -1045,6 +1046,34 @@ def deck_acoustic(ctx: Context) -> dict[str, Any]:
             device_forcing.tend_rt, rs, ts,
         ),
     )
+    # The forecast's slot-major rs/ts and split column solve run from the
+    # same entry state on their own copies, so both forms are held to the
+    # same host bits.
+    rs_slot = cp.empty_like(rs)
+    ts_slot = cp.empty_like(ts)
+    ctx.k.launch(
+        "acoustic_rs_ts_slot_regional_v841",
+        b.ncells,
+        (
+            np.int32(b.nlev), np.int32(b.ncells), np.int32(b.nedges),
+            np.int32(b.max_edges), np.float32(_DTS), ctx.n_edges_on_cell,
+            cp.ascontiguousarray(cp.asarray(ctx.edges_on_cell).reshape(
+                -1, b.max_edges)[:b.ncells].T),
+            ctx.cells_on_edge,
+            cp.ascontiguousarray(cp.asarray(ctx.edge_sign_on_cell).reshape(
+                -1, b.max_edges)[:b.ncells].T),
+            ctx.dv_edge, ctx.inv_area_cell, ctx.masks.spec_zone_mask_cell,
+            device_forcing.theta_m, b.dev(b.vertical.rdzw),
+            device_coefficients.cofrz, device_coefficients.coftz, ewm,
+            device_state.ru_p, device_state.rw_p, device_state.rho_pp,
+            device_state.rtheta_pp, device_forcing.tend_rho,
+            device_forcing.tend_rt, rs_slot, ts_slot,
+        ),
+    )
+    split = {
+        name: cp.array(getattr(device_state, name), copy=True)
+        for name in ("rw_p", "rho_pp", "rtheta_pp", "ww_avg")
+    }
     ctx.k.launch(
         "acoustic_column_solve_regional_v841",
         b.ncells,
@@ -1065,11 +1094,24 @@ def deck_acoustic(ctx: Context) -> dict[str, Any]:
             device_state.ww_avg,
         ),
     )
+    from woof.hex.cuda_regional_forecast_v841 import advance_column_split_regional_v841
+    from types import SimpleNamespace
+
+    advance_column_split_regional_v841(
+        ctx.k, nlev=b.nlev, ncells=b.ncells, dts=_DTS, forcing=device_forcing,
+        coefficients=device_coefficients,
+        context=SimpleNamespace(etp=etp, etm=etm, ewp=ewp, ewm=ewm),
+        spec_zone_mask_cell=ctx.masks.spec_zone_mask_cell,
+        fzm=b.dev(b.vertical.fzm), fzp=b.dev(b.vertical.fzp),
+        rdzw=b.dev(b.vertical.rdzw), rs=rs_slot, ts=ts_slot, **split,
+    )
     payloads = {}
     for name in ("ru_p", "ru_avg", "rw_p", "ww_avg", "rho_pp", "rtheta_pp"):
         payloads[name] = (
             getattr(host, name), b.host(getattr(device_state, name))
         )
+    for name, value in split.items():
+        payloads["split_" + name] = (getattr(host, name), b.host(value))
     payloads["_one_cell_edge_flag"] = (
         np.zeros(1, np.float32),
         np.asarray(ctx.cp.asnumpy(invalid), np.float32),
@@ -1295,7 +1337,12 @@ DECKS: tuple[Deck, ...] = (
         (
             "acoustic_ru_regional_v841",
             "acoustic_rs_ts_regional_v841",
+            "acoustic_rs_ts_slot_regional_v841",
             "acoustic_column_solve_regional_v841",
+            "acoustic_column_pre_regional_v841",
+            "acoustic_column_sweep_regional_v841",
+            "acoustic_column_post_w_regional_v841",
+            "acoustic_column_post_rt_regional_v841",
         ),
         "mpas_atm_time_integration.F:3909,3992-4103",
         "acoustic_v841.advance_acoustic_step_v841 (masked)",

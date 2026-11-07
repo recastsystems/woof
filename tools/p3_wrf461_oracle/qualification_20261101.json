@@ -1,0 +1,151 @@
+{
+  "date": "2026-11-01",
+  "lane": "port-mp52-p3-2cat",
+  "base": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+  "native_source_sha256": "716950a3081ec4e338c9a918d26ec80f7ee0e40b3e284283f070423237f6a3c6",
+  "native_source_pin": "WRF v4.6.1 d66e442fccc04111067e29274c9f9eaccc3cef28; P3 source identical in native v4.7.1",
+  "licence": "WRF public-domain notice retained in gpuwm/data/p3/LICENSE-WRF",
+  "replay": {
+    "captures": 16,
+    "steps": [
+      2,
+      300,
+      600,
+      900
+    ],
+    "words": 1456320,
+    "differing_words": 0,
+    "rimed_mass_active": false
+  },
+  "forecast": {
+    "start": "2024-05-25T18:00:00Z",
+    "end": "2024-05-25T21:00:00Z",
+    "grid": [
+      150,
+      150,
+      49
+    ],
+    "dx_m": 3000,
+    "dt_s": 12,
+    "steps": 900,
+    "numerics": "default-fast",
+    "model_wall_seconds": 64.4,
+    "looked_at_hours": [
+      19,
+      20,
+      21
+    ],
+    "observation": "MRMS composite reflectivity",
+    "observation_finding": "Both native WRF and GPU underpredict the observed north-Texas convection; no observation skill claim."
+  },
+  "lifecycle": {
+    "checkpoint_history_values": 41012238,
+    "nest_feedback": [
+      0,
+      1
+    ],
+    "nest_seconds": 24,
+    "nest_history_values_per_mode": 47578866,
+    "strict_native_warm_start_steps": 1,
+    "ensemble_independent_members": 4,
+    "ensemble_iterations": 2
+  },
+  "option_off": {
+    "mp_physics": 50,
+    "forecast_steps": 900,
+    "hourly_files": 4,
+    "all_files_byte_identical": true,
+    "decoded_history_values": 115471452
+  },
+  "performance": {
+    "gpu": "RTX 5090",
+    "mp50_ms": 0.6475200057,
+    "mp52_ms": 0.937312007,
+    "ratio": 1.4475413867,
+    "under_1_2x": false,
+    "exception": "Additional second-category processing/ice-ice collection, sedimentation, merge and diagnostics; stage medians in real-stage-profile-final.json."
+  },
+  "limits": [
+    "Real captured stripes contain no rimed mass; synthetic branch coverage is separate.",
+    "Native restart input with negative moisture residues is qualified in strict mode; fast native warm-start refusal remains.",
+    "Mixed-scheme nest edges and offline-parent ingestion lack a verified category-partition contract and refuse.",
+    "No whole-model bitwise native trajectory or observation skill is claimed."
+  ],
+  "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/port-mp52-p3-2cat/",
+  "receipts": {
+    "real-replay.json": {
+      "sha256": "3d7f57bd1cf4de021df186f23bd693c548c4d90a7511b4318086d9d401319946",
+      "bytes": 9769
+    },
+    "native-table2.json": {
+      "sha256": "31442b96ab6b02ba207a0e50a1edc4bd95f6b850de8b9346d4f058d72ecef48e",
+      "bytes": 628
+    },
+    "real-stage-profile-final.json": {
+      "sha256": "49d994b2072f5a430d3aa1e17ce2e7eadba21ebdd7154110ec4613305353ad37",
+      "bytes": 1533
+    },
+    "real-stage-profile.json": {
+      "sha256": "a27af2d6ada94d0cabfeacdda9347bab96c8f6436b452aba2dace8d089ab7a07",
+      "bytes": 1158
+    },
+    "forecast-final.json": {
+      "sha256": "2f25533f72acd0abb78d8d77da35aaf69fe9d7dee85bc5a636d48dc0b10321c0",
+      "bytes": 1632
+    },
+    "forecast-file-identity.json": {
+      "sha256": "747fffa48b3984a4c205ebb7cd52709d15fff8034ba31694d6d662df6ae9fcea",
+      "bytes": 809
+    },
+    "checkpoint-history-identity.json": {
+      "sha256": "7a6e45146c746273c11d5870a363936487cf26df66435224643fb7209742d8b3",
+      "bytes": 65034
+    },
+    "node1/nest-fixed-fb0-identity.json": {
+      "sha256": "20ef0b76ccd6bbcf7526ff22de1620c59e5cfe815859bfb7cefed2433f5bcfea",
+      "bytes": 129115
+    },
+    "node1/nest-fixed-fb1-identity.json": {
+      "sha256": "48652f5d9ebdbec9cdff4e60fd088c119f84f1256e122cfe34fa52169e7849b7",
+      "bytes": 129099
+    },
+    "node1/nest-p3-checkpoint-members.json": {
+      "sha256": "f92489a2def1dba881589a104461d3f0d2f55b9a6be554afb6f795a0fa92946c",
+      "bytes": 1358
+    },
+    "native-warm-qualified.json": {
+      "sha256": "c965c475bd1165d5860454f4aa0d66cd0966257d93b557f40fa3a56c9e6728bc",
+      "bytes": 1559
+    },
+    "gpu52-runtime-checks.json": {
+      "sha256": "5816226cee7ae7ab3847801c327c3920b62b5b38194e232e92b64ff8e39f5fd3",
+      "bytes": 1367
+    },
+    "option-off-file-identity.json": {
+      "sha256": "069edd1a03dcf05135f0d1fc13c1ede9fab914908dae10e217903219aabfc01e",
+      "bytes": 1372
+    },
+    "option-off-whole-identity.json": {
+      "sha256": "39565987dc45dd5fce592d21ca4df8791b747337e6316b896c93a20e217eb838",
+      "bytes": 243663
+    },
+    "capture-archive.json": {
+      "sha256": "3e46ba6f488fbc168dda3fac638401bdf98189b1027b05a2e1dc3f37d60d7c8e",
+      "bytes": 1467
+    }
+  },
+  "runtime_source_sha256": {
+    "woof/core/kernels/p3.cu": "41fb16be31d07adbe439382b70e0d5520a3bca0fbe6ece89817be0da0367d834",
+    "woof/core/kernels/p3_zdiag.cu": "0163ecfe9b591d6d71015c8cc755f786e293b513501bdda0ca2429898e6062a9",
+    "woof/core/p3_device.py": "0a05f078a51d069299a51d7679c5d89c2674d040cb89d24904c504c84c0e4e9a",
+    "woof/ingest/wrfrst.py": "c2cb70bdb7c4163737bf37cb234d4d2e71fc0a0537a3e29f390b434eaf7344ef",
+    "woof/io/restart.py": "94315571e333d6f463b9dadaf639eaa12e5f996a7c2bfb1c0c2782d0c3876198",
+    "woof/io/history_layout.py": "e034ae8dee916cb9e176be71ec5776ae19576fa78d01b2f5a8b89fbe45b80d0e",
+    "woof/static/rust_bridge.py": "b6bfb36ff71481897f28a94defd9348f02494c56eec608c0ef6f9dd24cf33717",
+    "woof/cli.py": "27be791808fbd368502b047557d0573654e696b49104b72954c3d7340e076088",
+    "woof/wrfinput_forecast.py": "125a9cd1804ba58377e5c76ff2296079ed429d54b861702f744aee79c6cd0844",
+    "tilestream/output.py": "32c1ba27cef1e32e26176a2d36a2225f6971aca5197e1367ed21f5b16ac8b9bb",
+    "tilestream/checkpoint.py": "c829c76810ee7287e96c02b6a86d4cdd435c74e0dd4a3c20ec0fbb087f5298ce",
+    "tilestream/physics_inventory.py": "d6e51facc8da502bac137ac452cb5aeec9047067b126a53f9494a1f9e191de46"
+  }
+}

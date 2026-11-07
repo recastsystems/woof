@@ -7,6 +7,10 @@ SAVE state belong to one launcher instance, matching one native tile/thread.
 This module is not an accepted whole-forecast identity delivery yet.
 """
 from __future__ import annotations
+
+from woof.hip_backend import runtime_limit as _runtime_limit
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 import json
 from pathlib import Path
@@ -6284,6 +6288,10 @@ def cuda_options(*, columns=False):
     """Resolve standard CUDA headers from the installed CuPy environment."""
     if not columns:
         return CUDA_OPTIONS
+    from woof.hip_backend import requested
+    if requested() == 'hip':
+        # The AMD column routine does not use CUDA's counted-barrier header.
+        return CUDA_OPTIONS
     import importlib.util
     if importlib.util.find_spec('cupy') is None:
         # THE BREAKAGE THIS ENDS: on a host with no CuPy (the public CPU CI, the Linux CPU tier) the AOT
@@ -6312,7 +6320,9 @@ def cuda_source(math_source, storage_transport_source=None, *, columns=False):
     graph = CUDA_SOURCE
     if columns:
         from .smoke_columns import source
-        graph = source(graph, ROUTINES, _NATIVE_BOUNDARIES, automatic=COLUMN_AUTOMATIC_ARRAYS)
+        from woof.hip_backend import requested
+        graph = source(graph, ROUTINES, _NATIVE_BOUNDARIES, automatic=COLUMN_AUTOMATIC_ARRAYS,
+                       hip=requested() == 'hip')
     return math_source + '\n' + prefix + graph + '\n' + storage
 
 
@@ -6405,7 +6415,7 @@ class SmokeState:
         self._column_persistent_words = column_persistent_words(source) if columns else 0
         self._persistent_words = persistent_words
         digest = hashlib.sha256(source.encode()).hexdigest()
-        architecture = cp.cuda.Device().compute_capability
+        architecture = _compilation_target(xp=cp)
         key = (cp.cuda.runtime.getDevice(), architecture, digest, _hex_numerics.mode())
         if key not in _COMPILED_MODULES:
             image = raw_image(source, _hex_numerics.options(cuda_options(columns=columns)),
@@ -6428,7 +6438,7 @@ class SmokeState:
         # The whole native call graph passes many Fortran descriptors through
         # nested calls. CUDA's default per-thread stack is only 1 KiB.
         limit = cp.cuda.runtime.cudaLimitStackSize
-        current_stack = cp.cuda.runtime.deviceGetLimit(limit)
+        current_stack = _runtime_limit(limit)
         if columns:
             # Column launches inline the whole graph (SDDEV is __forceinline__ and the graph has
             # no recursion), so each entry's static frame is all the stack it uses. Reserve the
@@ -6442,8 +6452,8 @@ class SmokeState:
         else:
             wanted = 16_384
         if wanted > current_stack:
-            cp.cuda.runtime.deviceSetLimit(limit, wanted)
-        self.compile_metadata['stack_bytes'] = cp.cuda.runtime.deviceGetLimit(limit)
+            _runtime_limit(limit, wanted)
+        self.compile_metadata['stack_bytes'] = _runtime_limit(limit)
         self.compile_metadata['frame_bytes'] = wanted
         sizes = cp.empty(3, dtype=cp.int32)
         self._function('sd_sizes')((1,), (1,), (sizes,))
@@ -7028,7 +7038,7 @@ def _resident_view(native, pool, name, level):
 
     THE COST THIS REMOVES: the binding copied every pool field into Fortran order (the facade's get_field assembled a
     whole allocation, the binding transposed it), wrote the outputs back through put_field, and copied the chemistry
-    species of scalars a third time: at 3 km (mv3km, 206,726 columns, V8X6000 2026-10-29) a 40.3 ms whole-scalars
+    species of scalars a third time: at 3 km (mv3km, 206,726 columns, eight-card system 2026-10-29) a 40.3 ms whole-scalars
     transpose before the smoke kernels, a 14.4 ms one after them, and 3-9 ms slices, for the same words. The driver
     boundaries index the pool pointers element by element over the owned columns its..ite, so they take the
     authority's (k,i) words through strided descriptors and write their outputs in place. Words beyond the owned
@@ -7051,7 +7061,7 @@ def _resident_alias(native, name):
 
     The resident facade's get_variable returns a fresh whole copy assembled by a transposed core copy, the binding
     then made a Fortran-order copy of it, and put_variable wrote every bound array back by another transposed copy:
-    about 100 ms of copies per call at 3 km (mv3km, 206,726 columns, V8X6000 2026-10-29), for the same words. When
+    about 100 ms of copies per call at 3 km (mv3km, 206,726 columns, eight-card system 2026-10-29), for the same words. When
     the provider's k,i view is the array's whole allocation (as resident_pbl_rrfs._alias for MYNN-EDMF), the kernels
     read and write those words in place; anything else keeps the facade's copies.
     """

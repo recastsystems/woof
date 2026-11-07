@@ -1,6 +1,7 @@
 """One ensemble option shared by the ordinary configuration front doors."""
 from __future__ import annotations
 
+import argparse
 from contextlib import contextmanager
 from pathlib import Path
 import tomllib
@@ -10,15 +11,41 @@ from woof.ensemble.runtime_context import current_session, ensemble_scope
 
 
 def request_for_config(path, *, override=None, members=None, keep_member_files=None,
-                       recipe=None, trajectories=None, family_weights=None):
+                       recipe=None, trajectories=None, family_weights=None, stochastic=None):
     from woof.config_authority import read_config_authority
     return request_for_payload(read_config_authority(path).payload,
         override=override, members=members, keep_member_files=keep_member_files,
-        recipe=recipe, trajectories=trajectories, family_weights=family_weights)
+        recipe=recipe, trajectories=trajectories, family_weights=family_weights,
+        stochastic=stochastic)
+
+
+def stochastic_switches(args) -> dict | None:
+    """``--sppt/--no-sppt`` and ``--skeb/--no-skeb`` as ``[ensemble.stochastic]`` keys.
+
+    SPPT (Buizza et al. 1999; Palmer et al. 2009) and SKEBS (Shutts 2005;
+    Berner et al. 2009, 2011) run WRF's own published scheme
+    (``woof.ensemble.stochastic``, WRF v4.6.1 lineage, public domain).
+    """
+    switches = {}
+    if getattr(args, "sppt", None) is not None:
+        switches["sppt"] = bool(args.sppt)
+    if getattr(args, "skeb", None) is not None:
+        switches["skebs"] = bool(args.skeb)
+    return switches or None
+
+
+def add_stochastic_arguments(parser):
+    """``woof go`` / ``woof ensemble`` only: the doors whose request carries them (go_cli)."""
+    parser.add_argument("--sppt", action=argparse.BooleanOptionalAction, default=None,
+                        help="stochastically perturbed parameterization tendencies in every member "
+                             "(WRF's SPPT; overrides [ensemble.stochastic] sppt; default: the config's)")
+    parser.add_argument("--skeb", action=argparse.BooleanOptionalAction, default=None,
+                        help="stochastic kinetic-energy backscatter in every member "
+                             "(WRF's SKEBS; overrides [ensemble.stochastic] skebs; default: the config's)")
 
 
 def request_for_payload(payload, *, override=None, members=None, keep_member_files=None,
-                        recipe=None, trajectories=None, family_weights=None):
+                        recipe=None, trajectories=None, family_weights=None, stochastic=None):
     """Use the captured configuration bytes in a fresh forecast worker.
 
     ``recipe`` and ``trajectories`` are the ``--recipe`` and
@@ -63,8 +90,14 @@ def request_for_payload(payload, *, override=None, members=None, keep_member_fil
     if value is None and members is None:
         if keep_member_files is not None:
             raise ValueError("keep member files requires an ensemble member count")
+        if stochastic:
+            raise ValueError("--sppt/--skeb need an ensemble: --members N or [ensemble] members")
         return None
     request = {} if value is None else EnsembleRequest.from_mapping(value).receipt()
+    if stochastic:
+        # The flags override the same keys of [ensemble.stochastic]; the rest
+        # of a configured stochastic table is kept.
+        request["stochastic"] = {**(request.get("stochastic") or {}), **stochastic}
     if members is not None:
         request["members"] = members
     if keep_member_files is not None:

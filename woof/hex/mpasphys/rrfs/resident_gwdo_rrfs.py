@@ -1,3 +1,6 @@
+# Runs the CUDA port of NOAA GSL's UGWP orographic drag in ../ugwp_oro_v842.py
+# (Apache-2.0, Copyright 2026, NOAA, UCAR/NCAR CU/CIRES; NOTICE section 8). This file is
+# the RRFS stage's glue around it and holds no UGWP code itself.
 """Persistent RRFS orographic UGWP boundary, with one pack and one unpack.
 
 The assignments are ugwp_oro_v842.bind_native_pools/run_slot's transaction.

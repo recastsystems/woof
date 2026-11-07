@@ -83,6 +83,10 @@ def compile_program(source: str, options, *, name: str = "unit.cu",
     a test standing one in, compiles through the same keyed route."""
     if target not in ("ptx", "cubin"):
         raise ValueError(f"target must be 'ptx' or 'cubin', not {target!r}")
+    from woof.hip_backend import active,compile_source
+    if active():
+        blob,_=compile_source(keyed_source(source,options),options,filename=name)
+        return blob
     if nvrtc is None:
         from cupy.cuda import nvrtc
 

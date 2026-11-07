@@ -23,6 +23,11 @@ pub fn interpolate(fg:&[Vec<Vec<f32>>],levels:&[f32],height:&[Vec<f32>],grid:&[V
     }
     // One zeroed allocation per species (vec![v; n] would copy the first 14 times on one core).
     let nz=grid[0].len()-1;let mut out:Vec<Vec<f32>>=(0..COUNT).map(|_|vec![0.;nc*nz]).collect();
+    // Missing parent species all have the same positive-zero profile. Run
+    // that profile once, including exceptional coordinates. Only when every
+    // resulting word is +0 may the remaining absent species retain calloc's
+    // zeros. NaNs and signed zeros still take the original arithmetic path.
+    let mut absent_is_positive_zero=false;
     for (s,field) in out.iter_mut().enumerate() {
         // Fork cases.F:7269-7270,8580-8581 explicitly zeros both
         // number slots; neither has a first-guess interpolation call.
@@ -30,13 +35,15 @@ pub fn interpolate(fg:&[Vec<Vec<f32>>],levels:&[f32],height:&[Vec<f32>],grid:&[V
         if (s==12 && !smoke) || (s>=13 && !dust) {continue;}
         // The shape check the serial loop made at each cell, made for every
         // cell first; the refusal names no cell, so it is the same refusal.
-        if fg[s].len()!=nc || (0..nc).into_par_iter().any(|c| height[c].len()<nf || fg[s][c].len()<nf) {
+        let absent=fg[s].is_empty();
+        if (!absent && fg[s].len()!=nc) || (0..nc).into_par_iter().any(|c| height[c].len()<nf || (!absent && fg[s][c].len()<nf)) {
             return Err(MpasError::Refusal("RRFS scalar first-guess shape differs from level table".into()));
         }
+        if absent && absent_is_positive_zero {continue;}
         // Every cell's column is independent of every other's: one core per run of cells.
         field.par_chunks_mut(nz.max(1)).enumerate().for_each(|(c,column)| {
             let mut z=Vec::with_capacity(nf);let mut q=Vec::with_capacity(nf);
-            for k in 0..nf {z.push(if levels[k]==SURFACE_LEVEL_TAG {SURFACE_SENTINEL} else {height[c][k]});q.push(fg[s][c][k].max(0.));}
+            for k in 0..nf {z.push(if levels[k]==SURFACE_LEVEL_TAG {SURFACE_SENTINEL} else {height[c][k]});q.push(if absent {0.} else {fg[s][c][k].max(0.)});}
             sorted_column(&mut z,&mut q);
             for k in (0..nz).rev() {
                 let target=0.5*(grid[c][k]+grid[c][k+1]);
@@ -45,6 +52,7 @@ pub fn interpolate(fg:&[Vec<Vec<f32>>],levels:&[f32],height:&[Vec<f32>],grid:&[V
                 if lbc && target<height[c][0] && k<nz-1 {column[k]=column[k+1];}
             }
         });
+        if absent && field.par_iter().all(|v|v.to_bits()==0) {absent_is_positive_zero=true;}
     }
     Ok(out)
 }

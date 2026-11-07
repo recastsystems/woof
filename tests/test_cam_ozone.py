@@ -31,6 +31,9 @@ def _tree(root_pair=(0, 0), middle=False):
 def test_parent_only_host_ozone_force_uses_bounded_canonical_source(monkeypatch):
     import sys
     from woof.core import cam_ozone, nest_interp, streaming
+    # Import what transfer_parent_ozone imports lazily BEFORE the stub goes in, as a full suite run has:
+    # woof.core.state binds cupy at import, and a stub has no float32 (red whenever this file ran alone).
+    import woof.core.nest  # noqa: F401
     monkeypatch.setitem(sys.modules, 'cupy', SimpleNamespace(
         ndarray=np.ndarray, asarray=np.asarray, ascontiguousarray=np.ascontiguousarray))
     exp = _tree()
@@ -289,7 +292,7 @@ def test_auxiliary_cam_drives_the_existing_adaptive_observer():
     physics = SimpleNamespace(carriers=carriers, stepra=4, radt_seconds=12.)
     # A clock with no resolved radiation calendar (radt_ticks None), the
     # case the time-based policy observed here serves.  Every DomainClock
-    # carries a spec, and lane/282-namelist-tolerance (e292dbcf5) lets a
+    # carries a spec, and development branch (e292dbcf5) lets a
     # resolved calendar's exact tick deadline decide before that policy.
     node = SimpleNamespace(state=SimpleNamespace(physics=physics),
                            clock=SimpleNamespace(

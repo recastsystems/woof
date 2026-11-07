@@ -1,6 +1,6 @@
 """Per-step hydro cost in every forecast receipt, measured without slowing it.
 
-Project ruling, 2026-10-18: hydro is default on because it is cheap; the per-step cost is
+Owner, 2026-10-18: hydro is default on because it is cheap; the per-step cost is
 measured and reported with parallelism named in every forecast receipt, and it
 stays under 5 percent of the atmosphere step or it is a defect.
 
@@ -162,7 +162,7 @@ def receipt(physics, *, forecast_seconds, atmosphere_steps, budget=0.05, setting
             "detail": f"hydro {hydro_per_atmosphere_step_ms:.4f} ms per atmosphere step is "
                       f"{fraction:.2%} of the {atmosphere_step_ms:.3f} ms atmosphere step "
                       f"(budget {budget:.0%})",
-            "owner": "lane-hydro-speed"}
+            "owner": "hydro-speed"}
     return block
 
 
@@ -176,4 +176,4 @@ def refuse_if_over_budget(block):
     if block and block.get("status") == "DEFECT":
         import sys
         print(f"{DEFECT}: {block['defect']['detail']}; DEFECT recorded; "
-              "forecast continues; owner lane-hydro-speed", file=sys.stderr)
+              "forecast continues; owner hydro-speed", file=sys.stderr)

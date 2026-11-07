@@ -117,7 +117,7 @@ def forced_dry_branch():
         _ACTIVE = previous
 
 
-def calc_n2_kernel():
+def calc_n2_kernel(*, use_theta_m=0):
     """The ``wrf_calc_n2`` kernel for the build variant now selected.
 
     Both branches go through a cache whose key discriminates them, so the
@@ -125,7 +125,9 @@ def calc_n2_kernel():
     whole process lifetime.
     """
     from woof.core.kernels import get_kernel, get_kernel_int_defines
-    if _ACTIVE:
-        return get_kernel_int_defines("smag2d", "wrf_calc_n2",
-                                      MUTATION_DEFINES)
+    defines = MUTATION_DEFINES if _ACTIVE else ()
+    if use_theta_m:
+        defines += (("GPUWM_USE_THETA_M", 1),)
+    if defines:
+        return get_kernel_int_defines("smag2d", "wrf_calc_n2", defines)
     return get_kernel("smag2d", "wrf_calc_n2")

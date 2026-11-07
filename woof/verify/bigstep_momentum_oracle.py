@@ -7,6 +7,8 @@ launch stores total pressure and loses low bits during its total/base roundtrip.
 """
 from __future__ import annotations
 
+from woof.backend import compilation_target as _compilation_target
+
 from dataclasses import dataclass
 import hashlib
 import json
@@ -35,7 +37,7 @@ def load_momentum_measurement_pins():
     import cupy as cp
     from woof.certify.compile_platform import nvrtc_build
 
-    platform = (str(cp.cuda.Device().compute_capability), nvrtc_build())
+    platform = (str(_compilation_target(xp=cp)), nvrtc_build())
     filename = ("momentum-measurements-sm89-nvrtc12.9.86.json"
                 if platform == ("89", "12.9.86") else "momentum-measurements.json")
     directory = require_fixture_dir(MOMENTUM_ORACLE_DIR, "big-step momentum")

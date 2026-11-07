@@ -564,6 +564,7 @@ pub fn compute(
         cfg.host_memory_limit_bytes,
     )?;
     let pool = rayon::ThreadPoolBuilder::new()
+        .stack_size(crate::execution::BRIDGE_STACK_BYTES)
         .num_threads(plan.workers)
         .build()
         .map_err(|e| MpasError::Refusal(format!("cannot create native GWD worker pool: {e}")))?;

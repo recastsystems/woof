@@ -1,0 +1,2099 @@
+{
+  "strict": true,
+  "environment": "1",
+  "cases": [
+    {
+      "capture": "capture-capture-000060-00002-00002-h0i0.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 0,
+      "ice": 0,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 90.24307250976562,
+      "reflectivity_ms": 0.07779199630022049,
+      "sha256": {
+        ".in": "3ced68e3cff4bde1ad297236e1c927ee567e81e768deb94cd8536345e08907c2",
+        ".pre": "7a0bc545e463702213b9bc4dc7c70177026cd3a662e413065583fa287caf6300",
+        ".post": "e82b782d5b8059b66c9c314341e7a32f2b855e66aad04281dabb64b7bf71d95a",
+        ".meta": "23d31c6ac69b240052d0bf1ee60995afa3ac5b76e741b9d4ab714961a8fe674b"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00002-h0i1.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 0,
+      "ice": 1,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6574079990386963,
+      "reflectivity_ms": 0.07782399654388428,
+      "sha256": {
+        ".in": "3ced68e3cff4bde1ad297236e1c927ee567e81e768deb94cd8536345e08907c2",
+        ".pre": "7a0bc545e463702213b9bc4dc7c70177026cd3a662e413065583fa287caf6300",
+        ".post": "f676cec3b16689801d34b9487d326d51491139906d2f5849c919cb90c19b6431",
+        ".meta": "21769716e739dbec89efce52eb4a025f5a3e3a320cab88f1bcae948b4ecb6bc2"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00002-h0i2.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 0,
+      "ice": 2,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6553599834442139,
+      "reflectivity_ms": 0.06758400052785873,
+      "sha256": {
+        ".in": "3ced68e3cff4bde1ad297236e1c927ee567e81e768deb94cd8536345e08907c2",
+        ".pre": "7a0bc545e463702213b9bc4dc7c70177026cd3a662e413065583fa287caf6300",
+        ".post": "fc59a50f300eb92e0d381d996b1aca57b7ba2a11c4225d8d5e746e15b4d0136e",
+        ".meta": "aa550b671c651cec779d2ccce3220416883bd9b69fca7500151c5b7cd2cfcd46"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00002-h0i3.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 0,
+      "ice": 3,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.23552000522613525,
+      "reflectivity_ms": 0.06550399959087372,
+      "sha256": {
+        ".in": "3ced68e3cff4bde1ad297236e1c927ee567e81e768deb94cd8536345e08907c2",
+        ".pre": "7a0bc545e463702213b9bc4dc7c70177026cd3a662e413065583fa287caf6300",
+        ".post": "f583c6726abf3b79e70dc87af3b09b96cdf8d032fb93143f5eb487216fb50019",
+        ".meta": "fe0764b1c0cb88a7531392a64ccb6d4cdb653a3d85a4dd9ab15d81012a833c23"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00002-h1i0.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 1,
+      "ice": 0,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6594560146331787,
+      "reflectivity_ms": 0.07782399654388428,
+      "sha256": {
+        ".in": "3ced68e3cff4bde1ad297236e1c927ee567e81e768deb94cd8536345e08907c2",
+        ".pre": "7a0bc545e463702213b9bc4dc7c70177026cd3a662e413065583fa287caf6300",
+        ".post": "596e6b2d9aee4f52cd538902001bcc26bdd82f613bff60ec2e0653ca2d6464b8",
+        ".meta": "9d788fc301f2213a8a65172480d87c404c38a9c52c88931be072174196d92598"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00002-h1i1.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 1,
+      "ice": 1,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.647167980670929,
+      "reflectivity_ms": 0.07574400305747986,
+      "sha256": {
+        ".in": "3ced68e3cff4bde1ad297236e1c927ee567e81e768deb94cd8536345e08907c2",
+        ".pre": "7a0bc545e463702213b9bc4dc7c70177026cd3a662e413065583fa287caf6300",
+        ".post": "f676cec3b16689801d34b9487d326d51491139906d2f5849c919cb90c19b6431",
+        ".meta": "efb711f4cb782172cc55227a54c2230c936b432760f16575fd90dd645241709f"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00002-h1i2.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 1,
+      "ice": 2,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6451200246810913,
+      "reflectivity_ms": 0.06758400052785873,
+      "sha256": {
+        ".in": "3ced68e3cff4bde1ad297236e1c927ee567e81e768deb94cd8536345e08907c2",
+        ".pre": "7a0bc545e463702213b9bc4dc7c70177026cd3a662e413065583fa287caf6300",
+        ".post": "69ce07daef51ea544febc8c1a776f0c4c482886b2e9908283a351fa2942afb00",
+        ".meta": "4a1585663a16c7c28c729a9c7a82699c8d7264946f5401f90707ee1b2742ee8b"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00002-h1i3.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 1,
+      "ice": 3,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.2314240038394928,
+      "reflectivity_ms": 0.0655359998345375,
+      "sha256": {
+        ".in": "3ced68e3cff4bde1ad297236e1c927ee567e81e768deb94cd8536345e08907c2",
+        ".pre": "7a0bc545e463702213b9bc4dc7c70177026cd3a662e413065583fa287caf6300",
+        ".post": "f583c6726abf3b79e70dc87af3b09b96cdf8d032fb93143f5eb487216fb50019",
+        ".meta": "6fe2c10b0d56647fbb0cc401413599a45b305bfaa422e1105c354d98a7e6531a"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00076-h0i0.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 0,
+      "ice": 0,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6574079990386963,
+      "reflectivity_ms": 0.07168000191450119,
+      "sha256": {
+        ".in": "026d7f658a82a92523493bdcc86544bd53bdb16c994fb998c1e21c772a496abd",
+        ".pre": "3302e74f78c58a333d0c293023a5aa6d94f7e907ed6b3f20f4a6f114bdca5826",
+        ".post": "1ba6d7c3ef80811e0563ae638cd9dd8421ea3797e26d7c39a024ed658793c621",
+        ".meta": "23d31c6ac69b240052d0bf1ee60995afa3ac5b76e741b9d4ab714961a8fe674b"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00076-h0i1.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 0,
+      "ice": 1,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6512640118598938,
+      "reflectivity_ms": 0.06963200122117996,
+      "sha256": {
+        ".in": "026d7f658a82a92523493bdcc86544bd53bdb16c994fb998c1e21c772a496abd",
+        ".pre": "3302e74f78c58a333d0c293023a5aa6d94f7e907ed6b3f20f4a6f114bdca5826",
+        ".post": "10b8cbedb42d2fd4480f422afdf655a579344f77fe5b2c2f3a45e773bee2bfd8",
+        ".meta": "21769716e739dbec89efce52eb4a025f5a3e3a320cab88f1bcae948b4ecb6bc2"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00076-h0i2.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 0,
+      "ice": 2,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6492159962654114,
+      "reflectivity_ms": 0.06758400052785873,
+      "sha256": {
+        ".in": "026d7f658a82a92523493bdcc86544bd53bdb16c994fb998c1e21c772a496abd",
+        ".pre": "3302e74f78c58a333d0c293023a5aa6d94f7e907ed6b3f20f4a6f114bdca5826",
+        ".post": "b64721d1e95be4320cc79e3899e77a676302afad80e6741dcddf486e6a43a47b",
+        ".meta": "aa550b671c651cec779d2ccce3220416883bd9b69fca7500151c5b7cd2cfcd46"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00076-h0i3.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 0,
+      "ice": 3,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.22323200106620789,
+      "reflectivity_ms": 0.0655359998345375,
+      "sha256": {
+        ".in": "026d7f658a82a92523493bdcc86544bd53bdb16c994fb998c1e21c772a496abd",
+        ".pre": "3302e74f78c58a333d0c293023a5aa6d94f7e907ed6b3f20f4a6f114bdca5826",
+        ".post": "1f7ef677fae2075c07d5ad0d941ecd9b02c8c4d3ca798bacc9c620fb862f50ef",
+        ".meta": "fe0764b1c0cb88a7531392a64ccb6d4cdb653a3d85a4dd9ab15d81012a833c23"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00076-h1i0.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 1,
+      "ice": 0,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6574079990386963,
+      "reflectivity_ms": 0.07168000191450119,
+      "sha256": {
+        ".in": "026d7f658a82a92523493bdcc86544bd53bdb16c994fb998c1e21c772a496abd",
+        ".pre": "3302e74f78c58a333d0c293023a5aa6d94f7e907ed6b3f20f4a6f114bdca5826",
+        ".post": "c0e6c8afcd347ca93c8aaf507132d10d8bf71d28c66ffcad3f3175a38f5ac595",
+        ".meta": "9d788fc301f2213a8a65172480d87c404c38a9c52c88931be072174196d92598"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00076-h1i1.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 1,
+      "ice": 1,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6512640118598938,
+      "reflectivity_ms": 0.07168000191450119,
+      "sha256": {
+        ".in": "026d7f658a82a92523493bdcc86544bd53bdb16c994fb998c1e21c772a496abd",
+        ".pre": "3302e74f78c58a333d0c293023a5aa6d94f7e907ed6b3f20f4a6f114bdca5826",
+        ".post": "10b8cbedb42d2fd4480f422afdf655a579344f77fe5b2c2f3a45e773bee2bfd8",
+        ".meta": "efb711f4cb782172cc55227a54c2230c936b432760f16575fd90dd645241709f"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00076-h1i2.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 1,
+      "ice": 2,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.6492159962654114,
+      "reflectivity_ms": 0.06758400052785873,
+      "sha256": {
+        ".in": "026d7f658a82a92523493bdcc86544bd53bdb16c994fb998c1e21c772a496abd",
+        ".pre": "3302e74f78c58a333d0c293023a5aa6d94f7e907ed6b3f20f4a6f114bdca5826",
+        ".post": "1d583fa4f59a9c1be4e3c73e5b6de3814089a36685e0e60f73640048f123a6a1",
+        ".meta": "4a1585663a16c7c28c729a9c7a82699c8d7264946f5401f90707ee1b2742ee8b"
+      }
+    },
+    {
+      "capture": "capture-capture-000060-00002-00076-h1i3.meta",
+      "nx": 148,
+      "nz": 49,
+      "dt": 12.0,
+      "hail": 1,
+      "ice": 3,
+      "diagflag": true,
+      "do_radar_ref": 1,
+      "fields": {
+        "th": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qv": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qc": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qr": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qi": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qs": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "qg": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "refl": {
+          "words": 7252,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "rainncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snownc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "snowncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelnc": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "graupelncv": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        },
+        "sr": {
+          "words": 148,
+          "differing_words": 0,
+          "max_absolute_finite": 0.0,
+          "native_nonfinite": 0,
+          "gpu_nonfinite": 0
+        }
+      },
+      "column_ms": 0.22323200106620789,
+      "reflectivity_ms": 0.06550399959087372,
+      "sha256": {
+        ".in": "026d7f658a82a92523493bdcc86544bd53bdb16c994fb998c1e21c772a496abd",
+        ".pre": "3302e74f78c58a333d0c293023a5aa6d94f7e907ed6b3f20f4a6f114bdca5826",
+        ".post": "1f7ef677fae2075c07d5ad0d941ecd9b02c8c4d3ca798bacc9c620fb862f50ef",
+        ".meta": "6fe2c10b0d56647fbb0cc401413599a45b305bfaa422e1105c354d98a7e6531a"
+      }
+    }
+  ],
+  "words": 944832,
+  "differing_words": 0,
+  "nonfinite_outputs": 0,
+  "compile": {
+    "enabled": true,
+    "controls": {
+      "diagnostics": true,
+      "advection": true,
+      "diffusion": true,
+      "bigstep": true
+    },
+    "strict_options": [
+      "--fmad=false",
+      "--ftz=false",
+      "--prec-div=true",
+      "--prec-sqrt=true",
+      "-DGPUWM_WRF_EXACT=1",
+      "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+      "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+      "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+      "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+    ],
+    "records": [
+      {
+        "kind": "nvrtc_compile",
+        "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "options": [
+          "-std=c++17",
+          "-arch=compute_120",
+          "--fmad=false",
+          "--ftz=false",
+          "--prec-div=true",
+          "--prec-sqrt=true",
+          "-DGPUWM_WRF_EXACT=1",
+          "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+          "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+          "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+          "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+        ]
+      }
+    ]
+  },
+  "pass": true,
+  "provenance": {
+    "scope": "native module replay on unchanged wet operands captured at step 60 of a real native WRF run, all eight controls; not eight forecasts",
+    "native": {
+      "capture_step": 60,
+      "row": "maximum sum of rain plus graupel mass mixing ratio per tile",
+      "source_sha256": "b0095935abaf4fe51debb50ce8f5b4f1c1e63e955ecc5c1d68f5f59aa14d0741",
+      "namelist_sha256": "9acdb388db12605472ae05ff3a71973b97131a04090061853823bf96e0ec7d63",
+      "arithmetic_changes": false,
+      "load": [
+        20.75341796875,
+        17.712890625,
+        11.6396484375
+      ],
+      "wrf_exe_sha256": "4e9052d836a090c61d4b845ec915558c71c541347f9cd7b0af9af80c1ac25c11",
+      "run_load": [
+        14.2822265625,
+        16.93505859375,
+        12.0859375
+      ]
+    },
+    "fixed_source_sha256": "6ec27094c89b592618468eaae17cc0b9bf96682db6e02da41462270d448a0492",
+    "undefined_repairs": [
+      "ice2=1 zero uninitialized graupel radar column",
+      "ice2=3 initialize evaporation transport coefficients"
+    ],
+    "native_trap_count": 8,
+    "native_trap_flags": [
+      "-finit-real=snan",
+      "-ffpe-trap=invalid"
+    ],
+    "stock_comparison": {
+      "defined_controls_ice": [
+        0,
+        2
+      ],
+      "defined_native_words": 472416,
+      "defined_native_differing_words": 0,
+      "ice1_radar_different_words": 26788,
+      "ice3_rain_different_words": 96
+    },
+    "actual_native_replay": {
+      "words": 118104,
+      "differing_words": 0,
+      "nonfinite_outputs": 0,
+      "hail": 1,
+      "ice": 0,
+      "diagflag": false
+    },
+    "coverage": "All species nonzero in one row, trace rain/graupel below fallout threshold; original 69646-word precipitating default proof retained."
+  }
+}

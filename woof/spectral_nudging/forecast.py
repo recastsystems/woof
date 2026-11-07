@@ -51,6 +51,10 @@ def attach(state, run_config, config: NudgingConfig, analyses, *,
     heights = {name: cp.empty_like(a) for name,a in physical.items()}
     pbl = {name: cp.empty(a.shape[-2:], dtype=cp.float32) for name,a in physical.items()}
     source = Path(__file__).with_name('forecast.cu').read_text()
+    moist_theta = bool(getattr(state, "use_theta_m", 0))
+    theta_args = (state.qv, cp.empty_like(state.qv)) if moist_theta else ()
+    if moist_theta:
+        source = "#define GPUWM_THETA_M 1\n" + source
     module = cp.RawModule(code=source, options=('--std=c++11',))
     from woof.certify.kernel_manifest import record_module
     record_module('woof.spectral_nudging.forecast:forecast', source=source,
@@ -72,7 +76,7 @@ def attach(state, run_config, config: NudgingConfig, analyses, *,
              state.ht, pbl_height, physical['temperature'], previous['temperature'],
              physical['geopotential'], previous['geopotential'],
              *(heights[k] for k in ('u','v','temperature','geopotential')),
-             *(pbl[k] for k in ('u','v','temperature','geopotential')), *ints, potential))
+             *(pbl[k] for k in ('u','v','temperature','geopotential')), *theta_args, *ints, potential))
         for name, w in weights.items():
             field = ('u', 'v', 'temperature', 'geopotential', 'qv').index(name)
             suffix = {'u':'uv', 'v':'uv', 'temperature':'t', 'geopotential':'ph', 'qv':'q'}[name]
@@ -85,7 +89,7 @@ def attach(state, run_config, config: NudgingConfig, analyses, *,
     def after():
         unpack(grid, block, (state.thp, state.php, state.p,
                physical['temperature'], previous['temperature'],
-               physical['geopotential'], previous['geopotential'], *ints[:3], potential))
+               physical['geopotential'], previous['geopotential'], *theta_args, *ints[:3], potential))
     bindings = {}
     for name, value in physical.items():
         if config.coefficient(name) == 0:

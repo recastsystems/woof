@@ -1,0 +1,55 @@
+{
+  "base_version": "WRF v4.7.1 (MAV and legacy Fitch identical to v4.6.1)",
+  "induction_commit": "c9d69bf7f10536275989826117782da543a4fba7",
+  "sources": [
+    {
+      "ref": "c9d69bf7f10536275989826117782da543a4fba7",
+      "path": "doc/licenses/fraunhofer_license.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/c9d69bf7f10536275989826117782da543a4fba7/doc/licenses/fraunhofer_license.txt",
+      "sha256": "6c1087ea66133f349ea64dacd94519dc823f6585eb9f56e74aa07ce7e6991f15",
+      "licence": "WRF public domain + Fraunhofer MIT"
+    },
+    {
+      "ref": "v4.7.1",
+      "path": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "licence": "WRF public domain"
+    },
+    {
+      "ref": "c9d69bf7f10536275989826117782da543a4fba7",
+      "path": "phys/module_wind_fitch.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/c9d69bf7f10536275989826117782da543a4fba7/phys/module_wind_fitch.F",
+      "sha256": "0857dc9e74cea8f231e2456d12a45bb3d6d4e00fca4945c73b1455263d78cd1b",
+      "licence": "WRF public domain + Fraunhofer MIT"
+    },
+    {
+      "ref": "v4.7.1",
+      "path": "phys/module_wind_mav.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_wind_mav.F",
+      "sha256": "e68e3392ec9a24340483263c07581ecc8e75753ccf85bd25fa151c48779bb01d",
+      "licence": "WRF public domain"
+    },
+    {
+      "ref": "v4.7.1",
+      "path": "share/module_llxy.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_llxy.F",
+      "sha256": "0c777e66ffbb0602479cadcc0ab484769a140c4cb2b3e9a8f757597086f0c76b",
+      "licence": "WRF public domain"
+    },
+    {
+      "ref": "v4.7.1",
+      "path": "run/wind-turbine-1.tbl",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/run/wind-turbine-1.tbl",
+      "sha256": "d2f863483ab050673ebe15bd1e8510277e7a641845048b08afd7cdc97be7e069",
+      "licence": "WRF public domain"
+    },
+    {
+      "ref": "v4.7.1",
+      "path": "doc/README.windturbine",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/doc/README.windturbine",
+      "sha256": "b19327428363c5bee322ffc793937cd3e6fc84541f3f4f8acfbba0f8078ecbf7",
+      "licence": "WRF public domain"
+    }
+  ]
+}

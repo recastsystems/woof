@@ -231,7 +231,7 @@ def test_exactly_the_ratified_templates_select_ruc_and_no_route_overrides_it():
     selecting = sorted(
         template_id for template_id, template in registry["templates"].items()
         if template["components"].get("land_surface") == "ruc-lsm")
-    # 4193eb0da, lane/286-fork-mynn: the explicit GSD4.1 MP28 composition
+    # 4193eb0da, development branch: the explicit GSD4.1 MP28 composition
     # copies the existing MYNN/RUC row and its already admitted sources.
     # Its source version changes the PBL/MP/radiation choices, not RUC's
     # nine-level ingest or the generic route defaults.
@@ -334,7 +334,7 @@ THOMPSON_MYNN_RUC_TEMPLATE_IDS = (
     "thompson-mp8-mynn-mynn-ruc-dudhia-implemented-unverified-v1",
     "thompson-mp8-mynn-mynn-ruc-rte-rrtmgp-implemented-unverified-v1",
 )
-# 4193eb0da, lane/286-fork-mynn: explicit HRRR GSD4.1 MP28/RUC suite.
+# 4193eb0da, development branch: explicit HRRR GSD4.1 MP28/RUC suite.
 MYNN_GSD41_RUC_TEMPLATE_ID = "thompson-mp28-mynn-gsd41-mynn-ruc-rrtmg-legacy-v1"
 #: The sources whose initializers reach RUC's own soil ingest.  ``20crv3`` is
 #: the MAPPED path and is deliberately absent; see the test below.
@@ -785,7 +785,7 @@ def test_the_width_rail_covers_noahmp_and_not_ruc(capsys) -> None:
 # ---------------------------------------------------------------------------
 # V-1: RUC is selectable on the GFS route and cannot complete a forecast
 # ---------------------------------------------------------------------------
-# A a development machine validation run selected the RUC template through the GFS front
+# A test host 7 validation run selected the RUC template through the GFS front
 # door.  It PREPARED cleanly -- proof PASS, `land_surface: ruc-lsm`, nine
 # soil layers, 339 MB of prepared state -- and then died 2.8 s into
 # integration with `mavail must be finite`, at

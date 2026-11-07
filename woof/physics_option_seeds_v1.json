@@ -270,9 +270,895 @@
           "REFLECTIVITY: WRF v4.6.1 computes Ferrier's DBZ_col and discards it, leaving REFL_10CM unwritten under mp=5.  gpuwm writes that column (clear air -20 dBZ) as REFL_10CM; its 10*ALOG10 is CUDA's log10f, so the diagnostic alone is outside the 0 ULP claim.",
           "NEST AND OFFLINE CHILD: no cross-scheme nest edge is ported for mp=5 and the offline child refuses a Ferrier parent (no F_RIMEF_PHY wrfout row); same-scheme online nests run."
         ]
+      },
+      "etanew-mp95": {
+        "asset_requirements": [],
+        "compatible_previous_forbidden_settings": [
+          {
+            "mp28_aerosol_source": [
+              "climatology",
+              "synthetic"
+            ]
+          }
+        ],
+        "constraints": {
+          "forbidden_setting_values": {
+            "mp28_aerosol_source": [
+              "climatology",
+              "synthetic",
+              "analysis"
+            ],
+            "use_rap_aero_icbc": [
+              true
+            ]
+          },
+          "refused_when": [
+            {
+              "components": {
+                "radiation": [
+                  "rte-rrtmgp"
+                ]
+              },
+              "reason": "Eta Ferrier carries total ice in qs and phase fractions, with no separate qi or effective radii. The RTE cloud adapter has no total-ice partition for this package; treating it as a six-species scheme would lose its ice cloud. The Dudhia pair ra_lw_physics=0 / ra_sw_physics=1 is the other way out of this pairing.",
+              "remedy_label": "Set ra_rrtmg_variant='rrtmg_legacy', which computes its own radii the way WRF does.",
+              "remedy_settings": {
+                "ra_rrtmg_variant": "rrtmg_legacy"
+              },
+              "settings": {
+                "ra_rrtmg_variant": [
+                  "rte-rrtmgp"
+                ]
+              }
+            }
+          ],
+          "required_settings": {
+            "moist": true
+          },
+          "required_settings_reasons": {
+            "moist": "a dry state allocates no water vapour or hydrometeor fields, so the scheme would have nothing to integrate"
+          }
+        },
+        "consumers": {
+          "cloud_optics": {
+            "legacy_declares_radii": false,
+            "rte_rrtmgp_coupling": null,
+            "rte_rrtmgp_refusal": "the scheme hands radiation no radii and no borrowed row is right; recorded at gpuwm.core.rrtmgp._NO_CLOUD_OPTICS_COUPLING[95], the way through at gpuwm.core.rrtmgp._CLOUD_OPTICS_REMEDY"
+          },
+          "lateral_forcing_dataset": null,
+          "moments": {
+            "mass_only": [
+              "qv",
+              "qc",
+              "qr",
+              "qs"
+            ],
+            "name": "Eta Ferrier",
+            "pairs": [],
+            "q_threshold": 1e-12,
+            "repair_authority": null,
+            "unpaired": [
+              "qt"
+            ]
+          },
+          "nest_transition": {
+            "mass_fields": null,
+            "mixed_edge_ported": false,
+            "moment_fields": null,
+            "refusal": "MP95 (Eta Ferrier) is ported and runs, but it has no validated cross-scheme entry closure for its moments (qt, f_ice_phy, f_rain_phy, f_rimef_phy); the reason is recorded at gpuwm.core.microphysics_transition._UNVALIDATED_MIXED_EDGE_REASONS[95]"
+          },
+          "offline_child": {
+            "refusal": "The offline reader has no qt and phase-fraction mapping. A child would reset condensate and rime history instead of inheriting the parent.",
+            "same_scheme": false
+          },
+          "radar_da": {
+            "clear_air_floor_dbz": null,
+            "clear_air_floor_reason": "nobody has read this scheme's clear-air floor off its kernel yet",
+            "clear_air_floor_status": "unread",
+            "reflectivity_route": "none",
+            "reflectivity_route_reason": "WRF module_mp_etanew.F produces no REFL_10CM diagnostic; the forecast has no reflectivity field for this package"
+          },
+          "reflectivity_input_species": null,
+          "reflectivity_native_reason": "the scheme produces REFL_10CM itself; recorded at gpuwm.core.refl.SCHEME_NATIVE_REFL_10CM[95]",
+          "restart_algorithm_identity": "eta-ferrier-qt-partition-wrf-v4.6.1-v1",
+          "ring_guard": {
+            "state_fields": [
+              "thp",
+              "qv",
+              "qc",
+              "qr",
+              "qs",
+              "qt",
+              "f_ice_phy",
+              "f_rain_phy",
+              "f_rimef_phy"
+            ],
+            "surface_slots": [
+              "mp_rainnc",
+              "mp_rainncv",
+              "mp_sr"
+            ]
+          },
+          "stock_wrf_export": {
+            "inventoried": true,
+            "reason": null,
+            "registry_package": "etampnew",
+            "runtime_state_not_wrfinput": [
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "F_ICE_PHY",
+                "registry_name": "f_ice_phy"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "F_RAIN_PHY",
+                "registry_name": "f_rain_phy"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "F_RIMEF_PHY",
+                "registry_name": "f_rimef_phy"
+              }
+            ],
+            "scheme": "Eta Ferrier",
+            "wrfinput_fields": [
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "source_specific_humidity",
+                "netcdf_name": "QVAPOR",
+                "registry_name": "qv",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QCLOUD",
+                "registry_name": "qc",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QRAIN",
+                "registry_name": "qr",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QSNOW",
+                "registry_name": "qs",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "CWM",
+                "registry_name": "qt",
+                "state_name": null,
+                "units": "kg kg-1"
+              }
+            ]
+          },
+          "vertical_level_bounds": {
+            "contract_constant": "ETANEW_VERTICAL_LEVEL_BOUNDS",
+            "label": "Eta Ferrier microphysics",
+            "maximum": null,
+            "minimum": 1
+          }
+        },
+        "extensions": {
+          "carried_state": [
+            "f_ice_phy",
+            "f_rain_phy",
+            "f_rimef_phy"
+          ],
+          "column_oracle_evidence": {
+            "columns": 80,
+            "default_max_ulp": 0,
+            "fixture_root": "tests/data/oracles/etanew",
+            "levels": 50,
+            "steps": 10,
+            "strict_max_ulp": 0,
+            "tests": [
+              "tests/test_etanew_mp95_gpu.py",
+              "tests/test_etanew_radiation.py"
+            ],
+            "whole_forecast_identity": false,
+            "wrf_version": "4.6.1"
+          },
+          "moist_species": [
+            "qv",
+            "qc",
+            "qr",
+            "qs"
+          ],
+          "restart_fields": [
+            "mp_restart_state",
+            "tbpvs_state",
+            "tbpvs0_state"
+          ],
+          "scalar_species": [
+            "qt"
+          ],
+          "table": {
+            "filename": "ETAMPNEW_DATA.expanded_rain",
+            "sha256": "28e60e6c83eb55889c4ab65eaa33e9fc3b557e5ab45c3dde7ee7153c2ef95a13"
+          },
+          "table_variants": {
+            "expanded_rain": {
+              "filename": "ETAMPNEW_DATA.expanded_rain",
+              "rain_diameter_bounds_um": [
+                50,
+                1000
+              ],
+              "seed_filename": "ETAMPNEW_DATA.expanded_rain.f32le",
+              "seed_sha256": "658644591b89f602995b4a7407cda721f8786f3fa7c4d199bcec313a2e6c329c",
+              "sha256": "28e60e6c83eb55889c4ab65eaa33e9fc3b557e5ab45c3dde7ee7153c2ef95a13"
+            },
+            "original_rain": {
+              "filename": "ETAMPNEW_DATA",
+              "rain_diameter_bounds_um": [
+                50,
+                450
+              ],
+              "seed_filename": "ETAMPNEW_DATA.f32le",
+              "seed_sha256": "abeb1c8339cc8525c7bb9a496a9bd639111ab3041c6943b3a9ea36c2fa9876ec",
+              "sha256": "a913785f0bf5f75f8428ede706ce67ae804c3b285b4a34aeb533c4ad5cd9bea2"
+            }
+          },
+          "wrf_package": "etampnew"
+        },
+        "implemented": true,
+        "label": "Eta Ferrier / MP95",
+        "maturity": "implemented-unverified",
+        "parameters": {
+          "moist": true,
+          "moist_cq": true
+        },
+        "reachability": {
+          "state": "component-override"
+        },
+        "scientific_evidence": "none",
+        "selectors": {
+          "mp_physics": 95
+        },
+        "verification_scope": "column-oracles-and-restart",
+        "warnings": []
+      },
+      "p3-mp52": {
+        "asset_requirements": [
+          {
+            "assets": [
+              {
+                "bytes": 1637040,
+                "filename": "p3_lookupTable_1.dat-v5.4_2momI",
+                "sha256": "5cb47f2ad15b726abeacac21b5877c737178526051661473a465315348867c2f"
+              }
+            ],
+            "id": "wrf-v4.6.1-p3-lookuptable1-2momi-v1",
+            "installed_root": "gpuwm/data/p3/tables",
+            "kind": "bundled-package-data",
+            "note": "p3_init reads table 1 (module_mp_p3.F:337-410); the SHA-256 validator refuses missing or modified assets. Table 2 is packaged separately for MP52 ice-ice collection. The MP53 three-moment table and implementation remain unavailable.",
+            "redistributed_by_gpuwm": true,
+            "resolution": {
+              "data_relative": "p3/tables",
+              "root_environment_override": "GPUWM_P3_TABLE_ROOT"
+            },
+            "root_environment_override": "GPUWM_P3_TABLE_ROOT",
+            "source": "WRF v4.6.1 (git tag v4.6.1, commit d66e442fccc04111067e29274c9f9eaccc3cef28), file run/p3_lookupTable_1.dat-v5.4_2momI"
+          },
+          {
+            "assets": [
+              {
+                "bytes": 15250032,
+                "filename": "p3_lookupTable_2.dat-v5.3",
+                "sha256": "c9103041ead719cf9e2e215cf846e0ef81b2004f29386156444a079af6b24d97"
+              }
+            ],
+            "id": "wrf-v4.6.1-p3-lookuptable2-v5.3-v1",
+            "installed_root": "gpuwm/data/p3/tables",
+            "kind": "bundled-package-data",
+            "note": "p3_init reads table 2 for ice-ice collection when nCat > 1 (module_mp_p3.F:474-519)",
+            "redistributed_by_gpuwm": true,
+            "resolution": {
+              "data_relative": "p3/tables",
+              "root_environment_override": "GPUWM_P3_TABLE_ROOT"
+            },
+            "root_environment_override": "GPUWM_P3_TABLE_ROOT",
+            "source": "WRF v4.6.1 run/p3_lookupTable_2.dat-v5.3"
+          }
+        ],
+        "compatible_previous_forbidden_settings": [
+          {
+            "mp28_aerosol_source": [
+              "climatology",
+              "synthetic"
+            ]
+          }
+        ],
+        "constraints": {
+          "forbidden_setting_values": {
+            "mp28_aerosol_source": [
+              "climatology",
+              "synthetic",
+              "analysis"
+            ],
+            "use_rap_aero_icbc": [
+              true
+            ]
+          },
+          "required_settings": {
+            "moist": true
+          },
+          "required_settings_reasons": {
+            "moist": "a dry state allocates no water vapour or hydrometeor fields, so the scheme would have nothing to integrate"
+          }
+        },
+        "consumers": {
+          "cloud_optics": {
+            "legacy_declares_radii": true,
+            "rte_rrtmgp_coupling": "p3",
+            "rte_rrtmgp_refusal": null
+          },
+          "lateral_forcing_dataset": null,
+          "moments": {
+            "mass_only": [
+              "qv"
+            ],
+            "name": "P3 two-category",
+            "pairs": [
+              {
+                "mass": "qc",
+                "number": "nc",
+                "species": "cloud"
+              },
+              {
+                "mass": "qr",
+                "number": "nr",
+                "species": "rain"
+              },
+              {
+                "mass": "qi",
+                "number": "ni",
+                "species": "ice"
+              },
+              {
+                "mass": "qi2",
+                "number": "ni2",
+                "species": "ice2"
+              }
+            ],
+            "q_threshold": 1e-14,
+            "repair_authority": null,
+            "unpaired": [
+              "qir",
+              "qib",
+              "qir2",
+              "qib2"
+            ]
+          },
+          "nest_transition": {
+            "mass_fields": null,
+            "mixed_edge_ported": false,
+            "moment_fields": null,
+            "refusal": "MP52 (P3 two-category) is ported and runs, but it has no validated cross-scheme entry closure for its moments (nc, ni, qir, qib, ni2, qir2, qib2); the reason is recorded at gpuwm.core.microphysics_transition._UNVALIDATED_MIXED_EDGE_REASONS[52]"
+          },
+          "offline_child": {
+            "refusal": "the offline-child route has no verified two-category parent completeness and partition contract",
+            "same_scheme": false
+          },
+          "radar_da": {
+            "clear_air_floor_dbz": -36.98970031738281,
+            "clear_air_floor_reason": null,
+            "clear_air_floor_status": "one-number",
+            "reflectivity_route": "scheme-diagnostic",
+            "reflectivity_route_reason": "gpuwm.core.p3_device.reflectivity (the Z half of the scheme's own final diagnostics, replayed on local copies in gpuwm/core/kernels/p3_zdiag.cu because the forecast loop also updates the state; that file carries the WRF citation)"
+          },
+          "reflectivity_input_species": null,
+          "reflectivity_native_reason": "the scheme produces REFL_10CM itself; recorded at gpuwm.core.refl.SCHEME_NATIVE_REFL_10CM[52]",
+          "restart_algorithm_identity": "p3-two-category-wrf-v4.6.1-v1-prognostic-nc-iceice-merge-table2-v5.3",
+          "ring_guard": {
+            "state_fields": [
+              "thp",
+              "qv",
+              "qc",
+              "qr",
+              "qi",
+              "qir",
+              "qib",
+              "ni",
+              "nr",
+              "th_old",
+              "qv_old",
+              "effc",
+              "effi",
+              "nc",
+              "qi2",
+              "ni2",
+              "qir2",
+              "qib2"
+            ],
+            "surface_slots": [
+              "mp_rainnc",
+              "mp_rainncv",
+              "mp_snownc",
+              "mp_snowncv",
+              "mp_sr"
+            ]
+          },
+          "stock_wrf_export": {
+            "inventoried": true,
+            "reason": null,
+            "registry_package": "p3_2category",
+            "runtime_state_not_wrfinput": [
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "RE_CLOUD",
+                "registry_name": "re_cloud"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "RE_ICE",
+                "registry_name": "re_ice"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "v_ice",
+                "registry_name": "vmi3d"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "d_ice",
+                "registry_name": "di3d"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "v_ice2",
+                "registry_name": "vmi3d_2"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "d_ice2",
+                "registry_name": "di3d_2"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "rho_ice2",
+                "registry_name": "rhopo3d_2"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "rho_ice",
+                "registry_name": "rhopo3d"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "refl_10cm",
+                "registry_name": "refl_10cm"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "TH_OLD",
+                "registry_name": "th_old"
+              },
+              {
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "wrf_runtime",
+                "netcdf_name": "QV_OLD",
+                "registry_name": "qv_old"
+              }
+            ],
+            "scheme": "P3 two-category two-moment ice",
+            "wrfinput_fields": [
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "source_specific_humidity",
+                "netcdf_name": "QVAPOR",
+                "registry_name": "qv",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QCLOUD",
+                "registry_name": "qc",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QRAIN",
+                "registry_name": "qr",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QICE",
+                "registry_name": "qi",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "moist",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QICE2",
+                "registry_name": "qi2",
+                "state_name": null,
+                "units": "kg kg-1"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QNCLOUD",
+                "registry_name": "qnc",
+                "state_name": "nc",
+                "units": "  kg(-1)"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QNICE2",
+                "registry_name": "qni2",
+                "state_name": "ni2",
+                "units": "  kg-1"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QIR2",
+                "registry_name": "qir2",
+                "state_name": null,
+                "units": "kg kg(-1)"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QIB2",
+                "registry_name": "qib2",
+                "state_name": null,
+                "units": "m(3) kg(-1)"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QNICE",
+                "registry_name": "qni",
+                "state_name": "ni",
+                "units": "  kg-1"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QNRAIN",
+                "registry_name": "qnr",
+                "state_name": "nr",
+                "units": "  kg(-1)"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QIR",
+                "registry_name": "qir",
+                "state_name": null,
+                "units": "kg kg(-1)"
+              },
+              {
+                "collection": "scalar",
+                "dimensions": [
+                  "Time",
+                  "bottom_top",
+                  "south_north",
+                  "west_east"
+                ],
+                "dtype": "float32",
+                "initialization": "zero_if_source_absent",
+                "netcdf_name": "QIB",
+                "registry_name": "qib",
+                "state_name": null,
+                "units": "m(3) kg(-1)"
+              }
+            ]
+          },
+          "vertical_level_bounds": {
+            "contract_constant": "P3_VERTICAL_LEVEL_BOUNDS",
+            "label": "P3 microphysics",
+            "maximum": null,
+            "minimum": 1
+          }
+        },
+        "extensions": {
+          "execution_model": "shared P3 CUDA category templates; CPU reference is one-category only",
+          "fixed_mode": "two free ice categories, two-moment ice, prognostic droplet number, SCPF off",
+          "qualification": {
+            "date": "2026-11-01",
+            "forecast_hours": 3,
+            "oracle_scope": "tools/p3_wrf461_oracle/README.md#candidate-qualification-2026-11-01",
+            "replay_differing_words": 0,
+            "replay_words": 1456320,
+            "same_scheme_nest_feedback": [
+              0,
+              1
+            ]
+          }
+        },
+        "implemented": true,
+        "label": "P3 two-category / MP52",
+        "maturity": "implemented-unverified",
+        "parameters": {
+          "moist": true
+        },
+        "reachability": {
+          "state": "component-override"
+        },
+        "scientific_evidence": "none",
+        "selectors": {
+          "mp_physics": 52
+        },
+        "warnings": [
+          "Strict replay of 16 real native WRF captures: 1,456,320 words, zero differences. A three-hour real forecast was inspected beside native WRF and MRMS; both models underpredict the observed convection. No observation skill is claimed. Two-category GPU stage time is 1.448x MP50 on RTX 5090; the second ice population adds process, sedimentation and diagnostic work. Mixed-scheme nest edges and offline-parent ingestion retain named category-partition refusals."
+        ]
       }
     },
     "cumulus": {
+      "gfs-sas": {
+        "asset_requirements": [],
+        "constraints": {
+          "required_settings": {
+            "moist": true
+          },
+          "required_settings_reasons": {
+            "moist": "the cumulus schemes are moist convective schemes; gpuwm/core/physics.py initialize_physics refuses a cumulus scheme on a dry DomainState, whose qv is None"
+          },
+          "requires_components": {}
+        },
+        "extensions": {
+          "arw_shallow_branch": {
+            "shalconv": 1,
+            "source": "module_cu_sas.F:233-245 (shalconv_use = 1 under EM_CORE) and :424-447 (OLD_ARW_SHALCV); module_cumulus_driver.F:1154 forwards an optional shalconv; an absent argument retains the ARW default. The WOOF shalconv key is an explicit ARW extension."
+          }
+        },
+        "implemented": true,
+        "label": "GFS SAS",
+        "maturity": "implemented-unverified",
+        "parameters": {
+          "cudt_minutes": 0.0,
+          "sas_pgcon": 0.55,
+          "shalconv": 1
+        },
+        "scientific_evidence": "none",
+        "selectors": {
+          "cu_physics": 94
+        },
+        "warnings": [
+          "The strict CUDA column matches 102400 float32 output words from 512 real native WRF v4.7.1 columns at 49 levels, including 18 raining columns, with zero differing words and a detected 512-word output mutation. Synthetic deep, shallow, driver and funcphys-table fixtures remain checked (tests/test_sas.py; gpuwm.verify.sas_oracle; tools/sas_wrf471_capture). Source files are identical to the v4.6.1 pin. A three-hour fast woof go forecast completed 720 steps; native forecast and observation comparison are recorded in the port evidence. This is implementation evidence, not an observation-based skill qualification.",
+          "pert_sas is accepted and recorded as ignored, matching native ARW: its only random-trigger consumer is compiled under HWRF==1 (module_cu_sas.F:3063-3069). No HWRF random-number routine is shipped.",
+          "use_adaptive_time_step is refused with SAS, as WRF refuses it (module_cumulus_driver.F:1131-1135)."
+        ]
+      },
       "new-sas": {
         "asset_requirements": [],
         "constraints": {
@@ -315,6 +1201,241 @@
           "Deep cloud-search limits are reduced over the complete i-row as in module_cu_nsas.F:619-631. Workspace tiling does not split that reduction. Missing QC or QI tendencies follow WRF presence flags.",
           "PRATEC is held between calls and RAINC grows by PRATEC*DT every model-clock step. Adaptive stepping requires cudt=0, as WRF requires of SAS schemes.",
           "shcu_physics=4 is refused beside cu_physics=96 because NSAS already includes NSCV and the pairing would convect the same boundary layer twice."
+        ]
+      }
+    },
+    "radiation": {
+      "wrf-cam3": {
+        "asset_requirements": [
+          {
+            "assets": [
+              {
+                "filename": "CAM_ABS_DATA",
+                "sha256": "91ee3079e43a6d908256fe3d1bd4bc5f3ac5662d2a8a1ed6ac9685be0555ad87",
+                "size_bytes": 20580056
+              },
+              {
+                "filename": "CAM_AEROPT_DATA",
+                "sha256": "9782ca59f2ebd12128e23f775e74665d7eb3dc386f53aaa053adfd926a388049",
+                "size_bytes": 18208
+              },
+              {
+                "filename": "CAMtr_volume_mixing_ratio",
+                "sha256": "9a427fd106f8e36b30e0b29266bff1398b025b82af5b878e5a7a8e9dfe268ca7",
+                "size_bytes": 42780,
+                "source_filename": "CAMtr_volume_mixing_ratio.SSP245"
+              },
+              {
+                "filename": "ozone_plev.formatted",
+                "sha256": "df26a938273b22d2d04ec52b7297827a316cac0061fab020519241cdc0e61d48",
+                "size_bytes": 708,
+                "source_filename": "ozone_plev.formatted"
+              },
+              {
+                "filename": "ozone_lat.formatted",
+                "sha256": "761597f3454b99e3dbf15d2621b1ede88269948e96e47f4695b79fabd3cc6348",
+                "size_bytes": 536,
+                "source_filename": "ozone_lat.formatted"
+              },
+              {
+                "filename": "ozone.formatted",
+                "sha256": "2a13ee25809672e0419e40062c1fc753580adbf604bfc67a9166ef77c815dbc0",
+                "size_bytes": 543744,
+                "source_filename": "ozone.formatted"
+              }
+            ],
+            "id": "wrf-cam3-tables-v1",
+            "installed_root": "gpuwm/data/cam3",
+            "kind": "externalized-physics-tables",
+            "resolution": {
+              "data_relative": "cam3",
+              "root_environment_override": "GPUWM_CAM_TABLE_ROOT",
+              "staged_root": "~/.gpuwm/tables/cam3"
+            }
+          }
+        ],
+        "constraints": {
+          "required_settings": {
+            "o3input": 2,
+            "ra_physics": 0
+          }
+        },
+        "consumers": {
+          "restart_algorithm_identity": {
+            "longwave": "wrf-v4.6.1-cam3-v1",
+            "longwave_above_atmosphere_policy": "wrf-v4.6.1-cam-model-column",
+            "resolved_pair": [
+              3,
+              3
+            ],
+            "shortwave": "wrf-v4.6.1-cam3-v1",
+            "shortwave_above_atmosphere_policy": "wrf-v4.6.1-cam-model-column"
+          },
+          "stock_callable_class": "gpuwm.core.cam3.Cam3Radiation"
+        },
+        "extensions": {
+          "forecast_cost": {
+            "native_work_profile": "docs/evidence/retime-20261102/cam-native-work-clock-profile.json",
+            "receipt": "docs/evidence/retime-20261102/cam-summary.json",
+            "scope": "three-hour real forecast, same card and commit, AB/BA whole steps",
+            "selection_policy": "explicit-selection-only; never a default",
+            "stage_ratio_to_legacy_rrtmg": 1.8193152090675295
+          },
+          "proof_receipt": "docs/cam3-port-proof.json"
+        },
+        "implemented": true,
+        "label": "WRF CAM3 longwave and shortwave",
+        "maturity": "implemented-unverified",
+        "parameters": {
+          "cam_abs_freq_s": 21600.0,
+          "ghg_input": 1,
+          "ra_physics": 0,
+          "wrf_rrtmg_compatibility": "none"
+        },
+        "reachability": {
+          "state": "template"
+        },
+        "runtime_factory": "gpuwm.core.cam3.Cam3Radiation",
+        "scientific_evidence": "none",
+        "selectors": {
+          "ra_lw_physics": 3,
+          "ra_sw_physics": 3
+        },
+        "verification_scope": "real-input-module-replay-and-real-forecast",
+        "verification_scope_note": "WRF v4.6.1 strict GPU replay of 96 columns captured during the 2000-01-24 12-15 UTC native forecast checks 145440 returned words: 142368 defined words are bitwise equal and 3072 cloud optical-depth words are a witnessed native-undefined residue in LW-only calls. Rust initialization matches 21962220 state bytes and 480 gas words. The complete fast-numerics woof go forecast has Rust maps at 13, 14 and 15 UTC beside native WRF and surface observations; exact real checkpoint continuation and GPU nest/member checks are recorded in docs/cam3-port-proof.json. At 4096 columns x 32 layers, refresh/reuse take 121.57/36.07 ms versus legacy RRTMG 11.95 ms. The 1.2x target is exceeded: native binary64 layer-pair absorption and aerosol work are retained; compiler frame and column-parallelism bottlenecks were fixed. This is a one-case comparison, not a general skill or whole-trajectory bitwise claim.",
+        "warnings": [
+          "Plan and run door agreement is awaiting the release admission fix; do not treat the current composition as qualified.",
+          "Explicit selection only; never a default. Matched CAM/legacy-RRTMG whole forecasts cost 1.008509x in active wall time, 1.225603x in warm model-step time and 1.819315x in the radiation stage. Native maximum/random cloud-overlap shortwave work accounts for 57.9% of sampled inclusive CAM cycles. Fast column physics uses REAL32; this native work, not a binary64 port path, is the named opt-in cost. These profiles are attribution, not lower bounds."
+        ]
+      },
+      "wrf-gfdleta": {
+        "asset_requirements": [
+          {
+            "assets": [
+              {
+                "filename": "MANIFEST.json"
+              },
+              {
+                "bytes": 427844,
+                "filename": "co2-raw.npy"
+              },
+              {
+                "bytes": 47920,
+                "filename": "co2-trans-42.npy"
+              },
+              {
+                "bytes": 48000,
+                "filename": "co2_trans"
+              },
+              {
+                "bytes": 4340,
+                "filename": "ozone-coefficients.npy"
+              },
+              {
+                "bytes": 5213,
+                "filename": "ozone-coefficients.txt"
+              },
+              {
+                "bytes": 3548,
+                "filename": "table-coefficients.npy"
+              },
+              {
+                "bytes": 10675,
+                "filename": "table-coefficients.txt"
+              },
+              {
+                "bytes": 748503,
+                "filename": "tr49t67"
+              },
+              {
+                "bytes": 748503,
+                "filename": "tr49t85"
+              },
+              {
+                "bytes": 748503,
+                "filename": "tr67t85"
+              }
+            ],
+            "id": "wrf461-gfdleta-tables",
+            "installed_root": "gpuwm/data/gfdleta",
+            "kind": "bundled-package-data",
+            "resolution": {
+              "data_relative": "gfdleta",
+              "exclusive_root_environment_override": true,
+              "root_environment_override": "GPUWM_TABLE_ROOT",
+              "root_environment_subdirectory": "gfdleta"
+            }
+          }
+        ],
+        "constraints": {
+          "required_settings": {
+            "ra_physics": 0
+          }
+        },
+        "consumers": {
+          "restart_algorithm_identity": {
+            "longwave": "wrf-v4.6.1-gfdleta-lw-v1",
+            "longwave_above_atmosphere_policy": "wrf-v4.6.1-gfdl-model-column",
+            "resolved_pair": [
+              99,
+              99
+            ],
+            "shortwave": "wrf-v4.6.1-gfdleta-sw-v1",
+            "shortwave_above_atmosphere_policy": "wrf-v4.6.1-gfdl-model-column"
+          },
+          "stock_callable_class": "gpuwm.core.gfdleta.GFDLEtaRadiation"
+        },
+        "extensions": {},
+        "implementation_evidence": {
+          "differing_words": 0,
+          "evidence_report": "WRF-PORTS-2026-11-01/port-ra99-gfdl.md",
+          "forecast": {
+            "entry": "woof go --wrfinput",
+            "grid": [
+              300,
+              300,
+              49
+            ],
+            "hours": 3,
+            "initial_time": "2026-10-16_09:00:00"
+          },
+          "initialized_table_words": 123192,
+          "input_kind": "native WRF ETARA captures, night and daylight",
+          "lifecycle": [
+            "checkpoint continuation",
+            "two members",
+            "both nest feedback modes",
+            "live relocation with idealized land statics"
+          ],
+          "native_calls": 4,
+          "native_output_words": 38656,
+          "production_pooled_output_words": 19264,
+          "source": "tools/gfdleta_wrf461_oracle",
+          "strict": true
+        },
+        "implemented": true,
+        "label": "WRF GFDL Eta longwave and shortwave",
+        "maturity": "experimental-runtime",
+        "pairing_policy": {
+          "independent_spectra": true,
+          "init_once_when_both_selected": true,
+          "wrf_source": "module_physics_init.F:2303,2420"
+        },
+        "parameters": {
+          "co2tf": 1,
+          "ra_physics": 0,
+          "wrf_rrtmg_compatibility": "none"
+        },
+        "reachability": {
+          "state": "component-override"
+        },
+        "scientific_evidence": "none",
+        "selectors": {
+          "ra_lw_physics": 99,
+          "ra_sw_physics": 99
+        },
+        "warnings": [
+          "The packaged co2tf=0 CONRAD table has 42 layers and requires its matching vertical grid; co2tf=1 computes transmission for the selected grid. Native ozone tables allow at most 81 layers. Strict replay matches captured native words; default hardware math differs. One three-hour real forecast and idealized nest lifecycle checks do not establish general forecast skill. The inherited WK82 relocation verifier refuses its open parent on the unchanged candidate before moving; that independent check remains open."
         ]
       }
     }

@@ -86,7 +86,10 @@ if kind == 'git':
                  'tools/nextgen_forcing', 'tools/nextgen_verify', 'tools/hydro_world',
                  'tools/hydro_world_params', 'tools/nextgen_reservoir_prepare',
                  'tools/hydro_world_init', 'tools/ocean_prepare',
-                 'tools/rw-bathy', 'tools/wind-table', 'tools/nextgen_output', 'tools/rw_icechunk'):
+                 'tools/rw-bathy', 'tools/wind-table', 'tools/nextgen_output', 'tools/rw_icechunk',
+                 'tools/cam_tables', 'tools/waves_data', 'tools/dfi-runtime', 'tools/tslist_bridge',
+                 'tools/aerosol_grid', 'tools/storm_merge', 'tools/tc_vitals', 'tools/tc_frames_io',
+                 'tools/tc-verify'):
         (checkout / name).mkdir(parents=True, exist_ok=True)
         if name.startswith('tools/'):
             # The real manifests: the installers read their rust-version.
@@ -222,7 +225,9 @@ elif kind == 'cargo':
                          # labs/windfarm (2.9.11): rw-wind-table, the same loop.
                          'wind-table',
                          # librw_nextgen_output (coupled hydro output), same loop.
-                         'nextgen_output')
+                         'nextgen_output', 'cam_tables', 'waves_data', 'dfi-runtime', 'tslist_bridge',
+                         # 3.0: public aerosol preparation and the TC tools, same loop.
+                         'aerosol_grid', 'storm_merge', 'tc_vitals', 'tc_frames_io', 'tc-verify')
     if args == ['fetch', '--locked']:
         assert hydro, cwd
         (cwd / '.dependencies-fetched').touch()
@@ -461,7 +466,7 @@ def test_clean_clone_installs_matching_companion_then_engine_and_builds_the_work
     assert installs == [
         ['-m', 'pip', 'install', '--upgrade', 'pip'],
         ['-m', 'pip', 'list', '--format=freeze', '--disable-pip-version-check'],
-        ['-m', 'pip', 'install', '-e', 'recast-woof-data'],
+        ['-m', 'pip', 'install', '-e', 'recast-woof-data', '-e', 'gpuwm-kernels', '-e', 'gpuwm-kernels-startup'],
         ['-m', 'pip', 'install', '-e', '.[gpu-cu13,render]'],
     ]
     built = [Path(row['cwd']).name for row in rows
@@ -469,7 +474,9 @@ def test_clean_clone_installs_matching_companion_then_engine_and_builds_the_work
     assert built == ['grib1_bridge', *([] if no_render else ['rustwx']), 'zarr_bridge',
                      'rw_icechunk', 'rw_wps', 'region_global_dealias', 'nextgen_hydrofabric',
                      'nextgen_forcing', 'nextgen_verify', 'hydro_world', 'hydro_world_params', 'nextgen_reservoir_prepare', 'hydro_world_init',
-                     'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output']
+                     'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output',
+                     'cam_tables', 'waves_data', 'dfi-runtime', 'tslist_bridge',
+                     'aerosol_grid', 'storm_merge', 'tc_vitals', 'tc_frames_io', 'tc-verify']
     # A workspace the bundle roster builds from and the installer skips leaves
     # doctor reporting its default route MISSING on every source install.
     assert _required_workspaces(no_render) <= set(built)
@@ -1016,7 +1023,7 @@ def _declared_minimum():
 def test_each_workspace_declares_the_rust_its_own_packages_require():
     """tools/rustwx declared rust-version 1.85 while its rw-simradar member
     and the vendored radar writers declared 1.94, so the field the
-    installers read named a toolchain cargo then refused (a development machine, default
+    installers read named a toolchain cargo then refused (test host 1, default
     Rust 1.93.1, 2026-10-10).  A workspace that declares a rust-version
     declares at least every package inside it, and the newest top-level
     declaration is the newest cargo enforces anywhere in the roster."""

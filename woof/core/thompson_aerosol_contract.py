@@ -274,14 +274,12 @@ def packaged_aerosol_table_root() -> Path:
 
 def resolve_aerosol_table_root(root: str | Path | None = None, *,
                                env: Mapping[str, str] | None = None) -> Path:
-    """Explicit argument, then ``WOOF_THOMPSON_TABLE_ROOT``, then packaged."""
+    """Explicit argument, then the shared classic and aerosol table resolver."""
     if root is not None:
         return Path(root)
-    environ = os.environ if env is None else env
-    override = environ.get(AEROSOL_TABLE_ROOT_ENV)
-    if override:
-        return Path(override)
-    return packaged_aerosol_table_root()
+    from woof.physics_compat import thompson_table_root
+
+    return Path(thompson_table_root(env=env))
 
 
 def _missing_asset_message(candidates: tuple[Path, ...]) -> str:

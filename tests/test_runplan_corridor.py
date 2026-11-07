@@ -224,7 +224,7 @@ def test_a_still_nest_emits_exactly_what_it_always_did(
     """
     # The two arms are two separate drives, so each allocates its own
     # run stamp off the wall clock.  Left to the clock, this row failed
-    # whenever the pair straddled a second -- observed on a development machine as
+    # whenever the pair straddled a second -- observed on test host 1 as
     # run-20260818-185602Z against run-20260818-185603Z on the authority
     # stage -- which is a red that says nothing about corridors.  The
     # boundary is FORCED here rather than avoided, so the masking below

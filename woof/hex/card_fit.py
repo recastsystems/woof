@@ -131,7 +131,7 @@ def shipped_observations() -> list[dict[str, Any]]:
                             "card-fit-observations.v1.json").read_text())["observations"])
 
 
-#: THE BREAKAGE CARD CAPACITY PREVENTS (hex 0.4.10 review, V8X6000 2026-10-29): a run's peak is the memory its
+#: THE BREAKAGE CARD CAPACITY PREVENTS (hex 0.4.10 review, eight-card system 2026-10-29): a run's peak is the memory its
 #: processes held, and a hex process holds more on a card with room to spare: device_memory_release keeps idle pool
 #: sets while 15 % of the card is free, and several schemes size their tiles from the free memory (RRTMG, MYNN, GF).
 #: The 2-card aerosol r700 row (30,813 MiB, measured on 96 GB cards) priced 2 x RTX 5090 at 33,894 MiB per card and
@@ -319,7 +319,7 @@ def profile_excess(observations: Sequence[Mapping[str, Any]], *, route: str, sui
 
     Only like for like where it can be: a profile run is set against plain runs measured with the same card memory
     (``row_capacity_mib``), since a roomy card's peak carries kept idle pool sets and free-sized tiles a tight card's
-    does not (V8X6000 2026-10-29: 96 GB aerosol rows against 32 GB plain rows read 1.18x).  With no such pair, the
+    does not (eight-card system 2026-10-29: 96 GB aerosol rows against 32 GB plain rows read 1.18x).  With no such pair, the
     ratios across card sizes, labelled."""
     from . import device_admission as admission
 
@@ -352,7 +352,7 @@ def profile_excess(observations: Sequence[Mapping[str, Any]], *, route: str, sui
     return worst
 
 
-#: THE BREAKAGE THE RUNTIME KEYS PREVENT (hex 0.4.10 review, V8X6000 2026-10-29): the runtime took only the one-card
+#: THE BREAKAGE THE RUNTIME KEYS PREVENT (hex 0.4.10 review, eight-card system 2026-10-29): the runtime took only the one-card
 #: rows of global-runs' measured_seconds_per_forecast_hour, all ArWen-route x1 globes at the YSU arms' 300 s step, for
 #: every route and card count.  The r700 96 -> 3 km zoom globe on 2 RTX PRO 6000s (MPAS route, the 0.4.10 default) was
 #: priced 626.66 s for 1 h against 173.4 s measured (+261 %), and 2 and 4 cards both printed 7,517 s for 12 h.  A rate
@@ -489,7 +489,9 @@ def predict(cells: float, *, card: Mapping[str, Any], levels: int,
     count = math.ceil(cells)
     columns = math.ceil(count / cards)
     card_profile = admission.KNOWN_CARDS[str(card["admission_card"])]
-    model = admission.model_for_card(card_profile, configuration="global", levels=int(levels))
+    model = admission.model_for_run(card_profile, configuration="global", levels=int(levels),
+                                    route=route, suite=suite, cells=columns) if cards == 1 and profile is None else admission.model_for_card(
+                                        card_profile, configuration="global", levels=int(levels))
     if cards > 1:
         model = admission.samehost_rank_model(model, ranks=cards)
     base_peak = model.predict_bytes(columns) / admission.MIB
@@ -522,7 +524,10 @@ def predict(cells: float, *, card: Mapping[str, Any], levels: int,
             found = route_floor(observations, columns, cards=cards, other_suites=True, **where)
         return found
 
-    curve = physics_curve(None)
+    from .compact_memory import CompactFootprintModel
+    # Earlier rows measured a different allocator policy. Applying their
+    # peaks over this qualified whole-run model would undo its correction.
+    curve = None if isinstance(model, CompactFootprintModel) else physics_curve(None)
     if profile is not None and route != "arwen":
         # A profile only adds fields to its suite (aerosol Thompson: nc/nifa/nwfa and its workspace), so it is never
         # priced under the plain suite; with runs of its own it is priced from them where they are higher.
@@ -586,7 +591,7 @@ def by_card_count(cells: float, **kwargs: Any) -> dict[str, Any]:
 def comparison(prediction: Mapping[str, Any], measured: Mapping[str, Any]) -> dict[str, Any]:
     """A per-card prediction against the stage's largest card.
 
-    THE BREAKAGE IT PREVENTS (hex 0.4.10 review, V8X6000 2026-10-29): the stage's peak is summed over every card its
+    THE BREAKAGE IT PREVENTS (hex 0.4.10 review, eight-card system 2026-10-29): the stage's peak is summed over every card its
     processes hold, so a 2-card run's receipt compared a 28,722 MiB per-card prediction with 60,722 MiB (both cards)
     and said the plan was 52.7 % under.  The error is taken against the largest card (``peak_card_vram_mib``), the
     stage total kept beside it."""
@@ -629,7 +634,7 @@ def _gpu_memory_by_card(pids: set[int]) -> dict[str, float] | None:
     """MiB the processes ``pids`` hold on each card (by GPU UUID), or None when they hold none or nothing answers."""
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,used_memory", "--format=csv,noheader,nounits"],
+            [*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-compute-apps=gpu_uuid,pid,used_memory", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=5, check=False)
         if result.returncode:
             return None

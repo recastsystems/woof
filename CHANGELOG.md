@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.1.6 (2026-11-05)
+
+WOOF 1.1.6 takes engine 2.9.12 and the hex model 0.4.12. Forecast answers change.
+
+New:
+
+- More WRF 4.7.1 options, each opt-in: cumulus schemes (BMJ, multi-scale
+  Kain-Fritsch, old SAS), the CAM5 suite, more microphysics, boundary-layer,
+  surface-layer, land and dynamics options.
+- Starts from RRFS v1, and from ECCC HRDPS and RDPS, on regional runs and hex.
+- Opt-in hurricane line: HAFS starts, storm merge, cyclone surface exchange
+  and storm-following nests and regions.
+- Opt-in ocean waves coupled to the forecast, with wave maps.
+- SPPT and SKEB stochastic physics, written from the published method (opt-in).
+- 0-1, 0-2 and 0-3 km updraft helicity maxima in history and on maps.
+- An ensemble maximum map beside the mean, spread, probability and paintball maps.
+- A 10 km hex global mesh, and storm-following hex regions on several cards.
+
+Changed:
+
+- Map drawing, comparison sheets and ensemble maps use every core and read
+  only the fields they draw.
+- hrrrv5 runs faster on hex and on the regional model, and hex uses less
+  device memory (a 120 km MPAS-physics globe from 10.44 to 5.49 GiB).
+
+Fixed:
+
+- Four-card MPAS-physics hex runs start, and 1 km hex runs split across
+  cards no longer stop at random.
+- Resumed forecasts keep the HAILCAST stone model and their maps' start time.
+- Runs that write checkpoints no longer write zeros for boundary-layer
+  height, surface heat fluxes and reflectivity in their first frame.
+- Reflectivity maps include the rain from active cumulus schemes.
+- `--dynamics KEY=VALUE` reaches hex runs on the MPAS-physics route.
+- A crashed start no longer blocks the next start.
+
 ## 1.1.5 (2026-10-31)
 
 WOOF 1.1.5 stays on engine 2.9.11 and the hex model 0.4.11. Forecast answers do not change.

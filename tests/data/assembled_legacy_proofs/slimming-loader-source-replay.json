@@ -1,20 +1,20 @@
 {
   "schema": "measured-slimming-loader-source-replay-v1",
-  "base": "a1d20edc5115f9e42d898a9884bfcbbc2130e80d",
-  "tip": "5428796cb07a5ae063b25a06baa4e4db1867a677",
+  "base": "93a5e7e3162c869ba6ce23cbb096ac0b40a9d04b",
+  "tip": "d67185fb551b20583d3eb2a586a532cbb8e11bbe",
   "source": "woof/core/kernels/__init__.py",
   "before": {
-    "bytes": 56292,
-    "sha256": "3d93f181b37c00897e5d2d91ec0bcd8591de499d820a90dca7003599dc54b2f4"
+    "bytes": 87765,
+    "sha256": "fe91bb0c1657f5cc53d91ce6378911481d6ca919b47a96a1af37fab2a6d1da78"
   },
   "after": {
-    "bytes": 56255,
-    "sha256": "9db2f8d40bbad8fde2d4707051842f3ae94ebcee0b79153d04c1d1c2891a5183"
+    "bytes": 93921,
+    "sha256": "ba29e1bfbb473f654a32181c399ba13f689e359271a2d59350b61acb29629024"
   },
   "generator": "tools/assembled_legacy_replay.py",
   "generator_sha256": "b53ef8e66b860b442b18e2a587419fd119f9518aa1d6300b425d4b4fb8fc6788",
   "recorder": "tools/battery/loader_source_receipt.py",
-  "recorder_sha256": "63efcf38d8c240c210534cb45e2e8a70901331abc702d988143e256989d82421",
+  "recorder_sha256": "e3f03afcce18d87bafd2ab5f22d88df9673e6214ebddf3840a1d53fefcebefa1",
   "numerics": "strict",
   "measurements": {
     "coordinate": {
@@ -40,22 +40,27 @@
     }
   },
   "artifacts": {
-    "base-coordinate/source-audit.json": "1a135a97cda0ec31a922d475b3ff06f6227a11c01a5df286b8093f256b3a86ef",
-    "base-coordinate/direct-native-proof.json": "1eeef9377ee6f6c7e3d5afb3a348b15f0728f1dbcad5b3ae1a2ec2cb155071fd",
-    "tip-coordinate/source-audit.json": "1eca20838541dd9b95de2536ce826c8dd99a297d5d2c8b70fa364acd0a6d1b36",
-    "tip-coordinate/direct-native-proof.json": "0ddfb5b2219086be74c0429ae9f3c375d36c030a505df841c9269c5a1fcca9dc",
-    "base-drivers/source-audit.json": "17f4d678b08565aa6d4cb6240059381ebc8bcd155b98f34892bda7af126b5508",
-    "base-drivers/horizontal-driver.json": "8ff6239a15366c2794e0442e243958c103eb8084a90603c28ea22a5374e9936b",
-    "base-drivers/vertical-driver.json": "fd8e38c84b3e2153e0f41d4d8e4f7d817664fd2b78b608aa5156a9d54081c936",
-    "base-drivers/km-mutations.json": "b586de7aad2a6bc7736e35e4bdb73b8cdfe0d39a70f37c037467abf30337cdd6",
-    "tip-drivers/source-audit.json": "e2638e69f488f0c0f94a23ad987a0aac79bdc4d906f6b0f68c7be3fb29c421a1",
-    "tip-drivers/horizontal-driver.json": "8ff6239a15366c2794e0442e243958c103eb8084a90603c28ea22a5374e9936b",
-    "tip-drivers/vertical-driver.json": "fd8e38c84b3e2153e0f41d4d8e4f7d817664fd2b78b608aa5156a9d54081c936",
-    "tip-drivers/km-mutations.json": "b586de7aad2a6bc7736e35e4bdb73b8cdfe0d39a70f37c037467abf30337cdd6",
-    "base-acoustic/source-audit.json": "1216bdd47f387cc9d9d969b1333a5b52dbcebf5afd41ca9343b4b6a87aa4b690",
-    "base-acoustic/acoustic-published-default-proof.json": "618ff2af6ff4ea8507fb1a02fc6e973a7d221f612f317c6932f463e795fcdd5e",
-    "tip-acoustic/source-audit.json": "e42c4b76e0fe6f6591c6351fd07a7f9448340a8b70751c04f52514bc4f717def",
-    "tip-acoustic/acoustic-published-default-proof.json": "1c4f1fa41f50ff6eb94b94e4ad89d73ec2c94fc71f88e2986f1f851574f9e7d8"
+    "base-coordinate/source-audit.json": "c0b54ba44cfad07738a3195708a97088b74577f460490929e6bfcc72ac255714",
+    "base-coordinate/direct-native-proof.json": "36890bb9165d37a36341579e4edf89b39c68a96bc50aaba9aa2d5bb030c90ea8",
+    "tip-coordinate/source-audit.json": "bc6ad2d5feb96bec4369aff3a4ccea495c51bb5fadf2927fc7d70afb612cc0d8",
+    "tip-coordinate/direct-native-proof.json": "94cba6fdff5946f903b3fba2e4780013024bb0068b6187003eb54fa195953094",
+    "base-drivers/source-audit.json": "239a55cd36e6302421bfe146b9cbc8dab665c5d0cb50f8ce2bc03c9d2b41709b",
+    "base-drivers/horizontal-driver.json": "288b85f5f4358a06076c7d4914974c3460ca05f076a7c899d188ba55ed4bca35",
+    "base-drivers/vertical-driver.json": "319920fe2bd369712434eff1cb677fa5305cb4a7a71d46bef6853d052cb31348",
+    "base-drivers/km-mutations.json": "0ad75f053859694b81d88c13f8be3c0c59237ddf0783448d51e279e5c9684ffd",
+    "tip-drivers/source-audit.json": "6c845533f875f08393f6839c66b9159f32dd4d152ce8246322ed0c311673db77",
+    "tip-drivers/horizontal-driver.json": "288b85f5f4358a06076c7d4914974c3460ca05f076a7c899d188ba55ed4bca35",
+    "tip-drivers/vertical-driver.json": "319920fe2bd369712434eff1cb677fa5305cb4a7a71d46bef6853d052cb31348",
+    "tip-drivers/km-mutations.json": "0ad75f053859694b81d88c13f8be3c0c59237ddf0783448d51e279e5c9684ffd",
+    "base-acoustic/source-audit.json": "6a6998f3923a27c753a26d781038a1a507730b0acf3471d916a4e623d81b14a8",
+    "base-acoustic/acoustic-published-default-proof.json": "202337296a883ca358fbd80bb848c10a5e844c98579629836d736918efdd1a04",
+    "tip-acoustic/source-audit.json": "82d66cb00aaf62b33b6c9fc2d2d001a23a22cb2798aaf10dfc9bc1cb5e04de62",
+    "tip-acoustic/acoustic-published-default-proof.json": "9c3d9e6bf274028429e2804e0cc81561539db5d41659276a038e83539bef38c0"
+  },
+  "ysu_comment_transition": {
+    "before": "cf74efe50f9613ad69fe41a052bd3867fb057a34c0a6adc3a8cd656cc1159686",
+    "after": "cf74efe50f9613ad69fe41a052bd3867fb057a34c0a6adc3a8cd656cc1159686",
+    "identical_without_comments": true
   },
   "capture_identity": {
     "device": "b'NVIDIA GeForce RTX 5090'",
@@ -69,7 +74,7 @@
     ],
     "cupy_version": "14.2.0",
     "module_source_sha256": {
-      "smag2d": "2cdfe1e9b38cfd901a837460526bed5887285bb367593992fd95b95df15e3d24",
+      "smag2d": "7dec200c373ce4a01684df3dca4d3797b511bba4c50c0c71465f979a2fb380a2",
       "diff_opt1": "9737655267fca7f30d0a4053008997de55a8e12f4fe552622a09f70ea994e271",
       "acoustic": "5c7205005dfa7457f8e27bc1f636a751a297f78710b03bfd5920256de3d2d57c"
     },
@@ -109,6 +114,18 @@
     },
     "default_acoustic_diffusion_route": false
   },
-  "ysu_compiled_source_sha256": "6261061b62ef15ca30cf3746baf9177cdc1a0eafc2544937f41c674e0fd5a932",
+  "ysu_compiled_source_sha256": "cf74efe50f9613ad69fe41a052bd3867fb057a34c0a6adc3a8cd656cc1159686",
+  "moved_sources": {
+    "woof/nvrtc_ptx_cache.py": {
+      "sealed": {
+        "bytes": 14069,
+        "sha256": "5929748d63f633f1dcb26c281e52664a41b0e47203b45aecb762cd84bd6833c9"
+      },
+      "after": {
+        "bytes": 14289,
+        "sha256": "1a4c12c807669f593e43c541d1f0c4c3adf9873d51ab06a7d26b827c145a1797"
+      }
+    }
+  },
   "pin_changes": []
 }

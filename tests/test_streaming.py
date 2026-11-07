@@ -2633,6 +2633,9 @@ class _KFStandIn:
 
     def ensure_trigger_history(self, state):
         self.calls += 1
+        # The primer names the cumulus arrays the callable now holds
+        # (restart.CUMULUS_CALLABLE_ARRAYS), as KainFritsch does.
+        self.w0avg = object()
         return "w0avg"
 
 
@@ -2859,11 +2862,13 @@ def test_the_sweep_manifest_subtracts_the_restart_only_slots(monkeypatch):
     monkeypatch.setattr(restart, "state_manifest", lambda s: {"state/thp": 1})
     monkeypatch.setattr(restart, "_scratch_manifest", lambda s: {})
     monkeypatch.setattr(restart, "carried_scratch_manifest", lambda s: {})
-    monkeypatch.setattr(restart, "_driver_manifest", lambda d: {
+    monkeypatch.setattr(restart, "_driver_manifest", lambda d, **_: {
         "cumulus/w0avg": 2, "radiation/o33d_grid": 3})
 
     class _State:
         physics = object()
+        # The streamed driver walk sizes owners from the pressure field.
+        p = type("_P", (), {"shape": (2, 3, 4)})()
 
     manifest = physinv.carrier_manifest(_State())
     assert "radiation/o33d_grid" not in manifest

@@ -10,7 +10,7 @@
 // throughout with FP64 used only for the energy-residual diagnostics.
 // Land-ice columns (ivgtyp == isice) run SFLX_GLACIAL
 // (module_sf_noahlsm_glacial_only.F) in noah_glacial_column below.
-// NOT ported (see gpuwm/core/noah.py): UA_PHYS, FASDAS, WRF-Hydro,
+// NOT ported (see gpuwm/core/noah.py): WRF-Hydro,
 // SFCDIF_off.  The urban canopy
 // models run AFTER this kernel (gpuwm/core/urban_driver.py); this kernel
 // carries their hand-over only: the NATURAL remap of urban columns
@@ -55,7 +55,7 @@
 // in [1,2) (or [0.5,1) when k is negative), with log10(2) split into a head
 // and a tail so k*log10(2) carries no rounding of its own.  Every operation
 // is spelled with an __f*_rn intrinsic so no contraction can fuse them.
-// MEASURED exhaustively on box W1 (glibc 2.39, x86-64): over all
+// MEASURED exhaustively on x86-64 (glibc 2.39): over all
 // 2,139,095,039 positive finite float32 inputs this formula on the host
 // libm's logf gives the same word as the host's log10f; that log10f is NOT
 // correctly rounded (29,787,059 inputs differ from log10 in double rounded
@@ -64,6 +64,12 @@
 // this device function against the host log10f.
 __device__ __forceinline__ float noah_log10f(float x)
 {
+#if NOAH_WRF_MODERN_LOG10
+    // glibc 2.43's log10f is correctly rounded. A binary64 log10 followed
+    // by one FP32 rounding matches the captured real native columns;
+    // the legacy decomposition below preserves the 2.39 referee words.
+    return __double2float_rn(log10((double)x));
+#else
     unsigned int hx = __float_as_uint(x);
     if ((hx & 0x7fffffffu) == 0u) return __uint_as_float(0xff800000u);
     if (hx >= 0x7f800000u) return (hx > 0x7f800000u || (hx >> 31))
@@ -82,6 +88,7 @@ __device__ __forceinline__ float noah_log10f(float x)
                         __fmul_rn(__uint_as_float(0x3ede5bd9u),
                                   gfk_log(__uint_as_float(hx))));
     return __fadd_rn(z, __fmul_rn(y, __uint_as_float(0x3e9a2080u)));
+#endif
 }
 
 // noah_powi: X**N for an INTEGER N, the binary powering gfortran -O0 hands
@@ -286,7 +293,11 @@ __device__ static void noah_penman(real sfctmp, real sfcprs, real ch,
                                    bool frzgra, real emissi_in,
                                    real sncovr, real& etp, real& rch,
                                    real& rr, real& epsca, real& t24,
-                                   real& flx2)
+                                   real& flx2
+#if NOAH_UA_PHYS
+,real swe,real albedo,real solar,real fvb,real gama,real soil,real& etpn,real& flx4
+#endif
+)
 {
     real emissi = emissi_in;
     real elcp1 = (1.0f - sncovr) * NELCP
@@ -304,13 +315,27 @@ __device__ static void noah_penman(real sfctmp, real sfcprs, real ch,
         rr = rr + NCPICE * prcp / rch;
     }
     real fnet = fdown - emissi * NSIGMA * t24 - ssoil;
+
+#if NOAH_UA_PHYS
+    real fnetn=noah_ua_canopy_flux(swe,fnet,solar,albedo,fvb,gama,soil,sfctmp,flx4);
+#endif
     if (frzgra) {
         flx2 = -NLSUBF * prcp;
         fnet = fnet - flx2;
+#if NOAH_UA_PHYS
+        fnetn=__fsub_rn(fnetn,flx2);
+#endif
+
     }
     real rad = fnet / rch + th2 - sfctmp;
     real a = elcp1 * (q2sat - q2);
     epsca = (a * rr + rad * delta) / (delta + rr);
+
+#if NOAH_UA_PHYS
+    real radn=__fsub_rn(__fadd_rn(__fdiv_rn(fnetn,rch),th2),sfctmp);
+    real epscan=__fdiv_rn(__fadd_rn(__fmul_rn(a,rr),__fmul_rn(radn,delta)),__fadd_rn(delta,rr));
+    etpn=__fdiv_rn(__fmul_rn(epscan,rch),lvs);
+#endif
     etp = epsca * rch / lvs;           // AOASIS = 1 without the UCM
 }
 
@@ -328,10 +353,14 @@ __device__ static void noah_canres(real solar, real ch, real sfctmp,
     real ff = 0.55f * 2.0f * solar / (rgl * xlai);
     real rcs = (ff + rsmin / rsmax) / (1.0f + ff);
     rcs = fmaxf(rcs, 0.0001f);
-#if NOAH_WRF_SCALAR_RCT
-    // Stock scalar CANRES lowers its constant **2.0 to an FP32 multiply
-    // (module_sf_noahlsm.F:1083). Keep the subtract, square, coefficient
-    // and final subtract separately rounded, as in the stock executable.
+#if NOAH_WRF_SCALAR_RCT || NOAH_UA_PHYS
+    // The strict referee recipe builds Noah at -O2 (-fno-fast-math
+    // -ffp-contract=off -fno-tree-vectorize). GNU Fortran 13.3 and 15.2 at
+    // -O1 and above fold CANRES's constant **2.0 (module_sf_noahlsm.F:1083)
+    // to one FP32 self multiply; at -O0 the same source calls powf, which is
+    // the gfk_pow arm below and differs in rare words. Keep the subtract,
+    // square, coefficient and final subtract separately rounded, as in the
+    // -O2 executable (release box and a development machine disassembly, 2026-11-02).
     real temperature_delta = __fsub_rn(topt, sfctmp);
     real rct = __fsub_rn(1.0f, __fmul_rn(0.0016f,
                                     __fmul_rn(temperature_delta, temperature_delta)));
@@ -354,8 +383,19 @@ __device__ static void noah_canres(real solar, real ch, real sfctmp,
     for (int k = 0; k < nroot; ++k) rcsoil = rcsoil + part[k];
     rcsoil = fmaxf(rcsoil, 0.0001f);
     rc = rsmin / (xlai * rcs * rct * rcq * rcsoil);
+
+#if NOAH_UA_PHYS
+    // The strict native build calls libm powf for the REAL exponent **4.0.
+    real tfour=gfk_pow(sfctmp,4.0f);
+#else
+    real tfour=powf(sfctmp,4.0f);
+#endif
     real rr2 = (__fdiv_rn(4.0f * emissi * NSIGMA * NRD, CP))
+#if NOAH_UA_PHYS
+               * tfour / (sfcprs * ch) + 1.0f;
+#else
                * gfk_pow(sfctmp, 4.0f) / (sfcprs * ch) + 1.0f;
+#endif
     real delta = (slv / CP) * dqsdt2;
     pc = (rr2 + delta) / (rr2 * (1.0f + rc * ch) + delta);
 }
@@ -641,6 +681,7 @@ __device__ static void noah_sstep(real* sh2oout, const real* sh2oin,
 }
 
 // ---------------------------------------------------------------- SMFLX
+template<bool IRRIGATION = false>
 __device__ static void noah_smflx(real* smc, real& cmc, real dt,
                                   real prcp1, const real* zsoil,
                                   real* sh2o, real slope, real kdt,
@@ -649,7 +690,7 @@ __device__ static void noah_smflx(real* smc, real& cmc, real dt,
                                   real shdfac, real cmcmax, real edir,
                                   real ec, const real* et,
                                   real& runoff1, real& runoff2,
-                                  real& runoff3, real& drip)
+                                  real& runoff3, real& drip, real irrigation_rate = 0.0f)
 {
     real rhsct = shdfac * prcp1 - ec;
     drip = 0.0f;
@@ -657,6 +698,10 @@ __device__ static void noah_smflx(real* smc, real& cmc, real dt,
     real excess = cmc + trhsct;
     if (excess > cmcmax) drip = excess - cmcmax;
     real pcpdrp = (1.0f - shdfac) * prcp1 + drip / dt;
+    if constexpr (IRRIGATION) {
+        if (irrigation_rate != 0.0f)
+            pcpdrp = __fadd_rn(pcpdrp, __fmul_rn(0.001f, irrigation_rate));
+    }
     real sice[NSOIL];
     for (int i = 0; i < NSOIL; ++i) sice[i] = smc[i] - sh2o[i];
     real fac2 = 0.0f;
@@ -902,7 +947,11 @@ __device__ static void noah_shflx(real* stc, const real* smc,
 // -------------------------------------------------------------- SNOWPACK
 __device__ static void noah_snowpack(real esd, real dtsec, real& snowh,
                                      real& sndens, real tsnow,
-                                     real tsoil)
+                                     real tsoil
+#if NOAH_UA_PHYS
+,real snomlt
+#endif
+)
 {
     const real c1k = 0.01f, c2k = 21.0f;
     real snowhc = snowh * 100.0f;
@@ -926,6 +975,10 @@ __device__ static void noah_snowpack(real esd, real dtsec, real& snowh,
     sndens = dsx;
     if (tsnowc >= 0.0f) {
         real dw = __fdiv_rn(0.13f * dthr, 24.0f);
+
+#if NOAH_UA_PHYS
+        if(tsoilc>=0.0f)dw=noah_ua_retention(dw,snomlt,esdcx);
+#endif
         sndens = sndens * (1.0f - dw) + dw;
         if (sndens >= 0.40f) sndens = 0.40f;
     }
@@ -1522,7 +1575,7 @@ __device__ __noinline__ static void noah_glacial_column(
 // fused, so a 1 h default forecast drifted from its 15-minute history on
 // (measured on the RTX 5090, 2026-09-30).  noah_column_urban carries the
 // hand-over for sf_urban_physics > 0.
-template <bool URBAN>
+template <bool URBAN, bool FASDAS = false, bool IRRIGATION = false>
 __device__ __forceinline__
 void noah_column_body(const int* __restrict__ ivgtyp,
                  const int* __restrict__ isltyp,
@@ -1589,6 +1642,10 @@ void noah_column_body(const int* __restrict__ ivgtyp,
                  int isice, real xice_threshold, int itimestep, int frpcpn,
                  int usemonalb, int rdlai2d, int opt_thcnd,
                  int ny, int nx,
+#if NOAH_UA_PHYS
+                 const real* canopy, real* flx4_a, real* fvb_a, real* fbur_a, real* fgsn_a,
+#endif
+
                  // URBAN HANDOVER (sf_urban_physics > 0), read only by the
                  // URBAN instantiation; noah_column passes zeros.
                  int urban_opt,
@@ -1599,10 +1656,18 @@ void noah_column_body(const int* __restrict__ ivgtyp,
                  real* __restrict__ tsk_rural_bep,    // options 2/3 only
                  real* __restrict__ rural_q1,
                  real* __restrict__ rural_q2k,
-                 real* __restrict__ rural_zlvl)
+                 real* __restrict__ rural_zlvl,
+                 const real* fasdas_h = nullptr,
+                 const real* fasdas_q = nullptr,
+                 const real* fasdas_norm = nullptr,
+                 const real* irrigation_channel_a = nullptr)
 {
+    real irrigation_rate = 0.0f;
+
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (col >= ny * nx) return;
+    if constexpr (IRRIGATION)
+        irrigation_rate = __fdiv_rn(irrigation_channel_a[col], dt);
     size_t idx = (size_t)col;
     size_t plane = (size_t)ny * nx;
 
@@ -1908,6 +1973,10 @@ void noah_column_body(const int* __restrict__ ivgtyp,
         prcpf = prcp;
     }
 
+
+#if NOAH_UA_PHYS
+    real flx4=0.0f,fvb=0.0f,gama=0.0f,fbur=0.0f,fgsn=0.0f,etpn=0.0f;
+#endif
     // snow cover fraction, snow albedo, emissivity
     real albedo;
     if (sneqv == 0.0f) {
@@ -1916,6 +1985,11 @@ void noah_column_body(const int* __restrict__ ivgtyp,
         emissi = embrd;
     } else {
         sncovr = noah_snfrac(sneqv, snup, salp);
+#if NOAH_UA_PHYS
+        noah_ua_cover(sneqv,snowhk,shdfac,canopy[2*(vegtyp-1)],canopy[2*(vegtyp-1)+1],xlai,fvb,gama,fbur,fgsn);
+        chk=noah_ua_exchange(sfctmp,t1,shdfac,fgsn,xlai,chk);
+#endif
+
         sncovr = fminf(sncovr, 0.98f);
         noah_alcalc(alb, snoalb1, embrd, sncovr, dt, snowng, snotime1,
                     lvcoef, albedo, emissi);
@@ -1946,15 +2020,25 @@ void noah_column_body(const int* __restrict__ ivgtyp,
     if (sncovr > 0.0f) z0k = noah_snowz0(sncovr, z0brd, snowhk);
     else z0k = z0brd;
 
+
+#if NOAH_UA_PHYS
+    z0k=noah_ua_roughness(shmax,fbur,fgsn,z0brd);
+#endif
     // Penman potential evaporation
     real fdown = solnet + lwdn;
     real t2v = sfctmp * (1.0f + 0.61f * q2k);
     real etp, rch, rr, epsca, t24, flx2;
     noah_penman(sfctmp, sfcprs, chk, t2v, th2, prcp, fdown, ssoil, q2k,
                 q2sat, dqsdt2, snowng, frzgra, emissi, sncovr, etp,
-                rch, rr, epsca, t24, flx2);
+                rch, rr, epsca, t24, flx2
+#if NOAH_UA_PHYS
+,sneqv,albedo,soldn,fvb,gama,stc[0],etpn,flx4
+#endif
+);
 
     // canopy resistance
+    // WRF skips CANRES after complete burial but leaves PC undefined.
+    // Keep zero transpiration for that bare-canopy state.
     real rc = 0.0f, pc = 0.0f;
     if (shdfac > 0.0f && xlai > 0.0f)
         noah_canres(soldn, chk, sfctmp, q2k, swc, zsoil, smcwlt,
@@ -1970,6 +2054,7 @@ void noah_column_body(const int* __restrict__ ivgtyp,
     real etns = 0.0f, esnow = 0.0f, snomlt = 0.0f;
     int ebal_case;
     double reslin;
+    real fasdas_capacity = 0.0f;
 
     if (sneqv == 0.0f) {
         // =================== NOPAC ===================================
@@ -1983,18 +2068,40 @@ void noah_column_body(const int* __restrict__ ivgtyp,
             noah_evapo(eta1, smc, cmc, etp1, dt, swc, smcmax, pc,
                        smcwlt, smcref, shdfac, cmcmax, smcdry, cfactr,
                        nroot, rtdis, fxexp, edir1k, ec1k, et1k, ett1k);
-            noah_smflx(smc, cmc, dt, prcp1, zsoil, swc, slope, kdt,
+            // WRF v4.6.1 NOPAC: evaporation corrections precede SMFLX.
+            // ETA1 and ETT1 retain the pre-correction values, as in WRF.
+            if constexpr (FASDAS) {
+                real total = 0.0f;
+                for (int k=0; k<NSOIL; ++k) total = total + et1k[k];
+                total = edir1k + ec1k + total;
+                if (total != 0.0f) {
+                    real q = fasdas_q[idx], norm = fasdas_norm[idx];
+                    real wet = (smc[0] >= smcref && q > 0.0f) ? 0.0f : 1.0f;
+                    real direct = __fdiv_rn(edir1k,total)*q*1.0e-3f*norm;
+                    direct = direct*wet;
+                    edir1k = edir1k + direct;
+                    real canopy = __fdiv_rn(ec1k,total)*q*1.0e-3f*norm;
+                    ec1k = ec1k + canopy;
+                    for (int k=0; k<NSOIL; ++k) {
+                        wet = (smc[k] >= smcref && q > 0.0f) ? 0.0f : 1.0f;
+                        real root = __fdiv_rn(et1k[k],total)*q*1.0e-3f*norm;
+                        root = root*wet;
+                        et1k[k] = et1k[k] + root;
+                    }
+                }
+            }
+            noah_smflx<IRRIGATION>(smc, cmc, dt, prcp1, zsoil, swc, slope, kdt,
                        frzx, smcmax, bexp, smcwlt, dksat, dwsat,
                        shdfac, cmcmax, edir1k, ec1k, et1k, runoff1,
-                       runoff2, runoff3, drip);
+                       runoff2, runoff3, drip, irrigation_rate);
             eta = eta1 * 1000.0f;
         } else {
             dew = -etp1;
             prcp1 = prcp1 + dew;
-            noah_smflx(smc, cmc, dt, prcp1, zsoil, swc, slope, kdt,
+            noah_smflx<IRRIGATION>(smc, cmc, dt, prcp1, zsoil, swc, slope, kdt,
                        frzx, smcmax, bexp, smcwlt, dksat, dwsat,
                        shdfac, cmcmax, edir1k, ec1k, et1k, runoff1,
-                       runoff2, runoff3, drip);
+                       runoff2, runoff3, drip, irrigation_rate);
         }
         if (etp <= 0.0f) {
             beta = 0.0f;
@@ -2011,6 +2118,11 @@ void noah_column_body(const int* __restrict__ ivgtyp,
         real yy = sfctmp + (yynum / rch + th2 - sfctmp - beta * epsca)
                            / rr;
         real zz1 = df1n / (-0.5f * zsoil[0] * rch * rr) + 1.0f;
+        if constexpr (FASDAS) {
+            real soil_capacity = (vegtyp == isurban) ? 3.0e6f : csoil;
+            fasdas_capacity = swc[0]*4.2e6f + (1.0f-smcmax)*soil_capacity
+                            + (smcmax-smc[0])*1004.0f + (smc[0]-swc[0])*2.106e6f;
+        }
         noah_shflx(stc, smc, smcmax, t1, dt, yy, zz1, zsoil, tbot,
                    zbot, psisat, swc, bexp, df1n, quartz, csoil,
                    vegtyp, isurban, soiltyp, opt_thcnd, ssoil_pac);
@@ -2058,6 +2170,10 @@ void noah_column_body(const int* __restrict__ ivgtyp,
                 etns = etns1 * 1000.0f;
             }
             esnow = etp * sncovr;
+#if NOAH_UA_PHYS
+            esnow=__fmul_rn(etpn,sncovr);
+#endif
+
             esnow1 = esnow * 0.001f;
             esnow2 = esnow1 * dt;
             etanrg = esnow * NLSUBS + etns * NLSUBC;
@@ -2081,6 +2197,9 @@ void noah_column_body(const int* __restrict__ ivgtyp,
             ssoil_pac = df1 * (t1 - stc[0]) / dtot;
             esd = fmaxf(0.0f, esd - esnow2);
             flx3 = 0.0f;
+#if NOAH_UA_PHYS
+            flx4=0.0f;
+#endif
             reslin = ((double)fdown - (double)flx1 - (double)flx2
                       - (double)emissi * (double)NSIGMA * (double)t24
                       + (double)rch * ((double)th2 - (double)sfctmp)
@@ -2100,6 +2219,9 @@ void noah_column_body(const int* __restrict__ ivgtyp,
                 ex = 0.0f;
                 snomlt = 0.0f;
                 flx3 = 0.0f;
+#if NOAH_UA_PHYS
+                flx4=0.0f;
+#endif
                 clipped = true;
             } else {
                 esd = esd - esnow2;
@@ -2111,6 +2233,10 @@ void noah_column_body(const int* __restrict__ ivgtyp,
                 real flx3_def = flx3;
                 if (flx3 <= 0.0f) flx3 = 0.0f;
                 if (flx3 != flx3_def) clipped = true;
+
+#if NOAH_UA_PHYS
+                noah_ua_melt_flux(flx3,flx4);
+#endif
                 ex = __fdiv_rn(flx3 * 0.001f, NLSUBF);
                 snomlt = ex * dt;
                 if (esd - snomlt >= esdmin) {
@@ -2133,7 +2259,7 @@ void noah_column_body(const int* __restrict__ ivgtyp,
                       - (double)ssoil_pac - (double)seh
                       - (double)etanrg - (double)flx3);
         }
-        noah_smflx(smc, cmc, dt, prcp1, zsoil, swc, slope, kdt,
+        noah_smflx<IRRIGATION>(smc, cmc, dt, prcp1, zsoil, swc, slope, kdt,
                    frzx, smcmax, bexp, smcwlt, dksat, dwsat, shdfac,
                    cmcmax, edir1k, ec1k, et1k, runoff1, runoff2,
                    runoff3, drip);
@@ -2141,11 +2267,20 @@ void noah_column_body(const int* __restrict__ ivgtyp,
         real yy = stc[0] - 0.5f * ssoil_pac * zsoil[0] * zz1 / df1;
         real t11 = t1;
         real ssoil1;
+        if constexpr (FASDAS) {
+            real soil_capacity = (vegtyp == isurban) ? 3.0e6f : csoil;
+            fasdas_capacity = swc[0]*4.2e6f + (1.0f-smcmax)*soil_capacity
+                            + (smcmax-smc[0])*1004.0f + (smc[0]-swc[0])*2.106e6f;
+        }
         noah_shflx(stc, smc, smcmax, t11, dt, yy, zz1, zsoil, tbot,
                    zbot, psisat, swc, bexp, df1, quartz, csoil,
                    vegtyp, isurban, soiltyp, opt_thcnd, ssoil1);
         if (esd > 0.0f) {
-            noah_snowpack(esd, dt, snowhk, sndens, t1, yy);
+            noah_snowpack(esd, dt, snowhk, sndens, t1, yy
+#if NOAH_UA_PHYS
+,snomlt
+#endif
+);
         } else {
             esd = 0.0f;
             snowhk = 0.0f;
@@ -2159,6 +2294,10 @@ void noah_column_body(const int* __restrict__ ivgtyp,
     real q1 = q2k + eta_kin * CP / rch;
     real sheat = -(chk * CP * sfcprs) / (NR_SHEAT * t2v) * (th2 - t1);
 
+
+#if NOAH_UA_PHYS
+    sheat=__fadd_rn(sheat,flx4);
+#endif
     // kinematic -> energy conversions (SFLX epilogue)
     real edir_e = (edir1k * 1000.0f) * NLVH2O;
     real ec_e = (ec1k * 1000.0f) * NLVH2O;
@@ -2219,6 +2358,12 @@ void noah_column_body(const int* __restrict__ ivgtyp,
     z0_a[idx] = z0brd;
     emiss_a[idx] = emissi;
     znt_a[idx] = z0k;
+    // LSM applies the FASDAS skin correction after SFLX has diagnosed its
+    // fluxes; those fluxes keep their pre-correction T1.
+    if constexpr (FASDAS) {
+        real latent = fasdas_q[idx]*2.5e6f*fasdas_norm[idx];
+        t1 = t1 + __fdiv_rn((fasdas_h[idx]-latent)*dt,fasdas_capacity*dzs[0]);
+    }
     tsk_a[idx] = t1;
     // module_sf_noahdrv.F:1243-1247: TSK_RURAL_BEP = T1 for BEP/BEM.
     if constexpr (URBAN) {
@@ -2262,6 +2407,12 @@ void noah_column_body(const int* __restrict__ ivgtyp,
                          __fmul_rn(__fmul_rn(emissi, NSTBOLT),
                                    noah_powi(t1, 4))),
                          flx1), flx2), flx3);
+
+#if NOAH_UA_PHYS
+    real t14ua=__fmul_rn(__fmul_rn(t1,t1),__fmul_rn(t1,t1));
+    noahres_a[idx]=(solnet+lwdn)-sheat+ssoil_out-eta_e-(emissi*NSTBOLT*t14ua)-flx1-flx2-flx3-flx4;
+    flx4_a[idx]=flx4;fvb_a[idx]=fvb;fbur_a[idx]=fbur;fgsn_a[idx]=fgsn;
+#endif
     reslin_a[idx] = (real)reslin;
     ebal_a[idx] = ebal_case;
     chklowq_a[idx] = 1.0f;
@@ -2273,12 +2424,16 @@ void noah_column_body(const int* __restrict__ ivgtyp,
         acsnow_a[idx] = acsnow_a[idx] + prcp * dt;
     if (snow_a[idx] > 0.0f) {
         acsnom_a[idx] = acsnom_a[idx] + snomlt * 1000.0f;
+#if NOAH_UA_PHYS
+        snopcx_a[idx]=__fsub_rn(snopcx_a[idx],__fdiv_rn(snomlt,__fdiv_rn(dt,350000000.0f)));
+#else
         // module_sf_noahdrv.F:1595 SNOPCX - SNOMLT/FDTLIW with FDTLIW =
         // DT/ROWLIW (:730) and ROWLIW = 1.E3*XLF, as the land-ice arm spells
         // it; SNOMLT*1000*XLF/DT is the same quantity rounded differently
         // (1 ULP on seven melting columns of the oracle).
         snopcx_a[idx] = __fsub_rn(snopcx_a[idx], __fdiv_rn(snomlt,
                             __fdiv_rn(dt, __fmul_rn(1000.0f, NXLF))));
+#endif
     }
 }
 
@@ -2349,7 +2504,11 @@ void noah_column(const int* __restrict__ ivgtyp,
                  real dt, int lucats, int slcats, int isurban,
                  int isice, real xice_threshold, int itimestep, int frpcpn,
                  int usemonalb, int rdlai2d, int opt_thcnd,
-                 int ny, int nx)
+                 int ny, int nx
+#if NOAH_UA_PHYS
+,                 const real* canopy, real* flx4_a, real* fvb_a, real* fbur_a, real* fgsn_a
+#endif
+                 )
 {
     noah_column_body<false>(ivgtyp, isltyp, psfc_a, sfcprs_a, sfctmp_a, qv1_a,
                             qgh_a, dz8w1_a, glw_a, swdown_a, rainbl_a, sr_a,
@@ -2364,7 +2523,11 @@ void noah_column(const int* __restrict__ ivgtyp,
                             tslb_a, sh2o_a, smcrel_a, ebal_a, vegtbl, soiltbl,
                             genp, dzs, dt, lucats, slcats, isurban, isice,
                             xice_threshold, itimestep, frpcpn, usemonalb,
-                            rdlai2d, opt_thcnd, ny, nx, 0, nullptr, 0, 0,
+                            rdlai2d, opt_thcnd, ny, nx,
+#if NOAH_UA_PHYS
+ canopy,flx4_a,fvb_a,fbur_a,fgsn_a,
+#endif
+ 0, nullptr, 0, 0,
                             nullptr, nullptr, nullptr, nullptr, nullptr,
                             nullptr);
 }
@@ -2435,6 +2598,10 @@ void noah_column_urban(const int* __restrict__ ivgtyp,
                  int isice, real xice_threshold, int itimestep, int frpcpn,
                  int usemonalb, int rdlai2d, int opt_thcnd,
                  int ny, int nx,
+#if NOAH_UA_PHYS
+                 const real* canopy, real* flx4_a, real* fvb_a, real* fbur_a, real* fgsn_a,
+#endif
+
                  // URBAN HANDOVER (sf_urban_physics > 0), read only by the
                  // URBAN instantiation; noah_column passes zeros.
                  int urban_opt,
@@ -2460,7 +2627,11 @@ void noah_column_urban(const int* __restrict__ ivgtyp,
                            sh2o_a, smcrel_a, ebal_a, vegtbl, soiltbl, genp,
                            dzs, dt, lucats, slcats, isurban, isice,
                            xice_threshold, itimestep, frpcpn, usemonalb,
-                           rdlai2d, opt_thcnd, ny, nx, urban_opt, urban_cat,
+                           rdlai2d, opt_thcnd, ny, nx,
+#if NOAH_UA_PHYS
+ canopy,flx4_a,fvb_a,fbur_a,fgsn_a,
+#endif
+ urban_opt, urban_cat,
                            urban_cat_size, natural, frc_urb2d, ts_urb2d,
                            tsk_rural_bep, rural_q1, rural_q2k, rural_zlvl);
 }
@@ -2544,7 +2715,12 @@ __device__ __forceinline__ void nsice_clamp_depth(real& sneqv, real& snowh,
 }
 
 extern "C" __global__
-void noah_seaice_column(const real* __restrict__ xice_a,
+#if GPUWM_SEAICE_OPTIONS
+void noah_seaice_options_column(
+#else
+void noah_seaice_column(
+#endif
+const real* __restrict__ xice_a,
                         const real* __restrict__ psfc_a,
                         const real* __restrict__ sfcprs_a,
                         const real* __restrict__ sfctmp_a,
@@ -2582,13 +2758,34 @@ void noah_seaice_column(const real* __restrict__ xice_a,
                         real dt, real xice_threshold, int frpcpn,
                         real albedo_default, real sithick,
                         real snowdepth_min, real snowdepth_max,
-                        int ny, int nx)
+                        int ny, int nx
+#if GPUWM_SEAICE_OPTIONS
+                        , const real* albsi_a, real* icedepth_a, real* snowsi_a,
+                        int albedo_opt, int thickness_opt, int snowdepth_opt
+#endif
+                        )
 {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (col >= ny * nx) return;
     size_t idx = (size_t)col;
     size_t plane = (size_t)ny * nx;
-    if (xice_a[idx] < xice_threshold) return;      // driver :CYCLE
+#if GPUWM_SEAICE_OPTIONS
+    if (xice_a[idx] < xice_threshold) {
+        if (thickness_opt == 1) icedepth_a[idx] = 0.0f;
+        if (snowdepth_opt == 1) snowsi_a[idx] = 0.0f;
+        return;
+    }
+    if (thickness_opt == 1) {
+        sithick = fminf(fmaxf(0.10f, icedepth_a[idx]), 10.0f);
+        icedepth_a[idx] = sithick;
+    }
+    if (albedo_opt == 2) albedo_a[idx] = albsi_a[idx];
+    real snowonsi = 0.0f;
+    if (snowdepth_opt == 1)
+        snowonsi = fmaxf(snowdepth_min, fminf(snowsi_a[idx], snowdepth_max));
+#else
+    if (xice_a[idx] < xice_threshold) return;
+#endif      // driver :CYCLE
 
     // ---------------- seaice_noah prep
     const real a2 = 17.67f, a3 = 273.15f, a4 = 29.65f;
@@ -2601,6 +2798,9 @@ void noah_seaice_column(const real* __restrict__ xice_a,
     real lwdn = __fmul_rn(glw_a[idx], emissi);
     real sneqv = __fmul_rn(snow_a[idx], 0.001f);
     real snowh = snowh_a[idx];
+#if GPUWM_SEAICE_OPTIONS
+    if (snowdepth_opt == 1) sneqv = __fmul_rn(snowonsi, 0.3f);
+#endif
     real sncovr = snowc_a[idx];
     real solnet = __fmul_rn(swdown_a[idx], __fsub_rn(1.0f, albedo_a[idx]));
     real sfcprs = sfcprs_a[idx];
@@ -2652,10 +2852,25 @@ void noah_seaice_column(const real* __restrict__ xice_a,
         zsoil[k] = -__fdiv_rn(__fmul_rn(sithick, (real)(k + 1)), (real)NSOIL);
     real z0brd = 0.001f;
     bool snowng = false, frzgra = false;
+#if GPUWM_SEAICE_OPTIONS
+    const real snow_floor = albedo_opt == 1 ? 0.0001f : 0.01f;
+    const real depth_floor = albedo_opt == 1 ? 0.0005f : 0.05f;
+    if (sneqv < snow_floor) {
+        sneqv = snow_floor;
+        snowh = depth_floor;
+    }
+#else
     if (sneqv < 0.01f) {                            // albedo_opt 0 floor
         sneqv = 0.01f;
         snowh = 0.05f;
     }
+#endif
+#if GPUWM_SEAICE_OPTIONS
+    if (snowdepth_opt == 1) {
+        snowh = snowonsi;
+        sneqv = __fmul_rn(snowh, 0.3f);
+    } else
+#endif
     nsice_clamp_depth(sneqv, snowh, snowdepth_min, snowdepth_max);
     real sndens = __fdiv_rn(sneqv, snowh);
     // WRF: FATAL_ERROR('Physical snow depth is less than snow water equiv.')
@@ -2676,9 +2891,26 @@ void noah_seaice_column(const real* __restrict__ xice_a,
         }
         sncond = nglac_csnow(sndens);
     }
-    sncovr = 1.0f;                                  // albedo_opt 0
+    real albedo;
+#if GPUWM_SEAICE_OPTIONS
+    if (albedo_opt == 1) {
+        real alb_snow = t1 < 268.15f ? 0.8f : (t1 < 273.15f
+            ? __fsub_rn(0.65f, __fmul_rn(0.03f, __fsub_rn(t1, 273.15f))) : 0.65f);
+        real alb_ice = sfctmp <= 273.15f ? 0.65f : (sfctmp < 278.15f
+            ? __fsub_rn(0.65f, __fmul_rn(0.04f, __fsub_rn(sfctmp, 273.15f))) : 0.45f);
+        real sncovrr = __fdiv_rn(snowh, __fadd_rn(snowh, 0.10f));
+        albedo = __fadd_rn(__fmul_rn(sncovrr, alb_snow),
+                          __fmul_rn(__fsub_rn(1.0f, sncovrr), alb_ice));
+    } else {
+        sncovr = 1.0f;
+        emissi = 0.98f;
+        albedo = albedo_opt == 2 ? albsi_a[idx] : albedo_default;
+    }
+#else
+    sncovr = 1.0f;
     emissi = 0.98f;
-    real albedo = albedo_default;
+    albedo = albedo_default;
+#endif
     real df1 = 2.2f;
     real dsoil = -__fmul_rn(0.5f, zsoil[0]);
     real dtot = __fadd_rn(snowh, dsoil);
@@ -2801,16 +3033,33 @@ void noah_seaice_column(const real* __restrict__ xice_a,
         nsice_hrtice(rhsts, stc, tbot, zsoil, yy, 1.0f, df1, ai, bi, ci);
         nice_hstep(stc, dt, rhsts, ai, bi, ci);
     }
-    if (esd >= 0.01f) {                             // albedo_opt 0
+#if GPUWM_SEAICE_OPTIONS
+    if (esd >= snow_floor) {
+#else
+    if (esd >= 0.01f) {
+#endif                             // albedo_opt 0
         nglac_snowpack(esd, dt, snowh, sndens, t1, yy);
     } else {
+#if GPUWM_SEAICE_OPTIONS
+        esd = snow_floor;
+        snowh = depth_floor;
+        sncovr = albedo_opt == 1 ? 0.005f : 1.0f;
+#else
         esd = 0.01f;
         snowh = 0.05f;
         sncovr = 1.0f;
+#endif
     }
     sneqv = esd;
     // SFLX_SEAICE epilogue
     real eta_kin = etp;
+#if GPUWM_SEAICE_OPTIONS
+    if (snowdepth_opt == 1) {
+        snowh = snowonsi;
+        sneqv = __fmul_rn(snowh, 0.3f);
+        snowsi_a[idx] = snowonsi;
+    } else
+#endif
     nsice_clamp_depth(sneqv, snowh, snowdepth_min, snowdepth_max);
     real q1 = __fadd_rn(q2, __fdiv_rn(__fmul_rn(eta_kin, CP), rch));
     real sheat = __fmul_rn(__fdiv_rn(-__fmul_rn(__fmul_rn(ch, CP), sfcprs),
@@ -2855,4 +3104,294 @@ void noah_seaice_column(const real* __restrict__ xice_a,
                                    ssoil), eta),
                          __fmul_rn(__fmul_rn(emissi, NSTBOLT), t14)),
                          flx1), flx2), flx3);
+}
+
+extern "C" __global__ __launch_bounds__(64, 8)
+void noah_column_fasdas(const int* __restrict__ ivgtyp,
+                 const int* __restrict__ isltyp,
+                 const real* __restrict__ psfc_a,
+                 const real* __restrict__ sfcprs_a,
+                 const real* __restrict__ sfctmp_a,
+                 const real* __restrict__ qv1_a,
+                 const real* __restrict__ qgh_a,
+                 const real* __restrict__ dz8w1_a,
+                 const real* __restrict__ glw_a,
+                 const real* __restrict__ swdown_a,
+                 const real* __restrict__ rainbl_a,
+                 const real* __restrict__ sr_a,
+                 const real* __restrict__ chs_a,
+                 const real* __restrict__ cqs2_a,
+                 real* __restrict__ chs2_a,
+                 const real* __restrict__ rib_a,
+                 const real* __restrict__ vegfra_a,
+                 const real* __restrict__ shdmin_a,
+                 const real* __restrict__ shdmax_a,
+                 const real* __restrict__ tmn_a,
+                 const real* __restrict__ xland_a,
+                 const real* __restrict__ xice_a,
+                 const real* __restrict__ snoalb_a,
+                 const real* __restrict__ embck_a,
+                 real* __restrict__ tsk_a,
+                 real* __restrict__ hfx_a,
+                 real* __restrict__ qfx_a,
+                 real* __restrict__ lh_a,
+                 real* __restrict__ grdflx_a,
+                 real* __restrict__ qsfc_a,
+                 real* __restrict__ canwat_a,
+                 real* __restrict__ snow_a,
+                 real* __restrict__ snowc_a,
+                 real* __restrict__ snowh_a,
+                 real* __restrict__ albedo_a,
+                 real* __restrict__ albbck_a,
+                 real* __restrict__ emiss_a,
+                 real* __restrict__ znt_a,
+                 real* __restrict__ z0_a,
+                 real* __restrict__ snotime_a,
+                 real* __restrict__ lai_a,
+                 real* __restrict__ smstav_a,
+                 real* __restrict__ smstot_a,
+                 real* __restrict__ sfcrunoff_a,
+                 real* __restrict__ udrunoff_a,
+                 real* __restrict__ acsnow_a,
+                 real* __restrict__ acsnom_a,
+                 real* __restrict__ snopcx_a,
+                 real* __restrict__ potevp_a,
+                 real* __restrict__ noahres_a,
+                 real* __restrict__ reslin_a,
+                 real* __restrict__ chklowq_a,
+                 real* __restrict__ smois_a,      // (4, ny, nx)
+                 real* __restrict__ tslb_a,
+                 real* __restrict__ sh2o_a,
+                 real* __restrict__ smcrel_a,
+                 int* __restrict__ ebal_a,
+                 const real* __restrict__ vegtbl,   // (lucats, NVEGC)
+                 const real* __restrict__ soiltbl,  // (slcats, NSOILC)
+                 const real* __restrict__ genp,     // (16,)
+                 const real* __restrict__ dzs,      // (4,)
+                 real dt, int lucats, int slcats, int isurban,
+                 int isice, real xice_threshold, int itimestep, int frpcpn,
+                 int usemonalb, int rdlai2d, int opt_thcnd,
+                 int ny, int nx,
+#if NOAH_UA_PHYS
+                 const real* canopy, real* flx4_a, real* fvb_a, real* fbur_a, real* fgsn_a,
+#endif
+ const real* fasdas_h, const real* fasdas_q, const real* fasdas_norm)
+{
+    noah_column_body<false, true>(ivgtyp, isltyp, psfc_a, sfcprs_a, sfctmp_a, qv1_a,
+                            qgh_a, dz8w1_a, glw_a, swdown_a, rainbl_a, sr_a,
+                            chs_a, cqs2_a, chs2_a, rib_a, vegfra_a, shdmin_a,
+                            shdmax_a, tmn_a, xland_a, xice_a, snoalb_a,
+                            embck_a, tsk_a, hfx_a, qfx_a, lh_a, grdflx_a,
+                            qsfc_a, canwat_a, snow_a, snowc_a, snowh_a,
+                            albedo_a, albbck_a, emiss_a, znt_a, z0_a,
+                            snotime_a, lai_a, smstav_a, smstot_a, sfcrunoff_a,
+                            udrunoff_a, acsnow_a, acsnom_a, snopcx_a,
+                            potevp_a, noahres_a, reslin_a, chklowq_a, smois_a,
+                            tslb_a, sh2o_a, smcrel_a, ebal_a, vegtbl, soiltbl,
+                            genp, dzs, dt, lucats, slcats, isurban, isice,
+                            xice_threshold, itimestep, frpcpn, usemonalb,
+                            rdlai2d, opt_thcnd, ny, nx,
+#if NOAH_UA_PHYS
+                            canopy, flx4_a, fvb_a, fbur_a, fgsn_a,
+#endif
+ 0, nullptr, 0, 0,
+                            nullptr, nullptr, nullptr, nullptr, nullptr,
+                            nullptr, fasdas_h, fasdas_q, fasdas_norm);
+}
+
+extern "C" __global__ __launch_bounds__(64, 8)
+void noah_column_urban_fasdas(const int* __restrict__ ivgtyp,
+                 const int* __restrict__ isltyp,
+                 const real* __restrict__ psfc_a,
+                 const real* __restrict__ sfcprs_a,
+                 const real* __restrict__ sfctmp_a,
+                 const real* __restrict__ qv1_a,
+                 const real* __restrict__ qgh_a,
+                 const real* __restrict__ dz8w1_a,
+                 const real* __restrict__ glw_a,
+                 const real* __restrict__ swdown_a,
+                 const real* __restrict__ rainbl_a,
+                 const real* __restrict__ sr_a,
+                 const real* __restrict__ chs_a,
+                 const real* __restrict__ cqs2_a,
+                 real* __restrict__ chs2_a,
+                 const real* __restrict__ rib_a,
+                 const real* __restrict__ vegfra_a,
+                 const real* __restrict__ shdmin_a,
+                 const real* __restrict__ shdmax_a,
+                 const real* __restrict__ tmn_a,
+                 const real* __restrict__ xland_a,
+                 const real* __restrict__ xice_a,
+                 const real* __restrict__ snoalb_a,
+                 const real* __restrict__ embck_a,
+                 real* __restrict__ tsk_a,
+                 real* __restrict__ hfx_a,
+                 real* __restrict__ qfx_a,
+                 real* __restrict__ lh_a,
+                 real* __restrict__ grdflx_a,
+                 real* __restrict__ qsfc_a,
+                 real* __restrict__ canwat_a,
+                 real* __restrict__ snow_a,
+                 real* __restrict__ snowc_a,
+                 real* __restrict__ snowh_a,
+                 real* __restrict__ albedo_a,
+                 real* __restrict__ albbck_a,
+                 real* __restrict__ emiss_a,
+                 real* __restrict__ znt_a,
+                 real* __restrict__ z0_a,
+                 real* __restrict__ snotime_a,
+                 real* __restrict__ lai_a,
+                 real* __restrict__ smstav_a,
+                 real* __restrict__ smstot_a,
+                 real* __restrict__ sfcrunoff_a,
+                 real* __restrict__ udrunoff_a,
+                 real* __restrict__ acsnow_a,
+                 real* __restrict__ acsnom_a,
+                 real* __restrict__ snopcx_a,
+                 real* __restrict__ potevp_a,
+                 real* __restrict__ noahres_a,
+                 real* __restrict__ reslin_a,
+                 real* __restrict__ chklowq_a,
+                 real* __restrict__ smois_a,      // (4, ny, nx)
+                 real* __restrict__ tslb_a,
+                 real* __restrict__ sh2o_a,
+                 real* __restrict__ smcrel_a,
+                 int* __restrict__ ebal_a,
+                 const real* __restrict__ vegtbl,   // (lucats, NVEGC)
+                 const real* __restrict__ soiltbl,  // (slcats, NSOILC)
+                 const real* __restrict__ genp,     // (16,)
+                 const real* __restrict__ dzs,      // (4,)
+                 real dt, int lucats, int slcats, int isurban,
+                 int isice, real xice_threshold, int itimestep, int frpcpn,
+                 int usemonalb, int rdlai2d, int opt_thcnd,
+                 int ny, int nx,
+#if NOAH_UA_PHYS
+                 const real* canopy, real* flx4_a, real* fvb_a, real* fbur_a, real* fgsn_a,
+#endif
+
+                 // URBAN HANDOVER (sf_urban_physics > 0), read only by the
+                 // URBAN instantiation; noah_column passes zeros.
+                 int urban_opt,
+                 const int* __restrict__ urban_cat,   // category -> 0/1
+                 int urban_cat_size, int natural,
+                 const real* __restrict__ frc_urb2d,
+                 const real* __restrict__ ts_urb2d,
+                 real* __restrict__ tsk_rural_bep,    // options 2/3 only
+                 real* __restrict__ rural_q1,
+                 real* __restrict__ rural_q2k,
+                 real* __restrict__ rural_zlvl, const real* fasdas_h, const real* fasdas_q, const real* fasdas_norm)
+{
+    noah_column_body<true, true>(ivgtyp, isltyp, psfc_a, sfcprs_a, sfctmp_a, qv1_a,
+                           qgh_a, dz8w1_a, glw_a, swdown_a, rainbl_a, sr_a,
+                           chs_a, cqs2_a, chs2_a, rib_a, vegfra_a, shdmin_a,
+                           shdmax_a, tmn_a, xland_a, xice_a, snoalb_a,
+                           embck_a, tsk_a, hfx_a, qfx_a, lh_a, grdflx_a,
+                           qsfc_a, canwat_a, snow_a, snowc_a, snowh_a,
+                           albedo_a, albbck_a, emiss_a, znt_a, z0_a,
+                           snotime_a, lai_a, smstav_a, smstot_a, sfcrunoff_a,
+                           udrunoff_a, acsnow_a, acsnom_a, snopcx_a, potevp_a,
+                           noahres_a, reslin_a, chklowq_a, smois_a, tslb_a,
+                           sh2o_a, smcrel_a, ebal_a, vegtbl, soiltbl, genp,
+                           dzs, dt, lucats, slcats, isurban, isice,
+                           xice_threshold, itimestep, frpcpn, usemonalb,
+                           rdlai2d, opt_thcnd, ny, nx,
+#if NOAH_UA_PHYS
+                            canopy, flx4_a, fvb_a, fbur_a, fgsn_a,
+#endif
+ urban_opt, urban_cat,
+                           urban_cat_size, natural, frc_urb2d, ts_urb2d,
+                           tsk_rural_bep, rural_q1, rural_q2k, rural_zlvl, fasdas_h, fasdas_q, fasdas_norm);
+}
+
+extern "C" __global__ __launch_bounds__(64, 8)
+void noah_column_irrigation(const int* __restrict__ ivgtyp,
+                 const int* __restrict__ isltyp,
+                 const real* __restrict__ psfc_a,
+                 const real* __restrict__ sfcprs_a,
+                 const real* __restrict__ sfctmp_a,
+                 const real* __restrict__ qv1_a,
+                 const real* __restrict__ qgh_a,
+                 const real* __restrict__ dz8w1_a,
+                 const real* __restrict__ glw_a,
+                 const real* __restrict__ swdown_a,
+                 const real* __restrict__ rainbl_a,
+                 const real* __restrict__ sr_a,
+                 const real* __restrict__ chs_a,
+                 const real* __restrict__ cqs2_a,
+                 real* __restrict__ chs2_a,
+                 const real* __restrict__ rib_a,
+                 const real* __restrict__ vegfra_a,
+                 const real* __restrict__ shdmin_a,
+                 const real* __restrict__ shdmax_a,
+                 const real* __restrict__ tmn_a,
+                 const real* __restrict__ xland_a,
+                 const real* __restrict__ xice_a,
+                 const real* __restrict__ snoalb_a,
+                 const real* __restrict__ embck_a,
+                 real* __restrict__ tsk_a,
+                 real* __restrict__ hfx_a,
+                 real* __restrict__ qfx_a,
+                 real* __restrict__ lh_a,
+                 real* __restrict__ grdflx_a,
+                 real* __restrict__ qsfc_a,
+                 real* __restrict__ canwat_a,
+                 real* __restrict__ snow_a,
+                 real* __restrict__ snowc_a,
+                 real* __restrict__ snowh_a,
+                 real* __restrict__ albedo_a,
+                 real* __restrict__ albbck_a,
+                 real* __restrict__ emiss_a,
+                 real* __restrict__ znt_a,
+                 real* __restrict__ z0_a,
+                 real* __restrict__ snotime_a,
+                 real* __restrict__ lai_a,
+                 real* __restrict__ smstav_a,
+                 real* __restrict__ smstot_a,
+                 real* __restrict__ sfcrunoff_a,
+                 real* __restrict__ udrunoff_a,
+                 real* __restrict__ acsnow_a,
+                 real* __restrict__ acsnom_a,
+                 real* __restrict__ snopcx_a,
+                 real* __restrict__ potevp_a,
+                 real* __restrict__ noahres_a,
+                 real* __restrict__ reslin_a,
+                 real* __restrict__ chklowq_a,
+                 real* __restrict__ smois_a,      // (4, ny, nx)
+                 real* __restrict__ tslb_a,
+                 real* __restrict__ sh2o_a,
+                 real* __restrict__ smcrel_a,
+                 int* __restrict__ ebal_a,
+                 const real* __restrict__ vegtbl,   // (lucats, NVEGC)
+                 const real* __restrict__ soiltbl,  // (slcats, NSOILC)
+                 const real* __restrict__ genp,     // (16,)
+                 const real* __restrict__ dzs,      // (4,)
+                 real dt, int lucats, int slcats, int isurban,
+                 int isice, real xice_threshold, int itimestep, int frpcpn,
+                 int usemonalb, int rdlai2d, int opt_thcnd,
+                 int ny, int nx,
+#if NOAH_UA_PHYS
+                 const real* canopy, real* flx4_a, real* fvb_a, real* fbur_a, real* fgsn_a,
+#endif
+ const real* irrigation_channel_a)
+{
+    noah_column_body<false, false, true>(ivgtyp, isltyp, psfc_a, sfcprs_a, sfctmp_a, qv1_a,
+                            qgh_a, dz8w1_a, glw_a, swdown_a, rainbl_a, sr_a,
+                            chs_a, cqs2_a, chs2_a, rib_a, vegfra_a, shdmin_a,
+                            shdmax_a, tmn_a, xland_a, xice_a, snoalb_a,
+                            embck_a, tsk_a, hfx_a, qfx_a, lh_a, grdflx_a,
+                            qsfc_a, canwat_a, snow_a, snowc_a, snowh_a,
+                            albedo_a, albbck_a, emiss_a, znt_a, z0_a,
+                            snotime_a, lai_a, smstav_a, smstot_a, sfcrunoff_a,
+                            udrunoff_a, acsnow_a, acsnom_a, snopcx_a,
+                            potevp_a, noahres_a, reslin_a, chklowq_a, smois_a,
+                            tslb_a, sh2o_a, smcrel_a, ebal_a, vegtbl, soiltbl,
+                            genp, dzs, dt, lucats, slcats, isurban, isice,
+                            xice_threshold, itimestep, frpcpn, usemonalb,
+                            rdlai2d, opt_thcnd, ny, nx,
+#if NOAH_UA_PHYS
+                            canopy, flx4_a, fvb_a, fbur_a, fgsn_a,
+#endif
+ 0, nullptr, 0, 0,
+                            nullptr, nullptr, nullptr, nullptr, nullptr,
+                            nullptr, nullptr, nullptr, nullptr, irrigation_channel_a);
 }

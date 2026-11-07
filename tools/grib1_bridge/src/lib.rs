@@ -63,6 +63,8 @@ pub mod noah_init;
 // IMS daily snow and ice (NSIDC G02156) sampled at target points: the
 // observed lake-ice provider's reader (gpuwm/ingest/lake_ice.py).
 pub mod ims_snow_ice;
+pub mod slab_init;
+pub mod soil_points;
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicI32, Ordering};

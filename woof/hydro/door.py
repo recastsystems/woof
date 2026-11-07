@@ -1,6 +1,6 @@
 """Default-on hydro door: decide at preparation whether a fabric covers the domain.
 
-Project ruling, 2026-10-18: hydro is default on for every forecast and every ensemble
+Owner, 2026-10-18: hydro is default on for every forecast and every ensemble
 member whenever a hydrofabric covers the domain; ``--hydro off`` is the
 opt-out; where no fabric exists hydro is off and the receipt names the gap.
 
@@ -337,7 +337,7 @@ def decide(*, settings, requested, config_path=None, table=None, geometry=None,
     if settings.get("activation_reason") == "configuration_off":
         return {**base, "enabled": False, "reason": "configuration_off", "gaps": []}
     if requested is None and not settings.get("enabled"):
-        # Hydro is opt-in (Project ruling, 2026-10-22: a first forecast in a new region downloaded 4.6 GB of hydro inputs and
+        # Hydro is opt-in (Owner, 2026-10-22: a first forecast in a new region downloaded 4.6 GB of hydro inputs and
         # spent minutes single-core on the spin-up): a bare run has no hydro; `--hydro on` (or a [hydro] table with
         # enabled = true) turns it on.
         return {**base, "enabled": False, "reason": "default_off", "gaps": []}

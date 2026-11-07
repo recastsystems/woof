@@ -37,6 +37,11 @@ DEFAULT_THRESHOLDS = {
     "dewpoint2": ("K", (273.15, 293.15, 298.15)),
     "rain_total": ("mm", (25.0,)),
     "uh": ("m2 s-2", (75.0,)),
+    # 0-1 km UH runs far weaker than 0-3 km (2024-05-06 outbreak, 3 km: 0-1 km peaked near 20 m2 s-2,
+    # 0-3 km near 270), so 25/50/75 left its probability maps empty; 10/20/40 as the map contours.
+    "uh01": ("m2 s-2", (10.0, 20.0, 40.0)),
+    "uh02": ("m2 s-2", (25.0, 50.0, 75.0)),
+    "uh03": ("m2 s-2", (25.0, 50.0, 75.0)),
     "humidity2": ("%", (15.0, 20.0, 30.0)),
     "visibility": ("m", (1000.0, 400.0)),
     "temperature2_below_freezing": ("K", (273.15,)),

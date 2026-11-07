@@ -83,8 +83,8 @@ RUC_SOIL_LEVELS = 9
 # its land classes (water, class 14, excluded), so no per-class row bounds it: hrrrv5 histories carried smois
 # 0.4387 on sandy loam (row .435), 0.4196 on loamy sand (row .410) and 0.451 on urban cells (Noah cap .45).
 # The bound is the largest land-class row (.492), widened 1e-6 for the float32 sums (0.43500003 measured on a
-# pure .435 cell). Breakage it prevents: the Noah-only bound refused every RUC background (hrrrv5 DA arms,
-# V8X6000 2026-10-29: smois 0.3398 > .339 on class 1), so no RRFS v2 DA cycle could compose a background.
+# pure .435 cell). Breakage it prevents: the Noah-only bound refused every RUC background (hrrrv5 state analysis arms,
+# eight-card system 2026-10-29: smois 0.3398 > .339 on class 1), so no RRFS v2 state analysis cycle could compose a background.
 RUC_SOIL_POROSITY = np.float32(np.max(STAS_RUC_POROSITY[1:][STAS_RUC_POROSITY[1:] < 1]) * np.float32(1 + 1e-6))
 
 

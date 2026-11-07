@@ -105,7 +105,7 @@ def store_from_reconstruction(initializer, domain, parent, *, rows_per_slab,
                     manifest = []
                     planned = 0
                     for inv in inventories:
-                        entries = hoststore.manifest_from_arrays(inv, cfg.nz, rows, cfg.nx)
+                        entries = hoststore.manifest_from_arrays(inv, cfg.nz, rows, cfg.nx, square_slab=True)
                         manifest.append(entries)
                         planned += sum(spec.nbytes(cfg.nz, cfg.ny, cfg.nx) for spec in entries)
                     hoststore.check_allocatable(planned, budget_bytes=host_budget_bytes)

@@ -212,7 +212,13 @@ class TestLane2BuildParity:
 
         table = json.loads(FULL_BUILD_BOUNDS.read_text(encoding="utf-8"))
         assert table["grid_spec"] == PARENT_SPEC
-        selection = GeogSelection.fallback(geog_root)
+        # The measured fixture predates the permissive default soil set.
+        # Compare the same named reference inputs; never apply its bounds
+        # to a different climatology or include reference data in releases.
+        from dataclasses import replace
+        selection = replace(GeogSelection.fallback(geog_root),
+                            resolution_tokens=("qualification-reference",),
+                            **table["geography"])
         grid = _python_parent_grid()
         observed_coverage, expected_coverage = {}, {}
         monkeypatch.delenv(rust_bridge.STATIC_PYTHON_ENV, raising=False)

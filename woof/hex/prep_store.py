@@ -144,15 +144,15 @@ def engine_identity(binary: str | Path, registry: Mapping[str, Any]) -> dict[str
 
 
 # ---------------------------------------------------------------------------
-# geography fingerprint (mirrors rw-mpas static_builder.rs, 7008877b6)
+# geography fingerprint (current rw-mpas defaults plus older binary inputs)
 # ---------------------------------------------------------------------------
 #: GEOG_DATASET_TABLE: (slot, directory names the static builders read for it, newest first).
 #: A slot is keyed over every one of its directories that exists, and is missing only when none does.
-#: BREAKAGE THIS PREVENTS: the table named one directory per slot (rw-mpas 7008877b6), and woof 2.9.5's
+#: BREAKAGE THIS PREVENTS: the table named one directory per slot (rw-mpas 7008877b6), and gpuwm 2.9.5's
 #: rw_mpas_static reads three others (texture_top in soilgrids, soiltemp_era5_1deg, and the lake-free MODIS land
 #: use). On a box laid out for it (the WOOF run-box image) soiltype_top_30s and soiltemp_1deg do not exist, so
 #: every static request read as "missing", was never keyed, and was rebuilt on every run: 318 s for the 30 km
-#: region's parent, 2026-10-23 (`prep_store stage`: "this command is built, never stored").
+#: region's parent on 2026-10-23 (`prep_store stage`: "this command is built, never stored").
 GEOG_DATASETS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("terrain", ("topo_gmted2010_30s",)),
     ("landuse", ("modis_landuse_20class_30s", "modis_landuse_20class_30s_with_lakes")),
@@ -601,6 +601,99 @@ def request_for(argv: Sequence[str], registry: Mapping[str, Any], pinned: str | 
     return None, None
 
 
+#: Where a mesh the generator refused at its point is built again, in order. The first is the zoom-globe door's template
+#: centre, so a library that holds a family's template serves it too.
+REBUILD_CENTRES = ((0.0, 0.0), (10.0, 20.0), (-30.0, -60.0))
+
+
+def _turned_when_refused(runner: Callable[[list[str]], Any]) -> Callable[[list[str]], Any]:
+    """``runner`` for ``rw_mpas_mesh --spec``, with a refused cap family built about another centre and turned to the point.
+
+    THE BREAKAGE THIS PREVENTS (WOOF, 2026-10-31): whether the generator's relaxation, surgery and delivery checks pass
+    depends on where the caps sit on its seed lattice, not only on the spec. Measured on 0.4.11's generator over 515 builds of
+    the door's own ladder: a 468.75 m region of 60 km refused at Darwin and built at Oklahoma and Iceland; 3 km of 500 km
+    refused at Iceland and built at Darwin; 937.5 m of 480 km refused at Darwin, Oklahoma and Iceland and built about
+    (0, 0). No check before the build can see it (`mesh-plan` passes them all), so a region a customer was quoted failed on
+    the box. A concentric cap family is the same mesh wherever its centre is (woof.hex.moving_mesh.rotate_grid keeps its
+    topology and lengths), which is how zoom globes already get to their point, so the same family built about a centre
+    that settles is the asked mesh. Nothing changes for a mesh that builds at its point, and every refusal still
+    stands when no centre builds it or the spec is not a cap family.
+    """
+    def run(argv: list[str]) -> Any:
+        from .errors import MpasPortError
+
+        failure: Exception | None = None
+        result = None
+        try:
+            result = runner(argv)
+            if getattr(result, "returncode", 0) == 0:
+                return result
+        except (subprocess.CalledProcessError, MpasPortError) as refused:
+            failure = refused
+        turned = _rebuild_turned(argv, runner)
+        if turned is not None:
+            return turned
+        if failure is not None:
+            raise failure
+        return result
+    return run
+
+
+def _rebuild_turned(argv: list[str], runner: Callable[[list[str]], Any]) -> Any:
+    """The refused command's grid, built about the first of REBUILD_CENTRES that settles and turned to its point, or None."""
+    from .errors import MpasPortError
+    from .mesh_plan_door import concentric_cap_center
+    from .moving_members import _near_antipode
+    from .moving_mesh import rotate_grid
+
+    spec_path, out = Path(argv[argv.index("--spec") + 1]), Path(argv[argv.index("--out") + 1])
+    receipt = Path(argv[argv.index("--receipt") + 1]) if "--receipt" in argv else None
+    specification = json.loads(spec_path.read_text(encoding="utf-8"))
+    centre = concentric_cap_center(specification)
+    if centre is None:
+        return None
+    for other in REBUILD_CENTRES:
+        if other == centre or _near_antipode(centre, other):
+            continue
+        family = json.loads(json.dumps(specification))
+        for region in family["regions"]:
+            region["shape"]["center_deg"] = list(other)
+        stem = out.with_name(f"{out.stem}.about-{other[0]:g}-{other[1]:g}")
+        family_spec, family_grid, family_receipt = (stem.with_suffix(".spec.json"), stem.with_suffix(".grid.nc"),
+                                                    stem.with_suffix(".receipt.json"))
+        family_spec.write_text(json.dumps(family, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        command = list(argv)
+        command[command.index("--spec") + 1] = str(family_spec)
+        command[command.index("--out") + 1] = str(family_grid)
+        if receipt is not None:
+            command[command.index("--receipt") + 1] = str(family_receipt)
+        print(f"rw_mpas_mesh refused this mesh at {centre}; building it about {other} and turning it to the point",
+              file=sys.stderr, flush=True)
+        try:
+            result = runner(command)
+        except (subprocess.CalledProcessError, MpasPortError):
+            continue
+        if getattr(result, "returncode", 0) != 0:
+            continue
+        built_sha = _sha256_file(family_grid)
+        file_id = hashlib.sha256(f"{built_sha} {centre[0]!r} {centre[1]!r}".encode()).hexdigest()[:32]
+        out.unlink(missing_ok=True)
+        rotation = rotate_grid(family_grid, out, start=other, end=centre, file_id=file_id)
+        rotation["source_sha256"] = built_sha
+        family_grid.unlink()
+        if receipt is not None:
+            receipt.write_text(json.dumps({
+                "schema": "gpuwm-hex.refused-mesh-rotation/v1",
+                "emitted": {"path": str(out), "sha256": rotation["sha256"]},
+                "built_about": list(other),
+                "rotation": rotation,
+                "generator_receipt": (json.loads(family_receipt.read_text(encoding="utf-8"))
+                                      if family_receipt.is_file() else None),
+            }, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+        return result
+    return None
+
+
 def run_or_fetch(argv: Sequence[str | Path], *, kind: str | None = None,
                  runner: Callable[[list[str]], Any] | None = None) -> dict[str, Any]:
     """Fetch what this ``rw_mpas_mesh``/``rw_mpas_static`` command would write, else run it and stage the result.
@@ -610,6 +703,8 @@ def run_or_fetch(argv: Sequence[str | Path], *, kind: str | None = None,
     """
     argv = [str(a) for a in argv]
     runner = runner or (lambda a: subprocess.run(a, check=True))
+    if Path(argv[0]).name.startswith("rw_mpas_mesh") and "--spec" in argv and "--out" in argv and "--dry-run" not in argv:
+        runner = _turned_when_refused(runner)
     stores = configured_stores()
     box = outbox()
     if not stores and box is None:

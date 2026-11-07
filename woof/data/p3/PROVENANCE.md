@@ -11,6 +11,22 @@ reference bundle this copy came from.
 
 WRF is NCAR/UCAR public domain and is attributed in `NOTICE`.
 
+## Prognostic droplet number source audit, 2026-11-01
+
+The selector 51 port uses WRF's public source, not a competitor port.
+The source and table were checked at these upstream locations before
+restoring the implementation:
+
+- [WRF v4.7.1 public-domain statement](https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt).
+- [P3 source](https://github.com/wrf-model/WRF/blob/v4.7.1/phys/module_mp_p3.F).
+- [Two-moment ice table](https://github.com/wrf-model/WRF/blob/v4.7.1/run/p3_lookupTable_1.dat-v5.4_2momI).
+
+Neither source nor table has a separate restrictive notice. The checked
+v4.7.1 source is byte-identical to v4.6.1 with the source hash above.
+The checked v4.7.1 table has the LF hash in the table below and equals the
+packaged table after CRLF normalization. Selector 51 needs no new table.
+This audit adds no claim about native forecast or GPU replay validation.
+
 ## The CRLF divergence, measured 2026-08-28
 
 This file is NOT byte-identical to WRF's, and the earlier wording here
@@ -44,16 +60,49 @@ the digest is written into every mp=50 checkpoint's setup identity
 (`gpuwm/io/restart.py::_p3_setup_identity`), so moving it would make
 every existing mp=50 checkpoint refuse to resume.
 
-## What is not packaged
+## Two-category interaction table
 
-The 3-moment table (`p3_lookupTable_1.dat-v5.4_3momI`) and the
-multi-category interaction table (`p3_lookupTable_2.dat-v5.3`) are NOT
-packaged: they belong to the unported mp_physics=53 / 52 options, which
-gpuwm refuses by name.
+`tables/p3_lookupTable_2.dat-v5.3` is WRF v4.6.1's own `run/` file,
+byte-identical with LF endings. The source pin is WRF commit
+`d66e442fccc04111067e29274c9f9eaccc3cef28`.
+- Size: 15,250,032 bytes.
+- SHA-256: `c9103041ead719cf9e2e215cf846e0ef81b2004f29386156444a079af6b24d97`.
+- Parsed `itabcolli1` followed by `itabcolli2`, in Fortran element order:
+  `13a745a56fd11a0239fa0d573bf480abf5e3da44b7e435d28c0b5f59b9ef00a6`.
 
-Table 2's absence is not a gap.  Measured against the compiled authority
-on 2026-08-28: at `nCat=1`, `p3_init` completes and returns `stat=0` with
-no table-2 file present anywhere, because the read is inside
-`IF_NCAT: if (nCat>1)` (module_mp_p3.F:475).  At `nCat=2` the same
-executable, same directory, hard-fails at :479 with
-`Cannot open file '.../p3_lookupTable_2.dat-v5.3'`.
+WRF reads this table only for `nCat>1` (`module_mp_p3.F:474-519`).
+The table parser is checked against the Fortran initialization dump from
+`tools/p3_wrf461_oracle/table2_dump.sh`; the packaged and parsed digests
+are asserted in `tests/test_p3_2cat_port.py`. One-category initialization
+still loads only table 1. Two-category checkpoints identify both assets.
+
+The module and both tables were checked at the public WRF source on
+2026-11-01. WRF's public-domain notice is retained in `LICENSE-WRF.txt`.
+The upstream [notice](https://github.com/wrf-model/WRF/blob/v4.6.1/LICENSE.txt)
+covers this release; neither the module header nor either table carries a
+separate restrictive notice. The two-category table is the
+[upstream run file](https://github.com/wrf-model/WRF/blob/v4.6.1/run/p3_lookupTable_2.dat-v5.3).
+A fresh strict native initialization matched all 500,000 parsed table-2
+words, with SHA-256 `13a745a56fd11a0239fa0d573bf480abf5e3da44b7e435d28c0b5f59b9ef00a6`.
+This initialization check is separate from a real-input physics replay.
+
+## Three-moment ice
+
+`tables/p3_lookupTable_1.dat-v5.4_3momI.xz` contains the exact LF text
+from WRF v4.7.1 `run/p3_lookupTable_1.dat-v5.4_3momI`. Its 17,886,038
+uncompressed bytes have SHA-256
+`9a3c57ecc09498802c8d7cb3931dbb0200dcf0f51466b3e288120c080271e6dc`.
+The packaged 614,968-byte xz stream has SHA-256
+`18ef2429958eee71c84b37f7212a8ec62eb61549043bfabe84f6dad82a836b69`.
+The official source and table carry WRF's public-domain statement and no
+separate restriction. The source pin above is unchanged in WRF v4.7.1.
+
+`rw-p3` validates the version, length and text SHA-256 before parsing
+independent blocks in parallel. It also reads the identical uncompressed
+WRF run/ copy. The Fortran array hashes in `p3_tables.py` pin all 825,000
+parsed words. Rust startup uses `rw-libm` and parallel independent rain
+rows, retaining WRF's sequential sum within each row.
+
+The decoder `lzma-rust2` 0.16.1 is Apache-2.0. Its new dependencies `crc`
+3.3.0 and `crc-catalog` 2.4.0 are MIT OR Apache-2.0. Their complete licence
+texts and source checksums are retained in `tools/rustwx/vendor/crates-io/`.

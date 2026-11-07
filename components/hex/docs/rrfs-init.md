@@ -38,6 +38,18 @@ static first (the geography needs `modis_landuse_20class_15s`, `bnu_soiltype_top
 statistics are written beside `init.nc`. The receipt `init.nc.provenance.json` records the
 producer, its recipe, every stage's time and the output hash.
 
+`--boundary-recipe noaa` on `init` or `lbc` selects NOAA's parent-dependent boundary
+hydrometeors: GFS writes mass only, RAP/HRRR/RRFS write all species, and other parents
+write water vapour only; absent numbers stay zero. The parent comes from the atmospheric
+intermediate's metadata and the receipt records the selection. Case 7 and the default
+boundary recipe stay unchanged. The GFS option can produce reflectivity rings and strong
+edge strips (the comparison below shows why). It applies to every RRFS producer suite
+and pin, including boundaries built from intermediates through `country` and `regional`;
+routes using `rw_mpas_lbc` instead refuse because that worker cannot write the selected
+condensate and number fields. With no boundary times (including a country row with no
+lateral boundaries) it is recorded as unapplied; a region
+from kept parent frames transfers their existing species and records the option as unapplied.
+
 ## Deep-soil temperature: ERA5, not NOAA's ISLSCP-I
 
 When the init builds the fork static (any region or mesh whose static lacks the suite's fields), its
@@ -125,6 +137,38 @@ matrix with no excluded fields or tolerance. The engine's committed plan is
 The door uses `tests/rrfs_init_door_replay.py --physics-pin-set rrfs-44c0849`.
 The plan authenticates the published native executable, correction, audit,
 rebuild, run manifests, inputs and reference files.
+
+### What this matrix proves on boundaries, and where the default differs
+
+The boundary rows above ran native with `config_lbc_hydrometeors_rrfs=true`,
+`config_lbc_hydrometeors_gfs=false` on a GFS first guess, and both replays run
+`absent_numbers=zero`. That proves the Rust producer equals native at those switches. It is
+neither NOAA's GFS recipe nor what the door writes by default:
+
+| Recipe | Switches on a GFS parent | Rain, cloud, ice number the model gets | Graupel number the model gets |
+|---|---|---|---|
+| NOAA `exrrfs_lbc.sh` at rrfs-workflow 570c81f | `gfs=true`, `rrfs=false` | zero (fields not written) | zero (field not written) |
+| The matrix above | `gfs=false`, `rrfs=true`, numbers zero | zero | from mass, as the fork does |
+| The door's default | `gfs=false`, `rrfs=true`, numbers from mass | from mass | from mass, as the fork does |
+
+NOAA's switches are also exact at 44c0849: the producer against the same native derivative with
+`gfs=true`, `rrfs=false`, numbers zero, on lam7k case 9 at 12Z and 13Z, gives 8,257,278 values per
+file, 0 different. Mass, wind, temperature and aerosol fields are the same under all three
+recipes; only the number fields differ. So `exact` applies to native at the named switches with
+numbers zero, and the default is a declared departure from it, in the boundary files' number
+fields and in the case-7 init's `nr`, `nc` and `ni`.
+
+Why the default departs. TEMPO reads rain mass with zero number as the largest drops it allows,
+and GFS carries light rain almost everywhere. On lam7k from GFS 2023-03-31 18Z, 6 h, fast numerics,
+one card, same init:
+
+| Boundary rows at the time shown | Door default | NOAA's GFS switches | Default without graupel number |
+|---|---:|---:|---:|
+| Outer 2 rows, mean composite reflectivity, 19Z | -17.5 dBZ | 12.9 dBZ | -15.3 dBZ |
+| Outer 2 rows, at least 20 dBZ, 19Z | 0.0 % | 47.5 % | 0.0 % |
+| Inner 5 rows, at least 40 dBZ, 23Z (GFS storms at the edge) | 4.3 % | 18.0 % | 16.8 % |
+
+The storms inside the domain are in the same places in all three runs.
 
 On an RTX 5090 host, the old worker/producer took 1.084 s prepare and 5.142 s case 7 on
 x1.2562. The new door/producer took 0.733 s prepare and 2.194 s case 7 on the

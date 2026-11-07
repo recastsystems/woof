@@ -1,0 +1,29 @@
+{
+  "schema": "gpuwm-tc-vortex-perturbation-table-v1",
+  "description": "TC-VP1 per-member balanced perturbations of a merged inner core (gpuwm/storm_merge.py, tools/storm_merge). Member K of N takes Latin-hypercube strata of: central pressure uniform on vitals minimum pressure + central_pressure_offset_hpa; RMW log-uniform on rmw_km; centre shift uniform in area within shift_max_km (golden-angle azimuths). Breakage prevented: Milton 2024-10-08 00Z, 20 GEFS members with one identical HAFS-A core had 948.0-950.8 hPa priors (sd 0.7) against a 902 hPa storm, so the LETKF could not reach the recon/vitals core.",
+  "rows": {
+    "default": {
+      "note": "TC rows, cold start and cycles: spans an observed core about 10 hPa deeper to 60 hPa weaker than the vitals and RMW 10-40 km, as recon-era intensity/size uncertainty of a model-filled first guess",
+      "central_pressure_offset_hpa": [
+        -10.0,
+        60.0
+      ],
+      "rmw_km": [
+        10.0,
+        40.0
+      ],
+      "shift_max_km": 15.0,
+      "outer_radius_km": 300.0,
+      "boundary_layer_top_hpa": 850.0,
+      "intensity_taper_hpa": [
+        100.0,
+        50.0
+      ],
+      "intensity_scale_bounds": [
+        0.25,
+        2.5
+      ],
+      "seed": 1
+    }
+  }
+}

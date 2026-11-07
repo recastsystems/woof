@@ -17,7 +17,7 @@
   ],
   "provenance": {
     "box": "the development Windows 11 workstation, 32-thread CPU (the reference box)",
-    "card": "NVIDIA RTX 3080 (sm_86); this box's 5090 moved to a development machine on 2026-08-15",
+    "card": "NVIDIA RTX 3080 (sm_86); this box's 5090 moved to test-machine-2 on 2026-08-15",
     "date": "2026-08-16",
     "gpuwm_version": "2.5.0.dev, integration/release-2.5.0 at ed4c0ef69 plus this instrumentation lane",
     "case": "GFS 12 km single domain, 142x112x49, cycle 2026-08-16T18Z, 6 h, thompson-mp8-ysu-mm5-noah-validation-v1 (the 3080 cannot fit the wizard's default Morrison+RRTMGP suite)",
@@ -216,8 +216,8 @@
     }
   },
   "cross_checks": [
-    "A development machine (Linux, RTX 5090), 2026-08-16 standup: full 3 h GFS 12 km CONUS `go`, 161 s end to end including 660 PNGs.",
-    "docs/public/FIRST-LIGHT.md (Linux a development machine, RTX 4070, 342x272x49): fetch 50.3 s, authorities <1 s, rw-wps 2 m 52 s, 6 h forecast 523 s, render 21.8 s."
+    "test-machine-2 (Linux, RTX 5090), 2026-08-16 standup: full 3 h GFS 12 km CONUS `go`, 161 s end to end including 660 PNGs.",
+    "docs/public/FIRST-LIGHT.md (Linux test-machine-3, RTX 4070, 342x272x49): fetch 50.3 s, authorities <1 s, rw-wps 2 m 52 s, 6 h forecast 523 s, render 21.8 s."
   ],
   "how_to_take_a_new_reading": [
     "1. gpuwm go CONFIG --outdir <new dir>            # bare, no flags",

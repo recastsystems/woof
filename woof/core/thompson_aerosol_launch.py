@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+from functools import lru_cache
 
 import numpy as np
 
@@ -75,11 +76,109 @@ def thompson_version_scope(version: str):
         _ACTIVE_VERSION.reset(token)
 
 
+# ---------------------------------------------------------------------------
+# Hail awareness (mp_physics = 38).
+# ---------------------------------------------------------------------------
+#
+# WRF v4.6.1 runs ONE module for mp=28 and mp=38; the hail-aware member is
+# the aerosol-aware scheme plus a prognostic graupel number and volume, nine
+# graupel density bins and their nine-slab rain-graupel tables
+# (module_mp_thompson.F:459-466, :1260-1264, :3266-3282, :3750-3753).  The
+# same translation units therefore compile it, with one integer define,
+# THOMPSON_AA_HAIL, whose #if arms carry exactly those statements.  Like the
+# generation, it is a property of one microphysics call, set by the adapter
+# around it (hail_aware_scope) and read by every launcher through
+# aerosol_kernel, so the launch sites do not fork.
+HAIL_DEFINES = (("THOMPSON_AA_HAIL", 1),)
+
+_HAIL_AWARE: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "gpuwm_thompson_hail_aware", default=False)
+
+
+def active_hail_aware() -> bool:
+    """Whether the current microphysics call is the hail-aware scheme."""
+    return _HAIL_AWARE.get()
+
+
+@contextlib.contextmanager
+def hail_aware_scope(enabled: bool):
+    """Run the enclosed launches as the hail-aware (mp=38) scheme or not."""
+    if enabled and _ACTIVE_VERSION.get() != "wrf_461":
+        # The operational WRF 3.9 fork has no hail-aware branch at all: its
+        # graupel carries no number, no volume and no density axis (fork
+        # :2031-2054, tables (28,28,37,37)), so there is nothing to compile
+        # mp=38 against.  Refused rather than silently run as mp=28.
+        raise ValueError(
+            "hail-aware Thompson (mp_physics=38) exists only in the WRF "
+            "v4.6.1 generation; thompson_version="
+            f"{_ACTIVE_VERSION.get()!r} carries no graupel number, volume "
+            "or density bins")
+    token = _HAIL_AWARE.set(bool(enabled))
+    try:
+        yield bool(enabled)
+    finally:
+        _HAIL_AWARE.reset(token)
+
+
+@lru_cache(maxsize=None)
+def _hail_module(name: str):
+    """Compile the hail image with its measured noncontracting arithmetic."""
+    import cupy as cp
+    from woof import nvrtc_ptx_cache
+    from woof.core.kernels import module_source_int_defines, MODULE_KEY_ROOT
+    from woof.certify.kernel_manifest import record_module
+    from woof.kernel_compile_notice import observe_module_compile
+    from woof.physics_params import note_compiled
+    source = module_source_int_defines(name, HAIL_DEFINES)
+    options = ("-std=c++17", "--ftz=false", "--fmad=false")
+    key = f"{MODULE_KEY_ROOT}:{name}[THOMPSON_AA_HAIL=1]"
+    with observe_module_compile(key):
+        image, _ = nvrtc_ptx_cache.compile_using_nvrtc(source, options, None, name + ".cu")
+        module = cp.cuda.function.Module()
+        module.load(image.encode() if isinstance(image, str) else image)
+    note_compiled(name)
+    record_module(key,
+                  source=source, options=options, module=None)
+    return module
+
+
 def aerosol_kernel(module: str, func: str):
     """``get_kernel(module, func)`` compiled for the active generation."""
+    if _HAIL_AWARE.get():
+        return _hail_module(module).get_function(func)
     if _ACTIVE_VERSION.get() == "wrf_39_noaa":
         return get_kernel_int_defines(module, func, WRF39_DEFINES)
     return get_kernel(module, func)
+
+
+def hail_graupel_arguments(fields: dict, *, graupel_volume, qgten, ngten,
+                           qbten) -> tuple:
+    """The four hail-aware kernel arguments, validated, or four ``None``.
+
+    Under :func:`hail_aware_scope` all four are required: the hail-aware
+    graupel exists only as WRF's qb1d and its qgten/ngten/qbten.  Outside it
+    all four must be absent, because the mp=28 kernels have no use for them
+    and a caller passing them believes it is running a scheme it is not.
+    The validated arrays join ``fields`` for the shape/dtype check.
+    """
+    given = {"graupel_volume": graupel_volume, "qgten": qgten,
+             "ngten": ngten, "qbten": qbten}
+    present = [name for name, value in given.items() if value is not None]
+    if _HAIL_AWARE.get():
+        if len(present) != 4:
+            missing = sorted(set(given) - set(present))
+            raise ValueError(
+                "the hail-aware (mp_physics=38) source network needs "
+                "graupel_volume, qgten, ngten and qbten; missing "
+                + ", ".join(missing))
+        fields.update(given)
+        return (graupel_volume, qgten, ngten, qbten)
+    if graupel_volume is not None or qbten is not None:
+        raise ValueError(
+            "graupel_volume/qgten/ngten/qbten are the hail-aware "
+            "(mp_physics=38) arguments; this call is not hail aware (got "
+            + ", ".join(present) + ")")
+    return (None, None, None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -464,6 +563,10 @@ def probe_constant_tables():
 
 
 __all__ = [
+    "HAIL_DEFINES",
+    "active_hail_aware",
+    "hail_aware_scope",
+    "hail_graupel_arguments",
     "AEROSOL_COMMON_HEADER",
     "AEROSOL_KERNEL_MODULES",
     "CCN_ACTIVATION_SHAPE",

@@ -36,15 +36,22 @@ def wizard_arguments(args) -> list:
     return [] if not provider else ["--era5-provider", str(provider)]
 
 
-def ensemble_members(*, provider=None) -> tuple:
+def ensemble_members(*, provider=None, cycle=None) -> tuple:
     """The members an ensemble planner may draw from ERA5 at one analysis time.
 
     The EDA is served by the CDS only: with a CDS key in place and a
     provider other than ARCO every member is a trajectory of its own;
     otherwise ERA5 has one (the HRES reanalysis) and the planner says so.
+    The EDA analyses are 3-hourly, so at any other hour (HRES is hourly,
+    e.g. a 16Z start) there is no EDA member and HRES is the one
+    trajectory.  Breakage this prevents: a 16Z ERA5 ensemble on a box
+    with a CDS key built ten EDA trajectories that each refused with
+    "ERA5 EDA initialization must be an exact 3-hourly UTC analysis time".
     """
     from woof.fetch import cds_credentials_present
     if provider == "arco" or not cds_credentials_present():
+        return ()
+    if cycle is not None and cycle.hour % EDA_CADENCE_HOURS:
         return ()
     return EDA_MEMBERS
 

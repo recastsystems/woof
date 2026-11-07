@@ -1,0 +1,25 @@
+--- a/phys/module_cu_camzm.F
++++ b/phys/module_cu_camzm.F
+@@ -1630,7 +1630,7 @@
+                conu(i,kk) = (+eu(i,kk)*const(i,kk)*dp(i,kk)+pgu(i,kk)*dp(i,kk))/mupdudp
+             endif
+             if (md(i,k) < -mbsth) then
+-               cond(i,k) =  (-ed(i,km1)*const(i,km1)*dp(i,km1))-pgd(i,km1)*dp(i,km1)/md(i,k)
++               cond(i,k) =  (-ed(i,km1)*const(i,km1)*dp(i,km1)-pgd(i,km1)*dp(i,km1))/md(i,k)
+             endif
+ 
+                         
+--- a/phys/module_cu_camzm_driver.F
++++ b/phys/module_cu_camzm_driver.F
+@@ -457,9 +457,9 @@
+ 
+         !Other necessary conversions for input to ZM
+         if( xland(i,j)==2 ) then
+-           landfrac(1) = 1. !land, WRF is all or nothing
++           landfrac(1) = 0. !water (XLAND = 2); WOOF fix: WRF 4.6.1 set 1 here
+         else
+-           landfrac(1) = 0. !water
++           landfrac(1) = 1. !land (XLAND = 1); WOOF fix: WRF 4.6.1 set 0 here
+         end if
+         pblh8(1) = pblh(i,j)
+         phis(1)  = ht(i,j)*gravit

@@ -1,0 +1,71 @@
+{
+  "source": "https://github.com/wrf-model/WRF/blob/v4.6.1/test/em_real/namelist.input",
+  "public_file": "/work/wrf/src/WRF-4.6.1/test/em_real/namelist.input",
+  "changes": {
+    "tuple_reduction": "d01 only",
+    "removed": "physics_suite; explicit scheme numbers replace suite resolution",
+    "time_control": {
+      "run_days": 0,
+      "run_hours": 0,
+      "run_minutes": 0,
+      "run_seconds": 120,
+      "start_year": 2026,
+      "start_month": 10,
+      "start_day": 7,
+      "start_hour": 18,
+      "start_minute": 0,
+      "start_second": 0,
+      "end_year": 2026,
+      "end_month": 10,
+      "end_day": 7,
+      "end_hour": 18,
+      "end_minute": 2,
+      "end_second": 0,
+      "history_interval": 2,
+      "restart_interval": 1
+    },
+    "domains": {
+      "max_dom": 1,
+      "time_step": 10,
+      "e_we": 33,
+      "e_sn": 25,
+      "e_vert": 50,
+      "p_top_requested": 10000,
+      "dx": 12000,
+      "dy": 12000,
+      "parent_id": 0,
+      "feedback": 0,
+      "num_metgrid_levels": 23,
+      "eta_levels": "1.0, 0.9978, 0.99519, 0.99212, 0.98849, 0.98422, 0.97918, 0.97325, 0.96627, 0.95808, 0.94846, 0.93719, 0.92402, 0.90866, 0.89079, 0.87006, 0.84612, 0.81857, 0.78706, 0.75124, 0.7108, 0.66556, 0.61547, 0.56067, 0.50519, 0.45474, 0.40886, 0.36713, 0.32918, 0.29466, 0.26328, 0.23473, 0.20877, 0.18516, 0.16369, 0.14417, 0.12641, 0.11026, 0.09557, 0.08222, 0.07007, 0.05902, 0.04898, 0.03984, 0.03153, 0.02398, 0.0171, 0.01085, 0.00517, 0.0",
+      "hypsometric_opt": 2
+    },
+    "physics": {
+      "mp_physics": 10,
+      "cu_physics": 0,
+      "ra_lw_physics": 4,
+      "ra_sw_physics": 4,
+      "bl_pbl_physics": 1,
+      "sf_sfclay_physics": 91,
+      "sf_surface_physics": 2,
+      "ua_phys": ".true.",
+      "radt": 12,
+      "num_soil_layers": 4,
+      "morr_rimed_ice": 1
+    },
+    "dynamics": {
+      "hybrid_opt": 2,
+      "etac": 0.2,
+      "w_damping": 1,
+      "diff_6th_opt": 2,
+      "diff_6th_slopeopt": 1,
+      "smdiv": 0.1,
+      "emdiv": 0.01,
+      "epssm": 0.5,
+      "time_step_sound": 4,
+      "gwd_opt": 0,
+      "h_sca_adv_order": 5,
+      "moist_adv_opt": 1
+    }
+  },
+  "wps": "qualification grid declaration"
+}

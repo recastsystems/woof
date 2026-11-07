@@ -24,9 +24,11 @@ from __future__ import annotations
 import argparse
 import datetime
 import glob
+import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from woof.render import default_source_label
@@ -158,6 +160,82 @@ def group_frames(frames) -> list[tuple[list[Path], list[Path]]]:
     return out
 
 
+#: The most engines one comparison runs at once.  One a physical core at most:
+#: 40 frames on 8 cores took 29 s with 4 engines, 19 s with 8 and 19 s with 16.
+COMPARE_WORKERS_MAX = 16
+#: One engine's store and rasters in host memory, per byte of history frame on
+#: disk (measured 16-20 GB for a 2.4 GB frame, WOOF 2026-10-31).
+_ENGINE_HOST_BYTES_PER_FRAME_BYTE = 8
+
+
+def available_cores() -> int:
+    """The cores this process may use, its affinity where it has one."""
+
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:  # no affinity call on this platform
+        return os.cpu_count() or 1
+
+
+def compare_workers(frames, *, cores: int | None = None,
+                    available_bytes: int | None = None) -> int:
+    """How many engines draw these frames at once.
+
+    THE BREAKAGE THIS CLOSES: ``rw_compare`` draws one sheet at a time and
+    fetches the reference on that same thread, so finalize held a rented box
+    at 0 % card and one busy core out of 16 for 3-6 minutes (WOOF city runs,
+    2026-10-31: nyc-500m 189 s, sf-bay-fog-750m 342 s).  Frames are
+    independent, so every core gets some of them: two cores an engine, because
+    the engine's import is parallel; no more engines than the host's free
+    memory holds, one frame's store each.
+    """
+
+    if cores is None:
+        cores = available_cores()
+    workers = max(1, min(COMPARE_WORKERS_MAX, cores // 2, len(frames)))
+    if available_bytes is None:
+        from woof.ingest.host_decode_window import available_host_bytes
+
+        available_bytes = available_host_bytes()
+        if available_bytes is None:
+            return workers
+    largest = max((frame.stat().st_size for frame in frames), default=0)
+    needed = largest * _ENGINE_HOST_BYTES_PER_FRAME_BYTE
+    if needed > 0:
+        workers = max(1, min(workers, available_bytes // needed))
+    return int(workers)
+
+
+def deal_frames(frames, workers: int) -> list[list[Path]]:
+    """``frames`` as ``workers`` lists, each a run of neighbouring valid times.
+
+    A worker gets every nest's frames of its valid times, so no two engines
+    ask for the same reference lead at once (the fetch cache's partial file
+    is named by lead); and neighbouring times, so only the first frame of
+    each list imports the hour before it as context.
+    """
+
+    timed = sorted({identity[1] for frame in frames
+                    if (identity := frame_identity(frame)) is not None})
+    if workers <= 1 or len(timed) <= 1:
+        return [list(frames)] if frames else []
+    # Whole valid times to each list; the first lists take the remainder.
+    lists = min(workers, len(timed))
+    each, extra = divmod(len(timed), lists)
+    slot: dict = {}
+    at = 0
+    for index in range(lists):
+        size = each + (index < extra)
+        for valid in timed[at:at + size]:
+            slot[valid] = index
+        at += size
+    dealt: list[list[Path]] = [[] for _ in range(lists)]
+    for frame in frames:
+        identity = frame_identity(frame)
+        dealt[slot[identity[1]] if identity is not None else 0].append(frame)
+    return [members for members in dealt if members]
+
+
 def default_reference_cache() -> Path:
     """Where fetched reference subsets are kept between renders."""
 
@@ -225,6 +303,14 @@ def engine_command(engine: Path, args: argparse.Namespace, *, store: Path,
         command += ["--context", str(frame)]
     command += [str(frame) for frame in frames]
     return command
+
+
+def _engine_environment(environment: dict, workers: int, cores: int) -> dict:
+    """One engine's share of the cores: its import's own threads, no more."""
+
+    if workers <= 1 or environment.get("RAYON_NUM_THREADS"):
+        return environment
+    return {**environment, "RAYON_NUM_THREADS": str(max(1, cores // workers))}
 
 
 def _relay(line: str, tally: dict) -> None:
@@ -313,23 +399,43 @@ def compare_main(args: argparse.Namespace) -> int:
     print(f"render: {device}")
     render._claim_run_dir(args, frames)
     tally = {"rendered": [], "skipped": 0, "failed": 0}
-    status = 0
+    dealt = deal_frames(frames, compare_workers(frames))
+    engine_env = _engine_environment(environment, len(dealt), available_cores())
+    relay_lock = threading.Lock()
+    statuses: list[int] = []
+
+    def work(worker_frames) -> None:
+        # One worker's frames, a nest at a time, as one engine per nest.
+        try:
+            for members, context in group_frames(worker_frames):
+                with render.scratch_store(args.out) as store:
+                    command = engine_command(
+                        engine, args, store=store, frames=members,
+                        context=context, size=size)
+                    process = subprocess.Popen(
+                        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        text=True, errors="replace", env=engine_env)
+                    assert process.stdout is not None
+                    for line in process.stdout:
+                        with relay_lock:
+                            _relay(line, tally)
+                    if process.wait() != 0:
+                        statuses.append(1)
+        except OSError as error:
+            with relay_lock:
+                print(f"render: an engine could not run: {error}", file=sys.stderr)
+            statuses.append(1)
+
     try:
-        for members, context in group_frames(frames):
-            with render.scratch_store(args.out) as store:
-                command = engine_command(
-                    engine, args, store=store, frames=members,
-                    context=context, size=size)
-                process = subprocess.Popen(
-                    command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, errors="replace", env=environment)
-                assert process.stdout is not None
-                for line in process.stdout:
-                    _relay(line, tally)
-                if process.wait() != 0:
-                    status = 1
+        threads = [threading.Thread(target=work, args=(members,), daemon=True)
+                   for members in dealt]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
     finally:
         render._publish_run_dir(args)
+    status = 1 if statuses else 0
     print(f"render: {len(tally['rendered'])} comparison sheet(s) -> "
           f"{args.out}"
           + (f" ({tally['skipped']} skipped)" if tally["skipped"] else "")

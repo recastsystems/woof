@@ -1,0 +1,201 @@
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu:21:9: warning: #pragma once in main file
+   21 | #pragma once
+      |         ^~~~
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(833): warning #177-D: variable "half" was declared but never referenced
+  half= 5.0000000000e-01,
+  ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(835): warning #177-D: variable "two" was declared but never referenced
+  two = 2.0000000000e+00,
+  ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3059): warning #550-D: variable "csl" was set but never used
+      real h1, h2, tau_cloud__, bv, wt, abk, afk, elb, elf, elt, cns, vsc, csl,
+                                                                           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3061): warning #550-D: variable "zwk1" was set but never used
+       alp6, zwk1, ctau, zslh, vflx, pblh2, wt_u1__, wt_u2__,
+             ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3061): warning #550-D: variable "zslh" was set but never used
+       alp6, zwk1, ctau, zslh, vflx, pblh2, wt_u1__, wt_u2__,
+                         ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3065): warning #550-D: variable "cldavg" was set but never used
+      real pblh_plus_ent__, elb_mf__, cldavg, el_les__, qkw_mf__,
+                                      ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3066): warning #550-D: variable "minpblh" was set but never used
+       uonset, minpblh, elt_max__;
+               ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3935): warning #550-D: variable "sh20" was set but never used
+      real adh, abk, aeh, afk, adm, aem, elh, sh20, auh, shb, dzk, vqq, cw25, vtt, smd, elq, duz, aum, req,
+                                              ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3936): warning #550-D: variable "sm20" was set but never used
+       rsl, sm20;
+            ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3942): warning #550-D: variable "rsl2" was set but never used
+      real rsl2;
+           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3950): warning #550-D: variable "gmelq" was set but never used
+      real gmelq, mfmax, prlim, prnum, cldavg, sh25min, sh25max, sm25min,
+           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(3950): warning #550-D: variable "prnum" was set but never used
+      real gmelq, mfmax, prlim, prnum, cldavg, sh25min, sh25max, sm25min,
+                                ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(4457): warning #550-D: variable "pdc1" was set but never used
+      real b1l, b2l, phm, vkz, pdc1, pdk1, pdq1, pdt1, onoff;
+                               ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(4457): warning #550-D: variable "pdq1" was set but never used
+      real b1l, b2l, phm, vkz, pdc1, pdk1, pdq1, pdt1, onoff;
+                                           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(4457): warning #550-D: variable "pdt1" was set but never used
+      real b1l, b2l, phm, vkz, pdc1, pdk1, pdq1, pdt1, onoff;
+                                                 ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(4923): warning #550-D: variable "cldfra_rh0__" was set but never used
+      real t, cldfra_rh__, cldfra_rh0__, cldfra_rh1__, bb, pt, qt, xl, wt;
+                           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(4923): warning #550-D: variable "cldfra_rh1__" was set but never used
+      real t, cldfra_rh__, cldfra_rh0__, cldfra_rh1__, bb, pt, qt, xl, wt;
+                                         ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(5469): warning #550-D: variable "kproblem" was set but never used
+      integer kproblem;
+              ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(5478): warning #550-D: variable "wsp" was set but never used
+      real condensate, th2, tk2, portion_qc__, portion_qi__, wsp, dzk, wsp2, qsat, onoff,
+                                                             ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(5478): warning #550-D: variable "dzk" was set but never used
+      real condensate, th2, tk2, portion_qc__, portion_qi__, wsp, dzk, wsp2, qsat, onoff,
+                                                                  ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(5479): warning #550-D: variable "dztop" was set but never used
+       dztop;
+       ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(5501): warning #550-D: variable "ustdiff" was set but never used
+      real ustdiff, ustdrag;
+           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(5501): warning #550-D: variable "ustdrag" was set but never used
+      real ustdiff, ustdrag;
+                    ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(6903): warning #550-D: variable "khdz_old__" was set but never used
+      real khdz_old__;
+           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(6910): warning #550-D: variable "khdz_back__" was set but never used
+      real khdz_back__;
+           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(6913): warning #550-D: variable "dzk" was set but never used
+      real dzk, no_threshold__, dztop,
+           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(6913): warning #550-D: variable "dztop" was set but never used
+      real dzk, no_threshold__, dztop,
+                                ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11045): warning #550-D: variable "thvin" was set but never used
+      real qxold, thvin;
+                  ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11232): warning #550-D: variable "wa" was set but never used
+      real wa, pk, un, vn, wn, wb, z00;
+           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11232): warning #550-D: variable "wb" was set but never used
+      real wa, pk, un, vn, wn, wb, z00;
+                               ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11232): warning #550-D: variable "z00" was set but never used
+      real wa, pk, un, vn, wn, wb, z00;
+                                   ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11235): warning #550-D: variable "jump_thetal__" was set but never used
+       dz200, jump_thetal__;
+              ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11238): warning #550-D: variable "zmin" was set but never used
+      real refp, qncn, refu, thln, qnin, refv, qx_k__, wmin, wmax, zmin, went,
+                                                                   ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11240): warning #550-D: variable "cftop" was set but never used
+       reftk, cftop, refqt, qstar, pwmin;
+              ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11246): warning #550-D: variable "qx_km1__" was set but never used
+      real pwmax, maxdd2, qx_km1__, refqt2;
+                          ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11246): warning #550-D: variable "refqt2" was set but never used
+      real pwmax, maxdd2, qx_km1__, refqt2;
+                                    ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11249): warning #550-D: variable "qlbase" was set but never used
+      integer qlbase;
+              ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11250): warning #550-D: variable "refqke" was set but never used
+      real qnifan, refqke, refqnc, ac_wsp__, minexc, maxexc, sigmaw, refthl,
+                   ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(11252): warning #550-D: variable "sigmaqt" was set but never used
+       entexm, entexp, thstar, sigmath, rho_int__, sigmaqt, radflux, refthlv, jump_qt__;
+                                                   ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12370): warning #550-D: variable "ah_st__" was set but never used
+      real dummy_psi__, phi_m__, ah_st__, bh_st__, am_st__, bm_st__, rbh_st__,
+                                 ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12370): warning #550-D: variable "rbh_st__" was set but never used
+      real dummy_psi__, phi_m__, ah_st__, bh_st__, am_st__, bm_st__, rbh_st__,
+                                                                     ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12372): warning #550-D: variable "ah_unst__" was set but never used
+       dummy_11__, dummy_22__, dummy_33__, ah_unst__, dummy_44__,
+                                           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12478): warning #550-D: variable "am_st__" was set but never used
+      real dummy_psi__, phh, ah_st__, bh_st__, am_st__, bm_st__, rbh_st__,
+                                               ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12479): warning #550-D: variable "rbm_st__" was set but never used
+       rbm_st__, dummy_0__, dummy_1__, dummy_2__, dummy_3__, dummy_4__,
+       ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12481): warning #550-D: variable "am_unst__" was set but never used
+       am_unst__;
+       ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12739): warning #549-D: variable "wm2" is used before its value is set
+   wm2 += (real)pow_dd(&d__1, &d__2);
+   ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12603): warning #550-D: variable "we" was set but never used
+      real we, wm2, wm3, zl1, bfx0, tmp1, pfac, rvls, red001, rcldb,
+           ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12603): warning #550-D: variable "pfac" was set but never used
+      real we, wm2, wm3, zl1, bfx0, tmp1, pfac, rvls, red001, rcldb,
+                                          ^
+
+/workspace/runs/port-mynn-subopts/fold-data/images/sm_89-nz49-strict-4a4cd949cb3676a6.cu(12811): warning #177-D: variable "m471_n" was declared but never referenced
+  unsigned char*m471_work=arena;int m471_n=n;
+                                    ^
+

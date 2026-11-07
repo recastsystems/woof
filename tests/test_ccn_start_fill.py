@@ -103,12 +103,14 @@ def test_an_initialised_nssl_ccn_field_is_left_alone():
 
 
 @requires_gpu
-def test_wdm6_takes_ccn0_whatever_the_start_held():
+@pytest.mark.parametrize("mp", [14, 16, 26])
+# Gate successor: test_wdm6_takes_ccn0_whatever_the_start_held; the assertions cover the admitted behavior.
+def test_wdm_family_takes_ccn0_whatever_the_start_held(mp):
     import cupy as cp
 
     from woof.core.microphysics import ccn_start_fill
 
-    cfg = _cfg(16)
+    cfg = _cfg(mp)
     state = _state(cfg)
     word = np.float32(cfg.wdm6_ccn_conc)
     # Allocation already holds ccn0: nothing to do, empty receipt.

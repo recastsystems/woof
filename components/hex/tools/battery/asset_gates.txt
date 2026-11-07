@@ -116,3 +116,6 @@ tests/replay_rrfs_pool_records.py
 
 # r10-rrfs-init: real Rust vertical boundary handoff
 tests/test_rrfs_init_vertical_handoff.py
+
+# rrfs/s6-scalar-default: real-call word receipts of the shared v841 scalar transport (SCALAR_DEFAULT_RECEIPTS).
+tests/test_scalar_default_replay.py

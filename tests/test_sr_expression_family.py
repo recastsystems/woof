@@ -46,7 +46,7 @@ def _cpu_diagnostics_driver(monkeypatch, mp_physics, *, dt=60.0,
      driver._wsm6_minor_loops) = (
         physics._sr_roundoff_envelope(mp_physics, dt)
         if envelope is None else envelope)
-    hail = mp_physics in (9, 18)
+    hail = mp_physics in (9, 18, 24, 26)
     driver.microphysics = MicrophysicsDiagnostics(
         rainnc=zeros(), rainncv=zeros(), sr=zeros(),
         snownc=zeros(), snowncv=zeros(),
@@ -92,7 +92,7 @@ def test_family_membership_is_the_kernel_audit():
             np.float32(1.0), 0, 0)
 
 
-@pytest.mark.parametrize("mp_physics", [16, 9])
+@pytest.mark.parametrize("mp_physics", [16, 9, 24, 26])
 def test_one_ulp_above_one_red_at_zero_ulp_green_at_family_envelope(
         monkeypatch, mp_physics):
     """The pinned defect case, in both directions.
@@ -194,3 +194,39 @@ def test_my2_envelope_matches_its_analytic_bound():
     encoded = Fraction(scale + 2 * ulps, scale)
     next_encoded = Fraction(scale + 2 * (ulps + 1), scale)
     assert encoded <= analytic < next_encoded
+
+
+def test_wdm7_hail_envelope_matches_its_expression_bound():
+    """Price the extra hail term, including its final numerator addition."""
+    from woof.core.physics import (_SR_HAIL_EXPRESSION_FAMILY,
+                                    _sr_roundoff_envelope)
+
+    assert _SR_HAIL_EXPRESSION_FAMILY == frozenset((24, 26))
+    u = Fraction(1, 1 << 24)
+    ulp = 2 * u
+    for dt, loops in ((60.0, 1), (240.0, 2), (600.0, 5)):
+        gamma_total = 4 * u / (1 - 4 * u)  # Five nonnegative fallout terms.
+        gamma_acc = (loops - 1) * u / (1 - (loops - 1) * u)
+        # Snow pair, two final frozen-sum additions, final division;
+        # four scalings per accumulated term on each side; L-1 adds.
+        bound = ((1 + u) ** 4 * ((1 + u) / (1 - u)) ** 4
+                 * (1 + gamma_acc) / ((1 - gamma_total) * (1 - gamma_acc)))
+        upper, ulps, actual_loops = _sr_roundoff_envelope(26, dt)
+        assert actual_loops == loops
+        assert 1 + ulps * ulp <= bound < 1 + (ulps + 1) * ulp
+        assert np.asarray(upper).view(np.uint32).item() == 0x3f800000 + ulps
+        assert _sr_roundoff_envelope(24, dt) == (upper, ulps, actual_loops)
+    assert _sr_roundoff_envelope(26, 60.0)[1] == 8
+    assert _sr_roundoff_envelope(16, 60.0)[1] == 7
+
+
+def test_wdm7_hail_envelope_endpoints_are_not_clipped(monkeypatch):
+    """Accept the exact bound unchanged and reject the next FP32 word."""
+    physics, driver, diagnostics, shape = _cpu_diagnostics_driver(
+        monkeypatch, 26)
+    upper = driver._sr_roundoff_upper
+    _accept(driver, diagnostics, shape, upper)
+    assert np.all(driver.microphysics.sr.view(np.uint32) == 0x3f800008)
+    beyond = np.nextafter(upper, np.float32(np.inf), dtype=np.float32)
+    with pytest.raises(ValueError, match="validated range"):
+        _accept(driver, diagnostics, shape, beyond)

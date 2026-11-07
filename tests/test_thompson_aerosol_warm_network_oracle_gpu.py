@@ -6,7 +6,7 @@ Each column in ``tests/data/mp28_warm_network_oracle.npz`` is one whose
 warm-network outputs (vapour, theta, cloud water and droplet number, rain
 water and rain number, the two aerosol numbers, surface rain) the strict
 GPU build gives EQUAL to WRF v4.6.1's own Fortran, and did not before the
-transcription repairs of lane/mp28fix-warm-network.  Undoing any one of
+transcription repairs of development branch.  Undoing any one of
 them moves a committed column off WRF:
 
 * ``pnr_wau``'s divisor ``am_r*nu_c*10.*D0r*D0r*D0r`` grouped
@@ -35,7 +35,7 @@ The committed answers are WRF's, from
 ``tools/thompson_aerosol_column_oracle`` (run_oracle.sh, then
 make_warm_gate.py against the run before the repairs).
 
-RE-CUT 2026-10-07 by lane/mp28-exact.  The first cut was taken on a tree
+RE-CUT 2026-10-07 by development branch.  The first cut was taken on a tree
 that still reproduced WRF's out-of-bounds rain-graupel table read; once
 WOOF read the slab the tables hold (the declared rain-graupel divergence,
 module_mp_thompson.F:465, :607-615, :2527-2545), the columns where rain

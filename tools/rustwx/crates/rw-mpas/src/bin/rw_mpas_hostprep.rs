@@ -5,6 +5,10 @@ pub static GPUWM_BRIDGE_SOURCE_REV_STAMP: &str =
     concat!("GPUWM_BRIDGE_SOURCE_REV=", env!("GPUWM_BRIDGE_SOURCE_REV"));
 
 fn main() -> ExitCode {
+    rw_mpas::execution::bridge(run_bridge)
+}
+
+fn run_bridge() -> ExitCode {
     let _stamp = std::hint::black_box(GPUWM_BRIDGE_SOURCE_REV_STAMP);
     let _deformation = std::hint::black_box(rw_mpas::hosttables::DEFORMATION_MARKER);
     let _tables = std::hint::black_box(rw_mpas::hosttables::TABLES_MARKER);

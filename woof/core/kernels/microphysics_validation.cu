@@ -33,8 +33,13 @@ void microphysics_validate_outputs(
         invalid |= 1u << 7;
     if ((active & (1u << 8)) && !isfinite(hailncv[index]))
         invalid |= 1u << 8;
-    if (sr[index] < 0.0f) invalid |= 1u << 16;
-    if (sr[index] > sr_upper) invalid |= 1u << 17;
+    // CAMMGMP exports an un-clipped ratio of signed sedimentation sums.
+    // Its native finite SR can be negative after cancellation; the other
+    // schemes retain their established [0, sr_upper] fraction contract.
+    if (!(active & (1u << 31))) {
+        if (sr[index] < 0.0f) invalid |= 1u << 16;
+        if (sr[index] > sr_upper) invalid |= 1u << 17;
+    }
     if (invalid != 0) atomicOr(status, invalid);
 }
 

@@ -203,6 +203,7 @@ class Endpoint:
     #: not cover a younger cycle.  THE BREAKAGE THIS PREVENTS (WOOF production run_6452d3110cf0705f, 2026-10-26):
     #: GFS 06Z asked for at 07:29Z, before it posted, ended on NCAR GDEX's 404, an archive about two days behind.
     available_after_hours: float | None = None
+    key_rewrite: tuple[str, str] | None = None
 
     @property
     def host(self) -> str:
@@ -226,6 +227,12 @@ class Endpoint:
     def url(self, key: str) -> str:
         """The absolute URL for one rendered object key."""
 
+        if self.key_rewrite is not None:
+            pattern, template = self.key_rewrite
+            match = re.fullmatch(pattern, key)
+            if match is None:
+                raise ValueError(f"{self.name}: object key does not match the declared path grammar: {key}")
+            key = template.format(**match.groupdict())
         if self.layouts:
             match = re.fullmatch(self.layouts[0]["key_pattern"], key)
             if match is None:
@@ -278,6 +285,7 @@ def _endpoint(raw: Mapping[str, object], position: int) -> Endpoint:
         retention_hours=(None if retention is None else float(retention)),
         why=str(raw.get("why", "")),
         layouts=tuple(raw.get("layouts", ())),
+        key_rewrite=(tuple(raw["key_rewrite"]) if raw.get("key_rewrite") else None),
         # No declared rank means "transfer in ladder order", which is
         # what every source outside the NCEP family does: the ladder
         # and the transfer order are then the same tuple, and nothing

@@ -1,0 +1,2 @@
+referee: <referee-build> (.f90 and fixtures byte-identical)
+c36b7fdab20379264a7e7adf30155b2837f61008d0be87faf37ddd6d4a2286e5  <referee-build>/phys/module_bl_acm.o

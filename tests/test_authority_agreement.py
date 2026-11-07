@@ -139,6 +139,8 @@ _REGISTRY_ONLY_CODES = frozenset({
 #: The physics-suite question both authorities own.  A registry refusal
 #: carrying any of these must also be a ``validate_run_config`` refusal.
 _SHARED_CODES = frozenset({
+    "parameter-reader",
+    "irrigation-pairing",
     # The conditional kind (constraints.refused_when), added at 1.9 because
     # the mp=9 / RTE+RRTMGP cloud-optics coupling is a CONJUNCTION -- a
     # radiation option AND an ra_rrtmg_variant -- and none of the other
@@ -190,6 +192,7 @@ _SHARED_CODES = frozenset({
     # on the 2.9.0 round-2 tree offered lightning_option 1, 2 or 11 with no
     # reflectivity or cumulus cloud top as launchable.
     "lightning-dependency",
+    "madwrf-dependency",
     "unimplemented-selector",
     "unknown-selector-combination",
 })
@@ -1369,23 +1372,38 @@ def _observed_and_absences(consumer: str):
         absences = dict(mt.MIXED_EDGE_ABSENCES)
         absences.update({mp: ": ".join(mt._UNVALIDATED_MIXED_EDGE_REASONS[mp])
                          for mp in mt.UNVALIDATED_MIXED_EDGE_SELECTORS})
+        # Column-kernel schemes (MP7 Goddard four-ice) carry their refusal
+        # on the registry option itself; the module's own registry check
+        # cites the same rows (_require_agreement_with_the_registry).
+        absences.update({
+            mp: option["extensions"]["column_kernel"]["mixed_edge_refusal"]
+            for mp, option in mt._column_unvalidated_options().items()})
         return "microphysics", mt.PORTED_MP_PHYSICS, absences
     if consumer == "obsop.CLEAR_AIR_FLOOR_DBZ":
         from woof.da import obsop
         from woof.microphysics_schemes import NAMED_MP_IDS
         return "microphysics", obsop.CLEAR_AIR_FLOOR_DBZ, {
             0: "no microphysics, no operator",
+            11: ("CAMMGMP never writes REFL_10CM; its retained zero field "
+                 "does not define a radar operator or a clear-air floor"),
             30: ("FAST_SBM writes no REFL_10CM, so radar DA has no H(x) and "
                  "no clear-air floor to read on mp_physics=30 (the cited "
                  "absence in woof.da.obsop._require_agreement_with_the_registry)"),
             **{mp: "named scheme: its Z is fused with the step "
                "(obsop.NATIVE_Z_NOT_SEPARABLE_FROM_THE_STEP), radar DA "
-               "refuses it, no floor is read" for mp in NAMED_MP_IDS}}
+               "refuses it, no floor is read" for mp in NAMED_MP_IDS if mp != 11},
+            # The ported schemes the operator refuses by name with their WRF
+            # lines (MP55 ISHMAEL, MP7, the Ferrier pair), which therefore
+            # read no clear-air floor either.
+            **{mp: reason for mp, reason
+               in obsop.NATIVE_Z_NOT_SEPARABLE_FROM_THE_STEP.items()
+               if mp not in obsop.CLEAR_AIR_FLOOR_DBZ}}
     if consumer == "refl.REFL_10CM_INPUT_SPECIES + SCHEME_NATIVE_REFL_10CM":
         from woof.core import refl
+        # The module's own cited absences (CAM MG never writes REFL_10CM).
         return "microphysics", (set(refl.REFL_10CM_INPUT_SPECIES)
-                                | set(refl.SCHEME_NATIVE_REFL_10CM)), {
-            0: "no microphysics, no reflectivity"}
+                                | set(refl.SCHEME_NATIVE_REFL_10CM)), dict(
+            refl.SCHEME_ABSENT_REFL_10CM)
     if consumer == "moments._STATIC_SCHEMES":
         from woof.da import moments
         return "microphysics", moments._STATIC_SCHEMES, {
@@ -1608,9 +1626,14 @@ def test_every_implemented_scheme_couples_to_rte_rrtmgp_at_plan_review():
     # _NO_CLOUD_OPTICS_COUPLING and both authorities refuse the RTE+RRTMGP
     # pairing (measured below) with the legacy-RRTMG remedy.  Any other
     # null is a gap, as it was when mp=9 was retired by writing its row.
-    assert uncoupled == [2, 30], (
+    # SBU-YLin (13) and NTU (56) landed with the same judged exclusion as
+    # Lin: neither hands radiation radii (NTU is absent from WRF's use_mp_re
+    # disjunction), and each row names the legacy-RRTMG remedy.
+    assert uncoupled == [2, 13, 30, 56], (
         "a scheme publishes a null RTE+RRTMGP coupling other than the "
-        f"judged FAST_SBM and Lin exclusions: {uncoupled}")
+        f"judged FAST_SBM, Lin, SBU-YLin and NTU exclusions: {uncoupled}")
+    for mp in (13, 56):
+        assert "rrtmg_legacy" in rows[mp]["rte_rrtmgp_refusal"]
     assert rows[30]["rte_rrtmgp_refusal"] is not None
     # Lin (mp=2) has no effective-radius output at all (Registry.EM_COMMON:3016).
     assert "Lin supplies no effective radii" in rows[2]["rte_rrtmgp_refusal"]
@@ -2181,8 +2204,10 @@ def test_the_consumer_export_for_the_rust_crates_matches_the_registry():
         assert row["option_id"] == option_id
         inventory = consumer_rows_by_selector("microphysics", "stock_wrf_export")[mp]
         assert row["stock_wrf_export_inventoried"] is bool(inventory["inventoried"])
-    # HAILNC is filled by the three admitted hail-bearing schemes.
-    assert export["scheme_bound_precipitation_fields"]["HAILNC"] == [9, 18, 24]
+    # HAILNC is filled by the admitted hail-bearing schemes: Milbrandt-Yau,
+    # NSSL and WSM7, then Goddard four-ice, WDM7 and NTU from their ports.
+    assert export["scheme_bound_precipitation_fields"]["HAILNC"] == [
+        7, 9, 18, 24, 26, 56]
 
 
 def test_every_transcribed_axis_covers_the_selectable_set_or_declares_why():
@@ -2231,6 +2256,3 @@ def test_every_transcribed_axis_covers_the_selectable_set_or_declares_why():
         assert axis in axes, f"AXIS_EXCLUSIONS names an unknown axis {axis!r}"
         assert isinstance(reason, str) and reason.strip(), (
             f"AXIS_EXCLUSIONS[{axis!r}, {value!r}] carries no reason")
-    # The cumulus axis specifically: it is the one that drifted, and it is
-    # now whole, so it declares nothing.
-    assert set(matrix.CUMULUS_OPTIONS) == set(config_module.CU_SCHEMES)

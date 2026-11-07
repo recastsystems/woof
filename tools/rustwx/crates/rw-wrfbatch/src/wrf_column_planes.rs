@@ -72,6 +72,7 @@ pub(crate) enum ColumnPlaneKind {
     SimulatedInfrared,
     VapourIntegral { field: CanonicalField },
     VaporTransport { component: usize },
+    IceWaterPath,
 }
 
 impl ColumnPlane {
@@ -96,6 +97,7 @@ impl ColumnPlane {
                 FieldSelector::entire_atmosphere(CanonicalField::SupercooledLiquidWaterPath)
             }
             ColumnPlaneKind::ColumnMaximum { field, .. } => FieldSelector::column_maximum(field),
+            ColumnPlaneKind::IceWaterPath => FieldSelector::entire_atmosphere(CanonicalField::IceWaterPath),
             ColumnPlaneKind::SimulatedInfrared => FieldSelector::nominal_top(
                 CanonicalField::SimulatedInfraredBrightnessTemperature,
             ),
@@ -123,6 +125,7 @@ pub(crate) const COLUMN_PLANE_CATALOG: &[ColumnPlane] = &[
             field: CanonicalField::TotalCloudCover,
         },
     },
+    ColumnPlane { filter_key: "ice_water_path", store_name: "ice_water_path", units: "g m-2", kind: ColumnPlaneKind::IceWaterPath },
     ColumnPlane {
         filter_key: "isotherm",
         store_name: "isotherm_height_0c",
@@ -750,6 +753,22 @@ pub(crate) fn push_column_planes(
                     },
                 )
             }
+            ColumnPlaneKind::IceWaterPath => {
+                let ice: Vec<_> = ["QICE", "QICE2", "QICE3", "QSNOW", "QGRAUP", "QHAIL"]
+                    .iter().filter_map(|name| read_volume(name)).collect();
+                if ice.is_empty() {
+                    fields.notes.push(format!("{} skipped: no frozen-water mass fields", plane.store_name));
+                    continue;
+                }
+                if layer_mass.is_none() {
+                    match layer_dry_mass(file, timeidx, nz, cells) {
+                        Ok(mass) => layer_mass = Some(mass),
+                        Err(err) => { fields.notes.push(format!("{} skipped: {err}", plane.store_name)); continue; }
+                    }
+                }
+                let slices: Vec<&[f64]> = ice.iter().map(|q| q.as_slice()).collect();
+                ice_water_path(&slices, layer_mass.as_deref().expect("set above"), nz, cells)
+            }
             ColumnPlaneKind::SimulatedInfrared => {
                 let (Some(cloud_water), Some(water_vapour)) =
                     (read_volume("QCLOUD"), read_volume("QVAPOR"))
@@ -1292,4 +1311,43 @@ pub(crate) fn read_vapour_integrals(file: &WrfFile, timeidx: usize) -> Result<ru
     rustwx_calc::ivt::compute_ivt(rustwx_calc::ivt::IvtInputs{cells:file.ny*file.nx,levels:file.nz,
         pressure_pa:&pressure,mixing_ratio:&ratio,eastward_ms:&wind[..count],northward_ms:&wind[count..],
         surface_pressure_pa:&psfc,model_top_pa}).map_err(|e|e.to_string())
+}
+
+/// Frozen-water mass integrated with the native dry-air layer mass.
+/// Categories are separate inputs, so volume and number never enter the sum.
+fn ice_water_path(ice: &[&[f64]], mass: &[f64], nz: usize, cells: usize) -> Vec<f32> {
+    assert_eq!(mass.len(), nz*cells);
+    assert!(ice.iter().all(|q| q.len() == nz*cells));
+    let mut out = vec![0.0; cells];
+    for k in 0..nz {
+        for (c, value) in out.iter_mut().enumerate() {
+            let i = k*cells+c;
+            let mut frozen = 0.0;
+            for q in ice {
+                if !q[i].is_finite() { frozen = f64::NAN; break; }
+                frozen += q[i].max(0.0);
+            }
+            *value += frozen * mass[i] * 1000.0;
+        }
+    }
+    out.into_iter().map(|v| v as f32).collect()
+}
+
+#[cfg(test)]
+mod ice_path_tests {
+    use super::ice_water_path;
+    #[test]
+    fn every_ice_category_contributes_in_native_layer_units() {
+        let one = [0.001,0.002,0.003,0.004];
+        let two = [0.002,0.0,0.001,0.0];
+        let three = [0.003,0.001,0.0,0.002];
+        let mass = [10.0,20.0,30.0,40.0];
+        assert_eq!(ice_water_path(&[&one,&two,&three],&mass,2,2),vec![180.0,300.0]);
+        assert_eq!(ice_water_path(&[&one],&mass,2,2),vec![100.0,200.0]);
+    }
+    #[test]
+    fn missing_or_invalid_ice_cannot_manufacture_path() {
+        assert_eq!(ice_water_path(&[&[-0.001]],&[10.0],1,1),vec![0.0]);
+        assert!(ice_water_path(&[&[f64::NAN]],&[10.0],1,1)[0].is_nan());
+    }
 }

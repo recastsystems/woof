@@ -50,7 +50,12 @@ FAKE_NVRTC_TARGETS = (75, 80, 86, 89, 90, 100, 120, 121)
 def _fake_cupy(monkeypatch, *, major, minor, name="Fake GPU", targets=FAKE_NVRTC_TARGETS):
     """Install a minimal fake cupy stack so require_cuda runs CPU-only."""
 
+    # (Recast WOOF) a fake CuPy opens no device: the engine backend's local-GPU ban (GPUWM_NO_LOCAL_GPU,
+    # which the CPU suites set) guards real device contact, not this stub
+    monkeypatch.setattr("woof.local_gpu.no_local_gpu", lambda: False)
+
     runtime = types.SimpleNamespace(
+        is_hip=False,  # a real CuPy runtime binding always answers this
         getDeviceCount=lambda: 1,
         getDevice=lambda: 0,
         getDeviceProperties=lambda device_id: {
@@ -87,6 +92,8 @@ def _fake_cupy(monkeypatch, *, major, minor, name="Fake GPU", targets=FAKE_NVRTC
     monkeypatch.setitem(sys.modules, "cupy", cupy)
     monkeypatch.setitem(sys.modules, "cupy.cuda", cuda)
     monkeypatch.setitem(sys.modules, "cupy.cuda.nvrtc", nvrtc)
+    import woof.backend as engine_backend
+    monkeypatch.setattr(engine_backend, "_selected", None)  # the selector memoizes the first cupy it served
 
 
 def _anchor_sm86(tmp_path: Path) -> ArchAnchor:
@@ -478,6 +485,7 @@ def test_doctor_card_probe_reads_the_card_and_nvrtc_in_its_own_process(
     (fake / "__init__.py").write_text("from . import cuda\n", encoding="utf-8")
     (fake / "cuda" / "__init__.py").write_text("from . import runtime, nvrtc\n", encoding="utf-8")
     (fake / "cuda" / "runtime.py").write_text(
+        "is_hip = False\n"
         "def getDeviceCount():\n    return 1\n"
         "def getDeviceProperties(device):\n"
         "    return {'name': b'Stand-in GPU', 'major': 8, 'minor': 9}\n",

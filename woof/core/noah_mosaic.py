@@ -447,11 +447,11 @@ def launch_noah_mosaic(dev: dict, params, dt: float, dzs, *, mosaic_cat: int,
                        frpcpn: bool, usemonalb: bool, rdlai2d: bool,
                        opt_thcnd: int, itimestep: int, urban=None,
                        atmosphere=None, solar=None, use_wudapt_lcz: int = 0,
-                       urban_water_balance=None) -> None:
+                       urban_water_balance=None, ua_phys: bool = False) -> None:
     """Launch one thread per column, tile work in a device function.
 
     WRF sf_urban_physics=0 or 1, four soil layers. Glacial tiles and the mosaic
-    LAI/SOILW and CQS2/CHS2 carries are included. UA_PHYS, FASDAS,
+    LAI/SOILW and CQS2/CHS2 carries are included. UA snow and canopy physics are an option on this body. FASDAS,
     WRF-Hydro and RC/LAI mosaic consumer outputs are outside this API.
     No reslin or ebal array is read or written.
     """
@@ -482,8 +482,11 @@ def launch_noah_mosaic(dev: dict, params, dt: float, dzs, *, mosaic_cat: int,
              np.int32(categories.isurban), np.int32(categories.isice), np.float32(xice_threshold),
              np.int32(itimestep), np.int32(frpcpn), np.int32(usemonalb), np.int32(rdlai2d),
              np.int32(opt_thcnd), np.int32(mosaic_cat), np.int32(ny), np.int32(nx)]
+    if ua_phys:
+        from .noah import _ua_args
+        args += _ua_args(dev,params,ny,nx)
     if urban is None:
-        function = _mosaic_kernel()
+        function = _mosaic_kernel(ua_phys)
     else:
         from .urban_ucm import (
             _checked, _pointer_table, _state_arrays, _device_params,
@@ -504,7 +507,7 @@ def launch_noah_mosaic(dev: dict, params, dt: float, dzs, *, mosaic_cat: int,
                  _checked(solar.hrang, (ny, nx), "hrang"), dev["ust"],
                  np.int32(categories.natural), np.int32(use_wudapt_lcz),
                  np.int32(_jmonth(solar)), err]
-        function = _mosaic_ucm_module().get_function("noah_mosaic_ucm_column")
+        function = _mosaic_ucm_module(ua_phys).get_function("noah_mosaic_ucm_column")
     function(((ny*nx + 31)//32,), (32,), tuple(args))
     if urban is not None:
         _raise_on(err)
@@ -520,50 +523,61 @@ MOSAIC_NVRTC_OPTIONS = ("-std=c++17", "--fmad=false")
 
 
 @lru_cache(maxsize=None)
-def _mosaic_module():
+def _mosaic_module(ua_phys=False):
     """Compile ``noah_mosaic.cu`` once, through the recorded, observed path.
 
     A dedicated loader (as :func:`woof.core.nest_interp._nest_module`)
     because this module alone needs ``--fmad=false`` beside the loader's
     ``-std=c++17``; the source is :func:`woof.core.kernels.module_source`'s,
-    so the prepended glibc header is the one the allow-list names.
+    so WOOF's own math header is the one the allow-list names.
     """
     import cupy as cp
     from woof.certify.kernel_manifest import record_module
     from woof.core.kernels import MODULE_KEY_ROOT, _compile_observed, module_source
 
-    source = module_source("noah_mosaic")
+    if ua_phys:
+        from woof.core.kernels import load_module
+        return load_module("noah_mosaic_ua")
+    name = "noah_mosaic"
+    source = module_source(name)
     module = cp.RawModule(code=source, options=MOSAIC_NVRTC_OPTIONS,
                           name_expressions=None)
-    key = f"{MODULE_KEY_ROOT}:noah_mosaic"
+    key = f"{MODULE_KEY_ROOT}:{name}"
     _compile_observed(module, key)
     record_module(key, source=source, options=MOSAIC_NVRTC_OPTIONS,
                   module=module)
     return module
 
 
-def _mosaic_kernel():
-    return _mosaic_module().get_function("noah_mosaic_column")
+def _mosaic_kernel(ua_phys=False):
+    return _mosaic_module(ua_phys).get_function("noah_mosaic_column")
 
 
-def mosaic_ucm_source():
-    """One glibc header, the unchanged UCM, then the mosaic tile loop."""
+def mosaic_ucm_source(ua_phys=False):
+    """WOOF math, the existing UCM, then the mosaic tile loop."""
     from .kernels import _KDIR, module_source
+    ua = ""
+    if ua_phys:
+        ua = (_KDIR / "noah_ua.cuh").read_text(encoding="utf-8") + "\n"
     return ("#define NOAH_MOSAIC_UCM 1\n" + module_source("urban_ucm")
-            + "\n" + (_KDIR / "noah_mosaic.cu").read_text(encoding="utf-8"))
+            + "\n" + ua + (_KDIR / "noah_mosaic.cu").read_text(encoding="utf-8"))
 
 
 @lru_cache(maxsize=None)
-def _mosaic_ucm_module():
+def _mosaic_ucm_module(ua_phys=False):
     import cupy as cp
     from woof.cuda_subnormals import install
     install()
     from woof.certify.kernel_manifest import record_module
     from .kernels import MODULE_KEY_ROOT, _compile_observed
-    source = mosaic_ucm_source()
+    source = mosaic_ucm_source(ua_phys)
+    if ua_phys:
+        from woof.core.kernels import _load_module_preserving_subnormals, module_options
+        return _load_module_preserving_subnormals(
+            "noah_mosaic_ucm_ua", source, module_options("noah_mosaic_ua"))
     module = cp.RawModule(code=source, options=MOSAIC_NVRTC_OPTIONS,
                           name_expressions=None)
-    key = f"{MODULE_KEY_ROOT}:noah_mosaic_ucm"
+    key = f"{MODULE_KEY_ROOT}:noah_mosaic_ucm:{int(ua_phys)}"
     _compile_observed(module, key)
     record_module(key, source=source, options=MOSAIC_NVRTC_OPTIONS, module=module)
     return module

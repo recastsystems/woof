@@ -1350,7 +1350,11 @@ extern "C" __global__
 void wrf_smag_surface_scalars(
         WRF_SMAG_GRID_ARGS, const real* hfx, const real* qfx,
         int apply_heat, int apply_moist,
-        real* rth, real* rqv, int nz, int ny, int nx, int phb3d,
+        real* rth, real* rqv,
+#ifdef GPUWM_USE_THETA_M
+        const real* thp, const real* thb, int thb3d,
+#endif
+        int nz, int ny, int nx, int phb3d,
         int boundary_x, int boundary_y)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1361,6 +1365,12 @@ void wrf_smag_surface_scalars(
     real vapor = moist ? qv[I3(0, j, i, ny, nx)] : 0.0f;
     real cpm = CP * (1.0f + 0.8f * vapor);
     if (apply_heat) {
+#ifdef GPUWM_USE_THETA_M
+        const real theta = ((thb3d ? thb[h] : thb[0]) + thp[h]) / (1.0f + RVOVRD * vapor);
+        const real heat_flux = hfx[h] / cpm;
+        rth[h] = rth[h] - G * heat_flux * (1.0f + RVOVRD * vapor) / dnw[0]
+                       - G * 1.61f * theta * qfx[h] / dnw[0];
+#else
 #ifdef GPUWM_WRF_EXACT_C_DIFFUSION
         // hflux CASE(1) (:4307-4318): heat_flux = hfx/cpm is a stored REAL,
         // then rt_tendf - g*heat_flux/dnw(kts).
@@ -1369,6 +1379,7 @@ void wrf_smag_surface_scalars(
         rth[out] = rth[out] - G * heat_flux / dnw[0];
 #else
         rth[I3(0, j, i, ny, nx)] -= G * hfx[h] / cpm / dnw[0];
+#endif
 #endif
     }
     if (apply_moist && moist)
@@ -2180,7 +2191,11 @@ real wrf_n2_theta(const WrfSmagGrid& q, const WrfN2Column& n,
     int jj = wrf_iy(q, j), ii = wrf_ix(q, i);
     SmagIndex h = I3(k, jj, ii, q.ny, q.nx);
     real base = n.thb3d ? n.thb[h] : n.thb[k];
+#ifdef GPUWM_USE_THETA_M
+    return (base + n.thp[h]) / (1.0f + RVOVRD * (q.moist ? q.qv[h] : 0.0f));
+#else
     return base + n.thp[h];
+#endif
 }
 
 // qtot = qv + qc + qi (calculate_N2's tmp1: only P_QV/P_QC/P_QI members).
@@ -2591,6 +2606,10 @@ void wrf_smag_surface_v_cd0(WRF_SMAG_GRID_ARGS, real cd0,
 extern "C" __global__
 void wrf_smag_surface_heat_const(WRF_SMAG_GRID_ARGS, real heat_flux,
                                  real* hfx, int write_hfx, real* rth,
+#ifdef GPUWM_USE_THETA_M
+                                 const real* thp, const real* thb, int thb3d,
+                                 const real* qfx, int has_qfx,
+#endif
                                  int nz, int ny, int nx,
                                  int phb3d, int boundary_x, int boundary_y)
 {
@@ -2604,8 +2623,16 @@ void wrf_smag_surface_heat_const(WRF_SMAG_GRID_ARGS, real heat_flux,
         hfx[(SmagIndex)j * nx + i] =
             __fmul_rn(__fmul_rn(heat_flux, cpm), wrf_rho(q, 0, j, i));
     }
+#ifdef GPUWM_USE_THETA_M
+    const SmagIndex h = I3(0, j, i, ny, nx);
+    const real vapor = q.moist ? q.qv[h] : 0.0f;
+    const real theta = ((thb3d ? thb[h] : thb[0]) + thp[h]) / (1.0f + RVOVRD * vapor);
+    rth[h] = rth[h] - G * heat_flux * (1.0f + RVOVRD * vapor) * wrf_rho(q, 0, j, i) / dnw[0]
+                   - G * 1.61f * theta * (has_qfx ? qfx[h] : 0.0f) / dnw[0];
+#else
     rth[I3(0, j, i, ny, nx)] -=
         G * heat_flux * wrf_rho(q, 0, j, i) / dnw[0];
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -2665,7 +2692,11 @@ real wrf_theta_full(const WrfSmagGrid& q, const real* thp, const real* thb,
 {
     int jj = wrf_iy(q, j), ii = wrf_ix(q, i);
     SmagIndex h = I3(k, jj, ii, q.ny, q.nx);
+#ifdef GPUWM_USE_THETA_M
+    return ((thb3d ? thb[h] : thb[k]) + thp[h]) / (1.0f + RVOVRD * (q.moist ? q.qv[h] : 0.0f));
+#else
     return (thb3d ? thb[h] : thb[k]) + thp[h];
+#endif
 }
 
 // tke_km (:2049-2260): the four exchange coefficients from prognostic TKE.

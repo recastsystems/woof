@@ -23,7 +23,7 @@ def verify_build(entry):
                 'flag-audit.json':manifest['flags_sha256'],
                 'toolchain.txt':manifest['toolchain_sha256'],
                 'APPROVED.patch':value['patch_sha256'],
-                'DREW-RULING.json':value['ruling_sha256']}
+                'REFERENCE-RULING.json':value['ruling_sha256']}
     if any(members.get(name) != digest for name, digest in bindings.items()):
         raise ValueError('approved build member binding differs')
     records = [json.loads(line) for line in (directory / 'compile-commands.jsonl').read_text().splitlines()]

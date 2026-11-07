@@ -393,16 +393,17 @@ def test_a_nested_hrrr_domain_takes_the_sub_km_default_and_the_suite_named(tmp_p
     assert f"# PHYSICS: {THOMPSON_MYNN_RUC_RTE_RRTMGP_PROFILE_ID}" in named
 
 
-def test_a_source_whose_soil_ruc_cannot_start_keeps_its_own_default_below_1_km():
-    """GEM GDPS publishes one soil layer, so the spacing row does not bind."""
+# The deep-soil donor replaces the former shallow-soil refusal.
+def test_a_source_with_the_deep_soil_donor_gets_the_spacing_default_below_1_km():
+    """The authenticated deep-soil donor supplies GEM soil below its shallow layer."""
 
     from woof.physics_menu import (default_basis, default_profile_for,
                                     spacing_default_rows)
 
     row = spacing_default_rows("gem-gdps")[0]
-    assert row["admitted"] is False
-    assert "1 source layer(s)" in row["why_not"]
-    assert default_profile_for("gem-gdps", 750.0) == default_profile_for("gem-gdps")
+    assert row["admitted"] is True
+    assert row["why_not"] is None
+    assert default_profile_for("gem-gdps", 750.0) == THOMPSON_MYNN_RUC_RTE_RRTMGP_PROFILE_ID
     for source in ("hrrr", "hrrr-prs", "era5", "gfs"):
         # One domain; a nested hrrr tree is the test above.
         assert default_profile_for(source, 750.0) == \
@@ -604,7 +605,7 @@ def test_the_menus_answer_the_spacing_row_for_one_domain_and_for_a_tree():
         row = source_menu(source)["spacing_defaults"][0]
         assert row["admitted"] is True and row["admitted_nested"] is True
     row = source_menu("gem-gdps")["spacing_defaults"][0]
-    assert row["admitted"] is False and row["admitted_nested"] is False
+    assert row["admitted"] is True and row["admitted_nested"] is True
 
 
 def test_the_assistant_marks_the_suite_the_ladder_runs_unnamed():

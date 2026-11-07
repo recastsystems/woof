@@ -693,7 +693,7 @@ def test_a_404_is_an_answer_and_a_timeout_is_not():
 
 @pytest.mark.parametrize("sent_answer", [None, True])
 def test_a_check_that_waited_on_a_head_is_handed_only_a_fresh_answer(monkeypatch, sent_answer):
-    # Seen on a development machine with GEM: the host did not answer the newest start's HEAD, and the newest-start check, which
+    # Seen on test host 4 with GEM: the host did not answer the newest start's HEAD, and the newest-start check, which
     # had waited on the start check's HEAD of the same object, was handed the "missing" kept from 200 s before.
     # The row then named a start 12 h older as the checked newest, and kept it for 10 minutes.
     from woof.gui.availability import FRESH_NO_S, Heard

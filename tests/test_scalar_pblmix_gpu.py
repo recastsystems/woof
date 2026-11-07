@@ -178,7 +178,8 @@ def _coupled_scalar_pblmix_run(monkeypatch, pbl, surface, steps=3):
 
 
 @requires_gpu
-@pytest.mark.parametrize("pbl,surface", [(1, 91), (2, 2), (9, 91), (11, 91)])
+@pytest.mark.parametrize("pbl,surface", [(1, 91), (2, 2), (9, 91), (11, 91),
+                                      (12, 1), (12, 91)])
 def test_scalar_pblmix_reaches_every_declared_exchange_producer(monkeypatch, pbl, surface):
     # What breaks without this: mp=28 with scalar_pblmix=1 (WRF's own
     # check_a_mundo default for aerosol IC/BCs) was refused under MYJ,

@@ -71,7 +71,7 @@ def test_dry_run_applies_the_real_runs_refusals(tmp_path, capsys):
 
 
 def test_dry_run_honours_geog_root(tmp_path, capsys, monkeypatch):
-    # Defect (2.9.4 landing, V58 2026-10-20): `woof earth2` had no --geog-root, so an Earth-2
+    # Defect (2.9.4 landing, test host 2026-10-20): `woof earth2` had no --geog-root, so an Earth-2
     # nest's preparation could only read the default tree. The door now takes the shared option
     # (woof.geog_assets.add_geog_root_argument, the one `woof go` uses) and a dry run checks it.
     from woof import cli, go_cli

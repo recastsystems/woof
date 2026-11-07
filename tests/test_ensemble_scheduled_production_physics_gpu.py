@@ -25,15 +25,16 @@ def _state_words(state):
     return {name: array.get().tobytes() for name, array in state_manifest(state).items()}
 
 
-def test_real_original_dycore_steps_with_packed_physics_match_standalone_members():
+@pytest.mark.parametrize("cu_physics", [0, 99])
+def test_real_original_dycore_steps_with_packed_physics_match_standalone_members(cu_physics):
     import cupy as cp
     from woof.core.dycore import step as ordinary_step
     from woof.core.mynn_pbl_runtime import release_mynn_stream_scratch
     members = 2
     # This isolated atmospheric solve has no LBC input bundle. Specified
     # rings belong to the prepared nested forecast gate with its real LBCs.
-    together = [_driver(member, specified=False) for member in range(members)]
-    alone = [_driver(member, specified=False) for member in range(members)]
+    together = [_driver(member, specified=False, cu_physics=cu_physics, kf_edrates=int(cu_physics == 99)) for member in range(members)]
+    alone = [_driver(member, specified=False, cu_physics=cu_physics, kf_edrates=int(cu_physics == 99)) for member in range(members)]
     drivers, cfgs = zip(*together)
     ordinary_drivers, ordinary_cfgs = zip(*alone)
     contexts = [_cfl_context() for _ in range(members)]
@@ -88,7 +89,10 @@ def test_real_original_dycore_steps_with_packed_physics_match_standalone_members
                     assert drivers[member].state.physics is drivers[member]
                 assert bound.owner._priced <= bound.plan.required_bytes(members)
         assert bound.receipt["entry_groups"] == 2
-        assert bound.owner.receipt["leaf_calls"] == {"radiation": 1, "surface": 4, "land": 2, "pbl": 2}
+        expected = {"radiation": 1, "surface": 4, "land": 2, "pbl": 2}
+        if cu_physics:
+            expected["cumulus"] = 1  # native CUDT holds the second call
+        assert bound.owner.receipt["leaf_calls"] == expected
         assert bound.receipt["complete_forecast_qualified"] is False
     finally:
         bound.close()

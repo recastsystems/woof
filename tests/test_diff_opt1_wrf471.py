@@ -12,7 +12,7 @@ SOURCE_TRANSITION_SHA256="e91599cc84e37891666dd760c77c3ef2f4efe67e260c534c51ac13
 def _measured_current_sources(receipt):
     """Retain the historical GPU archive and gate the corrected native proof."""
     import hashlib
-    from assembled_legacy_proofs import validate_coordinate, validate_coordinate_negative
+    from assembled_legacy_proofs import validate_coordinate, validate_coordinate_negative, _sealed_extension
     # The prior witness is retained byte for byte; it is not relabeled as a
     # zero-change transition after the 25435 incorrect old words were fixed.
     historical=(DATA/"measured-source-transition.json").read_bytes()
@@ -21,7 +21,9 @@ def _measured_current_sources(receipt):
     validate_coordinate_negative(DATA.parents[2])
     assert proof["prior_gpu_archive_sha256"]==receipt["archive_sha256"]
     assert proof["native_archive_sha256"]==receipt["native_archive_sha256"]
-    return {name: proof["capture_identity"]["module_source_sha256"][name]
+    transitions = _sealed_extension(DATA.parents[2]).get("module_sources", {})
+    return {name: transitions.get(name, {}).get("after",
+                proof["capture_identity"]["module_source_sha256"][name])
             for name in ("smag2d","diff_opt1")}
 
 

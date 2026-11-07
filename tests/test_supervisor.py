@@ -342,6 +342,7 @@ def test_captured_wddm_pmon_fixture_parses_exact_twelve_columns():
     fixture = (Path(__file__).with_name("data") /
                "nvidia_smi_wddm_pmon_61074.txt")
     modes = _parse_pmon_output(fixture.read_text(encoding="utf-8"))
+    # Command names are anonymized; all twelve captured numeric columns remain.
     assert len(modes) == 27
     assert modes[632] == ("C+G", 0)
     assert modes[12888] == ("C+G", 0)

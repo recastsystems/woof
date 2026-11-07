@@ -47,7 +47,48 @@ member's environment. Members use separate output and checkpoint roots.
 The set digest binds the experiment identity used by checkpoints. Outputs
 carry `WOOF_PHYSICS_PARAMS` and `GPUWM_PHYSICS_PARAMS_SHA256`; edited RUC
 bundles retain pinned input-table hashes and record each changed cell.
-CUDA source edits preserve every byte outside the named literal spans.
+For the regional family, fixed scalar names and float32 dtypes determine CUDA
+source and compilation; values bind once to per-module device constant memory.
+Changing values while retaining those names reuses the executable cache.
+The setup copy precedes every forecast stream; no per-step copy, lookup or
+synchronization is added. An inactive family preserves the original CUDA bytes.
 RUC table arithmetic runs on the GPU after pinned-table validation. One
 process cannot switch to a different set after compiling kernels or
 issuing tables; a new member requires a new process.
+
+
+The regional fractional interface is also available from a stock WRF case:
+
+```sh
+WOOF_PHYSICS_PARAMS=/absolute/path/coefficients.toml woof go \
+  --wrfinput /absolute/path/wrf-case --outdir /absolute/path/forecast
+```
+
+For example, `coefficients.toml` may contain:
+
+```toml
+[physics_params.knobs]
+"physics.mynn.b1" = 0.01
+"physics.thompson.auto_amplitude" = 0.01
+```
+
+The native namelist still selects the schemes and required pairings. MYNN
+EDMF and GF shallow convection cannot both be enabled, as in native WRF.
+The seven `mynn.length2` controls select the `gsd_41` generation with
+mixing length 2; they are refused on `wrf_461`, whose equations differ.
+Rain and graupel fall-speed controls remain held until their native
+initialization and collision tables can be regenerated together.
+
+One process uses the same immutable coefficients for every participating
+domain and ensemble member. Distinct member wind perturbations work with
+an imported native case through `--ensemble-request`; an unperturbed
+request that would produce duplicate members still refuses. Independent
+per-member coefficient sets use separate forecast processes. Per-domain
+and per-cell coefficient fields are not implemented by this interface.
+
+The 2026-11-01 lane evidence includes a three-hour native-input forecast,
+both nest feedback modes, checkpoint continuation, two distinct ensemble
+members, and an all-zero run whose four hourly history files are
+byte-identical to the unselected baseline. Component replay coverage and
+its limits are recorded in `docs/public/PHYSICS.md`; this does not qualify
+all 33 controls or establish forecast skill.

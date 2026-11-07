@@ -1,0 +1,57 @@
+{
+  "device": "NVIDIA GeForce RTX 4090",
+  "nvrtc": [
+    12,
+    9
+  ],
+  "rows": {
+    "qnsepbl/False": {
+      "frames": {
+        "qnsepbl_column": 9232,
+        "mfshconv_column": 15360
+      },
+      "source_sha256": "c1cd5f4f346ba05b6dc2f667247da5401b51d24851da9e312295a0710bf67319",
+      "options": [
+        "-std=c++17"
+      ]
+    },
+    "qnsesfc/False": {
+      "frames": {
+        "qnsesfc_column": 0
+      },
+      "source_sha256": "471d3fba4303cd938a385d6b64cadd96a2db17a7d2c15536603d0da99ca81f8d",
+      "options": [
+        "-std=c++17"
+      ]
+    },
+    "qnsepbl/True": {
+      "frames": {
+        "qnsepbl_column": 9232,
+        "mfshconv_column": 16896
+      },
+      "source_sha256": "c1cd5f4f346ba05b6dc2f667247da5401b51d24851da9e312295a0710bf67319",
+      "options": [
+        "-std=c++17",
+        "--fmad=false",
+        "--ftz=false",
+        "--prec-div=true",
+        "--prec-sqrt=true",
+        "-DGPUWM_QNSE_STRICT=1"
+      ]
+    },
+    "qnsesfc/True": {
+      "frames": {
+        "qnsesfc_column": 0
+      },
+      "source_sha256": "471d3fba4303cd938a385d6b64cadd96a2db17a7d2c15536603d0da99ca81f8d",
+      "options": [
+        "-std=c++17",
+        "--fmad=false",
+        "--ftz=false",
+        "--prec-div=true",
+        "--prec-sqrt=true",
+        "-DGPUWM_QNSE_STRICT=1"
+      ]
+    }
+  }
+}

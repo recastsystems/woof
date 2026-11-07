@@ -139,7 +139,8 @@ from woof.physics_compat import (  # noqa: E402
     validate_single_domain_physics_profile,
 )
 from woof.certify.capsule import emit_run_capsule  # noqa: E402
-from woof.physics_profile_siblings import with_profile_siblings
+from woof.physics_profile_siblings import (PREPARED_PROFILE_SIBLINGS,
+                                            with_profile_siblings)
 from woof.spectral_seam import (  # noqa: E402
     seam_capsule_receipts as _seam_capsule_receipts,
 )
@@ -166,6 +167,7 @@ TWENTYCRV3_WSM6_PHYSICS_PROFILE = (
     "20crv3-wsm6-ysu-mm5-noah-kf-rte-rrtmgp-implemented-unverified-v1")
 THOMPSON_PHYSICS_PROFILE = THOMPSON_PROFILE_ID
 MORRISON_PHYSICS_PROFILE = MORRISON_PROFILE_ID
+SLAB_PHYSICS_PROFILE = "morrison-mp10-ysu-mm5-slab-kf-rte-rrtmgp-v1"
 NSSL2_PHYSICS_PROFILE = NSSL2_PROFILE_ID
 NSSL2_LEGACY_RRTMG_PHYSICS_PROFILE = NSSL2_LEGACY_RRTMG_PROFILE_ID
 RUC_PHYSICS_PROFILE = RUC_PROFILE_ID
@@ -185,6 +187,7 @@ PHYSICS_PROFILES = (
     TWENTYCRV3_WSM6_PHYSICS_PROFILE,
     THOMPSON_PHYSICS_PROFILE,
     MORRISON_PHYSICS_PROFILE,
+    SLAB_PHYSICS_PROFILE,
     NSSL2_PHYSICS_PROFILE,
     NSSL2_LEGACY_RRTMG_PHYSICS_PROFILE,
     MYNN_PHYSICS_PROFILE,
@@ -269,17 +272,9 @@ HRRR_BUNDLE_PATHS = MappingProxyType({
     "bridge_manifest": "native/native-bridge/SHA256SUMS",
 })
 
-#: ``mp_physics`` values whose microphysics call stages a scheme-native
-#: REFL_10CM field, i.e. exactly ``woof.runtime.REFL_10CM_MICROPHYSICS``.
-#: Duplicated rather than imported: ``woof.runtime`` pulls in the GRIB,
-#: static-geography and ERA5 ingest stack, and this runner deliberately
-#: imports none of it.  The duplication is held equal by
-#: ``tests/test_mp28_runtime_reachability.py``, which imports both and
-#: asserts they are the same set -- and which fails on ANY surviving
-#: ``mp_physics in (1, 6, 8, 10, 18)`` literal anywhere under ``gpuwm/``,
-#: so a fifth copy of this gate cannot be added silently.
-REFL_10CM_MICROPHYSICS = (1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 50, 106) + tuple(
-    __import__('woof.microphysics_schemes', fromlist=['NAMED_MP_IDS']).NAMED_MP_IDS)
+#: The runtime-free inventory owns every reflectivity-producing selector.
+#: Import it directly so prepared history cannot drop a newly admitted scheme.
+from woof.core.physics_inventory import REFL_10CM_MICROPHYSICS
 #: What a PACKAGED source reports when nothing has been measured on it:
 #: the suites the generic mapped route carries for every packaged profile,
 #: with the row's own limitation saying no source-specific verification is
@@ -356,8 +351,8 @@ _VERIFIED_SOURCE_PHYSICS_PROFILES = {
         MYNN_RUC_RTE_RRTMGP_PHYSICS_PROFILE,
         THOMPSON_MYNN_RUC_RTE_RRTMGP_PHYSICS_PROFILE,
         "thompson-mp8-mynn-mynn-ruc-monthly-rrtmg-legacy-v1",
-        # The monthly-albedo twin with alb_sol 1 (lane/286-albsol) and the
-        # GSD MYNN 4.1 Thompson-aerosol suite (lane/286-fork-mynn), as the
+        # The monthly-albedo twin with alb_sol 1 (development branch) and the
+        # GSD MYNN 4.1 Thompson-aerosol suite (development branch), as the
         # registry route declares them for this source.
         "thompson-mp8-mynn-mynn-ruc-monthly-solar-rrtmg-legacy-v1",
         "thompson-mp28-mynn-gsd41-mynn-ruc-rrtmg-legacy-v1"),
@@ -398,6 +393,16 @@ _VERIFIED_SOURCE_PHYSICS_PROFILES = {
     # The packaged GDPS profile is the same generic mapped route again
     # (reported metadata, not a gate).
     "gem-gdps": (
+        PHYSICS_PROFILE, THOMPSON_PHYSICS_PROFILE,
+        MORRISON_PHYSICS_PROFILE, NSSL2_PHYSICS_PROFILE,
+        NSSL2_LEGACY_RRTMG_PHYSICS_PROFILE),
+    # HRDPS and RDPS: the same generic mapped route on ECCC's rotated
+    # lattices (reported metadata, not a gate).
+    "gem-hrdps": (
+        PHYSICS_PROFILE, THOMPSON_PHYSICS_PROFILE,
+        MORRISON_PHYSICS_PROFILE, NSSL2_PHYSICS_PROFILE,
+        NSSL2_LEGACY_RRTMG_PHYSICS_PROFILE),
+    "gem-rdps": (
         PHYSICS_PROFILE, THOMPSON_PHYSICS_PROFILE,
         MORRISON_PHYSICS_PROFILE, NSSL2_PHYSICS_PROFILE,
         NSSL2_LEGACY_RRTMG_PHYSICS_PROFILE),
@@ -501,7 +506,8 @@ _GENERIC_IMPLEMENTED_PROFILE_IDS = (
 ) + COMPOSITION_SUITE_PROFILE_IDS
 _SOURCE_PHYSICS_PROFILES = MappingProxyType({
     source_id: (
-        with_profile_siblings(p for p in profiles if p not in _EXPERT_PROFILE_IDS)
+        with_profile_siblings((p for p in profiles if p not in _EXPERT_PROFILE_IDS),
+                              siblings=PREPARED_PROFILE_SIBLINGS)
         + _GENERIC_IMPLEMENTED_PROFILE_IDS
         + _EXPERT_PROFILE_IDS
         if profiles else profiles)
@@ -723,7 +729,7 @@ MAPPED_PREPARATION_TELEMETRY_KEYS = frozenset({
 #: ``posting`` likewise: written only by a preparation made as its leads
 #: posted (DESIGN A136 2.4 item 6), the leads it waited for.
 #: ``source_pairing`` likewise: written only when the root is its source's
-#: own declared grid and pairs cell for cell (lane/286-fixed-step-grid,
+#: own declared grid and pairs cell for cell (development branch,
 #: horiz.declared_grid_pairing); without it here the runner refused every
 #: such bundle as an unknown top-level inventory.
 MAPPED_OPTIONAL_PROOF_KEYS = frozenset({
@@ -733,7 +739,8 @@ MAPPED_OPTIONAL_PROOF_KEYS = frozenset({
     "soil_moisture_floor",
     "statics_corridor", "source_vertical_ladder", "soil_temperature_repair",
     "soil_moisture_floor",
-    "initial_perturbation", "posting", "initial_source", "source_pairing"})
+    "initial_perturbation", "posting", "initial_source", "source_pairing", "storm_merge",
+    "vortex_initialization"})
 _SOURCE_ADAPTER = {
     # The generic mapped adapter, truthfully: a packaged profile is
     # prepared by `woof.mapped_direct` with nothing model-specific in
@@ -1075,6 +1082,49 @@ def runner_capabilities() -> dict[str, object]:
                 "orography, land mask and ice analysis are the "
                 "once-per-cycle analysis invariants, broadcast after an "
                 "invariance proof",
+                "not yet accepted by unchanged stock WRF",
+            ],
+        },
+        "gem-hrdps": {
+            "readiness": (
+                "PACKAGED_GRIB2_PROFILE_PREPARATION_COMPLETE_"
+                "GPU_FORECAST_NOT_ACCEPTANCE_GATED"),
+            "prepared_layouts": [
+                "mapped-direct-d01-v1", "mapped-hierarchy-d01-v1"],
+            "single_d01_gpu_execution": True,
+            "physics_profile_ids": list(
+                _SOURCE_PHYSICS_PROFILES["gem-hrdps"]),
+            "physics_profile_ids_semantics": source_profile_ids_semantics,
+            "limitations": [
+                "initialises from HRDPS's 2.5 km pressure-level product "
+                "on its rotated lattice; the soil column is the single "
+                "0-10 cm layer the product publishes, anchored by skin "
+                "and deep-soil temperature",
+                "the land mask and ice analysis are the analysis-lead "
+                "invariants, broadcast after an invariance proof",
+                "covers HRDPS's continental domain only",
+                "not yet accepted by unchanged stock WRF",
+            ],
+        },
+        "gem-rdps": {
+            "readiness": (
+                "PACKAGED_GRIB2_PROFILE_PREPARATION_COMPLETE_"
+                "GPU_FORECAST_NOT_ACCEPTANCE_GATED"),
+            "prepared_layouts": [
+                "mapped-direct-d01-v1", "mapped-hierarchy-d01-v1"],
+            "single_d01_gpu_execution": True,
+            "physics_profile_ids": list(
+                _SOURCE_PHYSICS_PROFILES["gem-rdps"]),
+            "physics_profile_ids_semantics": source_profile_ids_semantics,
+            "limitations": [
+                "initialises from RDPS's 10 km pressure-level product on "
+                "its rotated lattice; the soil column is the single "
+                "0-10 cm layer the product publishes, anchored by skin "
+                "and deep-soil temperature",
+                "orography, land mask and ice analysis are the "
+                "once-per-cycle analysis invariants, broadcast after an "
+                "invariance proof",
+                "covers RDPS's North American domain only",
                 "not yet accepted by unchanged stock WRF",
             ],
         },
@@ -1429,6 +1479,8 @@ def runner_capabilities() -> dict[str, object]:
                 "gdas": "uniform-positive-whole-hour",
                 "gefs": "uniform-positive-whole-hour",
                 "gem-gdps": "uniform-positive-whole-hour",
+                "gem-hrdps": "uniform-positive-whole-hour",
+                "gem-rdps": "uniform-positive-whole-hour",
                 "aifs": "uniform-positive-whole-hour",
                 "aigefs": "uniform-positive-whole-hour",
                 "aigfs": "uniform-positive-whole-hour",
@@ -4464,7 +4516,7 @@ def _validate_physics(
         # receipt that describes some other configuration is worse than no
         # receipt at all.
         receipt["nssl2_contract"] = nssl2_contract_receipt(
-            resolve_nssl2_mode_for_config(cfg))
+            resolve_nssl2_mode_for_config(cfg), nssl_cccn=cfg.nssl_cccn)
     compatibility = str(getattr(cfg, "wrf_rrtmg_compatibility", "none"))
     if compatibility in WRF_RRTMG_SUBSTITUTION_TOKENS:
         scheme_ids = list(radiation_scheme_ids(cfg))
@@ -5043,6 +5095,14 @@ def _validate_packaged_mapped_evidence(
         _validate_proof_content_sha256(proof)
     evidence_root = _require_directory(
         prepared_root / "source-evidence", "mapped source evidence")
+    if "storm_merge" in proof:
+        from woof.storm_merge import validate_evidence
+        validate_evidence(prepared_root, proof["storm_merge"],
+                          valid_time=proof["forcing_times"][0])
+    if "vortex_initialization" in proof:
+        from woof.tc.mapped_vortex import validate_evidence as validate_vortex
+        validate_vortex(prepared_root, proof["vortex_initialization"],
+                        valid_time=proof["forcing_times"][0])
     if "initial_source" in proof:
         from woof.initial_source import validate_initial_evidence
         validate_initial_evidence(
@@ -5918,6 +5978,15 @@ def _validate_source_identity(
         _require_preprocessing_binding(
             identity.get("preprocessing"), mapped_authority["preprocessing"])
         allowed = set(expected) | {"preprocessing"}
+        if "storm_merge" in proof or "storm_merge" in identity:
+            if ("storm_merge" not in proof or identity.get("storm_merge") != proof["storm_merge"]):
+                raise ValueError("prepared storm merge differs from proof evidence")
+            allowed.add("storm_merge")
+        if "vortex_initialization" in proof or "vortex_initialization" in identity:
+            if ("vortex_initialization" not in proof
+                    or identity.get("vortex_initialization") != proof["vortex_initialization"]):
+                raise ValueError("prepared vortex initialization differs from proof evidence")
+            allowed.add("vortex_initialization")
         if "initial_source" in proof or "initial_source" in identity:
             if ("initial_source" not in proof
                     or identity.get("initial_source") != proof["initial_source"]):
@@ -6901,6 +6970,7 @@ def preflight_prepared_forecast(
         tiles=None, devices: int | None = None, devices_options=None,
         simulated_radar=None, radar_heating=None,
         runtime_run_overrides: Mapping[str, object] | None = None,
+        runtime_history_variables: tuple[str, ...] | None = None,
 ) -> PreparedForecastInputs:
     """Validate every portable preparation authority without importing CuPy.
 
@@ -6946,6 +7016,12 @@ def preflight_prepared_forecast(
         if not isinstance(runtime_run_overrides, Mapping):
             raise TypeError("runtime_run_overrides must be a mapping of RunConfig fields")
         runtime_run_overrides = MappingProxyType(copy.deepcopy(dict(runtime_run_overrides)))
+    history_selection = None
+    if runtime_history_variables is not None:
+        from woof.io.history_selection import HistorySelection
+        history_selection = HistorySelection.from_mapping(
+            {"history_vars": list(runtime_history_variables)}, source="runtime history selection")
+        runtime_history_variables = tuple(history_selection.history_vars)
     preflight_arguments = MappingProxyType(dict(
         source=source, prepared_root=prepared_root,
         source_manifest_sha256=source_manifest_sha256,
@@ -6956,6 +7032,8 @@ def preflight_prepared_forecast(
         history_interval_seconds=history_interval_seconds,
         domain_bundle=domain_bundle, tiles=tiles, devices=devices,
         devices_options=devices_options,
+        **({} if runtime_history_variables is None else
+           {"runtime_history_variables": runtime_history_variables}),
         **({} if runtime_run_overrides is None else
            {"runtime_run_overrides": runtime_run_overrides}),
         **({} if simulated_radar is None else {"simulated_radar": simulated_radar}),
@@ -7087,6 +7165,9 @@ def preflight_prepared_forecast(
         source_exp, domains=(source_exp.root,))
     prepared_run = exp.root.run
     exp, runtime_overrides = _apply_runtime_run_overrides(exp, runtime_run_overrides)
+    if history_selection is not None:
+        exp = replace(exp, output=history_selection,
+                      domains=(replace(exp.root, output=history_selection),))
     # The requested length is the executed length; a longer one than the
     # prepared forcing reaches refuses at the coverage gate below.
     exp, _run_length = _apply_run_length(exp, run_seconds)
@@ -7100,6 +7181,9 @@ def preflight_prepared_forecast(
         history_interval_seconds=history_interval_seconds)
     if runtime_overrides:
         physics_receipt["execution_plan"]["physics_overrides"] = runtime_overrides
+    if history_selection is not None:
+        physics_receipt["execution_plan"]["runtime_history_variables"] = list(runtime_history_variables)
+        physics_receipt["execution_plan"]["history_selection_changes_state"] = False
     manifest_files, source_manifest_receipt = _manifest_file_specs(
         source, manifest, source_exp, proof,
         pending=_as_posted_pending_roles(as_posted, manifest),
@@ -7371,6 +7455,11 @@ def preflight_prepared_forecast(
         if source_identity["trace_gas_overrides"] != trace_gas_overrides_from_config(
                 experiment_config):
             raise ValueError("prepared cache trace-gas settings differ from experiment authority")
+    # Output selection is an execution-only projection. Bind the original
+    # authority's output declaration when checking the prepared state; the
+    # requested selection remains on exp and in the execution receipt.
+    identity_domain = (exp.root if history_selection is None else
+                       replace(exp.root, output=source_exp.root.output))
     if layout.kind == HRRR_DIRECT_LAYOUT:
         # Three of this identity's inputs are genuinely different values
         # on the HRRR route, where for the portable sources two of them
@@ -7410,7 +7499,7 @@ def preflight_prepared_forecast(
             source_manifest_sha256=source_digest,
             static_cache_sha256=static_sha256,
             namelist_sha256=manifest_files["namelist_input"]["sha256"],
-            domain_config=exp.root,
+            domain_config=identity_domain,
             forcing_hours=forcing_hours,
             source_identity=source_identity,
             namelist_extension_invariant=proof.get(
@@ -7422,7 +7511,7 @@ def preflight_prepared_forecast(
             source_manifest_sha256=source_manifest_sha256,
             static_cache_sha256=static_sha256,
             namelist_sha256=_sha256(experiment_config),
-            domain_config=exp.root,
+            domain_config=identity_domain,
             forcing_hours=forcing_hours,
             source_identity=source_identity,
         )
@@ -8544,7 +8633,7 @@ def _admit_devices_forecast(exp, cfg, *, geography, forcing_intervals,
                 name=name.decode() if isinstance(name, bytes) else str(name),
                 multiprocessor_count=int(props["multiProcessorCount"]),
                 max_threads_per_multiprocessor=int(props["maxThreadsPerMultiProcessor"]),
-                default_stack_limit_bytes=int(cp.cuda.runtime.deviceGetLimit(0)),
+                default_stack_limit_bytes=(0 if cp.cuda.runtime.is_hip else int(cp.cuda.runtime.deviceGetLimit(0))),
                 compile_platform=read_compile_platform())
     # Leave a chunked producer's next batch free on its own card before the
     # rank widths are fitted, so the fitted widths respect that reserve.
@@ -10256,6 +10345,9 @@ def run_prepared_forecast(
             current.state, ticks, consume_refl_10cm,
             domain_start_ticks=domain_start_ticks_of(current),
             shape=(current.cfg.run.nz, current.cfg.run.ny, current.cfg.run.nx))
+        if os.environ.get("WOOF_TC_TRACKER"):
+            from woof_tools_tc_tracker.adapters import arwen_history
+            arwen_history(current, current.clock.elapsed_seconds)
         writers.submit(current, ticks, refl_field=refl)
         # History-interval reset of the UP_HELI_MAX window
         # (module_diag_nwp.F:246-269; woof's ratified placement is
@@ -10488,12 +10580,15 @@ def run_prepared_forecast(
             checked=radar_heating_checked)
 
     nudging_hook = None
-    if not already_complete and exp.nudging is not None:
-        from woof.spectral_nudging.prepared import PreparedNudging, selected
-        if selected(exp) is not None:
+    if not already_complete and (exp.nudging is not None or cfg.sf_surface_physics == 7 and cfg.pxlsm_soil_nudge):
+        from woof.spectral_nudging.prepared import PreparedNudging, PreparedTreeNudging, selected
+        if selected(exp) is not None or cfg.sf_surface_physics == 7 and cfg.pxlsm_soil_nudge:
             started = time.perf_counter()
-            nudging_hook = PreparedNudging(node.state, cfg, exp,
-                inputs.prepared_root, inputs.cache_identity['source_manifest_sha256'])
+            if cfg.sf_surface_physics == 7 and cfg.pxlsm_soil_nudge or selected(exp).grid_sfdda:
+                nudging_hook = PreparedTreeNudging(model, {node.cfg.grid_id: node}, inputs, steppers)
+            else:
+                nudging_hook = PreparedNudging(node.state, cfg, exp,
+                    inputs.prepared_root, inputs.cache_identity['source_manifest_sha256'])
             timing['nudging_setup'] = time.perf_counter() - started
 
     checkpoints = []
@@ -10588,7 +10683,7 @@ def run_prepared_forecast(
                 stepping_ended = time.perf_counter()
             else:
                 execution = execute_experiment(
-                    model, history_handler=history_handler,
+                    model, output_directory=outdir, history_handler=history_handler,
                     restart_handler=restart_handler,
                     progress_callback=progress_callback,
                     # The common validator follows the attached canonical store.
@@ -10793,7 +10888,7 @@ def run_prepared_forecast(
             # setup fingerprint, the devices receipt); then the ranks close
             # and every card's pool is freed, and the digest, the seal and
             # the input verify run on the host with the cards already free.
-            # Breakage this prevents: V59 (8 x RTX 5090, 2026-10-21) held all
+            # Breakage this prevents: test host (8 x RTX 5090, 2026-10-21) held all
             # eight cards at 0 % for 6.7 min after its last step while one
             # thread hashed.
             digest_arrays, digest_scalars = capture_inputs()
@@ -11253,10 +11348,20 @@ def run_prepared_forecast(
     # Default-on hydro: per-step cost with parallelism named (5 percent budget)
     # and the products, both at the output boundary, after device sync.
     from woof.hydro.cost import receipt as _hydro_cost_receipt
+    from woof.tc.receipt import receipt as _tc_receipt
+    _tc_block = _tc_receipt(driver, steps=int(execution.steps))
+    if _tc_block is not None:
+        report["tc"] = _tc_block
     from woof.hydro.forecast_products import publish as _hydro_products
     report["hydro_cost"] = _hydro_cost_receipt(
         driver, forecast_seconds=timing.get("forecast_execution_with_async_io", 0.0),
         atmosphere_steps=int(execution.steps))
+    from woof.ocean.cost import receipt as _wave_cost_receipt
+    report["wave_cost"] = _wave_cost_receipt(
+        driver, forecast_seconds=timing.get("forecast_execution_with_async_io", 0.0),
+        atmosphere_steps=int(execution.steps))
+    from woof.ocean.products import publish as _wave_products
+    report["wave_products"] = _wave_products(driver,outdir=outdir)
     report["hydro_products"] = _hydro_products(
         driver, _hydro_settings(), outdir=outdir, dx_m=float(cfg.dx))
     _atomic_json(outdir / "report.json", report)

@@ -27,10 +27,10 @@
     }
   },
   "implementation": {
-    "woof/core/nssl2_nucond.py": "523e9e65f4f606c31a5f285f606d62dccdfd881c1ebca77ad4adcd186e2d5f89",
-    "woof/core/kernels/nssl2_nucond.cu": "a57ed276737bafee3c31709423bdc9fb23ef7c74906840838a71a3a7b9523355",
-    "woof/core/nssl2_diagnostics.py": "e3b459a9ce82ddd8383ee8084035a8458138bfe8e70fbbba98408b3718aa4fd9",
-    "woof/core/kernels/nssl2_diagnostics.cu": "aea3a5b1157ca95b69c8df077680e27058b752d5e707f2134f408d0aa7f42bd2",
+    "woof/core/nssl2_nucond.py": "648c9fc531d951b6522a83db778009d03481757955cf89248e607d3a5a33193c",
+    "woof/core/kernels/nssl2_nucond.cu": "10856006ed3932b7fe67ac0732db72231bf98991cc973917d63f152fd737214d",
+    "woof/core/nssl2_diagnostics.py": "eb0fca759a245fc2fa3dcfe052ef38bd499bd2badd62d5b005eb42bd9c01f33e",
+    "woof/core/kernels/nssl2_diagnostics.cu": "09abd081fd0a4820cdbe1dec76a73e46b3bc205f1b01adb9c6b6e566c15018f2",
     "woof/core/nssl2_radiation.py": "ddc7a0e2fcefcd12211d3f319b5ad52bf729a3b338eae2704fed51e3f042f4a1",
     "tests/test_nssl2_nucond_diagnostics.py": "727c68442db425e4a86aee7e7d22698af85b8b8ff65a37c6074feadcd7d5a60b"
   },
@@ -58,8 +58,8 @@
     "full_repository_ruff_note": "The base tree reports 151 pre-existing Ruff findings outside this slice; every changed Python file passes Ruff.",
     "nssl_ccn_variant_repin": "Re-pinned gpuwm/core/nssl2_nucond.py and gpuwm/core/kernels/nssl2_nucond.cu when the nssl_ccn_on=0 variant added the diagnosed-CCN nucleation pool (WRF renucfrac=1.0, module_mp_nssl_2mom.F:2555-2557 and :10112-10131). The re-pin was made AFTER re-running the oracle, not in place of it: test_nucond_matches_compiled_official_wrf_and_conserves_water_energy passes on all 64 fixture rows in BOTH unit modes against the edited files, as do both radardd02 arms and the registry/concentration equivalence gate. The default lane's arithmetic is untouched by construction -- the variant is a separate branch selected by the new predicted_ccn argument -- and that is measured independently: all 30 digests in evidence/nssl2-variants/mp18-digest-baseline.json reproduce byte-for-byte. No fixture, no oracle build input and no WRF source hash changed.",
     "a146_repin": "Re-pinned gpuwm/core/kernels/nssl2_nucond.cu when A146 spelled its float divisions by compile-time constants __fdiv_rn (NVRTC compiled them as reciprocal multiplies on Blackwell). The re-pin was made after re-running the file's card tests on the RTX 5070 Ti (sm_120, NVRTC 13.4.92) at 4370d5b87: every oracle comparison passed against the edited file; only this hash moved. No fixture, no oracle build input and no WRF source hash changed.",
-    "column_oracle_tail_repin": "Re-pinned gpuwm/core/nssl2_nucond.py and gpuwm/core/kernels/nssl2_nucond.cu when lane/verify-nssl2-mp18 (2026-10-07) transcribed the frozen half of WRF's NUCOND moment tail (module_mp_nssl_2mom.F:11726-12205: hail/graupel density bounds, graupel minimum intercept, vaporization of sub-threshold or numberless hail, graupel, snow and ice, in WRF's order), scattered GS's negative mass residues as :11658-11667 does, and took glibc_flt32.cuh for the tail's powf/expf. This MOVES ANSWERS for the default lane. It was graded by tools/nssl2_wrf461_column_oracle against WRF's own instrumented driver: from WRF's post-GS slab the ten tail-owned fields equal WRF's post-NUCOND slab bit for bit over 96 columns (tests/test_nssl2_column_oracle.py), and test_nucond_matches_compiled_official_wrf_and_conserves_water_energy still passes on all 64 fixture rows. No fixture, no oracle build input and no WRF source hash changed.",
-    "column_oracle_repin": "Re-pinned gpuwm/core/kernels/nssl2_nucond.cu, gpuwm/core/kernels/nssl2_diagnostics.cu, tests/test_nssl2_nucond_diagnostics.py when lane/verify-nssl2-mp18 (2026-10-07) transliterated NUCOND/QVEXCESS (module_mp_nssl_2mom.F:6052-6199, :9611-12215) and radardd02 (:8588-9597) from WRF v4.6.1. The re-pin was made after re-running the oracles: this file's 64-row NUCOND and radardd02 fixtures pass in both unit modes and both arithmetic builds, and tools/nssl2_wrf461_column_oracle grades the whole production step at 0 ULP on all 101,664 outputs of its 96 columns (strict build) against WRF with its four documented defects corrected. No fixture, no oracle build input and no WRF source hash changed."
+    "column_oracle_tail_repin": "Re-pinned gpuwm/core/nssl2_nucond.py and gpuwm/core/kernels/nssl2_nucond.cu when the NSSL2 verification change (2026-10-07) transcribed the frozen half of WRF's NUCOND moment tail (module_mp_nssl_2mom.F:11726-12205: hail/graupel density bounds, graupel minimum intercept, vaporization of sub-threshold or numberless hail, graupel, snow and ice, in WRF's order), scattered GS's negative mass residues as :11658-11667 does, and took glibc_flt32.cuh for the tail's powf/expf. This MOVES ANSWERS for the default lane. It was graded by tools/nssl2_wrf461_column_oracle against WRF's own instrumented driver: from WRF's post-GS slab the ten tail-owned fields equal WRF's post-NUCOND slab bit for bit over 96 columns (tests/test_nssl2_column_oracle.py), and test_nucond_matches_compiled_official_wrf_and_conserves_water_energy still passes on all 64 fixture rows. No fixture, no oracle build input and no WRF source hash changed.",
+    "column_oracle_repin": "Re-pinned gpuwm/core/kernels/nssl2_nucond.cu, gpuwm/core/kernels/nssl2_diagnostics.cu, tests/test_nssl2_nucond_diagnostics.py when the NSSL2 verification change (2026-10-07) transliterated NUCOND/QVEXCESS (module_mp_nssl_2mom.F:6052-6199, :9611-12215) and radardd02 (:8588-9597) from WRF v4.6.1. The re-pin was made after re-running the oracles: this file's 64-row NUCOND and radardd02 fixtures pass in both unit modes and both arithmetic builds, and tools/nssl2_wrf461_column_oracle grades the whole production step at 0 ULP on all 101,664 outputs of its 96 columns (strict build) against WRF with its four documented defects corrected. No fixture, no oracle build input and no WRF source hash changed."
   },
   "frozen_low_level_kernel": {
     "woof/core/nssl2.py": "1fa293913fb4a8541b9357bf918fc260c6c63f910a0221394a368b264d382e96",
@@ -72,9 +72,15 @@
     "strict": "incoming WRF math and frozen-water arguments",
     "default": "base cd336e62d6 CUDA source and original call arity",
     "physics_tests_passed": 13,
-    "source_revision": "01686993e39fed1a2fcdc0330e2a0a3547cd67af",
-    "junit_sha256": "06c7905380797e2ff9c001fc88966db628e162906c3970ab63bf78bbad9e095e",
+    "source_revision": "d9d17d7c22841fca7ebc4d28f6950e507ddd539d",
+    "junit_sha256": "2c715305b619d5957bb8269abb53299dd1bd3107b4c636b9f5bf82db1a090fbb",
     "refresh_owner": "tools/nssl2_wrf461_production_oracle/refresh_implementation_evidence.py",
-    "historical_validation": "Earlier validation and default-on notes above describe their recorded source revisions."
+    "historical_validation": "Earlier validation and default-on notes above describe their recorded source revisions.",
+    "cccn_current_libm": {
+      "sha256": "a086f4b8c5246b78cf30f208a78e03e4e609a31fa20f6753e1e735c773bf8f68",
+      "words": 10614,
+      "differing_words": 0,
+      "native_glibc": "2.43"
+    }
   }
 }

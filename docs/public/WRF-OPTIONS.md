@@ -6,12 +6,18 @@ Every value of WRF v4.7.1's physics scheme selectors and the on/off
 switches below was put through `woof import-namelist` on a
 one-domain namelist, beside the partner settings WRF itself requires
 (for example MYJ with its Eta surface layer). **Imports** means the
-importer writes a configuration that runs that option. **Refused** means
+importer writes a configuration and validates its schema. It does not
+prove GPU execution, numerical agreement, a forecast, restart or speed.
+**Refused** means
 the importer stops and names the option; the reason is the importer's own
 message. A refused option never runs as a different scheme; an option
 that imports as a different scheme says so on its row. Other WRF
-namelist options (gravity-wave drag, lightning, aerosol and the
-rest) are not on this page.
+namelist options (gravity-wave drag and the
+rest) are inventoried separately by `--audit-json` at their Registry
+defaults. A default probe is not a claim about every possible value.
+The JSON receipt retains the exact companion settings, resolved
+selectors, substitutions, and refusal messages. Forecast qualification
+and per-stage speed require separate receipts from the scheme lanes.
 
 WRF source: https://github.com/wrf-model/WRF at v4.7.1 (f52c197ed39d).
 
@@ -20,23 +26,25 @@ WRF source: https://github.com/wrf-model/WRF at v4.7.1 (f52c197ed39d).
 
 | selector | imports | refused |
 |---|---|---|
-| `mp_physics` | 0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106 | 7, 11, 13, 14, 15, 26, 27, 29, 32, 38, 40, 51, 52, 53, 55, 56, 95, 96, 97, 98, 99 |
-| `cu_physics` | 0, 1, 3, 5, 6, 16, 96 | 2, 4, 7, 10, 11, 14, 93, 94, 95, 98, 99 |
-| `shcu_physics` | 0 | 1, 2, 3, 4, 5 |
-| `bl_pbl_physics` | 0, 1, 2, 5, 9, 11 | 3, 4, 7, 8, 10, 12, 16, 17, 98, 99 |
-| `sf_sfclay_physics` | 0, 1, 2, 5, 91 | 3, 4, 7, 10, 89 |
-| `sf_surface_physics` | 0, 2, 3, 4 | 1, 5, 6, 7, 8 |
-| `sf_urban_physics` | 1, 2, 3 | - |
-| `sf_ocean_physics` | 1, 2 | - |
-| `ra_lw_physics` | 1, 4, 5 | 3, 7, 14, 24, 31, 99 |
-| `ra_sw_physics` | 1, 4, 5 | 2, 3, 7, 14, 24, 99 |
-| `sst_update` | - | 1 |
-| `sst_skin` | - | 1 |
-| `tmn_update` | - | 1 |
+| `mp_physics` | 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 26, 27, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106 | 29, 32, 98, 99 |
+| `cu_physics` | 0, 1, 2, 3, 5, 6, 10, 11, 14, 16, 93, 94, 95, 96, 99 | 4, 7, 98 |
+| `shcu_physics` | 0, 1, 2, 3, 4, 5 | - |
+| `bl_pbl_physics` | 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 16, 17, 99 | 98 |
+| `sf_sfclay_physics` | 0, 1, 2, 3, 4, 5, 7, 10, 91 | 89 |
+| `sf_surface_physics` | 0, 1, 2, 3, 4, 7, 8 | 5, 6 |
+| `sf_urban_physics` | 0, 1, 2, 3 | - |
+| `sf_ocean_physics` | 0, 1, 2 | - |
+| `ra_lw_physics` | 0, 1, 3, 4, 5, 7, 31, 99 | 14, 24 |
+| `ra_sw_physics` | 0, 1, 2, 3, 4, 5, 7, 99 | 14, 24 |
+| `sst_update` | 1 | - |
+| `sst_skin` | 1 | - |
+| `tmn_update` | 1 | - |
 | `sf_lake_physics` | 1 | - |
-| `windfarm_opt` | - | 1, 2 |
-| `cu_rad_feedback` | - | .true. |
-| `icloud` | - | 3 |
+| `windfarm_opt` | 1, 2 | - |
+| `cu_rad_feedback` | .true. | - |
+| `icloud` | 0, 1, 2, 3 | - |
+| `aer_opt` | 0, 1, 2, 3 | - |
+| `lightning_option` | 0, 1, 2, 3, 11 | - |
 
 ## `mp_physics`
 
@@ -49,34 +57,38 @@ WRF source: https://github.com/wrf-model/WRF at v4.7.1 (f52c197ed39d).
 | `4` | WSM 5-class scheme | imports |
 | `5` | Ferrier (new Eta) microphysics, operational High-Resolution Window version | imports |
 | `6` | WSM 6-class graupel scheme | imports |
-| `7` | Goddard 4-ice scheme | refused: namelist.input &physics: mp_physics=7 (NU-WRF Goddard 4-ice, Registry.EM_COMMON package nuwrf4icescheme) is not ported. It carries graupel and hail as separate classes (qg and qh) with the Goddard 4-ice processes; no woof scheme runs them, and none is run in its place. |
+| `7` | Goddard 4-ice scheme | imports |
 | `8` | Thompson scheme | imports |
 | `9` | Milbrandt-Yau 2-moment scheme | imports |
 | `10` | Morrison (2 moments) | imports |
-| `11` | CAM 5.1 microphysics | refused: namelist.input &physics: mp_physics=11 (CAM 5.1 Morrison-Gettelman, package cammgmpscheme) is not ported. It runs inside CAM5's cloud macrophysics (its own cloud fraction and detrainment state), which woof does not carry; Morrison (mp_physics=10) is a different scheme and is not run in its place. |
-| `13` | SBU_YLIN scheme | refused: namelist.input &physics: mp_physics=13 (Stony Brook University Y. Lin, package sbu_ylinscheme) is not ported. It carries a riming intensity (rimi) that varies precipitating-ice properties continuously; Purdue Lin (mp_physics=2) has no such variable and is not run in its place. |
-| `14` | WDM 5-class scheme | refused: namelist.input &physics: mp_physics=14 (WDM5, Registry.EM_COMMON) is not ported. Of WRF's WDM family only WDM6 (mp_physics=16) exists in woof; WDM5 carries a different hydrometeor set (no graupel category) and cannot be run by substituting WDM6 for it. |
-| `15` | fer_mp_hires_advect | refused: namelist.input &physics: mp_physics=15 (Ferrier-Aligo with an advected rime factor, package fer_mp_hires_advect) is not ported. woof ports mp_physics=5, which keeps the rime factor as non-advected state; mp_physics=15 transports it as the scalar qrimef. Use mp_physics=5 for Ferrier-Aligo. |
+| `11` | CAM 5.1 microphysics | imports |
+| `13` | SBU_YLIN scheme | imports |
+| `14` | WDM 5-class scheme | imports |
+| `15` | fer_mp_hires_advect | imports |
 | `16` | WDM 6-class scheme | imports |
+| `17` | Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18 | imports; legacy NSSL spelling, rewritten to 18 plus variant flags |
 | `18` | NSSL 2-moment 4-ice scheme with predicted (unactivated) CCN (or activated CCN) | imports |
+| `19` | Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18 | imports; legacy NSSL spelling, rewritten to 18 plus variant flags |
+| `21` | Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18 | imports; legacy NSSL spelling, rewritten to 18 plus variant flags |
+| `22` | Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18 | imports; legacy NSSL spelling, rewritten to 18 plus variant flags |
 | `24` | WSM 7-class scheme (separate hail and graupel categories) | imports |
-| `26` | WDM 7-class scheme (separate hail and graupel categories) | refused: namelist.input &physics: mp_physics=26 (WDM7, Registry.EM_COMMON) is not ported. Of WRF's WDM family only WDM6 (mp_physics=16) exists in woof; WDM7 adds a prognostic hail category (qh/nh) that this port allocates nowhere, and WDM6's wdm6_hail_opt switch retunes graupel constants rather than adding that category, so WDM7 cannot be run by substituting WDM6 for it. |
-| `27` | UDM 7-class scheme, double moments in qnc and qnr plus qnn | refused: namelist.input &physics: mp_physics=27 (the WRF v4.7 UDM 7-class scheme, double moments in qnc and qnr plus qnn) is not ported; no woof scheme carries its prognostic number set, and none is run in its place. |
+| `26` | WDM 7-class scheme (separate hail and graupel categories) | imports |
+| `27` | UDM 7-class scheme, double moments in qnc and qnr plus qnn | imports |
 | `28` | aerosol-aware Thompson scheme with water- and ice-friendly aerosol climatology | imports |
-| `29` | rcon_mp_scheme | refused: namelist.input &physics: mp_physics=29 (the WRF v4.7 package rcon_mp_scheme) is not ported; no woof scheme runs it, and none is run in its place. |
+| `29` | rcon_mp_scheme | refused: mp_physics=29 (RCON) is ported but its release speed proof is open: the whole-forecast microphysics stage costs 1.885431x MP28; the retained native 1.053748x profile does not explain the GPU excess. A qualified speed handoff is required before forecast admission; until then select another microphysics scheme, such as mp_physics=28 (the Thompson aerosol-aware scheme it is timed against). |
 | `30` | fast_khain_lynn_shpund | imports with `--rrtmg-variant rrtmg_legacy` (WRF's own RRTMG) |
 | `32` | full_khain_lynn | refused: namelist.input &physics: mp_physics=32 (full Khain-Lynn spectral bin microphysics, package full_khain_lynn) is not ported. It carries mass and number in dozens of size bins per hydrometeor class; the fast spectral bin scheme (mp_physics=30) is a different, reduced scheme and is not run in its place. |
-| `38` | thompsongh | refused: namelist.input &physics: mp_physics=38 (Thompson graupel-hail, package thompsongh) is not ported. It predicts graupel number and volume (qng, qvolg), so graupel density varies toward hail; Thompson (mp_physics=8 or 28) carries fixed-density graupel and is not run in its place. |
-| `40` | morr_tm_aero | refused: namelist.input &physics: mp_physics=40 (Morrison with CESM aerosol, package morr_tm_aero) is not ported. It activates droplets from prescribed aerosol modes (CCN1-CCN7) that woof does not prepare; Morrison (mp_physics=10) uses a fixed droplet number and is not run in its place. |
+| `38` | thompsongh | imports |
+| `40` | morr_tm_aero | imports |
 | `50` | p3_1category | imports |
-| `51` | p3_1category_nc | refused: namelist.input &physics: mp_physics=51 (P3 with prognostic droplet number, Registry.EM_COMMON:3039) is not ported. woof ports mp_physics=50, which runs P3 with SPECIFIED droplet number (nccnst/rho, module_mp_p3.F:2350) -- mp=51 passes nc_3d, which switches on the CCN-activation path (:3313-3339) that this port does not carry. Use mp_physics=50 for P3 one-category. |
-| `52` | p3_2category | refused: namelist.input &physics: mp_physics=52 (P3 two ice categories, Registry.EM_COMMON:3040) is not ported. woof ports the nCat=1 configuration only: the inter-category collection (module_mp_p3.F:2754-2829), the category-merge pass (:4615-4697) and the second lookup table p3_lookupTable_2 are structurally absent from this port, and its state carries one ice category. Use mp_physics=50 for P3 one-category. |
-| `53` | p3_1cat_3mom | refused: namelist.input &physics: mp_physics=53 (P3 one category, three-moment ice, Registry.EM_COMMON:3041) is not ported. woof ports the TWO-moment-ice configuration: the prognostic reflectivity moment zitot, its compute_mu_3moment/G_of_mu closure and the 3momI lookup table (module_mp_p3.F, log_3momentIce branches) are absent, and only p3_lookupTable_1.dat-v5.4_2momI is packaged. Use mp_physics=50 for P3 one-category. |
-| `55` | jensen_ishmael | refused: namelist.input &physics: mp_physics=55 (Jensen-ISHMAEL, Registry.EM_COMMON:3043 package jensen_ishmael) is not ported. ISHMAEL carries three ice species (qi, qi2, qi3) that each predict number, volume and aspect ratio (qni/qvoli/qaoli and the _2/_3 sets), so ice habit and density evolve with growth and riming; no woof scheme carries those moments. Morrison (mp_physics=10) has fixed spherical cloud ice, snow and graupel/hail, and running it under an ISHMAEL request would deposit, rime and sediment ice by a different model. Ask for mp_physics=10 to run Morrison under its own name. |
-| `56` | ntu | refused: namelist.input &physics: mp_physics=56 (NTU multi-moment, package ntu) is not ported. It predicts two moments for liquid and three for ice, with ice shape and density, which no woof scheme carries. |
-| `95` | etampnew | refused: namelist.input &physics: mp_physics=95 (the old Eta Ferrier scheme, package etampnew) is not ported. It advects total condensate with ice and rain fractions; Ferrier-Aligo (mp_physics=5) is its successor and is not run in its place. |
-| `96` | madwrf_mp | refused: namelist.input &physics: mp_physics=96 (MADWRF, package madwrf_mp) is not ported. It is the cloud scheme of WRF's MAD-WRF solar-irradiance configuration, which works with MAD-WRF's satellite cloud initialization; woof carries neither. |
-| `97` | gsfcgcescheme | refused: namelist.input &physics: mp_physics=97 (Goddard GCE three-ice, package gsfcgcescheme) is not ported; no woof scheme runs the Goddard ice processes, and none is run in its place. |
+| `51` | p3_1category_nc | imports |
+| `52` | p3_2category | imports |
+| `53` | p3_1cat_3mom | imports |
+| `55` | jensen_ishmael | imports |
+| `56` | ntu | imports with `--rrtmg-variant rrtmg_legacy` (WRF's own RRTMG) |
+| `95` | etampnew | imports |
+| `96` | madwrf_mp | imports with `--rrtmg-variant rrtmg_legacy` (WRF's own RRTMG) |
+| `97` | gsfcgcescheme | imports |
 | `98` | lscondscheme | refused: namelist.input &physics: mp_physics=98 (large-scale condensation, package lscondscheme) is not ported. It removes supersaturation as instantaneous rain with no cloud or ice species; no woof scheme runs it, and none is run in its place. |
 | `99` | mkesslerscheme | refused: namelist.input &physics: mp_physics=99 (modified Kessler, package mkesslerscheme) is not ported. Its warm-rain rates differ from Kessler (mp_physics=1), which is not run in its place. |
 | `106` | wsm6rscheme | imports |
@@ -87,88 +99,89 @@ WRF source: https://github.com/wrf-model/WRF at v4.7.1 (f52c197ed39d).
 |---|---|---|
 | `0` | no cumulus | imports |
 | `1` | Kain-Fritsch (new Eta) scheme | imports |
-| `2` | Betts-Miller-Janjic scheme | refused: &physics cu_physics = 2: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). Betts-Miller-Janjic (WRF bmjscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `2` | Betts-Miller-Janjic scheme | imports |
 | `3` | Grell-Freitas ensemble scheme | imports |
-| `4` | Scale-aware GFS Simplified Arakawa-Schubert (SAS) scheme | refused: &physics cu_physics = 4: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). Scale-aware SAS (WRF scalesasscheme) is not ported in this release; New SAS (96) is a different SAS generation. Nothing is substituted for it; choose one of the implemented values. |
+| `4` | Scale-aware GFS Simplified Arakawa-Schubert (SAS) scheme | refused: &physics cu_physics = 4: no woof mapping (implemented: [0, 1, 2, 3, 5, 6, 7, 10, 11, 14, 16, 93, 94, 95, 96, 99]). Scale-aware SAS (WRF scalesasscheme) is not ported in this release; New SAS (96) is a different SAS generation. Nothing is substituted for it; choose one of the implemented values. |
 | `5` | Grell 3D ensemble scheme | imports |
 | `6` | Modifed Tiedtke scheme | imports |
-| `7` | Zhang-McFarlane scheme from CAM5 (CESM 1_0_1) | refused: &physics cu_physics = 7: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). Zhang-McFarlane CAM5 deep convection (WRF camzmscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `10` | Modified Kain-Fritsch scheme with trigger function based on PDFs | refused: &physics cu_physics = 10: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). Kain-Fritsch with cumulus potential, KF-CuP (WRF kfcupscheme), is not ported in this release; Kain-Fritsch (1) has a different trigger and cloud model. Nothing is substituted for it; choose one of the implemented values. |
-| `11` | Multi-scale Kain-Fritsch scheme | refused: &physics cu_physics = 11: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). Multi-scale Kain-Fritsch, MSKF (WRF mskfscheme), is not ported in this release; Kain-Fritsch (1) lacks its scale-aware adjustments. Nothing is substituted for it; choose one of the implemented values. |
-| `14` | KIM Simplified Arakawa-Schubert scheme (KSAS) across gray-zone resolutions | refused: &physics cu_physics = 14: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). Korean SAS, KSAS (WRF ksasscheme), is not ported in this release; New SAS (96) is a different SAS generation. Nothing is substituted for it; choose one of the implemented values. |
+| `7` | Zhang-McFarlane scheme from CAM5 (CESM 1_0_1) | refused: cu_physics=7 (CAM Zhang-McFarlane) requires bl_pbl_physics=9 (the UW PBL, which supplies the convective temperature excess TPERT2D) or bl_pbl_physics=2 with sf_sfclay_physics=2 (MYJ, from whose TKE and surface fluxes get_tpert computes it); WRF stops with 'CAMZMSCHEME requires MYJPBLSCHEME or CAMUWPBLSCHEME' (module_cu_camzm_driver.F:1018) for bl_pbl_physics=1 |
+| `10` | Modified Kain-Fritsch scheme with trigger function based on PDFs | imports |
+| `11` | Multi-scale Kain-Fritsch scheme | imports |
+| `14` | KIM Simplified Arakawa-Schubert scheme (KSAS) across gray-zone resolutions | imports |
 | `16` | A newer Tiedtke scheme | imports |
-| `93` | Grell-Devenyi ensemble scheme | refused: &physics cu_physics = 93: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). Grell-Devenyi ensemble (WRF gdscheme) is not ported in this release; Grell 3D (5) adds subsidence spreading and is a different scheme. Nothing is substituted for it; choose one of the implemented values. |
-| `94` | 2015 GFS Simplified Arakawa-Schubert scheme (from HWRF, use with caution) | refused: &physics cu_physics = 94: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). 2015 GFS simplified Arakawa-Schubert (WRF sasscheme) is not ported in this release; New SAS (96) is a different SAS generation. Nothing is substituted for it; choose one of the implemented values. |
-| `95` | Previous GFS Simplified Arakawa-Schubert scheme (from HWRF, use with caution) | refused: &physics cu_physics = 95: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). The older GFS simplified Arakawa-Schubert (WRF osasscheme) is not ported in this release; New SAS (96) is a different SAS generation. Nothing is substituted for it; choose one of the implemented values. |
+| `93` | Grell-Devenyi ensemble scheme | imports |
+| `94` | 2015 GFS Simplified Arakawa-Schubert scheme (from HWRF, use with caution) | imports |
+| `95` | Previous GFS Simplified Arakawa-Schubert scheme (from HWRF, use with caution) | imports |
 | `96` | Previous NEW GFS simplified Arakawa-Schubert scheme from YSU | imports |
-| `98` | ducuscheme | refused: &physics cu_physics = 98: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). The WRF v4.7 cumulus package ducuscheme is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `99` | previous Kain-Fritsch scheme | refused: &physics cu_physics = 99: no woof mapping (implemented: [0, 1, 3, 5, 6, 16, 96]). The previous Kain-Fritsch (WRF kfscheme) is not ported in this release; Kain-Fritsch (1) is the later Eta version. Nothing is substituted for it; choose one of the implemented values. |
+| `98` | ducuscheme | refused: &physics cu_physics = 98: no woof mapping (implemented: [0, 1, 2, 3, 5, 6, 7, 10, 11, 14, 16, 93, 94, 95, 96, 99]). The WRF v4.7 cumulus package ducuscheme is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `99` | previous Kain-Fritsch scheme | imports |
 
 ## `shcu_physics`
 
 | value | WRF option | woof |
 |---|---|---|
 | `0` | no independent shallow cumulus | imports |
-| `1` | Grell 3D ensemble scheme (use with cu_physics=93 or 5) (PLACEHOLDER: SWITCH NOT YET IMPLEMENTED--use ishallow) | refused: &physics shcu_physics = [1]: woof implements shcu_physics = 0 only (no separate shallow-cumulus scheme (1 Grell 3D shallow, 2 UW, 3 GRIMS, 4 NSCV, 5 Deng) is ported in this release; the shallow convection inside Grell-Freitas and Grell 3D (ishallow = 1) and New SAS's built-in NSCV do run). |
-| `2` | Park and Bretherton shallow cumulus from CAM5 (CESM 1_0_1) | refused: &physics shcu_physics = [2]: woof implements shcu_physics = 0 only (no separate shallow-cumulus scheme (1 Grell 3D shallow, 2 UW, 3 GRIMS, 4 NSCV, 5 Deng) is ported in this release; the shallow convection inside Grell-Freitas and Grell 3D (ishallow = 1) and New SAS's built-in NSCV do run). |
-| `3` | GRIMS shallow cumulus from YSU group | refused: &physics shcu_physics = [3]: woof implements shcu_physics = 0 only (no separate shallow-cumulus scheme (1 Grell 3D shallow, 2 UW, 3 GRIMS, 4 NSCV, 5 Deng) is ported in this release; the shallow convection inside Grell-Freitas and Grell 3D (ishallow = 1) and New SAS's built-in NSCV do run). |
-| `4` | NSAS shallow cululus scheme. Must be used with KIAPS SAS cumulus scheme (cu_physics = 14) | refused: &physics shcu_physics = [4]: woof implements shcu_physics = 0 only (no separate shallow-cumulus scheme (1 Grell 3D shallow, 2 UW, 3 GRIMS, 4 NSCV, 5 Deng) is ported in this release; the shallow convection inside Grell-Freitas and Grell 3D (ishallow = 1) and New SAS's built-in NSCV do run). |
-| `5` | Deng cumulus scheme (including both shallow and deep convections) from PSU and WRF-Solar. | refused: &physics shcu_physics = [5]: woof implements shcu_physics = 0 only (no separate shallow-cumulus scheme (1 Grell 3D shallow, 2 UW, 3 GRIMS, 4 NSCV, 5 Deng) is ported in this release; the shallow convection inside Grell-Freitas and Grell 3D (ishallow = 1) and New SAS's built-in NSCV do run). |
+| `1` | Grell 3D ensemble scheme (use with cu_physics=93 or 5) (PLACEHOLDER: SWITCH NOT YET IMPLEMENTED--use ishallow) | imports |
+| `2` | Park and Bretherton shallow cumulus from CAM5 (CESM 1_0_1) | imports |
+| `3` | GRIMS shallow cumulus from YSU group | imports |
+| `4` | NSAS shallow cululus scheme. Must be used with KIAPS SAS cumulus scheme (cu_physics = 14) | imports; companions: `cu_physics=14` |
+| `5` | Deng cumulus scheme (including both shallow and deep convections) from PSU and WRF-Solar. | imports; companions: `bl_pbl_physics=2`, `sf_sfclay_physics=2`, `icloud_bl=0` |
 
 ## `bl_pbl_physics`
 
 | value | WRF option | woof |
 |---|---|---|
-| `0` | no boundary-layer | imports |
+| `0` | no boundary-layer | imports; companions: `sf_sfclay_physics=1` |
 | `1` | YSU scheme | imports |
-| `2` | Mellor-Yamada-Janjic TKE scheme | imports |
-| `3` | Hybrid EDMF GFS scheme | refused: &physics bl_pbl_physics = 3: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The GFS non-local PBL (WRF gfsscheme) is not ported in this release, nor its surface layer (sf_sfclay_physics = 3). Nothing is substituted for it; choose one of the implemented values. |
-| `4` | Eddy-diffusivity Mass Flux, Quasi-Normal Scale Elimination PBL | refused: &physics bl_pbl_physics = 4: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The QNSE PBL (WRF qnsepblscheme) is not ported in this release, nor its surface layer (sf_sfclay_physics = 4). Nothing is substituted for it; choose one of the implemented values. |
-| `5` | MYNN TKE scheme, works with sf_sfclay_physics=1 or 2 as well as 5 | imports |
-| `7` | ACM2 (Pleim) PBL | refused: &physics bl_pbl_physics = 7: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). ACM2 (WRF acmpblscheme) is not ported in this release, nor the Pleim-Xiu surface layer (7) and land surface (7) it usually runs with. Nothing is substituted for it; choose one of the implemented values. |
-| `8` | Bougeault and Lacarrere (BouLac) PBL | refused: &physics bl_pbl_physics = 8: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The Bougeault-Lacarrere TKE PBL (WRF boulacscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `2` | Mellor-Yamada-Janjic TKE scheme | imports; companions: `sf_sfclay_physics=2` |
+| `3` | Hybrid EDMF GFS scheme | imports; companions: `sf_sfclay_physics=3` |
+| `4` | Eddy-diffusivity Mass Flux, Quasi-Normal Scale Elimination PBL | imports; companions: `sf_sfclay_physics=4` |
+| `5` | MYNN TKE scheme, works with sf_sfclay_physics=1 or 2 as well as 5 | imports; companions: `sf_sfclay_physics=5` |
+| `7` | ACM2 (Pleim) PBL | imports; companions: `sf_sfclay_physics=7`, `sf_surface_physics=7`, `num_soil_layers=2` |
+| `8` | Bougeault and Lacarrere (BouLac) PBL | imports |
 | `9` | UW boundary layer scheme from CAM5 (CESM 1_0_1) | imports |
-| `10` | TEMF (Total Energy Mass Flux) scheme | refused: &physics bl_pbl_physics = 10: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The TEMF PBL (WRF temfpblscheme) is not ported in this release, nor its surface layer (sf_sfclay_physics = 10). Nothing is substituted for it; choose one of the implemented values. |
+| `10` | TEMF (Total Energy Mass Flux) scheme | imports; companions: `sf_sfclay_physics=10` |
 | `11` | Shin-Hong 'scale-aware' PBL scheme | imports |
-| `12` | Grenier-Bretherton-McCaa scheme | refused: &physics bl_pbl_physics = 12: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The Grenier-Bretherton-McCaa TKE PBL (WRF gbmpblscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `16` | TKE+TKE dissipation rate (epsilon) scheme | refused: &physics bl_pbl_physics = 16: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The EEPS energy-dissipation PBL (WRF eepsscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `17` | TKE+TKE dissipation rate+TPE (temparature variance) scheme | refused: &physics bl_pbl_physics = 17: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The k-epsilon PBL (WRF kepsscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `98` | surfdragscheme | refused: &physics bl_pbl_physics = 98: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The WRF v4.7 surface-drag boundary-layer package (surfdragscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `99` | MRF scheme | refused: &physics bl_pbl_physics = 99: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The MRF PBL (WRF mrfscheme), YSU's predecessor, is not ported in this release; YSU (1) is a different scheme. Nothing is substituted for it; choose one of the implemented values. |
+| `12` | Grenier-Bretherton-McCaa scheme | imports |
+| `16` | TKE+TKE dissipation rate (epsilon) scheme | imports |
+| `17` | TKE+TKE dissipation rate+TPE (temparature variance) scheme | imports |
+| `98` | surfdragscheme | refused: &physics bl_pbl_physics = 98: no ratified woof mapping (implemented: [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 16, 17, 99, 900, 901]). The WRF v4.7 surface-drag boundary-layer package (surfdragscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `99` | MRF scheme | imports |
 
 ## `sf_sfclay_physics`
 
 | value | WRF option | woof |
 |---|---|---|
-| `0` | no surface-layer | imports |
+| `0` | no surface-layer | imports; companions: `bl_pbl_physics=0`, `sf_surface_physics=0`, `num_soil_layers=5` |
 | `1` | Revised MM5 Monin-Obukhov scheme (Jimenez, renamed in v3.6): WRF's option 1 since v3.6; not the same scheme as 91 | imports |
-| `2` | Monin-Obukhov (Janjic) scheme | imports |
-| `3` | NCEP Global Forecast System scheme | refused: &physics bl_pbl_physics = 3: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The GFS non-local PBL (WRF gfsscheme) is not ported in this release, nor its surface layer (sf_sfclay_physics = 3). Nothing is substituted for it; choose one of the implemented values. |
-| `4` | QNSE surface layer | refused: &physics bl_pbl_physics = 4: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The QNSE PBL (WRF qnsepblscheme) is not ported in this release, nor its surface layer (sf_sfclay_physics = 4). Nothing is substituted for it; choose one of the implemented values. |
-| `5` | MYNN surface layer | imports |
-| `7` | Pleim-Xiu surface layer | refused: &physics sf_sfclay_physics = 7: no woof mapping (implemented: [0, 1, 2, 5, 91]). The Pleim-Xiu surface layer (WRF pxsfcscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `10` | TEMF surface layer | refused: &physics bl_pbl_physics = 10: no ratified woof mapping (implemented: [0, 1, 2, 5, 9, 11, 900, 901]). The TEMF PBL (WRF temfpblscheme) is not ported in this release, nor its surface layer (sf_sfclay_physics = 10). Nothing is substituted for it; choose one of the implemented values. |
-| `89` | idealscmsfcscheme | refused: &physics sf_sfclay_physics = 89: no woof mapping (implemented: [0, 1, 2, 5, 91]). The idealized single-column surface (WRF idealscmsfcscheme) needs WRF's single-column test case, which this engine does not run. Nothing is substituted for it; choose one of the implemented values. |
+| `2` | Monin-Obukhov (Janjic) scheme | imports; companions: `bl_pbl_physics=2` |
+| `3` | NCEP Global Forecast System scheme | imports; companions: `bl_pbl_physics=3` |
+| `4` | QNSE surface layer | imports; companions: `bl_pbl_physics=4` |
+| `5` | MYNN surface layer | imports; companions: `bl_pbl_physics=5` |
+| `7` | Pleim-Xiu surface layer | imports; companions: `bl_pbl_physics=7`, `sf_surface_physics=7`, `num_soil_layers=2` |
+| `10` | TEMF surface layer | imports; companions: `bl_pbl_physics=10` |
+| `89` | idealscmsfcscheme | refused: sf_sfclay_physics=89 requires bl_pbl_physics=0: WRF 4.7.1 module_physics_init.F:3140-3223 assigns no isfc value to IDEALSCMSFCSCHEME before the PBL compatibility checks |
 | `91` | Old MM5 scheme (previously option 1): the pre-v3.6 MM5 scheme, a different scheme from today's option 1 (revised MM5) | imports |
 
 ## `sf_surface_physics`
 
 | value | WRF option | woof |
 |---|---|---|
-| `0` | no surface temp prediction | imports |
-| `1` | thermal diffusion scheme | refused: &physics sf_surface_physics = 1: no woof mapping (implemented: [0, 2, 3, 4]). The 5-layer thermal diffusion slab (WRF slabscheme) is not ported in this release; Noah (2) carries soil moisture and vegetation the slab does not, and is not run in its place. Nothing is substituted for it; choose one of the implemented values. |
+| `0` | no surface temp prediction | imports; companions: `num_soil_layers=5` |
+| `1` | thermal diffusion scheme | imports; companions: `num_soil_layers=5` |
 | `2` | Unified Noah land-surface model | imports |
-| `3` | RUC land-surface model | imports |
+| `3` | RUC land-surface model | imports; companions: `num_soil_layers=9` |
 | `4` | Noah-MP land-surface model (see additional &noah_mp namelist) | imports |
-| `5` | Community Land Model version 4 (CLM4), adapted from CAM | refused: &physics sf_surface_physics = 5: no woof mapping (implemented: [0, 2, 3, 4]). CLM4 (WRF clmscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `6` | Community Terrestrial Systems Model (CTSM). See doc/README.CTSM for info on running this option. | refused: &physics sf_surface_physics = 6: no woof mapping (implemented: [0, 2, 3, 4]). CTSM (WRF ctsmscheme) needs NCAR's external CTSM library, which this engine does not carry. Nothing is substituted for it; choose one of the implemented values. |
-| `7` | Pleim-Xiu LSM | refused: &physics sf_surface_physics = 7: no woof mapping (implemented: [0, 2, 3, 4]). The Pleim-Xiu land surface (WRF pxlsmscheme), with its two-layer soil and 2 m temperature and humidity nudging, is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
-| `8` | Simplified Simple Biosphere Model (SSiB) | refused: &physics sf_surface_physics = 8: no woof mapping (implemented: [0, 2, 3, 4]). SSiB (WRF ssibscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `5` | Community Land Model version 4 (CLM4), adapted from CAM | refused: &physics sf_surface_physics = 5: no woof mapping (implemented: [0, 1, 2, 3, 4, 7, 8]). CLM4 (WRF clmscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `6` | Community Terrestrial Systems Model (CTSM). See doc/README.CTSM for info on running this option. | refused: &physics sf_surface_physics = 6: no woof mapping (implemented: [0, 1, 2, 3, 4, 7, 8]). CTSM (WRF ctsmscheme) needs NCAR's external CTSM library, which this engine does not carry. Nothing is substituted for it; choose one of the implemented values. |
+| `7` | Pleim-Xiu LSM | imports; companions: `num_soil_layers=2`, `sf_sfclay_physics=7`, `bl_pbl_physics=7` |
+| `8` | Simplified Simple Biosphere Model (SSiB) | imports with `--rrtmg-variant rrtmg_legacy` (WRF's own RRTMG); companions: `num_soil_layers=3`, `fractional_seaice=1` |
 
 ## `sf_urban_physics`
 
 | value | WRF option | woof |
 |---|---|---|
+| `0` | no urban canopy model | imports |
 | `1` | Single-layer, UCM | imports |
 | `2` | Multi-layer, Building Environment Parameterization (BEP) scheme | imports |
 | `3` | Multi-layer, Building Environment Model (BEM) scheme | imports |
@@ -177,6 +190,7 @@ WRF source: https://github.com/wrf-model/WRF at v4.7.1 (f52c197ed39d).
 
 | value | WRF option | woof |
 |---|---|---|
+| `0` | no ocean model | imports |
 | `1` | 1-D ocean mixed layer | imports |
 | `2` | 3-D Price-Weller-Pinkel ocean | imports |
 
@@ -184,47 +198,49 @@ WRF source: https://github.com/wrf-model/WRF at v4.7.1 (f52c197ed39d).
 
 | value | WRF option | woof |
 |---|---|---|
+| `0` | no longwave radiation | imports; companions: `sf_surface_physics=0`, `num_soil_layers=5` |
 | `1` | rrtm scheme | imports |
-| `3` | cam scheme | refused: &physics ra_lw_physics = 3: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF CAM longwave (camlwscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `3` | cam scheme | imports |
 | `4` | rrtmg scheme | imports as RRTMG -> RTE+RRTMGP; `--rrtmg-variant rrtmg_legacy` runs WRF's own RRTMG |
 | `5` | Goddard longwave scheme | imports |
-| `7` | FLG (UCLA) scheme | refused: &physics ra_lw_physics = 7: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF Fu-Liou-Gu longwave (flglwscheme) has a column port but no forecast driver; there is no FLG radiation step to run. Nothing is substituted for it; choose one of the implemented values. |
-| `14` | rrtmg-k scheme from KIAPS | refused: &physics ra_lw_physics = 14: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF RRTMG-K longwave is not ported; RRTMG (4, with ra_rrtmg_variant = rrtmg_legacy for WRF's transcription) is the nearest scheme and is a different k-distribution. Nothing is substituted for it; choose one of the implemented values. |
-| `24` | fast rrtmg scheme for GPU and MIC (since 3.7) | refused: &physics ra_lw_physics = 24: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF fast RRTMG longwave (module_ra_rrtmg_lwf) is a separately coded solver that is not ported; ra_lw_physics = 4 with ra_rrtmg_variant = rrtmg_legacy runs WRF's RRTMG transcription. Nothing is substituted for it; choose one of the implemented values. |
-| `31` | Earth Held-Suarez forcing | refused: &physics ra_lw_physics = 31: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF Held-Suarez forcing is a global idealized relaxation; it needs global initialization and pole operators this regional engine does not have. Nothing is substituted for it; choose one of the implemented values. |
-| `99` | GFDL (Eta) longwave (semi-supported) | refused: &physics ra_lw_physics = 99: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF GFDL longwave (gfdllwscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `7` | FLG (UCLA) scheme | imports |
+| `14` | rrtmg-k scheme from KIAPS | refused: &physics ra_lw_physics = 14: no ratified woof mapping (implemented: [0, 1, 3, 4, 5, 7, 31, 99]). WRF RRTMG-K longwave is not ported; RRTMG (4, with ra_rrtmg_variant = rrtmg_legacy for WRF's transcription) is the nearest scheme and is a different k-distribution. Nothing is substituted for it; choose one of the implemented values. |
+| `24` | fast rrtmg scheme for GPU and MIC (since 3.7) | refused: &physics ra_lw_physics = 24: no ratified woof mapping (implemented: [0, 1, 3, 4, 5, 7, 31, 99]). WRF fast RRTMG longwave (module_ra_rrtmg_lwf) is a separately coded solver that is not ported; ra_lw_physics = 4 with ra_rrtmg_variant = rrtmg_legacy runs WRF's RRTMG transcription. Nothing is substituted for it; choose one of the implemented values. |
+| `31` | Earth Held-Suarez forcing | imports |
+| `99` | GFDL (Eta) longwave (semi-supported) | imports |
 
 ## `ra_sw_physics`
 
 | value | WRF option | woof |
 |---|---|---|
+| `0` | no shortwave radiation | imports; companions: `sf_surface_physics=0`, `num_soil_layers=5` |
 | `1` | Dudhia scheme | imports |
-| `2` | Goddard short wave | refused: &physics ra_sw_physics = 2: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF old Goddard shortwave (gsfcswscheme) is not ported in this release; New Goddard (5) is a different code and is not run in its place. Nothing is substituted for it; choose one of the implemented values. |
-| `3` | cam scheme | refused: &physics ra_sw_physics = 3: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF CAM shortwave (camswscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `2` | Goddard short wave | imports |
+| `3` | cam scheme | imports |
 | `4` | rrtmg scheme | imports as RRTMG -> RTE+RRTMGP; `--rrtmg-variant rrtmg_legacy` runs WRF's own RRTMG |
 | `5` | Goddard shortwave scheme | imports |
-| `7` | FLG (UCLA) scheme | refused: &physics ra_sw_physics = 7: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF Fu-Liou-Gu shortwave (flgswscheme) has a column port but no forecast driver; there is no FLG radiation step to run. Nothing is substituted for it; choose one of the implemented values. |
-| `14` | rrtmg-k scheme from KIAPS | refused: &physics ra_sw_physics = 14: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF RRTMG-K shortwave is not ported; RRTMG (4, with ra_rrtmg_variant = rrtmg_legacy for WRF's transcription) is the nearest scheme and is a different k-distribution. Nothing is substituted for it; choose one of the implemented values. |
-| `24` | fast rrtmg scheme for GPU and MIC (since 3.7) | refused: &physics ra_sw_physics = 24: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF fast RRTMG shortwave (module_ra_rrtmg_swf) is a separately coded solver that is not ported; ra_sw_physics = 4 with ra_rrtmg_variant = rrtmg_legacy runs WRF's RRTMG transcription. Nothing is substituted for it; choose one of the implemented values. |
-| `99` | GFDL (Eta) longwave (semi-supported) | refused: &physics ra_sw_physics = 99: no ratified woof mapping (implemented: [0, 1, 4, 5]). WRF GFDL shortwave (gfdlswscheme) is not ported in this release. Nothing is substituted for it; choose one of the implemented values. |
+| `7` | FLG (UCLA) scheme | imports |
+| `14` | rrtmg-k scheme from KIAPS | refused: &physics ra_sw_physics = 14: no ratified woof mapping (implemented: [0, 1, 2, 3, 4, 5, 7, 99]). WRF RRTMG-K shortwave is not ported; RRTMG (4, with ra_rrtmg_variant = rrtmg_legacy for WRF's transcription) is the nearest scheme and is a different k-distribution. Nothing is substituted for it; choose one of the implemented values. |
+| `24` | fast rrtmg scheme for GPU and MIC (since 3.7) | refused: &physics ra_sw_physics = 24: no ratified woof mapping (implemented: [0, 1, 2, 3, 4, 5, 7, 99]). WRF fast RRTMG shortwave (module_ra_rrtmg_swf) is a separately coded solver that is not ported; ra_sw_physics = 4 with ra_rrtmg_variant = rrtmg_legacy runs WRF's RRTMG transcription. Nothing is substituted for it; choose one of the implemented values. |
+| `99` | GFDL (Eta) longwave (semi-supported) | imports |
 
 ## `sst_update`
 
 | value | WRF option | woof |
 |---|---|---|
-| `1` | time-varying sea-surface temperature, sea ice, albedo and vegetation from wrflowinp | refused: &physics sst_update = [1]: woof implements sst_update = 0 only (SST update cycling is not implemented (single-analysis case runs)). |
+| `1` | time-varying sea-surface temperature, sea ice, albedo and vegetation from wrflowinp | imports |
 
 ## `sst_skin`
 
 | value | WRF option | woof |
 |---|---|---|
-| `1` | skin sea-surface temperature (diurnal warm layer and cool skin) | refused: &physics sst_skin = [1]: woof implements sst_skin = 0 only (skin-SST diurnal adjustment is not implemented). |
+| `1` | skin sea-surface temperature (diurnal warm layer and cool skin) | imports |
 
 ## `tmn_update`
 
 | value | WRF option | woof |
 |---|---|---|
-| `1` | deep-soil temperature updated from the skin temperature (lagday) | refused: &physics tmn_update = [1]: woof implements tmn_update = 0 only (deep-soil temperature update is not implemented). |
+| `1` | deep-soil temperature updated from the skin temperature (lagday) | imports |
 
 ## `sf_lake_physics`
 
@@ -236,17 +252,39 @@ WRF source: https://github.com/wrf-model/WRF at v4.7.1 (f52c197ed39d).
 
 | value | WRF option | woof |
 |---|---|---|
-| `1` | Fitch wind farm | refused: &physics windfarm_opt = [1]: Fitch requires MYNN bl_pbl_physics=5; other PBL schemes do not receive the turbine TKE source |
-| `2` | Ma et al. (2022) wind farm with subgrid wakes | refused: &physics windfarm_opt = [2]: only 0 (off) and 1 (Fitch) are implemented; MAV option 2 requires subgrid wakes that this coupling does not calculate |
+| `1` | Fitch wind farm | imports; synthetic JSON turbine input fixture; native WRF turbine text needs `rw-wind-table` (not checked here); companions: `bl_pbl_physics=5`, `sf_sfclay_physics=5` |
+| `2` | Ma et al. (2022) wind farm with subgrid wakes | imports; synthetic native MAV turbine input decoded by `rw-wind-table`; no forecast proof; companions: `bl_pbl_physics=5`, `sf_sfclay_physics=5`, `windfarm_ij=2` |
 
 ## `cu_rad_feedback`
 
 | value | WRF option | woof |
 |---|---|---|
-| `.true.` | cumulus sub-grid cloud fed to radiation | refused: &physics cu_rad_feedback = [True]: cumulus cloud fraction does not feed radiation in woof (WRF Registry default .false.); only the disabled branch is implemented. |
+| `.true.` | cumulus sub-grid cloud fed to radiation | imports; companions: `cu_physics=3` |
 
 ## `icloud`
 
 | value | WRF option | woof |
 |---|---|---|
-| `3` | Thompson-Eidhammer cloud fraction (cal_cldfra3) | refused: &physics icloud = [3]: choose 0, 1 or 2; icloud=3 needs unported cal_cldfra3 condensate adjustment. |
+| `0` | no cloud optical effect | imports; companions: `ra_lw_physics=1`, `ra_sw_physics=1` |
+| `1` | Xu-Randall cloud fraction | imports |
+| `2` | threshold cloud fraction | imports |
+| `3` | Sundqvist cloud fraction (cal_cldfra3) | imports |
+
+## `aer_opt`
+
+| value | WRF option | woof |
+|---|---|---|
+| `0` | no aerosol optical effect | imports |
+| `1` | Tegen six-type aerosol climatology | imports; resolves `ra_rrtmg_variant=rrtmg_legacy` |
+| `2` | user aerosol optical properties | imports; resolves `ra_rrtmg_variant=rrtmg_legacy` |
+| `3` | Thompson water/ice friendly aerosol | imports; resolves `ra_rrtmg_variant=rrtmg_legacy`; companions: `mp_physics=28` |
+
+## `lightning_option`
+
+| value | WRF option | woof |
+|---|---|---|
+| `0` | off | imports |
+| `1` | PR92 maximum vertical velocity | imports; companions: `do_radar_ref=1` |
+| `2` | PR92 20 dBZ echo top | imports; companions: `do_radar_ref=1` |
+| `3` | lightning potential index | imports |
+| `11` | PR92 convective equilibrium level | imports; companions: `cu_physics=5` |

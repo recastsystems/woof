@@ -55,7 +55,7 @@ import time
 from .moving_case import great_circle_km, interior_km, load_case, member_name
 
 SCHEMA = 'gpuwm-hex.moving-longrun/v1'
-RUN_STATE_VARIABLES = ('WOOF_HEX_MOVING_CHECKPOINT_IN', 'WOOF_HEX_MOVING_CHECKPOINT_OUT',
+RUN_STATE_VARIABLES = ('GPUWM_HEX_MOVING_ANALYSIS', 'GPUWM_HEX_MOVING_BACKGROUND', 'WOOF_HEX_MOVING_CHECKPOINT_IN', 'WOOF_HEX_MOVING_CHECKPOINT_OUT',
                        'WOOF_HEX_MOVING_CHECKPOINT_WAIT', 'WOOF_HEX_MOVING_CONTROL', 'WOOF_HEX_MOVING_OPERATOR',
                        'WOOF_HEX_MOVING_SOURCE_GRID', 'WOOF_HEX_MOVING_ZONE', 'WOOF_HEX_MOVING_SHOCK_ZONE')
 
@@ -79,9 +79,9 @@ def carrier_sealed(boundary) -> bool:
 
 
 def visible_devices_for(device, environ=None) -> str:
-    """The CUDA_VISIBLE_DEVICES a segment gets for ``--device N``: the Nth card the caller can see.
+    """The segment mask for a visible card index or a UUID inside the inherited grant.
 
-    THE BREAKAGE THIS PREVENTS (V8X6000, 2026-10-29, one-card shapes lane): under a box card queue the lease sets
+    THE BREAKAGE THIS PREVENTS (eight-card system, 2026-10-29, one-card shape check): under a box card queue the lease sets
     CUDA_VISIBLE_DEVICES to the leased card (a UUID).  ``moving run --device 0``, the docs' own example, replaced it
     with the literal ``0``, so the segment ran on PHYSICAL card 0, which another lane's exclusive lease held (44.7 GB
     there for 2 min while the leased card sat idle).  ``--device`` now indexes the cards already visible, as CUDA
@@ -101,6 +101,14 @@ def visible_devices_for(device, environ=None) -> str:
         return ','.join(wanted)
     chosen = []
     for item in wanted:
+        if item.startswith(('GPU-', 'MIG-')):
+            # Preserve the grant: accept an exact token or an unambiguous UUID
+            # prefix inside the inherited list, never a hidden physical card.
+            matches = [card for card in inherited if card == item or card.startswith(item)]
+            if len(matches) != 1:
+                raise SystemExit(f'--device {item}: UUID must identify one visible card')
+            chosen.append(matches[0])
+            continue
         if not item.isdigit() or int(item) >= len(inherited):
             raise SystemExit(f'--device {device}: this process sees {len(inherited)} card(s) '
                              f'(CUDA_VISIBLE_DEVICES={environ.get("CUDA_VISIBLE_DEVICES")}); --device indexes those '
@@ -321,7 +329,8 @@ def load_tracker_module(path: str | None):
 # --------------------------------------------------------------------------- model state
 
 def history_fields(st, path: Path, guess, radius_km: float, object_field: str | None = None, *,
-                   columns: bool = False, surface: bool = False, storm_field: str | None = None):
+                   columns: bool = False, surface: bool = False, storm_field: str | None = None,
+                   native_landmask=None):
     """Tracker fields from one closed history frame (MPAS cell arrays).
 
     ``columns`` (setup target cape_shear) also reads the model columns (pressure, theta, qv, u, v) and ``surface``
@@ -345,12 +354,16 @@ def history_fields(st, path: Path, guess, radius_km: float, object_field: str | 
         reach = (radius_km + 700.0) / st.EARTH_RADIUS_KM
         subset = np.flatnonzero(p @ np.asarray(g, float).reshape(3) >= math.cos(min(reach, math.pi)))
         psfc = np.asarray(d['surface_pressure'][0], np.float64)
-        terrain = np.asarray(d['ter'][:], np.float64)
+        # Native MPAS history stores terrain in its lowest geometric interface;
+        # ArWen history also exposes the explicit surface field.
+        terrain = np.asarray(d['ter'][:] if 'ter' in d.variables else d['zgrid'][:, 0], np.float64)
         pressure = np.asarray(d['pressure'][0], np.float64)
         theta = np.asarray(d['theta'][0, :, 0], np.float64)
         t_low = theta * (pressure[:, 0] / 1.0e5) ** (287.0 / 1004.0)
-        u = np.asarray(d['u_zonal'][0], np.float64)
-        v = np.asarray(d['v_meridional'][0], np.float64)
+        u_name = 'u_zonal' if 'u_zonal' in d.variables else 'uReconstructZonal'
+        v_name = 'v_meridional' if 'v_meridional' in d.variables else 'uReconstructMeridional'
+        u = np.asarray(d[u_name][0], np.float64)
+        v = np.asarray(d[v_name][0], np.float64)
         u10 = np.asarray(d['u10'][0], np.float64)
         v10 = np.asarray(d['v10'][0], np.float64)
         objective = None
@@ -382,6 +395,14 @@ def history_fields(st, path: Path, guess, radius_km: float, object_field: str | 
                                     object_field=None if objective is None else objective[keep],
                                     **({} if column_block is None else dict(columns=column_block)),
                                     **({} if surface_block is None else dict(surface=surface_block)))
+    if native_landmask is not None:
+        if native_landmask.size != lat.size:
+            raise ValueError('TC land mask does not bind the current history mesh')
+        # Retain full mesh arrays so outer radii and the swath are not clipped
+        # to the position tracker's local search subset. Water-cell pressure
+        # is surface pressure; native ocean terrain is sea level.
+        fields.diagnostic_arrays = dict(lat=lat,lon=lon,mslp_pa=psfc,
+                                        u10=u10,v10=v10,landmask=native_landmask)
     return fields
 
 
@@ -429,6 +450,11 @@ class Controller:
                              'an executor without moving progress or carrier hooks; omit the override')
         if getattr(a, 'rotate_template', False) and (a.zone_carry or self.case['mesh'].get('corridor')):
             raise SystemExit('--rotate-template requires a concentric global family without corridor or --zone-carry')
+        if getattr(a, 'member_clean_script', None):
+            if not a.rotate_template or a.member_fallback or a.prelaunch:
+                raise SystemExit('--member-clean-script requires --rotate-template '
+                                 '--no-member-fallback --no-prelaunch')
+            a.member_clean_script = str(Path(a.member_clean_script).resolve(strict=True))
         if a.check_minutes is None:
             # The case's own tracker cadence. Breakage it prevents: the door default (60 min) set the history and
             # tracker interval although the case said placement.check_minutes 5, so a 1 h moving run read one
@@ -472,11 +498,7 @@ class Controller:
             self.state.pop('finished_utc', None)
             # Preparations of the dead controller have no process any more: a finished one is
             # prepared, an unfinished one is cancelled (its closed stages are kept and skipped).
-            for name, member in self.state['members'].items():
-                if member['status'] == 'preparing':
-                    done = (self.members_dir / f'{name}-case.json').is_file()
-                    self.state['members'][name] = (dict(self.read_member(name, 'prepared'), why=member.get('why'))
-                                                   if done else dict(member, status='cancelled'))
+            self.recover_preparations()
             self.log(f'resume at model {self.state["t"]:.0f} s, {len(self.state["segments"])} segments')
             restart_dead_products(self.state['segments'], self.log)
         else:
@@ -539,6 +561,29 @@ class Controller:
         self.log(f'{kind} {json.dumps(data, default=float)}')
 
     # ---------------------------------------------------------------- members
+    def recover_preparations(self):
+        """Adopt a preparation repaired after a failed or interrupted controller.
+
+        A failed helper previously blacklisted the centre across every resume,
+        even after prepare-member completed it successfully. Only a newer final
+        receipt with all artifacts present clears that preparation failure;
+        numerical 'unstable' members remain excluded.
+        """
+        from .moving_retention import artifacts_present
+        for name, member in self.state['members'].items():
+            if member['status'] not in ('preparing', 'failed'):
+                continue
+            receipt = self.members_dir / f'{name}-case.json'
+            done = (receipt.is_file() and receipt.stat().st_mtime >= member.get('requested_wall', 0)
+                    and artifacts_present(json.loads(receipt.read_text())))
+            if done:
+                self.state['members'][name] = dict(self.read_member(name, 'prepared'), why=member.get('why'),
+                    **{k: member[k] for k in ('order', 'planned_source') if k in member})
+                self.event('member-prep-recovered', name=name, previous_status=member['status'],
+                           receipt=str(receipt))
+            elif member['status'] == 'preparing':
+                self.state['members'][name] = dict(member, status='cancelled')
+
     def adopt_start_member(self):
         family = json.loads((Path(self.a.casedir) / 'family.json').read_text())
         row = next(m for m in family if m['name'] == self.a.start_member)
@@ -699,7 +744,7 @@ class Controller:
                        f'(move {anticipated["order"]})' if planned else
                        f'anticipated at {seconds:.0f} s for {anticipated["at_seconds"]:.0f} s '
                        f'(move {anticipated["order"]})')
-                name = self.request_member(anticipated['centre'], why, order=anticipated['order'])
+                name = self.request_member(anticipated['centre'], why, order=anticipated['order'], speculative=True)
             if planned and name in self.state['members'] and source is not None and name != source:
                 self.state['members'][name]['planned_source'] = source
             source = name if name in self.state['members'] else None
@@ -714,7 +759,51 @@ class Controller:
         if chain:
             self.prepare_chain(chain, self.state['members'][self.state['current']], after)
 
-    def request_member(self, centre, why, order=1, admit=None):
+    def request_startup_member(self):
+        """Prepare the first predicted member while the forecast constructs its state.
+
+        A field-tracked run used to wait for its first history frame before it could
+        prepare anything. Case motion is sufficient for speculative preparation.
+        Use a separate session so this seed never becomes a model-derived fix or
+        a move verdict. The ordinary field tracker still admits every actual move.
+        On resume, prefer the existing field fixes to the case's initial motion.
+        """
+        if (getattr(self, 'plan', None) or getattr(self.session, 'policy', None) is None
+                or getattr(self.a, 'anticipate_moves', 1) <= 0 or self.known_future()):
+            return
+        sim = self.st.TrackSession.restore(self.session.to_json())
+        seconds = float(self.state['t'])
+        origin = 'restored field fixes'
+        if not any(f.ok for f in sim.fixes):
+            storm = self.case.get('storm') or {}
+            motion = storm.get('initial_motion') or {}
+            centre = storm.get('initial_center_deg')
+            if seconds > 0 or centre is None or not {'heading_deg', 'speed_kmh'} <= motion.keys():
+                return
+            lat, lon = map(float, centre)
+            heading, speed = float(motion['heading_deg']), float(motion['speed_kmh'])
+            if not all(math.isfinite(v) for v in (lat, lon, heading, speed)) or speed < 0:
+                return
+            heading = math.radians(heading)
+            sim.fixes.append(self.st.Fix(seconds=0.0, ok=True, lat=lat, lon=lon,
+                reason='case motion for speculative member preparation only',
+                steering_ms=[speed * math.sin(heading) / 3.6, speed * math.cos(heading) / 3.6]))
+            origin = 'case initial centre and motion'
+        current = self.state['members'][self.state['current']]
+        decision = sim.decide(seconds, current['center_deg'])
+        if decision.move:
+            candidate = dict(centre=decision.centre, at_seconds=seconds)
+        else:
+            candidate = sim.anticipate(decision, current['center_deg'])
+        if candidate is None or candidate['at_seconds'] >= self.duration:
+            return
+        name = self.request_member(candidate['centre'],
+            f'startup prediction from {origin} for {candidate["at_seconds"]:.0f} s; '
+            'subject to the next field fix', order=1, speculative=True)
+        if name in self.state['members'] and name != self.state['current']:
+            self.state['members'][name]['planned_source'] = self.state['current']
+
+    def request_member(self, centre, why, order=1, admit=None, speculative=False):
         """Name of a member at (or serving) ``centre``, starting its preparation when none exists.
 
         ``admit`` (a centre -> bool rule, the same one :meth:`pick_target` applies) filters the two
@@ -742,12 +831,19 @@ class Controller:
                     self.event('member-neighbour', failed=name, instead=alternative, why=why)
                     lat, lon, name = la, lo, alternative
                     break
-        if name in members and members[name]['status'] == 'cancelled':
+        if name in members and members[name]['status'] in ('cancelled', 'retired'):
             del members[name]
+        from .moving_retention import speculative_admission
+        if (speculative and (name not in members or members[name]['status'] == 'stale')
+                and not speculative_admission(self.state, getattr(self.a, 'max_speculative_members', 0))):
+            self.event('member-speculation-deferred', wanted=[lat, lon], why=why)
+            return None
         if name in members:
             # The order is also what poll_background reads to build a planned member's operator from the
             # current region once its move is the next one (not only while it is preparing).
             members[name]['order'] = min(members[name].get('order', order), order)
+            if not speculative:
+                members[name]['speculative'] = False
             if members[name]['status'] == 'stale':
                 from .moving_retention import artifacts_present
                 if not artifacts_present(members[name]):
@@ -789,13 +885,24 @@ class Controller:
         if near:
             name = min(near)[1]
             members[name]['order'] = min(members[name].get('order', order), order)
+            if not speculative:
+                members[name]['speculative'] = False
             return name
         if len(busy) >= min(2, max(1, self.a.max_preparing)):
             # Refresh the next target without restarting every unfinished member.
             # A speculative later move must not evict work for the next one.
             if order > 1:
                 return None
-            victim = max(busy, key=lambda n: (
+            # A deferred move is still the next move. Its anticipation chain
+            # describes a later one, even when that chain starts at order 1.
+            # Do not cancel required preparation to start that speculation.
+            # Older receipts without this field are conservatively required.
+            victims = [n for n in busy if not speculative or members[n].get('speculative', False)]
+            if not victims:
+                self.event('member-speculation-deferred', wanted=[lat, lon], why=why,
+                           reason='preparation slots are serving a field-decided move')
+                return None
+            victim = max(victims, key=lambda n: (
                 great_circle_km(members[n]['center_deg'], (lat, lon)),
                 members[n].get('requested_wall', 0.0)))
             proc = self.procs.pop(f'prep:{victim}', None)
@@ -823,7 +930,8 @@ class Controller:
         proc = start_child(hexcore_command(*argv), stdout=log.open('w'))
         self.procs[f'prep:{name}'] = proc
         members[name] = dict(name=name, center_deg=[lat, lon], status='preparing', order=order,
-                             requested_wall=time.time(), requested_model_seconds=self.state.get('t_seen'), why=why)
+                             requested_wall=time.time(), requested_model_seconds=self.state.get('t_seen'), why=why,
+                             speculative=bool(speculative))
         self.event('member-prep-start', name=name, center=[lat, lon], why=why)
         self.save()
         return name
@@ -957,13 +1065,39 @@ class Controller:
             needs = (self.st.history_needs(config) if hasattr(self.st, 'history_needs')
                      else dict(object_field=config.object.field_name if config.mode == 'object' else None,
                                columns=False, surface=False, state=True))
+            landmask = None
+            if config.mode == 'tc':
+                from .restart_v842 import read_stream
+                member = self.state['current']
+                if getattr(self, '_tc_land_member', None) != member:
+                    with read_stream(self.state['members'][member]['init'],
+                                     scratch=self.out/'tc-read', select=('landmask',)) as source:
+                        self._tc_landmask = source.variables['landmask'].values.reshape(-1).copy()
+                    self._tc_land_member = member
+                landmask = self._tc_landmask
             # A user's path reads nothing from the state; every other target reads the frame.
             fields = (None if not needs['state'] else
                       history_fields(self.st, Path(history), guess, self.session.search_radius(since),
                                      object_field=needs['object_field'],
                                      columns=needs['columns'], surface=needs['surface'],
-                                     storm_field=needs.get('storm_field')))
+                                     storm_field=needs.get('storm_field'), native_landmask=landmask))
             fix = self.session.observe(seconds, fields)
+            if fix.ok and getattr(fix, 'field_fix', None) is not None:
+                from datetime import datetime, timedelta
+                import re
+                from woof.tc.field_products import diagnose_arrays, publish
+                swath = dict(path=str(self.out/'storm-track.swath.f32'), south=-90.,north=90.,
+                             west=-180.,east=180.,spacing_deg=0.1)
+                fix.field_fix = diagnose_arrays(fields.diagnostic_arrays, (fix.lat,fix.lon),
+                                                 unstructured=True, swath=swath)
+                initial = datetime.fromisoformat(self.case['start_time'].replace('Z','+00:00'))
+                identifier = ((self.case.get('storm') or {}).get('storm_id')
+                              or (self.case.get('storm') or {}).get('atcf_id')
+                              or (self.case.get('authoring') or {}).get('track_id'))
+                if not isinstance(identifier,str) or not re.fullmatch(r'[A-Z]{2}[0-9]{6}',identifier):
+                    identifier = None
+                publish(self.out/'storm-track.csv',fix.field_fix,storm_id=identifier,
+                        initial_time=initial,valid_time=initial+timedelta(seconds=seconds),aid='HEXG')
         return fix, time.monotonic() - began
 
     def fix_velocity(self):
@@ -1301,13 +1435,25 @@ class Controller:
             env.update(WOOF_HEX_MOVING_OPERATOR=str(operator), WOOF_HEX_MOVING_SOURCE_GRID=str(source_grid))
         return env
 
-    def launch(self, kind, *, member_name=None, begin=None, checkpoint_in='state', operator='state',
-               source_grid='state', prelaunch=False):
+    def allocate_segment(self):
+        """Preserve an unadopted preparation left behind by an interrupted controller."""
         index = len(self.state['segments'])
         seg = self.out / f'segment-{index:03d}'
-        if prelaunch and seg.exists():
-            shutil.rmtree(seg)
+        if seg.exists():
+            if any(Path(row['path']).resolve() == seg.resolve() for row in self.state['segments']):
+                raise RuntimeError(f'next segment directory is already recorded: {seg}')
+            from uuid import uuid4
+            archive = self.out / 'orphaned-segments'
+            archive.mkdir(exist_ok=True)
+            retained = archive / f'{seg.name}-{uuid4().hex}'
+            seg.rename(retained)
+            self.event('preserve-unadopted-segment', path=str(seg), retained=str(retained))
         seg.mkdir()
+        return index, seg
+
+    def launch(self, kind, *, member_name=None, begin=None, checkpoint_in='state', operator='state',
+               source_grid='state', prelaunch=False):
+        index, seg = self.allocate_segment()
         control = seg / 'control'
         control.mkdir()
         if self.a.hold_for_member_seconds > 0:
@@ -1321,9 +1467,11 @@ class Controller:
         source_grid = self.state['source_grid'] if source_grid == 'state' else source_grid
         hours = (self.duration - begin) / 3600.0
         from woof.output_formats import argument_values
+        from .wave_options import argument_values as wave_arguments
         cmd = segment_command(self.case, member, seg, hours, self.a.check_minutes, self.a.engine,
                               init_source=f'{self.init_source} analysis; moving run member {member["name"]}',
-                              extra=[*self.a.forecast_arg, *label_argv(self.a), *argument_values(self.a, relative=seg.name)],
+                              extra=[*self.a.forecast_arg, *label_argv(self.a), *argument_values(self.a, relative=seg.name),
+                                     *wave_arguments(self.a)],
                               cards=getattr(self.a, 'cards', 1), source_id=self.init_source)
         env = self.segment_env(member, control, seg / 'boundary.pkl', checkpoint_in, operator, source_grid)
         resident = prelaunch and self.resident_ready()
@@ -1518,6 +1666,47 @@ class Controller:
                 self.state['deleted'].append(dict(path=str(item), bytes=item.stat().st_size, reason=reason))
                 item.unlink()
 
+    def retire_stale_members(self):
+        """Bound member storage after a sealed segment, retaining restart geometry.
+
+        This optional policy keeps the template, current carrier and all live
+        workers' members. Static/init receipts and grids remain reproducible;
+        requesting a retired member rebuilds its missing stages normally.
+        """
+        script = getattr(self.a, 'member_clean_script', None)
+        if not script:
+            return
+        protected = {self.a.start_member, self.state['current'], self.carrier_member()}
+        protected.update(row['member'] for row in self.state.get('recovery_carriers', []))
+        # The collector removes the tracker history only after all selected
+        # pictures using this member's static/init inputs are durable. A stale
+        # member may still have a queued or active rendering worker.
+        protected.update(frame['member'] for frame in self.state.get('frames', [])
+                         if Path(frame['history']).exists())
+        for key, proc in self.procs.items():
+            if proc.poll() is None:
+                protected.update(key.split(':', 1)[1].split('--'))
+        for name, member in self.state['members'].items():
+            if name in protected or member['status'] != 'stale':
+                continue
+            paths = [Path(member[k]) for k in ('static', 'init')]
+            # Registration is the preparation completion marker. Remove it so
+            # an interrupted rebuild cannot be adopted from an older marker.
+            paths.append(self.members_dir / f'{name}-case.json')
+            if any(p.is_symlink() or not p.resolve().is_relative_to(self.members_dir.resolve())
+                   or not p.resolve().is_relative_to(self.out.resolve()) for p in paths):
+                raise ValueError(f'refusing member retirement outside owned run: {name}')
+            member['status'] = 'retired'
+            self.save()  # a crash before cleanup remains safe to rebuild/reuse
+            existing = [p for p in paths if p.exists()]
+            size = sum(p.stat().st_size for p in existing)
+            if existing:
+                subprocess.run(['bash', str(script), *map(str, existing)], check=True)
+            if any(p.exists() for p in paths):
+                raise RuntimeError(f'member cleanup retained retired inputs: {name}')
+            self.event('member-inputs-retired', name=name, bytes=size,
+                       reason='superseded carrier; reproducible static and init stages')
+
     def failure_kind(self, seg):
         """'numerical' for a model refusal (non-finite or invalid state), else 'other'."""
         path = Path(seg) / 'fc' / 'fullstep-lts-first-failure.json'
@@ -1542,6 +1731,21 @@ class Controller:
         self.session.fixes = [f for f in self.session.fixes if f.seconds <= seconds]
         self.session.decisions = [d for d in self.session.decisions if d.seconds <= seconds]
         return before - len(self.state['frames'])
+
+    def rewind_tracking_to_carrier(self):
+        """A replay must observe and acknowledge every frame after its carrier.
+
+        A killed final seal can leave recorded frames ahead of the last durable
+        state. Keeping them makes on_frame skip the replay and leaves the
+        forecast waiting forever for a verdict that belongs to another segment.
+        """
+        seconds = float(self.state['t'])
+        dropped = self.forget_after(seconds)
+        self.state['t_seen'] = seconds
+        self.state['pending_move'] = None
+        if dropped:
+            self.event('rewind-tracking-to-carrier', t=seconds, frames_discarded=dropped)
+        self.save()
 
     def carrier_member(self):
         """The member whose mesh the current carrier (state['boundary']) was sealed on."""
@@ -1630,12 +1834,18 @@ class Controller:
     def run(self):
         retries = 0
         kind = 'resume' if self.a.resume else 'start'
+        from .moving_recovery import recover_lost_resident, retain_latest_two
+        recovered_resident = self.a.resume and recover_lost_resident(self)
         trailing = []
         for record in reversed(self.state['segments']):
             if record.get('rc') in (None, 0):
                 break
             trailing.append(record)
-        if self.a.resume and trailing and self.a.member_fallback \
+        if recovered_resident:
+            kind = 'recover'
+            if self.state['segments'] and 'rc' not in self.state['segments'][-1]:
+                self.state['segments'][-1]['rc'] = 'controller-lost'
+        elif self.a.resume and trailing and self.a.member_fallback \
                 and any(self.failure_kind(r['path']) == 'numerical' for r in trailing):
             # The run stopped after repeated numerical failures: move off the failing member.
             kind = self.fallback(self.state['segments'][-1]) or 'resume'
@@ -1647,13 +1857,18 @@ class Controller:
             if seal is not None:
                 self.state.update(boundary=str(seal), operator=None, source_grid=None,
                                   t=float(json.loads(seal.with_suffix('.pkl.json').read_text())['time_seconds']))
-            # The recovered segment re-reaches the frames after its carrier: they are decided again.
-            self.forget_after(float(self.state['t']))
+            # The recovered segment re-reaches the frames after its carrier: they are decided again
+            # (rewind_tracking_to_carrier below forgets them, resets t_seen and the pending move,
+            # and records how many frames it discarded).
             kind = 'recover'
+        if self.a.resume:
+            self.rewind_tracking_to_carrier()
         adopted = None
         if getattr(self, 'plan', None):
             # A known path: its first members start preparing now, on host cores, while segment 0 starts.
             self.poll_background()
+        else:
+            self.request_startup_member()
         while self.state['t'] < self.duration:
             if adopted is not None:
                 proc, seg, control, record = adopted
@@ -1678,7 +1893,6 @@ class Controller:
             boundary = seg / 'boundary.pkl'
             if rc == 0 and carrier_sealed(boundary):
                 retries = 0
-                previous_in = self.state['boundary']
                 end = float(json.loads(boundary.with_suffix('.pkl.json').read_text())['time_seconds'])
                 if not math.isfinite(end) or not record['begin_seconds'] < end <= self.duration:
                     self.event('segment-contract-failed', index=record['index'], end_seconds=end,
@@ -1687,11 +1901,9 @@ class Controller:
                     raise SystemExit(f'segment {record["index"]}: carrier time {end} must advance '
                                      f'beyond {record["begin_seconds"]} and not beyond {self.duration}')
                 record['end_seconds'] = end
-                # recovery seals of a closed segment are superseded by its boundary
-                for seal in control.glob('seal-*.pkl'):
-                    self.delete_owned(seal, 'segment closed; its end carrier supersedes recovery seals')
-                if previous_in:
-                    self.delete_owned(previous_in, 'consumed by a closed segment')
+                # A resident hand-off dies with its process. Retain real recovery
+                # points across moves instead of treating that receipt as a file.
+                retain_latest_two(self)
                 if stopped and self.state.get('pending_move'):
                     move = self.state['pending_move']
                     source = self.state['current']
@@ -1751,23 +1963,29 @@ class Controller:
                 if retries > self.a.max_retries:
                     self.save()
                     raise SystemExit(f'segment {record["index"]} failed {retries} times; stopping')
+                recovered_resident = False
                 seal = self.newest_seal(control)
                 if seal is not None:
                     t = float(json.loads(seal.with_suffix('.pkl.json').read_text())['time_seconds'])
                     self.state.update(boundary=str(seal), operator=None, source_grid=None, t=t)
                     self.event('recover-from-seal', seal=str(seal), t=t,
                                frames_discarded=self.forget_after(t))
+                elif recover_lost_resident(self):
+                    recovered_resident = True
                 else:
                     self.event('recover-from-segment-start', t=self.state['t'],
                                frames_discarded=self.forget_after(float(self.state['t'])))
+                self.rewind_tracking_to_carrier()
                 kind = 'recover'
                 self.state['pending_move'] = None
-                if failure == 'numerical' and self.a.member_fallback:
+                if failure == 'numerical' and self.a.member_fallback and not recovered_resident:
                     # Restart is bit-exact, so the same member fails again at the same step
                     # (measured 3x on r48c and r48z).  Continue from the same carrier on another
                     # member instead: the same 22 h carrier moved to the neighbouring member ran
                     # through the failure time (r48z diag A), the failing member did not.
                     kind = self.fallback(record) or kind
+            if rc == 0:
+                self.retire_stale_members()
             self.save()
         for key, proc in self.procs.items():
             stop_process_tree(proc)

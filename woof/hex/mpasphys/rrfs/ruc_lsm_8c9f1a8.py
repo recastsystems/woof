@@ -6,6 +6,8 @@ owns packing, persistent pools and surface coupling. Standalone ABI bindings
 are available for the complete land/ice/diagnostics boundary.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 from functools import lru_cache
 from importlib.resources import files
@@ -25,7 +27,7 @@ TABLE_WORDS = 955
 # Words of Arena scratch a launch actually addresses per cell, read from CUDA_SOURCE (arena_words).
 # THE BREAKAGE THIS PREVENTS: every forecast RUC launch reserved WORK_WORDS (16,384) float32 words, 64 KiB, per
 # cell for every cell at once: 2.6 GB on x1.40962 (37 % of the hrrrv5 per-cell device cost), 10.7 GB on
-# x1.163842, where one 32 GB RTX 5090 ran out of memory at this call (V5090, 2026-10-28), and 153 GB over
+# x1.163842, where one 32 GB RTX 5090 ran out of memory at this call (reference system, 2026-10-28), and 153 GB over
 # conus3km.  The pinned source needs at most 623 words per cell for land (nsl 9, nlcat 21, nscat 16) and 190
 # for sea ice (the saturation table is shared, ruc_tbq_init).  Rows past the bound are never addressed, so no
 # output word changes.
@@ -38,7 +40,16 @@ TABLE_LAYOUT = {'lucats': {'offset': 0, 'words': 1, 'type': 'int', 'dim': [], 'i
 CUDA_SOURCE = r'''
 
 #ifndef RUCDEV
+#if defined(__HIPCC__) || defined(__HIPCC_RTC__)
+#define RUCDEV __device__ __forceinline__
+#else
 #define RUCDEV __device__
+#endif
+#endif
+#if defined(__HIPCC__) || defined(__HIPCC_RTC__)
+#define RUC_TILE_ARGS ,int first_col,int work_nc
+#else
+#define RUC_TILE_ARGS
 #endif
 template<class T> RUCDEV T ruc_max(T a,T b) { return a>b?a:b; }
 template<class T> RUCDEV T ruc_min(T a,T b) { return a<b?a:b; }
@@ -2833,7 +2844,12 @@ RUCDEV void land_soilmoist(Tables &tb, Arena &arena, float  delt, int  nzs, int 
     k = (k * jj); // L4855
     loop5_continue: ;
     } loop5_exit: ; // L4856
-    sum = __fadd_rn(sum, __fdiv_rn(gfk_pow(acrt, __fsub_rn(cvfrz, jk)), float(k))); // L4857
+    // L4857: cvfrz is the constant 3., so gfortran unrolls this loop and folds acrt**2. to acrt*acrt and acrt**1. to acrt
+    // (the native soilmoist has no powf call). glibc-style powf(acrt,2.) can round 1 ULP away from acrt*acrt, which moved
+    // sfcrunoff/acrunoff by 1-2 ULP in frozen-soil cells (x1.40962 hrrrv5 cell 22084, step 7).
+    { const float e_fold = __fsub_rn(cvfrz, jk);
+      const float p_fold = (e_fold == 2.f) ? __fmul_rn(acrt, acrt) : (e_fold == 1.f) ? acrt : gfk_pow(acrt, e_fold);
+      sum = __fadd_rn(sum, __fdiv_rn(p_fold, float(k))); } // L4857
     loop4_continue: ;
     } loop4_exit: ; // L4858
     fcr = __fsub_rn(1.f, __fmul_rn(gfk_exp_fma((-acrt)), sum)); // L4859
@@ -5099,9 +5115,15 @@ extern "C" __global__ void ruc_land_tile_preflight(unsigned long long *ptrs,int 
  if(((int*)ptrs[8])[0]!=1)return;
  for(int c=0;c<nc;++c)if(((float*)ptrs[9])[c]==1.f){stop[0]=c;stop[1]=1;return;}
 }
-extern "C" __global__ void oracle_land_ruc_land(unsigned long long *ptrs,float *tables,float *work,int *error,int nc) {
+extern "C" __global__ void oracle_land_ruc_land(unsigned long long *ptrs,float *tables,float *work,int *error,int nc RUC_TILE_ARGS) {
+#if defined(__HIPCC__) || defined(__HIPCC_RTC__)
+ int local=blockIdx.x*blockDim.x+threadIdx.x;
+ int c=first_col+local; if(c>=nc || local>=work_nc)return;
+ Tables tb(tables); Arena arena{work+local,0,work_nc,error};
+#else
  int c=blockIdx.x*blockDim.x+threadIdx.x; if(c>=nc)return;
  Tables tb(tables); Arena arena{work+c,0,nc,error};
+#endif
  int *tile_stop=(int*)ptrs[119]; if(c>=tile_stop[0])return; arena.preparation_only=tile_stop[1]!=0;
  if(ptrs[120]) arena.entry_ilnb=((int*)ptrs[120])+c;
  if(ptrs[121]) arena.snowtemp_calls=((int*)ptrs[121])+c;
@@ -5221,9 +5243,15 @@ extern "C" __global__ void oracle_land_ruc_land(unsigned long long *ptrs,float *
  FArray<int> globalcells{((int*)ptrs[95])+c,ims,1,1,nc,nc*(ime-ims+1),nc*(ime-ims+1)*1,(ime-ims+1),1,1};
  land_ruc_land(tb,arena,spp_lsm,pattern_spp_lsm,field_sf,dt,ktau,nsl,restart,cycling,lakemodel,lakemask,graupelncv,snowncv,rainncv,zs,rainbl,snow,snowh,snowc,frzfrac,frpcpn,rhosnf,precipfr,z3d,p8w,t3d,qv3d,qc3d,rho3d,glw,gsw,emiss,chklowq,chs,flqc,flhc,mavail,canwat,vegfra,alb,znt,z0,snoalb,albbck,lai,mminlu,landusef,nlcat,mosaic_lu,mosaic_soil,soilctop,nscat,qsfc,qsg,qvg,qcg,dew,soilt1,tsnav,tbot,ivgtyp,isltyp,xland,iswater,isice,xice,xice_threshold,cp,rovcp,g0,lv,stbolt,soilmois,sh2o,smavail,smmax,tso,soilt,hfx,qfx,lh,sfcrunoff,udrunoff,acrunoff,sfcexc,sfcevp,grdflx,snowfallac,acsnow,snom,smfr3d,keepfr3dflag,myjpbl,shdmin,shdmax,rdlai2d,globalcells,ids,ide,jds,jde,kds,kde,ims,ime,jms,jme,kms,kme,its,ite,jts,jte,kts,kte,(((int*)ptrs[114])[c]!=0),(((int*)ptrs[115])[c]!=0),(((int*)ptrs[116])[c]!=0),(((int*)ptrs[117])[c]!=0),(((int*)ptrs[118])[c]!=0));
 }
-extern "C" __global__ void oracle_ice_ruc_ice(unsigned long long *ptrs,float *tables,float *work,int *error,int nc) {
+extern "C" __global__ void oracle_ice_ruc_ice(unsigned long long *ptrs,float *tables,float *work,int *error,int nc RUC_TILE_ARGS) {
+#if defined(__HIPCC__) || defined(__HIPCC_RTC__)
+ int local=blockIdx.x*blockDim.x+threadIdx.x;
+ int c=first_col+local; if(c>=nc || local>=work_nc)return;
+ Tables tb(tables); Arena arena{work+local,0,work_nc,error};
+#else
  int c=blockIdx.x*blockDim.x+threadIdx.x; if(c>=nc)return;
  Tables tb(tables); Arena arena{work+c,0,nc,error};
+#endif
  if(ptrs[96]) arena.entry_ilnb=((int*)ptrs[96])+c;
  if(ptrs[97]) arena.snowtemp_calls=((int*)ptrs[97])+c;
  int &spp_lsm = ((int*)ptrs[0])[c];
@@ -5511,11 +5539,11 @@ def _module(device, ice_entry_context=False):
                 raise ValueError('RUC device image differs from current source or recorded image hash')
             if bool(metadata.get('ice_entry_context',False)) != ice_entry_context:
                 raise ValueError('RUC device image native entry-context mode differs')
-            if metadata['arch'] != cp.cuda.Device(device).compute_capability:
+            if metadata['arch'] != _compilation_target(device, xp=cp):
                 raise ValueError('RUC device image architecture differs from selected CUDA device')
         else:
             binary, _ = compiler.compile_using_nvrtc(shared_math_source() + CUDA_SOURCE,
-                options=_hex_numerics.options(CUDA_OPTIONS, keep_ftz=True)+(('-DRUC_ICE_ENTRY_CONTEXT',) if ice_entry_context else ()), arch=cp.cuda.Device(device).compute_capability, cache_in_memory=True)
+                options=_hex_numerics.options(CUDA_OPTIONS, keep_ftz=True)+(('-DRUC_ICE_ENTRY_CONTEXT',) if ice_entry_context else ()), arch=_compilation_target(device, xp=cp), cache_in_memory=True)
         module = cp.cuda.function.Module()
         module.load(binary)
         # The shared saturation table every land and sea-ice launch of this module reads (ruc_tbq_init), filled
@@ -5662,6 +5690,26 @@ def arena_rows(entry, arguments, scalars=None):
     return (WORK_WORDS if bound is None else max(1, bound)), bound
 
 
+def workspace_columns(entry, n):
+    """HIP land/ice reuse one compact global arena across column tiles.
+
+    Argument fields retain their full column stride. Only scratch is tiled;
+    the native whole-tile lake preflight still runs once before all tiles.
+    CUDA retains its original workspace, ABI and launch.
+    """
+    from woof.hip_backend import active
+    return min(n, 65536) if active() and entry in ('land_ruc_land', 'ice_ruc_ice') else n
+
+
+def launch_hip_tiles(kernel, ptrs, tables, workspace, errors, n, *, block, stream=None):
+    columns = workspace.shape[1]
+    for first in range(0, n, columns):
+        count = min(columns, n - first)
+        kernel(((count + block - 1) // block,), (block,),
+               (ptrs, tables, workspace, errors, np.int32(n), np.int32(first), np.int32(columns)),
+               stream=stream)
+
+
 def _launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, stream=None, present=None, entry_storage=None, trace_entry_calls=False, scalars=None):
     """Launch a complete native RUC entry; cells are fastest in every argument.
 
@@ -5689,12 +5737,13 @@ def _launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, s
     if not isinstance(tables, cp.ndarray) or tables.dtype != cp.float32 or tables.size != TABLE_WORDS:
         raise ValueError('RUC parameter tables must be 955 resident float32 words')
     rows, bound = arena_rows(entry, arguments, scalars)
+    columns = workspace_columns(entry, n)
     if workspace is not None and (not isinstance(workspace,cp.ndarray) or workspace.dtype!=cp.float32 or workspace.ndim!=2
-                                  or workspace.shape[1]!=n or workspace.shape[0]<rows or not workspace.flags.c_contiguous):
-        raise ValueError(f'RUC workspace must have shape (>= {rows} arena words, {n} cells), float32 and contiguous storage')
+                                  or workspace.shape[1]!=columns or workspace.shape[0]<rows or not workspace.flags.c_contiguous):
+        raise ValueError(f'RUC workspace must have shape (>= {rows} arena words, {columns} cells), float32 and contiguous storage')
     # Arena offsets are int32 (Arena::alloc used*stride, stride = cells).  THE BREAKAGE THIS PREVENTS: past
     # 2**31 words the product wraps and cells address another cell's scratch or memory outside the workspace.
-    if n * (WORK_WORDS if bound is None else bound) >= 2**31:
+    if columns * (WORK_WORDS if bound is None else bound) >= 2**31:
         raise ValueError(f'RUC launch of {n} cells x {WORK_WORDS if bound is None else bound} arena words overflows '
                          'the kernel int32 arena offsets; run this tile on more ranks')
     if errors is not None and (not isinstance(errors,cp.ndarray) or errors.dtype!=cp.int32 or errors.shape!=(1,)):
@@ -5702,7 +5751,7 @@ def _launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, s
     # Rows are the entry arena bound (WORK_WORDS only when the source or extents cannot bound it).  THE BREAKAGE
     # THIS PREVENTS: framework_init_rrfs.initialize_ruc launches init_rucinit (9 words per cell) with no workspace, and
     # took WORK_WORDS rows: 10 GB at initialization on x1.163842 (one RTX 5090, 2026-10-28), 19.6 GB on a conus3km rank.
-    if workspace is None: workspace = cp.empty((rows,n), dtype=cp.float32)
+    if workspace is None: workspace = cp.empty((rows,columns), dtype=cp.float32)
     if errors is None: errors = cp.zeros(1,dtype=cp.int32)
     # Native solve loops over its:ite / jts:jte and rucinit over 1:ncells
     # write no cell fields for an empty local tile. Avoid a zero CUDA grid
@@ -5736,8 +5785,13 @@ def _launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, s
     if tile_stop is not None:
         module.get_function('ruc_land_tile_preflight')((1,), (1,),
             (ptrs,tile_stop,np.int32(n)), stream=stream)
-    module.get_function('oracle_'+entry)(
-        ((n+63)//64,), (64,), (ptrs,tables,workspace,errors,np.int32(n)), stream=stream)
+    from woof.hip_backend import active
+    if active() and entry in ('land_ruc_land', 'ice_ruc_ice'):
+        launch_hip_tiles(module.get_function('oracle_'+entry), ptrs, tables, workspace, errors, n,
+                         block=64, stream=stream)
+    else:
+        module.get_function('oracle_'+entry)(
+            ((n+63)//64,), (64,), (ptrs,tables,workspace,errors,np.int32(n)), stream=stream)
     return {'workspace':workspace,'pointers':ptrs,'presence':presence,'tile_stop':tile_stop,'errors':errors,
             'arguments':arguments,'tables':tables,'entry_storage':entry_storage,'native_entry':native_entry,'entry_calls':entry_calls}
 
@@ -5861,8 +5915,14 @@ class ResidentRucProvider:
         return cp.full(n, self.scalars[name] if value is None else value, dtype=dtype)
 
     def _boundary(self, entry, arguments):
+        workspace = self.workspace
+        n = arguments[ARGUMENTS[entry][0]['name']].shape[-1]
+        if workspace is not None and workspace.shape[1] != workspace_columns(entry, n):
+            # Driver preparation still spans all columns; its small arena
+            # cannot use the compact land/ice scratch stride.
+            workspace = None
         storage = launch_boundary(entry, arguments, self.ruc_tables, stream=self.stream,
-                                  workspace=self.workspace, scalars=self.scalars)
+                                  workspace=workspace, scalars=self.scalars)
         self.retained.append((arguments, storage))
         return storage
 
@@ -5929,8 +5989,9 @@ class ResidentRucProvider:
             # Calls on this stream complete in order, so scratch is reusable.  Rows are the entry's own
             # arena bound (arena_rows); returned storage retains previous buffers if the tile size changes.
             rows,_=arena_rows(entry,result,self.scalars)
-            if self.workspace is None or self.workspace.shape[1]!=n or self.workspace.shape[0]<rows:
-                self.workspace=cp.empty((rows,n),cp.float32)
+            columns=workspace_columns(entry,n)
+            if self.workspace is None or self.workspace.shape[1]!=columns or self.workspace.shape[0]<rows:
+                self.workspace=cp.empty((rows,columns),cp.float32)
             if entry in ('land_ruc_land','ice_ruc_ice'):
                 # Driver flags are hardcoded in the pinned MPAS fork.
                 result['myjpbl'].fill(0)

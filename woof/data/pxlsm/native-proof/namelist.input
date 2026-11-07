@@ -1,0 +1,44 @@
+&time_control
+ run_days=0, run_hours=3, run_minutes=0, run_seconds=0,
+ start_year=2000, start_month=1, start_day=24, start_hour=12,
+ end_year=2000, end_month=1, end_day=24, end_hour=15,
+ interval_seconds=10800,
+ input_from_file=.true.,
+ history_interval=100000, history_begin_m=100000,
+ frames_per_outfile=1, restart=.false.,
+ io_form_history=2, io_form_restart=2, io_form_input=2, io_form_boundary=2,
+/
+&domains
+ time_step=60, time_step_fract_num=0, time_step_fract_den=1,
+ max_dom=1, e_we=74, e_sn=61, e_vert=48,
+ p_top_requested=5000, num_metgrid_levels=27, num_metgrid_soil_levels=4,
+ dx=30000, dy=30000, grid_id=1, parent_id=0,
+ i_parent_start=1, j_parent_start=1, parent_grid_ratio=1,
+ parent_time_step_ratio=1, feedback=0, smooth_option=0,
+/
+&physics
+ mp_physics=6, ra_lw_physics=1, ra_sw_physics=1, radt=30,
+ sf_sfclay_physics=7, sf_surface_physics=7, bl_pbl_physics=7,
+ cu_physics=1, cudt=5, bldt=0, isfflx=1, ifsnow=0, icloud=1,
+ num_soil_layers=2, num_land_cat=24, sf_urban_physics=0,
+ fractional_seaice=0,
+ pxlsm_smois_init=1, pxlsm_modis_veg=0,
+/
+&fdda
+ grid_fdda=0, grid_sfdda=0, pxlsm_soil_nudge=0,
+/
+&dynamics
+ w_damping=0, diff_opt=1, km_opt=4,
+ diff_6th_opt=0, diff_6th_factor=0.12,
+ base_temp=290, damp_opt=0, zdamp=5000, dampcoef=0.2,
+ khdif=0, kvdif=0, non_hydrostatic=.true.,
+ moist_adv_opt=1, scalar_adv_opt=1, gwd_opt=0,
+ hybrid_opt=0,
+/
+&bdy_control
+ spec_bdy_width=5, spec_zone=1, relax_zone=4,
+ specified=.true., nested=.false.,
+/
+&namelist_quilt
+ nio_tasks_per_group=0, nio_groups=1,
+/

@@ -489,7 +489,7 @@ def _deformation_rows(inputs, outputs, rows):
 # ``partition_source_mesh`` stays out of the key: _donor_rows copies a whole-mesh row only where the local row's
 # inputs (cell and vertex positions, edge orientation, slot guards) are bit-identical to that global row's, so the
 # result is a function of the local mesh's own arrays.  THE COST THIS REMOVES (RRFS hrrrv5 limited area, same-host
-# rank processes, mv3km 4 ranks on V8X6000, 2026-10-29): naming the source mesh keyed every rank's call on the
+# rank processes, mv3km 4 ranks on eight-card system, 2026-10-29): naming the source mesh keyed every rank's call on the
 # whole mesh, so each rank process hashed all of it (23.9 GB on NOAA's conus3km) and held it resident.
 @cached("v841-deformation-weights", salt=deformation_engine_digest, independent_of=("partition_source_mesh",))
 def initialize_deformation_weights_v841(

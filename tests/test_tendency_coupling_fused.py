@@ -96,6 +96,63 @@ def _both(monkeypatch, run):
 
 @pytest.mark.gpu
 @requires_gpu
+def test_reused_pbl_outputs_overwrite_composed_values():
+    """An old radiation/cumulus sum must not leak into fresh coupled rates."""
+    import cupy as cp
+    from woof.core import physics
+
+    rng = np.random.default_rng(20261101)
+    state = _state(cp, rng, 5, 9, 12, True)
+    cfg = SimpleNamespace(specified=False, nested=False, open_x=False, open_y=False)
+    names = ("du", "dv", "dtheta", "dqv", "dqc", "dqi")
+    rates = {name: cp.asarray(_salted(rng, state.p.shape, 1.0e-3)) for name in names}
+    old = physics.couple_ysu_tendencies(state, cfg, rates)
+    pointers = {name: getattr(old, name).data.ptr for name in _FIELDS
+                if getattr(old, name) is not None}
+    for value in vars(old).values():
+        if isinstance(value, cp.ndarray):
+            value.fill(cp.float32(12345.0))
+    fresh = {name: cp.asarray(_salted(rng, state.p.shape, 2.0e-3)) for name in names}
+    want = _bits(cp, physics.couple_ysu_tendencies(state, cfg, fresh))
+    got = physics.couple_ysu_tendencies(state, cfg, fresh, out=old)
+    _assert_same(_bits(cp, got), want, "reused coupled rates")
+    assert all(getattr(got, name).data.ptr == ptr for name, ptr in pointers.items())
+    # A model without prognostic ice must drop the old ice slot.
+    fresh.pop("dqi")
+    got = physics.couple_ysu_tendencies(state, cfg, fresh, out=got)
+    assert got.rqi is None
+
+
+@pytest.mark.parametrize("cadence,relocated,is_hip,reused", [
+    (0.0, False, True, True), (1.0, False, True, False), (0.0, True, True, False),
+    # CUDA never reuses the held outputs: its path stays the release path.
+    (0.0, False, False, False),
+])
+def test_pbl_output_reuse_respects_cadence_and_state(monkeypatch, cadence,
+                                                   relocated, is_hip, reused):
+    from woof.config import RunConfig
+    from woof.core import physics
+
+    # The reuse is HIP-only; name the runtime instead of inheriting the host's.
+    monkeypatch.setattr(physics.cp.cuda.runtime, "is_hip", is_hip, raising=False)
+
+    state = SimpleNamespace(qi=None)
+    previous = object()
+    driver = SimpleNamespace(state=state, terrain_drag=None, gf_rthblten=None,
+                             fields={}, pbl_tendencies=previous)
+    cfg = RunConfig(nx=12, ny=10, nz=8, dx=3000.0, dy=3000.0,
+                    ztop=18000.0, dt=2.0, run_seconds=4.0, bl_pbl_physics=1,
+                    ra_physics=1, bldt=cadence)
+    seen = []
+    monkeypatch.setattr(physics, "couple_ysu_tendencies",
+                        lambda *args, out=None: seen.append(out))
+    active = SimpleNamespace(qi=None) if relocated else state
+    physics.PhysicsDriver._couple_pbl_slot(driver, cfg, {}, state=active)
+    assert seen == [previous if reused else None]
+
+
+@pytest.mark.gpu
+@requires_gpu
 @pytest.mark.parametrize("flags", _FLAGS)
 def test_fused_pbl_coupling_is_bitwise_the_expressions(monkeypatch, flags):
     cp = pytest.importorskip("cupy")

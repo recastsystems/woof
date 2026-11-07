@@ -468,20 +468,20 @@ extern "C" __global__ void nest_copy_fcn(
 // ratio picks the center child (ni = (ci-ipos)*nri+istag+1, :1800), even
 // ratio picks the SW-corner nearest neighbor (ni = (ci-ipos)*nri+1 with
 // ipoints = nri/2-1, :1812-1815).
-extern "C" __global__ void nest_copy_fcnm(
-    float* __restrict__ cfld,
-    const float* __restrict__ nfld,
+template <typename T> __device__ void copy_one_feedback(
+    T* __restrict__ cfld,
+    const T* __restrict__ nfld,
     int ipos, int jpos, int nri, int nrj, int spec_zone,
     int xstag, int ystag,
-    int nz, int nyp, int nxp, int nyc, int nxc)
+    int nz, int nyp, int nxp, int nyc, int nxc,
+    int parent_i0, int parent_j0, int child_i0, int child_j0,
+    int loop_i0, int loop_j0, int loop_ni, int loop_nj)
 {
     size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    int nide_span = xstag ? nxc - 1 : nxc;
-    int njde_span = ystag ? nyc - 1 : nyc;
-    int ci, cj, k;
-    if (!feedback_cell(tid, ipos, jpos, spec_zone, nide_span, njde_span,
-                       nri, nrj, xstag, ystag, nz, nyp, nxp, &ci, &cj, &k))
-        return;
+    if (tid >= (size_t)nz * loop_ni * loop_nj) return;
+    int ci = loop_i0 + (int)(tid % loop_ni) + 1;
+    int cj = loop_j0 + (int)((tid / loop_ni) % loop_nj) + 1;
+    int k = (int)(tid / ((size_t)loop_ni * loop_nj));
     int istag = xstag ? 0 : 1;
     int jstag = ystag ? 0 : 1;
     int ni, nj;
@@ -492,39 +492,25 @@ extern "C" __global__ void nest_copy_fcnm(
         ni = (ci - ipos) * nri + 1 + (nri / 2 - 1);
         nj = (cj - jpos) * nrj + 1 + (nrj / 2 - 1);
     }
-    cfld[I3(k, cj - 1, ci - 1, nyp, nxp)] =
-        nfld[I3(k, nj - 1, ni - 1, nyc, nxc)];
+    cfld[I3(k, cj - 1 - parent_j0, ci - 1 - parent_i0, nyp, nxp)] =
+        nfld[I3(k, nj - 1 - child_j0, ni - 1 - child_i0, nyc, nxc)];
 }
 
-// copy_fcni (interp_fcn.F:1829-1906): the INTEGER twin of copy_fcnm
-// (odd center :1875-1886, even SW corner :1888-1900).
-extern "C" __global__ void nest_copy_fcni(
-    int* __restrict__ cfld,
-    const int* __restrict__ nfld,
-    int ipos, int jpos, int nri, int nrj, int spec_zone,
-    int xstag, int ystag,
-    int nz, int nyp, int nxp, int nyc, int nxc)
-{
-    size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    int nide_span = xstag ? nxc - 1 : nxc;
-    int njde_span = ystag ? nyc - 1 : nyc;
-    int ci, cj, k;
-    if (!feedback_cell(tid, ipos, jpos, spec_zone, nide_span, njde_span,
-                       nri, nrj, xstag, ystag, nz, nyp, nxp, &ci, &cj, &k))
-        return;
-    int istag = xstag ? 0 : 1;
-    int jstag = ystag ? 0 : 1;
-    int ni, nj;
-    if ((nrj % 2) != 0) {                                      // :1875-1886
-        ni = (ci - ipos) * nri + istag + 1;
-        nj = (cj - jpos) * nrj + jstag + 1;
-    } else {                                                   // :1888-1900
-        ni = (ci - ipos) * nri + 1 + (nri / 2 - 1);
-        nj = (cj - jpos) * nrj + 1 + (nrj / 2 - 1);
-    }
-    cfld[I3(k, cj - 1, ci - 1, nyp, nxp)] =
-        nfld[I3(k, nj - 1, ni - 1, nyc, nxc)];
+// Integer uses the identical index expressions, with no conversion to REAL.
+#define COPY_ONE_KERNEL(name, type) \
+extern "C" __global__ void name(type* cfld, const type* nfld, \
+    int ipos, int jpos, int nri, int nrj, int spec_zone, int xstag, int ystag, \
+    int nz, int nyp, int nxp, int nyc, int nxc, \
+    int parent_i0, int parent_j0, int child_i0, int child_j0, \
+    int loop_i0, int loop_j0, int loop_ni, int loop_nj) { \
+    copy_one_feedback(cfld, nfld, ipos, jpos, nri, nrj, spec_zone, xstag, ystag, \
+        nz, nyp, nxp, nyc, nxc, parent_i0, parent_j0, child_i0, child_j0, \
+        loop_i0, loop_j0, loop_ni, loop_nj); \
 }
+COPY_ONE_KERNEL(nest_copy_fcnm, float)
+COPY_ONE_KERNEL(nest_copy_fcni, int)
+COPY_ONE_KERNEL(nest_copy_fcni64, long long)
+#undef COPY_ONE_KERNEL
 
 // ---------------------------------------------------------------------------
 // The feedback smoothers (interp_fcn.F:3794-4014), applied to the parent

@@ -169,12 +169,18 @@ def pinned_ceiling(cp, mem_total, mem_available, fraction, chunk_gib):
     up to the next power of two -- the measuring instrument, not the driver.
     This goes through cudaHostAlloc directly for exactly that reason.
     """
-    cudart = ctypes.CDLL("libcudart.so")
-    cudart.cudaHostAlloc.argtypes = [
+    if cp.cuda.runtime.is_hip:
+        from woof.hip_runtime import library
+        runtime = library()
+        allocate, release = runtime.hipHostMalloc, runtime.hipHostFree
+    else:
+        runtime = ctypes.CDLL("libcudart.so")
+        allocate, release = runtime.cudaHostAlloc, runtime.cudaFreeHost
+    allocate.argtypes = [
         ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t, ctypes.c_uint]
-    cudart.cudaHostAlloc.restype = ctypes.c_int
-    cudart.cudaFreeHost.argtypes = [ctypes.c_void_p]
-    cudart.cudaFreeHost.restype = ctypes.c_int
+    allocate.restype = ctypes.c_int
+    release.argtypes = [ctypes.c_void_p]
+    release.restype = ctypes.c_int
 
     budget = int(mem_available * fraction)
     chunk = int(chunk_gib * GiB)
@@ -182,9 +188,9 @@ def pinned_ceiling(cp, mem_total, mem_available, fraction, chunk_gib):
     try:
         while total + chunk <= budget:
             ptr = ctypes.c_void_p()
-            rc = cudart.cudaHostAlloc(ctypes.byref(ptr), chunk, 0)
+            rc = allocate(ctypes.byref(ptr), chunk, 0)
             if rc != 0:
-                err = f"cudaHostAlloc returned {rc} at {total / GiB:.2f} GiB"
+                err = f"host allocation returned {rc} at {total / GiB:.2f} GiB"
                 break
             blocks.append(ptr)
             total += chunk
@@ -199,7 +205,7 @@ def pinned_ceiling(cp, mem_total, mem_available, fraction, chunk_gib):
                    f"({fraction:.0%} of MemAvailable) without a refusal")
     finally:
         for ptr in blocks:
-            cudart.cudaFreeHost(ptr)
+            release(ptr)
 
     return {
         "pinned_total_gib": total / GiB,

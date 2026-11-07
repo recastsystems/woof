@@ -1,0 +1,23 @@
+[package]
+name = "arwen-tc-vitals"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "rw_tc_vitals"
+path = "src/main.rs"
+
+[[bin]]
+name = "rw_tc_rmw_score"
+path = "src/rmw_score.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"

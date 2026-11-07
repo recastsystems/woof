@@ -210,6 +210,9 @@ pub struct Column {
     /// RAINC + RAINNC, mm since the start.
     pub precip_mm: f64,
     pub refl_max_dbz: Option<f64>,
+    /// Vertical pressure velocity on the mass levels, Pa/s, when the frame carries `W`: the column store's formula
+    /// (rw-soundings `input.rs`), so a box sounding's omega panel shows what the store's shows.
+    pub omega_pa_s: Option<Vec<f64>>,
 }
 
 impl Column {
@@ -274,6 +277,7 @@ pub fn columns(sampler: &PointSampler, frame: &MpasFrame) -> MpasResult<Vec<Colu
     let rainc = sampler.field(frame, "RAINC").map(|f| f.into_iter().map(|c| c[0]).collect::<Vec<_>>());
     let rainnc = sampler.field(frame, "RAINNC").map(|f| f.into_iter().map(|c| c[0]).collect::<Vec<_>>());
     let refl = sampler.field(frame, "REFL_10CM");
+    let w = sampler.field(frame, "W");
     let kappa = RGAS / CP;
     let mut out = Vec::with_capacity(sampler.points.len());
     for p in 0..sampler.points.len() {
@@ -283,6 +287,14 @@ pub fn columns(sampler: &PointSampler, frame: &MpasFrame) -> MpasResult<Vec<Colu
             .collect();
         let z = &zgrid[p];
         let height: Vec<f64> = (0..n).map(|k| 0.5 * (z[k] + z[k + 1])).collect();
+        let omega = w.as_ref().filter(|w| w[p].len() > n).map(|w| {
+            (0..n)
+                .map(|k| {
+                    let wm = 0.5 * (w[p][k] + w[p][k + 1]);
+                    -9.80665 * pressure[p][k] * wm / (287.05 * temperature[k] * (1.0 + 0.61 * qv[p][k]))
+                })
+                .collect::<Vec<f64>>()
+        });
         let precip = rainc.as_ref().map(|r| r[p]).unwrap_or(0.0)
             + rainnc.as_ref().map(|r| r[p]).unwrap_or(0.0);
         out.push(Column {
@@ -300,6 +312,7 @@ pub fn columns(sampler: &PointSampler, frame: &MpasFrame) -> MpasResult<Vec<Colu
             v10: v10[p],
             precip_mm: precip,
             refl_max_dbz: refl.as_ref().map(|r| r[p].iter().copied().fold(f64::MIN, f64::max)),
+            omega_pa_s: omega,
         });
     }
     Ok(out)
@@ -390,6 +403,7 @@ mod tests {
             v10: 0.0,
             precip_mm: 0.0,
             refl_max_dbz: None,
+            omega_pa_s: None,
         };
         assert_eq!(c.mslp_pa(), 101_000.0);
         c.terrain_m = 1500.0;

@@ -24,6 +24,8 @@ def install_noahmp_seaice(backend, seam):
     retire_engine_seaice(seam)
     if int(seam._cfg.sf_sfclay_physics) not in (1, 91):
         raise ValueError("Noah-MP sea ice requires the routed MM5 surface layer (1 or 91)")
+    from .ocean_pwp import select_ice_owner
+    select_ice_owner(driver)
     f = driver.fields
     for name in dict.fromkeys((*_SEA, *_INOUT)):
         f[_PREFIX + name] = f[name].copy()
@@ -69,21 +71,21 @@ def install_noahmp_seaice(backend, seam):
 def retire_engine_seaice(seam):
     """Leave this seam's ocean sea ice to the hex owner installed here.
 
-    THE BREAKAGE THIS PREVENTS: woof 2.9.4 turned on its own prognostic
+    THE BREAKAGE THIS PREVENTS: gpuwm 2.9.4 turned on its own prognostic
     zero-layer sea ice by default (RunConfig.seaice_prognostic, seeded by
     woof.ocean.seaice.initialize inside the seam's physics initialization),
     and its ice_step rewrites XICE after the land call. On the WOOF route the
     MPAS Noah sea-ice solver below (and, in subseasonal runs, the hex mixed
     layer ocean) already owns those columns, so two owners changed the ice
     cover and the next step's Noah-MP census disagreed with the classification
-    the surface owner sealed: every 46-day s2s run on hex 0.4.2 + woof 2.9.4
+    the surface owner sealed: every 46-day s2s run on hex 0.4.2 + gpuwm 2.9.4
     stopped at its first composite step ("Arwen NoahMP census/provenance
     differs from sealed constructor authority", sea_ice 2078 vs 2157). The
     engine model is active exactly when its state is in the field dictionary
     (woof.ocean.seaice.step and the Noah sea-ice call test "ice_volume"), so
     removing that state, and the freezing-point floor its seed put on SST over
     its mask (SST was the skin-temperature copy), restores the single owner
-    woof 2.9.3 had. Runs before the first step, so no rollback or restart
+    gpuwm 2.9.3 had. Runs before the first step, so no rollback or restart
     snapshot carries the engine state.
     """
     import dataclasses

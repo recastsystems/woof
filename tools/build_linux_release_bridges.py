@@ -28,13 +28,15 @@ RUST_VERSION = "1.94.0"
 # rustwx build at a new revision into the same target (reproduced by 2.9.0
 # lane A7: rustwx, then dealias, then rustwx again).  The cut's own sorted
 # order already builds dealias first.
-WORKSPACES = ("tools/grib1_bridge", "tools/region_global_dealias",
+WORKSPACES = ("tools/aerosol_grid", "tools/grib1_bridge", "tools/region_global_dealias",
               "tools/rustwx", "tools/rw_icechunk", "tools/rw_wps",
               "tools/zarr_bridge", "tools/nextgen_hydrofabric",
-              "tools/nextgen_forcing", "tools/nextgen_verify", "tools/nextgen_output",
+              "tools/nextgen_forcing", "tools/nextgen_verify", "tools/nextgen_output", "tools/cam_tables",
               "tools/hydro_world", "tools/hydro_world_params",
               "tools/nextgen_reservoir_prepare", "tools/hydro_world_init",
-              "tools/ocean_prepare", "tools/rw-bathy", "tools/wind-table")
+              "tools/ocean_prepare", "tools/waves_data", "tools/rw-bathy", "tools/wind-table",
+              "tools/dfi-runtime", "tools/tslist_bridge",
+              "tools/storm_merge", "tools/tc_frames_io", "tools/tc_vitals", "tools/tc-verify")
 CONTEXT_NAME = ".arwen-manylinux-build-context.json"
 CONTEXT_SCHEMA = "arwen.manylinux.build-context.v1"
 
@@ -363,6 +365,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--image", default=IMAGE)
+    parser.add_argument("--jobs", type=int, default=16)
     parser.add_argument("--reuse-target", action="store_true")
     parser.add_argument("--workspace", action="append", choices=WORKSPACES,
                         help="build and qualify only this workspace's artifacts (repeatable); "
@@ -394,6 +397,11 @@ def main(argv: list[str] | None = None) -> int:
                        PYTHONDONTWRITEBYTECODE="1", PYTHONNOUSERSITE="1", GPUWM_NO_LOCAL_GPU="1",
                        GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="safe.directory", GIT_CONFIG_VALUE_0=str(source),
                        GIT_OPTIONAL_LOCKS="0")
+    environment["CARGO_BUILD_JOBS"] = str(args.jobs)
+    environment["CARGO_ENCODED_RUSTFLAGS"] = "\x1f".join((
+        f"--remap-path-prefix={Path.home()}=/users",
+        f"--remap-path-prefix={source}=/usr/src/gpuwm",
+    ))
     os.environ.clear()
     os.environ.update(environment)
     sys.dont_write_bytecode = True
@@ -416,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
         report["workspaces"] = list(selected)
         for index, workspace in enumerate(selected):
             commands.run(f"build-{index + 1}", [str(args.rust_toolchain / "bin/cargo"),
-                         "build", "--release", "--locked", "--offline"], cwd=source / workspace)
+                         "build", "--release", "--workspace", "--locked", "--offline", "-j", str(args.jobs)], cwd=source / workspace)
         report["artifacts"] = qualify_artifacts(args.target_dir / "release", source,
                                                args.revision, policy, commands, selected)
         report["source_after"] = source_identity(source, args.revision, commands)

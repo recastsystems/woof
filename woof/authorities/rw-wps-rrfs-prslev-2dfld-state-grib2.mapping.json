@@ -1,0 +1,1242 @@
+{
+ "schema": "rw-wps.mapping.v1",
+ "name": "noaa-rrfs-conus-pressure-plus-surface-grib2-native-condensate-and-rh2-state",
+ "format": "grib2",
+ "grid": {
+  "family": "lambert_conformal",
+  "wind_basis": "grid_relative_with_rotation",
+  "parameters": {
+   "latin1": 38.5,
+   "latin2": 38.5,
+   "lov": 262.5,
+   "lat1": 21.138123,
+   "lon1": 237.280472,
+   "dx_m": 3000.0,
+   "dy_m": 3000.0,
+   "nx": 1799,
+   "ny": 1059,
+   "earth_radius_m": 6371229.0,
+   "shape_of_earth": 6
+  }
+ },
+ "coordinates": {
+  "horizontal": {
+   "kind": "embedded_grid"
+  },
+  "vertical": {
+   "kind": "pressure",
+   "units": "Pa",
+   "positive": "down",
+   "levels": [
+    200,
+    500,
+    700,
+    1000,
+    2000,
+    3000,
+    5000,
+    7000,
+    10000,
+    12500,
+    15000,
+    17500,
+    20000,
+    22500,
+    25000,
+    27500,
+    30000,
+    32500,
+    35000,
+    37500,
+    40000,
+    42500,
+    45000,
+    47500,
+    50000,
+    52500,
+    55000,
+    57500,
+    60000,
+    62500,
+    65000,
+    67500,
+    70000,
+    72500,
+    75000,
+    77500,
+    80000,
+    82500,
+    85000,
+    87500,
+    90000,
+    92500,
+    95000,
+    97500,
+    100000
+   ]
+  },
+  "time": {
+   "kind": "embedded_metadata"
+  }
+ },
+ "fields": {
+  "air_temperature": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 0,
+     "parameter": 0,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "K",
+    "target": "K"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "specific_humidity": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 0,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "kg kg-1",
+    "target": "kg kg-1"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "eastward_wind": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 2,
+     "parameter": 2,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "m s-1",
+    "target": "m s-1"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "northward_wind": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 2,
+     "parameter": 3,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "m s-1",
+    "target": "m s-1"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "geopotential_height": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 3,
+     "parameter": 5,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "m",
+    "target": "m"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "air_pressure": {
+   "selectors": [],
+   "derivation": "pressure-from-coordinate",
+   "units": {
+    "source": "Pa",
+    "target": "Pa"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "surface_pressure": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 3,
+     "parameter": 0,
+     "level_type": 1,
+     "level_value": 0
+    }
+   ],
+   "units": {
+    "source": "Pa",
+    "target": "Pa"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "terrain_height": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 3,
+     "parameter": 5,
+     "level_type": 1,
+     "level_value": 0
+    }
+   ],
+   "units": {
+    "source": "m",
+    "target": "m"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "skin_temperature": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 0,
+     "parameter": 0,
+     "level_type": 1,
+     "level_value": 0
+    }
+   ],
+   "units": {
+    "source": "K",
+    "target": "K"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "air_temperature_2m": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 0,
+     "parameter": 0,
+     "level_type": 103,
+     "level_value": 2
+    }
+   ],
+   "units": {
+    "source": "K",
+    "target": "K"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "specific_humidity_2m": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 0,
+     "level_type": 103,
+     "level_value": 2
+    }
+   ],
+   "units": {
+    "source": "kg kg-1",
+    "target": "kg kg-1"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "eastward_wind_10m": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 2,
+     "parameter": 2,
+     "level_type": 103,
+     "level_value": 10
+    }
+   ],
+   "units": {
+    "source": "m s-1",
+    "target": "m s-1"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "northward_wind_10m": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 2,
+     "parameter": 3,
+     "level_type": 103,
+     "level_value": 10
+    }
+   ],
+   "units": {
+    "source": "m s-1",
+    "target": "m s-1"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "land_fraction": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 0,
+     "level_type": 1,
+     "level_value": 0
+    }
+   ],
+   "units": {
+    "source": "0/1 Flag",
+    "target": "1"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "sea_ice_fraction": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 10,
+     "category": 2,
+     "parameter": 0,
+     "level_type": 1,
+     "level_value": 0
+    }
+   ],
+   "units": {
+    "source": "1",
+    "target": "1"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "snow_water_equivalent": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 13,
+     "level_type": 1,
+     "level_value": 0,
+     "pdt": 0
+    }
+   ],
+   "units": {
+    "source": "kg m-2",
+    "target": "kg m-2"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "value",
+    "value": 0.0
+   }
+  },
+  "snow_depth": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 11,
+     "level_type": 1,
+     "level_value": 0,
+     "pdt": 0
+    }
+   ],
+   "units": {
+    "source": "m",
+    "target": "m"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "value",
+    "value": 0.0
+   }
+  },
+  "soil_temperature": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.0,
+     "second_level_type": 106,
+     "second_level_value": 0.0
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.01,
+     "second_level_type": 106,
+     "second_level_value": 0.01
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.04,
+     "second_level_type": 106,
+     "second_level_value": 0.04
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.1,
+     "second_level_type": 106,
+     "second_level_value": 0.1
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.3,
+     "second_level_type": 106,
+     "second_level_value": 0.3
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.6,
+     "second_level_type": 106,
+     "second_level_value": 0.6
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 1.0,
+     "second_level_type": 106,
+     "second_level_value": 1.0
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 1.6,
+     "second_level_type": 106,
+     "second_level_value": 1.6
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 2,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 3.0,
+     "second_level_type": 106,
+     "second_level_value": 3.0
+    }
+   ],
+   "units": {
+    "source": "K",
+    "target": "K"
+   },
+   "source_axes": [
+    "soil",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "soil",
+    "y",
+    "x"
+   ],
+   "location": "soil",
+   "staggering": "none",
+   "missing": {
+    "kind": "preserve_mask"
+   }
+  },
+  "volumetric_soil_moisture": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.0,
+     "second_level_type": 106,
+     "second_level_value": 0.0
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.01,
+     "second_level_type": 106,
+     "second_level_value": 0.01
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.04,
+     "second_level_type": 106,
+     "second_level_value": 0.04
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.1,
+     "second_level_type": 106,
+     "second_level_value": 0.1
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.3,
+     "second_level_type": 106,
+     "second_level_value": 0.3
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 0.6,
+     "second_level_type": 106,
+     "second_level_value": 0.6
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 1.0,
+     "second_level_type": 106,
+     "second_level_value": 1.0
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 1.6,
+     "second_level_type": 106,
+     "second_level_value": 1.6
+    },
+    {
+     "format": "grib2",
+     "discipline": 2,
+     "category": 0,
+     "parameter": 192,
+     "center": 7,
+     "subcenter": 0,
+     "master_table_version": 2,
+     "local_table_version": 1,
+     "level_type": 106,
+     "level_value": 3.0,
+     "second_level_type": 106,
+     "second_level_value": 3.0
+    }
+   ],
+   "units": {
+    "source": "m3 m-3",
+    "target": "m3 m-3"
+   },
+   "source_axes": [
+    "soil",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "soil",
+    "y",
+    "x"
+   ],
+   "location": "soil",
+   "staggering": "none",
+   "missing": {
+    "kind": "preserve_mask"
+   }
+  },
+  "cloud_water_mixing_ratio": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 22,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "kg kg-1",
+    "target": "kg kg-1"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "cloud_ice_mixing_ratio": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 23,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "kg kg-1",
+    "target": "kg kg-1"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "rain_water_mixing_ratio": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 24,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "kg kg-1",
+    "target": "kg kg-1"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "snow_mixing_ratio": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 25,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "kg kg-1",
+    "target": "kg kg-1"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "graupel_or_hail_mixing_ratio": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 32,
+     "level_type": 100
+    }
+   ],
+   "units": {
+    "source": "kg kg-1",
+    "target": "kg kg-1"
+   },
+   "source_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "vertical",
+    "y",
+    "x"
+   ],
+   "location": "mass",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  },
+  "relative_humidity_2m": {
+   "selectors": [
+    {
+     "format": "grib2",
+     "discipline": 0,
+     "category": 1,
+     "parameter": 1,
+     "level_type": 103,
+     "level_value": 2
+    }
+   ],
+   "units": {
+    "source": "%",
+    "target": "%"
+   },
+   "source_axes": [
+    "y",
+    "x"
+   ],
+   "target_axes": [
+    "y",
+    "x"
+   ],
+   "location": "surface",
+   "staggering": "none",
+   "missing": {
+    "kind": "reject"
+   }
+  }
+ },
+ "derivations": [
+  {
+   "name": "pressure-from-coordinate",
+   "operation": "pressure_from_vertical_coordinate"
+  }
+ ],
+ "target": {
+  "name": "gpuwm/WRF-real NOAA RRFS CONUS pressure-level plus surface source",
+  "physics_suite": "WSM6+YSU+classic-MM5+Noah4",
+  "max_dom": 4,
+  "require_lateral_boundaries": true,
+  "target_vertical_levels": 49,
+  "soil_layer_count": 9,
+  "boundary_interval_seconds": 3600,
+  "accept_boundary_interval_multiples": true,
+  "required_fields": [
+   {
+    "name": "air_temperature",
+    "axes": [
+     "vertical",
+     "y",
+     "x"
+    ],
+    "location": "mass",
+    "target_units": "K"
+   },
+   {
+    "name": "specific_humidity",
+    "axes": [
+     "vertical",
+     "y",
+     "x"
+    ],
+    "location": "mass",
+    "target_units": "kg kg-1"
+   },
+   {
+    "name": "eastward_wind",
+    "axes": [
+     "vertical",
+     "y",
+     "x"
+    ],
+    "location": "mass",
+    "target_units": "m s-1"
+   },
+   {
+    "name": "northward_wind",
+    "axes": [
+     "vertical",
+     "y",
+     "x"
+    ],
+    "location": "mass",
+    "target_units": "m s-1"
+   },
+   {
+    "name": "geopotential_height",
+    "axes": [
+     "vertical",
+     "y",
+     "x"
+    ],
+    "location": "mass",
+    "target_units": "m"
+   },
+   {
+    "name": "air_pressure",
+    "axes": [
+     "vertical",
+     "y",
+     "x"
+    ],
+    "location": "mass",
+    "target_units": "Pa"
+   },
+   {
+    "name": "surface_pressure",
+    "axes": [
+     "y",
+     "x"
+    ],
+    "location": "surface",
+    "target_units": "Pa"
+   },
+   {
+    "name": "terrain_height",
+    "axes": [
+     "y",
+     "x"
+    ],
+    "location": "surface",
+    "target_units": "m"
+   },
+   {
+    "name": "skin_temperature",
+    "axes": [
+     "y",
+     "x"
+    ],
+    "location": "surface",
+    "target_units": "K"
+   },
+   {
+    "name": "air_temperature_2m",
+    "axes": [
+     "y",
+     "x"
+    ],
+    "location": "surface",
+    "target_units": "K"
+   },
+   {
+    "name": "specific_humidity_2m",
+    "axes": [
+     "y",
+     "x"
+    ],
+    "location": "surface",
+    "target_units": "kg kg-1"
+   },
+   {
+    "name": "eastward_wind_10m",
+    "axes": [
+     "y",
+     "x"
+    ],
+    "location": "surface",
+    "target_units": "m s-1"
+   },
+   {
+    "name": "northward_wind_10m",
+    "axes": [
+     "y",
+     "x"
+    ],
+    "location": "surface",
+    "target_units": "m s-1"
+   },
+   {
+    "name": "land_fraction",
+    "axes": [
+     "y",
+     "x"
+    ],
+    "location": "surface",
+    "target_units": "1"
+   },
+   {
+    "name": "soil_temperature",
+    "axes": [
+     "soil",
+     "y",
+     "x"
+    ],
+    "location": "soil",
+    "target_units": "K"
+   },
+   {
+    "name": "volumetric_soil_moisture",
+    "axes": [
+     "soil",
+     "y",
+     "x"
+    ],
+    "location": "soil",
+    "target_units": "m3 m-3"
+   }
+  ],
+  "pressure_requirement": "air_pressure",
+  "policy_controlled_fields": [
+   "cloud_water_mixing_ratio",
+   "rain_water_mixing_ratio",
+   "cloud_ice_mixing_ratio",
+   "snow_mixing_ratio",
+   "graupel_or_hail_mixing_ratio",
+   "vertical_velocity",
+   "snow_water_equivalent",
+   "snow_depth",
+   "sea_ice_fraction"
+  ],
+  "initialization_policies": {
+   "vertical_velocity": "explicit_zero_with_adapter_validation"
+  }
+ }
+}

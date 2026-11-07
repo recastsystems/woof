@@ -64,6 +64,8 @@ def load_case(path: str | Path) -> dict[str, Any]:
     for key in ("background_km", "fine_km", "fine_radius_km", "fine_transition_km", "rings"):
         if key not in case["mesh"]:
             raise MovingCaseError(f"case file {path}: mesh.{key} is required")
+    if not isinstance(case.get("preserve_lake_mask", False), bool):
+        raise MovingCaseError("preserve_lake_mask must be a boolean")
     # The hex default physics (owner ruling 2026-10-25): a case whose physics_args name no physics runs MPAS-A's
     # own suite for its fine spacing (woof.hex.physics_default).  Written here, the one reader of case files, so the
     # roster, the move hooks and every segment's forecast door decide the same route.

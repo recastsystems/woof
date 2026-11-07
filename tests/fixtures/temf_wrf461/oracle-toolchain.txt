@@ -1,0 +1,15 @@
+GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+module_bl_temf.F 0c4d731ca3124198342a3a2f90e0a43f34ddf5731b545460fb27bf794ed77475
+module_sf_temfsfclay.F 70f2ed6bc48aad5b1bf68be4e01753a132f2ecdb4fa6d95c0ecce5d5554fcd94
+WRF FCOPTIM on this box: -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize
+libm entries the modules call:  _gfortran_st_write _gfortran_st_write_done _gfortran_transfer_character_write _gfortran_transfer_real_write atan2f atanf expf free log10f logf malloc memcpy memset powf sincosf wrf_debug_ 
+fma instructions in arm stock: 0
+fma instructions in arm fixed: 0
+fma instructions in arm stock-O0: 0
+fma instructions in arm stock-raw: 0
+6ed75cb3e9296484bae2081ea0a33ffe2a025c00c870cbbfc86723bf9c728186  run_temf.F90
+a4aae921a5fee0a884f940a43b432709bb5a684fa911b0661ee94fe5c6fbcb00  cr_shim.c
+ee8785b6e33da46dd0c3036a2971c9c687292269664d2acb1832992e42670deb  apply_fixes.py
+a6eff70610bffdaa921c87f8051979a52943f822756e74d99ab8286ea2c2112c  stub_wrf.F90
+2cc6c3998db8ca1a68bfc902f09c27b17f85343e5b8c284b33ead1203d6ddfb7  declared-fixes.diff

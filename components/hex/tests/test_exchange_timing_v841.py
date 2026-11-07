@@ -2,7 +2,7 @@
 
 Breakage it prevents: the variable was read only by the ArWen-route driver, so on the MPAS-physics route (RRFS and
 MPAS-A; rank threads and rank processes) gpu_step_timings stayed empty and the exposed halo stall could not be
-measured (MULTICARD/MPAS-A-SCALING.md, 2026-10-28; V8X6000 conus3km receipts, 2026-10-29).
+measured (MULTICARD/MPAS-A-SCALING.md, 2026-10-28; eight-card system conus3km receipts, 2026-10-29).
 """
 
 import inspect

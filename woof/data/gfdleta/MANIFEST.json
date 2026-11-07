@@ -1,0 +1,47 @@
+{
+  "schema": "physics-tables-v1",
+  "source": "WRF-4.6.1/d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "binary_levels": 42,
+  "assets": {
+    "co2-raw.npy": {
+      "bytes": 427844,
+      "sha256": "d694c43dc97ee2afd227793f4733d4d5b70ba0952abc7161fda7e56fe84f1fb0"
+    },
+    "co2-trans-42.npy": {
+      "bytes": 47920,
+      "sha256": "dbf08c7112af9946a563197b5c4143d0ca551bba255518652326dea355541927"
+    },
+    "co2_trans": {
+      "bytes": 48000,
+      "sha256": "bdffafa58f96769b19112ccdce15dd02eb74df9b5c2025061b9fd3cb76651ea8"
+    },
+    "ozone-coefficients.npy": {
+      "bytes": 4340,
+      "sha256": "8d57409f5289bb1e6ee4b5e1749e85f09646a1f45310c6f6234be3e83700f08c"
+    },
+    "ozone-coefficients.txt": {
+      "bytes": 5213,
+      "sha256": "78086a8f5edf4465029a00ddb6d108a290c70759fdd4a2a15e362e6885c917d4"
+    },
+    "table-coefficients.npy": {
+      "bytes": 3548,
+      "sha256": "2921aaa99fe7345fdd7a9775cff3423f7bfb52443df622b5ec77fddc839b345e"
+    },
+    "table-coefficients.txt": {
+      "bytes": 10675,
+      "sha256": "23f28e89ddb5f13de8c9f79627a8361b09509d316396357a7b721f4e766a5de0"
+    },
+    "tr49t67": {
+      "bytes": 748503,
+      "sha256": "97501d7f0dc6b93a03803e5c59e57732010dd543686aa55404a1400dc62ae039"
+    },
+    "tr49t85": {
+      "bytes": 748503,
+      "sha256": "b7b6aff5c9dbf05d7a0b8ecf08fd13b2762690aa4d0de77030b81a9167608e89"
+    },
+    "tr67t85": {
+      "bytes": 748503,
+      "sha256": "92a3320df2b0a9eb6fa6e4d62819969d7f410823fe11f3959090202c2a486388"
+    }
+  }
+}

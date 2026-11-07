@@ -48,6 +48,9 @@ pub fn direct_route_for_recipe_slug(slug: &str) -> ProductSourceRoute {
         "cloud_cover_levels" | "precipitation_type" | "composite_reflectivity_uh" => {
             ProductSourceRoute::DirectNativeCompositeExact
         }
+        _ if rustwx_models::is_uh_layer_overlay_recipe(slug) => {
+            ProductSourceRoute::DirectNativeCompositeExact
+        }
         _ => ProductSourceRoute::DirectNativeExact,
     }
 }

@@ -1,0 +1,15 @@
+{
+ "schema": "gpuwm-hrdps-in-band-terrain-provenance-v1",
+ "source": "MSC Datamart HRDPS continental 2.5 km rotated lat-lon GRIB2 product",
+ "field": "terrain_height",
+ "selector": {
+  "format": "grib2",
+  "discipline": 0,
+  "category": 3,
+  "parameter": 5,
+  "level_type": 1
+ },
+ "time_policy": "HRDPS publishes HGT_Sfc at every lead: decoded at every valid time and required invariant. The land mask and the ice analysis exist only at the analysis lead (PT000H) and ride the primary inputs as cycle_invariant mapped fields, as GDPS's do.",
+ "member_policy": "HRDPS is deterministic; no member identity exists",
+ "input_identity": "dynamic file paths and SHA-256 values are owned by gpuwm-mapped-composition-inputs-v1"
+}

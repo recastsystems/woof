@@ -658,7 +658,7 @@
     "note": "the two header digests and the array digest of every libm-dependent field are exact identities of this box; the statistics beside them are this box's values, and are compared within 1e-12 relative",
     "recorded_on": {
       "machine": "AMD64",
-      "node": "a development machine",
+      "node": "test-desktop",
       "python": "3.13.7",
       "release": "11",
       "system": "Windows"

@@ -4,6 +4,8 @@ RRFS 1d6e370e, MYNN-SFC b66187f. Each emitted routine cites its source.
 The MPAS Makefile links the modular land/water/ice implementation.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 from importlib.resources import files
 import numpy as np
@@ -3518,36 +3520,41 @@ extern "C" __global__ void mynnsfc_subnormal(float *x) {
 _MODULES = {}
 
 
-def cuda_source():
+def cuda_source(waves=False):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:73-87 @1d6e370e."""
     kernels=files('woof').joinpath('core/kernels')
-    return ("typedef float real;\n#define SL_LOG mynn_glibc_logf\n"
+    source = ("typedef float real;\n#define SL_LOG mynn_glibc_logf\n"
             "#define SL_EXP mynn_glibc_expf\n#define SL_POW mynn_glibc_powf\n"
             "#define SL_ATAN glibc_atanf\n#define SL_SQRT __fsqrt_rn\n"
             + kernels.joinpath('mynn_libm.cuh').read_text()
             + kernels.joinpath('glibc_trig_flt32.cuh').read_text() + SOURCE + _driver_source())
+    if waves:
+        from ...wave_surface import rrfs_mynn_source
+        source = rrfs_mynn_source(source)
+    return source
 
 
-def module():
+def module(waves=False):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:73-87,747-788."""
     import cupy as cp
     from cupy.cuda import compiler, function
     dev=cp.cuda.runtime.getDevice()
-    if dev not in _MODULES:
-        binary,_=compiler.compile_using_nvrtc(cuda_source(),
+    key = (dev, waves)
+    if key not in _MODULES:
+        binary,_=compiler.compile_using_nvrtc(cuda_source(waves=waves),
             options=_hex_numerics.options(('--std=c++17','--fmad=false','--ftz=false',
                      '--prec-div=true','--prec-sqrt=true')),
-            arch=cp.cuda.Device(dev).compute_capability,cache_in_memory=True)
+            arch=_compilation_target(dev, xp=cp),cache_in_memory=True)
         obj=function.Module(); obj.load(binary)
         error=cp.empty(1,dtype=cp.int32)
         obj.get_function('mynnsfc_tables')((1,),(1,),(error,))
-        _MODULES[dev]=obj
-    return _MODULES[dev]
+        _MODULES[key]=obj
+    return _MODULES[key]
 
 
 def run_packed(fields, options, *, vegtype=None, errors=None,
                xice_threshold=0.02, present=MPAS_PRESENT,
-               itimestep=None, initflag=None):
+               itimestep=None, initflag=None, ocean_z0=None):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:103-740.
 
     Two lowest profile levels use FIELDS u3d/u3d2, v3d/v3d2, dz8w/dz8w2.
@@ -3563,16 +3570,21 @@ def run_packed(fields, options, *, vegtype=None, errors=None,
             or options.shape!=(len(OPTIONS),) or not options.flags.c_contiguous):
         raise TypeError('MYNN-SFC options require contiguous int32 device storage in OPTIONS order')
     n=fields.shape[1]
+    wave_args = ()
+    if ocean_z0 is not None:
+        from ...wave_surface import validate
+        validate(ocean_z0, n)
+        wave_args = (ocean_z0,)
     if vegtype is None: vegtype=cp.ones(n,dtype=cp.int32)
     if errors is None: errors=cp.empty(n,dtype=cp.int32)
     for value in (vegtype,errors):
         if value.dtype!=cp.int32 or value.shape!=(n,) or not value.flags.c_contiguous:
             raise TypeError('MYNN-SFC integer carriers require contiguous int32 (nCells,) storage')
     if n:
-        module().get_function('mynnsfc_columns')(((n+127)//128,),(128,),
+        module(waves=ocean_z0 is not None).get_function('mynnsfc_columns')(((n+127)//128,),(128,),
             (fields,options,vegtype,errors,np.float32(xice_threshold),np.uint64(present),np.int32(n),
              np.int32(-1 if itimestep is None else itimestep),
-             np.int32(-1 if initflag is None else initflag)))
+             np.int32(-1 if initflag is None else initflag)) + wave_args)
     return errors
 
 # Appended verbatim to the generated runtime module by assemble.py.
@@ -3682,7 +3694,7 @@ def driver(mesh, diagnostics, surface, profiles, *, itimestep,len_disp,
            xice_threshold,config_frac_seaice=False,config_do_restart=False,
            config_do_DAcycling=False,config_lsm_scheme='sf_ruc',
            config_mynn_sfcflux_land=0,config_mynn_sfcflux_water=0,spp_pbl=0,
-           sea_state=None):
+           sea_state=None, ocean_z0=None):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_sfclayer.F:1148-1209,1390-1463 @1d6e370e."""
     import cupy as cp
     initflag=int(not (config_do_restart or config_do_DAcycling or itimestep>1))
@@ -3694,12 +3706,12 @@ def driver(mesh, diagnostics, surface, profiles, *, itimestep,len_disp,
     options=cp.asarray([values[name] for name in OPTIONS],cp.int32)
     packed,sea=from_mpas(mesh,diagnostics,surface,profiles,len_disp=len_disp,
                          xice_threshold=xice_threshold,config_frac_seaice=config_frac_seaice)
-    errors=run_packed(packed,options,xice_threshold=xice_threshold)
+    errors=run_packed(packed,options,xice_threshold=xice_threshold,ocean_z0=ocean_z0)
     if config_frac_seaice:
         # hpbl_p is shared by both native calls; the first cold-start update
         # is visible to the sea call, without modifying diag_physics%hpbl.
         sea[FIELDS.index('pblh')]=packed[FIELDS.index('pblh')]
-        errors=run_packed(sea,options,xice_threshold=xice_threshold,errors=errors)
+        errors=run_packed(sea,options,xice_threshold=xice_threshold,errors=errors,ocean_z0=ocean_z0)
         # RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_sfclayer.F:335-361,1434-1445 @1d6e370e
         # These globals survive sfclayer deallocation for native sea-ice/RUC.
         if sea_state is not None:
@@ -3721,6 +3733,7 @@ def launch_slot(call):
     pools=call.pools
     mesh,diag,sfc,atm,configs,state=(pools[k] for k in
         ('mesh','diag_physics','sfc_input','atm_input','configs','scalar_state'))
+    from ...wave_surface import feedback
     return driver(mesh,diag,sfc,atm,itimestep=call.itimestep,
         len_disp=configs['config_len_disp'],xice_threshold=state['xice_threshold'],
         config_do_restart=configs['config_do_restart'],config_do_DAcycling=configs['config_do_DAcycling'],
@@ -3728,7 +3741,7 @@ def launch_slot(call):
         config_lsm_scheme=call.options['config_lsm_scheme'],
         config_mynn_sfcflux_land=call.options['config_mynn_sfcflux_land'],
         config_mynn_sfcflux_water=call.options['config_mynn_sfcflux_water'],
-        sea_state=pools['prepared'])
+        sea_state=pools['prepared'],ocean_z0=feedback(pools))
 
 
 def register_backend(registry):

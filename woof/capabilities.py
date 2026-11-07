@@ -679,7 +679,16 @@ def unmet_run_requirements() -> tuple[Requirement, ...]:
     return unmet
 
 
-__all__ = ["CapabilityMissing", "COMMAND_REQUIREMENTS", "COMPANION_DATA",
+def features() -> tuple[str, ...]:
+    """Stable feature words supported by this engine build.
+
+    Workers use these words to admit settings before launching a forecast.
+    Runtime dependency and configuration checks still apply at each door.
+    """
+    return ("wrf-settings-v1",)
+
+
+__all__ = ["features", "CapabilityMissing", "COMMAND_REQUIREMENTS", "COMPANION_DATA",
            "GPU_RUNTIME", "GPU_RUNTIME_MINIMUM",
            "GPU_RUNTIME_REMEDY", "gpu_runtime_floor_refusal",
            "installed_cupy_version", "outdated_gpu_runtime", "PILLOW", "PYPROJ", "RASTERIO",

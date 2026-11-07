@@ -298,7 +298,8 @@ def _prepare_fields(state, shape) -> NSSL2RuntimeFields:
     z8w = state.scratch((nz + 1, ny, nx), "mp_z8w")
     thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
     phb = state.phb if state.phb.ndim == 3 else state.phb[:, None, None]
-    theta[...] = thb + state.thp
+    theta[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
     rho[...] = DTYPE(1.0) / state.alt
     pii[...] = cp.power(state.p / DTYPE(c.P0), DTYPE(c.RCP))
     z8w[...] = (phb + state.php) / DTYPE(c.G)
@@ -398,6 +399,12 @@ def apply_nssl2_production(
             "NSSL production binding was built for variant mode "
             f"{getattr(binding, 'mode', None)!r} but the RunConfig resolves "
             f"to {mode!r}")
+    if binding is not None and getattr(binding, "nssl_cccn", 0.5e9) != cfg.nssl_cccn:
+        raise NSSL2ProductionConfigurationError("NSSL production binding nssl_cccn differs from RunConfig")
+    from woof.core.nssl2_shape import resolved_shapes
+    shapes = resolved_shapes(cfg.nssl_alphah, cfg.nssl_alphahl, cfg.nssl_icdx, cfg.nssl_icdxhl)
+    if binding is not None and getattr(binding, "shapes", (0.0, 1.0)) != shapes:
+        raise NSSL2ProductionConfigurationError("NSSL production binding shapes differ from RunConfig")
     bound_workspace = _validated_binding(binding, state, hooks, step)
     shape = _validate_state_structure(state)
     # Second pin of the variant's absent categories.  woof.core.
@@ -470,6 +477,7 @@ def apply_nssl2_production(
         re_snow_m=(state.effs if radiation_due else None),
         validate_values=validate_values,
         mode=mode,
+        nssl_cccn=cfg.nssl_cccn, shapes=shapes,
         **raw_rates,
     )
     if bound_workspace is not None:

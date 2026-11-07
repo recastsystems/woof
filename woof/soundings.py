@@ -227,6 +227,14 @@ def render_run(run, *, points, out=None, modes=("mean", "all"), domain=None,
 
 
 COLUMNS_ABI = "columns-v1"
+#: The column file carries the surface section (the point forecast's planes: precipitation, sea-level pressure,
+#: cloud, gust, CAPE and the rest, exact f32; rw-soundings surface.rs).
+COLUMNS_SURFACE_ABI = "columns-surface-v1"
+#: ``rw_soundings --series``: each fixed grid's point-forecast time series file (rw-store ``rw-store.series.v1``).
+SERIES_ABI = "series-v1"
+#: The file a grid's series is written to: ``<store>/<domain>/series.wser``.
+SERIES_NAME = "series.wser"
+_STAGES = re.compile(r"^COLUMNS-STAGES (\S+) (.*)$")
 
 
 def write_columns(run, out, *, domain=None, threads=None, tile=16, every_minutes=0, exact=False, member=None,
@@ -267,13 +275,71 @@ def write_columns(run, out, *, domain=None, threads=None, tile=16, every_minutes
                                "it was stopped") from None
     if result.returncode:
         raise RuntimeError("column store not written: " + (_cause(result.stderr) or f"exit {result.returncode}"))
+    # Each file's stage times (stderr COLUMNS-STAGES: grid_ms, encode_write_ms, surface_ms, ...), for the receipt.
+    stages = {}
+    for line in result.stderr.splitlines():
+        m = _STAGES.match(line.strip())
+        if m:
+            values = {}
+            for word in m[2].split():
+                key, sep, value = word.partition("=")
+                if sep and key.endswith("_ms"):
+                    try:
+                        values[key] = float(value)
+                    except ValueError:
+                        pass
+            stages[m[1]] = values
+    surface = COLUMNS_SURFACE_ABI in abi
     rows = []
     for line in result.stdout.splitlines():
         if line.startswith("COLUMNS "):
             path_text, *fields = line[len("COLUMNS "):].rsplit(" ", 2)
             row = {"path": path_text}
             row.update({k: float(v) for k, v in (f.split("=", 1) for f in fields)})
+            row["surface"] = surface
+            if "surface_ms" in stages.get(path_text, {}):
+                row["surface_ms"] = stages[path_text]["surface_ms"]
             rows.append(row)
+    return rows
+
+
+def write_series(store, *, domains=None, threads=None, timeout=None) -> list[dict]:
+    """Each fixed grid's point-forecast time series file under a column store (``<store>/<domain>/series.wser``,
+    rw-store ``rw-store.series.v1``), from its hourly files' surface sections, the deterministic run and every member
+    (``<store>/members/<member>/<domain>/``) in one file: a whole meteogram at a point, an ensemble's included, is
+    then about three small reads. Input and output only, every value the hourly file's f32.
+
+    Returns one row per grid: ``{"domain", "path", "bytes", "ms", "members", "times", "fields"}`` when written, or
+    ``{"domain", "skipped": reason}`` (a moving grid is read from its hourly files; a store written before the surface
+    section has nothing to fold). ``[]`` with a ``skipped`` row when the engine's rw_soundings predates ``series-v1``.
+    ``timeout`` (seconds) kills a writer that has not finished and raises."""
+    exe = binary()
+    abi = subprocess.run([str(exe), "--abi"], capture_output=True, text=True, timeout=30).stdout
+    if SERIES_ABI not in abi:
+        return [{"domain": "*", "skipped": f"{exe} writes no series file (--abi: {abi.strip()!r})"}]
+    argv = [str(exe), "--series", str(Path(store).resolve())]
+    if threads:
+        argv += ["--threads", str(int(threads))]
+    argv += [str(d) for d in (domains or ())]
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"series not written: rw_soundings --series did not finish in {timeout:g} s; "
+                           "it was stopped") from None
+    if result.returncode:
+        raise RuntimeError("series not written: " + (_cause(result.stderr) or f"exit {result.returncode}"))
+    rows = []
+    for line in result.stdout.splitlines():
+        if line.startswith("SERIES "):
+            path_text, *fields = line[len("SERIES "):].rsplit(" ", 5)
+            row = {"path": path_text, "domain": Path(path_text).parent.name}
+            for f in fields:
+                key, _, value = f.partition("=")
+                row[key] = float(value) if key == "ms" else int(value)
+            rows.append(row)
+        elif line.startswith("SERIES-SKIP "):
+            domain, _, why = line[len("SERIES-SKIP "):].partition(" ")
+            rows.append({"domain": domain, "skipped": why})
     return rows
 
 
@@ -292,10 +358,21 @@ def register_cli(sub):
     parser.add_argument("--columns", type=Path, metavar="DIR",
                         help="write the run's any-point column store into DIR instead of pictures (no --point needed)")
     parser.add_argument("--every-minutes", type=int, default=0, help="with --columns: only valid times on this cadence")
+    parser.add_argument("--series", type=Path, metavar="STORE",
+                        help="fold a column store's hourly files into each fixed grid's point-forecast time series "
+                             "file (STORE/<domain>/series.wser); the run argument is ignored")
     parser.set_defaults(func=cli_main)
 
 
 def cli_main(args):
+    if getattr(args, "series", None) is not None:
+        for row in write_series(args.series, domains=[args.domain] if args.domain else None, threads=args.threads):
+            if row.get("skipped"):
+                print(f"Series {row['domain']}: not written ({row['skipped']})")
+            else:
+                print(f"Series {row['domain']}: {row['members']} member(s), {row['times']} times, {row['fields']} "
+                      f"planes, {row['bytes'] / 1e6:.1f} MB -> {row['path']}")
+        return 0
     if args.columns is not None:
         rows = write_columns(args.run, args.columns, domain=args.domain, threads=args.threads,
                              every_minutes=args.every_minutes)

@@ -131,6 +131,10 @@ pub fn utf8_arguments(tool: &str, argv: Vec<OsString>) -> Result<Vec<String>, Ex
 }
 
 fn main() -> ExitCode {
+    rw_mpas::execution::bridge(run_bridge)
+}
+
+fn run_bridge() -> ExitCode {
     let _ = std::hint::black_box(GPUWM_BRIDGE_SOURCE_REV_STAMP);
     let mut argv: Vec<OsString> = std::env::args_os().collect();
     let program = if argv.is_empty() { OsString::new() } else { argv.remove(0) };

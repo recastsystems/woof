@@ -1,8 +1,8 @@
 """BEP, the multi-layer urban canopy model (``sf_urban_physics = 2``).
 
 WRF v4.7.1 ``phys/module_sf_bep.F`` as one float32 CUDA column
-(``kernels/urban_bep.cu``), word-identical to the gfortran/glibc build of the
-byte-unmodified
+(``kernels/urban_bep.cu``, transcribed by the BEP port and graded
+here), word-identical to the gfortran/glibc build of the byte-unmodified
 module on every fixture column (``tests/test_urban_bep_wrf471_parity.py``):
 the street-canyon radiation (shadowing, view factors, multiple reflections),
 the wall/roof/road conduction, the surface fluxes, and the momentum, heat

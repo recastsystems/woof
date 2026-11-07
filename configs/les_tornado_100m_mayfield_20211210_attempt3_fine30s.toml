@@ -424,7 +424,9 @@ kvdif = 0.0
 spec_zone = 1
 relax_zone = 4
 bldt = 0.0
-nwp_diagnostics = 1
+# Native WRF NWP windows require whole-minute history; these LES tapes use seconds.
+# Storm tracking retains its independent completed-step diagnostics.
+nwp_diagnostics = 0
 moist = true
 moist_cq = true
 mp_physics = 6

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 import hashlib
 import json
 from pathlib import Path
@@ -114,6 +114,7 @@ class WrfTreeInputs:
     # there (found by the 2.9.1 CI rehearsal; 3.13 accepts it).
     radar_tendencies: Mapping[int, object] = field(
         default_factory=lambda: MappingProxyType({}))
+    surface_analyses: Mapping[int, Path] | None = None
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,12 @@ class WrfInitialization:
     def __init__(self, inputs: WrfTreeInputs):
         self.inputs = inputs
         self.lateral_boundaries = inputs.boundaries
+        # Resolve a potentially large first-use public-data build before
+        # restore_domain allocates resident forecast state on the card.
+        for domain, bundle in zip(inputs.experiment.domains, inputs.domains):
+            if domain.run.aercu_opt > 0 and not all(name in bundle.restored.raw for name in ('AEROMCU', 'AEROPCU')):
+                from woof.public_cumulus_aerosol import public_asset
+                public_asset(bundle.restored.path.parent)
         from woof.case_data import trace_gas_overrides_from_config
         self.trace_gas_overrides = trace_gas_overrides_from_config(
             inputs.experiment_config,
@@ -147,10 +154,15 @@ class WrfInitialization:
         state = restore_domain_state(bundle.restored, domain.run,
                                      scratch_arena=scratch_arena,
                                      dycore_state_workspace=dycore_state_workspace)
+        if domain.run.dfi_opt:
+            state._dfi_remember_physics = True
         if domain.parent_id == 0:
             attach_lateral_boundaries(state, self.inputs.boundaries)
         from woof.runtime import declared_constant_glw
         def initialize():
+            cfg = domain.run
+            if cfg.sst_update and self.inputs.surface_analyses:
+                cfg = replace(cfg, surface_analysis=str(self.inputs.surface_analyses[domain.grid_id]))
             from woof.core.cam_ozone import cam_ozone_setup, ozone_parent_for
             cam = cam_ozone_setup(exp=self.inputs.experiment, dc=domain, grid=grid)
             from woof.core.radiation_composition import make_radiation
@@ -159,9 +171,10 @@ class WrfInitialization:
                 bundle.restored.raw["XLONG"], p_top=self.inputs.experiment.vertical.p_top,
                 column_chunk=self.inputs.experiment.column_chunk,
                 trace_gas_overrides=self.trace_gas_overrides,
-                ozone_parent=ozone_parent_for(cam))
-            return initialize_wrfinput_physics(
-                state, bundle.restored, domain.run, radiation=radiation,
+                ozone_parent=ozone_parent_for(cam),
+                center_lat=bundle.restored.global_attributes.get("CEN_LAT"))
+            driver = initialize_wrfinput_physics(
+                state, bundle.restored, cfg, radiation=radiation,
                 radiation_start_time=start_time,
                 radiation_latitude=bundle.restored.raw['XLAT'],
                 radiation_longitude=bundle.restored.raw['XLONG'],
@@ -170,6 +183,7 @@ class WrfInitialization:
                 fractional_seaice=bundle.fractional_seaice,
                 hydro_parent_geometry=grid,
                 **({"cam_ozone": cam} if cam is not None else {}))
+            return driver
         return DomainInitialization(wrf_initial_result(bundle.restored, state), initialize)
 
     def finish_nest_start(self, node, bundle):
@@ -327,6 +341,10 @@ class WrfRestartInitialization(WrfInitialization):
 
         def initialize():
             driver = cold()
+            from woof.spectral_nudging.prepared import selected, allocate_held_tendencies
+            controls = selected(self.inputs.experiment, domain.grid_id)
+            if controls is not None and controls.grid_sfdda:
+                allocate_held_tendencies(state, domain.run, controls)
             report = apply_warm_start_physics(state, driver, bundle.restored,
                                               domain.run)
             self.overlay_reports[int(domain.grid_id)] = report
@@ -437,7 +455,57 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
     else:
         paths.update({f'wrfinput_d{gid:02d}': path
                       for gid, path in run.wrfinput_paths.items()})
+    from woof.spectral_nudging.prepared import selected as selected_nudging
+    for domain in exp.domains:
+        controls = selected_nudging(exp, domain.grid_id)
+        if controls is not None and controls.grid_sfdda or domain.run.sf_surface_physics == 7 and domain.run.pxlsm_soil_nudge:
+            stream_controls = controls if controls is not None and controls.grid_sfdda else domain.run
+            name = stream_controls.sgfdda_inname.replace('<domain>', f'{domain.grid_id:02d}')
+            name = name.replace('<date>', exp.start_time.strftime('%Y-%m-%d_%H:%M:%S'))
+            paths[f'wrfsfdda_d{domain.grid_id:02d}'] = Path(run.namelist_input).parent / name
+            from woof.spectral_nudging.surface_forecast import upper_enabled
+            if controls is not None and upper_enabled(controls):
+                name = controls.gfdda_inname.replace('<domain>', f'{domain.grid_id:02d}')
+                name = name.replace('<date>', exp.start_time.strftime('%Y-%m-%d_%H:%M:%S'))
+                paths[f'wrffdda_d{domain.grid_id:02d}'] = Path(run.namelist_input).parent / name
     original_hashes = {name: _sha(path) for name, path in paths.items()}
+    # WRF's standard auxinput4 stream is required when its selector is on.
+    # Discover it by domain metadata, never by a model or case identifier.
+    surface_sources = {}
+    surface_intervals = {}
+    time_control = parse_namelist(run.namelist_input).get('time_control', {})
+    for domain in exp.domains:
+        if domain.run.sst_update:
+            io_forms = time_control.get('io_form_auxinput4', [0])
+            if not int(io_forms[min(domain.grid_id-1, len(io_forms)-1)]):
+                raise ValueError('sst_update=1 requires io_form_auxinput4 != 0, as in WRF module_check_a_mundo.F')
+            declared = time_control.get('auxinput4_inname', ['wrflowinp_d<domain>'])
+            pattern = str(declared[min(domain.grid_id-1, len(declared)-1)])
+            pattern = pattern.replace('<domain>', f'{domain.grid_id:02d}').replace('<date>', '*')
+            requested = Path(pattern)
+            parent = requested.parent if requested.is_absolute() else run.namelist_input.parent/requested.parent
+            sources = tuple(sorted(parent.glob(requested.name)))
+            if not sources or any(not source.is_file() for source in sources):
+                raise ValueError(f'sst_update=1 needs auxinput4 files matching {pattern}; without the stream the forecast would hold its initial SST')
+            surface_sources[domain.grid_id] = sources
+            def interval_value(key):
+                values = time_control.get(key, [0])
+                return int(values[min(domain.grid_id-1, len(values)-1)])
+            interval = sum(interval_value(key)*factor for key, factor in (
+                ('auxinput4_interval', 60), ('auxinput4_interval_d', 86400),
+                ('auxinput4_interval_h', 3600), ('auxinput4_interval_m', 60),
+                ('auxinput4_interval_s', 1)))
+            if interval_value('auxinput4_interval_y') or interval <= 0:
+                raise ValueError('sst_update=1 requires a positive auxinput4 interval in days, hours, minutes or seconds')
+            surface_intervals[domain.grid_id] = interval
+            for index, source in enumerate(sources):
+                key = f'surface_input_d{domain.grid_id:02d}_{index:04d}'
+                paths[key] = source
+                original_hashes[key] = _sha(source)
+    if surface_sources:
+        from woof.surface_analysis import SOURCE_TABLE
+        paths['surface_source_table'] = SOURCE_TABLE
+        original_hashes['surface_source_table'] = _sha(SOURCE_TABLE)
     from woof.prepared_documents import preparation_directory, json_bytes, write_document
 
     fractional_values = parse_namelist(run.namelist_input).get('physics', {}).get('fractional_seaice', [0])
@@ -453,7 +521,8 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
         if warm:
             from woof.ingest.wrfrst import read_wrfrst
             restored = read_wrfrst(run.restart_paths[domain.grid_id],
-                                   expected_dimensions=dimensions, cfg=cfg)
+                                   expected_dimensions=dimensions, cfg=cfg,
+                                   nudging_controls=selected_nudging(exp,domain.grid_id))
         else:
             restored = read_wrfinput(run.wrfinput_paths[domain.grid_id], expected_dimensions=dimensions, cfg=cfg,
                                     **({} if soil_source is None else {'soil_source': soil_source}))
@@ -477,7 +546,8 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
                 restored, restored_by_id[domain.parent_id],
                 i_parent_start=domain.i_parent_start, j_parent_start=domain.j_parent_start,
                 ratio=domain.parent_grid_ratio, spec_bdy_width=exp.spec_bdy_width,
-                blend_width=exp.blend_width, hypsometric_opt=int(cfg.hypsometric_opt))
+                blend_width=exp.blend_width, hypsometric_opt=int(cfg.hypsometric_opt),
+                use_theta_m=int(getattr(cfg, "use_theta_m", 0)))
             nest_starts[domain.grid_id] = nest_start
             restored = nest_start.restored
             if int(exp.feedback) == 1:
@@ -554,12 +624,27 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
         directory, receipt='wrf-import.json', source_files=original_hashes,
         documents={'experiment.toml': config.encode('utf-8')})
     directory.mkdir(parents=True, exist_ok=reused)
+    surface_analyses = {}
+    for gid, sources in surface_sources.items():
+        from woof.surface_analysis import prepare_analysis
+        output = directory / f'surface-d{gid:02d}'
+        manifest = output / 'manifest.json'
+        if not reused:
+            manifest = prepare_analysis(run.wrfinput_paths[gid], [('wrf-lower-boundary', source) for source in sources], output, interval_seconds=surface_intervals[gid])
+        surface_analyses[gid] = manifest
+        for artifact in sorted(output.iterdir()):
+            if artifact.is_file():
+                paths[f'surface_d{gid:02d}_{artifact.name}'] = artifact
     config_path = directory/'experiment.toml'
     write_document(config_path, config.encode('utf-8'), reused=reused)
     receipt_path = directory/'wrf-import.json'
     receipt = {'schema':'gpuwm-wrf-input-import-v1', 'source_files':original_hashes,
-               'initial_temperature':'T is dry perturbation potential temperature',
+               'initial_temperature': ('THM is the moist prognostic; T is dry history'
+                   if int(getattr(exp.domains[0].run, 'use_theta_m', 0))
+                   else 'T is dry perturbation potential temperature'),
                'boundary_temperature':(
+                   'moist coupled theta retained in the selected prognostic variable'
+                   if int(getattr(exp.domains[0].run, 'use_theta_m', 0)) else
                    'moist coupled THM converted to dry theta at each forcing time'
                    if int(bundles[0].restored.global_attributes['USE_THETA_M']) == 1
                    else 'dry perturbation potential temperature'),
@@ -587,6 +672,8 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
     if warm:
         clock = run.restart_clock
         receipt['initial_temperature'] = (
+            'THM_2 retained as moist prognostic theta (USE_THETA_M = 1)'
+            if int(getattr(exp.domains[0].run, 'use_theta_m', 0)) else
             'THM_2 converted to dry theta with QVAPOR (USE_THETA_M = 1)'
             if bundles[0].restored.warm_start.use_theta_m == 1
             else 'THM_2 is dry perturbation potential temperature')
@@ -615,7 +702,8 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
                                            'forcing_origin':'not declared by input files'}),
                          resolve_execution_plan(exp), MappingProxyType(hashes),
                          MappingProxyType(paths), boundaries,
-                         radar_tendencies=MappingProxyType(radar_tendencies))
+                         radar_tendencies=MappingProxyType(radar_tendencies),
+surface_analyses=MappingProxyType(surface_analyses))
 
 
 def announce_wrf_substitutions(run, receipt_path):
@@ -625,6 +713,9 @@ def announce_wrf_substitutions(run, receipt_path):
     handing over a WRF run and must read, at the terminal, that WOOF will
     integrate a different variable and why.
     """
+    for notice in getattr(run.substitution_report, "notices", ()):
+        if notice.startswith("Thermal prognostic:"):
+            print(f"WRF import: {notice}", flush=True)
     for item in run.substitution_report.substitutions:
         print(f'WRF import: {item.wrf_name} ({item.key}={item.wrf_value}) '
               f'→ {item.gpuwm_name} ({item.gpuwm_key}={item.gpuwm_value}).'
@@ -811,8 +902,8 @@ def draw_door_products(plan: dict, *, first_products=None, door: str) -> bool:
     return drawn
 
 
-def build_parser():
-    parser = argparse.ArgumentParser(description=__doc__)
+def build_parser(*, prog=None):
+    parser = argparse.ArgumentParser(prog=prog, description=__doc__)
     parser.add_argument('--wrfinput', type=Path, required=True, help='real.exe directory with wrfinput, wrfbdy and namelist.input')
     parser.add_argument('--soil-source', type=Path, default=None, metavar='DIR',
                         help='original met_em and producing Vtable directory for automatic soil recovery; defaults to the WRF input directory')
@@ -846,6 +937,8 @@ def build_parser():
     add_progress_arguments(parser)
     parser.add_argument('--allow-shared-gpu', action='store_true',
                         help='proceed when another CUDA compute process holds the selected GPU. The requested configuration is retained')
+    parser.add_argument('--no-supervise', action='store_true',
+                        help='integrate in this process without reserving an exclusive GPU')
     parser.add_argument('--benchmark', action='store_true',
                         help='time the forecast as a benchmark: no products, no post-run '
                              'verification, then a read, init, first step, steps and write summary')
@@ -881,6 +974,10 @@ def run_wrf_forecast(directory, outdir, *, run_seconds=None, restart=None,
     import subprocess
     import sys
     import time
+    from woof.go_cli import admit_render_products
+    # WRF-directory go/run launches share the same catalog admission as
+    # configured go launches: an invalid name must fail before integration.
+    admit_render_products(render_products)
     from woof.stage_reuse import claim_run_output
     from woof.wrfinput_door import resolve_wrfinput_run
     started = time.perf_counter()
@@ -1127,12 +1224,12 @@ def analysis_request(args):
     return request_from_args(args)
 
 
-def main(argv=None, *, in_process=False):
+def main(argv=None, *, in_process=False, prog=None):
     """The door.  ``in_process=True`` runs the forecast in this process (the
     worker's body, as ``woof run --no-supervise`` does) instead of a fresh
     supervised worker: the warm leg executor (:mod:`woof.leg_executor`)
     runs successive legs this way on the card it was started on."""
-    args = build_parser().parse_args(argv)
+    args = build_parser(prog=prog).parse_args(argv)
     try:
         from woof.ensemble.calibration_admission import refuse_public_arguments
         refuse_public_arguments(args)
@@ -1146,7 +1243,7 @@ def main(argv=None, *, in_process=False):
         return run_wrf_forecast(args.wrfinput, args.outdir, run_seconds=args.run_seconds,
                                restart=args.restart, io_mode=args.io_mode,
                                health_debug=args.health_debug,
-                               exclusive_gpu=not (args._worker or in_process),
+                               exclusive_gpu=not (args._worker or in_process or args.no_supervise),
                                rrtmg_variant=args.rrtmg_variant,
                                thompson_version=args.thompson_version,
                                urban_ucm_generation=args.urban_ucm_generation,

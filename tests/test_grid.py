@@ -34,7 +34,7 @@ def test_base_theta_over_constant_terrain_is_the_whole_array_evaluation():
     """A constant terrain evaluates the sounding once per column height and
     broadcasts; the words must be the whole-array evaluation's, and the
     sounding must see one column, not ny*nx of them (the tile-buffer cost
-    the lane/pi-startup-idle profile could not attribute)."""
+    the development branch profile could not attribute)."""
     from woof.core.grid import _base_theta
     seen = []
 

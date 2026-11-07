@@ -47,7 +47,7 @@ def member_column_view(array, *, member, members, ny, nx):
 
 
 def borrow_physics_scratch(view, driver, *, member, members, ny, nx):
-    """Point ``view``'s WB1 cloud-booking slots at the physics owner's words.
+    """Borrow persistent native diagnostics from the physics owner.
 
     Correct mode's Thompson books CLOUDNC/CLOUDNCV (finding WB1,
     woof/core/thompson_cloud_booking.py) into the scratch of the state its
@@ -56,7 +56,9 @@ def borrow_physics_scratch(view, driver, *, member, members, ny, nx):
     and checkpoint frames read ``state._scratch``, so a member view built from
     the batch alone wrote CLOUDNC as zeros (N > 1, where the registry priced
     an unwritten batch slot of that name) or not at all (N = 1), while the
-    same member run ordinarily wrote its booked total.
+    same member run ordinarily wrote its booked total. ISHMAEL likewise
+    owns its precipitation accumulators and three-habit diagnostic bank
+    in the packed physics workspace; those views follow the same route.
     """
     from woof.core.streaming import domain_scratch
     from woof.ensemble.batch_physics import THOMPSON_CLOUD_BOOKING_SLOTS
@@ -69,7 +71,17 @@ def borrow_physics_scratch(view, driver, *, member, members, ny, nx):
     # from acquiring the scratch API indirectly.  domain_scratch answers
     # None for a state without the slot, as the direct lookup did.
     booked = {}
-    for slot in THOMPSON_CLOUD_BOOKING_SLOTS:
+    slots = THOMPSON_CLOUD_BOOKING_SLOTS
+    if getattr(driver, "mp_physics", None) == 55:
+        from woof.physics_registry import consumer_row_for_selector
+        native = consumer_row_for_selector("microphysics", "native_column", 55)
+        slots += tuple(native["surfaces"].values()) + tuple(native["diagnostics"].values())
+
+    if getattr(getattr(driver, "cumulus_callable", None), "scheme", None) == 99:
+        # CU99's held rates and expiry clocks are written in the physics
+        # bank. Observers must borrow those words, not the batch's cold slots.
+        slots = (*slots, *(name for name in owner._scratch if name.startswith("cu_")))
+    for slot in slots:
         value = domain_scratch(owner, slot)
         if value is not None:
             booked[slot] = member_column_view(value, member=member, members=members, ny=ny, nx=nx)

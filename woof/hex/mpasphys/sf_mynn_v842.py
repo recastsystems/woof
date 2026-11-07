@@ -6,6 +6,8 @@ and mpas_atmphys_driver_sfclayer.F:352-796,839-1088 (MPAS f34984b).
 The original WOOF surface backend remains independently selectable.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from collections import ChainMap
@@ -1183,7 +1185,7 @@ extern "C" __global__ void sf_mynn_tables() { if(blockIdx.x==0 && threadIdx.x==0
 _MODULES = {}
 
 
-def _cuda_source(corrections=frozenset()):
+def _cuda_source(corrections=frozenset(), waves=False):
     """Assemble sf_mynn.F90:130-2232 with shared glibc 2.43 helpers."""
     kernels = files('woof').joinpath('core/kernels')
     libm = kernels.joinpath('mynn_libm.cuh').read_text()
@@ -1197,26 +1199,30 @@ def _cuda_source(corrections=frozenset()):
 #define SL_ATAN glibc_atanf
 #define SL_SQRT __fsqrt_rn
 '''
-    return preamble + libm + trig + SOURCE + _driver_source(corrections) + LEAF_SOURCE
+    source = preamble + libm + trig + SOURCE + _driver_source(corrections) + LEAF_SOURCE
+    if waves:
+        from ..wave_surface import mpas_mynn_source
+        source = mpas_mynn_source(source)
+    return source
 
 
 CUDA_OPTIONS = ('--std=c++17', '--fmad=false', '--ftz=false', '--prec-div=true', '--prec-sqrt=true')
 
 
-def _module(corrections=frozenset()):
+def _module(corrections=frozenset(), waves=False):
     """Initialize MPAS sf_mynn_init (sf_mynn.F90:92-106) tables per device."""
     import cupy as cp
     from cupy.cuda import function
     from .strict_cache_v842 import compile_image
     device = cp.cuda.runtime.getDevice()
-    key = (device, frozenset(corrections).intersection(CORRECT_MODE_SOURCE))
+    key = (device, frozenset(corrections).intersection(CORRECT_MODE_SOURCE), waves)
     if key not in _MODULES:
         # CuPy 14.2's RawModule cache appends -ftz=true after caller options.
         # NATIVE-DEFECT-POLICY.md's shared FTZ defect requires bypassing that
         # cache compiler: retain subnormal MPAS sea-ice blend words (:672-747).
         from ..cuda_backend.aot import direct_image
-        binary = direct_image(_cuda_source(key[1]), _hex_numerics.options(CUDA_OPTIONS),
-                              cp.cuda.Device(device).compute_capability)
+        binary = direct_image(_cuda_source(key[1], waves=waves), _hex_numerics.options(CUDA_OPTIONS),
+                              _compilation_target(device, xp=cp))
         module = function.Module()
         module.load(binary)
         module.get_function('sf_mynn_tables')((1,), (1,), ())
@@ -1225,7 +1231,7 @@ def _module(corrections=frozenset()):
 
 
 def run_packed(fields, constants, *, itimestep, isfflx=1, spp_pbl=False,
-               isftcflx=0, iz0tlnd=0, present=127):
+               isftcflx=0, iz0tlnd=0, present=127, ocean_z0=None):
     """Execute sf_mynn_run (sf_mynn.F90:130-996) on field-major device storage.
 
     FIELDS and CONSTANTS give the exact MPAS argument order. MPAS driver
@@ -1241,12 +1247,17 @@ def run_packed(fields, constants, *, itimestep, isfflx=1, spp_pbl=False,
     if constants.shape != (len(CONSTANTS),) or constants.dtype != cp.float32:
         raise ValueError('MYNN constants must match the float32 MPAS argument order')
     n = fields.shape[1]
+    wave_args = ()
+    if ocean_z0 is not None:
+        from ..wave_surface import validate
+        validate(ocean_z0, n)
+        wave_args = (ocean_z0,)
     if n:
-        _module().get_function('sf_mynn_columns')(
+        _module(waves=ocean_z0 is not None).get_function('sf_mynn_columns')(
             ((n + 63) // 64,), (64,),
             (fields, constants, np.int32(itimestep), np.int32(isfflx),
              np.int32(spp_pbl), np.int32(isftcflx), np.int32(iz0tlnd),
-             np.uint32(present), np.int32(n)))
+             np.uint32(present), np.int32(n)) + wave_args)
     return fields
 
 
@@ -1438,7 +1449,7 @@ def driver(mesh: Mapping, diagnostics: Mapping, surface: Mapping, profiles: Mapp
            constants: Mapping, *, itimestep, config_do_restart=False, len_disp,
            xice_threshold, config_frac_seaice=False, isfflx=1, isftcflx=0,
            iz0tlnd=0, spp_pbl=0, pattern_spp=None, sea_state=None,
-           corrections=frozenset()):
+           corrections=frozenset(), ocean_z0=None):
     """MPAS MYNN driver slice, mpas_atmphys_driver_sfclayer.F:839-1088.
 
     The MPAS call site passes no pattern_spp_pbl, so stochastic perturbations
@@ -1458,10 +1469,10 @@ def driver(mesh: Mapping, diagnostics: Mapping, surface: Mapping, profiles: Mapp
     options=dict(itimestep=initflag,isfflx=isfflx,isftcflx=isftcflx,iz0tlnd=iz0tlnd,
                  spp_pbl=bool(spp_pbl==1 and pattern_spp is not None))
     preprocess(packed,profiles,itimestep=initflag,spp_pbl=spp_pbl,pattern_spp=pattern_spp)
-    run_packed(packed,scalar_values,**options)
+    run_packed(packed,scalar_values,ocean_z0=ocean_z0,**options)
     if config_frac_seaice:
         preprocess(sea,profiles,itimestep=initflag,spp_pbl=spp_pbl,pattern_spp=pattern_spp)
-        run_packed(sea,scalar_values,**options)
+        run_packed(sea,scalar_values,ocean_z0=ocean_z0,**options)
         # MPAS sfclayer.F:245-314 retains these arrays across deallocation;
         # driver_seaice.F:390-399 blends their unweighted ocean-call values.
         # Copy into the adapter's prepared device views before it commits.
@@ -1560,12 +1571,13 @@ def launch_slot(call):
         profiles = _SurfaceProfileViews(profiles)
     # Native parameters at sfclayer.F:30-32; the driver passes no stochastic
     # pattern to this wrapper, so sf_mynn_pre.F:142-156 leaves it inactive.
+    from ..wave_surface import feedback
     result = driver(mesh, diagnostics, surface, profiles, constants,
                   itimestep=call.itimestep, config_do_restart=restart,
                   len_disp=len_disp, xice_threshold=threshold,
                   config_frac_seaice=fraction, isfflx=1, isftcflx=0,
                   iz0tlnd=0, spp_pbl=0, sea_state=pools['prepared'],
-                  corrections=getattr(call, 'corrections', frozenset()))
+                  corrections=getattr(call, 'corrections', frozenset()), ocean_z0=feedback(pools))
     _discard_native_profile_inputs(pools)
     return result
 

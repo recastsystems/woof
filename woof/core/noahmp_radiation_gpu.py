@@ -41,6 +41,13 @@ PARAMETER_SLOTS = (
     "xl", "omegas", "betads", "betais",
 )
 
+# Native SNOWALB_BATS parameter order. These are supplied by the actual
+# transferred MPTABLE; CLASS parameters cannot stand in for them.
+BATS_PARAMETER_NAMES = (
+    "bats_cosz", "bats_vis_new", "bats_nir_new", "bats_vis_age",
+    "bats_nir_age", "bats_vis_dir", "bats_nir_dir",
+)
+
 #: Slots 24..36, then SMC(1..4) at 37..40, then the seven carried entry
 #: values at 41..51, then SOLAD(2)/SOLAI(2) at 52..55.  The order is
 #: ``_ALB_IN`` in ``tests/test_noahmp_radiation_cuda.py`` extended by the two

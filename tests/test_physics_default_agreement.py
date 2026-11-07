@@ -93,7 +93,7 @@ def _served(source, when):
     publication era when ``when`` lies outside every era.
 
     A dated publication row (the GEFS v11 archive layouts,
-    lane/cap-gefs-archive) serves only its own era, so a recent epoch asks it
+    development branch) serves only its own era, so a recent epoch asks it
     for objects it never published.  Read from the route table, so the
     next dated row needs no edit here.
     """

@@ -17,14 +17,14 @@ fn repeated_product_mesh_builds_geometry_once_without_changing_it() {
             build_projected_map_uncached(&lat, &lon, &options)
         })
         .unwrap();
-    assert_eq!(first, expected);
+    assert_eq!(*first, expected);
     for _ in 0..64 {
         let reused = cache
             .get_or_build(&lat, &lon, &options, 1_000_000, || {
                 panic!("one geometry build per product would stall the live series")
             })
             .unwrap();
-        assert_eq!(reused, expected);
+        assert_eq!(*reused, expected);
     }
 }
 
@@ -74,7 +74,7 @@ fn changed_mesh_and_map_options_invalidate_cached_geometry() {
             .unwrap();
         assert_eq!(calls.get(), 1);
         assert_eq!(
-            actual,
+            *actual,
             build_projected_map_uncached(&lat, &lon, &changed).unwrap()
         );
     }
@@ -88,7 +88,7 @@ fn changed_mesh_and_map_options_invalidate_cached_geometry() {
         .unwrap();
     assert_eq!(calls.get(), 1);
     assert_eq!(
-        actual,
+        *actual,
         build_projected_map_uncached(&moved, &lon, &options).unwrap()
     );
     assert!(cache.entries.len() <= 4);

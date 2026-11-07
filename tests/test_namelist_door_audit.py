@@ -51,7 +51,6 @@ def test_the_declared_divergences_are_exactly_the_known_ones(result):
         ("domains", "interp_type"), ("domains", "lagrange_order"),
         ("domains", "lowest_lev_from_sfc"), ("domains", "rebalance"),
         ("domains", "zap_close_levels"),
-        ("physics", "fractional_seaice"),
         # seaice_threshold is carried (RunConfig.seaice_threshold), no
         # longer a divergence.
         ("time_control", "history_begin"), ("time_control", "history_end"),
@@ -64,5 +63,10 @@ def test_the_swaps_this_lane_closed_refuse_by_name(result):
     # chemistry request never imports to run with none.
     assert ("stoch", "rand_perturb") in refused
     assert ("physics", "hailcast_opt") in _rows(result, "translated")
-    assert ("dfi_control", "dfi_opt") in refused
+    # This audit toggles only dfi_opt, leaving native 2004 stop dates.
+    # A configured-window admission is checked by test_namelist_door_rule.
+    # The door refuses the unbracketed window by name (woof.dfi_control
+    # import_dfi) instead of the run validator's bare ValueError.
+    row = _rows(result, "refused")[("dfi_control", "dfi_opt")]
+    assert "does not bracket the start" in row["why"]
     assert ("fdda", "grid_fdda") in refused

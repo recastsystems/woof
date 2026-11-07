@@ -188,7 +188,7 @@ def _gpu_pins(entries: dict[str, dict[str, Any]], *, require_gpu: bool) -> None:
         uuid = device_uuid_hex(properties.get("uuid"))
         identity = {
             "name": block["device_0_name"],
-            "compute_capability": str(device.compute_capability),
+            "compute_capability": __import__("woof.backend", fromlist=["compilation_target"]).compilation_target(device.id, xp=cp),
             "uuid": None if uuid is None else str(uuid),
             "device_count": block["device_count"],
         }
@@ -201,6 +201,13 @@ def _gpu_pins(entries: dict[str, dict[str, Any]], *, require_gpu: bool) -> None:
     entries["gpu_identity"] = _resolved(gpu_identity, identity)
     entries["cuda_driver_version"] = _resolved(
         driver, int(block["driver_version"]))
+    if getattr(cp.cuda.runtime, 'is_hip', False):
+        from woof.hiprtc import identity as hiprtc_identity
+        entries["cuda_toolkit_nvrtc"] = _resolved(toolkit, {
+            "backend": "hip", "hip_runtime_version": int(block["runtime_version"]),
+            "hiprtc": hiprtc_identity(),
+        })
+        return
     try:
         from cupy.cuda import nvrtc
 

@@ -19,8 +19,9 @@
 #      (same consent) and used for this install via RUSTUP_TOOLCHAIN;
 #      an older rustc without rustup stops with the version it needs;
 #   3. creates .venv if absent on free-threaded CPython 3.14t (see
-#      "Interpreter" below), installs the checkout's recast-woof-data
-#      companion, then installs -e ".[gpu-cuNN,render]" into it,
+#      "Interpreter" below), installs the checkout's recast-woof-data,
+#      gpuwm-kernels and gpuwm-kernels-startup companions, then
+#      installs -e ".[gpu-cuNN,render]" into it,
 #      where NN is the CUDA major this box's driver reports (CuPy
 #      ships one wheel per major and the wrong one dies at its first
 #      cuBLAS load); -Cuda overrides the detection, and an undetectable
@@ -217,7 +218,7 @@ $rustWorkspaces = @('grib1_bridge', 'rustwx', 'arwen-tui', 'zarr_bridge',
                     'rw_wps', 'region_global_dealias',
                     'nextgen_hydrofabric', 'nextgen_forcing', 'nextgen_verify',
                     'hydro_world', 'hydro_world_params', 'nextgen_reservoir_prepare', 'hydro_world_init',
-                    'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output', 'rw_icechunk')
+                    'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output', 'rw_icechunk', 'cam_tables', 'waves_data', 'dfi-runtime', 'tslist_bridge', 'aerosol_grid', 'storm_merge', 'tc_vitals', 'tc_frames_io', 'tc-verify')
 function ConvertTo-RustVersion([string]$Text) {
     # '1.94', '1.94.0' or rustc's '1.95.0-nightly' as a comparable [version].
     if ($Text -match '^(\d+)\.(\d+)(?:\.(\d+))?') {
@@ -631,9 +632,14 @@ function Install-PythonPackages {
             & $venvPython -m pip uninstall -y @cupyHave
         }
     }
-    Say 'installing the matching recast-woof-data companion from this checkout (editable)'
-    Invoke-Step 'pip install recast-woof-data' {
-        & $venvPython -m pip install @preferBinary -e recast-woof-data
+    # The engine pins its three companions (recast-woof-data, gpuwm-kernels,
+    # gpuwm-kernels-startup) to its own exact version, which PyPI does not
+    # carry before that version is published: all three come from this
+    # checkout, as ci.yml installs them, or an unpublished checkout cannot
+    # install at all (2.9.12 R11: the kernel companions resolved from PyPI).
+    Say 'installing the matching recast-woof-data, gpuwm-kernels and gpuwm-kernels-startup companions from this checkout (editable)'
+    Invoke-Step 'pip install recast-woof-data gpuwm-kernels gpuwm-kernels-startup' {
+        & $venvPython -m pip install @preferBinary -e recast-woof-data -e gpuwm-kernels -e gpuwm-kernels-startup
     }
     Say "installing woof with the [$gpuExtra,render] extras (editable)"
     Invoke-Step 'pip install' {
@@ -744,7 +750,7 @@ try {
 } finally {
     Pop-Location
 }
-foreach ($workspace in 'nextgen_hydrofabric', 'nextgen_forcing', 'nextgen_verify', 'hydro_world', 'hydro_world_params', 'nextgen_reservoir_prepare', 'hydro_world_init', 'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output') {
+foreach ($workspace in 'nextgen_hydrofabric', 'nextgen_forcing', 'nextgen_verify', 'hydro_world', 'hydro_world_params', 'nextgen_reservoir_prepare', 'hydro_world_init', 'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output', 'cam_tables', 'waves_data', 'dfi-runtime', 'tslist_bridge', 'aerosol_grid', 'storm_merge', 'tc_vitals', 'tc_frames_io', 'tc-verify') {
     Say "building NextGen tools\$workspace (offline, locked)"
     Push-Location "tools\$workspace"
     try {

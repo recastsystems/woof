@@ -126,7 +126,7 @@ _PHYSICS_STATE_KEYS = {
         "ghg_input", "o3input", "aer_opt",
         "aer_type", "aer_aod550_opt", "aer_angexp_opt", "aer_ssa_opt", "aer_asy_opt",
         "aer_aod550_val", "aer_angexp_val", "aer_ssa_val", "aer_asy_val", "sst_update", "surface_input_source",
-        "num_land_cat", "fractional_seaice",
+        "num_land_cat", "fractional_seaice", "tmn_update", "lagday",
         # Land-surface state selectors WRF-Runner-generated namelists carry
         # (2026-07-30 interop verification).  Each changes what real.exe
         # must have initialized, so they are state-relevant and value-gated
@@ -172,7 +172,11 @@ _RUNTIME_OUTPUT_KEYS = {
         "swrad_scat",
     },
     "dynamics": {
+        "do_avgflx_em", "do_avgflx_cugd",
         "w_damping", "epssm", "diff_opt", "km_opt", "mix_full_fields",
+        "tke_adv_opt", "sfs_opt", "m_opt", "tke_mix2_off", "tke_mix6_off",
+        "c_k", "c_s", "mix_isotropic",
+        "mix_upper_bound", "tke_upper_bound", "tke_heat_flux", "tke_drag_coefficient",
         "diff_6th_opt", "diff_6th_factor", "diff_6th_slopeopt", "damp_opt",
         "zdamp", "dampcoef", "khdif", "kvdif", "non_hydrostatic",
         "use_theta_m", "moist_adv_opt", "scalar_adv_opt", "time_step_sound",
@@ -769,6 +773,9 @@ def analyze_namelists(
     gpuwm_reasons: list[str] = []
     dynamics = inp.get("dynamics", {})
     try:
+        supplied_theta = dynamics.get("use_theta_m")
+        if supplied_theta is not None and len(supplied_theta) != 1:
+            raise ValueError("use_theta_m is one scalar shared by all domains")
         theta_values = _integers(
             _column(dynamics, "use_theta_m", max_dom, default=theta_default),
             "&dynamics/use_theta_m",
@@ -791,30 +798,21 @@ def analyze_namelists(
             gpuwm_reasons.append(
                 f"&dynamics/use_theta_m {declaration}; WRF defines "
                 f"{THETA_M_ADMITTED} and domains {undefined_theta} declare "
-                "something else. Set explicit &dynamics use_theta_m = 0."
+                "something else. Set one scalar &dynamics use_theta_m = 0 or 1."
             )
         elif moist_theta:
-            # The SAME answer woof.namelist_import gives for the same
-            # namelist, from the same function: a declared divergence the
-            # reader is told about, not a runtime FAIL.  This door used to
-            # FAIL the gpuwm_runtime verdict for a pair the importer
-            # accepts and announces -- one configuration, two answers.
             decision = theta_m_decision(1)
             issues.append(_issue(
-                "THETA_M_DRY_SUBSTITUTION", "&dynamics/use_theta_m",
-                f"&dynamics/use_theta_m {declaration}; domains "
-                f"{moist_theta} select WRF's moist-theta prognostic. "
-                + decision.reason,
-                "Nothing to change: the import books this as a declared "
-                "divergence and announces it. Set explicit &dynamics "
-                "use_theta_m = 0 to integrate what WRF would integrate.",
+                "THETA_M_PROGNOSTIC", "&dynamics/use_theta_m",
+                f"&dynamics/use_theta_m {declaration}; " + decision.reason,
+                "The imported shared configuration retains use_theta_m = 1.",
                 severity=SEVERITY_ADVISORY,
             ))
     except (KeyError, ValueError) as error:
         gpuwm_reasons.append(
             "woof forecast runtime cannot classify "
             f"&dynamics/use_theta_m: {error}. Declare the WRF integer "
-            "use_theta_m = 0 explicitly. Stock-WRF input export remains "
+            "use_theta_m = 0 or 1 explicitly. Stock-WRF input export remains "
             "independent and supported."
         )
     try:
@@ -1242,17 +1240,25 @@ def analyze_namelists(
                 "remove &fdda.",
             ))
         active_nudging = active_nudging_selectors(fdda)
-        unsupported_nudging = [(key, values) for key, values in active_nudging if key != "grid_fdda"]
-        if unsupported_nudging:
-            named = ", ".join(
-                f"&fdda/{key} = {values}" for key, values in unsupported_nudging)
-            gpuwm_reasons.append(f"{named}: FDDA_OBSERVATION_INPUT: the gridded source does not supply surface or point-observation forcing")
+        obs_active = any(key == "obs_nudge_opt" for key, _ in active_nudging)
+        if obs_active:
+            from woof.namelist_import import _Section
+            from woof.fddaobs.namelist import consume as consume_observations
+            try:
+                consume_observations(_Section("fdda", fdda, str(input_path)), max_dom)
+            except (KeyError, TypeError, ValueError) as error:
+                gpuwm_reasons.append(f"&fdda/obs_nudge_opt: {error}")
         if grid_fdda is not None and any(value != 0 for value in grid_fdda):
             from woof.namelist_import import _Section
             from woof.spectral_nudging.namelist import translate as translate_nudging
             try:
-                translate_nudging(_Section("fdda", fdda, str(input_path)),
-                                  tuple(range(1, max_dom + 1)), lambda *args: None)
+                section = _Section("fdda", fdda, str(input_path))
+                if _value(inp.get("physics", {}), "sf_surface_physics", 0) == 7:
+                    section.take("pxlsm_soil_nudge")
+                if obs_active:
+                    from woof.fddaobs.namelist import consume as consume_observations
+                    consume_observations(section, max_dom)
+                translate_nudging(section, tuple(range(1, max_dom + 1)), lambda *args: None)
             except (KeyError, TypeError, ValueError) as error:
                 gpuwm_reasons.append(f"&fdda/grid_fdda: {error}")
             issues.append(_issue(

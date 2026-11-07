@@ -1,0 +1,89 @@
+{
+  "schema": "wrf471-fog-kf-native-cost-profile-v1",
+  "native_commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "flags": "REAL32 -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+  "mpi_processes": 8,
+  "model_steps": 60,
+  "timer": "CPU_TIME around native calls; first call excluded on each rank",
+  "arithmetic": "unmodified REAL32 physics; REAL64 clocks only",
+  "arms": {
+    "base": {
+      "ysu": {
+        "calls": 472,
+        "cpu_seconds": 6.353953999999966,
+        "mean_cpu_ms": 13.461766949152471
+      },
+      "trigger2_prepass": {
+        "calls": 472,
+        "cpu_seconds": 0.0003419999997902323,
+        "mean_cpu_ms": 0.0007245762707420177
+      },
+      "kf_eta_cps": {
+        "calls": 472,
+        "cpu_seconds": 7.732545999999957,
+        "mean_cpu_ms": 16.382512711864315
+      }
+    },
+    "fog1-trigger2": {
+      "sf_fogdes": {
+        "calls": 472,
+        "cpu_seconds": 0.0092690000001312,
+        "mean_cpu_ms": 0.019637711864684746
+      },
+      "ysu": {
+        "calls": 472,
+        "cpu_seconds": 6.413468999999964,
+        "mean_cpu_ms": 13.58785805084738
+      },
+      "bl_fogdes": {
+        "calls": 472,
+        "cpu_seconds": 0.20331799999996747,
+        "mean_cpu_ms": 0.43075847457620225
+      },
+      "trigger2_prepass": {
+        "calls": 472,
+        "cpu_seconds": 2.815864000000218,
+        "mean_cpu_ms": 5.965813559322496
+      },
+      "kf_eta_cps": {
+        "calls": 472,
+        "cpu_seconds": 10.647175000000004,
+        "mean_cpu_ms": 22.557574152542383
+      },
+      "fog_added_over_same_native_ysu": 0.03314695993698572,
+      "cumulus_over_baseline": 1.3769300564135103,
+      "trigger2_prepass_fraction_of_cumulus": 0.2644705285674573
+    },
+    "fog2-trigger3": {
+      "sf_fogdes": {
+        "calls": 472,
+        "cpu_seconds": 0.05785299999994642,
+        "mean_cpu_ms": 0.12256991525412377
+      },
+      "ysu": {
+        "calls": 472,
+        "cpu_seconds": 6.2885229999999765,
+        "mean_cpu_ms": 13.323141949152493
+      },
+      "bl_fogdes": {
+        "calls": 472,
+        "cpu_seconds": 0.19972900000004223,
+        "mean_cpu_ms": 0.4231546610170386
+      },
+      "trigger2_prepass": {
+        "calls": 472,
+        "cpu_seconds": 0.0002660000000460627,
+        "mean_cpu_ms": 0.0005635593221314888
+      },
+      "kf_eta_cps": {
+        "calls": 472,
+        "cpu_seconds": 8.136770999999928,
+        "mean_cpu_ms": 17.238921610169342
+      },
+      "fog_added_over_same_native_ysu": 0.04096065165063237,
+      "cumulus_over_baseline": 1.0522757963547806,
+      "trigger2_prepass_fraction_of_cumulus": 3.26911006892126e-05
+    }
+  },
+  "patch_sha256": "26bc0caa6702ec6652fb2544c853d59164b59d83fb8fafdb743c51937dc446a8"
+}

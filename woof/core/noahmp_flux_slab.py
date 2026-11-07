@@ -65,12 +65,10 @@ if (_bare.NSNOW, _bare.NSOIL, _bare.NLAYER) != (NSNOW, NSOIL, NLAYER):
 #: Fortran layer index of packed slot ``0``: ``slot = layer + LAYER_OFFSET``.
 LAYER_OFFSET = _vege.LAYER_OFFSET
 
-#: The option identity each device leaf is pinned to, copied from the two
-#: ``_bind_call`` guards so a slab caller is refused for the same reasons a
-#: per-column caller is.
-_VEGE_OPTIONS = (("opt_sfc", 1), ("opt_crs", 1), ("opt_crop", 0),
-                 ("opt_stc", 1))
-_BARE_OPTIONS = (("opt_sfc", 1), ("opt_stc", 1))
+#: Options with one implemented device branch. STC has its own 1/2/3 selector;
+#: full-column admission still requires the jointly selected physics replay.
+_VEGE_OPTIONS = (("opt_crop", 0),)
+_BARE_OPTIONS = ()
 
 
 class VegeFluxSlabInputs(NamedTuple):
@@ -178,6 +176,30 @@ def _check_options(fields: Mapping[str, object], leaf: str,
                 f"device {leaf} admits {name}={value} only")
 
 
+def _sfc_option(fields):
+    value=fields.get("opt_sfc",1)
+    if type(value) is not int or value not in (1,2):
+        raise ValueError("flux opt_sfc must be scalar int 1 or 2")
+    return value
+
+
+def _crs_option(fields):
+    value=fields.get("opt_crs",1)
+    if type(value) is not int or value not in (1,2):
+        raise ValueError("VEGE_FLUX opt_crs must be scalar int 1 or 2")
+    return value
+
+
+def _stc_option(fields: Mapping[str, object], leaf: str) -> int:
+    """Select the implemented whole-domain STC branch without device readback."""
+    value = fields.get("opt_stc", 1)
+    if type(value) is not int:
+        raise TypeError(f"device {leaf} opt_stc must be a scalar int")
+    if value not in (1, 2, 3):
+        raise NotImplementedError(f"device {leaf} admits opt_stc=1, 2 or 3 only")
+    return value
+
+
 def _unpack(cp, device_out, names: Sequence[str]) -> dict:
     """Split an ``(n, len(names))`` output slab into named ``(n,)`` columns.
 
@@ -200,21 +222,28 @@ def pack_vege_flux_slab(fields: Mapping[str, object],
     ``(n,)`` for every scalar, ``(n, NLAYER)`` for ``dzsnso``/``stc``/``df``,
     ``(n,)`` int for ``isnow``, and ``(n,)`` for each name in
     ``PARAMETER_NAMES`` -- i.e. the values the per-column path reads off the
-    parameter object.  Names VEGE_FLUX accepts but never packs (``thair``,
-    ``fsno``, ``latheag``, ``q2``, ``qc``, ``p``) are ignored if present.
+    parameter object. Names VEGE_FLUX accepts but never packs (``latheag``, ``q2``, ``qc``, ``p``) are ignored if present. SFC2 packs actual THAIR/CZIL. STC=3 takes
+    actual ``fsno`` separately; STC=1 does not read it.
     """
     _slots_inputs = []
     _slots_params = []
     cp = _cupy()
     n = _check_size(n)
     _check_options(fields, "VEGE_FLUX", _VEGE_OPTIONS)
+    _stc_option(fields, "VEGE_FLUX")
 
-    inputs = cp.empty((n, _vege.N_INPUT), dtype=cp.float32)
+    opt_sfc = _sfc_option(fields)
+    inputs = cp.empty((n, _vege.N_INPUT + (opt_sfc == 2)), dtype=cp.float32)
     for slot, name in enumerate(_vege.INPUT_NAMES):
         _slots_inputs.append((slot, _column(cp, fields, name, n, "VEGE_FLUX")))
 
-    params = cp.empty((n, len(_vege.PARAMETER_NAMES)), dtype=cp.float32)
-    for slot, name in enumerate(_vege.PARAMETER_NAMES):
+    if opt_sfc == 2:
+        _slots_inputs.append((_vege.N_INPUT, _column(cp, fields, "thair", n, "VEGE_FLUX SFC2")))
+    names=(_vege.PARAMETER_NAMES
+           + (("RGL","RSMIN","RSMAX","TOPT","HS") if _crs_option(fields)==2 else ())
+           + (("CZIL",) if opt_sfc==2 else ()))
+    params = cp.empty((n, len(names)), dtype=cp.float32)
+    for slot, name in enumerate(names):
         _slots_params.append((slot, _column(cp, fields, name, n, "VEGE_FLUX")))
 
     copy_slab_slots(params, _slots_params)
@@ -230,7 +259,8 @@ def pack_vege_flux_slab(fields: Mapping[str, object],
 
 
 def evaluate_vege_flux_slab(fields: Mapping[str, object], n: int, *,
-                            use_device_libm: bool = False) -> dict:
+                            use_device_libm: bool = False,
+                            atan_profile="glibc_2_39") -> dict:
     """Run VEGE_FLUX over a whole slab; return ``OUTPUT_NAMES -> (n,)``.
 
     ``use_device_libm`` is the existing negative control and is forwarded
@@ -244,23 +274,39 @@ def evaluate_vege_flux_slab(fields: Mapping[str, object], n: int, *,
 
     packed = pack_vege_flux_slab(fields, n)
     device_out = cp.empty((n, _vege.N_OUTPUT), dtype=cp.float32)
-    kernel = _vege._module(use_device_libm).get_function("k_vegeflux")
+    opt_stc = _stc_option(fields, "VEGE_FLUX")
+    kernel_name = f"k_vegeflux_stc{opt_stc}" if opt_stc != 1 else "k_vegeflux"
+    opt_crs = _crs_option(fields)
+    opt_sfc = _sfc_option(fields)
+    if opt_crs == 2: kernel_name = "k_vegeflux_crs2"
+    if opt_sfc == 2: kernel_name = "k_vegeflux_sfc2"
+    profile_options = ({} if atan_profile == "glibc_2_39" else
+                       {"atan_profile": atan_profile})
+    module = (_vege._module(use_device_libm, selected_options=True, **profile_options)
+              if opt_stc != 1 or opt_crs != 1 or opt_sfc != 1 else _vege._module(use_device_libm, **profile_options))
+    kernel = module.get_function(kernel_name)
     blocks = (n + _vege.THREADS - 1) // _vege.THREADS
+    args = (cp.ascontiguousarray(packed.inputs),
+            cp.ascontiguousarray(packed.params),
+            cp.ascontiguousarray(packed.isnow),
+            cp.ascontiguousarray(packed.dzsnso),
+            cp.ascontiguousarray(packed.stc),
+            cp.ascontiguousarray(packed.df))
+    if opt_stc == 3 or opt_crs == 2 or opt_sfc == 2:
+        fsno = _column(cp, fields, "fsno", n, "VEGE_FLUX selected")
+        args += (cp.ascontiguousarray(cp.broadcast_to(fsno, (n,)),
+                                     dtype=cp.float32),)
     kernel(
         (blocks,), (_vege.THREADS,),
-        (cp.ascontiguousarray(packed.inputs),
-         cp.ascontiguousarray(packed.params),
-         cp.ascontiguousarray(packed.isnow),
-         cp.ascontiguousarray(packed.dzsnso),
-         cp.ascontiguousarray(packed.stc),
-         cp.ascontiguousarray(packed.df),
-         device_out, np.int32(n)),
+        args + (device_out, np.int32(n)) + ((np.int32(opt_stc), np.int32(opt_crs)) if opt_sfc==2 else
+                                                  (np.int32(opt_stc),) if opt_crs==2 else ()),
     )
     return _unpack(cp, device_out, _vege.OUTPUT_NAMES)
 
 
 def evaluate_vege_flux_masked_slab(fields: Mapping[str, object], n: int,
-                                   active, *, use_device_libm: bool = False) -> dict:
+                                   active, *, use_device_libm: bool = False,
+                            atan_profile="glibc_2_39") -> dict:
     """Evaluate only active columns in a fixed-width device slab.
 
     The leaf arithmetic is unchanged. Inactive outputs are positive zero,
@@ -277,16 +323,32 @@ def evaluate_vege_flux_masked_slab(fields: Mapping[str, object], n: int,
                 for name in _vege.OUTPUT_NAMES}
     packed = pack_vege_flux_slab(fields, n)
     device_out = cp.empty((n, _vege.N_OUTPUT), dtype=cp.float32)
-    kernel = _vege._module(use_device_libm).get_function("k_vegeflux_masked")
+    opt_stc = _stc_option(fields, "VEGE_FLUX")
+    kernel_name = (f"k_vegeflux_masked_stc{opt_stc}" if opt_stc != 1
+                   else "k_vegeflux_masked")
+    opt_crs = _crs_option(fields)
+    opt_sfc = _sfc_option(fields)
+    if opt_crs == 2: kernel_name = "k_vegeflux_masked_crs2"
+    if opt_sfc == 2: kernel_name = "k_vegeflux_masked_sfc2"
+    profile_options = ({} if atan_profile == "glibc_2_39" else
+                       {"atan_profile": atan_profile})
+    module = (_vege._module(use_device_libm, selected_options=True, **profile_options)
+              if opt_stc != 1 or opt_crs != 1 or opt_sfc != 1 else _vege._module(use_device_libm, **profile_options))
+    kernel = module.get_function(kernel_name)
+    args = (cp.ascontiguousarray(packed.inputs),
+            cp.ascontiguousarray(packed.params),
+            cp.ascontiguousarray(packed.isnow),
+            cp.ascontiguousarray(packed.dzsnso),
+            cp.ascontiguousarray(packed.stc),
+            cp.ascontiguousarray(packed.df))
+    if opt_stc == 3 or opt_crs == 2 or opt_sfc == 2:
+        fsno = _column(cp, fields, "fsno", n, "VEGE_FLUX selected")
+        args += (cp.ascontiguousarray(cp.broadcast_to(fsno, (n,)),
+                                     dtype=cp.float32),)
     kernel(
         ((n + _vege.THREADS - 1) // _vege.THREADS,), (_vege.THREADS,),
-        (cp.ascontiguousarray(packed.inputs),
-         cp.ascontiguousarray(packed.params),
-         cp.ascontiguousarray(packed.isnow),
-         cp.ascontiguousarray(packed.dzsnso),
-         cp.ascontiguousarray(packed.stc),
-         cp.ascontiguousarray(packed.df),
-         device_out, np.int32(n), active),
+        args + (device_out, np.int32(n), active) + ((np.int32(opt_stc), np.int32(opt_crs)) if opt_sfc==2 else
+                                                  (np.int32(opt_stc),) if opt_crs==2 else ()),
     )
     return _unpack(cp, device_out, _vege.OUTPUT_NAMES)
 
@@ -308,8 +370,10 @@ def pack_bare_flux_slab(fields: Mapping[str, object], n: int):
     cp = _cupy()
     n = _check_size(n)
     _check_options(fields, "BARE_FLUX", _BARE_OPTIONS)
+    _stc_option(fields, "BARE_FLUX")
 
-    inputs = cp.empty((n, _bare.N_INPUT), dtype=cp.float32)
+    opt_sfc = _sfc_option(fields)
+    inputs = cp.empty((n, _bare.N_INPUT + (opt_sfc == 2)), dtype=cp.float32)
     for slot, name in enumerate(_bare.SCALAR_NAMES):
         _slots_inputs.append((slot, _column(cp, fields, name, n, "BARE_FLUX")))
     base = len(_bare.SCALAR_NAMES)
@@ -318,6 +382,8 @@ def pack_bare_flux_slab(fields: Mapping[str, object], n: int):
                                                 "BARE_FLUX")))
         base += NLAYER
 
+    if opt_sfc == 2:
+        _slots_inputs.append((_bare.N_INPUT, _column(cp, fields, "CZIL", n, "BARE_FLUX SFC2")))
     ints = cp.empty((n, _bare.N_INT), dtype=cp.int32)
     for slot, name in enumerate(_bare.INT_NAMES):
         if name != "iurban":
@@ -348,13 +414,29 @@ def evaluate_bare_flux_slab(fields: Mapping[str, object], n: int) -> dict:
 
     inputs, ints = pack_bare_flux_slab(fields, n)
     device_out = cp.empty(n * _bare.N_OUTPUT, dtype=cp.float32)
-    kernel = get_kernel("noahmp_bareflux", "noahmp_bare_flux")
+    opt_stc = _stc_option(fields, "BARE_FLUX")
+    kernel_name = (f"noahmp_bare_flux_stc{opt_stc}" if opt_stc != 1
+                   else "noahmp_bare_flux")
+    active = fields.get("active")
+    if active is not None and kernel_name == "noahmp_bare_flux":
+        kernel_name = "noahmp_bare_flux_masked"
+    if active is not None and opt_stc == 2:
+        kernel_name = "noahmp_bare_flux_masked_stc2"
+    opt_sfc = _sfc_option(fields)
+    if opt_sfc == 2:
+        kernel_name = "noahmp_bare_flux_masked_sfc2" if active is not None else "noahmp_bare_flux_sfc2"
+    if opt_sfc == 2 or kernel_name.endswith(("_stc2", "_stc3", "_masked")):
+        from woof.core.noahmp_kernel_sources import selected_kernel
+        kernel = selected_kernel("noahmp_bareflux", kernel_name)
+    else:
+        kernel = get_kernel("noahmp_bareflux", kernel_name)
     blocks = (n + _bare.THREADS - 1) // _bare.THREADS
     kernel(
         (blocks,), (_bare.THREADS,),
         (cp.ascontiguousarray(inputs).reshape(-1),
          cp.ascontiguousarray(ints).reshape(-1),
-         device_out, np.int32(n)),
+         device_out, np.int32(n), *((active,) if kernel_name in ("noahmp_bare_flux_masked", "noahmp_bare_flux_masked_stc2", "noahmp_bare_flux_masked_sfc2") else ()),
+         *((np.int32(opt_stc),) if opt_sfc==2 else ())),
     )
     return _unpack(cp, device_out.reshape(n, _bare.N_OUTPUT),
                    _bare.OUTPUT_NAMES)

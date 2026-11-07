@@ -124,7 +124,7 @@ DIGEST_SCHEMA = "gpuwm-mapped-parity-digest-v2"
 # Platform scope: which box's C runtime measured a committed golden.
 # --------------------------------------------------------------------
 #
-# MEASURED on a development machine (Linux) 2026-08-18 at 7f0db8ab2, field by field on
+# MEASURED on test host 1 (Linux) 2026-08-18 at 7f0db8ab2, field by field on
 # `rap-awip32` -- 22 leaf diffs against the committed golden, and every
 # one of them in the DERIVED layer: `eastward_wind`, `northward_wind`,
 # `eastward_wind_10m`, `northward_wind_10m` (the grid-relative wind

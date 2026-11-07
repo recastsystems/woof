@@ -109,9 +109,9 @@ mode.
 New meshes come from the **engine's** door, `woof mesh`: it generates an
 icosahedral Goldberg grid at the resolution you ask for and builds the
 matching static in the same run, with no native toolchain anywhere in the
-loop. (This door was not present on the published woof 2.5.2 wheel; it
+loop. (This door was not present on the published gpuwm 2.5.2 wheel; it
 arrives with the 2.5.3 bundle, well below the floor this distribution's
-declared `woof>=2.9.4,<2.10` range requires. The commands below were proven from a `woof` checkout.)
+declared `gpuwm>=2.9.12,<2.10` range requires. The commands below were proven from a `woof` checkout.)
 
 **See what a card can hold:**
 

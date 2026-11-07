@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "gpuwm-kernels"
+description = "Source-bound compiled kernel packs for woof, and the native-WRF verification oracles its ports are graded against"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "licenses/*"]
+requires-python = ">=3.11"
+dependencies = []
+dynamic = ["version"]
+[tool.setuptools.dynamic]
+version = { file = ["gpuwm_kernels/VERSION"] }
+[tool.setuptools.packages.find]
+include = ["gpuwm_kernels"]
+[tool.setuptools.package-data]
+gpuwm_kernels = ["VERSION", "data/**/*", "verify_oracles/**/*"]

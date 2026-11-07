@@ -125,6 +125,9 @@ def _compiler():
 
 
 def compiler_identity() -> dict[str, Any]:
+    from woof.hip_backend import active, compiler_binding
+    if active():
+        return compiler_binding()
     import cupy
 
     compiler = _compiler()
@@ -136,7 +139,7 @@ def compiler_identity() -> dict[str, Any]:
 
 #: Options whose value only names where this run's data comes from or what date it starts.
 #: The flag itself stays in the tag (an IAU run compiles IAU kernels); its value does not.
-#: Breakage it prevents: every DA member and cycle passes its own --init/--iau-analysis path
+#: Breakage it prevents: every state analysis member and cycle passes its own --init/--iau-analysis path
 #: and start time, so each wrote a new ~22 MB plan + manifest that no later run could find.
 #: A box-wide kernel cache then filled with dead files and every member replayed no plan.
 _INPUT_OPTIONS = ("--init", "--init-source", "--iau-analysis", "--iau-increment", "--start-time")
@@ -180,7 +183,8 @@ def _name_sensitive(source: str, options: tuple[str, ...]) -> bool:
 def _device_arch() -> str:
     arch = _state["device_arch"]
     if arch is None:
-        arch = str(_compiler()._get_arch())
+        from woof.hip_backend import active, architecture
+        arch = architecture() if active() else str(_compiler()._get_arch())
         _state["device_arch"] = arch
     return arch
 
@@ -220,7 +224,7 @@ def _raw_key(source: str, options, arch: str, filename: str) -> str:
 def raw_planned(source: str, options, arch, filename: str):
     """The image the plan's pool compiled for this raw NVRTC request, or None for the caller's own path.
 
-    THE BREAKAGE THIS ENDS (an RTX 5090 host and V8X6000, 2026-10-29): with no prebuilt pack, raw NVRTC
+    THE BREAKAGE THIS ENDS (an RTX 5090 host and eight-card system, 2026-10-29): with no prebuilt pack, raw NVRTC
     units (Grell-Freitas on every MPAS convection_permitting run) were left out of the catalog the
     pool compiles ahead, so each compiled in the foreground on one core at its first call while the
     card waited.  A row still queued is taken back and compiled by the caller exactly as before; a
@@ -656,6 +660,9 @@ class _ProcessCompileFuture(concurrent.futures.Future):
 
 
 def _process_compiler_identity(arch):
+    from woof.hip_backend import active, compiler_binding
+    if active():
+        return compiler_binding()
     """Use processes for the measured CuPy cubin route, retain other routes."""
     try:
         compiler = _compiler()
@@ -735,7 +742,9 @@ def _catalog_rows(arch: str) -> list[dict[str, Any]]:
     debug = compiler._get_bool_env_variable("CUPY_CUDA_COMPILE_WITH_DEBUG", False)
     target = str(arch).removeprefix("sm_")
     rows = []
-    for row in inventory(compiler_family=identity["nvrtc"][0], compiler=identity):
+    hip = identity.get("backend", "").startswith("hip")
+    declarations = inventory(catalogs=False) if hip else inventory(compiler_family=identity["nvrtc"][0], compiler=identity)
+    for row in declarations:
         route = row.get("compiler_route")
         if route == RAW_ROUTE:
             # The raw call adds nothing to its options (no CuPy include, --ftz or debug flags).
@@ -765,10 +774,13 @@ def _catalog_rows(arch: str) -> list[dict[str, Any]]:
             options += ("-ftz=true",)
             if debug:
                 options += ("--device-debug", "--generate-line-info")
-            try:
-                filename = cached_program_filename(row, options, target)
-            except Exception:
-                continue  # headers differ from this CuPy: the route compiles it itself
+            if hip:
+                filename = request.get("filename") or "kern.cu"
+            else:
+                try:
+                    filename = cached_program_filename(row, options, target)
+                except Exception:
+                    continue  # headers differ from this CuPy: the route compiles it itself
         else:
             filename = request.get("filename") or "kern.cu"
         arguments = {"source": row["source"], "options": list(options), "arch": "device",
@@ -805,7 +817,7 @@ def prioritize_physics(config) -> None:
     (:func:`_rrfs_only`) are not compiled ahead; were one ever requested it
     compiles at that call as before.  Families are NOT matched to slots for
     the skip: a slot's scheme uses images of other families (thompson_aero
-    runs thompson_workspace, sf_mynn runs sfclay_mm5; measured on V8X6000).
+    runs thompson_workspace, sf_mynn runs sfclay_mm5; measured on eight-card system).
     """
     from .physics_suites import load_table
 
@@ -1140,6 +1152,7 @@ def compiler_pool(workers: int) -> concurrent.futures.ProcessPoolExecutor:
     (this plan's, woof.hex.kernel_static's) stops its workers at a normal exit.
     """
     import multiprocessing
+    import multiprocessing.util
     from .kernel_compile_worker import bind_to_parent
 
     pool = concurrent.futures.ProcessPoolExecutor(
@@ -1158,6 +1171,18 @@ def compiler_pool(workers: int) -> concurrent.futures.ProcessPoolExecutor:
         # sets the attributes to None while the manager thread keeps the objects.
         register(functools.partial(_drop_at_exit, pool, getattr(pool, "_processes", None),
                                    getattr(pool, "_result_queue", None)))
+    # The same drop as a multiprocessing exit finalizer. In a process started by multiprocessing (an ensemble's
+    # co-resident MPAS-suite member, woof.hex.multi_member._suite_member_process), CPython's Process._bootstrap runs
+    # multiprocessing.util._exit_function -- which joins every non-daemon child, these compile workers included --
+    # BEFORE threading._shutdown, where the hook above runs; the workers wait for work that never comes and the
+    # member waits for them. THE BREAKAGE THIS ENDS (rel/hex-0.5.0 63568d13, release box, 2026-11-02): a 2-member
+    # global-120km --sppt --skeb ensemble finished both forecasts (receipts completed, every frame written) and then
+    # never exited, cold cache and warm alike, holding its card lease until killed by PID. _exit_function runs
+    # finalizers of priority >= 0 before that join; in a plain process the hook above has already run and this
+    # second call finds nothing left to stop.
+    multiprocessing.util.Finalize(None, functools.partial(_drop_at_exit, pool, getattr(pool, "_processes", None),
+                                                          getattr(pool, "_result_queue", None)),
+                                  exitpriority=100)
     return pool
 
 

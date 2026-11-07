@@ -76,7 +76,7 @@ def test_a_stale_staged_estate_is_a_gap_naming_fetch_bridges(monkeypatch,
                                                              tmp_path):
     """THE #212 defect: older bytes, present and launchable, reported ok.
 
-    a development machine carried an Aug-13 bridge set under a 2.5.0 wheel.  Every
+    test host 1 carried an Aug-13 bridge set under a 2.5.0 wheel.  Every
     per-artifact probe passed -- the files exist, they launch, and the
     ABI marker only moves when the contract version bumps, which it had
     not.  ``woof doctor`` said no gaps, rc 0; the first ``woof prep``
@@ -90,7 +90,7 @@ def test_a_stale_staged_estate_is_a_gap_naming_fetch_bridges(monkeypatch,
                   "gfs_grib2_bridge": b"release bytes"})
     assert check.status == "verified", check.detail
 
-    # Now the estate goes stale exactly as a development machine's had: same filename,
+    # Now the estate goes stale exactly as test host 1's had: same filename,
     # older bytes.
     platform = bridge_assets.host_platform()
     by_name = {a.name: a for a in bridge_assets.BUNDLED_ARTIFACTS}

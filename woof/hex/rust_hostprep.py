@@ -46,7 +46,7 @@ def hostprep_engine() -> tuple[Path, str]:
 def _widen_pipe(stream) -> None:
     """Give the bridge's pipe 1 MiB instead of the kernel's 64 KiB default (the same bytes cross it).
 
-    THE COST THIS REMOVES (30 km globe over 4 cards, V5090 box, 2026-10-27): the momentum correction's ~1.5 GB of
+    THE COST THIS REMOVES (30 km globe over 4 cards, reference system box, 2026-10-27): the momentum correction's ~1.5 GB of
     arrays crossed a 64 KiB pipe in 1 MiB writes, ~6 s of the main thread's start-up on a loaded box, each write
     waiting on 16 reader wake-ups.  A host that refuses the size (pipe-max-size) keeps the default.
     """
@@ -160,7 +160,7 @@ def deformation_weights(*, counts, edges, cells_on_cell, vertices_on_cell,
                 outputs=[(edges.shape, wire)] * 5)
 
 
-# THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 2,341,819 cells x 60 interfaces, V8X6000 2026-10-29, host-only):
+# THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 2,341,819 cells x 60 interfaces, eight-card system 2026-10-29, host-only):
 # the vertical grid (17.5 s) and the initial state (18.8 s) ran on one thread, most of it in these two calls:
 # about 15 GB of zb/zb3 in and zb_cell/zb3_cell out (terrain) and 10.7 GB in (momentum) crossed the bridge's
 # pipe on one thread, and the prep cache hashed 6.8 GB of inputs and saved 7.9 GB of outputs on that thread.

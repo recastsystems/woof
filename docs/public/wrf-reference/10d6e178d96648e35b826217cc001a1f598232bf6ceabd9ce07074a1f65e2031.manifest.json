@@ -1,10 +1,10 @@
 {
   "build_recipe": "10d6e178d96648e35b826217cc001a1f598232bf6ceabd9ce07074a1f65e2031.build-recipe.md",
-  "build_recipe_sha256": "806d59a553a556fd96838ad8d9decf57f34e1d4b74a0cdb19b53f800573ecfc0",
+  "build_recipe_sha256": "54037e0664e96f210d976e27467c435a6da2c0c478d11a68fbf1bb92bfd0c3d4",
   "config_sha256": "10d6e178d96648e35b826217cc001a1f598232bf6ceabd9ce07074a1f65e2031",
   "namelist_sha256": {
     "namelist.input": "89a6511550a1a6952bf7fc812f7ab0d5c827fd9589d9209f4d814eb38df552f7",
-    "namelist.wps": "0bee9ad1bcb8c8f2da1b613383f203778a9ac6909a5f1fc8fc51d00fb6de67e5"
+    "namelist.wps": "98ca11f2d870b1a4bdb4574f9c0fcf3cca1f9fe2c3304592199378a850aa1dd0"
   },
   "namelists": {
     "namelist.input": "10d6e178d96648e35b826217cc001a1f598232bf6ceabd9ce07074a1f65e2031.namelist.input",
@@ -49,5 +49,11 @@
   "schema": "gpuwm.wrf-reference-manifest/v1",
   "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
   "wrf_exe_sha256": "bda5e5e69754b5f5c7eb700ff20bb0e2bb65145f4e1beeef492e9b10edb586e5",
-  "wrf_version": "4.6.1"
+  "wrf_version": "4.6.1",
+  "namelist_original_sha256": {
+    "namelist.wps": "0d8e865e7ac2e331d3cd83788a51658842fc2e7e98bcb60d11762db61ae25f0f"
+  },
+  "namelist_normalization": {
+    "namelist.wps": "Personal geography-root locator replaced by /reference/; all other bytes unchanged."
+  }
 }

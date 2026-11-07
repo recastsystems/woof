@@ -7,6 +7,8 @@ Unknown discovery layouts fall back to the ordinary cold diagnostic.
 """
 from __future__ import annotations
 
+from woof.backend import compilation_target as _compilation_target
+
 import contextlib
 import hashlib
 import io
@@ -90,7 +92,7 @@ def binding(cp, source):
         "cuda_path": os.environ.get("CUDA_PATH", ""),
         "driver": cp.cuda.runtime.driverGetVersion(),
         "runtime": cp.cuda.runtime.runtimeGetVersion(),
-        "sm": str(cp.cuda.Device().compute_capability),
+        "sm": str(_compilation_target(xp=cp)),
         "probe": hashlib.sha256(source.encode()).hexdigest(),
         "environment": {key: os.environ.get(key, "") for key in (
             "CUPY_ACCELERATORS", "CUPY_CACHE_IN_MEMORY", "CUPY_COMPILE_WITH_PTX",

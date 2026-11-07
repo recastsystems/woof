@@ -3,7 +3,7 @@
 ``PhysicsDriver._refresh_surface_diagnostics`` takes one launch on C-contiguous
 float32 CuPy arrays (``woof.core.noah_sfcdiags.refresh``) and runs the same
 kernel on contiguous copies for any other carrier (``refresh_any``).  Until
-lane/verify-noah-lsm the second path was a set of CuPy array expressions
+development branch the second path was a set of CuPy array expressions
 whose TH2 called CUDA's powf; the kernel now calls WOOF's own float32 powf,
 which is WRF's word (tests/test_noah_wrf461_parity.py and
 tools/noah_wrf461_oracle/sfcdiags_sweep.py), so the expressions went and both

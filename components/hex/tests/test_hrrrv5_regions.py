@@ -66,6 +66,8 @@ def test_country_prepare_skips_the_parent_init_and_runs_the_producer(tmp_path, m
     ran = []
     monkeypatch.setattr(cli, "main", lambda argv: ran.append(list(argv)) or 0)
     monkeypatch.setattr(prep_store, "run_or_fetch", lambda argv, **kw: 0)
+    from woof.hex import engines
+    monkeypatch.setattr(engines, "resolve", lambda spec, *a, **k: tmp_path / spec.name)  # no staged bridges here
     monkeypatch.setattr(region_static, "build_parent_static", lambda **kw: {"built": True})
     monkeypatch.setattr(mesh_point, "admit_pair", lambda *a, **k: {})
     monkeypatch.setattr(mesh_point, "resolve_geog", lambda explicit: tmp_path / "geog")
@@ -145,6 +147,23 @@ def test_the_fork_static_reads_era5_deep_soil_by_default(tmp_path):
     (geog / "soiltemp_era5_1deg").rmdir()
     with pytest.raises(cs.RrfsInitError, match="soiltemp_era5_1deg"):
         cs.static_job(row, grid=tmp_path / "g.nc", geog=geog, out=tmp_path / "s.nc", valid_time="t")
+
+
+def test_the_fork_static_gives_a_sub_kilometre_cell_a_terrain_sample(tmp_path):
+    """hrrrv5 at 937.5 m (WOOF run_c117e774c73a40c7, 2026-10-31): at the recipe's supersample_30s of 1, 1,134 of 14,875
+    cells narrower than a 30-arc-second pixel had terrain 0/0, smoothing spread the NaN, and the init stopped on "4367 of
+    8424 land cells with a soil temperature of 0 K". The init passes the hex static's own factor for the mesh."""
+    import inspect
+    from woof.hex.mpasphys.rrfs import cold_start_rrfs as cs
+    _, row = cs.producer_for_suite("hrrrv5")
+    geog = tmp_path / "geog"
+    for name in row["static"]["geog"].values():
+        (geog / name).mkdir(parents=True, exist_ok=True)
+    (geog / "soiltemp_era5_1deg").mkdir(exist_ok=True)
+    kw = dict(grid=tmp_path / "g.nc", geog=geog, out=tmp_path / "s.nc", valid_time="t")
+    assert cs.static_job(row, **kw)["config"]["supersample_30s"] == row["static"]["supersample_30s"] == 1
+    assert cs.static_job(row, supersample_30s=2, **kw)["config"]["supersample_30s"] == 2
+    assert "supersample_30s=thirty_second_supersample(grid)" in inspect.getsource(cs.run_rrfs_init)
 
 
 def test_a_cache_whose_rrfs_tables_are_gone_fetches_them_again(tmp_path, monkeypatch):

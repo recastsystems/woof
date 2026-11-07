@@ -1,0 +1,47 @@
+{
+  "native_source_sha256": "4bca54b294def08ffc98ef69a30650c943e2c394f34802e75e50c7f1a2896fcb",
+  "instrumented_sha256": "9d7be9912f23c2344c6ba051af417da5a9d10c4f43f57cb366f19fafcb7ffe33",
+  "capture_steps": [
+    241,
+    481
+  ],
+  "nz": 49,
+  "columns_per_tile": 16,
+  "field_order": [
+    "RTHCUTEN",
+    "RQVCUTEN",
+    "RQCCUTEN",
+    "RQRCUTEN",
+    "RQICUTEN",
+    "RQSCUTEN",
+    "RUCUTEN",
+    "RVCUTEN",
+    "cldfra_dp_KF",
+    "cldfra_sh_KF",
+    "qc_KF",
+    "qi_KF",
+    "qr_KF",
+    "qs_KF",
+    "nc_KF",
+    "ni_KF",
+    "nr_KF",
+    "ns_KF",
+    "ccn_KF",
+    "EFCS",
+    "EFIS",
+    "EFSS",
+    "UDR_KF",
+    "DDR_KF",
+    "UER_KF",
+    "DER_KF"
+  ],
+  "surface_order": [
+    "RAINCV",
+    "PRATEC",
+    "NCA",
+    "CUTOP",
+    "CUBOT",
+    "ainc_frac",
+    "TIMEC_KF"
+  ]
+}

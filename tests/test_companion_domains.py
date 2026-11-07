@@ -778,7 +778,10 @@ def test_every_option_carries_the_registrys_own_couplings():
                for option in component["options"]}
     assert options["myj"]["requires_components"] == {
         "surface_layer": ["eta-similarity"]}
-    assert options["eta-similarity"]["requires_components"] == {"pbl": ["myj"]}
+    # EEPS (bl 16) and BouLac (bl 8) joined MYJ when their ports landed:
+    # both consume the Eta layer without the fm/fh denominators.
+    assert options["eta-similarity"]["requires_components"] == {
+        "pbl": ["myj", "eeps", "boulac"]}
     # The conditional refusal this began with, Milbrandt-Yau against
     # RTE+RRTMGP, retired with the defect it described (the adapter carries
     # the scheme's own cloud-optics row).  The carriers today, named by
@@ -789,7 +792,7 @@ def test_every_option_carries_the_registrys_own_couplings():
     # coefficients; mix_full_fields = false under diff_opt = 2 carries
     # none since the run door admits it)
     # and, on the 1.5-order TKE closure, the PBL pairing under diff_opt
-    # = 2 that lane/282-namelist-tolerance wrote when diff_opt = 1
+    # = 2 that development branch wrote when diff_opt = 1
     # admitted it.  The forward is held equal to the table above, so a
     # rule a later pass writes reaches the payload unchanged.
     carriers = {
@@ -801,9 +804,21 @@ def test_every_option_carries_the_registrys_own_couplings():
     # FAST_SBM carries the registry's RTE+RRTMGP refusal (its remedy is the
     # legacy RRTMG pair) until its bin cloud optics are qualified; Lin
     # (mp2) carries it because it produces no effective radii.
+    # The 3.0 ports brought their own conditional refusals: SBU-YLin and
+    # NTU (no radii for RTE+RRTMGP, like Lin), SSiB (its spectral surface
+    # carriers on RTE+RRTMGP), BMJ (radiation adapters that do not merge its
+    # convective cloud) and SMS-3DTKE (scale-aware KF, coordinate diffusion).
     assert set(carriers) == {("microphysics", "off"),
                              ("microphysics", "fast-sbm-mp30"),
-                             ("microphysics", "lin-mp2")} | {
+                             ("microphysics", "lin-mp2"),
+                             ("microphysics", "sbu-ylin-mp13"),
+                             ("microphysics", "ntu-mp56"),
+                             # old Eta Ferrier (3.0 port) carries its own
+                             # conditional refusal as well.
+                             ("microphysics", "etanew-mp95"),
+                             ("land_surface", "ssib"),
+                             ("cumulus", "betts-miller-janjic"),
+                             ("turbulence", "sms-3dtke")} | {
         ("turbulence", option) for option in turbulence}
     for option in turbulence:
         rules = carriers[("turbulence", option)]

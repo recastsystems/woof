@@ -515,6 +515,6 @@ def test_a_declared_exception_does_not_count_against_a_must_run_ceiling(
 def test_the_tree_declares_no_test_exception() -> None:
     """The one exception the 2.8.6 ruling made (the mp=28 g3 gate,
     6e26fd29c) died with its defect: the accumulator rework on
-    lane/cut286-mp28-g3 puts all 22 oracle fixtures inside the flat 2e-6
+    development branch puts all 22 oracle fixtures inside the flat 2e-6
     bound, so g3 gates for real.  Any new exception is a new ruling."""
     assert sorted(declared_test_exceptions(DECLARED)) == []

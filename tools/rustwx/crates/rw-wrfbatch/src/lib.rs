@@ -6,7 +6,7 @@
 //! anything in this file.  What the library exists for is the two SIBLING
 //! binaries in this crate:
 //!
-//! * `rw_ensbatch` -- ensemble products (mean, spread, NMEP, PMM,
+//! * `rw_ensbatch` -- ensemble products (mean, spread, max, NMEP, PMM,
 //!   paintball) from N member wrfouts at one valid time;
 //! * `rw_obsgrid` -- the `gpuwm-obs.radar-grid` observation grid (v1 and
 //!   the windowed v2), read natively rather than disguised as a forecast.

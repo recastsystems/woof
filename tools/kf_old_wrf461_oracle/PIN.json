@@ -1,0 +1,50 @@
+{
+  "schema": "gpuwm-wrf-native-pin-v1",
+  "authority": "WRF public source only",
+  "upstream_tag": "v4.7.1",
+  "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+  "license": "Public domain, UCAR notice retained in WRF-LICENSE.txt",
+  "external_tables": [],
+  "sources": [
+    {
+      "path": "phys/module_cu_kf.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_cu_kf.F",
+      "sha256": "8042c90f7b7f5b14b36acd809f4f310b8fc3f75101039169e602e7df3b5d2f61",
+      "bytes": 161243,
+      "identical_to_v461": true
+    },
+    {
+      "path": "share/module_model_constants.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_model_constants.F",
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "bytes": 8280,
+      "identical_to_v461": true
+    },
+    {
+      "path": "phys/module_physics_addtendc.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_physics_addtendc.F",
+      "sha256": "824929ccaf29d99670545cf5cea3e20f4344f06604d1d778cbdbdc2dd445fe44",
+      "bytes": 135437
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+      "bytes": 437707
+    }
+  ],
+  "legacy_fixture_origin": "WRF v4.6.1 generated column harness, not real-run captures",
+  "existing_shared_dependency": {
+    "path": "woof/core/kernels/glibc_flt32.cuh",
+    "sha256": "37d05e97eff78ab684669746f158180e1d61a3eb2102c19402a5f5d685ac94df",
+    "license": "Apache-2.0 original code; MIT Arm log/exp/pow cores and data. Existing repository notices retained.",
+    "license_file": "woof/core/kernels/LICENSE-third-party.txt",
+    "upstream_license_url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/master/LICENSE",
+    "new_third_party_code_added": false,
+    "upstream_table_urls": [
+      "https://raw.githubusercontent.com/ARM-software/optimized-routines/v21.02/math/exp2f_data.c",
+      "https://raw.githubusercontent.com/ARM-software/optimized-routines/v21.02/math/logf_data.c",
+      "https://raw.githubusercontent.com/ARM-software/optimized-routines/v21.02/math/powf_log2_data.c"
+    ]
+  }
+}

@@ -181,7 +181,15 @@ def launch_classic_entry(state, th_save, pii, t1d, dz, ng1d, column_micro,
     """``tc_entry``: phy_prep's theta, Exner and layer depths, the driver's
     private graupel number, and per column WRF's no-microphysics exit and
     melting level."""
-    get_kernel("thompson_classic", "tc_entry")(
+    if getattr(state, "use_theta_m", 0):
+        from woof.core.kernels import get_kernel_int_defines
+        from woof.core.theta_m_physics import save_vapour
+        save_vapour(state)
+        entry = get_kernel_int_defines("thompson_classic", "tc_entry",
+                                       (("GPUWM_USE_THETA_M", 1),))
+    else:
+        entry = get_kernel("thompson_classic", "tc_entry")
+    entry(
         _grid(size), (_TPB,),
         (state.thb, state.thp, state.phb, state.php, state.p,
          state.qv, state.qc, state.qi, state.qr, state.qs, state.qg,
@@ -229,6 +237,12 @@ def launch_classic_effective_radius(t1d, state, *, size):
 
 def launch_classic_finish(th, state, th_save, cfg, dt, *, size):
     """``tc_finish``: moist_physics_finish (theta increment, h_diabatic)."""
+    from woof.core.afwa_diagnostics import capture_microphysics_theta
+    capture_microphysics_theta(state,cfg,th)
+    if getattr(state, "use_theta_m", 0):
+        from woof.core.theta_m_physics import finish_microphysics
+        finish_microphysics(state, cfg, th, dt, theta_before=th_save)
+        return
     get_kernel("thompson_classic", "tc_finish")(
         _grid(size), (_TPB,),
         (th, state.thp, state.h_diabatic, th_save,

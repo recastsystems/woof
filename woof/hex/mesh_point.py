@@ -1476,7 +1476,7 @@ def static_coordinate_errors(grid: Path, static: Path) -> list[str]:
         f"for bit): positions are up to {worst_m:.3g} m off the grid")
     return [
         f"{static.name} declares {_BINARY64}, but {found}.  A static builder that reads "
-        f"its grid through binary32 wrote it -- woof 2.9.0's rw_mpas_static does, and so "
+        f"its grid through binary32 wrote it -- gpuwm 2.9.0's rw_mpas_static does, and so "
         f"does every build of woof integrate/hex-mpas before 46c8a71513e -- and every "
         f"later step here refuses the pair: the vertical check (\"dcEdge disagrees with "
         f"spherical cell-center arc length\") and rw_mpas_mesh --cull-parent (\"provenance "

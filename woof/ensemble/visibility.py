@@ -76,6 +76,9 @@ def diagnose(*, state, fields, streamed, visibility, fog_flag, workspace, array_
         if any(a is None for a in (p, theta, base, vapor, cloud)):
             return False
         pb, mode = p, 2 if getattr(state, "_WRF_EXACT", False) else 1
+        if getattr(state, "use_theta_m", 0):
+            theta = state.total_theta() - xp.float32(300.0)
+            mode = 2
         species = [cloud] + [getattr(state, name, None) for name in ("qr", "qi", "qs", "qg")]
     shape = tuple(visibility.shape)
     if len(p.shape) != 3 or tuple(p.shape[1:]) != shape or p.shape[0] < 1:

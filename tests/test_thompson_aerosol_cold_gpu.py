@@ -2067,7 +2067,7 @@ def test_the_two_former_snow_number_survivors_are_bit_exact():
     calls WOOF's own powf word (thompson_aerosol_libm.cuh), which returns the
     oracle host's word, and both states are bit-exact; the ratchet that
     pinned them at one ulp retires with the cause it accepted
-    (lane/verify-thompson-aerosol-mp28).
+    (development branch).
     """
     import cupy as cp
 

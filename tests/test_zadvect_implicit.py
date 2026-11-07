@@ -7,7 +7,7 @@ numbers from 0 to 3.5 (``tools/ieva_wrf_oracle/synth.py``, seed 158,
 packed with its outputs into ``tests/data/ieva_wrf471.npz``), and its
 ``wrf_*`` arrays are what ``WW_SPLIT``, ``CALC_MUT_NEW``,
 ``calc_mu_uv_1`` and ``advect_{u,v,s,ph,w}_implicit`` computed from it,
-out of a development machine's WRF 4.7.1 ``main/libwrflib.a`` (gfortran 15.2, WRF's own
+out of test host 4's WRF 4.7.1 ``main/libwrflib.a`` (gfortran 15.2, WRF's own
 -O2 build), chained through ``tools/ieva_wrf_oracle/ieva_oracle.F90``.
 
 The w row moved once (A179).  ``wrf_rw_t`` is WRF's ``advect_w_implicit``
@@ -478,7 +478,9 @@ def test_the_strict_ieva_substep_does_not_add_the_t0_flux(monkeypatch):
                             rth_t=None, ru_t=None, rv_t=None, rw_t=None,
                             msft=None, msfu=None, msfv=None, has_msf=False,
                             p=np.zeros((2, 3, 4), dtype=np.float32))
-    cfg = SimpleNamespace(dx=3000.0, dy=3000.0)
+    # h_sca_adv_order: the IEVA t0-offset flux picks its horizontal order
+    # from it (WRF's default 5 here).
+    cfg = SimpleNamespace(dx=3000.0, dy=3000.0, h_sca_adv_order=5)
     ctx = SimpleNamespace(wwE=None)
     for strict, expected in ((False, ["t0"]), (True, [])):
         calls.clear()

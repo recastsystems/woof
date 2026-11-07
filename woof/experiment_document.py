@@ -54,7 +54,7 @@ _TABLE_ORDER = ("experiment", "projection", "shared")
 #: after its fetch ("unsupported experiment table(s) ['devices']",
 #: measured on configs/recipes/hrrr_v4_gsd41.toml on two cards).
 #: ``output`` rides with it as well: the HRRR recipe's [output] names the
-#: 2-D subset written between whole hours (lane/upp-history-subset), the
+#: 2-D subset written between whole hours (development branch), the
 #: forecast reads it from the published authority, and a document that could
 #: not carry it refused the root preparation of every HRRR-recipe run
 #: ("unsupported experiment table(s) ['output']",

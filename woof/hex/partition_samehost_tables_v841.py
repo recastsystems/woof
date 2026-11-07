@@ -23,6 +23,7 @@ __all__ = [
     "TABLES_VERSION",
     "PeerHaloTables",
     "SameHostHaloExchangeTables",
+    "active_peers",
     "build_all",
 ]
 
@@ -111,6 +112,16 @@ class SameHostHaloExchangeTables:
             "edges_received_per_field": self.edge_recv_count,
             "peers": [peer.receipt() for peer in self.peers],
         }
+
+
+def active_peers(table: SameHostHaloExchangeTables) -> tuple[int, ...]:
+    """Return rank-ordered peers with at least one cell or edge halo packet."""
+    return tuple(
+        int(peer.peer) for peer in table.peers
+        if any(indices.size for indices in (
+            peer.cell_send, peer.cell_recv, peer.edge_send, peer.edge_recv
+        ))
+    )
 
 
 def _entity_ownership(

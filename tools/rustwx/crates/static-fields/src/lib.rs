@@ -41,6 +41,7 @@ pub mod landfire;
 pub mod sfire_debug;
 pub mod sfire_ideal;
 pub mod smooth;
+pub mod snow_optics;
 #[cfg(test)]
 pub(crate) mod testsupport;
 pub mod types;
@@ -63,3 +64,6 @@ pub const GCELL_RATIO: f64 = 4.0;
 pub const M_PER_DEG: f64 = EARTH_RADIUS_M * std::f64::consts::PI / 180.0;
 
 pub mod fire_ignition;
+
+pub mod snow_shapes;
+pub mod snow_aging;

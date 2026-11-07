@@ -124,6 +124,15 @@ def _tool(spec_name: str) -> Path:
         raise MovingCaseError(str(error)) from None
 
 
+def _static_engine(preserve_lakes: bool) -> Path:
+    engine = Path(_tool('STATIC'))
+    if preserve_lakes and b'--preserve-lake-mask' not in engine.read_bytes():
+        raise MovingCaseError(
+            f'{engine} lacks --preserve-lake-mask; stage a TC-capable rw_mpas_static '
+            'before preparing this member. The requested lake mask cannot be omitted')
+    return engine
+
+
 # ---------------------------------------------------------------------------
 # stage
 # ---------------------------------------------------------------------------
@@ -204,8 +213,22 @@ def stage_case(case_path: Path, casedir: Path, *, source: str | None = None, sta
     if row.get("remap"):
         remap = init_sources.remap(row, products, cycle, out_dir, init_sources.resolve_remapper(None))
         inputs = remap.pop("outputs")
-    log("stage: decoding to a WPS intermediate")
-    decoded = init_sources.decode(row, inputs, cycle, out_dir, writer)
+    tc_init = (case.get("storm") or {}).get("tc_initialization")
+    if tc_init:
+        # TC-VI1 on hex (woof.hex.tc_vortex): the case's storm.tc_initialization moves and corrects the source's own
+        # vortex toward the vitals (and/or merges a declared inner core) on the canonical source frame before the mesh
+        # interpolates it. Breakage it prevents (the storm box M, 2026-10-27): hex members started from their source's
+        # weak, broad vortex and the first analysis rejected the core observations.
+        from .tc_vortex import stage_source
+        log("stage: TC canonical composition with vortex initialization")
+        decoded = stage_source(row, inputs, cycle, out_dir, vitals=_case_path(case, tc_init.get("vitals")),
+                               storm_merge=list(tc_init.get("storm_merge", ())),
+                               size_change_limit=tc_init.get("size_change_limit"), member=source_member,
+                               max_wind_gain=tc_init.get("max_wind_gain"),
+                               workers=int(tc_init.get("workers", jobs if jobs > 3 else 8)))
+    else:
+        log("stage: decoding to a WPS intermediate")
+        decoded = init_sources.decode(row, inputs, cycle, out_dir, writer)
     surface_input = (init_sources.decode_surface_input(row, [product["file"] for product in companions],
                                                        source_cycle, out_dir, writer) if companions else None)
     stage = dict(schema="gpuwm-hex.moving-stage/v1", created_utc=_now(), case=case["_path"],
@@ -214,12 +237,24 @@ def stage_case(case_path: Path, casedir: Path, *, source: str | None = None, sta
                  met=decoded["met"], products=products,
                  decode=decoded, surface_input=surface_input, remap=remap,
                  seconds=round(time.monotonic() - began, 1))
+    if decoded.get("first_guess"):
+        stage["first_guess"] = decoded["first_guess"]
+    if decoded.get("vortex_initialization"):
+        stage["vortex_initialization"] = decoded["vortex_initialization"]
     if best_track:
         stage["best_track"] = _best_track(case, casedir, ibtracs_subset, ibtracs_file, log)
     tmp = previous.with_suffix(".json.partial")
     tmp.write_text(json.dumps(stage, indent=2) + "\n")
     tmp.replace(previous)
     return stage
+
+
+def _case_path(case: dict[str, Any], value: str | None) -> Path | None:
+    """A path named in the case: absolute, or relative to the case file."""
+    if value is None:
+        return None
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (Path(case["_path"]).parent / path).resolve()
 
 
 def _best_track(case, casedir: Path, subset: str, local: Path | None, log) -> dict[str, Any]:
@@ -462,9 +497,19 @@ def prepare_member(case_path: Path, folder: Path, name: str, lat: float, lon: fl
             _stamp(folder, name, f"mesh {seconds:.0f}s ({_cores(env)})")
         static_receipt = folder / f"{name}-static.json"
         static_rebuilt = mesh_rebuilt or not static_receipt.is_file() or not (folder / f"{name}.static.nc").is_file()
+        preserve_lakes = case.get("preserve_lake_mask", False)
+        if preserve_lakes and not static_rebuilt:
+            if "tc_lakemask" not in json.loads(static_receipt.read_text()).get("generated_fields", []):
+                log(f"prepare: {name} cached static lacks requested tc_lakemask; rebuilding static and init")
+                static_rebuilt = True
         if static_rebuilt:
-            argv = [_tool("STATIC"), "--grid", folder / f"{name}.grid.nc", "--out", folder / f"{name}.static.nc",
+            argv = [_static_engine(preserve_lakes), "--grid", folder / f"{name}.grid.nc", "--out", folder / f"{name}.static.nc",
                     "--receipt", static_receipt]
+            if (folder / f"{name}.static.nc").exists():
+                # A stale managed artifact is being rebuilt, and its dependent init below follows it.
+                argv += ['--clobber']
+            if preserve_lakes:
+                argv += ["--preserve-lake-mask"]
             from .engines import static_geog_argv
 
             argv += static_geog_argv(geog)
@@ -477,6 +522,8 @@ def prepare_member(case_path: Path, folder: Path, name: str, lat: float, lon: fl
                 argv += ["--supersample-30s", str(supersample)]
             seconds = _run_logged(argv, logs / f"{name}-static.log", env=env)
             _stamp(folder, name, f"static {seconds:.0f}s ({_cores(env)})")
+            if preserve_lakes and 'tc_lakemask' not in json.loads(static_receipt.read_text()).get('generated_fields', []):
+                raise MovingCaseError(f'{argv[0]} did not record the requested tc_lakemask in {static_receipt}')
         init_receipt = folder / f"{name}-init.json"
         init = folder / f"{name}.init.nc"
         from .init_physics import profile_init_matches
@@ -488,6 +535,9 @@ def prepare_member(case_path: Path, folder: Path, name: str, lat: float, lon: fl
             table = init_sources.load_table()
             row = init_sources.resolve_source(table, stage["source"])
             cycle = init_sources.Cycle.parse(stage["cycle"])
+            if stage.get("first_guess"):
+                # a TC canonical export (woof.hex.tc_vortex) carries its own level counts and specific humidity
+                row = dict(row, first_guess=dict(row["first_guess"], **stage["first_guess"]))
             argv = init_sources.init_argv(table, row, met=Path(stage["met"]), grid=folder / f"{name}.grid.nc",
                                           static=folder / f"{name}.static.nc", vertical_spec=vertical,
                                           out=init, cycle=cycle)
@@ -496,8 +546,18 @@ def prepare_member(case_path: Path, folder: Path, name: str, lat: float, lon: fl
             argv += init_sources.cold_soil_init_flags(stage.get("products", []), row.get("cold_soil"))
             argv += init_sources.surface_input_init_flags(stage.get("surface_input"))
             seconds = _run_logged([sys.executable, "-m", "woof.hex.cli", *argv], logs / f"{name}-init.log", env=env)
-            init_receipt.write_text(json.dumps(dict(argv=argv, seconds=round(seconds, 1), source=stage["source"],
-                                                    met=stage["met"], init_sha256=_sha256(init)), indent=2) + "\n")
+            record = dict(argv=argv, seconds=round(seconds, 1), source=stage["source"],
+                          met=stage["met"], init_sha256=_sha256(init))
+            if stage.get("vortex_initialization"):
+                # the vortex the init holds ON THE MESH, against the vitals it was corrected toward; refuses a
+                # centre that missed the vitals or a low that vanished in the interpolation
+                from .tc_vortex import check_mesh_vortex, mesh_vortex
+                diagnosis = mesh_vortex(init, stage["vortex_initialization"]["vitals_record"],
+                                        static=folder / f"{name}.static.nc")
+                record["mesh_vortex"] = diagnosis
+                log(f"init {name}: mesh vortex {json.dumps(diagnosis)}")
+                check_mesh_vortex(diagnosis)
+            init_receipt.write_text(json.dumps(record, indent=2) + "\n")
             _stamp(folder, name, f"init {seconds:.0f}s ({_cores(env)})")
         member = register_member(case, name, float(lat), float(lon), folder)
         _stamp(folder, name, "rows-done")
@@ -1013,7 +1073,12 @@ def run_moving_ensemble(args):
 
     if args.hours <= 0 or not math.isfinite(args.hours):
         raise MovingCaseError("--hours must be positive and finite")
-    cards = (args.devices or os.environ.get("CUDA_VISIBLE_DEVICES", "0")).split(",")
+    if args.devices:
+        from .moving_run import visible_devices_for
+        granted = visible_devices_for(args.devices)
+    else:
+        granted = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
+    cards = [c.strip() for c in granted.split(",")]
     if not cards or any(not c.strip() for c in cards) or len(set(cards)) != len(cards):
         raise MovingCaseError("--devices must name distinct granted cards")
     if args.prep_threads < 1:
@@ -1063,10 +1128,10 @@ def run_moving_ensemble(args):
         peak = 0
         while not stop.is_set():
             try:
-                card = subprocess.run(["nvidia-smi", "-i", ",".join(cards),
+                card = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "-i", ",".join(cards),
                     "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
                     text=True, capture_output=True, timeout=5)
-                applications = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory",
+                applications = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-compute-apps=pid,used_memory",
                     "--format=csv,noheader,nounits"], text=True, capture_output=True, timeout=5)
                 allocations = {}
                 for line in applications.stdout.splitlines():
@@ -1123,7 +1188,7 @@ def run_moving_ensemble(args):
             row["out"] = str(root / "run")
             command = [sys.executable, "-m", "woof.hex.cli", "moving", "run",
                 "--case", str(case_file), "--casedir", row["casedir"], "--start-member", row["start_member"],
-                "--out", row["out"], "--hours", str(args.hours), "--device", device,
+                "--out", row["out"], "--hours", str(args.hours), "--device", "0",
                 "--prep-threads", str(args.prep_threads), "--prep-tile-workers", str(args.prep_threads)]
             from woof.output_formats import argument_values
             command += argument_values(args, relative=row["id"])
@@ -1135,7 +1200,7 @@ def run_moving_ensemble(args):
             start = time.monotonic()
             with Path(row["log"]).open("w") as stream:
                 proc = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT,
-                                        env=dict(os.environ, WOOF_HEX_CUDA_GRAPHS="0",
+                                        env=dict(os.environ, CUDA_VISIBLE_DEVICES=device, WOOF_HEX_CUDA_GRAPHS="0",
                                                  WOOF_HEX_CUDA_GRAPHS_REQUIRE_REPLAY="0"),
                                         start_new_session=True)
                 row["pid"] = proc.pid
@@ -1237,7 +1302,7 @@ def add_moving_ensemble_arguments(parser):
     parser.add_argument("--seed", type=int, default=53)
     parser.add_argument("--hours", type=float, required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--devices", help="granted device IDs; default inherited visible cards")
+    parser.add_argument("--devices", help="visible card indices or UUIDs; default inherited visible cards")
     parser.add_argument("--engine", type=Path)
     parser.add_argument("--geog", type=Path)
     parser.add_argument("--prep-threads", type=int, default=max(1, (os.cpu_count() or 1)//4))

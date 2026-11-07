@@ -6,7 +6,7 @@ WOOF does not copy four WRF v4.6.1 defects in nssl_2mom_gs (each listed in
 README.md with its line in module_mp_nssl_2mom.F and the evidence that it
 is a defect).  Grading WOOF against stock WRF therefore cannot be bitwise
 at the cells those defects touch.  This tool applies exactly the four
-corrections to WRF's own preprocessed source, nothing else, so the oracle
+corrections to WRF's public or preprocessed source, nothing else, so the oracle
 can grade WOOF bitwise against WRF-as-intended and, separately, measure
 what each defect changes in stock WRF.
 
@@ -44,11 +44,23 @@ i = find_one(lambda l: "dab1lh(mgs,li,lr)*xdia(mgs,lh,3)*xdia(mgs,li,3)" in l, "
 lines[i] = lines[i].replace("dab1lh(mgs,li,lr)*xdia(mgs,lh,3)", "dab1lh(mgs,li,lr)*xdia(mgs,lr,3)")
 
 i = find_one(lambda l: "((0.25/gf4)*pi)*eri(mgs)*cx(mgs,li)*qx(mgs,lr)" in l, "else")
-e = max(j for j in range(i) if lines[j].strip() == "ELSE")
-a = max(j for j in range(e) if lines[j].strip() == "ENDIF")
-c = min(j for j in range(i, len(lines)) if lines[j].strip() == "ENDIF")
-if any(lines[j].strip() for j in range(a + 1, e)):
+# WRF's preprocessed .f90 has no comments; its public .F retains
+# "ELSE ! single-moment rain". Looking for a bare ELSE in the latter
+# silently selected an unrelated earlier size branch and moved its ENDIF.
+# Compare Fortran statements in both inputs, and require the native branch
+# context before moving any control flow.
+def statement(index):
+    return lines[index].split("!", 1)[0].strip().upper()
+
+
+e = max(j for j in range(i) if statement(j) == "ELSE")
+a = max(j for j in range(e) if statement(j) == "ENDIF")
+c = min(j for j in range(i, len(lines)) if statement(j) == "ENDIF")
+if any(statement(j) for j in range(a + 1, e)):
     sys.exit("else: unexpected statements between the ENDIF and the ELSE")
+if not any("IPCONC" in statement(j) and ".GE. 3" in statement(j)
+           for j in range(max(0, a - 100), a)):
+    sys.exit("else: missing native ipconc >= 3 branch before the ENDIF")
 lines.insert(c + 1, "      ENDIF")
 del lines[a]
 

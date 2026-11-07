@@ -84,7 +84,7 @@ def _packaged_recipe_runs():
 def test_probe_column_is_valid_input_for_every_shipped_recipe(tmp_path, monkeypatch):
     """The probe carries the aerosol pair an aerosol-aware recipe reads.
 
-    V59 8x5090, 2026-10-21, packaged hrrr_v4_gsd41 (mp_physics = 28,
+    test host 8x5090, 2026-10-21, packaged hrrr_v4_gsd41 (mp_physics = 28,
     use_rap_aero_icbc = true): every preparation pre-warm job refused with
     "analyzed aerosol IC/BC requires QNWFA and QNIFA on every initial and
     boundary frame" and the preparation compiled cold.  The floor in

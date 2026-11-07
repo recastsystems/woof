@@ -94,7 +94,7 @@
     },
     "era5-land-cds": {
       "status": "pending-ruling",
-      "reason": "Licence passes (CC-BY-4.0) but every download needs a Copernicus CDS account (retrieve API returns 401 without a token). Account-gated sources wait for the project's ruling (NOTE-hydro.md HYDRO-WORLD hydro-world-licences 2026-10-18T08:54Z). The WOOF user-credential door gpuwm/cds_credentials.py is the candidate access path.",
+      "reason": "Licence passes (CC-BY-4.0) but every download needs a Copernicus CDS account (retrieve API returns 401 without a token). Account-gated sources wait for a decision (NOTE-hydro.md HYDRO-WORLD hydro-world-licences 2026-10-18T08:54Z). The WOOF user-credential door gpuwm/cds_credentials.py is the candidate access path.",
       "description": "ECMWF ERA5-Land hourly on 0.1 degrees, the preferred land state source once admitted.",
       "access": {"protocol": "cds", "reader": "netcdf", "account_required": true, "dataset": "reanalysis-era5-land", "first_valid_time": "1950-01-01T00:00:00Z"},
       "licence": {"spdx": "CC-BY-4.0", "status": "verified", "quote": "CDS catalogue record reanalysis-era5-land: CC-BY-4.0 (hydro-world-licences receipt, licences/era5-land/licence.json)", "url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/reanalysis-era5-land", "read_utc": "2026-10-18T08:35:51Z", "attribution": "Contains modified Copernicus Climate Change Service information (ERA5-Land, Munoz-Sabater et al. 2021)."},
@@ -123,7 +123,7 @@
     },
     "gldas-noah025-3h-2.1": {
       "status": "pending-ruling",
-      "reason": "Licence passes (NASA data, CC0 under the ESDIS data use guidance) but downloads need an Earthdata Login (GES DISC returns 401). Waits for the project's ruling on account-gated sources.",
+      "reason": "Licence passes (NASA data, CC0 under the ESDIS data use guidance) but downloads need an Earthdata Login (GES DISC returns 401). Waits for a decision on account-gated sources.",
       "description": "NASA GLDAS-2.1 Noah 0.25 degree 3-hourly. Its soil layers already match the Noah layers.",
       "access": {"protocol": "opendap", "reader": "netcdf", "account_required": true, "dataset": "GLDAS_NOAH025_3H_2.1", "first_valid_time": "2000-01-01T03:00:00Z"},
       "licence": {"spdx": "CC0-1.0", "status": "verified", "quote": "NASA ESDIS data use guidance (hydro-world-licences receipt, licences/gldas/policy.html)", "url": "https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-use-guidance", "read_utc": "2026-10-18T08:35:52Z", "attribution": "GLDAS-2.1 data courtesy NASA GES DISC (Rodell et al. 2004; Beaudoing and Rodell 2020)."},

@@ -157,7 +157,7 @@ FROZEN_DICE_M = 1.0e-2
 #: The columns, in every switch fixture, where SRT's frozen-ground limiter is
 #: live (DICE > 0.01) and WRF runs water off: 6, 7 and 42 from the original
 #: 42, and 61 and 67-69, 71 from the regime columns added for the 0 ULP
-#: verification (lane/verify-noah-lsm).
+#: verification (development branch).
 FROZEN_RUNOFF_CASES = (6, 7, 42, 61, 67, 68, 69, 71)
 
 #: How far the float64 mirror may sit from WRF's float32 SFCRUNOFF on the
@@ -170,14 +170,14 @@ FROZEN_RUNOFF_REL = 1.0e-4
 #: Worst ULP distance from ``kernels/noah.cu``'s ``noah_column`` to the word
 #: ``lsm`` wrote, over every column of all four switch fixtures except the
 #: land-ice population (:data:`GLACIAL_MAX_ULP`) and the held-out case 25:
-#: ZERO IN EVERY FIELD.  MEASURED 2026-10-07 on box W1 (RTX PRO 6000
+#: ZERO IN EVERY FIELD.  MEASURED 2026-10-07 on test host (RTX PRO 6000
 #: Blackwell, sm_120, NVRTC 12.9.86, cupy-cuda12x 14.2.0) at
-#: lane/verify-noah-lsm, under GPUWM_WRF_EXACT=1 and under default
+#: development branch, under GPUWM_WRF_EXACT=1 and under default
 #: arithmetic alike, over the 80-column fixtures (65 graded per fixture:
 #: ordinary land and open water).
 #:
 #: How the table got from the numbers it held before to zero, in the commits
-#: of lane/verify-noah-lsm (the previous readings are in git history):
+#: of development branch (the previous readings are in git history):
 #:
 #:   noahres   164754 -> 0   summed in float32 in WRF's order
 #:                           (module_sf_noahdrv.F:1308) instead of float64
@@ -214,7 +214,7 @@ BASELINE_MAX_ULP_BY_ARCH_AND_BUILD: dict[tuple[str, str], dict[str, int]] = {}
 #: The zero table above is the strict build's (GPUWM_WRF_EXACT=1: no FMA
 #: contraction, no flush).  A default process compiles noah.cu with CuPy's
 #: -ftz=true and NVRTC's contraction, and lands here instead.  MEASURED
-#: 2026-10-16 on a development machine's RTX 5090 (sm_120, NVRTC 13.4.92) at the 2.9.1
+#: 2026-10-16 on test host 2's RTX 5090 (sm_120, NVRTC 13.4.92) at the 2.9.1
 #: exact-chain intake, over the same columns.  For scale, 2.9.1's default
 #: kernel (before the intake) read hfx 260781, lh 192330, potevp 266755 and
 #: tsk 2784 ULP on these fixtures.  A card or compiler not listed fails
@@ -225,7 +225,9 @@ BASELINE_MAX_ULP_BY_ARCH_AND_BUILD: dict[tuple[str, str], dict[str, int]] = {}
 #: here too (an RTX 5090, sm_120, NVRTC 13.4.92, 2026-10-16), down from
 #: hfx 802, grdflx 2089, snopcx 545 and noahres 606208 ULP with contraction.
 DEFAULT_ARITHMETIC_MAX_ULP_BY_ARCH_AND_BUILD: dict[tuple[str, str], dict[str, int]] = {
-    ("120", "13.4.92"): dict(BASELINE_MAX_ULP),
+    # Restored pinned tables: all 34 fields retain zero ULP.
+    ("120", "13.4.59"): dict(BASELINE_MAX_ULP),
+    ("120", "13.4.92"): dict(BASELINE_MAX_ULP), ("120", "13.2.51"): dict(BASELINE_MAX_ULP),  # pin-gates/nvrtc-13.2.51-reading.json
 }
 
 #: SFCDIAGS on the port's words, default build, same measurement.
@@ -305,7 +307,7 @@ def _call_argument_lists(source: str, callee: str) -> list[list[str]]:
     the rest are the call sites.
     """
     out: list[list[str]] = []
-    for match in re.finditer(rf"\b{callee}\s*\(", source):
+    for match in re.finditer(rf"\b{re.escape(callee)}\s*(?:<[^<>]+>\s*)?\(", source):
         depth, j = 1, match.end()
         while depth:
             depth += {"(": 1, ")": -1}.get(source[j], 0)
@@ -514,8 +516,12 @@ def test_the_kernel_hands_smflx_the_same_word_the_mirror_does():
     assert len(calls) == 3, (
         f"noah.cu calls noah_smflx {len(calls)} times, not 3 (WRF: NOPAC"
         " :2048 and :2111, SNOPAC :3367); read the new one before repinning")
+    # SNOPAC uses the declared zero irrigation rate; NOPAC supplies it.
+    # Omitted arguments must be trailing defaults, never a shifted FRZX.
+    required = next((i for i, arg in enumerate(signature) if "=" in arg),
+                    len(signature))
     for args in calls:
-        assert len(args) == len(signature)
+        assert required <= len(args) <= len(signature)
         assert args[slot] == "frzx", (
             f"noah_smflx is called with {args[slot]!r} where WRF's SFLX"
             " passes FRZX (module_sf_noahlsm.F:769, :784)")

@@ -8,7 +8,7 @@ columns) under four (SOLCON, swrad_scat, icloud) cases.  Graded outputs are
 RTHRATEN (SWRAD's TTEN/pi3D into a zeroed tendency), GSW and the radiation
 driver's SWDOWN = GSW/(1.-ALBEDO).
 
-Before lane/verify-dudhia-sw the CuPy array-op transcription missed on every
+Before development branch the CuPy array-op transcription missed on every
 field (strict build: 4,380 of 16,400 RTHRATEN words, max 233,266 ULP; GSW
 116 of 328, max 683 ULP; SWDOWN 136 of 328, max 811 ULP).  What makes it
 exact, all default-on:

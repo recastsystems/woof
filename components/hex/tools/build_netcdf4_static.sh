@@ -45,7 +45,7 @@ deps="$work/deps"
 jobs=${CARGO_BUILD_JOBS:-${MAX_JOBS:-8}}
 cd "$work"
 fetch() { curl -fsSL -o "$2" "$1"; echo "$3  $2" | sha256sum -c -; }
-fetch "https://zlib.net/fossils/zlib-$zlib_version.tar.gz" zlib.tar.gz "$zlib_sha256"
+fetch "${GPUWM_CI_ZLIB_URL:-https://zlib.net/fossils/zlib-$zlib_version.tar.gz}" zlib.tar.gz "$zlib_sha256"
 fetch "https://github.com/HDFGroup/hdf5/releases/download/hdf5_$hdf5_version/hdf5-$hdf5_version.tar.gz" hdf5.tar.gz "$hdf5_sha256"
 fetch "https://downloads.unidata.ucar.edu/netcdf-c/$netcdf_version/netcdf-c-$netcdf_version.tar.gz" netcdf.tar.gz "$netcdf_sha256"
 tar -xzf zlib.tar.gz && tar -xzf hdf5.tar.gz && tar -xzf netcdf.tar.gz

@@ -1,0 +1,91 @@
+{
+  "wrf_tag": "v4.6.1",
+  "licence_notice": "WRF-NOTICE.txt",
+  "source_copied_in_this_patch": false,
+  "files": [
+    {
+      "path": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027,
+      "licence": "WRF public-domain release notice, no additional restriction found in this file"
+    },
+    {
+      "path": "phys/module_mp_thompson.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_mp_thompson.F",
+      "sha256": "fabf19e2a9073cff886e882b187080bfdf089d3fd40c0fce1d19bc93b1e5e802",
+      "bytes": 240308,
+      "licence": "WRF public-domain release notice, no additional restriction found in this file"
+    },
+    {
+      "path": "phys/module_bl_mynn.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_bl_mynn.F",
+      "sha256": "b36c8b935cd9c8265359e78dbe8db285d99e992c7cab29917b5fca9d57d49452",
+      "bytes": 303225,
+      "licence": "WRF public-domain release notice, no additional restriction found in this file"
+    },
+    {
+      "path": "phys/module_sf_ruclsm.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_sf_ruclsm.F",
+      "sha256": "3265f810d08dcbddfaf198371dc7f652e78e8d3a788f703a515c555a3bbb2a12",
+      "bytes": 288509,
+      "licence": "WRF public-domain release notice, no additional restriction found in this file"
+    },
+    {
+      "path": "phys/module_ra_rrtmg_lw.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_ra_rrtmg_lw.F",
+      "sha256": "97950adb65a67ab8bb460cbd2efade8a225e655ba48fd4cc5227569aa9764088",
+      "bytes": 651995,
+      "licence": "AER not-sold notices present, restricted routines not copied"
+    },
+    {
+      "path": "phys/module_ra_rrtmg_sw.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_ra_rrtmg_sw.F",
+      "sha256": "7f8af1da0ca1d25ce784a917bc68600300a7c569881c57e7de8501cd53496b59",
+      "bytes": 607338,
+      "licence": "AER not-sold notices present, restricted routines not copied"
+    },
+    {
+      "path": "run/VEGPARM.TBL",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/run/VEGPARM.TBL",
+      "sha256": "ed5478afbe49af51492256c1eb6cf88b3948590308525b32df1ddec28687b40e",
+      "bytes": 23037,
+      "licence": "WRF public-domain release notice, no additional restriction found in this file"
+    },
+    {
+      "path": "phys/module_sf_mynn.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_sf_mynn.F",
+      "sha256": "86395534a6c9bfc79dcad50094bce290eff05756777a95794b2673795f9761c3",
+      "bytes": 90941,
+      "licence": "WRF public-domain release notice, no additional restriction found in this file"
+    },
+    {
+      "path": "phys/module_cu_gf_deep.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_cu_gf_deep.F",
+      "sha256": "798ad7271963757b88be36ce01e24222f7af045dc0692908d6e7c270d6b4ea11",
+      "bytes": 161203,
+      "licence": "WRF public-domain release notice, no additional restriction found in this file"
+    },
+    {
+      "path": "phys/module_cu_gf_sh.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_cu_gf_sh.F",
+      "sha256": "0dd1ed7c620b39e13f7ef77dc4ff1a269fa1f8d746492d360e203df0215b529a",
+      "bytes": 31848,
+      "licence": "WRF public-domain release notice, no additional restriction found in this file"
+    }
+  ],
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "native_source_files_shipped": false,
+  "public_domain_cuda_translation_shipped": true,
+  "additional_source_generations": [
+    {
+      "path": "phys/module_bl_mynn.F",
+      "source": "NOAA HRRR v4.1.21 GSD MYNN",
+      "url": "https://raw.githubusercontent.com/NOAA-EMC/HRRR/v4.1.21/sorc/hrrr_wrfarw.fd/WRFV3.9/phys/module_bl_mynn.F",
+      "sha256": "42178a22693ad14b1a3adcf3e44be3047f051abf80f3a64c0ce9ed9ac2ec6d8a",
+      "bytes": 224758,
+      "licence": "WRF public-domain distribution notice in this same fork; no file-specific licence/sale restriction found in module",
+      "licence_url": "https://raw.githubusercontent.com/NOAA-EMC/HRRR/v4.1.21/sorc/hrrr_wrfarw.fd/WRFV3.9/README"
+    }
+  ]
+}

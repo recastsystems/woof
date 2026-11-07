@@ -75,9 +75,16 @@ def test_the_six_doors_are_bundled_on_demand_and_not_in_the_wheel():
         # 2.9.11 (PyPI per-file limit): opt-in simulated radar, ML export, the wind-farm
         # table decoder and the opt-in hydro door's payload library.
         | {"rw_simradar", "rw_mlexport", "rw-wind-table", "nextgen_hydrofabric"}
-        # WOOF 1.1.0 r16 (PyPI per-file limit): European radar, and the three MPAS bridges every hex door
-        # reads from the hex helpers first.
-        | {"rw_odim", "rw_mpas_geometry", "rw_mpas_convert", "rw_mpas_lbc"})
+        # 3.0: opt-in FDDA, waves and TC verification doors; SIZE-01 (PyPI per-file limit):
+        # opt-in history GRIB2, ODIM, TC and aerosol tools and the gpuwm-hex-side MPAS tools.
+        | {"rw_fddaobs", "rw_waves_data", "rw_waves_coupled_prepare", "rw_tc_rmw_score", "tc-verify",
+                "rw_history_grib2", "rw_odim", "rw_mpas_static", "rw_mpas_lbc",
+                "rw_mpas_convert", "rw_mpas_geometry", "rw_mpas_mesh",
+                "rw_storm_merge", "rw_tc_vitals", "public-aerosol-build",
+                "aerosol-grid"}
+        # WOOF 1.1.6 (PyPI per-file limit): the ERA5 ARCO reader, the GRIB2 exporter, the
+        # radar ingest and superob, and the hydro forcing library.
+        | {"rw_zarr", "rw_grib2export", "rw_nexrad", "rw_superob", "arwen_nextgen_forcing"})
 
 
 def test_every_stream_with_a_door_names_a_bundled_artifact():
@@ -158,8 +165,9 @@ def test_a_wheel_carried_artifact_is_never_fetched_on_demand(pip_install, monkey
     import woof.bridge_partial as bridge_partial
     monkeypatch.setattr(bridge_partial, "fetch_partial",
                         lambda *a, **k: pytest.fail("a wheel artifact was fetched"))
-    # rw_asos is on demand since 2.9.3; rw_nexrad is a wheel-carried door.
-    assert bridges.fetch_on_demand("rw_nexrad") is False
+    # rw_asos is on demand since 2.9.3; rw_fetch is a wheel-carried door (rw_nexrad
+    # went on demand in WOOF 1.1.6).
+    assert bridges.fetch_on_demand("rw_fetch") is False
 
 
 def test_a_failed_first_use_says_what_happened_once(pip_install, monkeypatch):

@@ -31,7 +31,7 @@ from woof.verify.npref import np_refl10cm_morrison_column
 #: The node's own field list, reproduced exactly.
 NODE_ANALYSIS_FIELDS = ("thp", "qv", "u", "v", "qc", "qr", "qi", "qs", "qg")
 
-#: The threshold the a development machine forensics counted offenders at, and the
+#: The threshold the test host 8 forensics counted offenders at, and the
 #: threshold the reflectivity operator's species gate uses.  The guard's
 #: own default is the SCHEME's 1e-14, which is stricter; this is here so
 #: the regression is stated in the units the evidence was.
@@ -124,7 +124,7 @@ def test_an_unknown_moment_policy_is_refused():
 ])
 def test_a_mass_only_update_of_a_two_moment_state_is_refused(mp_physics,
                                                              carried):
-    """The a development machine field list, against a background that carries moments."""
+    """The test host 8 field list, against a background that carries moments."""
 
     with pytest.raises(MomentPolicyError) as caught:
         moments.validate_analysis_fields(

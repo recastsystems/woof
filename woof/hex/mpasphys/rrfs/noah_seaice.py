@@ -4,6 +4,8 @@ MPAS-Model-rrfs 1d6e370e driver_seaice.F:436,570-601 excludes full ice
 from reconstruction and performs flux reconstruction only for fractional ice.
 The Noah sea-ice scheme and its thermal solver are unchanged from v8.4.2.
 """
+
+from woof.backend import compilation_target as _compilation_target
 from functools import lru_cache
 from importlib.resources import files
 from .. import seaice_v842 as shared
@@ -26,7 +28,7 @@ def driver_module(device, nsoil):
         module = cp.cuda.function.Module()
         module.load(direct_image(source, numerics.options(('--std=c++11', '--fmad=false',
                     '--ftz=false', '--prec-div=true', '--prec-sqrt=true'), keep_ftz=True),
-                    cp.cuda.Device(device).compute_capability, filename='rrfs_noah_seaice.cu'))
+                    _compilation_target(device, xp=cp), filename='rrfs_noah_seaice.cu'))
     return module
 
 

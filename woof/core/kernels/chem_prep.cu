@@ -18,6 +18,9 @@ extern "C" __global__ void chem_prep(
   pp[h]=p[h]; ao[h]=alt[h];dryrho[h]=__fdiv_rn(1.f,alt[h]);
   rho[h]=__fmul_rn(dryrho[h],__fadd_rn(1.f,moist?qv[h]:0.f));
   float theta=__fadd_rn(thp[h],thb[th3?h:k]);
+#ifdef GPUWM_USE_THETA_M
+  if(moist)theta=__fdiv_rn(theta,__fadd_rn(1.f,__fmul_rn(__fdiv_rn(461.6f,287.f),qv[h])));
+#endif
   tt[h]=__fmul_rn(theta,gfk_pow(__fdiv_rn(p[h],100000.f),0.2857142984867096f));
   up[h]=__fmul_rn(.5f,__fadd_rn(u[(k*ny+j)*(nx+1)+i],u[(k*ny+j)*(nx+1)+i+1]));
   vp[h]=__fmul_rn(.5f,__fadd_rn(v[(k*(ny+1)+j)*nx+i],v[(k*(ny+1)+j+1)*nx+i]));

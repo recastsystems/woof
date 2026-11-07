@@ -6,6 +6,10 @@ pub static GPUWM_BRIDGE_SOURCE_REV_STAMP: &str =
     concat!("GPUWM_BRIDGE_SOURCE_REV=", env!("GPUWM_BRIDGE_SOURCE_REV"));
 
 fn main() -> ExitCode {
+    rw_mpas::execution::bridge(run_bridge)
+}
+
+fn run_bridge() -> ExitCode {
     let _stamp = std::hint::black_box(GPUWM_BRIDGE_SOURCE_REV_STAMP);
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args == ["--abi"] {

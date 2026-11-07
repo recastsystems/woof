@@ -50,7 +50,19 @@ def require_cold_start(dataset) -> None:
         if np.any(values > 0):
             indicators.append(name)
     title = " ".join(str(attributes.get("TITLE", "")).upper().split())
-    if "OUTPUT FROM WRF" in title and "MODEL" in title:
+    # med_filter_out writes a nested input after start_domain/phy_init at
+    # the simulation's initial instant. Reading it on WRF's cold branch
+    # calls NOAHMP_INIT again (.NOT.restart, noahmpdrv.F:2008), so those
+    # initialized records are reset from the common soil/snow inputs.
+    # A model TITLE alone cannot distinguish this from stepped history.
+    initial_child = False
+    if (int(attributes.get("GRID_ID", 1)) > 1 and "Times" in dataset.variables
+            and "OUTPUT FROM WRF" in title and "MODEL" in title):
+        chars = np.asarray(dataset.variables["Times"][...]).reshape(-1)
+        record = b"".join(bytes(item) for item in chars).decode("ascii").strip("\x00 ")
+        initial_child = (record == str(attributes.get("START_DATE", "")).strip()
+                         and not indicators)
+    if "OUTPUT FROM WRF" in title and "MODEL" in title and not initial_child:
         indicators.append("model-output TITLE")
     # real_em.F:99 declares its producer name; output_wrf.F:336-337
     # records it in TITLE. That producer has not run NOAHMP_INIT, whose
@@ -58,7 +70,7 @@ def require_cold_start(dataset) -> None:
     # that producer declaration, zero/masked placeholders are still safe
     # to initialize, but meaningful carried state cannot be thrown away.
     real_input = title.startswith("OUTPUT FROM REAL_EM ") and "PREPROCESSOR" in title
-    if not real_input and not indicators:
+    if not real_input and not initial_child and not indicators:
         for name in _COLD_START:
             if name not in dataset.variables:
                 continue
@@ -117,8 +129,14 @@ NOAHMP_INPUT_DISPOSITIONS = MappingProxyType({
 
 # COLD_START_WRITES in noahmp_runtime also names these shared carriers.
 # Their initialized values must survive the generic supplied-field copy.
+from woof.core.noahmp_soil_cadence import ACCUMULATORS
+from woof.core.noahmp_output import ACCUMULATORS as OUTPUT_ACCUMULATORS,CARRIERS as OUTPUT_CARRIERS
 NOAHMP_INITIALIZED_SURFACE_FIELDS = frozenset({
-    "snow", "snowh", "canwat", "tslb", "smois", "sh2o", "lai",
+    *(OUTPUT_CARRIERS[n] for n in OUTPUT_ACCUMULATORS),
+    *ACCUMULATORS.values(), "qtdrain",
+    "irnumsi","irnummi","irnumfi","irwatsi","irwatmi","irwatfi","irsivol","irmivol","irfivol","ireloss","irrsplh",
+    "snow", "snowh", "canwat", "tslb", "smois", "sh2o", "lai", "zwtxy", "wtxy",
+    "lfmassxy","rtmassxy","stmassxy","woodxy","stblcpxy","fastcpxy","grainxy","gddxy","cropcat",
 })
 
 
@@ -132,9 +150,35 @@ def input_dispositions(cfg) -> MappingProxyType:
     from woof.config import NOAHMP_OPTION_IDENTITY
     for name in ("dveg", "opt_run", "opt_soil", "opt_crop", "opt_irr", "opt_tdrn"):
         wanted = NOAHMP_OPTION_IDENTITY[name]
-        if getattr(cfg, name, wanted) != wanted:
+        # Prescribed vegetation 1/3/4 shares NOAHMP_INIT and has no carbon pools.
+        allowed = ((1, 2, 3, 4, 5, 6, 7, 8, 9) if name == "dveg" else
+                   (1, 2, 3, 4, 5, 6, 7, 8) if name == "opt_run" else
+                   (1,2,3,4) if name == "opt_soil" else
+                   (0,1,2) if name=="opt_crop" else
+                   (0,1,2) if name=="opt_tdrn" else (0,1,2,3) if name=="opt_irr" else (wanted,))
+        if getattr(cfg, name, wanted) not in allowed:
             raise ValueError(
                 f"Noah-MP input {name}={getattr(cfg, name)} selects a surface "
                 f"operation these cold-start records do not initialize. "
                 f"Use the supported {name}={wanted} option or provide its state consumer.")
-    return NOAHMP_INPUT_DISPOSITIONS
+    result=dict(NOAHMP_INPUT_DISPOSITIONS)
+    if int(getattr(cfg,"opt_run",3)) in (1,2):
+        result.update({name:"initialized from common cold-start fields" for name in ("ZWT","WT")})
+    if int(getattr(cfg,"opt_run",3))==5:
+        for name in ("FDEPTH","EQZWT","RIVERBED","RECHCLIM"):result.pop(name,None)
+        for name in ("ZWT","SMCWTD","DEEPRECH","RECH","SMOISEQ"):result[name]="initialized from common cold-start fields"
+    if int(getattr(cfg,"dveg",4)) in (2,5,6):
+        result.update({name:"initialized from common cold-start fields" for name in ("LFMASS","RTMASS","STMASS","WOOD","STBLCP","FASTCP")})
+    if int(getattr(cfg,"opt_tdrn",0)):
+        result.pop("TD_FRACTION",None)
+        result["ZWT"]="initialized from common cold-start fields"
+    if int(getattr(cfg,"opt_crop",0)):
+        for name in ("CROPTYPE","PLANTING","HARVEST","SEASON_GDD"):result.pop(name,None)
+        for name in ("GRAIN","GDD","LFMASS","RTMASS","STMASS","WOOD","STBLCP","FASTCP"):result[name]="initialized from common cold-start fields"
+    if int(getattr(cfg,"opt_irr",0)):
+        from woof.core.noahmp_irrigation_slab import MAPS,COUNTERS,STATE
+        for name in MAPS:result.pop(name.upper(),None)
+        if int(cfg.opt_irr)==2:
+            for name in ("PLANTING","HARVEST"):result.pop(name,None)
+        for name in (*COUNTERS,*STATE):result[name.upper()]="initialized from common cold-start fields"
+    return MappingProxyType(result)

@@ -56,6 +56,7 @@ class _Resident:
         self.handed: dict[str, tuple] = {}        # carrier path -> (payload, summary), until that segment closes
         self.current: dict[str, Any] = {}         # what the running segment exposes to the preparation
         self.prepared: dict[str, Any] = {}        # kind -> dict(key=..., value=...)
+        self.prepared_scratch: set[str] = set()  # trees claimed by this process's preparation
         self.prep_spec: dict | None = None
         self.prep_thread: threading.Thread | None = None
         self.prep_rows: list[dict] = []
@@ -66,6 +67,22 @@ class _Resident:
 
 
 _R = _Resident()
+
+
+def claim_prepared_scratch(path) -> None:
+    """Claim before decoding, so the same resident process can retain its pools."""
+    from ..run_owner import claim_directory
+    path = Path(path).resolve()
+    claim_directory(path, reuse_current=owns_prepared_scratch(path))
+    with _R.lock:
+        _R.prepared_scratch.add(str(path))
+
+
+def owns_prepared_scratch(path) -> bool:
+    if not enabled():
+        return False
+    with _R.lock:
+        return str(Path(path).resolve()) in _R.prepared_scratch
 
 
 # --------------------------------------------------------------------------- the controller's launch record
@@ -304,6 +321,7 @@ def prepare(spec: dict) -> None:
     swap = {files[k]: str(Path(v).resolve()) for k in ('grid', 'static', 'init')
             if k in files and (v := getattr(arguments, k, None)) is not None}
     scratch = Path(getattr(arguments, 'scratch', None) or Path(arguments.out) / 'scratch').resolve()
+    claim_prepared_scratch(scratch)
     predicted = dict(call, sources=[Path(swap.get(str(Path(s).resolve()), str(s))) for s in call['sources']],
                      output=scratch / 'native-pools')
     key = _decode_key(predicted)

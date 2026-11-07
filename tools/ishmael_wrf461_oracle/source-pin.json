@@ -1,0 +1,105 @@
+{
+  "authority": "WRF public repository, tag v4.7.1",
+  "license": "WRF-LICENSE.txt, public-domain statement covers the WRF distribution; no separate table restriction identified",
+  "source": {
+    "path": "phys/module_mp_jensen_ishmael.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_mp_jensen_ishmael.F",
+    "sha256": "4cefa1a2f28c2bc36061100bd4bef10371643ccf1e80da43be96f8ba31843326",
+    "bytes": 198809,
+    "identical_at": "v4.6.1"
+  },
+  "upstream_table_identity": {
+    "v4.6.1": {
+      "tree_sha": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+      "tables": [
+        {
+          "path": "run/ishmael-gamma-tab.bin",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "5531ea71caff6757d039675996f6cf2b1fe15ed4",
+          "size": 6060012,
+          "url": "https://api.github.com/repos/wrf-model/WRF/git/blobs/5531ea71caff6757d039675996f6cf2b1fe15ed4"
+        },
+        {
+          "path": "run/ishmael-qi-qc.bin",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "e16a2269b891e83dadca76e4d3cfa88290cb0974",
+          "size": 23346576,
+          "url": "https://api.github.com/repos/wrf-model/WRF/git/blobs/e16a2269b891e83dadca76e4d3cfa88290cb0974"
+        },
+        {
+          "path": "run/ishmael-qi-qr.bin",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "acba4e355faee3869ddb8ae3ae46e9e2d2e7c460",
+          "size": 46693152,
+          "url": "https://api.github.com/repos/wrf-model/WRF/git/blobs/acba4e355faee3869ddb8ae3ae46e9e2d2e7c460"
+        }
+      ]
+    },
+    "v4.7.1": {
+      "tree_sha": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "tables": [
+        {
+          "path": "run/ishmael-gamma-tab.bin",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "5531ea71caff6757d039675996f6cf2b1fe15ed4",
+          "size": 6060012,
+          "url": "https://api.github.com/repos/wrf-model/WRF/git/blobs/5531ea71caff6757d039675996f6cf2b1fe15ed4"
+        },
+        {
+          "path": "run/ishmael-qi-qc.bin",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "e16a2269b891e83dadca76e4d3cfa88290cb0974",
+          "size": 23346576,
+          "url": "https://api.github.com/repos/wrf-model/WRF/git/blobs/e16a2269b891e83dadca76e4d3cfa88290cb0974"
+        },
+        {
+          "path": "run/ishmael-qi-qr.bin",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "acba4e355faee3869ddb8ae3ae46e9e2d2e7c460",
+          "size": 46693152,
+          "url": "https://api.github.com/repos/wrf-model/WRF/git/blobs/acba4e355faee3869ddb8ae3ae46e9e2d2e7c460"
+        }
+      ]
+    }
+  },
+  "declared_divergence": {
+    "default": "Rain-riming depletion uses tmpsumr at native line 1105",
+    "strict": "Pristine native tmpsum limiter retained"
+  },
+  "qualification": {
+    "real_input_words_compared": 213156,
+    "differing_words": 0,
+    "nonfinite_words": 0,
+    "real_forecast": true,
+    "timing": true,
+    "packed_ensemble_physics": true,
+    "receipt": "qualification.json"
+  },
+  "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+  "table_sha256_pins": {
+    "ishmael-gamma-tab.bin": "d85e4960053024a73034fb962ff52bd62aeae1b975dd5b4f62244ec82d622daa",
+    "ishmael-qi-qc.bin": "b8e4cea138b78668f027934bb8e39c6ea2cb62c1d277c17249c72003c8f4646c",
+    "ishmael-qi-qr.bin": "69dd41d3d285318c95cac0d2dde10f8a3b25f802bf52ac781f29c87adb964cc4"
+  },
+  "table_pin_verification": "All three local WRF-distributed table files verified byte sizes and SHA-256; the Rust reader verifies size, digest and every Fortran record marker before GPU upload. Upstream Git blob identity is identical at both pinned tags.",
+  "strict_device_math": {
+    "file": "woof/core/kernels/flt32_log10_tanh.cuh",
+    "license": "FDLIBM permissive notice retained in header, root NOTICE and adjacent license file",
+    "checked_sources": [
+      "https://raw.githubusercontent.com/bminor/glibc/glibc-2.39/sysdeps/ieee754/flt-32/e_log10f.c",
+      "https://raw.githubusercontent.com/bminor/glibc/glibc-2.39/sysdeps/ieee754/flt-32/s_expm1f.c",
+      "https://raw.githubusercontent.com/bminor/glibc/glibc-2.39/sysdeps/ieee754/flt-32/s_tanhf.c"
+    ],
+    "strict_log10": {
+      "file": "woof/hydro/noahowp/log10.cu",
+      "license": "MIT / CORE-MATH notice retained in the existing source and NOTICE",
+      "reason": "reuse the existing modern correctly rounded binary32 logarithm to match native glibc 2.43; only MP55 strict assembly changes"
+    }
+  }
+}

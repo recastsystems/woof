@@ -74,7 +74,7 @@ class WRFCompatibilityCell:
 # verdict count by 10/6 and the pinned counts in
 # tests/test_wrf461_compatibility.py were re-measured off the enlarged
 # matrix rather than projected.
-MP_OPTIONS = (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106)
+MP_OPTIONS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 97, 106)
 # 11 (Shin-Hong) joined the PBL axis with the Shin-Hong port: an implemented
 # scheme with a certified oracle (max ULP 0 CPU authority against the
 # byte-frozen WRF v4.6.1 module_bl_shinhong.F,
@@ -83,9 +83,27 @@ MP_OPTIONS = (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106)
 # phys/module_physics_init.F:3702-3704.  This is an enumerated admission
 # row, not a relaxation: every (11, sfclay) cell below carries WRF's own
 # verdict and citation.
-PBL_OPTIONS = (0, 1, 5, 11)
-SURFACE_LAYER_OPTIONS = (0, 1, 5, 91)
-LAND_SURFACE_OPTIONS = (0, 2, 3, 4)
+#
+# 16 (EEPS) joined with the EEPS port (woof/core/kernels/eeps.cu, max ULP
+# 0 against WRF v4.6.1 module_bl_eepsilon.F, tests/test_eeps_wrf461_parity
+# .py) on the same terms: its EEPSSCHEME init arm at
+# phys/module_physics_init.F:3871-3873 fatals unless isfc is 1, 2, 5 or 91,
+# and each (16, sfclay) cell below carries that verdict.
+PBL_OPTIONS = (0, 1, 5, 7, 8, 11, 16, 99)
+# Runtime breakage beside the WRF law, selected as scheme metadata.
+PBL_RUNTIME_BREAKAGE = MappingProxyType({
+    16: ("EEPS reads UST, RMOL, WSPD, HFX, QFX and QSFC from its "
+         "surface layer and divides by WSPD. With the surface layer off "
+         "those fields remain the allocated zeros, so its turbulent lower "
+         "boundary would divide by zero (module_bl_eepsilon.F:575,589)."),
+})
+SURFACE_LAYER_OPTIONS = (0, 1, 3, 5, 7, 91)
+# 1 (five-layer thermal diffusion) joined with the slab port: an
+# implemented scheme graded word for word against the byte-unmodified
+# phys/module_sf_slab.F (tests/test_slab_wrf461_oracle.py).  The land axis
+# is verdict-independent except for sf_surface_physics=0's soil-layer
+# reconfiguration, so the no-LSM reconfiguration slice stays fixed while the other axes grow.
+LAND_SURFACE_OPTIONS = (0, 1, 2, 3, 4, 7, 8)
 RADIATION_OPTIONS = (
     "off",
     "dudhia-shortwave",
@@ -117,7 +135,8 @@ RADIATION_OPTIONS = (
 # under the strict arm against tools/g3_wrf461_oracle), on the same
 # verdict-independent terms; 96 (New SAS with NSCV) joined with its port,
 # on the same terms.
-CUMULUS_OPTIONS = (0, 1, 3, 5, 6, 16, 96)
+# CAM ZM (7) keeps its direct admission law in AXIS_EXCLUSIONS below.
+CUMULUS_OPTIONS = (0, 1, 2, 3, 5, 6, 10, 11, 14, 16, 93, 94, 95, 96, 99)
 
 #: Values ``woof.config`` lets a user select that this transcription does
 #: NOT represent, each with the reason it is absent.  The table exists
@@ -134,10 +153,18 @@ CUMULUS_OPTIONS = (0, 1, 3, 5, 6, 16, 96)
 #: transcription's silence means, which is what stops the next reader from
 #: mistaking absence for illegality.
 AXIS_EXCLUSIONS = MappingProxyType({
+    ("cu_physics", 7): "CAM ZM requires MYJ/Eta or CAM UW at get_tpert; those PBL choices are outside this physics_init matrix.",
     ("mp_physics", 900): (
         "TEMPO is a WOOF named scheme (woof.microphysics_schemes, id 900, "
         "outside WRF's mp_physics range): WRF v4.6.1 has no TEMPO option, so "
         "there is no WRF surface-layer or PBL pairing law to transcribe."),
+    ("bl_pbl_physics", 10): (
+        "The TEMF bidirectional pairing is enforced from "
+        "woof.config.PHYSICS_SELECTOR_COUPLINGS, using the WRF v4.6.1 "
+        "share/module_check_a_mundo.F:2294-2299 law."),
+    ("sf_sfclay_physics", 10): (
+        "The other side of the same TEMF bidirectional coupling row."),
+
     ("bl_pbl_physics", 2): (
         "MYJ's WRF law is stronger than a matrix cell and is implemented "
         "directly: phys/module_physics_init.F:3770-3772 fatals the MYJ "
@@ -145,6 +172,18 @@ AXIS_EXCLUSIONS = MappingProxyType({
         "woof.config.validate_myj_pairing raises exactly that, in both "
         "directions, before this module is consulted. A row here would be "
         "a second authority over a question that already has one."),
+    ("bl_pbl_physics", 3): (
+        "GFS is admitted directly by woof.config.validate_gfs_pbl_config: "
+        "WRF module_physics_init.F:3742-3743 requires isfc=2, and the "
+        "implemented SF_GFS layer supplies its complete stability boundary. "
+        "The Eta layer has no GZ1OZ0/PSIM/PSIH and is refused."),
+    ("bl_pbl_physics", 4): (
+        "QNSE's WRF law is stronger than a matrix cell and is implemented "
+        "directly: phys/module_physics_init.F:3790-3791 fatals the QNSE "
+        "PBL with any surface layer but the QNSE one, and "
+        "woof.config.validate_qnse_config raises exactly that before this "
+        "module is consulted. A row here would be a second authority over "
+        "a question that already has one."),
     ("bl_pbl_physics", 9): (
         "the UW moist-turbulence PBL is ported from WRF v4.7.1 "
         "(module_bl_camuwpbl_driver.F), not the v4.6.1 this matrix "
@@ -156,12 +195,34 @@ AXIS_EXCLUSIONS = MappingProxyType({
         "reason (the TKE_MYJ scan). A row here would be a second "
         "authority over questions that already have one."),
     ("bl_pbl_physics", 901): ("CCPP TKE-EDMF has no WRF selector counterpart; its admission follows its own registry metadata."),
+    ("bl_pbl_physics", 12): (
+        "GBM's WRF law is one surface-layer fatal, stronger than a matrix "
+        "cell and implemented directly: phys/module_physics_init.F:3892-3893 "
+        "refuses GBMPBLSCHEME unless the surface layer set isfc = 1 "
+        "(sf_sfclay_physics 1 or 91), and woof.config.validate_gbmpbl_config "
+        "raises exactly that before this module is consulted. A row here "
+        "would be a second authority over a question that already has one."),
+
+    ("bl_pbl_physics", 17): (
+        "WRF v4.6.1's bl_init has no KEPSSCHEME case at all "
+        "(module_physics_init.F pbl_select falls through to CASE DEFAULT), "
+        "so WRF places no surface-layer or land-surface law on the "
+        "K-epsilon PBL for this matrix to transcribe. WOOF's own pairing "
+        "requirements (a surface layer that publishes PSIM/PSIH, no "
+        "gwd_opt) are woof.config.validate_keps_config, each naming what "
+        "it prevents. A row here would be a second authority over "
+        "questions that already have one."),
     ("bl_pbl_physics", 900): (
         "SASE is a WOOF closure with no WRF counterpart: WRF v4.6.1 "
         "registers no package at bl_pbl_physics=900, so there is no "
         "verdict to transcribe and a row would be an invention. Its "
         "admission is stated on its own registry option and in "
         "woof.config.validate_sase_config."),
+    ("sf_sfclay_physics", 4): (
+        "The QNSE surface layer is the other half of bl_pbl_physics=4. "
+        "Its admission is handled by woof.config.validate_qnse_config, "
+        "which binds the carried TKE column and AKHS/AKMS boundary state. "
+        "See phys/module_physics_init.F:3171,3790-3791 and the PBL exclusion row."),
     ("sf_sfclay_physics", 2): (
         "the Eta surface layer is the other half of the MYJ pairing above "
         "and is refused or admitted by the same implemented law; see the "
@@ -180,10 +241,14 @@ MATRIX_CELL_COUNT = (
 
 
 _MP_CITATION = MappingProxyType({
+    96: WRFCitation("Registry/Registry.EM_COMMON", "3047", "the madwrf_mp package binds mp_physics=96"),
+    11: WRFCitation("Registry/Registry.EM_COMMON", "3032", "cammgmpscheme binds mp_physics=11 and its four number moments"),
     2: WRFCitation("Registry/Registry.EM_COMMON", "3016",
         "the linscheme package binds mp_physics=2 and carries six masses"),
     30: WRFCitation("Registry/registry.sbm", "318",
         "the fast spectral bin package binds mp_physics=30"),
+    95: WRFCitation("Registry/Registry.EM_COMMON", "3045",
+        "WRF declares the mp_physics=95 package and its own carried species"),
     0: WRFCitation(
         "Registry/Registry.EM_COMMON", "3014",
         "the passiveqv package binds mp_physics=0 and allocates qv alone"),
@@ -197,6 +262,12 @@ _MP_CITATION = MappingProxyType({
         "Registry/Registry.EM_COMMON", "3017",
         "the wsm3scheme package binds mp_physics=3 and allocates qv/qc/qr"),
     4: WRFCitation("Registry/Registry.EM_COMMON", "3018", "the WSM5 package binds mp_physics=4 and qv/qc/qr/qi/qs"),
+    7: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3023",
+        "the nuwrf4icescheme package binds mp_physics=7"),
+    15: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3020",
+        "the fer_mp_hires_advect package binds mp_physics=15"),
     6: WRFCitation(
         "Registry/Registry.EM_COMMON", "3021",
         "the WSM6 package binds mp_physics=6"),
@@ -209,6 +280,12 @@ _MP_CITATION = MappingProxyType({
     10: WRFCitation(
         "Registry/Registry.EM_COMMON", "3026",
         "the Morrison two-moment package binds mp_physics=10"),
+    13: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3029",
+        "the sbu_ylinscheme package binds mp_physics=13"),
+    14: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3030",
+        "the wdm5scheme package binds mp_physics=14"),
     16: WRFCitation(
         "Registry/Registry.EM_COMMON", "3031",
         "the wdm6scheme package binds mp_physics=16"),
@@ -222,18 +299,48 @@ _MP_CITATION = MappingProxyType({
     24: WRFCitation(
         "Registry/Registry.EM_COMMON", "3034",
         "the wsm7scheme package binds mp_physics=24"),
+    26: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3035",
+        "the wdm7scheme package binds mp_physics=26"),
     28: WRFCitation(
         "Registry/Registry.EM_COMMON", "3036",
         "the aerosol-aware Thompson package binds mp_physics=28"),
+    52: WRFCitation("Registry/Registry.EM_COMMON", "3040",
+                    "the P3_2CATEGORY package binds mp_physics=52"),
+    38: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3037",
+        "the thompsongh package binds mp_physics=38 and carries qng/qvolg"),
+    40: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3042",
+        "the morr_tm_aero package binds mp_physics=40"),
     50: WRFCitation(
         "Registry/Registry.EM_COMMON", "3038",
         "the P3_1CATEGORY package binds mp_physics=50"),
+    97: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3046",
+        "the gsfcgcescheme package binds mp_physics=97"),
+    51: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3039",
+        "the P3_1CATEGORY_NC package binds mp_physics=51"),
+    53: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3041",
+        "the P3_1CAT_3MOM package binds mp_physics=53"),
+    55: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3043",
+        "the jensen_ishmael package binds mp_physics=55 and carries "
+        "three ice habits with their number, volume and aspect moments"),
+    56: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3044",
+        "the ntu package binds mp_physics=56"),
 })
 
 _LAND_SURFACE_CITATION = MappingProxyType({
     0: WRFCitation(
         "Registry/Registry.EM_COMMON", "3144",
         "the no-LSM package binds sf_surface_physics=0"),
+    1: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3145",
+        "the slabscheme package binds sf_surface_physics=1"),
     2: WRFCitation(
         "Registry/Registry.EM_COMMON", "3146",
         "the Noah LSM package binds sf_surface_physics=2"),
@@ -243,30 +350,58 @@ _LAND_SURFACE_CITATION = MappingProxyType({
     4: WRFCitation(
         "Registry/Registry.EM_COMMON", "3149",
         "the Noah-MP package binds sf_surface_physics=4"),
+    7: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3161",
+        "the Pleim-Xiu package binds sf_surface_physics=7"),
+    8: WRFCitation("Registry/Registry.EM_COMMON", "3152",
+                   "the ssibscheme package binds sf_surface_physics=8"),
 })
 
 _CUMULUS_CITATION = MappingProxyType({
+    94: WRFCitation("Registry/Registry.EM_COMMON", "3203", "sasscheme binds cu_physics=94"),
     0: WRFCitation(
         "Registry/Registry.EM_COMMON", "3189",
         "the no-cumulus package binds cu_physics=0"),
     1: WRFCitation(
         "Registry/Registry.EM_COMMON", "3190",
         "the Kain-Fritsch package binds cu_physics=1"),
+    2: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3191",
+        "the bmjscheme package binds cu_physics=2"),
     3: WRFCitation(
         "Registry/Registry.EM_COMMON", "3192",
         "the gfscheme package binds cu_physics=3"),
+    14: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3199",
+        "the ksasscheme package binds cu_physics=14"),
     5: WRFCitation(
         "Registry/Registry.EM_COMMON", "3194",
         "the g3scheme package binds cu_physics=5"),
     6: WRFCitation(
         "Registry/Registry.EM_COMMON", "3195",
         "the tiedtkescheme package binds cu_physics=6"),
+    11: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3198",
+        "the mskfscheme package binds cu_physics=11"),
     16: WRFCitation(
         "Registry/Registry.EM_COMMON", "3201",
         "the ntiedtkescheme package binds cu_physics=16"),
+    10: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3197",
+        "the kfcupscheme package binds cu_physics=10"),
+    95: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3204",
+        "the osasscheme package binds cu_physics=95"),
     96: WRFCitation(
         "Registry/Registry.EM_COMMON", "3200",
         "the nsasscheme package binds cu_physics=96"),
+    93: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3202",
+        "the gdscheme package binds cu_physics=93"),
+    99: WRFCitation(
+        "Registry/Registry.EM_COMMON", "3205",
+        "the kfscheme package binds cu_physics=99 (the previous "
+        "Kain-Fritsch, phys/module_cu_kf.F) and allocates w0avg"),
 })
 
 _RADIATION_CITATION = MappingProxyType({
@@ -313,16 +448,26 @@ def _pair(
 # as YSU does, through its own SELECT CASE arm: the SHINHONGSCHEME case at
 # phys/module_physics_init.F:3702-3704 fatals with 'Use sf_sfclay_physics= 1
 # or 91 for this pbl option' unless the initialized surface-layer class is
-# isfc=1.
+# isfc=1.  ACM2 accepts isfc 1 or 7 through its own ACMPBLSCHEME arm
+# (phys/module_physics_init.F:3728-3730), so among the represented surface
+# layers it takes the revised and classic MM5 ones.
 PBL_SURFACE_LAYER_AUTHORITY: Mapping[
     tuple[int, int], tuple[WRFVerdict, WRFCitation]
 ] = MappingProxyType({
+    (0, 89): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3140-3237,3697-3915",
+        "the ideal SCM surface leaves isfc unassigned; PBL-off selects no "
+        "PBL initializer and never reads it"),
     (0, 0): _pair(
         WRFVerdict.LEGAL, "phys/module_physics_init.F", "3697-3915",
         "bl_pbl_physics=0 selects no PBL initialization branch"),
     (0, 1): _pair(
         WRFVerdict.LEGAL, "phys/module_physics_init.F", "3143-3152,3697-3915",
         "revised MM5 sets isfc=1; PBL-off selects no PBL initializer"),
+    (0, 3): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3186-3199,3697-3915",
+        "the GFS surface layer sets isfc=2; PBL-off selects no PBL "
+        "initializer"),
     (0, 5): _pair(
         WRFVerdict.LEGAL, "phys/module_physics_init.F", "3213-3219,3697-3915",
         "MYNN surface sets isfc=5; PBL-off selects no PBL initializer"),
@@ -335,6 +480,9 @@ PBL_SURFACE_LAYER_AUTHORITY: Mapping[
     (1, 1): _pair(
         WRFVerdict.LEGAL, "phys/module_physics_init.F", "3143-3152,3699-3701",
         "revised MM5 sets isfc=1, satisfying YSU"),
+    (1, 3): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3186-3199,3699-3701",
+        "the GFS surface layer sets isfc=2, and YSU fatals unless isfc=1"),
     (1, 5): _pair(
         WRFVerdict.FATAL, "phys/module_physics_init.F", "3213-3219,3699-3701",
         "MYNN surface sets isfc=5, and YSU fatals unless isfc=1"),
@@ -347,6 +495,10 @@ PBL_SURFACE_LAYER_AUTHORITY: Mapping[
     (5, 1): _pair(
         WRFVerdict.LEGAL, "phys/module_physics_init.F", "3143-3152,3837-3839",
         "revised MM5 sets isfc=1, which MYNN PBL explicitly accepts"),
+    (5, 3): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3186-3199,3837-3839",
+        "the GFS surface layer sets isfc=2, which MYNN PBL explicitly "
+        "accepts"),
     (5, 5): _pair(
         WRFVerdict.LEGAL, "phys/module_physics_init.F", "3213-3219,3837-3839",
         "MYNN surface sets isfc=5, which MYNN PBL explicitly accepts"),
@@ -357,6 +509,29 @@ PBL_SURFACE_LAYER_AUTHORITY: Mapping[
     # YSU's cells -- WRF's own arm at phys/module_physics_init.F:3702-3704
     # fatals with 'Use sf_sfclay_physics= 1 or 91 for this pbl option'
     # unless isfc=1.
+    # BouLac (bl_pbl_physics=8): the BOULACSCHEME case at
+    # phys/module_physics_init.F:3814-3816 fatals with 'use sfclay or myjsfc
+    # scheme for this pbl option' unless isfc is 1 or 2.  The MM5 layers set
+    # isfc=1; the MYNN layer sets isfc=5; with the slot off isfc is unset.
+    (8, 0): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3814-3816",
+        "BouLac fatals unless the initialized surface-layer class is isfc=1 "
+        "or 2: 'use sfclay or myjsfc scheme for this pbl option'"),
+    (8, 1): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3143-3152,3814-3816",
+        "revised MM5 sets isfc=1, satisfying BouLac"),
+    (8, 3): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3186-3199,3814-3816",
+        "the GFS surface layer sets isfc=2, satisfying BouLac"),
+    (8, 5): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3213-3219,3814-3816",
+        "MYNN surface sets isfc=5, and BouLac fatals unless isfc is 1 or 2"),
+    (8, 7): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3153-3155,3814-3816",
+        "Pleim-Xiu sets isfc=7, and BouLac fatals unless isfc is 1 or 2"),
+    (8, 91): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3140-3142,3814-3816",
+        "classic MM5 sets isfc=1, satisfying BouLac"),
     (11, 0): _pair(
         WRFVerdict.FATAL, "phys/module_physics_init.F", "3702-3704",
         "Shin-Hong fatals unless the initialized surface-layer class is "
@@ -364,12 +539,104 @@ PBL_SURFACE_LAYER_AUTHORITY: Mapping[
     (11, 1): _pair(
         WRFVerdict.LEGAL, "phys/module_physics_init.F", "3143-3152,3702-3704",
         "revised MM5 sets isfc=1, satisfying Shin-Hong"),
+    (11, 3): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3186-3199,3702-3704",
+        "the GFS surface layer sets isfc=2, and Shin-Hong fatals unless "
+        "isfc=1"),
     (11, 5): _pair(
         WRFVerdict.FATAL, "phys/module_physics_init.F", "3213-3219,3702-3704",
         "MYNN surface sets isfc=5, and Shin-Hong fatals unless isfc=1"),
     (11, 91): _pair(
         WRFVerdict.LEGAL, "phys/module_physics_init.F", "3140-3142,3702-3704",
         "classic MM5 sets isfc=1, satisfying Shin-Hong"),
+    # EEPS (bl_pbl_physics=16): the EEPSSCHEME case at
+    # phys/module_physics_init.F:3871-3873 fatals with 'use mynnsfc or
+    # sfclay or myjsfc scheme for this pbl option' unless isfc is 1, 2, 5
+    # or 91.
+    (16, 0): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3871-3873",
+        "EEPS fatals unless the initialized surface-layer class is isfc "
+        "1, 2, 5 or 91: 'use mynnsfc or sfclay or myjsfc scheme for this "
+        "pbl option'"),
+    (16, 1): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3143-3152,3871-3873",
+        "revised MM5 sets isfc=1, which EEPS accepts"),
+    (16, 3): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3186-3199,3871-3873",
+        "the GFS surface layer sets isfc=2, which EEPS accepts"),
+    (16, 5): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3213-3219,3871-3873",
+        "MYNN surface sets isfc=5, which EEPS accepts"),
+    (16, 7): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3153-3155,3871-3873",
+        "Pleim-Xiu sets isfc=7, and EEPS fatals unless isfc is 1, 2, 5 or 91"),
+    (16, 91): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3140-3142,3871-3873",
+        "classic MM5 sets isfc=1, which EEPS accepts"),
+    # MRF (bl_pbl_physics=99): the MRFSCHEME case, WRF's own arm at
+    # phys/module_physics_init.F:3715-3717, 'Use sf_sfclay_physics= 1 or 91
+    # for this pbl option' unless isfc=1.
+    (99, 0): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3715-3717",
+        "MRF fatals unless the initialized surface-layer class is isfc=1: "
+        "'Use sf_sfclay_physics= 1 or 91 for this pbl option'"),
+    (99, 1): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3143-3152,3715-3717",
+        "revised MM5 sets isfc=1, satisfying MRF"),
+    (99, 3): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3186-3199,3715-3717",
+        "the GFS surface layer sets isfc=2, and MRF fatals unless isfc=1"),
+    (99, 5): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3213-3219,3715-3717",
+        "MYNN surface sets isfc=5, and MRF fatals unless isfc=1"),
+    (99, 7): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3153-3155,3715-3717",
+        "Pleim-Xiu sets isfc=7, and MRF fatals unless isfc=1"),
+    (99, 91): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3140-3142,3715-3717",
+        "classic MM5 sets isfc=1, satisfying MRF"),
+
+    # ACM2 (bl_pbl_physics=7): the ACMPBLSCHEME case at
+    # phys/module_physics_init.F:3728-3730 fatals with 'use sfclay or pxsfc
+    # scheme for this pbl option' unless isfc is 1 (the MM5 layers) or 7
+    # (Pleim-Xiu, :3153-3155).
+    (7, 0): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3728-3730",
+        "ACM2 fatals unless the initialized surface-layer class is isfc=1 "
+        "or 7: 'use sfclay or pxsfc scheme for this pbl option'"),
+    (7, 1): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3143-3152,3728-3730",
+        "revised MM5 sets isfc=1, satisfying ACM2"),
+    (7, 5): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3213-3219,3728-3730",
+        "MYNN surface sets isfc=5, and ACM2 fatals unless isfc is 1 or 7"),
+    (7, 3): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3186-3199,3728-3730",
+        "GFS sets isfc=2, and ACM2 fatals unless isfc is 1 or 7"),
+    (7, 7): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3153-3155,3728-3730",
+        "Pleim-Xiu sets isfc=7, satisfying ACM2"),
+    (7, 91): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3140-3142,3728-3730",
+        "classic MM5 sets isfc=1, satisfying ACM2"),
+    # Pleim-Xiu (sf_sfclay_physics=7): PXSFCSCHEME sets isfc=7
+    # (phys/module_physics_init.F:3153-3155). PBL-off and CAMUW accept it;
+    # CAMUW carries no isfc law (:3823-3828). WRF also admits ACM2
+    # (:3728-3730), whose separate port does not belong to this lane.
+    (0, 7): _pair(
+        WRFVerdict.LEGAL, "phys/module_physics_init.F", "3153-3155,3697-3915",
+        "Pleim-Xiu sets isfc=7; PBL-off selects no PBL initializer"),
+    (1, 7): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3153-3155,3699-3701",
+        "Pleim-Xiu sets isfc=7, and YSU fatals unless isfc=1"),
+    (5, 7): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3153-3155,3837-3839",
+        "Pleim-Xiu sets isfc=7, and MYNN PBL fatals unless the initialized "
+        "surface class is 5, 1, or 2"),
+    (11, 7): _pair(
+        WRFVerdict.FATAL, "phys/module_physics_init.F", "3153-3155,3702-3704",
+        "Pleim-Xiu sets isfc=7, and Shin-Hong fatals unless isfc=1: 'Use "
+        "sf_sfclay_physics= 1 or 91 for this pbl option'"),
 })
 
 
@@ -416,7 +683,13 @@ def compatibility_cell(
             "WRF v4.6.1 matrix") from exc
 
     silent_reconfiguration = None
-    if pair_verdict is WRFVerdict.FATAL:
+    if int(sf_surface_physics) == 8 and (
+            int(bl_pbl_physics) != 1 or int(sf_sfclay_physics) not in (1, 91)
+            or radiation in ("analytic", "dudhia-shortwave")):
+        verdict = WRFVerdict.FATAL
+        citations += (WRFCitation("phys/module_physics_init.F", "3542-3550",
+                       "SSiB requires isfc=1, YSU and LW/SW in 1,3,4"),)
+    elif pair_verdict is WRFVerdict.FATAL:
         verdict = WRFVerdict.FATAL
     elif radiation == "analytic":
         verdict = WRFVerdict.NOT_EXPRESSIBLE

@@ -53,7 +53,7 @@ def native_diagnostic_source():
     """Bind shared device math; mpas_atm_time_integration.F:7628-7650.
 
     Built once per process: the three headers are package data.  THE BREAKAGE THIS PREVENTS (hex host-bound,
-    V5090 2026-10-27): every pool synchronize (two or three a physics step) re-read the three files from disk
+    reference system 2026-10-27): every pool synchronize (two or three a physics step) re-read the three files from disk
     and re-joined them on the thread that issues the card's work.
     """
     root = files('woof.core.kernels')

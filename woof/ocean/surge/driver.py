@@ -66,6 +66,8 @@ def _library(build: Path) -> Path:
             raise FileNotFoundError(p)
         return p
     source = Path(__file__).parent / "kernels" / "surge.cu"
+    from woof.hip_backend import active,compile_shared
+    if active(): return compile_shared(source.read_text())
     nvcc = shutil.which("nvcc")
     if not nvcc:
         raise FileNotFoundError("nvcc is required to build the surge CUDA driver")

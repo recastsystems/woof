@@ -136,6 +136,10 @@ _DEVICE_GENERATION_SELECTORS = ("bl_mynn_version", "bl_mynn_cloud_tendency_form"
 def _cpu_replay_kw(kw):
     """The device unit's keywords as the CPU reference takes them."""
     replay = {k: v for k, v in kw.items() if k != "scratch"}
+    # export_sink is the device unit's GSD-4.1 diagnostic OUTPUT sink
+    # (6d79b6e9c5), not an input; the WRF 4.6.1 DMP the CPU replays has
+    # none, and the generation selector below holds the replay to it.
+    assert replay.pop("export_sink", None) is None
     for selector in _DEVICE_GENERATION_SELECTORS:
         value = replay.pop(selector, "wrf_461")
         assert value == "wrf_461", (selector, value)

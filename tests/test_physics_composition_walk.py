@@ -121,7 +121,7 @@ def test_a_mutation_control_still_produces_a_refusal() -> None:
     """
 
     combination = dict(walk.ANCHORS["ysu-mm5-noah-rrtmgp"], **walk.TIER_A_HELD)
-    combination["mp_physics"] = 55
+    combination["mp_physics"] = 37
     outcome = walk.attempt(combination)
     assert outcome.verdict == "REFUSED"
     assert "mp_physics must be" in outcome.message
@@ -156,9 +156,16 @@ def test_the_walk_covers_what_it_says_it_covers(receipt) -> None:
     assert tiers["A-nexus-cartesian"]["tried"] == expected
 
 
+#: Admitted values held at the forecast door by a named, measured guard.
+#: RCON-SPEED-01 (woof/config.py): mp_physics=29 is ported and schema-legal,
+#: but its whole-forecast microphysics stage costs 1.885x MP28, outside the
+#: 1.2x bar; the entry goes when that guard is retired.
+HELD_AT_THE_DOOR = {"mp_physics=29": "RCON-SPEED-01"}
+
+
 def test_every_admitted_value_of_every_axis_reaches_an_accepted_run(
         receipt) -> None:
-    """No axis value is decorative, and now there is no exception.
+    """No axis value is decorative; the only exceptions are named holds.
 
     ``ra_lw_physics=1`` used to be the one schema-legal, deliberately
     unexecutable value in the whole space: the WRF RRTM longwave kernels
@@ -178,9 +185,16 @@ def test_every_admitted_value_of_every_axis_reaches_an_accepted_run(
         for value, counts in values.items()
         if counts["accepted"] == 0
     }
-    assert unreachable == set(), (
+    assert unreachable == set(HELD_AT_THE_DOOR), (
         "the set of admitted-but-unreachable selector values changed: "
         f"{sorted(unreachable)}")
+    # Each held value says so out loud, citing the guard that holds it.
+    for value, guard in HELD_AT_THE_DOOR.items():
+        axis, number = value.split("=")
+        held = walk.attempt({**walk.ANCHORS["ysu-mm5-noah-rrtmgp"],
+                             **walk.TIER_A_HELD, axis: int(number)})
+        assert held.verdict == "REFUSED", value
+        assert "speed proof is open" in held.message, (guard, held.message)
     # Non-vacuous: the value that used to be the exception now runs, and
     # the pairing the old refusal named as unreachable is accepted.
     combination = dict(walk.ANCHORS["ysu-mm5-noah-rrtmgp"], **walk.TIER_A_HELD)
@@ -268,13 +282,20 @@ def test_every_refusal_rule_has_a_remedy_and_the_remedy_works(
         f"produces and are dead weight: {sorted(covered - observed)}")
 
 
+# WRF Fu-Liou-Gu dispatch has no one-spectrum-off CASE for these pairs.
+# Keep this independent, literal contract: other mixed pairs still accept.
+RADIATION_PAIR_REFUSALS = {
+    (0, 7): "WRF radiation_driver has no ra_lw_physics=0 CASE for ra_sw_physics=7; select an implemented ra_lw_physics.",
+    (7, 0): "WRF radiation_driver rejects ra_lw_physics=7 with ra_sw_physics=0: select an active ra_sw_physics (native CASE 0).",
+}
+
+
 def test_independent_radiation_spectra_preserve_every_selected_pair() -> None:
     """The retired pairing refusals must not return or rewrite a spectrum.
 
-    The runtime composes independently selected longwave and shortwave
-    engines. Exercise the real loader over the entire declared pair space,
-    including 4/0, 4/90 and 1/4, which the old adapter locks refused.
-    Unsupported selectors remain covered by the schema and mutation gates.
+    Exercise the real loader across every pair, including mixed 4/0,
+    4/90 and 1/4. The two native Fu-Liou-Gu dispatch exclusions must name
+    their selectors; every other pair must accept without a rewrite.
     """
 
     base = dict(walk.ANCHORS["ysu-mm5-noah-rrtmgp"], **walk.TIER_A_HELD)
@@ -282,8 +303,12 @@ def test_independent_radiation_spectra_preserve_every_selected_pair() -> None:
         for sw in walk.AXIS_VALUES["ra_sw_physics"]:
             outcome = walk.attempt(dict(base, ra_lw_physics=lw,
                                         ra_sw_physics=sw))
-            assert outcome.verdict == "ACCEPTED", (lw, sw, outcome.message)
-            assert outcome.rewritten == (), (lw, sw, outcome.rewritten)
+            if (lw, sw) in RADIATION_PAIR_REFUSALS:
+                assert outcome.verdict == "REFUSED", (lw, sw, outcome)
+                assert outcome.message == RADIATION_PAIR_REFUSALS[lw, sw]
+            else:
+                assert outcome.verdict == "ACCEPTED", (lw, sw, outcome.message)
+                assert outcome.rewritten == (), (lw, sw, outcome.rewritten)
 
 
 def test_the_prognostic_tke_refusal_no_longer_recommends_a_refused_value(
@@ -331,9 +356,14 @@ def test_each_axis_admits_exactly_the_values_the_walk_declares(
 def test_the_declared_axes_match_the_exported_scheme_tables() -> None:
     """The half of the transcription that config.py does export."""
 
-    from woof.config import (CU_SCHEMES, LAND_SURFACE_SCHEMES, PBL_SCHEMES,
+    from woof.config import (CU_SCHEMES, LAND_SURFACE_SCHEMES,
+                              MP_PHYSICS_ACCEPTED, PBL_SCHEMES,
+                              RA_LW_PHYSICS_ACCEPTED, RA_SW_PHYSICS_ACCEPTED,
                               SURFACE_LAYER_SCHEMES)
 
+    assert walk.AXIS_VALUES["mp_physics"] == tuple(MP_PHYSICS_ACCEPTED)
+    assert walk.AXIS_VALUES["ra_lw_physics"] == tuple(RA_LW_PHYSICS_ACCEPTED)
+    assert walk.AXIS_VALUES["ra_sw_physics"] == tuple(RA_SW_PHYSICS_ACCEPTED)
     assert walk.AXIS_VALUES["bl_pbl_physics"] == tuple(PBL_SCHEMES)
     assert walk.AXIS_VALUES["sf_sfclay_physics"] == tuple(
         SURFACE_LAYER_SCHEMES)
@@ -359,17 +389,17 @@ def test_mynn_composes_with_every_land_surface(receipt) -> None:
     from woof.config import LAND_SURFACE_SCHEMES
 
     assert (receipt["mynn_slice"]["land_surface_options_accepted"]
-            == sorted(LAND_SURFACE_SCHEMES))
+            == sorted(set(LAND_SURFACE_SCHEMES) - {8}))
+    assert all(value.startswith("REFUSED:") for key, value in receipt["mynn_matrix"].items() if key.startswith("lsm8."))
 
 
 def test_mynn_composes_with_every_radiation_pairing_the_loader_admits(
         receipt) -> None:
     """"Every admitted radiation option" stated exactly.
 
-    Every declared longwave selector now composes with every declared
-    shortwave selector. MYNN must reach that complete Cartesian space,
-    including every combination with longwave enabled; preserving only
-    the five formerly paired adapters would silently narrow the claim.
+    MYNN reaches every declared pair except the two native Fu-Liou-Gu
+    dispatch exclusions. Keep the expected set independent from the
+    measured receipt, including all other longwave-enabled combinations.
     """
 
     accepted_anywhere = {
@@ -386,6 +416,7 @@ def test_mynn_composes_with_every_radiation_pairing_the_loader_admits(
         f"{lw}/{sw}"
         for lw in walk.AXIS_VALUES["ra_lw_physics"]
         for sw in walk.AXIS_VALUES["ra_sw_physics"]
+        if (lw, sw) not in RADIATION_PAIR_REFUSALS
     }
     assert accepted_anywhere == expected
     longwave_on = {pair for pair in accepted_anywhere
@@ -394,6 +425,7 @@ def test_mynn_composes_with_every_radiation_pairing_the_loader_admits(
         f"{lw}/{sw}"
         for lw in walk.AXIS_VALUES["ra_lw_physics"] if lw != 0
         for sw in walk.AXIS_VALUES["ra_sw_physics"]
+        if (lw, sw) not in RADIATION_PAIR_REFUSALS
     }
 
 
@@ -409,7 +441,7 @@ def test_the_mynn_matrix_is_the_same_in_every_land_surface_column(
     from woof.config import LAND_SURFACE_SCHEMES
 
     columns = {}
-    for lsm in LAND_SURFACE_SCHEMES:
+    for lsm in set(LAND_SURFACE_SCHEMES) - {8}:
         columns[lsm] = tuple(
             receipt["mynn_matrix"][f"lsm{lsm}.lw{lw}.sw{sw}"]
             for lw in walk.AXIS_VALUES["ra_lw_physics"]
@@ -455,7 +487,9 @@ def test_the_mynn_matrix_is_the_same_in_every_land_surface_column(
 #: evaluated over the transported number moments -- so the pairing
 #: resolves, and woof.config.validate_milbrandt2_options no longer
 #: carries the refusal.
-MYNN_MICROPHYSICS_ACCEPTED = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 50, 106, 900]
+# MP13 is measured on its native legacy RRTMG pairing in tier B. This
+# union records accepted MYNN configurations across radiation variants.
+MYNN_MICROPHYSICS_ACCEPTED = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 28, 38, 40, 50, 51, 52, 53, 55, 56, 97, 106, 900]
 
 #: The admitted microphysics values the MYNN slice does not reach.  50 was
 #: here from the 1.9 gate until the P3 cloud-optics row landed, and 9 until
@@ -465,39 +499,48 @@ MYNN_MICROPHYSICS_ACCEPTED = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 50,
 #: (woof.core.rrtmgp._NO_CLOUD_OPTICS_COUPLING), so the slice's RTE+RRTMGP
 #: anchor refuses it at the run door; its legacy-RRTMG pairing accepts
 #: (measured below).
-MYNN_MICROPHYSICS_EXCLUDED = (30,)
+#: The WRF 4.7.1 port added three more judged RTE+RRTMGP cloud-optics
+#: exclusions of the same kind, each accepting on legacy RRTMG: UDM (27,
+#: module_mp_udm.F's uninitialised den1d radius input), Eta Ferrier (95,
+#: total ice with no qi or radii) and MAD-WRF (96).  RCON (29) is held at the
+#: door by RCON-SPEED-01 (see HELD_AT_THE_DOOR) under every suite.
+MYNN_MICROPHYSICS_EXCLUDED = (27, 29, 30, 95, 96)
 
 
 def test_mynn_composes_with_every_microphysics_and_cumulus_scheme(
         receipt) -> None:
     """The claim, stated as the measurement instead of as an aspiration.
 
-    This used to assert that MYNN reaches every admitted microphysics
-    value.  With the 1.9 microphysics ports landed that is a false
-    product statement: the slice's RTE+RRTMGP anchor refuses
-    Milbrandt-Yau for absent cloud-optics coupling.  The assertion is now
-    the exact measured set plus the named exclusion, so the excluded
-    value cannot grow silently and the reason travels with the number.
+    Pin the measured union across the MYNN radiation anchors. Native
+    legacy cloud-optics pairings include MP2 and MP13; FAST_SBM remains
+    excluded from these anchors for its missing RTE effective radii.
+    Loader checks below retain that concrete refusal and its remedy.
     """
 
     from woof.config import CU_SCHEMES
 
     accepted = receipt["mynn_slice"]["microphysics_options_accepted"]
     assert accepted == MYNN_MICROPHYSICS_ACCEPTED
+    # WRF CAM ZM needs MYJ or CAM UW's temperature excess; MYNN has
+    # neither provider (module_cu_camzm_driver.F:978-1018).
     assert (receipt["mynn_slice"]["cumulus_options_accepted"]
-            == sorted(CU_SCHEMES))
+            == sorted(set(CU_SCHEMES) - {7}))
+    mynn_cam = dict(walk.ANCHORS["mynn-rrtmgp-noah"],
+                    **walk.TIER_A_HELD)
+    mynn_cam["cu_physics"] = 7
+    refused_cam = walk.attempt(mynn_cam)
+    assert refused_cam.verdict == "REFUSED"
+    assert "CAMZMSCHEME requires MYJPBLSCHEME or CAMUWPBLSCHEME" in refused_cam.message
+    native_cam = dict(mynn_cam, bl_pbl_physics=2, sf_sfclay_physics=2)
+    assert walk.attempt(native_cam).verdict == "ACCEPTED"
 
     # The exclusions are exactly these values, and every one is admitted by
     # the schema -- so these are composition refusals, not a shrunken axis.
     excluded = sorted(set(walk.AXIS_VALUES["mp_physics"]) - set(accepted))
     assert excluded == sorted(MYNN_MICROPHYSICS_EXCLUDED)
 
-    # The exclusion set is empty, and that emptiness is measured rather
-    # than assumed: the two schemes that used to sit in it (50, then 9)
-    # were each refused for a missing RTE+RRTMGP cloud-optics row, and
-    # each row now exists, so both ACCEPT under the MYNN + RTE+RRTMGP
-    # anchor on the DEFAULT variant -- fixed means default.  Their Dudhia
-    # pairing, the former remedy, still accepts too.
+    # MP50 and MP9 left the exclusion set when their cloud-optics rows
+    # landed. Their default RTE+RRTMGP and former Dudhia remedies accept.
     anchor = dict(walk.ANCHORS["mynn-rrtmgp-noah"], **walk.TIER_A_HELD)
     for mp_physics in (9, 50):
         assert mp_physics in accepted
@@ -508,14 +551,15 @@ def test_mynn_composes_with_every_microphysics_and_cumulus_scheme(
             anchor, mp_physics=mp_physics,
             ra_lw_physics=0, ra_sw_physics=1))
         assert on_dudhia.verdict == "ACCEPTED", (mp_physics, on_dudhia.message)
-    # FAST_SBM: refused on the RTE+RRTMGP anchor with the legacy remedy
-    # named, and accepted on the legacy RRTMG pair that remedy names.
-    on_rrtmgp = walk.attempt(dict(anchor, mp_physics=30))
-    assert on_rrtmgp.verdict == "REFUSED", on_rrtmgp.message
-    assert "rrtmg_legacy" in on_rrtmgp.message
-    on_legacy = walk.attempt(dict(anchor, mp_physics=30,
-                                  ra_rrtmg_variant="rrtmg_legacy"))
-    assert on_legacy.verdict == "ACCEPTED", on_legacy.message
+    # Both native cloud-optics exclusions name the legacy remedy, and
+    # the legacy RRTMG pair that remedy names must accept each scheme.
+    for mp_physics in (13, 30):
+        on_rrtmgp = walk.attempt(dict(anchor, mp_physics=mp_physics))
+        assert on_rrtmgp.verdict == "REFUSED", on_rrtmgp.message
+        assert "rrtmg_legacy" in on_rrtmgp.message
+        on_legacy = walk.attempt(dict(anchor, mp_physics=mp_physics,
+                                      ra_rrtmg_variant="rrtmg_legacy"))
+        assert on_legacy.verdict == "ACCEPTED", on_legacy.message
 
 
 def _radiation_bearing(switches) -> bool:
@@ -630,3 +674,18 @@ def test_the_shipped_mynn_presets_are_inside_the_measured_space() -> None:
         assert outcome.verdict == "ACCEPTED", (
             f"{profile} runs both radiation streams and the walk refuses "
             f"it: {outcome.message}")
+
+
+def test_parallel_loader_walk_preserves_order_and_negative_controls():
+    background = dict(walk.ANCHORS['ysu-mm5-noah-rrtmgp'], **walk.TIER_A_HELD)
+    rows = [('probe', str(i), dict(background, **change)) for i, change in enumerate((
+        {}, {'mp_physics': 40, 'cu_physics': 11, 'aercu_opt': 1},
+        {'bl_pbl_physics': 2, 'sf_sfclay_physics': 1},
+        {'ra_lw_physics': 999}, {'cu_physics': 0},
+    ))]
+    serial, parallel = walk.Walk(jobs=1), walk.Walk(jobs=2)
+    serial.run_many(iter(rows))
+    parallel.run_many(iter(rows))
+    assert parallel.rows == serial.rows
+    assert [row[1] for row in parallel.rows] == [str(i) for i in range(len(rows))]
+    assert {row[3].verdict for row in parallel.rows} == {'ACCEPTED', 'REFUSED'}

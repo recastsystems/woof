@@ -194,6 +194,26 @@ def frequency_threshold(field, valid, target: float) -> float:
     return float(result[0])
 
 
+def _reduction_buffer(values: np.ndarray) -> int:
+    """Use NumPy's reduction chunking for this contiguous float64 input.
+
+    The grow-inner reduction iterator honors the transfer buffer on NumPy
+    2.2 but spans a contiguous operand on newer builds. Ask that iterator
+    for its chunk, without doing any scoring in Python or changing errstate.
+    """
+    if not values.size:
+        return 1
+    accumulator = np.zeros((), dtype=np.float64)
+    with np.nditer(
+        [accumulator, values.reshape(-1)],
+        flags=["reduce_ok", "external_loop", "buffered", "grow_inner",
+               "zerosize_ok"],
+        op_flags=[["readwrite"], ["readonly"]],
+        op_axes=[[-1], [0]], buffersize=np.getbufsize(),
+    ) as chunks:
+        return int(next(chunks)[1].size)
+
+
 def masked_fss(model, obs, valid, scored, threshold: float, half_width: int,
                boundary: str, frequency_matched: bool):
     model = _array(model)
@@ -206,7 +226,7 @@ def masked_fss(model, obs, valid, scored, threshold: float, half_width: int,
     _check(library, library.gpuwm_obsscore_masked_fss(
         _ptr(model), _ptr(obs), _ptr(valid), _ptr(scored), *model.shape,
         threshold, half_width, int(boundary == "edge"),
-        int(frequency_matched), max(1, model.size), _ptr(values), _ptr(cells)))
+        int(frequency_matched), _reduction_buffer(model), _ptr(values), _ptr(cells)))
     return values, int(cells[0])
 
 
@@ -238,7 +258,7 @@ def reduce(values):
     result = np.empty(3, dtype=np.float64)
     library = load()
     _check(library, library.gpuwm_obsscore_reduce(
-        _ptr(values), values.size, max(1, values.size), _ptr(result)))
+        _ptr(values), values.size, _reduction_buffer(values), _ptr(result)))
     return tuple(float(value) for value in result)
 
 

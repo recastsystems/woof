@@ -88,3 +88,17 @@ def test_myj_consumes_wave_roughness_inside_flux_iterations():
         a=wave[k] if k in wave else wave_out[k]
         z=base[k] if k in base else base_out[k]
         cp.testing.assert_array_equal(a[:,0],z[:,0])
+
+
+@pytest.mark.parametrize('option',[1,91])
+def test_mm5_consumes_incoming_wave_momentum_roughness(option):
+    from woof.core.sfclay import sfclay
+    g,b,f=setup()
+    def launch(z0):
+        return sfclay(f(20),f(2),f(299),f(.015),f(100000),f(40),f(100200),f(300),
+                      f(z0),f(500),f(1),f(2),ust=f(.7),qsfc=f(.02),option=option,
+                      isftcflx=2,dx=25000.)
+    base=launch(.0001);wave=launch(.004)
+    assert bool(cp.all(cp.isfinite(wave.ust)))
+    assert bool(cp.all(wave.ust>base.ust))
+    assert bool(cp.any(wave.hfx!=base.hfx))

@@ -48,14 +48,32 @@ def _vector(dataset, name: str, path: Path) -> np.ndarray:
     return value
 
 
-def read_wrfinput_identity(path, *, restart: bool = False) -> WrfinputIdentity:
+def effective_hybrid_opt(attributes) -> int:
+    """WRF 3.9 without HYBRID_COORD writes -1 for its sigma coordinate.
+
+    Keep the original header for boundary-pair identity. Only the audited
+    pre-hybrid writer's sentinel denotes zero; later/unknown writers retain
+    their own value and fail the ordinary representation check.
+    """
+    value = int(attributes["HYBRID_OPT"])
+    if (value == -1 and "V3.9" in str(attributes.get("TITLE", ""))
+            and float(attributes.get("ETAC", -1)) == 0.0):
+        return 0
+    return value
+
+
+def read_wrfinput_identity(path, *, restart: bool = False,
+                           child: bool = False) -> WrfinputIdentity:
     """Read and check dimensions, representation, record time and vertical grid.
 
     ``restart`` reads a WRF-written restart file (``FLAG_RESTART = 1``):
     its ``Times`` record is the restart instant, which lies after the
     ``START_DATE`` of the simulation it continues, so the record must not
     precede that start rather than equal it.  ``start_time`` is then the
-    restart instant.
+    restart instant. A native ``write_input`` child can likewise retain the
+    root's START_DATE. Its record instant is checked against the child's
+    authored start by ``check_wrfinput_identity`` after namelist import.
+    The root's cold-start equality remains mandatory.
     """
     path = Path(path)
     with netcdf_bridge.open_dataset(path) as dataset:
@@ -68,7 +86,7 @@ def read_wrfinput_identity(path, *, restart: bool = False) -> WrfinputIdentity:
             raise ValueError(f"{path}: missing input identity attributes {missing}")
         for name in required[:5]:
             attributes[name] = _integer(attributes[name], name, path)
-        if attributes["SF_SURFACE_PHYSICS"] == 4:
+        if attributes["SF_SURFACE_PHYSICS"] == 4 and not restart:
             from woof.ingest.wrfinput_noahmp import require_cold_start
             require_cold_start(dataset)
         for name in ("west_east", "south_north", "bottom_top", "soil_layers_stag"):
@@ -88,6 +106,15 @@ def read_wrfinput_identity(path, *, restart: bool = False) -> WrfinputIdentity:
         validate_explicit_eta_grid(eta, nz=dimensions["bottom_top"],
                                   p_top=float(top[0]), context=str(path))
         mid = _vector(dataset, "ZNU", path)
+        if attributes["HYBRID_OPT"] == -1 and effective_hybrid_opt(attributes) == 0:
+            # Prove the serialized coefficients really describe sigma.
+            for suffix, eta_grid in (("H", mid), ("F", eta)):
+                for prefix, expected in (("C1", np.ones_like(eta_grid)),
+                                         ("C2", np.zeros_like(eta_grid)),
+                                         ("C3", eta_grid), ("C4", np.zeros_like(eta_grid))):
+                    actual = _vector(dataset, prefix + suffix, path)
+                    if actual.shape != expected.shape or not np.array_equal(actual, expected):
+                        raise ValueError(f"{path}: legacy sigma header has inconsistent {prefix + suffix}")
         if mid.shape != (dimensions["bottom_top"],) or not np.allclose(
                 mid, (eta[:-1] + eta[1:]) * 0.5, rtol=0.0, atol=1e-7):
             raise ValueError(f"{path}: ZNU disagrees with the ZNW layer midpoints")
@@ -99,7 +126,7 @@ def read_wrfinput_identity(path, *, restart: bool = False) -> WrfinputIdentity:
             start = datetime.strptime(record, "%Y-%m-%d_%H:%M:%S")
         except ValueError:
             raise ValueError(f"{path}: invalid Times record {record!r}") from None
-        if restart:
+        if restart or child:
             try:
                 simulation_start = datetime.strptime(
                     str(attributes["START_DATE"]).strip(), "%Y-%m-%d_%H:%M:%S")
@@ -108,7 +135,7 @@ def read_wrfinput_identity(path, *, restart: bool = False) -> WrfinputIdentity:
                     f"{path}: invalid START_DATE {attributes['START_DATE']!r}") from None
             if start < simulation_start:
                 raise ValueError(
-                    f"{path}: restart Times {record} precedes the simulation "
+                    f"{path}: Times {record} precedes the simulation "
                     f"START_DATE {attributes['START_DATE']}")
         elif record != str(attributes["START_DATE"]):
             raise ValueError(f"{path}: Times {record} differs from START_DATE {attributes['START_DATE']}")
@@ -145,7 +172,7 @@ def check_wrfinput_identity(identity: WrfinputIdentity, *, domain, vertical,
         ("soil_layers_stag", identity.dimensions["soil_layers_stag"], soil_layers),
         ("MP_PHYSICS", attributes["MP_PHYSICS"], cfg.mp_physics),
         ("SF_SURFACE_PHYSICS", attributes["SF_SURFACE_PHYSICS"], cfg.sf_surface_physics),
-        ("HYBRID_OPT", attributes["HYBRID_OPT"], vertical.hybrid_opt),
+        ("HYBRID_OPT", effective_hybrid_opt(attributes), vertical.hybrid_opt),
         ("start_time", identity.start_time, start_time),
     )
     differences = [f"{name}: file={found}, config={wanted}"

@@ -34,7 +34,7 @@
                   "prep-real-specified5.npz":  "d9c9d46fec20f37275c5f2eebeaf34fa155f5d83c90ef3048ddaeaf1e4602a14",
                   "prep-steep-terrain.npz":  "8ab7de2b4146b6402b6ea9568fb02eb9405793817f1a74f3342834883ba9da74",
                   "prep-zero-motion.npz":  "3b2cb9ad0aed3f0afefc8c3c4851ec3fdb62612e59c5a2a8f2cbee9ddbf7e06b",
-                  "prep-measurements.json":  "13c27ec91574eccc4a3424c737ff50da34566ccc4a1545e96130300b581ac559"
+                  "prep-measurements.json":  "813d1b8661291a7746209f0b7566eef988b576457517f8f17364e53af5419660"
               },
     "state_sha256":  "744d7cffbdf37db5768fa4b620bfc0cbc15971d5bfa792b4adb6de0f6ad2b22e",
     "omega_fixture_sha256":  "0501c9bb7005325d70db6b00e8ab28b7a9d303558d08b9f5f8fed033ad4688c6"

@@ -366,7 +366,7 @@ class Domain:
         """State arrays carried by a checkpoint (including auxiliary/diagnostic carriers)."""
         from woof.io.restart import classify_state_attr
         return tuple(sorted(name for name, value in vars(self.state).items()
-                            if _array(value) and classify_state_attr(name)
+                            if _array(value) and classify_state_attr(name, self.state)
                             in ("serialize", "checkpoint_only")))
 
     def moist_species(self) -> tuple[str, ...]:
@@ -416,7 +416,7 @@ class Domain:
         and rebuild retain their engine meanings. Unknown arrays raise.
         """
         from woof.io.restart import classify_state_attr, classify_scratch_slot
-        return {"state": {n: classify_state_attr(n) for n, a in vars(self.state).items() if _array(a)},
+        return {"state": {n: classify_state_attr(n, self.state) for n, a in vars(self.state).items() if _array(a)},
                 "scratch": {n: classify_scratch_slot(n) for n, a in self.state._scratch.items() if _array(a)}}
 
     def snapshot(self) -> DomainSnapshot:
@@ -463,7 +463,7 @@ class Domain:
         src, dst = src_domain.cfg, self.cfg
         # Different cell metrics/species cannot represent the same moving grid.
         for key in ("nz", "dx", "dy", "ztop", "mp_physics", "moist",
-                    "hybrid_opt", "etac", "p_surf", "chem_sets"):
+                    "hybrid_opt", "etac", "p_surf", "chem_sets", "use_theta_m"):
             if getattr(src, key) != getattr(dst, key):
                 raise ValueError(f"copy_overlap requires matching {key}; copying would change the represented cells/species")
         source_inventory = src_domain.carried_arrays()

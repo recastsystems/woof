@@ -15,9 +15,11 @@ convecting column.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 from pathlib import Path
 from types import SimpleNamespace
+from _run_config_fake import run_config_fake
 
 import numpy as np
 import pytest
@@ -255,11 +257,13 @@ def test_f_qr_follows_the_admitted_microphysics():
     assert kf_has_rain_for_microphysics(0) is False
     # 2, 3, 4, 5, 24 and 106 joined with golden/ports-mp (2.9.0); each carries
     # a rain species (WSM3 holds rain in qr above freezing).
-    for mp in (1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 50, 106):
+    # 7 (Goddard 4-ice) joined with its port; it carries qr.
+    # 95 (the old Eta Ferrier scheme) joined with its 3.0 port; it carries qr.
+    for mp in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 16, 18, 24, 28, 50, 95, 106):
         assert kf_has_rain_for_microphysics(mp) is True
-    # 7 (Goddard 4-ice) is not ported, so KF refuses it.
+    # A selector no port carries is still refused.
     with pytest.raises(ValueError):
-        kf_has_rain_for_microphysics(7)
+        kf_has_rain_for_microphysics(12345)
 
 
 @pytest.mark.gpu
@@ -311,7 +315,7 @@ def test_kf_trigger_history_advances_per_due_call_and_scheme_consumes_it(
         }
 
     monkeypatch.setattr("woof.core.kf.launch_kf", fake_launch)
-    cfg = SimpleNamespace(cudt_minutes=5.0, dt=60.0, dx=12000.0,
+    cfg = run_config_fake(cudt_minutes=5.0, dt=60.0, dx=12000.0,
                           mp_physics=10)
     scheme = KainFritsch()
     f32 = np.float32
@@ -341,7 +345,7 @@ def test_kf_trigger_history_advances_per_due_call_and_scheme_consumes_it(
     # call advances the mean exactly once with the CLOCK-derived
     # TST = 2*NINT(cudt*60/clock_dt) = 10, and the scheme receives the
     # model-clock DT (module_cumulus_driver.F:1028).
-    sub_cfg = SimpleNamespace(cudt_minutes=5.0, dt=7.5, clock_dt=60.0,
+    sub_cfg = run_config_fake(cudt_minutes=5.0, dt=7.5, clock_dt=60.0,
                               dx=12000.0, mp_physics=10)
     sub_scheme = KainFritsch()
     w = np.arange(9, dtype=np.float32).reshape(9, 1, 1)
@@ -358,7 +362,7 @@ def test_kf_trigger_history_advances_per_due_call_and_scheme_consumes_it(
     assert captured["cudt_minutes"] == 5.0
 
     # ADAPT_STEP_FLAG: the DT-weighted mean over 2*MAX(CUDT*60, DT).
-    ada_cfg = SimpleNamespace(cudt_minutes=5.0, dt=50.0, dx=12000.0,
+    ada_cfg = run_config_fake(cudt_minutes=5.0, dt=50.0, dx=12000.0,
                               mp_physics=10, use_adaptive_time_step=True)
     ada_scheme = KainFritsch()
     state.elapsed_seconds = 0.0
@@ -603,10 +607,21 @@ def test_kf_production_binding_nca_hold_and_domain_flag():
         # current RK target above still contains the pre-expiry forcing, but
         # Morrison's later raw-rate inputs and the next held compose already
         # match advance_ppt's cleared state.
+        #
+        # The held producer rates then carry their mass-coupled words through
+        # transport and are decoupled at completed MUTS by the step
+        # epilogue's finish_history_mass, before microphysics and the next
+        # held call (native calculate_phy_tend / phy_prep_part2; fold
+        # 1eb3e8076a, tests/test_kf_held_mass.py).  The mirror takes the
+        # same two FP32 mass rounds, so the held words stay word-for-word.
+        weight = cp.asnumpy(state.c1h[:, None, None] * state.total_mu()[None]
+                            + state.c2h[:, None, None])
+        coupled = {}
         for name in ("rthcuten", "rqvcuten", "rqccuten", "rqicuten",
                      "rqrcuten", "rqscuten"):
+            coupled[name] = mirror[name].astype(np.float32) * weight
             np.testing.assert_array_equal(
-                cp.asnumpy(driver.cu_rates[name]), mirror[name],
+                cp.asnumpy(driver.cu_rates[name]), coupled[name],
                 err_msg=name)
         if now == 420.0:
             assert bool(cp.any(held.rqr[:, 0, 0] != 0.0))
@@ -623,6 +638,15 @@ def test_kf_production_binding_nca_hold_and_domain_flag():
         np.testing.assert_allclose(
             cp.asnumpy(driver.rainc), mirror["rainc"], rtol=1.0e-5,
             atol=1.0e-9)
+        # The step epilogue's native transition (dycore _step_epilogue), on
+        # this static column mass.
+        driver.finish_history_mass(state, cfg)
+        for name, words in coupled.items():
+            decoupled = words / weight
+            np.testing.assert_array_equal(
+                cp.asnumpy(driver.cu_rates[name]), decoupled,
+                err_msg=f"decoupled {name}")
+            mirror[name] = decoupled.astype(np.float64)
 
     # The scheme runs on every STEPCU event; holding is per-column.  The
     # trigger-history hook follows the same due calendar: WRF's cumulus
@@ -654,9 +678,7 @@ def test_kf_production_binding_nca_hold_and_domain_flag():
     # A nested-domain-style independent config with cu_physics=0 does not
     # inherit d01's scheme; SFCLAY merely supplies another enabled slot so a
     # second driver can be constructed for the assertion.
-    off_values = {**cfg.__dict__, "cu_physics": 0,
-                  "sf_sfclay_physics": 1}
-    cfg_off = RunConfig(**off_values)
+    cfg_off = dataclasses.replace(cfg, cu_physics=0, sf_sfclay_physics=1)
     off_driver = initialize_physics(state_for(cfg_off), cfg_off)
     assert off_driver.cu_physics == 0
     assert off_driver.cumulus_callable is None

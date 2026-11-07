@@ -164,6 +164,6 @@ def test_coszen_has_a_producer_in_the_law_itself() -> None:
 
     consumers = {sf for sf, carriers in CONSUMER_CARRIERS.items()
                  if "coszen" in carriers}
-    assert consumers == {4}, (
+    assert consumers == {4, 8}, (
         "a scheme other than Noah-MP now consumes COSZEN; give it a "
         "producer before teaching the harness to declare a frozen sun")

@@ -88,9 +88,18 @@ def verify(path, row, *, memoise=False):
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         if digest != row['sha256']:
             raise AssetError(f'{path}: sha256 mismatch (expected {row["sha256"]}, got {digest})')
+        # A version changed within RACY_SECONDS is never remembered, nor one that changed while it was read:
+        # ctime comes from a coarse clock, so a same-size rewrite inside one tick keeps every key field equal
+        # (test_private_checkout_only_accepts_pin, hex 0.5.0 sealing pass reruns, 2026-11-02).
+        from .file_digest import RACY_SECONDS
+
+        def _version(status):
+            return status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns, status.st_ctime_ns
+        settled = (time.time_ns() - max(stat.st_mtime_ns, stat.st_ctime_ns) >= RACY_SECONDS * 1e9 and
+                   _version(path.stat()) == _version(stat))
     except OSError as error:
         raise AssetError(f'{path}: {error}') from error
-    if memoise:
+    if memoise and settled:
         _VERIFIED.add(key)
     return path
 
@@ -202,7 +211,7 @@ def is_inspection():
 def box_asset(name, row):
     """A verified copy of a pinned asset the box already holds outside this run's cache, else None.
 
-    THE BREAKAGE THIS ENDS (an RTX 5090 host and V8X6000, 2026-10-29): packs staged once on a box (the default cache,
+    THE BREAKAGE THIS ENDS (an RTX 5090 host and eight-card system, 2026-10-29): packs staged once on a box (the default cache,
     or baked into its image) were invisible to a run with its own cache root, which then fetched an
     unpublished tag, got a 404 and compiled every kernel through NVRTC.  Searched: the image directories
     (WOOF_HEX_SYSTEM_ASSETS, default /opt/gpuwm-hex/assets) and the box's default cache.  Each holds
@@ -233,28 +242,66 @@ def checkout_asset(name):
     return None
 
 
+def compatible_pack(identity, pins=None):
+    """The pinned kernel pack this exact compiler produced: ``(name, row, None)``, else ``(None, None, reason)``.
+
+    One rule for the runtime (``resolve_pack``) and for ``woof hex doctor``.  THE BREAKAGE (woof hex 0.4.12
+    post-publish check, 2026-11-05): ``cupy-cuda13x[ctk]`` began pulling NVRTC 13.5.37 the day after the gate,
+    no pack was pinned for it, a fresh ``[gpu-cu13]`` install compiled every kernel for about 100 s before its
+    first step, and ``doctor`` still printed "Every check passed" because it never asked this question.
+    """
+    pins = load_pins() if pins is None else pins
+    version = identity.get('nvrtc') or ()
+    major = version[0] if version else None
+    candidates = [(n, r) for n, r in pins['assets'].items()
+                  if r.get('kind') == 'kernel-pack' and r.get('select', {}).get('nvrtc_major') == major]
+    if not candidates:
+        return None, None, f'no kernel-pack pin for loaded NVRTC major {major}'
+    from woof.hex.kernel_pack import same_compiler
+    compatible = [(n, r) for n, r in candidates if same_compiler(r.get('compiler'), identity)]
+    if not compatible:
+        loaded = '.'.join(str(part) for part in version)
+        return None, None, (f'loaded NVRTC {loaded} (library sha256 '
+                            f'{str(identity.get("nvrtc_library_sha256"))[:12]}) matches no NVRTC {major} pin '
+                            f'[{", ".join(pinned_compilers(candidates))}]; no compatible pack is downloaded; '
+                            f'remedy: {nvrtc_remedy(identity, pins)}')
+    name, row = compatible[0]
+    return name, row, None
+
+
+def nvrtc_remedy(identity, pins=None):
+    """The exact pip command that loads an NVRTC with a pinned pack: the newest pinned pack of the loaded major.
+
+    A pack is bound to the NVRTC library bytes, so every patch release is a different compiler (13.4.59 and
+    13.4.92 are two; a box venv holding 13.4.59 matched no pack, 2026-11-06).  The remedy is that exact pin,
+    never "an NVRTC 13.4"."""
+    pins = load_pins() if pins is None else pins
+    version = identity.get('nvrtc') or ()
+    major = version[0] if version else None
+    same_major = [r for r in pins['assets'].values()
+                  if r.get('kind') == 'kernel-pack' and r.get('select', {}).get('nvrtc_major') == major
+                  and r.get('compiler', {}).get('nvrtc_package')]
+    if not same_major:
+        return f'pip install "recast-woof[gpu-cu{12 if major == 12 else 13}]"'
+    newest = max(same_major, key=lambda r: tuple(r['compiler'].get('nvrtc', ())))
+    return f'pip install "{newest["compiler"]["nvrtc_package"]}"'
+
+
+def pinned_compilers(candidates):
+    """'13.4 (nvidia-cuda-nvrtc==13.4.92)' for each pinned pack, newest NVRTC first."""
+    rows = {(tuple(r.get('compiler', {}).get('nvrtc', ())), str(r.get('compiler', {}).get('nvrtc_package')))
+            for _, r in candidates}
+    return ['.'.join(str(p) for p in version) + f' ({package})' for version, package in sorted(rows, reverse=True)]
+
+
 def resolve_pack(identity):
     """Return (verified path, None), or (None, a concrete compile-path reason)."""
     with _RUNTIME_LOCK:
         try:
             pins = load_pins()
-            version = identity.get('nvrtc') or ()
-            major = version[0] if version else None
-            candidates = [(n, r) for n, r in pins['assets'].items()
-                          if r.get('kind') == 'kernel-pack' and r.get('select', {}).get('nvrtc_major') == major]
-            if not candidates:
-                return None, f'no kernel-pack pin for loaded NVRTC major {major}'
-            from woof.hex.kernel_pack import same_compiler
-            compatible = [(n, r) for n, r in candidates if same_compiler(r.get('compiler'), identity)]
-            if not compatible:
-                loaded = '.'.join(str(part) for part in version)
-                pinned = ', '.join(sorted({'.'.join(str(p) for p in r.get('compiler', {}).get('nvrtc', ()))
-                                           + ' (' + str(r.get('compiler', {}).get('nvrtc_package')) + ')'
-                                           for _, r in candidates}))
-                return None, (f'loaded NVRTC {loaded} (library sha256 '
-                              f'{str(identity.get("nvrtc_library_sha256"))[:12]}) matches no NVRTC {major} pin '
-                              f'[{pinned}]; no compatible pack is downloaded')
-            name, row = compatible[0]
+            name, row, mismatch = compatible_pack(identity, pins)
+            if name is None:
+                return None, mismatch
             reason = 'not staged'
             target = asset_path(name, row)
             if target.exists():
@@ -388,7 +435,7 @@ def add_fetch_assets_parser(commands):
 
 
 def pin(arguments):
-    """Pin every ``kernel-pack-cuda<N>[.<minor>].json`` in the directory.
+    """Pin every ``kernel-pack-cuda<N>[.<minor>[.<patch>]].json`` in the directory.
 
     One pack per loaded NVRTC: CUDA 12.9 pip, CUDA 13.4 pip, and CUDA 13.0
     (the system toolkit of a driver-580 machine and the 13.0.88 pip wheel
@@ -397,9 +444,11 @@ def pin(arguments):
     assets = {}
     names = sorted(path.name for path in Path(arguments.from_directory).glob('kernel-pack-cuda*.json'))
     for name in names:
-        match = re.fullmatch(r'kernel-pack-cuda(\d+)(?:\.(\d+))?\.json', name)
+        # A patch level names a second pack of one minor: a pack is bound to the NVRTC library bytes, and
+        # 13.4.59 and 13.4.92 are two compilers (tools/build_kernel_packs.py builds both).
+        match = re.fullmatch(r'kernel-pack-cuda(\d+)(?:\.(\d+))?(?:\.(\d+))?\.json', name)
         if match is None:
-            raise AssetError(f'{name}: not a kernel-pack-cuda<N>[.<minor>].json name')
+            raise AssetError(f'{name}: not a kernel-pack-cuda<N>[.<minor>[.<patch>]].json name')
         major = int(match.group(1))
         data = (arguments.from_directory / name).read_bytes()
         compiler = json.loads(data)['compiler']
@@ -407,6 +456,10 @@ def pin(arguments):
             raise AssetError(f'{name}: expected the CUDA {major} nine-key compiler identity')
         if match.group(2) is not None and compiler['nvrtc'][1] != int(match.group(2)):
             raise AssetError(f'{name}: built with NVRTC {compiler["nvrtc"]}, not {major}.{match.group(2)}')
+        if match.group(3) is not None and not str(compiler.get('nvrtc_package') or '').endswith(
+                f'=={major}.{match.group(2)}.{match.group(3)}'):
+            raise AssetError(f'{name}: built with {compiler.get("nvrtc_package")}, not '
+                             f'{major}.{match.group(2)}.{match.group(3)}')
         assets[name] = {'kind': 'kernel-pack', 'bytes': len(data),
                         'sha256': hashlib.sha256(data).hexdigest(),
                         'select': {'nvrtc_major': major}, 'compiler': compiler}

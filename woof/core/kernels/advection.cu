@@ -95,9 +95,74 @@ __device__ __forceinline__ int adv_periodic(int i, int n)
 
 #endif
 
+#if GPUWM_WENO_MOM
+// WRF 4.7.1 advect_weno_{u,v,w}: REAL polynomial/smoothness expressions
+// are assigned to DOUBLE PRECISION locals before nonlinear weighting.
+__device__ __forceinline__
+real weno_momentum(real qm3, real qm2, real qm1, real q0, real qp1,
+                   real qp2, real vel, bool vertical)
+{
+    bool positive = vertical ? -vel >= 0.0f : vel >= 0.0f;
+    real a = positive ? qm3 : qp2;
+    real b = positive ? qm2 : qp1;
+    real c = positive ? qm1 : q0;
+    real d = positive ? q0 : qm1;
+    real e = positive ? qp1 : qm2;
+#if GPUWM_WRF_EXACT_C_ADVECTION
+    typedef double weight_real;
+#else
+    // Native REAL32 stencil expressions feed DOUBLE weighting. Strict
+    // replay retains that path. Fast numerics use normalized FP32 weights
+    // so a GPU forecast does not pay the card's FP64 throughput penalty.
+    typedef float weight_real;
+#endif
+    weight_real f0 = 0.3333333432674408f*a - 1.1666666269302368f*b
+              + 1.8333333730697632f*c;
+    weight_real f1 = -0.1666666716337204f*b + 0.8333333134651184f*c
+              + 0.3333333432674408f*d;
+    weight_real f2 = 0.3333333432674408f*c + 0.8333333134651184f*d
+              - 0.1666666716337204f*e;
+    real x0=a-2.0f*b+c, y0=a-4.0f*b+3.0f*c;
+    real x1=b-2.0f*c+d, y1=b-d;
+    real x2=c-2.0f*d+e, y2=e-4.0f*d+3.0f*c;
+    weight_real beta0=1.0833333730697632f*(x0*x0)+0.25f*(y0*y0);
+    weight_real beta1=1.0833333730697632f*(x1*x1)+0.25f*(y1*y1);
+    weight_real beta2=1.0833333730697632f*(x2*x2)+0.25f*(y2*y2);
+    weight_real eps=(weight_real)1.0e-18;
+    weight_real t0=eps+beta0, t1=eps+beta1, t2=eps+beta2;
+#if GPUWM_WRF_EXACT_C_ADVECTION
+    weight_real w0=0.1/(t0*t0), w1=0.6/(t1*t1), w2=0.3/(t2*t2);
+#else
+    weight_real w0=__fdividef(0.1f,t0*t0);
+    weight_real w1=__fdividef(0.6f,t1*t1);
+    weight_real w2=__fdividef(0.3f,t2*t2);
+#endif
+#if GPUWM_WRF_EXACT_C_ADVECTION
+    return (real)((double)vel*(w0*f0+w1*f1+w2*f2)/(w0+w1+w2));
+#else
+    // Normalize before multiplying by the field and mass flux: constant
+    // stencils can have weights near 1e36, within FP32 but not their flux.
+    real inverse=__fdividef(1.0f,w0+w1+w2);
+    return vel*((w0*inverse)*f0+(w1*inverse)*f1+(w2*inverse)*f2);
+#endif
+}
+#endif
+
 __device__ __forceinline__
 real flux5(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real vel)
 {
+#if GPUWM_WENO_MOM
+    return weno_momentum(qm3,qm2,qm1,q0,qp1,qp2,vel,false);
+#elif GPUWM_HORDER == 3
+    real center = __fdiv_rn(7.0f*(q0+qm1)-(qp1+qm2),12.0f);
+    real dissipation = __fdiv_rn(copysignf(1.0f,vel)
+        *((qp1-qm2)-3.0f*(q0-qm1)),12.0f);
+    return vel*(center+dissipation);
+#elif GPUWM_HORDER == 4
+    return vel*__fdiv_rn(7.0f*(q0+qm1)-(qp1+qm2),12.0f);
+#elif GPUWM_HORDER == 6
+    return vel*__fdiv_rn(37.0f*(q0+qm1)-8.0f*(qp1+qm2)+(qp2+qm3),60.0f);
+#else
 #if GPUWM_WRF_EXACT_C_ADVECTION
     real center = __fdiv_rn(37.0f * (q0 + qm1)
                     - 8.0f * (qp1 + qm2) + (qp2 + qm3), 60.0f);
@@ -108,6 +173,7 @@ real flux5(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real vel)
     return __fdiv_rn((vel * (37.0f * (q0 + qm1) - 8.0f * (qp1 + qm2) + (qp2 + qm3))
             - fabsf(vel) * (10.0f * (q0 - qm1) - 5.0f * (qp1 - qm2)
                             + (qp2 - qm3))), 60.0f);
+#endif
 #endif
 }
 
@@ -135,6 +201,9 @@ real flux3(real qm2, real qm1, real q0, real qp1, real vel)
 __device__ __forceinline__
 real flux5v(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real vel)
 {
+#if GPUWM_WENO_MOM
+    return weno_momentum(qm3,qm2,qm1,q0,qp1,qp2,vel,true);
+#endif
 #if GPUWM_WRF_EXACT_C_ADVECTION
     real center = __fdiv_rn(37.0f * (q0 + qm1)
                     - 8.0f * (qp1 + qm2) + (qp2 + qm3), 60.0f);
@@ -154,6 +223,9 @@ real flux5v(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real vel)
 __device__ __forceinline__
 real flux3h(real qm2, real qm1, real q0, real qp1, real vel)
 {
+#if GPUWM_HORDER == 4 || GPUWM_HORDER == 6
+    return vel*__fdiv_rn(7.0f*(q0+qm1)-(qp1+qm2),12.0f);
+#endif
 #if GPUWM_WRF_EXACT_C_ADVECTION
     real center = __fdiv_rn(7.0f * (q0 + qm1) - (qp1 + qm2), 12.0f);
     real dissipation = __fdiv_rn(copysignf(1.0f, vel)
@@ -171,6 +243,20 @@ real flux2(real qm1, real q0, real vel)
     return 0.5f * vel * (q0 + qm1);
 }
 
+// Native centered flux operators (module_advect_em.F flux4/flux6).
+__device__ __forceinline__
+real flux4(real qm2, real qm1, real q0, real qp1, real vel)
+{
+    return vel * __fdiv_rn(7.0f * (q0 + qm1) - (qp1 + qm2), 12.0f);
+}
+
+__device__ __forceinline__
+real flux6(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real vel)
+{
+    return vel * __fdiv_rn(37.0f * (q0 + qm1)
+                          - 8.0f * (qp1 + qm2) + (qp2 + qm3), 60.0f);
+}
+
 // x-face flux (face f = 0..n) of a CELL-type field q (row width nxs) with
 // an OPEN x boundary pair: 0 at the never-consumed boundary faces, WRF's
 // degraded orders near them, full 5th order in the interior (no wrap).
@@ -178,6 +264,10 @@ __device__ __forceinline__
 real xface_cell_open(const real* q, real vel, int k, int j, int f,
                      int n, int ny, int nxs)
 {
+#if GPUWM_HORDER == 2
+    return 0.5f*vel*(q[I3S(k,j,f,ny,nxs)]+q[I3S(k,j,f-1,ny,nxs)]);
+#endif
+
     if (f <= 0 || f >= n) return 0.0f;
     int d = min(f, n - f);
     if (d == 1)
@@ -201,6 +291,10 @@ __device__ __forceinline__
 real xface_cell_per(const real* q, real vel, int k, int j, int f,
                     int n, int ny, int nxs)
 {
+#if GPUWM_HORDER == 2
+    return 0.5f*vel*(q[I3S(k,j,PERIODIC(f,n),ny,nxs)]+q[I3S(k,j,PERIODIC(f-1,n),ny,nxs)]);
+#endif
+
     return flux5(q[I3S(k, j, PERIODIC(f - 3, n), ny, nxs)],
                  q[I3S(k, j, PERIODIC(f - 2, n), ny, nxs)],
                  q[I3S(k, j, PERIODIC(f - 1, n), ny, nxs)],
@@ -214,6 +308,10 @@ __device__ __forceinline__
 real yface_cell_open(const real* q, real vel, int k, int g, int i,
                      int n, int nys, int nxs)
 {
+#if GPUWM_HORDER == 2
+    return 0.5f*vel*(q[I3S(k,g,i,nys,nxs)]+q[I3S(k,g-1,i,nys,nxs)]);
+#endif
+
     if (g <= 0 || g >= n) return 0.0f;
     int d = min(g, n - g);
     if (d == 1)
@@ -236,6 +334,10 @@ __device__ __forceinline__
 real yface_cell_per(const real* q, real vel, int k, int g, int i,
                     int n, int nys, int nxs)
 {
+#if GPUWM_HORDER == 2
+    return 0.5f*vel*(q[I3S(k,PERIODIC(g,n),i,nys,nxs)]+q[I3S(k,PERIODIC(g-1,n),i,nys,nxs)]);
+#endif
+
     return flux5(q[I3S(k, PERIODIC(g - 3, n), i, nys, nxs)],
                  q[I3S(k, PERIODIC(g - 2, n), i, nys, nxs)],
                  q[I3S(k, PERIODIC(g - 1, n), i, nys, nxs)],
@@ -265,9 +367,21 @@ real zface_half(const real* q, real vel, int kf, int j, int i,
                 const real* fnm, const real* fnp, int vorder)
 {
     if (kf == 0 || kf == nz) return 0.0f;
-    if (kf == 1 || kf == nz - 1)
+    if (vorder == 2 || kf == 1 || kf == nz - 1)
         return vel * (fnm[kf] * q[I3S(kf,     j, i, ny, nxs)]
                       + fnp[kf] * q[I3S(kf - 1, j, i, ny, nxs)]);
+    if (vorder == 6 && kf >= 3 && kf <= nz - 3)
+        return flux6(q[I3S(kf - 3, j, i, ny, nxs)],
+                     q[I3S(kf - 2, j, i, ny, nxs)],
+                     q[I3S(kf - 1, j, i, ny, nxs)],
+                     q[I3S(kf,     j, i, ny, nxs)],
+                     q[I3S(kf + 1, j, i, ny, nxs)],
+                     q[I3S(kf + 2, j, i, ny, nxs)], vel);
+    if (vorder == 4 || vorder == 6)
+        return flux4(q[I3S(kf - 2, j, i, ny, nxs)],
+                     q[I3S(kf - 1, j, i, ny, nxs)],
+                     q[I3S(kf,     j, i, ny, nxs)],
+                     q[I3S(kf + 1, j, i, ny, nxs)], vel);
     if (vorder == 5 && kf >= 3 && kf <= nz - 3)
         return flux5v(q[I3S(kf - 3, j, i, ny, nxs)],
                       q[I3S(kf - 2, j, i, ny, nxs)],
@@ -279,6 +393,22 @@ real zface_half(const real* q, real vel, int kf, int j, int i,
                  q[I3S(kf - 1, j, i, ny, nxs)],
                  q[I3S(kf,     j, i, ny, nxs)],
                  q[I3S(kf + 1, j, i, ny, nxs)], vel);
+}
+
+// Full-level W transport: its faces are on mass levels, so the centered
+// ladder is shifted one level relative to zface_half.
+__device__ __forceinline__
+real zface_w_centered(const real* w, real vel, int m, int j, int i,
+                      int nz, int ny, int nx, int vorder)
+{
+    if (vorder == 2 || m == 0 || m == nz - 1)
+        return flux2(w[IDX3(m,j,i)], w[IDX3(m+1,j,i)], vel);
+    if (vorder == 6 && m >= 2 && m <= nz - 3)
+        return flux6(w[IDX3(m-2,j,i)], w[IDX3(m-1,j,i)],
+                     w[IDX3(m,j,i)], w[IDX3(m+1,j,i)],
+                     w[IDX3(m+2,j,i)], w[IDX3(m+3,j,i)], vel);
+    return flux4(w[IDX3(m-1,j,i)], w[IDX3(m,j,i)],
+                 w[IDX3(m+1,j,i)], w[IDX3(m+2,j,i)], vel);
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +429,7 @@ void flux_div_scalar(const real* __restrict__ q,
                      int open_x, int open_y, int has_msf, int spec,
                      int vorder)
 {
-#if GPUWM_WRF_EXACT_C_ADVECTION
+#if GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_NO_HADV || GPUWM_HORDER == 2 || GPUWM_HORDER == 3 || GPUWM_HORDER == 4 || GPUWM_HORDER == 6
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -383,9 +513,39 @@ void flux_div_scalar(const real* __restrict__ q,
             fzo[s] = zface_half(q, rw[I3(kf, j, i, ny, nx)], kf, j, i,
                                 nz, ny, nx, fnm, fnp, vorder);
         }
+
+#if GPUWM_NO_HADV
+        applyx=applyx && open_x && (i==0 || i==nx-1) && !spec;
+        applyy=applyy && open_y && (j==0 || j==ny-1) && !spec;
+#elif GPUWM_HORDER == 2
+        if(!(open_x && (i==0 || i==nx-1))) {
+            int ip=open_x?i+1:PERIODIC(i+1,nx), im=open_x?i-1:PERIODIC(i-1,nx);
+            tx=(mscale*dx_inv)*0.5f*(ru[I3(k,j,i+1,ny,nx+1)]*(q[IDX3(k,j,ip)]+q[IDX3(k,j,i)])
+                -ru[I3(k,j,i,ny,nx+1)]*(q[IDX3(k,j,i)]+q[IDX3(k,j,im)]));
+        }
+        if(!(open_y && (j==0 || j==ny-1))) {
+            int jp=open_y?j+1:PERIODIC(j+1,ny), jm=open_y?j-1:PERIODIC(j-1,ny);
+            ty=(mscale*dy_inv)*0.5f*(rv[I3(k,j+1,i,ny+1,nx)]*(q[IDX3(k,jp,i)]+q[IDX3(k,j,i)])
+                -rv[I3(k,j,i,ny+1,nx)]*(q[IDX3(k,j,i)]+q[IDX3(k,jm,i)]));
+        }
+#endif
         real t = tend_out[IDX3(k,j,i)];
+#if GPUWM_HORDER == 2 || GPUWM_HORDER == 3 || GPUWM_HORDER == 4
+        if(applyx)t=t-tx;
         if(applyy)t=t-ty;
-        if(applyx)t=t-tx;    // WRF mrdx/mrdy
+#else
+        if(applyy)t=t-ty;
+        if(applyx)t=t-tx;
+#endif    // WRF mrdx/mrdy
+#ifdef GPUWM_THETA_OFFSET
+        // Native disables advection of theta-300. The fast acoustic path
+        // transports full theta: its 300 K reference still follows mass.
+        // Radiative edge terms above already carry the constant there.
+        if (spec || !open_x || (i>0 && i<nx-1))
+            t -= (mscale*dx_inv)*300.0f*(ru[I3(k,j,i+1,ny,nx+1)]-ru[I3(k,j,i,ny,nx+1)]);
+        if (spec || !open_y || (j>0 && j<ny-1))
+            t -= (mscale*dy_inv)*300.0f*(rv[I3(k,j+1,i,ny+1,nx)]-rv[I3(k,j,i,ny+1,nx)]);
+#endif
         tend_out[IDX3(k,j,i)] = t - rdnw[k]*(fzo[1]-fzo[0]);
         return;
     }
@@ -413,8 +573,24 @@ void flux_div_scalar(const real* __restrict__ q,
         fz[s] = zface_half(q, vel, kf, j, i, nz, ny, nx, fnm, fnp, vorder);
     }
     real result=tend_out[IDX3(k,j,i)];
+#if GPUWM_NO_HADV
+#ifdef GPUWM_THETA_OFFSET
+    result -= (mscale*dx_inv)*300.0f*(ru[I3(k,j,i+1,ny,nx+1)]-ru[I3(k,j,i,ny,nx+1)]);
+    result -= (mscale*dy_inv)*300.0f*(rv[I3(k,j+1,i,ny+1,nx)]-rv[I3(k,j,i,ny+1,nx)]);
+#endif
+#elif GPUWM_HORDER == 2
+    int ip=PERIODIC(i+1,nx),im=PERIODIC(i-1,nx),jp=PERIODIC(j+1,ny),jm=PERIODIC(j-1,ny);
+    result=result-(mscale*dx_inv)*0.5f*(ru[I3(k,j,i+1,ny,nx+1)]*(q[IDX3(k,j,ip)]+q[IDX3(k,j,i)])
+          -ru[I3(k,j,i,ny,nx+1)]*(q[IDX3(k,j,i)]+q[IDX3(k,j,im)]));
+    result=result-(mscale*dy_inv)*0.5f*(rv[I3(k,j+1,i,ny+1,nx)]*(q[IDX3(k,jp,i)]+q[IDX3(k,j,i)])
+          -rv[I3(k,j,i,ny+1,nx)]*(q[IDX3(k,j,i)]+q[IDX3(k,jm,i)]));
+#elif GPUWM_HORDER == 3 || GPUWM_HORDER == 4
+    result=result-(mscale*dx_inv)*(fx[1]-fx[0]);
+    result=result-(mscale*dy_inv)*(fy[1]-fy[0]);
+#else
     result=result-(mscale*dy_inv)*(fy[1]-fy[0]);
     result=result-(mscale*dx_inv)*(fx[1]-fx[0]);
+#endif
     result=result-rdnw[k]*(fz[1]-fz[0]);
     tend_out[IDX3(k,j,i)]=result;
 #else
@@ -639,7 +815,7 @@ void flux_div_u(const real* __restrict__ u,            // (nz, ny, nx+1)
                 int open_x, int open_y, int has_msf, int spec,
                      int vorder)
 {
-#if GPUWM_WRF_EXACT_C_ADVECTION
+#if GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_NO_HADV || GPUWM_HORDER == 2
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;     // u-point 0..nx
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -749,9 +925,40 @@ void flux_div_u(const real* __restrict__ u,            // (nz, ny, nx+1)
         // WRF advect_u weights every horizontal term (flux divergences AND
         // the non-cb open y-term) by msfux at the u point (mrdx F:740,
         // mrdy F:633/1296); the vertical term below stays unweighted.
+
+#if GPUWM_NO_HADV
+        applyx=false;
+        applyy=applyy && open_y && (j==0 || j==ny-1) && !spec;
+#elif GPUWM_HORDER == 2
+        applyx=!xedge;
+        if(applyx) {
+            int ip=open_x ? i+1 : PERIODIC(i+1,nx);
+            int im=open_x ? i-1 : PERIODIC(i-1,nx);
+            real uc=u[I3(k,j,iu,ny,nxs)], up=u[I3(k,j,ip,ny,nxs)], um=u[I3(k,j,im,ny,nxs)];
+            if(spec && open_x && i==1 && uc<0.0f)um=uc;
+            if(spec && open_x && i==nx-1 && uc>0.0f)up=uc;
+            tx=(mscale*dx_inv)*0.25f*((ru[I3(k,j,i+1,ny,nxs)]+ru[I3(k,j,i,ny,nxs)])*(up+uc)
+               -(ru[I3(k,j,i,ny,nxs)]+ru[I3(k,j,i-1,ny,nxs)])*(uc+um));
+        }
+        if(!(open_y && (j==0 || j==ny-1))) {
+            applyy=!xedge && (!spec || !open_x || (i>=2 && i<=nx-2));
+            if(applyy) {
+                int jp=open_y ? j+1 : PERIODIC(j+1,ny), jm=open_y ? j-1 : PERIODIC(j-1,ny);
+                real uc=u[I3(k,j,iu,ny,nxs)];
+                ty=(mscale*dy_inv)*0.25f*((rv[I3(k,j+1,cr,ny+1,nx)]+rv[I3(k,j+1,cl,ny+1,nx)])*(u[I3(k,jp,iu,ny,nxs)]+uc)
+                   -(rv[I3(k,j,cr,ny+1,nx)]+rv[I3(k,j,cl,ny+1,nx)])*(uc+u[I3(k,jm,iu,ny,nxs)]));
+            }
+        }
+#endif
         real t = tend_out[I3(k,j,i,ny,nx+1)];
+        #if GPUWM_HORDER == 2 || GPUWM_HORDER == 3 || GPUWM_HORDER == 4
+        // Native advect_u applies x before y for orders 3/4.
+        if(applyx)t=t-tx;
+        if(applyy)t=t-ty;
+#else
         if(applyy)t=t-ty;
         if(applyx)t=t-tx;
+#endif
 
         // z advection: retained at the boundary-normal faces with the
         // boundary cell's Omega unless open_y (Fortran advect_u vertical
@@ -807,9 +1014,26 @@ void flux_div_u(const real* __restrict__ u,            // (nz, ny, nx+1)
                           + rw[I3(kf, j, ic,   ny, nx)]);
         fz[s] = zface_half(u, velz, kf, j, ic, nz, ny, nx + 1, fnm, fnp, vorder);
     }
+
+#if GPUWM_HORDER == 2
+    real uc=u[I3(k,j,ic,ny,nx+1)];
+    real tx=(mscale*dx_inv)*0.25f*((ru[I3(k,j,ic+1,ny,nx+1)]+ru[I3(k,j,ic,ny,nx+1)])*(u[I3(k,j,PERIODIC(ic+1,nx),ny,nx+1)]+uc)
+        -(ru[I3(k,j,ic,ny,nx+1)]+ru[I3(k,j,im1c,ny,nx+1)])*(uc+u[I3(k,j,im1c,ny,nx+1)]));
+    real ty=(mscale*dy_inv)*0.25f*((rv[I3(k,j+1,ic,ny+1,nx)]+rv[I3(k,j+1,im1c,ny+1,nx)])*(u[I3(k,PERIODIC(j+1,ny),ic,ny,nx+1)]+uc)
+        -(rv[I3(k,j,ic,ny+1,nx)]+rv[I3(k,j,im1c,ny+1,nx)])*(uc+u[I3(k,PERIODIC(j-1,ny),ic,ny,nx+1)]));
+#endif
     real result=tend_out[I3(k,j,i,ny,nx+1)];
+    #if GPUWM_NO_HADV
+    #elif GPUWM_HORDER == 2
+    result=result-tx;
+    result=result-ty;
+    #elif GPUWM_HORDER == 3 || GPUWM_HORDER == 4
+    result=result-(mscale*dx_inv)*(fx[1]-fx[0]);
+    result=result-(mscale*dy_inv)*(fy[1]-fy[0]);
+#else
     result=result-(mscale*dy_inv)*(fy[1]-fy[0]);
     result=result-(mscale*dx_inv)*(fx[1]-fx[0]);
+#endif
     result=result-rdnw[k]*(fz[1]-fz[0]);
     tend_out[I3(k,j,i,ny,nx+1)]=result;
 #else
@@ -1008,7 +1232,7 @@ void flux_div_v(const real* __restrict__ v,            // (nz, ny+1, nx)
                 int open_x, int open_y, int has_msf, int spec,
                      int vorder)
 {
-#if GPUWM_WRF_EXACT_C_ADVECTION
+#if GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_NO_HADV || GPUWM_HORDER == 2
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;     // v-point 0..ny
@@ -1116,6 +1340,30 @@ void flux_div_v(const real* __restrict__ v,            // (nz, ny+1, nx)
         // WRF advect_v weights every horizontal term (flux divergences AND
         // the non-cb open x-term) by msfvy at the v point (mrdy F:2050,
         // mrdx F:2676/2766); the vertical term below stays unweighted.
+
+#if GPUWM_NO_HADV
+        applyy=false;
+        applyx=applyx && open_x && (i==0 || i==nx-1) && !spec;
+#elif GPUWM_HORDER == 2
+        applyy=!yedge;
+        if(applyy) {
+            int jp=open_y ? j+1 : PERIODIC(j+1,ny), jm=open_y ? j-1 : PERIODIC(j-1,ny);
+            real vc=v[I3(k,jv,i,nys,nx)], vp=v[I3(k,jp,i,nys,nx)], vm=v[I3(k,jm,i,nys,nx)];
+            if(spec && open_y && j==1 && vc<0.0f)vm=vc;
+            if(spec && open_y && j==ny-1 && vc>0.0f)vp=vc;
+            ty=(mscale*dy_inv)*0.25f*((rv[I3(k,j+1,i,nys,nx)]+rv[I3(k,j,i,nys,nx)])*(vp+vc)
+               -(rv[I3(k,j,i,nys,nx)]+rv[I3(k,j-1,i,nys,nx)])*(vc+vm));
+        }
+        if(!(open_x && (i==0 || i==nx-1))) {
+            applyx=!yedge && (!spec || !open_y || (j>=2 && j<=ny-2));
+            if(applyx) {
+                int ip=open_x ? i+1 : PERIODIC(i+1,nx), im=open_x ? i-1 : PERIODIC(i-1,nx);
+                real vc=v[I3(k,jv,i,nys,nx)];
+                tx=(mscale*dx_inv)*0.25f*((ru[I3(k,rn,i+1,ny,nx+1)]+ru[I3(k,rs,i+1,ny,nx+1)])*(v[I3(k,jv,ip,nys,nx)]+vc)
+                   -(ru[I3(k,rn,i,ny,nx+1)]+ru[I3(k,rs,i,ny,nx+1)])*(vc+v[I3(k,jv,im,nys,nx)]));
+            }
+        }
+#endif
         real t = tend_out[I3(k,j,i,ny+1,nx)];
         if(applyy)t=t-ty;
         if(applyx)t=t-tx;
@@ -1167,9 +1415,23 @@ void flux_div_v(const real* __restrict__ v,            // (nz, ny+1, nx)
                           + rw[I3(kf, jc,   i, ny, nx)]);
         fz[s] = zface_half(v, velz, kf, jc, i, nz, ny + 1, nx, fnm, fnp, vorder);
     }
+
+#if GPUWM_HORDER == 2
+    real vc=v[I3(k,jc,i,ny+1,nx)];
+    real ty=(mscale*dy_inv)*0.25f*((rv[I3(k,jc+1,i,ny+1,nx)]+rv[I3(k,jc,i,ny+1,nx)])*(v[I3(k,PERIODIC(jc+1,ny),i,ny+1,nx)]+vc)
+        -(rv[I3(k,jc,i,ny+1,nx)]+rv[I3(k,jm1c,i,ny+1,nx)])*(vc+v[I3(k,jm1c,i,ny+1,nx)]));
+    real tx=(mscale*dx_inv)*0.25f*((ru[I3(k,jc,i+1,ny,nx+1)]+ru[I3(k,jm1c,i+1,ny,nx+1)])*(v[I3(k,jc,PERIODIC(i+1,nx),ny+1,nx)]+vc)
+        -(ru[I3(k,jc,i,ny,nx+1)]+ru[I3(k,jm1c,i,ny,nx+1)])*(vc+v[I3(k,jc,PERIODIC(i-1,nx),ny+1,nx)]));
+#endif
     real result=tend_out[I3(k,j,i,ny+1,nx)];
+    #if GPUWM_NO_HADV
+    #elif GPUWM_HORDER == 2
+    result=result-ty;
+    result=result-tx;
+    #else
     result=result-(mscale*dy_inv)*(fy[1]-fy[0]);
     result=result-(mscale*dx_inv)*(fx[1]-fx[0]);
+    #endif
     result=result-rdnw[k]*(fz[1]-fz[0]);
     tend_out[I3(k,j,i,ny+1,nx)]=result;
 #else
@@ -1372,7 +1634,7 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
                 int open_x, int open_y, int has_msf, int spec,
                      int vorder)
 {
-#if GPUWM_WRF_EXACT_C_ADVECTION
+#if GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_NO_HADV || GPUWM_HORDER == 2 || GPUWM_HORDER == 3 || GPUWM_HORDER == 4 || GPUWM_HORDER == 6
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1426,9 +1688,30 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
                              : yface_cell_per(w, r1, k, j + 1, i, ny, ny, nx);
             ty=(mscale*dy_inv)*(f1-f0); applyy=true;
         }
+
+#if GPUWM_NO_HADV
+        applyx=applyx && open_x && (i==0 || i==nx-1) && !spec;
+        applyy=applyy && open_y && (j==0 || j==ny-1) && !spec;
+#elif GPUWM_HORDER == 2
+        if(!(open_x && (i==0 || i==nx-1))) {
+            int ip=open_x?i+1:PERIODIC(i+1,nx),im=open_x?i-1:PERIODIC(i-1,nx);
+            tx=(mscale*dx_inv)*0.5f*(w_lid_velocity(ru,j,i+1,nz,ny,nx+1,fnm,fnp)*(w[IDX3(k,j,ip)]+w[IDX3(k,j,i)])
+                -w_lid_velocity(ru,j,i,nz,ny,nx+1,fnm,fnp)*(w[IDX3(k,j,i)]+w[IDX3(k,j,im)]));
+        }
+        if(!(open_y && (j==0 || j==ny-1))) {
+            int jp=open_y?j+1:PERIODIC(j+1,ny),jm=open_y?j-1:PERIODIC(j-1,ny);
+            ty=(mscale*dy_inv)*0.5f*(w_lid_velocity(rv,j+1,i,nz,ny+1,nx,fnm,fnp)*(w[IDX3(k,jp,i)]+w[IDX3(k,j,i)])
+                -w_lid_velocity(rv,j,i,nz,ny+1,nx,fnm,fnp)*(w[IDX3(k,j,i)]+w[IDX3(k,jm,i)]));
+        }
+#endif
         real horizontal=tend_out[IDX3(k,j,i)];
+#if GPUWM_HORDER == 2 || GPUWM_HORDER == 3 || GPUWM_HORDER == 4
+        if(applyx)horizontal-=tx;
+        if(applyy)horizontal-=ty;
+#else
         if(applyy)horizontal-=ty;
         if(applyx)horizontal-=tx;
+#endif
         real top_flux = 0.25f * (rw[IDX3(k, j, i)] + rw[IDX3(k - 1, j, i)])
                              * (w[IDX3(k, j, i)] + w[IDX3(k - 1, j, i)]);
         tend_out[IDX3(k, j, i)] = horizontal + 2.0f * rdn[k - 1] * top_flux;
@@ -1526,7 +1809,10 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
         for (int s = 0; s < 2; ++s) {
             int m = k - 1 + s;                         // mass-level face
             real velz = 0.5f * (rw[IDX3(m, j, i)] + rw[IDX3(m + 1, j, i)]);
-            if (m == 0 || m == nz - 1)
+            if (vorder == 2 || vorder == 4 || vorder == 6)
+                fz2[s] = zface_w_centered(w, velz, m, j, i, nz, ny, nx, vorder);
+
+            else if (m == 0 || m == nz - 1)
                 fz2[s] = flux2(w[IDX3(m, j, i)], w[IDX3(m + 1, j, i)], velz);
             else if (vorder == 5 && m >= 2 && m <= nz - 3)
                 fz2[s] = flux5v(w[IDX3(m - 2, j, i)], w[IDX3(m - 1, j, i)],
@@ -1540,9 +1826,30 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
         }
         // WRF advect_w mrdx/mrdy = msftx*rdx/rdy (F:5096); the non-cb open
         // terms carry plain rdx/rdy (F:5695).
+
+#if GPUWM_NO_HADV
+        applyx=applyx && open_x && (i==0 || i==nx-1) && !spec;
+        applyy=applyy && open_y && (j==0 || j==ny-1) && !spec;
+#elif GPUWM_HORDER == 2
+        if(!(open_x && (i==0 || i==nx-1))) {
+            int ip=open_x?i+1:PERIODIC(i+1,nx),im=open_x?i-1:PERIODIC(i-1,nx);
+            tx=(mscale*dx_inv)*0.5f*((fnm[k]*ru[I3(k,j,i+1,ny,nx+1)]+fnp[k]*ru[I3(k-1,j,i+1,ny,nx+1)])*(w[IDX3(k,j,ip)]+w[IDX3(k,j,i)])
+                -(fnm[k]*ru[I3(k,j,i,ny,nx+1)]+fnp[k]*ru[I3(k-1,j,i,ny,nx+1)])*(w[IDX3(k,j,i)]+w[IDX3(k,j,im)]));
+        }
+        if(!(open_y && (j==0 || j==ny-1))) {
+            int jp=open_y?j+1:PERIODIC(j+1,ny),jm=open_y?j-1:PERIODIC(j-1,ny);
+            ty=(mscale*dy_inv)*0.5f*((fnm[k]*rv[I3(k,j+1,i,ny+1,nx)]+fnp[k]*rv[I3(k-1,j+1,i,ny+1,nx)])*(w[IDX3(k,jp,i)]+w[IDX3(k,j,i)])
+                -(fnm[k]*rv[I3(k,j,i,ny+1,nx)]+fnp[k]*rv[I3(k-1,j,i,ny+1,nx)])*(w[IDX3(k,j,i)]+w[IDX3(k,jm,i)]));
+        }
+#endif
         real t = tend_out[IDX3(k,j,i)];
+#if GPUWM_HORDER == 2 || GPUWM_HORDER == 3 || GPUWM_HORDER == 4
+        if(applyx)t=t-tx;
+        if(applyy)t=t-ty;
+#else
         if(applyy)t=t-ty;
         if(applyx)t=t-tx;
+#endif
         tend_out[IDX3(k,j,i)] = t - rdn[k]*(fz2[1]-fz2[0]);
         return;
     }
@@ -1571,7 +1878,10 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
                       vely);
         int m = k - 1 + s;                             // mass-level face 0..nz-1
         real velz = 0.5f * (rw[IDX3(m, j, i)] + rw[IDX3(m + 1, j, i)]);
-        if (m == 0 || m == nz - 1)
+        if (vorder == 2 || vorder == 4 || vorder == 6)
+            fz[s] = zface_w_centered(w, velz, m, j, i, nz, ny, nx, vorder);
+
+        else if (m == 0 || m == nz - 1)
             fz[s] = flux2(w[IDX3(m, j, i)], w[IDX3(m + 1, j, i)], velz);
         else if (vorder == 5 && m >= 2 && m <= nz - 3)
             fz[s] = flux5v(w[IDX3(m - 2, j, i)], w[IDX3(m - 1, j, i)],
@@ -1581,9 +1891,35 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
             fz[s] = flux3(w[IDX3(m - 1, j, i)], w[IDX3(m, j, i)],
                           w[IDX3(m + 1, j, i)], w[IDX3(m + 2, j, i)], velz);
     }
+    real tx=0.0f,ty=0.0f; bool applyx=true,applyy=true;
+
+#if GPUWM_NO_HADV
+    applyx=applyx && open_x && (i==0 || i==nx-1) && !spec;
+    applyy=applyy && open_y && (j==0 || j==ny-1) && !spec;
+#elif GPUWM_HORDER == 2
+    {
+        int ip=open_x?i+1:PERIODIC(i+1,nx),im=open_x?i-1:PERIODIC(i-1,nx);
+        tx=(mscale*dx_inv)*0.5f*((fnm[k]*ru[I3(k,j,i+1,ny,nx+1)]+fnp[k]*ru[I3(k-1,j,i+1,ny,nx+1)])*(w[IDX3(k,j,ip)]+w[IDX3(k,j,i)])
+        -(fnm[k]*ru[I3(k,j,i,ny,nx+1)]+fnp[k]*ru[I3(k-1,j,i,ny,nx+1)])*(w[IDX3(k,j,i)]+w[IDX3(k,j,im)]));
+    }
+    {
+        int jp=open_y?j+1:PERIODIC(j+1,ny),jm=open_y?j-1:PERIODIC(j-1,ny);
+        ty=(mscale*dy_inv)*0.5f*((fnm[k]*rv[I3(k,j+1,i,ny+1,nx)]+fnp[k]*rv[I3(k-1,j+1,i,ny+1,nx)])*(w[IDX3(k,jp,i)]+w[IDX3(k,j,i)])
+        -(fnm[k]*rv[I3(k,j,i,ny+1,nx)]+fnp[k]*rv[I3(k-1,j,i,ny+1,nx)])*(w[IDX3(k,j,i)]+w[IDX3(k,jm,i)]));
+    }
+#endif
     real result=tend_out[IDX3(k,j,i)];
+#if GPUWM_NO_HADV
+#elif GPUWM_HORDER == 2
+    result=result-tx;
+    result=result-ty;
+#elif GPUWM_HORDER == 3 || GPUWM_HORDER == 4
+    result=result-(mscale*dx_inv)*(fx[1]-fx[0]);
+    result=result-(mscale*dy_inv)*(fy[1]-fy[0]);
+#else
     result=result-(mscale*dy_inv)*(fy[1]-fy[0]);
     result=result-(mscale*dx_inv)*(fx[1]-fx[0]);
+#endif
     result=result-rdn[k]*(fz[1]-fz[0]);
     tend_out[IDX3(k,j,i)]=result;
 #else
@@ -1735,7 +2071,10 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
         for (int s = 0; s < 2; ++s) {
             int m = k - 1 + s;                         // mass-level face
             real velz = 0.5f * (rw[IDX3(m, j, i)] + rw[IDX3(m + 1, j, i)]);
-            if (m == 0 || m == nz - 1)
+            if (vorder == 2 || vorder == 4 || vorder == 6)
+                fz2[s] = zface_w_centered(w, velz, m, j, i, nz, ny, nx, vorder);
+
+            else if (m == 0 || m == nz - 1)
                 fz2[s] = flux2(w[IDX3(m, j, i)], w[IDX3(m + 1, j, i)], velz);
             else if (vorder == 5 && m >= 2 && m <= nz - 3)
                 fz2[s] = flux5v(w[IDX3(m - 2, j, i)], w[IDX3(m - 1, j, i)],
@@ -1840,7 +2179,10 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
         for (int s = 0; s < 2; ++s) {
             int m = k - 1 + s;                         // mass-level face
             real velz = 0.5f * (rw[IDX3(m, j, i)] + rw[IDX3(m + 1, j, i)]);
-            if (m == 0 || m == nz - 1)
+            if (vorder == 2 || vorder == 4 || vorder == 6)
+                fz2[s] = zface_w_centered(w, velz, m, j, i, nz, ny, nx, vorder);
+
+            else if (m == 0 || m == nz - 1)
                 fz2[s] = flux2(w[IDX3(m, j, i)], w[IDX3(m + 1, j, i)], velz);
             else if (vorder == 5 && m >= 2 && m <= nz - 3)
                 fz2[s] = flux5v(w[IDX3(m - 2, j, i)], w[IDX3(m - 1, j, i)],
@@ -1883,7 +2225,10 @@ void flux_div_w(const real* __restrict__ w,            // (nz+1, ny, nx)
                       vely);
         int m = k - 1 + s;                             // mass-level face 0..nz-1
         real velz = 0.5f * (rw[IDX3(m, j, i)] + rw[IDX3(m + 1, j, i)]);
-        if (m == 0 || m == nz - 1)
+        if (vorder == 2 || vorder == 4 || vorder == 6)
+            fz[s] = zface_w_centered(w, velz, m, j, i, nz, ny, nx, vorder);
+
+        else if (m == 0 || m == nz - 1)
             fz[s] = flux2(w[IDX3(m, j, i)], w[IDX3(m + 1, j, i)], velz);
         else if (vorder == 5 && m >= 2 && m <= nz - 3)
             fz[s] = flux5v(w[IDX3(m - 2, j, i)], w[IDX3(m - 1, j, i)],

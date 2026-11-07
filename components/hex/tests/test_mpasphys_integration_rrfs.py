@@ -458,7 +458,8 @@ def test_landed_door_mode_controls_keep_fork_exact_authority(tmp_path, suite):
                            physics_mode='exact', physics_correct_skip=None)
     exact, text = native_route(args, default_mode='correct')
     # The door's default is the row's table default (hex-cuda: every slot on its GPU port where this install has one).
-    before = resolve_namelist(original, default_backend=specification()['default_backend'])
+    # Public routing selects the current fork table; compare the same pin on both sides.
+    before = resolve_namelist(original, default_backend=specification(exact)['default_backend'], table_key=exact.table_key)
 
     def routed(config):
         # The route names every active slot that runs on the CPU, each with why it has no GPU port here.
@@ -544,37 +545,43 @@ def test_fork_reset_zeroes_the_resident_device_maxima():
     """mpas_atm_core.F:883-894,971-1002 (fork): on a resident run the GPU copy is the authority, so the reset after a
     diagnostics write zeroes it too (it zeroed only host words, and the maxima ran from the start of the run)."""
     import numpy as np
+    import cupy as cp
     from types import SimpleNamespace
     from woof.hex.mpasphys.rrfs.driver_rrfs import reset_native_diagnostics
-    names = ('refl10cm_1km_max', 'max_hail_diameter_sfc_acc', 'max_hail_diameter_column_acc')
+    # The current native facade resets every declared field, including dummy tails.
+    config = resolve_namelist("&physics config_physics_suite='hrrrv5' /", table_key='mpasphys_rrfs_44c0849')
+    row = specification(config)
+    names = tuple(row['diagnostic_resets'])
+    values = row.get('diagnostic_reset_values', {})
 
     class Host:
         def __init__(self):
             self._fields = {('diag_physics', n): (np.float32, (4,), 1) for n in names}
             self.words = {n: np.full(4, 7.0, np.float32) for n in names}
-
         def put_field(self, pool, name, value, *, nlevels=1):
             self.words[name] = np.array(value)
 
     class Views:
         resident = True
-
         def __init__(self):
-            self.device = {n: np.full(3, 9.0, np.float32) for n in names}  # owned extent, one dummy column short
-
+            self.cp = cp
+            self.native = SimpleNamespace(_field_rest={})
+            self.device = {n: cp.full(3, 9.0, cp.float32) for n in names}
         def field(self, pool, name):
             return self.device[name]
 
     host, views = Host(), Views()
-    reset_native_diagnostics(host, session=SimpleNamespace(device_pools=views))
+    session = SimpleNamespace(device_pools=views, config=config)
+    reset_native_diagnostics(host, session=session)
     for n in names:
-        assert not host.words[n].any() and not views.device[n].any()
-    # A non-resident session (or none) keeps the host-only reset.
+        assert bool(cp.all(views.device[n] == values.get(n, 0)))
+        assert bool(cp.all(views.native._field_rest['diag_physics', n, 1] == values.get(n, 0)))
+    # A non-resident session keeps the host-only reset.
     host, views = Host(), Views()
     views.resident = False
-    reset_native_diagnostics(host, session=SimpleNamespace(device_pools=views))
+    reset_native_diagnostics(host, session=SimpleNamespace(device_pools=views, config=config))
     for n in names:
-        assert not host.words[n].any() and views.device[n].all()
+        assert np.all(host.words[n] == values.get(n, 0)) and bool(cp.all(views.device[n] == 9))
 
 
 def test_ngw_door_binds_installed_climatology_without_a_false_deck_warning(tmp_path, capsys):

@@ -244,7 +244,12 @@ def _env_from(bundle, sel, ny, nx, lat_flat, lon_flat):
               ("tsk", "emiss", "albedo", "xland", "xice", "snow")}
     cfg = SimpleNamespace(mp_physics=8, radt=0.0,
                           radt_minutes=RADT_MINUTES, icloud=1,
-                          sf_surface_physics=2)
+                          sf_surface_physics=2,
+                          # 36dc9ee9bc3: the wrapper reads the theta carrier.
+                          use_theta_m=0,
+                          # e68c8b4724: aer_opt=3 reads its table source
+                          # (RunConfig's default).
+                          rrtmg_aer3_source="operational_fork")
     return SimpleNamespace(
         ny=ny, nx=nx, nz=kte, ncol=ncol, sel=np.asarray(sel),
         lat=np.asarray(lat_flat, np.float32),

@@ -697,7 +697,7 @@ def _producer(tmp_path, snapshots, *, gate=None, name="run"):
 def test_a_failed_forecast_is_said_at_once_and_stops_its_producer(
         tmp_path, capsys):
     # A forecast that failed 25 s after its preflight used to leave its
-    # producer building every later forcing time (19-24 min on V59/V60,
+    # producer building every later forcing time (19-24 min on test host/test host,
     # 2026-10-21) behind waiting:preparation before the error was raised.
     gate = threading.Event()
     prepare, outcome = _producer(tmp_path, _snapshots(4), gate=gate)

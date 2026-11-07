@@ -16,7 +16,7 @@ test asserts the input ``rmol`` is unchanged.  That is the one WRF-Chem side
 effect the port does not reproduce, and it only touches columns WRF treats as
 neutral anyway.
 
-Measured on the a development machine RTX 4090 (sm_89): ddvel, aer_res, the rmol used and the
+Measured on the test host 1 RTX 4090 (sm_89): ddvel, aer_res, the rmol used and the
 DRYDEP accumulators equal the Fortran bit for bit.  Made to fire before
 commit: changing the neutral-limit ``vds = 0.002*ustar`` to 0.003 fails 7
 tests.

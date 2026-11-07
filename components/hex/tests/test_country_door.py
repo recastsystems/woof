@@ -104,6 +104,7 @@ def test_forecast_stage_leaves_destination_creation_to_driver(tmp_path, monkeypa
     ("products", ["products"], []),
 ])
 def test_country_dispatches_selected_stages_with_global_status(tmp_path, monkeypatch, stage, skip, expected):
+    monkeypatch.setattr("woof.hex.observation_scorecard.door_scorecard", lambda *a, **k: {"note": "queued", "status": "QUEUED"})
     from woof.hex import country_door
     args = arguments(tmp_path)
     assert args.stage == "all"
@@ -162,25 +163,21 @@ def test_country_skip_is_repeatable_and_rejects_unknown_stages(tmp_path):
 
 
 @pytest.mark.parametrize("verified", [False, True])
-def test_country_partial_score_succeeds_only_when_card_is_verified(tmp_path, monkeypatch, verified):
+def test_country_score_queues_or_reuses_a_measured_card(tmp_path, monkeypatch, verified):
     from woof.hex import cli, country_door, observation_scorecard
     args = arguments(tmp_path)
     args.stage = "score"
     args.work_dir.mkdir()
     (args.work_dir / "mesh-rows.json").write_text('{}')
-    monkeypatch.setattr(cli, "main", lambda argv: 3)
-    # composing doors run the forecast through cli.run_stage (a child process); same stand-in
-    monkeypatch.setattr(cli, "run_stage", lambda argv, env=None, _door=(lambda argv: 3): _door(list(argv)))
-    calls = []
-    def completed(run, config):
-        calls.append(run)
-        return {"returncode": 0, "status": "PARTIALLY_MEASURED", "note": "verified measured card"} if verified and len(calls) == 2 else None
-    monkeypatch.setattr(observation_scorecard, "completed_scorecard", completed)
-    monkeypatch.setattr(observation_scorecard, "join_automatic_scorer", lambda *args: None)
-    assert country_door.run_country(args) == (0 if verified else 3)
+    def blocking(*args, **kwargs):
+        raise AssertionError("a composing door must not run synchronous scoring")
+    monkeypatch.setattr(cli, "run_stage", blocking)
+    state = "PARTIALLY_MEASURED" if verified else "QUEUED"
+    monkeypatch.setattr(observation_scorecard, "door_scorecard",
+                        lambda *args: {"status": state, "note": "CPU scoring"})
+    assert country_door.run_country(args) == 0
     receipt = json.loads((args.work_dir / "country-receipt.json").read_text())
-    if verified:
-        assert receipt["stages"]["score"]["scorer_returncode"] == 3
+    assert receipt["stages"]["score"]["status"] == state
 
 
 def test_country_default_prepares_before_forecast_and_joins_one_scorer(tmp_path, monkeypatch):

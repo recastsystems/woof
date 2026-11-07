@@ -459,6 +459,7 @@ class FrameResult:
     output_sha256: str
     absent_wrf_fields: list[str]
     rendered: list[str] = field(default_factory=list)
+    preserved: list[str] = field(default_factory=list)
     skipped: list[dict[str, str]] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     placed: list[str] = field(default_factory=list)
@@ -1107,7 +1108,8 @@ def convert_frames(convert_exe: Path, *, histories: list[Path] | None,
                    remap: str = "nearest",
                    jobs: int = 1,
                    explicit_jobs: bool = False,
-                   grid_label: str | None = None) -> tuple[dict, list[str]]:
+                   grid_label: str | None = None,
+                   env: dict[str, str] | None = None) -> tuple[dict, list[str]]:
     """Run ``rw_mpas_convert`` once over the whole series.
 
     Returns ``(report, invocation)`` where ``report`` is the converter's own
@@ -1200,7 +1202,7 @@ def convert_frames(convert_exe: Path, *, histories: list[Path] | None,
         # frames in flight against the host's whole free memory, which the
         # tile passes beside it are using too.
         command.extend(("--jobs", str(jobs)))
-    result = _run(command, log_prefix="CONVERT")
+    result = _run(command, log_prefix="CONVERT", env=env)
     for line in (result.stdout or "").splitlines():
         if line.startswith(("WINDOW\t", "WEIGHTS\t", "CONVERTED\t",
                             "COMPOSITE\t", "SEAM\t", "FINISHED\t",
@@ -1440,7 +1442,7 @@ def checked_diagnostics_pairing(report: dict, pairing: dict) -> dict:
 def list_catalog(renderer_exe: Path, wrfout: Path | list[Path], *, scratch: Path,
                  heavy: bool, store: Path | None = None,
                  products: str | None = None, env: dict[str, str] | None = None,
-                 import_jobs: int = 1
+                 import_jobs: int = 1, saved_import: Path | None = None
                  ) -> tuple[dict[str, tuple[str, str, str]], str, list[str]]:
     """The renderer's own product catalog for one converted frame, or for
     a whole series imported into one store (a list of frames): only a
@@ -1467,6 +1469,8 @@ def list_catalog(renderer_exe: Path, wrfout: Path | list[Path], *, scratch: Path
         "--out-dir", str(store),
         "--list-products",
     ]
+    if saved_import is not None:
+        command.extend(("--save-import", str(saved_import)))
     if products is not None:
         command.extend(("--products", products))
     if heavy:
@@ -1491,7 +1495,7 @@ def list_catalog(renderer_exe: Path, wrfout: Path | list[Path], *, scratch: Path
     for line in (result.stdout or "").splitlines():
         if line.startswith("PRODUCT\t"):
             # Five fields or more, never exactly five. The renderer's row
-            # grew a sixth field (a machine reason code) in woof 2.8.0; a
+            # grew a sixth field (a machine reason code) in gpuwm 2.8.0; a
             # parser that demanded exactly five dropped every row of that
             # build and refused every render with "no catalog rows".
             parts = line.split("\t")
@@ -1698,7 +1702,7 @@ def render_frame(renderer_exe: Path, wrfout: Path | list[Path], *, scratch: Path
                  tag: str | None = None,
                  import_jobs: int = 1,
                  source_label: str | None = None,
-                 overlays: Path | None = None
+                 overlays: Path | None = None, saved_import: Path | None = None
                  ) -> tuple[list[tuple[str, Path]], list[dict[str, str]],
                             list[str], list[str]]:
     """One renderer invocation over one store: a per-frame store (campaign
@@ -1722,6 +1726,8 @@ def render_frame(renderer_exe: Path, wrfout: Path | list[Path], *, scratch: Path
         "--width", str(width),
         "--height", str(height),
     ]
+    if saved_import is not None:
+        command.extend(("--from-import", str(saved_import)))
     if heavy:
         command.append("--heavy")
     if import_jobs > 1:
@@ -1833,12 +1839,16 @@ def _run_tiles(args, plan: list[dict], *, view: str, scratch: Path, histories: l
     import argparse
 
     workers, per_tile = tile_workers(len(plan), histories, frame_jobs)
+    total_threads = int(getattr(args, "cpu_threads", 0) or os.environ.get("RAYON_NUM_THREADS", "0")
+                        or len(os.sched_getaffinity(0)))
+    per_threads = max(1, (total_threads - max(1, total_threads // 3)) // workers)
     print(f"TILES {len(plan)} cuts ({why}); {workers} at a time, {per_tile} frame(s) each", flush=True)
     started = time.monotonic()
 
     def one(cut: dict) -> dict:
         tile_args = argparse.Namespace(**vars(args))
         tile_args.frame_jobs = per_tile
+        tile_args.cpu_threads = per_threads
         tile_args.scratch = str(Path(scratch) / f"tile-{cut['name']}")
         tile_args.keep_scratch = bool(getattr(args, "keep_scratch", False))
         if histories is not None:
@@ -1869,6 +1879,12 @@ def _run_tiles(args, plan: list[dict], *, view: str, scratch: Path, histories: l
 
 
 def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
+    # The context joins cuts on errors too, before the caller can remove scratch.
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="whole-and-cuts") as overlap:
+        return _run_render_inner(args, tile, overlap)
+
+
+def _run_render_inner(args, tile, overlap) -> tuple[int, dict]:
     """One render pass: ``(exit code, manifest)``.
 
     ``tile`` (internal) is one cut of a tiled render, ``{name, window, view, ...}``: the pass
@@ -1958,7 +1974,7 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
         if engine_accepts(renderer_exe, "--import-jobs"):
             import_jobs = frame_jobs
         else:
-            # rw_wrfbatch takes no --import-jobs: since woof 18506efc96 (2.9.4; this package needs 2.9.10) it
+            # rw_wrfbatch takes no --import-jobs: since gpuwm 18506efc96 (2.9.4; this package needs 2.9.10) it
             # imports a series' frames on lanes it sizes itself from the host's threads and memory. THE BREAKAGE
             # THIS PREVENTS (an Arizona zoom globe, 8 x RTX PRO 6000, woof hex 0.4.10, 2026-10-30): the door
             # printed "predates --import-jobs; it imports one frame at a time" on every view, which named a stale
@@ -1970,6 +1986,10 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
     basemap_dir = resolve_basemap_dir(
         renderer_exe, getattr(args, "basemap_dir", None))
     renderer_env = renderer_environment(basemap_dir)
+    cpu_threads = int(getattr(args, "cpu_threads", 0) or os.environ.get("RAYON_NUM_THREADS", "0")
+                      or len(os.sched_getaffinity(0)))
+    renderer_env["RAYON_NUM_THREADS"] = str(cpu_threads)
+    renderer_env["GPUWM_HISTORY_COMPRESSION_THREADS"] = str(cpu_threads)
     print(f"BASEMAP {basemap_dir}", flush=True)
     if compose is not None:
         compose = _require_file(
@@ -2040,7 +2060,8 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
     if credit_theme is not None:
         renderer_env = {**renderer_env, "RUSTWX_THEME": credit_theme}
 
-    frame_cache = getattr(args, "frame_cache", None) if tile is None else None
+    # The cache key includes each sub-area window, so final maps reuse its live frames.
+    frame_cache = getattr(args, "frame_cache", None)
     report, convert_invocation = convert_frames_cached(
         Path(frame_cache) / view if frame_cache else None,
         convert_exe, histories=histories, mesh=mesh, scratch=scratch,
@@ -2049,7 +2070,7 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
         compose=compose, compose_base_only=compose_base_only, init=init, diagnostics=diagnostics,
         model_label=model_label, remap=remap, jobs=convert_jobs,
         explicit_jobs=tile is not None and engine_accepts(convert_exe, "--jobs"),
-        grid_label=convert_grid_label)
+        grid_label=convert_grid_label, env=renderer_env)
     grid_label = report.get("grid_label")
     # The delivered file names keep the MESH's token (hex128-8km) whatever the
     # headline says: the WOOF worker and every tree already delivered file
@@ -2068,6 +2089,27 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
             print(f"TILES {','.join(cut['name'] for cut in tile_plan) or 'none'} ({tile_why})", flush=True)
     tile_folder = tile["name"] if tile else (TILE_FULL if tile_plan else None)
     file_view = view if tile is None else f"{view}-{tile['name']}"
+
+    tile_future = None
+    if tile_plan:
+        # Conversion of the whole window used the full budget. Its import
+        # now shares that budget with the independent cuts, rather than
+        # leaving every cut waiting for the whole window's last picture.
+        renderer_env["RAYON_NUM_THREADS"] = str(max(1, cpu_threads // 3))
+        renderer_env["GPUWM_HISTORY_COMPRESSION_THREADS"] = str(max(1, cpu_threads // 3))
+        tile_future = overlap.submit(_run_tiles, args, tile_plan, view=view, scratch=scratch,
+            histories=([Path((report.get("diagnostics") or {}).get("history"))]
+                       if report.get("diagnostics") else histories if compose is None else None),
+            frame_jobs=frame_jobs, why=tile_why)
+
+    if frame_cache and getattr(args, "incremental_import", False):
+        shared = (Path(frame_cache) / view / "import-store").resolve()
+        shared.mkdir(parents=True, exist_ok=True)
+        for tag in ("000", SERIES_TAG):
+            link = scratch / f"store-{tag}"
+            if not link.exists():
+                link.symlink_to(shared, target_is_directory=True)
+        renderer_env["RUSTWX_INCREMENTAL_IMPORT"] = "1"
 
     frames_meta = report.get("frames", [])
     if compose is not None:
@@ -2142,7 +2184,12 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
                 print(f"SERIES on: {', '.join(windowed)} named; a window is "
                       f"the difference of stored frames, so the "
                       f"{len(frames_meta)} frames share one store", flush=True)
+    if (leads is None and len(frames_meta) == 1 and getattr(args, "series", False)
+            and (getattr(args, "draw_latest", False) or getattr(args, "preserve_leads", None) is not None)):
+        leads = [int(frames_meta[0].get("lead_seconds") or 0)]
     series_outputs = [Path(meta["output"]) for meta in frames_meta]
+    saved_import = (Path(scratch) / "series-import.json"
+                    if leads is not None and engine_accepts(renderer_exe, "--save-import") else None)
     # Every map carries a labelled latitude/longitude graticule (see
     # graticule_overlays).  One window per render, so the first frame's
     # coordinates hold for the series.
@@ -2155,7 +2202,7 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
         rows, catalog_summary, catalog_invocation = list_catalog(
             renderer_exe, series_outputs, scratch=scratch, heavy=args.heavy,
             store=Path(scratch) / f"store-{SERIES_TAG}",
-            products=args.products, env=renderer_env, import_jobs=import_jobs)
+            products=args.products, env=renderer_env, import_jobs=import_jobs, saved_import=saved_import)
         catalogs[(SERIES_TAG,)] = rows
         invocations.append(catalog_invocation)
         if not getattr(args, "standard_set", False):
@@ -2204,18 +2251,50 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
     results: list[FrameResult] = []
     total_rendered = total_skipped = total_failed = 0
     series_parts: dict[int, tuple[list, list, list]] = {}
+    preserved_by_lead = {}
     if leads is not None:
         # One renderer start draws every frame; each picture, skip and
         # failure is then handed to the frame it belongs to: a picture by
         # the lead in its own name, a skip or failure by the frame file the
         # renderer names in it (the last frame when it names none).
-        rendered, skipped, failed, invocation = render_frame(
-            renderer_exe, series_outputs, scratch=scratch, index=0,
-            products=products_effective, frames=args.frames, width=width,
-            height=height, heavy=args.heavy, env=renderer_env, tag=SERIES_TAG,
-            import_jobs=import_jobs, source_label=source_label,
-            overlays=overlays_path)
-        invocations.append(invocation)
+        selected = (getattr(args, "draw_latest", False)
+                    or getattr(args, "preserve_leads", None) is not None)
+        preserved_by_lead = {}
+        if selected:
+            rendered, skipped, failed = [], [], []
+            indices = [len(leads) - 1] if getattr(args, "draw_latest", False) else range(len(leads))
+            for index in indices:
+                meta = frames_meta[index]
+                lead = lead_token(meta.get("lead_seconds"), str(meta["output"]))
+                pending = []
+                for slug in products_effective.split(","):
+                    minimum = getattr(args, "minimum_window_hours", {}).get(slug, 0)
+                    if leads[index] < minimum * 3600:
+                        continue
+                    name = product_file_name(label if getattr(args, "label", None) else grid_token(file_grid_label, ""),
+                                             file_view, slug, lead)
+                    destination = place_path(out_root, view, slug, valid_day(meta.get("valid_time")),
+                                             name, tile=tile_folder)
+                    if lead in (getattr(args, "preserve_leads", None) or ()) and destination.is_file() and destination.stat().st_size:
+                        preserved_by_lead.setdefault(leads[index], []).append(slug)
+                        print(f"PRESERVED {slug} {destination}", flush=True)
+                    else:
+                        pending.append(slug)
+                if pending:
+                    r, sk, f, invocation = render_frame(renderer_exe, series_outputs, scratch=scratch, index=0,
+                        products=",".join(pending), frames=str(index), width=width, height=height,
+                        heavy=args.heavy, env=renderer_env, tag=SERIES_TAG, import_jobs=import_jobs,
+                        source_label=source_label, overlays=overlays_path, saved_import=saved_import)
+                    rendered.extend(r); skipped.extend(sk); failed.extend(f)
+                    invocations.append(invocation)
+        else:
+            rendered, skipped, failed, invocation = render_frame(
+                renderer_exe, series_outputs, scratch=scratch, index=0,
+                products=products_effective, frames=args.frames, width=width,
+                height=height, heavy=args.heavy, env=renderer_env, tag=SERIES_TAG,
+                import_jobs=import_jobs, source_label=source_label,
+                overlays=overlays_path, saved_import=saved_import)
+            invocations.append(invocation)
         by_lead = {lead: index for index, lead in enumerate(leads)}
         names = sorted(((str(path), index) for index, path in enumerate(series_outputs)),
                        key=lambda item: -len(item[0]))
@@ -2262,6 +2341,8 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
                 source_label=source_label, overlays=overlays_path)
             invocations.append(invocation)
             raw_out = Path(scratch) / f"raw-{index:03d}"
+        if leads is not None:
+            frame.preserved = preserved_by_lead.get(leads[index], [])
         frame.skipped = skipped
         frame.failed = failed
         moved: dict[str, str] = {}
@@ -2356,25 +2437,27 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
         "invocations": invocations,
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
+    total_preserved = sum(len(frame.preserved) for frame in results)
+    manifest["counts"]["preserved"] = total_preserved
     # The any-point column store, every output hour (column_store.py), from the converted frames before the
     # scratch they sit in is cleared. A composite blends several runs, so it is no run's own column: none.
     if tile is not None:
         # A cut of a tiled render: its pictures are filed; the full pass keeps the receipt, the
         # column store (the full window's) and the scratch it sits in.
-        ok = total_failed == 0 and total_rendered > 0
+        ok = total_failed == 0 and total_rendered + total_preserved > 0
         if ok and not args.keep_scratch:
             shutil.rmtree(scratch, ignore_errors=True)
         print(f"TILE {tile['name']} rendered={total_rendered} skipped={total_skipped} "
               f"failed={total_failed}", flush=True)
         return (0 if ok else 1), manifest
-    if tile_plan:
-        tiles = _run_tiles(args, tile_plan, view=view, scratch=scratch, histories=(
-            [Path((report.get("diagnostics") or {}).get("history"))] if report.get("diagnostics")
-            else histories if compose is None else None), frame_jobs=frame_jobs, why=tile_why)
+    if tile_future is not None:
+        tiles = tile_future.result()
         manifest["tiles"] = tiles
         for cut in tiles["cuts"]:
             for key in ("rendered", "skipped", "failed"):
                 manifest["counts"][key] += int((cut.get("counts") or {}).get(key) or 0)
+        total_preserved += sum(int((cut.get("counts") or {}).get("preserved") or 0) for cut in tiles["cuts"])
+        manifest["counts"]["preserved"] = total_preserved
         total_rendered = manifest["counts"]["rendered"]
         total_skipped = manifest["counts"]["skipped"]
         total_failed = manifest["counts"]["failed"]
@@ -2395,7 +2478,7 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
     manifest_path = write_new_json(receipt_dir, "render-manifest", manifest)
     print(f"MANIFEST {manifest_path}", flush=True)
 
-    ok = total_failed == 0 and total_rendered > 0
+    ok = total_failed == 0 and total_rendered + total_preserved > 0
     if ok and not args.keep_scratch:
         shutil.rmtree(scratch, ignore_errors=True)
         print(f"SCRATCH cleared {scratch}", flush=True)
@@ -2403,7 +2486,7 @@ def _run_render(args, tile: dict | None = None) -> tuple[int, dict]:
         print(f"SCRATCH kept {scratch}", flush=True)
     print(f"DOOR rendered={total_rendered} skipped={total_skipped} "
           f"failed={total_failed} out={out_root}", flush=True)
-    if total_rendered == 0:
+    if total_rendered + total_preserved == 0:
         print("DOOR nothing rendered: every requested product was skipped "
               "or failed; see the manifest's frames[] for each reason",
               flush=True)

@@ -1,0 +1,279 @@
+{
+  "release": "6.4.3",
+  "base_url": "https://repo.radeon.com/rocm/apt/6.4.3/",
+  "packages": [
+    {
+      "Package": "rocm-core",
+      "Version": "6.4.3.60403-128~24.04",
+      "SHA256": "8a625979e374b6885c335b6078a56d9f33c451ad7e1508490a06aa42a533c6fe",
+      "Filename": "pool/main/r/rocm-core/rocm-core_6.4.3.60403-128~24.04_amd64.deb",
+      "Size": "14256"
+    },
+    {
+      "Package": "rocm-llvm",
+      "Version": "19.0.0.25224.60403-128~24.04",
+      "SHA256": "e48f4f03693dddfd0bfac8b3aa85653db8a40722aba50982a5012380f4911e7e",
+      "Filename": "pool/main/r/rocm-llvm/rocm-llvm_19.0.0.25224.60403-128~24.04_amd64.deb",
+      "Size": "360999124"
+    },
+    {
+      "Package": "rocm-device-libs",
+      "Version": "1.0.0.60403-128~24.04",
+      "SHA256": "d8725204eca0c3e0a23352784e6c93114e980b87be9c1f71c7cf9c1b52121edc",
+      "Filename": "pool/main/r/rocm-device-libs/rocm-device-libs_1.0.0.60403-128~24.04_amd64.deb",
+      "Size": "718658"
+    },
+    {
+      "Package": "hip-dev",
+      "Version": "6.4.43484.60403-128~24.04",
+      "SHA256": "499326bba8b8e3677dc3f19acc1acec2688770e7d782f282459842a58aba39c9",
+      "Filename": "pool/main/h/hip-dev/hip-dev_6.4.43484.60403-128~24.04_amd64.deb",
+      "Size": "328006"
+    },
+    {
+      "Package": "hipcc",
+      "Version": "1.1.1.60403-128~24.04",
+      "SHA256": "4a0f39a2b68b12b642e3e68049ead8e6fcec3941643f7cc120fba2c4af6d8fcb",
+      "Filename": "pool/main/h/hipcc/hipcc_1.1.1.60403-128~24.04_amd64.deb",
+      "Size": "226368"
+    },
+    {
+      "Package": "hip-runtime-amd",
+      "Version": "6.4.43484.60403-128~24.04",
+      "SHA256": "7494b7b648bddae46e5482c3a88c2b37200e446fb497071b81d2ac8cf1225daa",
+      "Filename": "pool/main/h/hip-runtime-amd/hip-runtime-amd_6.4.43484.60403-128~24.04_amd64.deb",
+      "Size": "12228066"
+    },
+    {
+      "Package": "hsa-rocr",
+      "Version": "1.15.0.60403-128~24.04",
+      "SHA256": "12049a1209f81127209b827a905722c03cfa831b30a132b2a79b443e69979dba",
+      "Filename": "pool/main/h/hsa-rocr/hsa-rocr_1.15.0.60403-128~24.04_amd64.deb",
+      "Size": "1416504"
+    },
+    {
+      "Package": "hsa-rocr-dev",
+      "Version": "1.15.0.60403-128~24.04",
+      "SHA256": "2792079b73ee1b4d5c4e2e7bf07f8b6ff56052450110968600ba8c353f2bfd3b",
+      "Filename": "pool/main/h/hsa-rocr-dev/hsa-rocr-dev_1.15.0.60403-128~24.04_amd64.deb",
+      "Size": "135558"
+    },
+    {
+      "Package": "comgr",
+      "Version": "3.0.0.60403-128~24.04",
+      "SHA256": "ea2e3c03ad206342cdc3347649fc8cfa6e886ed6665891918ead5463f3b4fae2",
+      "Filename": "pool/main/c/comgr/comgr_3.0.0.60403-128~24.04_amd64.deb",
+      "Size": "57884708"
+    },
+    {
+      "Package": "rocprofiler-register",
+      "Version": "0.4.0.60403-128~24.04",
+      "SHA256": "c6480270ac381b4083b888e7ef7a427b2e72433d9dcfa5f06f9d9474153da77f",
+      "Filename": "pool/main/r/rocprofiler-register/rocprofiler-register_0.4.0.60403-128~24.04_amd64.deb",
+      "Size": "233570"
+    },
+    {
+      "Package": "hipify-clang",
+      "Version": "19.0.0.60403-128~24.04",
+      "SHA256": "dd996e5da039f125055c876585dd760537ae6e58582fc8050b697af5a7d6d77e",
+      "Filename": "pool/main/h/hipify-clang/hipify-clang_19.0.0.60403-128~24.04_amd64.deb",
+      "Size": "22542520"
+    },
+    {
+      "Package": "rocprim-dev",
+      "Version": "3.4.1.60403-128~24.04",
+      "SHA256": "4b0ed82159462e28df6e17bfd4fa1da78e76fd1e18475a4e4829a5ea21296bb4",
+      "Filename": "pool/main/r/rocprim-dev/rocprim-dev_3.4.1.60403-128~24.04_amd64.deb",
+      "Size": "277206"
+    },
+    {
+      "Package": "rocthrust-dev",
+      "Version": "3.3.0.60403-128~24.04",
+      "SHA256": "4072cd7054d9a0cfe054593abc486a49e7e5246a4eb5bc4239ad2a78aa5a69ef",
+      "Filename": "pool/main/r/rocthrust-dev/rocthrust-dev_3.3.0.60403-128~24.04_amd64.deb",
+      "Size": "422786"
+    },
+    {
+      "Package": "rocblas",
+      "Version": "4.4.1.60403-128~24.04",
+      "SHA256": "766bfc34fba7d85c5f23907953332c833bfa56fa64e5159bb609e0451608fd07",
+      "Filename": "pool/main/r/rocblas/rocblas_4.4.1.60403-128~24.04_amd64.deb",
+      "Size": "125244268"
+    },
+    {
+      "Package": "rocblas-dev",
+      "Version": "4.4.1.60403-128~24.04",
+      "SHA256": "6634f74c100312db5aaa12885ea7174d03754fdc04c67f3b6ac6d50b3b972f0e",
+      "Filename": "pool/main/r/rocblas-dev/rocblas-dev_4.4.1.60403-128~24.04_amd64.deb",
+      "Size": "98662"
+    },
+    {
+      "Package": "hipblas",
+      "Version": "2.4.0.60403-128~24.04",
+      "SHA256": "c58647fc4a320e353d681df0ac5d4b50e7bcc87dce908f177e302069c36c9fd1",
+      "Filename": "pool/main/h/hipblas/hipblas_2.4.0.60403-128~24.04_amd64.deb",
+      "Size": "167138"
+    },
+    {
+      "Package": "hipblas-dev",
+      "Version": "2.4.0.60403-128~24.04",
+      "SHA256": "6d97244aee2c7e30f527617995733ea2d97e492433adc6871e1bc5402a51a05e",
+      "Filename": "pool/main/h/hipblas-dev/hipblas-dev_2.4.0.60403-128~24.04_amd64.deb",
+      "Size": "98294"
+    },
+    {
+      "Package": "hipblas-common-dev",
+      "Version": "1.0.0.60403-128~24.04",
+      "SHA256": "726195271d6458a82050593d0ed07439046eed1ea82ca80e07a3c062bc493786",
+      "Filename": "pool/main/h/hipblas-common-dev/hipblas-common-dev_1.0.0.60403-128~24.04_amd64.deb",
+      "Size": "5762"
+    },
+    {
+      "Package": "rocfft",
+      "Version": "1.0.32.60403-128~24.04",
+      "SHA256": "c82f3dbff8d00725d83cc339369a33473e9cd4170033c17342ec4a2523a199c8",
+      "Filename": "pool/main/r/rocfft/rocfft_1.0.32.60403-128~24.04_amd64.deb",
+      "Size": "89183814"
+    },
+    {
+      "Package": "rocfft-dev",
+      "Version": "1.0.32.60403-128~24.04",
+      "SHA256": "70150d94f931c67f22fe768a25f3853a384e82ff2e384f86c60e9726fbbd2f76",
+      "Filename": "pool/main/r/rocfft-dev/rocfft-dev_1.0.32.60403-128~24.04_amd64.deb",
+      "Size": "10690"
+    },
+    {
+      "Package": "hipfft",
+      "Version": "1.0.18.60403-128~24.04",
+      "SHA256": "a75ead9daaf4184b23eb30be24d3e2590c2e9baea3710309fd2db7f0a8c4420f",
+      "Filename": "pool/main/h/hipfft/hipfft_1.0.18.60403-128~24.04_amd64.deb",
+      "Size": "25748"
+    },
+    {
+      "Package": "hipfft-dev",
+      "Version": "1.0.18.60403-128~24.04",
+      "SHA256": "498efe93f1b36b5090517ffde3272a2321a7c2e86f1d7ca5b07bf7db14db1924",
+      "Filename": "pool/main/h/hipfft-dev/hipfft-dev_1.0.18.60403-128~24.04_amd64.deb",
+      "Size": "12302"
+    },
+    {
+      "Package": "rocrand",
+      "Version": "3.3.0.60403-128~24.04",
+      "SHA256": "fa79c7caf02df4c4cdd97d8062974ddcadb6cb8c722f96088a357571523248ba",
+      "Filename": "pool/main/r/rocrand/rocrand_3.3.0.60403-128~24.04_amd64.deb",
+      "Size": "28284952"
+    },
+    {
+      "Package": "rocrand-dev",
+      "Version": "3.3.0.60403-128~24.04",
+      "SHA256": "d307341ff9529543ef83973c813caf00f49acf9154361c4df2302fe1828dffa9",
+      "Filename": "pool/main/r/rocrand-dev/rocrand-dev_3.3.0.60403-128~24.04_amd64.deb",
+      "Size": "544942"
+    },
+    {
+      "Package": "hiprand",
+      "Version": "2.12.0.60403-128~24.04",
+      "SHA256": "68a55bd372727441a060f6c777610167d0c72e4457b46878375c4c55fab0521c",
+      "Filename": "pool/main/h/hiprand/hiprand_2.12.0.60403-128~24.04_amd64.deb",
+      "Size": "5086"
+    },
+    {
+      "Package": "hiprand-dev",
+      "Version": "2.12.0.60403-128~24.04",
+      "SHA256": "5f00b1acdec08991dfa061c647996f74a35d794d8bf533ab70b9eb3c62b3d224",
+      "Filename": "pool/main/h/hiprand-dev/hiprand-dev_2.12.0.60403-128~24.04_amd64.deb",
+      "Size": "21206"
+    },
+    {
+      "Package": "rocsparse",
+      "Version": "3.4.0.60403-128~24.04",
+      "SHA256": "2d7e98ef9b99f722ef6b0df675636773692fe261cfe4829fa8cf9abe747f1c8b",
+      "Filename": "pool/main/r/rocsparse/rocsparse_3.4.0.60403-128~24.04_amd64.deb",
+      "Size": "463558178"
+    },
+    {
+      "Package": "rocsparse-dev",
+      "Version": "3.4.0.60403-128~24.04",
+      "SHA256": "29a39abd14fc7374ca19cdcda6d838bd947bb4dc3c0e088033bf4c95f660a25f",
+      "Filename": "pool/main/r/rocsparse-dev/rocsparse-dev_3.4.0.60403-128~24.04_amd64.deb",
+      "Size": "100442"
+    },
+    {
+      "Package": "hipsparse",
+      "Version": "3.2.0.60403-128~24.04",
+      "SHA256": "6bf340ba8674536b3eb316a7cb60ddbda493a9b11ff871a740f8001451c9d5b0",
+      "Filename": "pool/main/h/hipsparse/hipsparse_3.2.0.60403-128~24.04_amd64.deb",
+      "Size": "46518"
+    },
+    {
+      "Package": "hipsparse-dev",
+      "Version": "3.2.0.60403-128~24.04",
+      "SHA256": "acfc45662ad326cebcea7abbcd76f09d650200fe6208a2860b1aea1e6dcb9677",
+      "Filename": "pool/main/h/hipsparse-dev/hipsparse-dev_3.2.0.60403-128~24.04_amd64.deb",
+      "Size": "61392"
+    },
+    {
+      "Package": "rocsolver",
+      "Version": "3.28.2.60403-128~24.04",
+      "SHA256": "350a9a9ccb34280ae7b7349b748c06255bffe7a39bd87d788f0dc0880dd1b6c7",
+      "Filename": "pool/main/r/rocsolver/rocsolver_3.28.2.60403-128~24.04_amd64.deb",
+      "Size": "644342776"
+    },
+    {
+      "Package": "rocsolver-dev",
+      "Version": "3.28.2.60403-128~24.04",
+      "SHA256": "3e8f7aa839fc47ebea96e5b0883e13c8884ed4852f50132b1e95e7039986330b",
+      "Filename": "pool/main/r/rocsolver-dev/rocsolver-dev_3.28.2.60403-128~24.04_amd64.deb",
+      "Size": "53390"
+    },
+    {
+      "Package": "hipsolver",
+      "Version": "2.4.0.60403-128~24.04",
+      "SHA256": "5242e5df946881c3fd67d1fb1e20cfb35a3366f6267fe23888f5edba7076c191",
+      "Filename": "pool/main/h/hipsolver/hipsolver_2.4.0.60403-128~24.04_amd64.deb",
+      "Size": "55128"
+    },
+    {
+      "Package": "hipsolver-dev",
+      "Version": "2.4.0.60403-128~24.04",
+      "SHA256": "9569152db632fb969173eb170b4fa78d374d30b6dea9bd277ff1dc38be52a748",
+      "Filename": "pool/main/h/hipsolver-dev/hipsolver-dev_2.4.0.60403-128~24.04_amd64.deb",
+      "Size": "18936"
+    },
+    {
+      "Package": "hipcub-dev",
+      "Version": "3.4.0.60403-128~24.04",
+      "SHA256": "29245ff6a22f6da07e013cb098ec2410c1d714fe9dacc519b257a447e7926481",
+      "Filename": "pool/main/h/hipcub-dev/hipcub-dev_3.4.0.60403-128~24.04_amd64.deb",
+      "Size": "79336"
+    },
+    {
+      "Package": "rocm-smi-lib",
+      "Version": "7.7.0.60403-128~24.04",
+      "SHA256": "056657028c9092fca1daed0da9fa14dced480bd7afaf9bd50b7d625014161ea0",
+      "Filename": "pool/main/r/rocm-smi-lib/rocm-smi-lib_7.7.0.60403-128~24.04_amd64.deb",
+      "Size": "1133180"
+    },
+    {
+      "Package": "roctracer",
+      "Version": "4.1.60403.60403-128~24.04",
+      "SHA256": "cba7bf73b40064246a5e5e34d34117960b100f7b5ced3c04103cbebe81c2458c",
+      "Filename": "pool/main/r/roctracer/roctracer_4.1.60403.60403-128~24.04_amd64.deb",
+      "Size": "523634"
+    },
+    {
+      "Package": "roctracer-dev",
+      "Version": "4.1.60403.60403-128~24.04",
+      "SHA256": "ab2a258006fb04fdac97049370b816f781363f14be5543aa5a37e7dea5c1cec2",
+      "Filename": "pool/main/r/roctracer-dev/roctracer-dev_4.1.60403.60403-128~24.04_amd64.deb",
+      "Size": "515370"
+    },
+    {
+      "Package": "hipblaslt",
+      "Version": "0.12.1.60403-128~24.04",
+      "SHA256": "505a1a3fdc62efffe0a7b918850fc51bc968c47f42f80488435cda705fa9546f",
+      "Filename": "pool/main/h/hipblaslt/hipblaslt_0.12.1.60403-128~24.04_amd64.deb",
+      "Size": "635814030"
+    }
+  ]
+}

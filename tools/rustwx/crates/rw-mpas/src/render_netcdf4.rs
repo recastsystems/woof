@@ -245,6 +245,22 @@ impl RenderFrameWriter {
         }
     }
 
+    /// Independent classic slabs have fixed offsets. Compressed slabs must
+    /// retain submission order because that order defines their file bytes.
+    pub fn put_float_records(&mut self, record: u64, slabs: &[(&str, Vec<f32>)]) -> MpasResult<()> {
+        match self {
+            Self::Classic(w) => {
+                let jobs: Vec<_> = slabs.iter().map(|(name, _)| (*name, Some(record))).collect();
+                w.put_parallel(&jobs, |i| Ok(rw_store::netcdf_classic::NcSlab::Borrowed(
+                    NcData::Floats(&slabs[i].1))))?;
+            }
+            Self::Deflated(w) => {
+                for (name, values) in slabs { w.slab(name, Some(record), NcData::Floats(values))?; }
+            }
+        }
+        Ok(())
+    }
+
     pub fn put_record_text(&mut self, key: &str, record: u64, value: &str) -> MpasResult<()> {
         match self {
             Self::Classic(w) => {

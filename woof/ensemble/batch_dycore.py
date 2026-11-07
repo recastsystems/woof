@@ -20,6 +20,7 @@ def member_domain_view(state, member):
         raise TypeError("member readout needs an inventoried batch")
     result = DomainState.__new__(DomainState)
     result.__dict__.update(state.scalars)
+    result.use_theta_m = int(getattr(state.cfg, "use_theta_m", 0))
     result.__dict__.update({name: state.member_view(name, member)
                             for name in state.storage.specs
                             if not name.startswith("scratch:")})
@@ -55,6 +56,9 @@ def _validate_configuration(state):
         raise ValueError("acoustic RK3 requires an even positive time_step_sound")
     if cfg.moist or physics_enabled(cfg) or state.physics is not None:
         raise BatchStateUnsupported("this executor needs dry physics-off member inputs")
+    if getattr(cfg, "tracer_opt", 0):
+        raise BatchStateUnsupported("passive tracers need the scalar-transport member graph; "
+                                    "use the native member forecast executor")
     if (cfg.km_opt not in (1, 4) or cfg.khdif > 0 or cfg.kvdif > 0
             or (cfg.km_opt == 4 and cfg.diff_opt != 2)):
         raise BatchStateUnsupported("this executor binds metric km_opt=4 and diff6; other mixing needs its own member graph")
@@ -163,20 +167,27 @@ def prepare_dry_step(state, *, layout_trial="none", advection_family=False,
                       (state.v, state.rv_t, state.rdnw, state.msfv, "y"),
                       (state.w, state.rw_t, state.rdn, state.msft, "z"))
     row_orders = {"": vsca, "x": vmom, "y": vmom, "z": vsca}
+    from woof.ensemble.batch_operators import flux_row_horizontal_orders
+    row_horders = flux_row_horizontal_orders(cfg)
+    # dycore._add_slow_tendencies: the non-strict theta row at order 0.
+    theta_offset = not dycore.WRF_EXACT and cfg.h_sca_adv_order == 0
     if layout_trial == "none":
         omega = prepare_omega_columns(ru, rv, ww, state.dnw, state.c1h,
                                      dx=cfg.dx, dy=cfg.dy, has_msf=state.has_msf, msft=state.msft)
         advection = tuple(prepare_flux_div(field, ru, rv, ww, tendency, spacing,
                                           state.fnm, state.fnp, msf, dx=cfg.dx, dy=cfg.dy,
                                           stagger=stagger, has_msf=state.has_msf,
-                                          vorder=row_orders[stagger])
+                                          vorder=row_orders[stagger],
+                                          horder=row_horders[stagger],
+                                          theta_offset=theta_offset and stagger == "")
                           for field, tendency, spacing, msf, stagger in advection_rows)
         trial_receipt = {"selection": "none", "additional_workspace_bytes": 0,
                          "fused_zero_fields": (), "transitions_in_step": False}
     else:
         from woof.ensemble.batch_layout_trials import prepare_stage_trials
         omega, advection, trial_receipt = prepare_stage_trials(
-            state, ru, rv, ww, advection_rows, layout=layout_trial, family=advection_family)
+            state, ru, rv, ww, advection_rows, layout=layout_trial, family=advection_family,
+            horders=row_horders, theta_offset=theta_offset)
     slow = (batch_bigstep.prepare_slow_pgf(state),
             batch_bigstep.prepare_slow_buoyancy(state),
             batch_bigstep.prepare_slow_geopotential(state))

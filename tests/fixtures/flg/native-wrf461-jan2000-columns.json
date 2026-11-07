@@ -1,0 +1,27 @@
+{
+  "source": "https://github.com/wrf-model/WRF/blob/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_ra_flg.F",
+  "source_sha256": "c4977cdf2ddf3f2279c9be7e1fc659ef23bbb37376e5cf11f9a98a73d33b0266",
+  "license": "WRF public-domain statement",
+  "capture_sha256": "39b208dee5981b9851e59ae11cba4c10327cebccd01586741a6b54d242c23c21",
+  "native_build": "WRF 4.6.1, gfortran -O0 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+  "case": "UCAR January 2000 30 km tutorial, 2000-01-24 12Z to 15Z",
+  "configuration": {
+    "ra_lw_physics": 7,
+    "ra_sw_physics": 7,
+    "mp_physics": 6,
+    "bl_pbl_physics": 1,
+    "sf_sfclay_physics": 1,
+    "sf_surface_physics": 2,
+    "cu_physics": 1,
+    "cu_rad_feedback": false,
+    "layers": 32,
+    "dt_seconds": 180
+  },
+  "columns": 12,
+  "night_columns": 4,
+  "sunlit_columns": 8,
+  "cloudy_sunlit_columns": 4,
+  "output_words": 4320,
+  "format": "tools/flg_wrf461_oracle/check_column.py:captured",
+  "evidence": "port-ra7-flg real-column-replay.json, native-case-receipt.json, instrument_native.py"
+}

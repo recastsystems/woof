@@ -1,0 +1,1487 @@
+{
+  "words": 96471,
+  "different": 0,
+  "columns": 243,
+  "captures": 6,
+  "calls": [
+    1,
+    301,
+    601
+  ],
+  "strict": true,
+  "native_version": "WRF v4.6.1",
+  "source_sha256": "f18685f7ea091f567c3f37e983f26357dcd7e9ec2eea9a6e70635c506a66d60c",
+  "instrumented_source_sha256": "6a6ee7922d30450b55d92da2afdfa949461ac12f344dfcd891d3987ab2451799",
+  "native_flags": [
+    "-O2",
+    "-fno-fast-math",
+    "-ffp-contract=off",
+    "-fno-tree-vectorize"
+  ],
+  "wrfinput_sha256": "29f54e83c7bfed342da29e46b8d520376778aae5560be657e7b2fa519d658d16",
+  "wrfbdy_sha256": "2ba7761e47d235ce7a88b9152a802fb97ee76f9086cd776c2e273518b7a3cda6",
+  "window": "2024-05-25T18:00:00Z/2024-05-25T21:00:00Z",
+  "dt_seconds": 12,
+  "grid": [
+    150,
+    150,
+    49
+  ],
+  "bl_pbl_physics": 7,
+  "sf_sfclay_physics": 1,
+  "mp_physics": 8,
+  "capture_tool": "tools/acm2_wrf461_oracle/capture_native.py",
+  "replay_tool": "tools/acm2_wrf461_oracle/replay_native.py",
+  "rows": [
+    {
+      "input": "acm2-1-1-1-in.bin",
+      "input_bytes": 161344,
+      "input_sha256": "964f7f266b75a4cf5f237fe818f4e16161aabad0aed827dd89e0de82005687b0",
+      "output": "acm2-1-1-1-out.bin",
+      "output_bytes": 71524,
+      "output_sha256": "bb435ee2a4fa608d03e5fd1cc35d11292b6e11936e2791d8eb1d6c5bbef724ee",
+      "xtime": 1,
+      "nz": 49,
+      "ncol": 45,
+      "points": [
+        [
+          1,
+          1
+        ],
+        [
+          18,
+          1
+        ],
+        [
+          35,
+          1
+        ],
+        [
+          52,
+          1
+        ],
+        [
+          69,
+          1
+        ],
+        [
+          86,
+          1
+        ],
+        [
+          103,
+          1
+        ],
+        [
+          120,
+          1
+        ],
+        [
+          137,
+          1
+        ],
+        [
+          1,
+          18
+        ],
+        [
+          18,
+          18
+        ],
+        [
+          35,
+          18
+        ],
+        [
+          52,
+          18
+        ],
+        [
+          69,
+          18
+        ],
+        [
+          86,
+          18
+        ],
+        [
+          103,
+          18
+        ],
+        [
+          120,
+          18
+        ],
+        [
+          137,
+          18
+        ],
+        [
+          1,
+          35
+        ],
+        [
+          18,
+          35
+        ],
+        [
+          35,
+          35
+        ],
+        [
+          52,
+          35
+        ],
+        [
+          69,
+          35
+        ],
+        [
+          86,
+          35
+        ],
+        [
+          103,
+          35
+        ],
+        [
+          120,
+          35
+        ],
+        [
+          137,
+          35
+        ],
+        [
+          1,
+          52
+        ],
+        [
+          18,
+          52
+        ],
+        [
+          35,
+          52
+        ],
+        [
+          52,
+          52
+        ],
+        [
+          69,
+          52
+        ],
+        [
+          86,
+          52
+        ],
+        [
+          103,
+          52
+        ],
+        [
+          120,
+          52
+        ],
+        [
+          137,
+          52
+        ],
+        [
+          1,
+          69
+        ],
+        [
+          18,
+          69
+        ],
+        [
+          35,
+          69
+        ],
+        [
+          52,
+          69
+        ],
+        [
+          69,
+          69
+        ],
+        [
+          86,
+          69
+        ],
+        [
+          103,
+          69
+        ],
+        [
+          120,
+          69
+        ],
+        [
+          137,
+          69
+        ]
+      ],
+      "constants": {
+        "dtpbl": 12.0,
+        "ep1": 0.6083624362945557,
+        "g": 9.8100004196167,
+        "rovcp": 0.2857142984867096,
+        "rd": 287.0,
+        "cpd": 1004.5
+      },
+      "nonzero_initial_tendency_words": 0,
+      "fields": {
+        "du": {
+          "words": 2205,
+          "different": 0
+        },
+        "dv": {
+          "words": 2205,
+          "different": 0
+        },
+        "dtheta": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqv": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqc": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqi": {
+          "words": 2205,
+          "different": 0
+        },
+        "exch_h": {
+          "words": 2205,
+          "different": 0
+        },
+        "exch_m": {
+          "words": 2205,
+          "different": 0
+        },
+        "pblh": {
+          "words": 45,
+          "different": 0
+        },
+        "regime": {
+          "words": 45,
+          "different": 0
+        },
+        "rmol": {
+          "words": 45,
+          "different": 0
+        },
+        "kpbl": {
+          "words": 45,
+          "different": 0
+        },
+        "ust": {
+          "words": 45,
+          "different": 0
+        }
+      }
+    },
+    {
+      "input": "acm2-1-1-76-in.bin",
+      "input_bytes": 129088,
+      "input_sha256": "ef75abe9d5a087903031a58bf07a9e11ef63e4a486e5d240fa26bad87f3f7639",
+      "output": "acm2-1-1-76-out.bin",
+      "output_bytes": 57232,
+      "output_sha256": "7367796beb91d91be3d037495d1a59f7dd52cb4a3bf6276669bc89a6df8e13ce",
+      "xtime": 1,
+      "nz": 49,
+      "ncol": 36,
+      "points": [
+        [
+          1,
+          86
+        ],
+        [
+          18,
+          86
+        ],
+        [
+          35,
+          86
+        ],
+        [
+          52,
+          86
+        ],
+        [
+          69,
+          86
+        ],
+        [
+          86,
+          86
+        ],
+        [
+          103,
+          86
+        ],
+        [
+          120,
+          86
+        ],
+        [
+          137,
+          86
+        ],
+        [
+          1,
+          103
+        ],
+        [
+          18,
+          103
+        ],
+        [
+          35,
+          103
+        ],
+        [
+          52,
+          103
+        ],
+        [
+          69,
+          103
+        ],
+        [
+          86,
+          103
+        ],
+        [
+          103,
+          103
+        ],
+        [
+          120,
+          103
+        ],
+        [
+          137,
+          103
+        ],
+        [
+          1,
+          120
+        ],
+        [
+          18,
+          120
+        ],
+        [
+          35,
+          120
+        ],
+        [
+          52,
+          120
+        ],
+        [
+          69,
+          120
+        ],
+        [
+          86,
+          120
+        ],
+        [
+          103,
+          120
+        ],
+        [
+          120,
+          120
+        ],
+        [
+          137,
+          120
+        ],
+        [
+          1,
+          137
+        ],
+        [
+          18,
+          137
+        ],
+        [
+          35,
+          137
+        ],
+        [
+          52,
+          137
+        ],
+        [
+          69,
+          137
+        ],
+        [
+          86,
+          137
+        ],
+        [
+          103,
+          137
+        ],
+        [
+          120,
+          137
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "constants": {
+        "dtpbl": 12.0,
+        "ep1": 0.6083624362945557,
+        "g": 9.8100004196167,
+        "rovcp": 0.2857142984867096,
+        "rd": 287.0,
+        "cpd": 1004.5
+      },
+      "nonzero_initial_tendency_words": 0,
+      "fields": {
+        "du": {
+          "words": 1764,
+          "different": 0
+        },
+        "dv": {
+          "words": 1764,
+          "different": 0
+        },
+        "dtheta": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqv": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqc": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqi": {
+          "words": 1764,
+          "different": 0
+        },
+        "exch_h": {
+          "words": 1764,
+          "different": 0
+        },
+        "exch_m": {
+          "words": 1764,
+          "different": 0
+        },
+        "pblh": {
+          "words": 36,
+          "different": 0
+        },
+        "regime": {
+          "words": 36,
+          "different": 0
+        },
+        "rmol": {
+          "words": 36,
+          "different": 0
+        },
+        "kpbl": {
+          "words": 36,
+          "different": 0
+        },
+        "ust": {
+          "words": 36,
+          "different": 0
+        }
+      }
+    },
+    {
+      "input": "acm2-301-1-1-in.bin",
+      "input_bytes": 161344,
+      "input_sha256": "525cddc7313ab510bedcd34c48b1d0b1fe58a0e46200425d6b5faddf45863cfe",
+      "output": "acm2-301-1-1-out.bin",
+      "output_bytes": 71524,
+      "output_sha256": "d8a7c9a9795dfb79ec3e97fc5e1098151eafc556c40b61effffc6dab3ca4a5d8",
+      "xtime": 301,
+      "nz": 49,
+      "ncol": 45,
+      "points": [
+        [
+          1,
+          1
+        ],
+        [
+          18,
+          1
+        ],
+        [
+          35,
+          1
+        ],
+        [
+          52,
+          1
+        ],
+        [
+          69,
+          1
+        ],
+        [
+          86,
+          1
+        ],
+        [
+          103,
+          1
+        ],
+        [
+          120,
+          1
+        ],
+        [
+          137,
+          1
+        ],
+        [
+          1,
+          18
+        ],
+        [
+          18,
+          18
+        ],
+        [
+          35,
+          18
+        ],
+        [
+          52,
+          18
+        ],
+        [
+          69,
+          18
+        ],
+        [
+          86,
+          18
+        ],
+        [
+          103,
+          18
+        ],
+        [
+          120,
+          18
+        ],
+        [
+          137,
+          18
+        ],
+        [
+          1,
+          35
+        ],
+        [
+          18,
+          35
+        ],
+        [
+          35,
+          35
+        ],
+        [
+          52,
+          35
+        ],
+        [
+          69,
+          35
+        ],
+        [
+          86,
+          35
+        ],
+        [
+          103,
+          35
+        ],
+        [
+          120,
+          35
+        ],
+        [
+          137,
+          35
+        ],
+        [
+          1,
+          52
+        ],
+        [
+          18,
+          52
+        ],
+        [
+          35,
+          52
+        ],
+        [
+          52,
+          52
+        ],
+        [
+          69,
+          52
+        ],
+        [
+          86,
+          52
+        ],
+        [
+          103,
+          52
+        ],
+        [
+          120,
+          52
+        ],
+        [
+          137,
+          52
+        ],
+        [
+          1,
+          69
+        ],
+        [
+          18,
+          69
+        ],
+        [
+          35,
+          69
+        ],
+        [
+          52,
+          69
+        ],
+        [
+          69,
+          69
+        ],
+        [
+          86,
+          69
+        ],
+        [
+          103,
+          69
+        ],
+        [
+          120,
+          69
+        ],
+        [
+          137,
+          69
+        ]
+      ],
+      "constants": {
+        "dtpbl": 12.0,
+        "ep1": 0.6083624362945557,
+        "g": 9.8100004196167,
+        "rovcp": 0.2857142984867096,
+        "rd": 287.0,
+        "cpd": 1004.5
+      },
+      "nonzero_initial_tendency_words": 0,
+      "fields": {
+        "du": {
+          "words": 2205,
+          "different": 0
+        },
+        "dv": {
+          "words": 2205,
+          "different": 0
+        },
+        "dtheta": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqv": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqc": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqi": {
+          "words": 2205,
+          "different": 0
+        },
+        "exch_h": {
+          "words": 2205,
+          "different": 0
+        },
+        "exch_m": {
+          "words": 2205,
+          "different": 0
+        },
+        "pblh": {
+          "words": 45,
+          "different": 0
+        },
+        "regime": {
+          "words": 45,
+          "different": 0
+        },
+        "rmol": {
+          "words": 45,
+          "different": 0
+        },
+        "kpbl": {
+          "words": 45,
+          "different": 0
+        },
+        "ust": {
+          "words": 45,
+          "different": 0
+        }
+      }
+    },
+    {
+      "input": "acm2-301-1-76-in.bin",
+      "input_bytes": 129088,
+      "input_sha256": "dc21ed5faa6a6af358bb42626599120b6115b5af5f0f8930fe2cff2557562981",
+      "output": "acm2-301-1-76-out.bin",
+      "output_bytes": 57232,
+      "output_sha256": "2cb0155aa27f89c899d18870b6c974d0811a2d0a4f6885d54d2ad8aaa55957d1",
+      "xtime": 301,
+      "nz": 49,
+      "ncol": 36,
+      "points": [
+        [
+          1,
+          86
+        ],
+        [
+          18,
+          86
+        ],
+        [
+          35,
+          86
+        ],
+        [
+          52,
+          86
+        ],
+        [
+          69,
+          86
+        ],
+        [
+          86,
+          86
+        ],
+        [
+          103,
+          86
+        ],
+        [
+          120,
+          86
+        ],
+        [
+          137,
+          86
+        ],
+        [
+          1,
+          103
+        ],
+        [
+          18,
+          103
+        ],
+        [
+          35,
+          103
+        ],
+        [
+          52,
+          103
+        ],
+        [
+          69,
+          103
+        ],
+        [
+          86,
+          103
+        ],
+        [
+          103,
+          103
+        ],
+        [
+          120,
+          103
+        ],
+        [
+          137,
+          103
+        ],
+        [
+          1,
+          120
+        ],
+        [
+          18,
+          120
+        ],
+        [
+          35,
+          120
+        ],
+        [
+          52,
+          120
+        ],
+        [
+          69,
+          120
+        ],
+        [
+          86,
+          120
+        ],
+        [
+          103,
+          120
+        ],
+        [
+          120,
+          120
+        ],
+        [
+          137,
+          120
+        ],
+        [
+          1,
+          137
+        ],
+        [
+          18,
+          137
+        ],
+        [
+          35,
+          137
+        ],
+        [
+          52,
+          137
+        ],
+        [
+          69,
+          137
+        ],
+        [
+          86,
+          137
+        ],
+        [
+          103,
+          137
+        ],
+        [
+          120,
+          137
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "constants": {
+        "dtpbl": 12.0,
+        "ep1": 0.6083624362945557,
+        "g": 9.8100004196167,
+        "rovcp": 0.2857142984867096,
+        "rd": 287.0,
+        "cpd": 1004.5
+      },
+      "nonzero_initial_tendency_words": 0,
+      "fields": {
+        "du": {
+          "words": 1764,
+          "different": 0
+        },
+        "dv": {
+          "words": 1764,
+          "different": 0
+        },
+        "dtheta": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqv": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqc": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqi": {
+          "words": 1764,
+          "different": 0
+        },
+        "exch_h": {
+          "words": 1764,
+          "different": 0
+        },
+        "exch_m": {
+          "words": 1764,
+          "different": 0
+        },
+        "pblh": {
+          "words": 36,
+          "different": 0
+        },
+        "regime": {
+          "words": 36,
+          "different": 0
+        },
+        "rmol": {
+          "words": 36,
+          "different": 0
+        },
+        "kpbl": {
+          "words": 36,
+          "different": 0
+        },
+        "ust": {
+          "words": 36,
+          "different": 0
+        }
+      }
+    },
+    {
+      "input": "acm2-601-1-1-in.bin",
+      "input_bytes": 161344,
+      "input_sha256": "63634ba5d7b96e1048e75094cff3a80493a035c5e6ab4a6d6f1de13645776b66",
+      "output": "acm2-601-1-1-out.bin",
+      "output_bytes": 71524,
+      "output_sha256": "6ab08468ae352e8474ceec3bfd10ba8132b639833f1da54df93b444a95dc9fca",
+      "xtime": 601,
+      "nz": 49,
+      "ncol": 45,
+      "points": [
+        [
+          1,
+          1
+        ],
+        [
+          18,
+          1
+        ],
+        [
+          35,
+          1
+        ],
+        [
+          52,
+          1
+        ],
+        [
+          69,
+          1
+        ],
+        [
+          86,
+          1
+        ],
+        [
+          103,
+          1
+        ],
+        [
+          120,
+          1
+        ],
+        [
+          137,
+          1
+        ],
+        [
+          1,
+          18
+        ],
+        [
+          18,
+          18
+        ],
+        [
+          35,
+          18
+        ],
+        [
+          52,
+          18
+        ],
+        [
+          69,
+          18
+        ],
+        [
+          86,
+          18
+        ],
+        [
+          103,
+          18
+        ],
+        [
+          120,
+          18
+        ],
+        [
+          137,
+          18
+        ],
+        [
+          1,
+          35
+        ],
+        [
+          18,
+          35
+        ],
+        [
+          35,
+          35
+        ],
+        [
+          52,
+          35
+        ],
+        [
+          69,
+          35
+        ],
+        [
+          86,
+          35
+        ],
+        [
+          103,
+          35
+        ],
+        [
+          120,
+          35
+        ],
+        [
+          137,
+          35
+        ],
+        [
+          1,
+          52
+        ],
+        [
+          18,
+          52
+        ],
+        [
+          35,
+          52
+        ],
+        [
+          52,
+          52
+        ],
+        [
+          69,
+          52
+        ],
+        [
+          86,
+          52
+        ],
+        [
+          103,
+          52
+        ],
+        [
+          120,
+          52
+        ],
+        [
+          137,
+          52
+        ],
+        [
+          1,
+          69
+        ],
+        [
+          18,
+          69
+        ],
+        [
+          35,
+          69
+        ],
+        [
+          52,
+          69
+        ],
+        [
+          69,
+          69
+        ],
+        [
+          86,
+          69
+        ],
+        [
+          103,
+          69
+        ],
+        [
+          120,
+          69
+        ],
+        [
+          137,
+          69
+        ]
+      ],
+      "constants": {
+        "dtpbl": 12.0,
+        "ep1": 0.6083624362945557,
+        "g": 9.8100004196167,
+        "rovcp": 0.2857142984867096,
+        "rd": 287.0,
+        "cpd": 1004.5
+      },
+      "nonzero_initial_tendency_words": 0,
+      "fields": {
+        "du": {
+          "words": 2205,
+          "different": 0
+        },
+        "dv": {
+          "words": 2205,
+          "different": 0
+        },
+        "dtheta": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqv": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqc": {
+          "words": 2205,
+          "different": 0
+        },
+        "dqi": {
+          "words": 2205,
+          "different": 0
+        },
+        "exch_h": {
+          "words": 2205,
+          "different": 0
+        },
+        "exch_m": {
+          "words": 2205,
+          "different": 0
+        },
+        "pblh": {
+          "words": 45,
+          "different": 0
+        },
+        "regime": {
+          "words": 45,
+          "different": 0
+        },
+        "rmol": {
+          "words": 45,
+          "different": 0
+        },
+        "kpbl": {
+          "words": 45,
+          "different": 0
+        },
+        "ust": {
+          "words": 45,
+          "different": 0
+        }
+      }
+    },
+    {
+      "input": "acm2-601-1-76-in.bin",
+      "input_bytes": 129088,
+      "input_sha256": "4a15ab462e9022bb9eac4050e85279bb3d2d073843f25841f6f7bebbc68513b0",
+      "output": "acm2-601-1-76-out.bin",
+      "output_bytes": 57232,
+      "output_sha256": "483941c1696114c99a895a66c3ec8abbf2aa1a13b14d39db33019a87db044294",
+      "xtime": 601,
+      "nz": 49,
+      "ncol": 36,
+      "points": [
+        [
+          1,
+          86
+        ],
+        [
+          18,
+          86
+        ],
+        [
+          35,
+          86
+        ],
+        [
+          52,
+          86
+        ],
+        [
+          69,
+          86
+        ],
+        [
+          86,
+          86
+        ],
+        [
+          103,
+          86
+        ],
+        [
+          120,
+          86
+        ],
+        [
+          137,
+          86
+        ],
+        [
+          1,
+          103
+        ],
+        [
+          18,
+          103
+        ],
+        [
+          35,
+          103
+        ],
+        [
+          52,
+          103
+        ],
+        [
+          69,
+          103
+        ],
+        [
+          86,
+          103
+        ],
+        [
+          103,
+          103
+        ],
+        [
+          120,
+          103
+        ],
+        [
+          137,
+          103
+        ],
+        [
+          1,
+          120
+        ],
+        [
+          18,
+          120
+        ],
+        [
+          35,
+          120
+        ],
+        [
+          52,
+          120
+        ],
+        [
+          69,
+          120
+        ],
+        [
+          86,
+          120
+        ],
+        [
+          103,
+          120
+        ],
+        [
+          120,
+          120
+        ],
+        [
+          137,
+          120
+        ],
+        [
+          1,
+          137
+        ],
+        [
+          18,
+          137
+        ],
+        [
+          35,
+          137
+        ],
+        [
+          52,
+          137
+        ],
+        [
+          69,
+          137
+        ],
+        [
+          86,
+          137
+        ],
+        [
+          103,
+          137
+        ],
+        [
+          120,
+          137
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "constants": {
+        "dtpbl": 12.0,
+        "ep1": 0.6083624362945557,
+        "g": 9.8100004196167,
+        "rovcp": 0.2857142984867096,
+        "rd": 287.0,
+        "cpd": 1004.5
+      },
+      "nonzero_initial_tendency_words": 0,
+      "fields": {
+        "du": {
+          "words": 1764,
+          "different": 0
+        },
+        "dv": {
+          "words": 1764,
+          "different": 0
+        },
+        "dtheta": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqv": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqc": {
+          "words": 1764,
+          "different": 0
+        },
+        "dqi": {
+          "words": 1764,
+          "different": 0
+        },
+        "exch_h": {
+          "words": 1764,
+          "different": 0
+        },
+        "exch_m": {
+          "words": 1764,
+          "different": 0
+        },
+        "pblh": {
+          "words": 36,
+          "different": 0
+        },
+        "regime": {
+          "words": 36,
+          "different": 0
+        },
+        "rmol": {
+          "words": 36,
+          "different": 0
+        },
+        "kpbl": {
+          "words": 36,
+          "different": 0
+        },
+        "ust": {
+          "words": 36,
+          "different": 0
+        }
+      }
+    }
+  ],
+  "kernel_manifest": {
+    "gpuwm.core.acm2pbl:acm2pbl": {
+      "source_sha256": "aca136ff41861cdabe64bc3fdfa8203d5106ae5028dfe6cd25f1b219af1f135c",
+      "options": [
+        "-std=c++17",
+        "--fmad=false",
+        "--ftz=false",
+        "--prec-div=true",
+        "--prec-sqrt=true",
+        "-DGPUWM_WRF_EXACT=1",
+        "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+        "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+        "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+        "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+      ],
+      "compiled_image": {
+        "status": "resolved",
+        "kind": "ptx",
+        "sha256": "cafac8064e548acd3dff7516995ce6606f6959e958b3e8cc33821486cd5a6571"
+      }
+    }
+  }
+}

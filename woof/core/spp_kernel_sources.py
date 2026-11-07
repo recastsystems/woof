@@ -160,7 +160,7 @@ def load_spp_module(name: str, capacity: int = 40,
     from woof.core.kernels import _compile_observed
     source = specialized_source(name, capacity=capacity, defines=defines)
     # The SPP MYNN PBL compiles as the deterministic unit does, without
-    # FMA contraction (woof.core.kernels._NO_FMAD_MODULES, lane/mynn-exact):
+    # FMA contraction (woof.core.kernels._NO_FMAD_MODULES, development branch):
     # a zero pattern must give the native unit's words, which
     # tests/test_spp_consumers_gpu.py measures.
     from woof.core.kernels import _NO_FTZ_MODULES, compile_noftz_module

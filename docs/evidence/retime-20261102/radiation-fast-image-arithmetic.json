@@ -1,0 +1,58 @@
+{
+  "commit": "17f06c397baa6d87e1018d667cbeb9c6768b2816",
+  "scope": "Fast forecast tiers, SASS static binary64 arithmetic/compare scan; address arithmetic and ABI conversions excluded. Not a dynamic instruction profile.",
+  "modules": [
+    {
+      "module": "flg_column",
+      "defines": [
+        [
+          "FLG_NV1",
+          40
+        ]
+      ],
+      "options": [
+        "-std=c++17",
+        "--fmad=true",
+        "--ftz=false"
+      ],
+      "source_sha256": "dac8712e5cef6e97396f06ca8da15d6be2a87655c655813b1ac9371199e10706",
+      "image_sha256": "aee0cc52227ddf8462d0ee9bd2598b96cf9611dcd0587ebeb3705e2b37b94d94",
+      "image_bytes": 884767,
+      "elf_terminal_padding_bytes": 1,
+      "binary64_arithmetic_instructions": 0,
+      "examples": []
+    },
+    {
+      "module": "cam3_emissivity",
+      "defines": [
+        [
+          "CAM_LEVELS",
+          39
+        ],
+        [
+          "CAM_LONGWAVE_MODE",
+          1
+        ],
+        [
+          "CAM_SHORTWAVE_MODE",
+          1
+        ]
+      ],
+      "options": [
+        "-std=c++17",
+        "--ftz=false"
+      ],
+      "source_sha256": "01b6a47f983bbcb648fb8cdb22f654af6e37a6912b984652c94cef05963b94bb",
+      "image_sha256": "d5954c3f3202d0ec92f43125e9799d4be4a35827658bcbeddc07b7d12547bcca",
+      "image_bytes": 4737943,
+      "elf_terminal_padding_bytes": 1,
+      "binary64_arithmetic_instructions": 4,
+      "examples": [
+        "/*dfb40*/                   DMUL R2, R6, UR4 ;                                                  /* 0x0000000406027c28 */",
+        "/*e2020*/                   DMUL R2, R6, UR4 ;                                                  /* 0x0000000406027c28 */",
+        "/*df9e0*/                   DMUL R2, R6, UR4 ;                                                  /* 0x0000000406027c28 */",
+        "/*e1ec0*/                   DMUL R2, R6, UR4 ;                                                  /* 0x0000000406027c28 */"
+      ]
+    }
+  ]
+}

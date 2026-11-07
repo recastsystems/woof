@@ -22,11 +22,15 @@ def test_strict_image_is_optimised_and_still_strict():
         assert flag in options
 
 
-def test_image_compiles_on_all_cores():
-    # Breakage: the three lane-width kernels compiled on one core (fast 70-126 s, strict several minutes) on a box's
-    # first hrrrv5 run without a kernel pack.
-    assert "--split-compile=0" in edmf.CUDA_OPTIONS
-    assert "--ptxas-options=--split-compile=0" in edmf.CUDA_OPTIONS
+def test_image_compiles_to_one_machine_code():
+    # Breakage (0.4.14 memory lane, 2026-11-06): split compilation gave a different machine code on every compile, so
+    # a run without a matching pack differed from its rerun on the pack image by 228,559 words at step 1 (8 ranks,
+    # fast).  NVRTC's own split is the nondeterministic one; ptxas's split gives one cubin at any core count and keeps
+    # the one-core compile on a box with no pack (fast 70-126 s, strict several minutes) parallel.
+    from woof.hex.mpasphys.rrfs import bl_mynnedmf_c6d08709 as edmf_c6
+    for module in (edmf, edmf_c6):
+        assert "--split-compile=0" not in module.CUDA_OPTIONS
+        assert "--ptxas-options=--split-compile=0" in module.CUDA_OPTIONS
 
 
 def test_operation_wrappers_are_inline():

@@ -76,6 +76,11 @@ COLD_START_SEEDED_NUMBERS = {
 #: kinds of domain.  The seeded number moments are scalar-array species.
 SCALAR_ARRAY_BOUNDARY_FIELDS = (*AEROSOL_BOUNDARY_FIELDS, "nc", "nr", "ni", "qke_adv")
 
+def scalar_array_boundary_fields(cfg):
+    """Active WRF scalar package fields, with the hail package extension."""
+    return SCALAR_ARRAY_BOUNDARY_FIELDS + (("ng", "qvolg")
+        if int(getattr(cfg, "mp_physics", 0)) == 38 else ())
+
 #: The supplied scalars whose specified-domain lateral tendency is captured
 #: once per model step into a held full-domain array
 #: (``lbc_<name>_held``).  The hydrometeor masses and their numbers are not
@@ -139,7 +144,7 @@ def external_scalar_fields(cfg, *, aerosol_from_input: bool | None = None,
             int(getattr(cfg, "aer_init_opt", 0)) > 0
             or getattr(cfg, "mp28_aerosol_source", "auto") == "climatology")
     hydrometeors = boundary_hydrometeor_fields(cfg, boundary_species)
-    if int(cfg.mp_physics) == 28 and aerosol_from_input:
+    if int(cfg.mp_physics) in (28, 38) and aerosol_from_input:
         return ("qv", *hydrometeors, *AEROSOL_BOUNDARY_FIELDS)
     from woof.core.chem_mp_coupling import source_number_fields
     composition = source_number_fields(cfg) if int(cfg.mp_physics) == 28 else ()
@@ -181,7 +186,7 @@ def admissible_boundary_inventory(cfg, scalars) -> bool:
             return False
         rest.discard("qke_adv")
     aerosol = rest & set(AEROSOL_BOUNDARY_FIELDS)
-    if aerosol and int(getattr(cfg, "mp_physics", 0)) != 28:
+    if aerosol and int(getattr(cfg, "mp_physics", 0)) not in (28, 38):
         return False
     if aerosol and aerosol != set(AEROSOL_BOUNDARY_FIELDS):
         from woof.core.chem_mp_coupling import source_number_fields

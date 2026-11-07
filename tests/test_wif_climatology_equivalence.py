@@ -1,7 +1,7 @@
 """The Rust WIF ingest path against the NumPy oracle-of-record.
 
 WHAT THIS GATE PREVENTS (gate law): the data path silently drifting off
-the numbers commit 94260bf44 bound against WRF-4.7.1 real.exe on a development machine.
+the numbers commit 94260bf44 bound against WRF-4.7.1 real.exe on test host 4.
 The NumPy expressions in ``woof/ingest/wif_climatology.py`` are the ones
 that were measured there; the Rust engine is what a run actually uses.
 Nothing else compares the two, so without this test a change to the

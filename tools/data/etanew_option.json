@@ -1,0 +1,126 @@
+{
+  "asset_requirements": [],
+  "compatible_previous_forbidden_settings": [
+    {
+      "mp28_aerosol_source": [
+        "climatology",
+        "synthetic"
+      ]
+    }
+  ],
+  "constraints": {
+    "forbidden_setting_values": {
+      "mp28_aerosol_source": [
+        "climatology",
+        "synthetic",
+        "analysis"
+      ],
+      "use_rap_aero_icbc": [
+        true
+      ]
+    },
+    "refused_when": [
+      {
+        "components": {
+          "radiation": [
+            "rte-rrtmgp"
+          ]
+        },
+        "reason": "Eta Ferrier has no qualified RRTMGP optics; use native legacy RRTMG The Dudhia pair ra_lw_physics=0 / ra_sw_physics=1 is the other way out of this pairing.",
+        "remedy_label": "Set ra_rrtmg_variant='rrtmg_legacy', which computes its own radii the way WRF does.",
+        "remedy_settings": {
+          "ra_rrtmg_variant": "rrtmg_legacy"
+        },
+        "settings": {
+          "ra_rrtmg_variant": [
+            "rte-rrtmgp"
+          ]
+        }
+      }
+    ],
+    "required_settings": {
+      "moist": true
+    },
+    "required_settings_reasons": {
+      "moist": "a dry state allocates no water vapour or hydrometeor fields, so the scheme would have nothing to integrate"
+    }
+  },
+  "extensions": {
+    "carried_state": [
+      "f_ice_phy",
+      "f_rain_phy",
+      "f_rimef_phy"
+    ],
+    "column_oracle_evidence": {
+      "columns": 80,
+      "default_max_ulp": 0,
+      "fixture_root": "tests/data/oracles/etanew",
+      "levels": 50,
+      "steps": 10,
+      "strict_max_ulp": 0,
+      "tests": [
+        "tests/test_etanew_mp95_gpu.py",
+        "tests/test_etanew_radiation.py"
+      ],
+      "whole_forecast_identity": false,
+      "wrf_version": "4.6.1"
+    },
+    "moist_species": [
+      "qv",
+      "qc",
+      "qr",
+      "qs"
+    ],
+    "restart_fields": [
+      "mp_restart_state",
+      "tbpvs_state",
+      "tbpvs0_state"
+    ],
+    "scalar_species": [
+      "qt"
+    ],
+    "table": {
+      "filename": "ETAMPNEW_DATA.expanded_rain",
+      "sha256": "28e60e6c83eb55889c4ab65eaa33e9fc3b557e5ab45c3dde7ee7153c2ef95a13"
+    },
+    "table_variants": {
+      "expanded_rain": {
+        "filename": "ETAMPNEW_DATA.expanded_rain",
+        "rain_diameter_bounds_um": [
+          50,
+          1000
+        ],
+        "seed_filename": "ETAMPNEW_DATA.expanded_rain.f32le",
+        "seed_sha256": "658644591b89f602995b4a7407cda721f8786f3fa7c4d199bcec313a2e6c329c",
+        "sha256": "28e60e6c83eb55889c4ab65eaa33e9fc3b557e5ab45c3dde7ee7153c2ef95a13"
+      },
+      "original_rain": {
+        "filename": "ETAMPNEW_DATA",
+        "rain_diameter_bounds_um": [
+          50,
+          450
+        ],
+        "seed_filename": "ETAMPNEW_DATA.f32le",
+        "seed_sha256": "abeb1c8339cc8525c7bb9a496a9bd639111ab3041c6943b3a9ea36c2fa9876ec",
+        "sha256": "a913785f0bf5f75f8428ede706ce67ae804c3b285b4a34aeb533c4ad5cd9bea2"
+      }
+    },
+    "wrf_package": "etampnew"
+  },
+  "implemented": true,
+  "label": "Eta Ferrier / MP95",
+  "maturity": "implemented-unverified",
+  "parameters": {
+    "moist": true,
+    "moist_cq": true
+  },
+  "reachability": {
+    "state": "component-override"
+  },
+  "scientific_evidence": "none",
+  "selectors": {
+    "mp_physics": 95
+  },
+  "verification_scope": "column-oracles-and-restart",
+  "warnings": []
+}

@@ -38,6 +38,10 @@ GOLDEN = json.loads(
 
 _WIND_DEFAULTS = {"wind_farm_scheme": "off", "wind_farms": "", "wind_farm_table": "",
                   "windfarm_tke_factor": .25, "wind_farm_max_dx_m": 3000.0}
+_GCE_DEFAULTS = {"gsfcgce_hail": 0, "gsfcgce_2ice": 0}
+_CUP_DEFAULTS = {"numbins": 1, "thbinsize": 1.0, "rbinsize": 1.0,
+                 "mindeepfreq": 1.0, "minshallowfreq": 1.0,
+                 "shallowcu_forced_ra": False}
 
 
 def _frozen_constructors():
@@ -78,13 +82,241 @@ def _golden_in_this_tree() -> set:
 def _pop_fork_dycore_defaults(actual: dict) -> bool:
     """The diff_6th_form / mp_zero_out fields at the values every earlier
     configuration ran: WRF v4.6.1's filter and no zero-out pass."""
-    return (actual.pop("scalar_adv_opt") == 1
+    return (actual.pop("tke_mix2_off") is False
+            and actual.pop("tke_mix6_off") is False
+            and actual.pop("tke_adv_opt") == 1
+            and actual.pop("sfs_opt") == 0
+            and actual.pop("m_opt") == 0
+            and actual.pop("mfshconv") == 0
+            and actual.pop("scalar_adv_opt") == 1
             and actual.pop("upper_wind_limiter_form") == "wrf_461"
             and actual.pop("diff_6th_form") == "wrf_461"
             and actual.pop("diff_6th_factor2") is None
             and actual.pop("mp_zero_out") == 0
             and actual.pop("mp_zero_out_thresh") == 1.0e-8
             and actual.pop("mp_zero_out_all") == 0)
+
+
+_BATCH007_DEFAULTS = {'tracer_opt': 0,
+ 'tracer_adv_opt': 1,
+ 'tracer_mix2_off': False,
+ 'tracer_mix6_off': False,
+ 'tracer_pblmix': 1,
+ 'traj_opt': 0,
+ 'dm_has_traj': False,
+ 'num_traj': 1000,
+ 'trajectory_input': '',
+ 'shcu_physics': 0,
+ 'accum_mode': 1000000000.0,
+ 'aitken_mode': 300000000.0,
+ 'coarse_mode': 200000.0,
+ 'ntu_ccnty': 2,
+ 'windfarm_ij': 0,
+ 'windfarm_wake_model': 2,
+ 'windfarm_overlap_method': 4,
+ 'windfarm_induction': 0,
+ 'windfarm_deg': 0.0,
+ 'tslist': '',
+ 'ts_buf_size': 200,
+ 'max_ts_locs': 5,
+ 'max_ts_level': 15,
+ 'tslist_unstagger_winds': False,
+ 'windturbines_spec': 'none',
+ 'td_turbgridid': -1,
+ 'td_hubheight': 100.0,
+ 'td_diameter': 60.0,
+ 'td_stdthrcoef': 0.158,
+ 'td_cutinspeed': 4.0,
+ 'td_cutoutspeed': 27.0,
+ 'td_power': 2.0,
+ 'td_turbpercell': 1.0,
+ 'td_ewfx': 0,
+ 'td_ewfy': 0,
+ 'td_pwfx': 1,
+ 'td_pwfy': 1,
+ 'afwa_bad_data_check': 0,
+ 'afwa_diag_opt': 0,
+ 'afwa_therm_opt': 0,
+ 'afwa_ptype_opt': 0,
+ 'afwa_vil_opt': 0,
+ 'afwa_radar_opt': 0,
+ 'afwa_vis_opt': 0,
+ 'afwa_icing_opt': 0,
+ 'afwa_ptype_ccn_tmp': 264.15,
+ 'afwa_ptype_tot_melt': 50.0,
+ 'bucket_mm': -1.0,
+ 'bucket_j': -1.0,
+ 'acc_phy_tend': 0,
+ 'p_lev_diags': 0,
+ 'z_lev_diags': 0,
+ 'p_lev_diags_dfi': 0,
+ 'z_lev_diags_dfi': 0,
+ 'press_levels': (),
+ 'z_levels': (),
+ 'use_tot_or_hyd_p': 2,
+ 'extrap_below_grnd': 1,
+ 'p_lev_missing': -999.0,
+ 'z_lev_missing': -999.0,
+ 'auxhist22_interval_s': 0.0,
+ 'auxhist22_begin_s': 0.0,
+ 'auxhist22_end_s': 0.0,
+ 'auxhist22_outname': 'auxhist22_d<domain>_<date>',
+ 'frames_per_auxhist22': 1,
+ 'auxhist23_interval_s': 0.0,
+ 'auxhist23_begin_s': 0.0,
+ 'auxhist23_end_s': 0.0,
+ 'auxhist23_outname': 'auxhist23_d<domain>_<date>',
+ 'frames_per_auxhist23': 1,
+ 'p_lev_interval_s': 0.0,
+ 'z_lev_interval_s': 0.0,
+ 'dfi_opt': 0,
+ 'dfi_savehydmeteors': 0,
+ 'dfi_nfilter': 7,
+ 'dfi_cutoff_seconds': 3600,
+ 'dfi_bckstop_seconds': 0,
+ 'dfi_fwdstop_seconds': 0,
+ 'dfi_write_filtered_input': True,
+ 'dfi_write_dfi_history': False,
+ 'time_step_dfi': -1,
+ 'moist_adv_dfi_opt': 0,
+ 'dfi_constant_bc': False,
+ 'dfi_time_dim': 1000,
+ 'couple_farms': False,
+ 'cu_rad_feedback': False,
+ 'rrtmg_aer3_source': 'operational_fork',
+ 'aercu_fct': 1.0,
+ 'kf_edrates': 0,
+ 'auxhist3_interval': 0,
+ 'solar_diagnostics': 0,
+ 'mean_diag': 0,
+ 'diurnal_diag': 0,
+ 'mean_freq': 0,
+ 'mean_interval': 0,
+ 'obs_nudge_opt': 0,
+ 'max_obs': 0,
+ 'fdda_start': 0.0,
+ 'fdda_end': 0.0,
+ 'obs_nudge_wind': 0,
+ 'obs_coef_wind': 0.0,
+ 'obs_nudge_temp': 0,
+ 'obs_coef_temp': 0.0,
+ 'obs_nudge_mois': 0,
+ 'obs_coef_mois': 0.0,
+ 'obs_nudge_pstr': 0,
+ 'obs_coef_pstr': 0.0,
+ 'obs_no_pbl_nudge_uv': 0,
+ 'obs_no_pbl_nudge_t': 0,
+ 'obs_no_pbl_nudge_q': 0,
+ 'obs_sfc_scheme_horiz': 0,
+ 'obs_sfc_scheme_vert': 0,
+ 'obs_max_sndng_gap': 20.0,
+ 'obs_nudgezfullr1_uv': 50.0,
+ 'obs_nudgezrampr1_uv': 50.0,
+ 'obs_nudgezfullr2_uv': 50.0,
+ 'obs_nudgezrampr2_uv': 50.0,
+ 'obs_nudgezfullr4_uv': -5000.0,
+ 'obs_nudgezrampr4_uv': 50.0,
+ 'obs_nudgezfullr1_t': 50.0,
+ 'obs_nudgezrampr1_t': 50.0,
+ 'obs_nudgezfullr2_t': 50.0,
+ 'obs_nudgezrampr2_t': 50.0,
+ 'obs_nudgezfullr4_t': -5000.0,
+ 'obs_nudgezrampr4_t': 50.0,
+ 'obs_nudgezfullr1_q': 50.0,
+ 'obs_nudgezrampr1_q': 50.0,
+ 'obs_nudgezfullr2_q': 50.0,
+ 'obs_nudgezrampr2_q': 50.0,
+ 'obs_nudgezfullr4_q': -5000.0,
+ 'obs_nudgezrampr4_q': 50.0,
+ 'obs_nudgezfullmin': 50.0,
+ 'obs_nudgezrampmin': 50.0,
+ 'obs_nudgezmax': 3000.0,
+ 'obs_sfcfact': 1.0,
+ 'obs_sfcfacr': 1.0,
+ 'obs_dpsmx': 7.5,
+ 'obs_rinxy': 0.0,
+ 'obs_rinsig': 0.0,
+ 'obs_twindo': 0.0,
+ 'obs_npfi': 0,
+ 'obs_ionf': 1,
+ 'obs_idynin': 0,
+ 'obs_dtramp': 0.0,
+ 'obs_prt_max': 1000,
+ 'obs_prt_freq': 1000,
+ 'obs_ipf_in4dob': False,
+ 'obs_ipf_errob': False,
+ 'obs_ipf_nudob': False,
+ 'obs_ipf_init': True,
+ 'obs_scl_neg_qv_innov': 0,
+ 'obs_inputfile': '',
+ 'obs_domain_id': 1,
+ 'obs_parent_grid_ratio': 1,
+ 'obs_levelidn': 0,
+ 'obs_truelat1': 0.0,
+ 'obs_truelat2': 0.0,
+ 'obs_stand_lon': 0.0,
+ 'pxlsm_smois_init': 1,
+ 'pxlsm_modis_veg': 0,
+ 'pxlsm_soil_nudge': 0,
+ 'sgfdda_interval_m': 180,
+ 'sgfdda_inname': 'sgfdda_d<domain>',
+ 'io_form_sgfdda': 2,
+ 'nssl_cccn': 500000000.0,
+ 'nssl_alphah': 0.0,
+ 'nssl_alphahl': 1.0,
+ 'nssl_icdx': 6,
+ 'nssl_icdxhl': 6,
+ 'polar': False,
+ 'fft_filter_lat': 45.0,
+ # 3.0 folds: AFWA buoyancy/severe diagnostics, the radiation call offset
+ # and MAD-WRF cloud initialization, appended off at WRF's defaults.
+ 'afwa_buoy_opt': 0,
+ 'afwa_severe_opt': 0,
+ 'ra_call_offset': 0,
+ 'madwrf_opt': 0,
+ 'madwrf_cldinit': 0,
+ 'madwrf_dt_relax': 60.0,
+ 'madwrf_dt_nudge': 60.0,
+ # 3.0 folds, all off at WRF's defaults: fog settling and the KF trigger,
+ # the debug print, the RK order and momentum stencil, Noah-MP irrigation,
+ # sea-ice snow/thickness/albedo options, the paper SNICAR snow optics, the
+ # TC surface (spray, wave roughness, flux curve), urban physics and waves.
+ 'diag_print': 0,
+ 'grav_settling': 0,
+ 'kfeta_trigger': 1,
+ 'momentum_adv_opt': 1,
+ 'rk_ord': 3,
+ 'irr_daily_amount': 0.0,
+ 'irr_end_julianday': 0,
+ 'irr_freq': 1,
+ 'irr_num_hours': 0,
+ 'irr_ph': 0,
+ 'irr_start_hour': 0,
+ 'irr_start_julianday': 0,
+ 'sf_surf_irr_scheme': 0,
+ 'seaice_albedo_opt': 0,
+ 'seaice_snowdepth_max': 10000000000.0,
+ 'seaice_snowdepth_min': 0.001,
+ 'seaice_snowdepth_opt': 0,
+ 'seaice_thickness_default': 3.0,
+ 'seaice_thickness_opt': 0,
+ 'snicar_bc_ppb': 0.0,
+ 'snicar_bubble_radius_um': 1000.0,
+ 'snicar_dust_ppm': 0.0,
+ 'snicar_ice_density': 900.0,
+ 'snicar_snowbc_intmix': True,
+ 'snicar_snowdust_intmix': False,
+ 'snicar_snowshape_opt': 3,
+ 'tc_fetch_m': 100000.0,
+ 'tc_flux_curve': 'off',
+ 'tc_horizontal_length_m': 0.0,
+ 'tc_spray': 'off',
+ 'tc_spray_partition': 1.0,
+ 'tc_wave_roughness': False,
+ 'tc_wave_source': 'fetch',
+ 'ua_phys': False,
+ 'waves': 'off',
+ 'waves_options': ''}
 
 
 def test_new_fields_are_reviewed_defaults_appended_last():
@@ -96,8 +328,65 @@ def test_new_fields_are_reviewed_defaults_appended_last():
     """
     from woof.config import CHEM_RUN_FIELDS, FIRE_RUN_FIELDS
     names = [f.name for f in dataclasses.fields(RunConfig)]
+    # Native groundwater cadence is consumed only by Noah-MP RUN5.
+    # It is keyword-only beside the existing Noah-MP selectors, preserving
+    # every old positional argument and all existing numerical defaults.
+    groundwater=RunConfig.__dataclass_fields__["wtddt"]
+    assert groundwater.kw_only and groundwater.default == 30.0
+    assert names.index("wtddt")==names.index("opt_tdrn")+1
+    names.remove("wtddt")
+    for name, default in _BATCH007_DEFAULTS.items():
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default == default, name
+    names = [name for name in names if name not in _BATCH007_DEFAULTS]
+    # 3.0.0: the 0-1/0-2/0-3 km UH maxima (feat/uh-layers), output only and
+    # off by default, appended last and keyword-only.
+    assert names.pop() == "uh_layers"
+    assert RunConfig.__dataclass_fields__["uh_layers"].default == 0
+    assert RunConfig.__dataclass_fields__["uh_layers"].kw_only
+    assert names.pop() == "mfshconv"
+    assert RunConfig.__dataclass_fields__["mfshconv"].default == 1
+    assert RunConfig.__dataclass_fields__["mfshconv"].kw_only
+    for name, default in (("cam_abs_freq_s", 21600.0), ("bmj_rad_feedback", False)):
+        assert names.pop() == name
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default == default
+    assert names.pop() == "aercu_opt"
+    assert RunConfig.__dataclass_fields__["aercu_opt"].default == 0
+    assert RunConfig.__dataclass_fields__["aercu_opt"].kw_only
+    for name in ("ifsnow", "co2tf"):
+        assert names.pop() == name
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default == 1
+    for name in ("lagday", "tmn_update", "surface_analysis", "sst_update"):
+        assert names.pop() == name
+        assert RunConfig.__dataclass_fields__[name].kw_only
+    assert names.pop() == "sst_skin"
+    assert RunConfig.__dataclass_fields__["sst_skin"].kw_only
+    assert RunConfig.__dataclass_fields__["sst_skin"].default == 0
+    # The fire block is appended keyword-only after every other field.
+    for name, default in reversed(tuple(_GCE_DEFAULTS.items())):
+        assert names.pop() == name
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default == default
+    for name, default in reversed(tuple(_CUP_DEFAULTS.items())):
+        assert names.pop() == name
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default == default
+    for name in ("do_avgflx_cugd", "do_avgflx_em"):
+        assert names.pop() == name
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default == 0
     # fix/hailcast, keyword-only and appended last: the HAILCAST generation
     # (operational HRRR v4's by default; output-only).
+    for name, default in (("tke_mix6_off", False), ("tke_mix2_off", False),
+                          ("m_opt", 0), ("sfs_opt", 0), ("tke_adv_opt", 1)):
+        assert names.pop() == name
+        assert RunConfig.__dataclass_fields__[name].default == default
+        assert RunConfig.__dataclass_fields__[name].kw_only
+    assert names.pop() == "use_theta_m"
+    assert RunConfig.__dataclass_fields__["use_theta_m"].default == 0
+    assert RunConfig.__dataclass_fields__["use_theta_m"].kw_only
     assert names.pop() == "hailcast_version"
     assert RunConfig.__dataclass_fields__["hailcast_version"].default == "wrf_39_noaa"
     assert RunConfig.__dataclass_fields__["hailcast_version"].kw_only
@@ -107,11 +396,11 @@ def test_new_fields_are_reviewed_defaults_appended_last():
         assert field.kw_only and field.default == default
     # Appended last after the campaign, keyword-only and off by default:
     # sea ice's real.exe threshold (4c82704f8f, Registry default 100 K
-    # converts nothing) and the HRRR v4 output controls (lane/hrrr-v4-output:
+    # converts nothing) and the HRRR v4 output controls (development branch:
     # e55b68accb, bd4a1c2090, f80ac46aeb).
     # 2.9.7, keyword-only and appended last: tc/nest's fixed-frame nest
     # accumulation archive (on; read only on a nested domain) and the HRRR v4
-    # climate statistics (lane/hrrr-v4-clwrf 3aec2abd31, off).
+    # climate statistics (development branch 3aec2abd31, off).
     # 2.9.10, keyword-only and appended last: WRF's ghg_input (CAMtr gases,
     # engine default 0 = fixed gases; fix/wrf461-2dom-exact 329c723395).
     # Constant moving frames append keyword-only and are disabled by default.
@@ -137,7 +426,7 @@ def test_new_fields_are_reviewed_defaults_appended_last():
         assert RunConfig.__dataclass_fields__[name].default == default, name
         assert RunConfig.__dataclass_fields__[name].kw_only, name
     # The capabilities campaign (2.9.4), appended keyword-only in merge
-    # order.  lane/cap-lake: the table-driven lake-state analysis, "auto"
+    # order.  development branch: the table-driven lake-state analysis, "auto"
     # source and no licensed file.
     for name, default in (("lake_state_accept_licence", ""),
                           ("lake_state_path", ""),
@@ -147,8 +436,8 @@ def test_new_fields_are_reviewed_defaults_appended_last():
         assert RunConfig.__dataclass_fields__[name].kw_only, name
     assert names.pop() == "ra_sw_eclipse"
     assert RunConfig.__dataclass_fields__["ra_sw_eclipse"].default == 1
-    # lane/cap-seaice (prognostic sea ice, default on), lane/cap-hail
-    # (HAILCAST at its -1 auto selector) and lane/cap-waves-couple (the
+    # development branch (prognostic sea ice, default on), development branch
+    # (HAILCAST at its -1 auto selector) and development branch (the
     # table-driven ocean door, no config file by default).
     for name, default in (("seaice_ocean_heat_flux", 2.0),
                           ("seaice_new_ice_thickness", 0.5),
@@ -159,7 +448,7 @@ def test_new_fields_are_reviewed_defaults_appended_last():
         assert names.pop() == name
         assert RunConfig.__dataclass_fields__[name].default == default, name
         assert RunConfig.__dataclass_fields__[name].kw_only, name
-    # lane/cap-slab-ocean: WRF's 3-D PWP ocean controls sit keyword-only
+    # development branch: WRF's 3-D PWP ocean controls sit keyword-only
     # beside sf_ocean_physics (they are read only under sf_ocean_physics =
     # 2), so positional construction is unchanged.
     pwp = ["ocean_levels", "ocean_analysis", "ocean_analysis_source",
@@ -174,12 +463,21 @@ def test_new_fields_are_reviewed_defaults_appended_last():
     for name, default in G3_RUN_DEFAULTS.items():
         field = RunConfig.__dataclass_fields__[name]
         assert field.kw_only and field.default == default
-    sas = ['nsas_dx_factor', 'sas_pgcon']
+    sas = ['nsas_dx_factor', 'sas_pgcon', 'shalconv']
     last_g3 = names.index(list(G3_RUN_DEFAULTS)[-1])
-    assert names[last_g3 + 1:last_g3 + 3] == sas
+    assert names[last_g3 + 1:last_g3 + 4] == sas
     for field in sas:
         assert RunConfig.__dataclass_fields__[field].kw_only, field
     names = [name for name in names if name not in G3_RUN_DEFAULTS and name not in sas]
+    # MP38 table-cache switches are keyword-only beside chem_sets.
+    thompson = {"force_read_thompson": False, "write_thompson_tables": True,
+                "write_thompson_mp38table": False}
+    at = names.index("chem_sets")
+    assert names[at - len(thompson):at] == list(thompson)
+    for name, default in thompson.items():
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default is default
+    del names[at - len(thompson):at]
     assert names[-len(FIRE_RUN_FIELDS):] == list(FIRE_RUN_FIELDS)
     for field in FIRE_RUN_FIELDS:
         assert RunConfig.__dataclass_fields__[field].kw_only, field
@@ -282,7 +580,7 @@ def test_new_fields_are_reviewed_defaults_appended_last():
     assert names[-3:] == ['slope_rad', 'topo_shading', 'shadlen']
     names = names[:-3]
     assert names[-3:] == ['sf_urban_physics', 'use_wudapt_lcz', 'num_urban_hi']
-    every_name = set(names) - {'adaptive_nest_lattice'} | set(mosaic_names)
+    every_name = set(names) - {'adaptive_nest_lattice', '_legacy_h_sca'} | set(mosaic_names)  # _legacy_h_sca: derived marker (2582c065c99), not a frozen value
     names = names[:-3]
     assert names[-1] == 'adaptive_nest_lattice'
     names = names[:-1]
@@ -507,10 +805,10 @@ def _pop_radiation_port_defaults(actual: dict) -> bool:
 
 def _pop_capability_campaign_defaults(actual: dict) -> bool:
     """The 2.9.4 capabilities campaign's keys, appended after the golden was
-    captured, popped at their defaults: lane/cap-slab-ocean (3-D PWP ocean,
-    read only under sf_ocean_physics = 2), lane/cap-waves-couple (ocean door),
-    lane/cap-hail (HAILCAST), lane/cap-seaice (prognostic sea ice) and
-    lane/cap-lake (lake-state analysis)."""
+    captured, popped at their defaults: development branch (3-D PWP ocean,
+    read only under sf_ocean_physics = 2), development branch (ocean door),
+    development branch (HAILCAST), development branch (prognostic sea ice) and
+    development branch (lake-state analysis)."""
     expected = {
         "ocean_levels": 30, "ocean_analysis": "",
         "ocean_analysis_source": "rtofs", "ocean_mld_climatology": "woa18",
@@ -532,15 +830,32 @@ def _pop_topo_radiation_defaults(actual: dict) -> bool:
 
 
 def _check_frozen_defaults(actual):
+    assert actual.pop("cam_abs_freq_s") == 21600.0
+    assert actual.pop("bmj_rad_feedback") is False
+    for name, default in (("force_read_thompson", False),
+                          ("write_thompson_tables", True),
+                          ("write_thompson_mp38table", False)):
+        assert actual.pop(name) is default
+    for key, value in (("sst_skin", 0), ("sst_update", 0), ("surface_analysis", ""), ("tmn_update", 0), ("lagday", 150)):
+        assert actual.pop(key) == value
+    assert actual.pop("aercu_opt") == 0
+    # Derived marker (2582c065c99): whether h_sca_adv_order was left unset.
+    actual.pop("_legacy_h_sca")
     """Check and remove reviewed additions for both frozen-config doors."""
+    for name, default in {**_CUP_DEFAULTS, **_GCE_DEFAULTS, "co2tf": 1, "ifsnow": 1, "shalconv": 1}.items():
+        assert actual.pop(name) == default, name
+    assert actual.pop("wtddt") == 30.0
     for name, default in _WIND_DEFAULTS.items():
         assert actual.pop(name) == default, name
+    assert actual.pop("do_avgflx_em") == 0
+    assert actual.pop("do_avgflx_cugd") == 0
+    assert actual.pop("use_theta_m") == 0
     assert actual.pop("hailcast_version") == "wrf_39_noaa"
     assert actual.pop("ra_sw_eclipse") == 1
     assert _pop_capability_campaign_defaults(actual)
     # Appended after the campaign at values that change no earlier run:
     # 4c82704f8f's seaice_threshold (100 K converts nothing) and the HRRR v4
-    # output controls, off (lane/hrrr-v4-output).
+    # output controls, off (development branch).
     for field, value in (("seaice_threshold", 100.0), ("prec_acc_dt", 0.0),
                          ("prec_acc_dt1", 0.0), ("gsd_diagnostics", 0),
                          ("reset_interval1", 60), ("history_interval2_s", 0.0),
@@ -552,7 +867,9 @@ def _check_frozen_defaults(actual):
                          ("wind_int", 5), ("nest_accumulation_archive", True),
                          # 2.9.10: WRF's ghg_input at the engine's fixed
                          # gases (fix/wrf461-2dom-exact).
-                         ("ghg_input", 0), ("umove", 0.0), ("vmove", 0.0)):
+                         ("ghg_input", 0), ("umove", 0.0), ("vmove", 0.0),
+                         # 3.0.0: the 0-1/0-2/0-3 km UH maxima, off.
+                         ("uh_layers", 0)):
         assert actual.pop(field) == value, field
     for field,value in (("urban_ucm_generation","wrf_471"),("urban_treeoption",-1),
                         ("urban_ttscheme",-1),("urban_fvg",-1.),("urban_table_dir","")):
@@ -652,6 +969,8 @@ def test_every_existing_legacy_toml_resolves_identically():
             "tests/data/config_freeze_golden.json consciously.")
         cfg = load_config(path)
         actual = dataclasses.asdict(cfg)
+        for name, default in _BATCH007_DEFAULTS.items():
+            assert actual.pop(name) == default, name
         _check_frozen_defaults(actual)
         # These legacy files omit CQ. Its default-on defect fix is the
         # only approved change from the recorded field dictionary.
@@ -667,6 +986,8 @@ def test_frozen_case_constructed_configs_resolve_identically():
         cfg = ctor()
         assert key in GOLDEN, key
         actual = dataclasses.asdict(cfg)
+        for name, default in _BATCH007_DEFAULTS.items():
+            assert actual.pop(name) == default, name
         _check_frozen_defaults(actual)
         # The constructors omit CQ too. Dry cases remain numerically
         # unchanged because their qv=None bypass does no CQ work.

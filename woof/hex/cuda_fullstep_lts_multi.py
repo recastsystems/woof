@@ -1533,6 +1533,10 @@ class FullStepLtsMulti:
                                    "flux the interface register does not hold")
             self._publish_scalar_step_end(block, end_tick)
         block.steps += 1
+        # A class step is its transport's step: stale address bindings go (SameHostTransport.retire_stale_bindings).
+        retire = getattr(block.transport, "retire_stale_bindings", None)
+        if retire is not None:
+            retire(block.tables.block)
 
     def _sync_block(self, block: _Block, event: int) -> None:
         cp = self.cp

@@ -281,7 +281,7 @@ def _borrow_beyond_one_degree(indices, latitude, longitude, source_latitude, sou
     (a382c235f2), and the fallback refused every continental domain with
     such water ("WOA18 monthly MLD has no valid value within one degree of
     forecast ocean"): a full-CONUS HRRR 48 h forecast on the fold died
-    before its first step (V58, 2026-10-21).
+    before its first step (test host, 2026-10-21).
     """
     import cupy as cp
     missing = cp.flatnonzero(indices.ravel() == -1)

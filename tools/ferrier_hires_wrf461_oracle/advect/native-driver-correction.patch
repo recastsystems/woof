@@ -1,0 +1,17 @@
+diff --git a/phys/module_microphysics_driver.F b/phys/module_microphysics_driver.F
+index 9400419..b5892a6 100644
+--- a/phys/module_microphysics_driver.F
++++ b/phys/module_microphysics_driver.F
+@@ -2781,10 +2781,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
+ 
+              IF ( PRESENT( qv_curr ) .AND. PRESENT( qi_curr ) .AND. &
+                   PRESENT( qc_curr ) .and. PRESENT(qrimef_curr) .AND.  &
+-                  PRESENT( RAINNC  ) .AND. PRESENT ( RAINNCV ) .AND.  &
+-                  PRESENT( mp_restart_state )                  .AND. &
+-                  PRESENT( tbpvs_state )                      .AND. &
+-                  PRESENT( tbpvs0_state )                       ) THEN
++                  PRESENT( qr_curr ) .AND.                         &
++                  PRESENT( RAINNC  ) .AND. PRESENT ( RAINNCV ) ) THEN
+ 
+              !  write(0,*)',f_qv,f_qc,f_qr,f_qi,f_qs,f_qg',f_qv,f_qc,f_qr,f_qi,f_qs,f_qg
+              !  write(0,*)'max qi=',maxval(qi_curr(its:ite,kts:kte,jts:jte))

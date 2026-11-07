@@ -2082,7 +2082,7 @@ def _element_grid(size: int) -> tuple[int]:
 def launch_adapter_prepare(
         thb, thp, phb, php, th, pii, temperature, dz, saved_theta,
         qc, qi, ni, qr, nr, qs, qg, entry_graupel, warm_entry, graupelncv,
-        micro_columns) -> None:
+        micro_columns, *, qv=None) -> None:
     """The classic adapter's entry: thermodynamics, masks and WRF's rewrite.
 
     ``th = thb + thp``, ``temperature = th * pii`` (``pii`` is read: the
@@ -2112,13 +2112,21 @@ def launch_adapter_prepare(
                         ("micro_columns", micro_columns)):
         if value.shape != (ny, nx) or value.dtype != DTYPE:
             raise ValueError(f"{name} must be float32 {(ny, nx)}")
-    get_kernel("thompson", "thompson_adapter_prepare")(
+    if qv is None:
+        prepare = get_kernel("thompson", "thompson_adapter_prepare")
+        extra = ()
+    else:
+        from woof.core.kernels import get_kernel_int_defines
+        prepare = get_kernel_int_defines("thompson", "thompson_adapter_prepare",
+                                         (("GPUWM_USE_THETA_M", 1),))
+        extra = (qv,)
+    prepare(
         _element_grid(size), (_ELEMENT_TPB,),
         (thb, thp, phb, php, th, pii, temperature, dz,
          saved_theta, qc, qi, ni, qr, nr, qs, qg, entry_graupel,
          warm_entry, graupelncv, micro_columns, DTYPE(_constants.G),
          np.int32(size), np.int32(ny * nx), np.int32(thb.ndim == 3),
-         np.int32(phb.ndim == 3)))
+         np.int32(phb.ndim == 3), *extra))
 
 
 def launch_adapter_entry(
@@ -2167,7 +2175,7 @@ def launch_adapter_masks(qr, qg, entry_graupel, rain_columns,
 
 def launch_adapter_finish(
         temperature, pii, th, thp, h_diabatic, rainncv, snowncv, graupelncv,
-        sr, cfg, dt: float) -> None:
+        sr, cfg, dt: float, *, state=None) -> None:
     """Theta from temperature, moist_physics_finish, and SR.
 
     ``th = temperature / pii``; with ``cfg.no_mp_heating == 0`` the
@@ -2187,7 +2195,14 @@ def launch_adapter_finish(
                         ("graupelncv", graupelncv), ("sr", sr)):
         if value.shape != (ny, nx) or value.dtype != DTYPE:
             raise ValueError(f"{name} must be float32 {(ny, nx)}")
-    get_kernel("thompson", "thompson_adapter_finish")(
+    moist_theta = state is not None and getattr(state, "use_theta_m", 0)
+    if moist_theta:
+        from woof.core.kernels import get_kernel_int_defines
+        finish = get_kernel_int_defines("thompson", "thompson_adapter_finish",
+                                        (("GPUWM_USE_THETA_M", 1),))
+    else:
+        finish = get_kernel("thompson", "thompson_adapter_finish")
+    finish(
         _element_grid(size), (_ELEMENT_TPB,),
         (temperature, pii, th, thp, h_diabatic, rainncv, snowncv,
          # WRF multiplies the REAL mp_tend_lim by the REAL dt.  Rounding
@@ -2197,6 +2212,9 @@ def launch_adapter_finish(
          graupelncv, sr, DTYPE(DTYPE(cfg.mp_tend_lim) * DTYPE(dt)), DTYPE(dt),
          np.int32(cfg.no_mp_heating != 0), np.int32(size),
          np.int32(ny * nx)))
+    if moist_theta:
+        from woof.core.theta_m_physics import finish_microphysics
+        finish_microphysics(state, cfg, th, dt)
 
 
 __all__ = [

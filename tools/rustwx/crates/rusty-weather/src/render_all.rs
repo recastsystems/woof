@@ -301,6 +301,28 @@ pub(crate) struct HourPresentation {
 }
 
 /// `source: ArWen` -- the provenance line for a run nothing fetched.
+/// The header row a caller set with `--annotate` (`subtitle_left` / `subtitle_right`), else the lane's own.
+///
+/// The derived/heavy lane (CAPE, SRH, STP, bulk shear, ...) takes no `PanelAnnotations` of its own: only the direct
+/// lane and generic store panels applied them, so one `rw_wrfbatch --annotate` call drew the caller's header on the
+/// reflectivity and temperature maps and "Init 11/02 18Z | d01 2 km | +009:15" on the CAPE and SRH maps of the same
+/// frame (the live ensemble product, 2026-11-03).  Without `--annotate` both are the lane's own, byte-unchanged.
+fn annotated_subtitle_left(config: &StoreRenderConfig, lane: Option<String>) -> Option<String> {
+    config
+        .panel_annotations
+        .as_ref()
+        .and_then(|annotations| annotations.subtitle_left.clone())
+        .or(lane)
+}
+
+fn annotated_subtitle_right(config: &StoreRenderConfig) -> Option<String> {
+    config
+        .panel_annotations
+        .as_ref()
+        .and_then(|annotations| annotations.subtitle_right.clone())
+        .or_else(|| source_subtitle_override(config))
+}
+
 fn source_subtitle_override(config: &StoreRenderConfig) -> Option<String> {
     config
         .source_label
@@ -562,8 +584,8 @@ pub fn render_hour_products(
             png_compression: config.png_compression,
             place_label_overlay: config.place_label_overlay.clone(),
             output_suffix: presentation.output_suffix.clone(),
-            subtitle_left_override: presentation.subtitle_left.clone(),
-            subtitle_right_override: source_subtitle_override(config),
+            subtitle_left_override: annotated_subtitle_left(config, presentation.subtitle_left.clone()),
+            subtitle_right_override: annotated_subtitle_right(config),
             title_provenance: config.title_provenance.clone(),
         };
         let outcome = store_render::render_derived_recipes_from_store(

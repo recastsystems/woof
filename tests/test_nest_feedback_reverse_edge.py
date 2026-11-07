@@ -168,6 +168,7 @@ class _State:
         self.w = np.full((nz + 1, ny, nx), np.float32(0.75))
         self.thp = np.full((nz, ny, nx), np.float32(1.25))
         self.php = np.full((nz + 1, ny, nx), np.float32(3.0))
+        self.phb = np.zeros((nz + 1,), np.float32)
         self.thb = np.full((nz,), np.float32(300.0))
         self.c1h = np.full((nz,), np.float32(1.0))
         self.c2h = np.zeros((nz,), dtype=np.float32)
@@ -321,6 +322,7 @@ def test_commit_diagnoses_the_parents_species_before_it_restricts(monkeypatch):
         lambda parent_field, child_field, reg, *, spec_zone: restricted.append(
             (tuple(parent_field.shape), float(np.asarray(child_field).ravel()[0]))))
     monkeypatch.setattr(nest_mod, "smoother", lambda *a, **k: None)
+    monkeypatch.setattr(coupler, "_feedback_surface", lambda plan: None)
 
     coupler.feedback_commit(child)
 

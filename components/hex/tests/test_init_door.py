@@ -388,6 +388,14 @@ def test_an_hrrr_first_guess_starts_with_its_own_hydrometeors_by_default(monkeyp
     assert record["first_guess_records"] == ["QC", "QG", "QI", "QNC", "QNI", "QNR", "QR", "QS"]
 
 
+def test_a_storm_merged_first_guess_passes_the_flag_for_its_long_hydrometeor_names(monkeypatch):
+    # The storm merge writes QCLOUD/QRAIN/QICE/QSNOW/QGRAUP and QNG (engine FIRST_GUESS_SPECIES, init/mod.rs:252-257).
+    merged = {"TT", "UU", "VV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP", "QNG"}
+    record = _choose(monkeypatch, merged)
+    assert record["argv"] == ["--first-guess-hydrometeors", "yes"] and record["applied"]
+    assert record["first_guess_records"] == ["QCLOUD", "QGRAUP", "QICE", "QNG", "QRAIN", "QSNOW"]
+
+
 def test_strict_numerics_keeps_native_case_7(monkeypatch):
     record = _choose(monkeypatch, HRRR_FIELDS, numerics="strict")
     assert record["argv"] == [] and record["requested"] == "no" and not record["applied"]
@@ -403,4 +411,40 @@ def test_an_engine_without_the_flag_is_a_named_gap_not_a_silent_dry_start(monkey
     record = _choose(monkeypatch, HRRR_FIELDS, speaks=False)
     assert record["argv"] == [] and not record["applied"]
     assert "predates --first-guess-hydrometeors" in record["gap"]
+    assert "named gap" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# --masked-skintemp: coastal water cells take water skin temperature (test setup G02, 2026-11-02: 308-344 K sea
+# surface along the Gulf of California refused the start), never under strict numerics (native case 7).
+def _skin(monkeypatch, tmp_path, *, speaks=True, requested=None, numerics="fast"):
+    from argparse import Namespace
+    from woof.hex import init_door
+    from woof.hex import numerics as hex_numerics
+    engine = tmp_path / "rw_mpas_init"
+    usage = "--masked-skintemp yes | no" if speaks else "--first-guess-hydrometeors yes | no"
+    engine.write_text(f"#!/bin/sh\necho '{usage}'\n")
+    engine.chmod(0o755)
+    monkeypatch.setenv("WOOF_HEX_NUMERICS", numerics)
+    hex_numerics._reset_for_tests()
+    try:
+        return init_door.masked_skintemp(Namespace(masked_skintemp=requested), engine)
+    finally:
+        hex_numerics._reset_for_tests()
+
+
+def test_coastal_water_cells_take_water_skin_temperature_by_default(monkeypatch, tmp_path):
+    record = _skin(monkeypatch, tmp_path)
+    assert record["argv"] == ["--masked-skintemp", "yes"] and record["applied"] and record["chosen_by"] == "default"
+
+
+def test_strict_numerics_and_no_keep_native_unmasked_skin_temperature(monkeypatch, tmp_path):
+    strict = _skin(monkeypatch, tmp_path, numerics="strict")
+    assert strict["argv"] == [] and strict["requested"] == "no" and not strict["applied"]
+    assert _skin(monkeypatch, tmp_path, requested="no")["argv"] == []
+
+
+def test_an_engine_without_masked_skintemp_is_a_named_gap(monkeypatch, tmp_path, capsys):
+    record = _skin(monkeypatch, tmp_path, speaks=False)
+    assert record["argv"] == [] and not record["applied"] and "predates --masked-skintemp" in record["gap"]
     assert "named gap" in capsys.readouterr().err

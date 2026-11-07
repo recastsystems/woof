@@ -502,15 +502,21 @@ class PreparedTileMemory:
         from woof.physics_compat import RRTMG_VARIANT_LEGACY, rrtmg_variant
         exp, cfg = self.experiment, self.cfg
         longwave, shortwave = radiation_scheme_ids(cfg)
+        flg = 0
+        if longwave == 7:
+            from woof.core.flg_radiation import flg_radiation_vram_bytes
+            flg = flg_radiation_vram_bytes(int(columns), int(cfg.nz))
+        if 4 not in (longwave, shortwave) and 7 in (longwave, shortwave):
+            return flg
         if rrtmg_variant(cfg) == RRTMG_VARIANT_LEGACY:
             from woof.core.rrtmg_legacy import legacy_radiation_vram_bytes
-            return int(legacy_radiation_vram_bytes(
+            return flg + int(legacy_radiation_vram_bytes(
                 ncol=int(columns), nz=int(cfg.nz), p_top=exp.vertical.p_top,
                 column_chunk=None, longwave=longwave == 4, shortwave=shortwave == 4,
                 resident_threads=(0 if self.profile is None
                                   else self.profile.resident_thread_capacity),
                 aer_opt=int(getattr(cfg, "aer_opt", 0))))
-        return int(sum(standalone_rte_storage_bytes(
+        return flg + int(sum(standalone_rte_storage_bytes(
             self.nz, columns, exp.column_chunk, exp.vertical.p_top).values()))
 
     @property
@@ -520,9 +526,14 @@ class PreparedTileMemory:
         from woof.physics_compat import RRTMG_VARIANT_LEGACY, rrtmg_variant
         cfg = self.cfg
         longwave, shortwave = radiation_scheme_ids(cfg)
+        if 7 in (longwave, shortwave) and 4 not in (longwave, shortwave):
+            return ("Fu-Liou-Gu, resident column workspace and packing storage"
+                    if longwave == 7 else "SW-7 has no column call; selected LW storage is priced separately")
         name = ("legacy RRTMG, priced from its own adapter-call function"
                 if rrtmg_variant(cfg) == RRTMG_VARIANT_LEGACY else
                 "RTE+RRTMGP, priced from its own unfused solver storage")
+        if longwave == 7:
+            name += "; Fu-Liou-Gu resident column workspace and packing storage"
         if 1 in (longwave, shortwave):
             # A mixed selection (classic RRTM on one spectrum, RRTMG on the
             # other) keeps BOTH: the classic columns are priced inside

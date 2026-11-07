@@ -1,6 +1,6 @@
 """Capture one cycle analysis's inputs, then replay it under two settings.
 
-(Was tools/da_analysis_capture.py on lane/da-speed-obs-ops; renamed on the
+(Was tools/da_analysis_capture.py on development branch; renamed on the
 combined branch because the host-parallel lane's solve-seam capture holds
 that path.)
 

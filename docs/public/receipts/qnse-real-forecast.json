@@ -1,0 +1,1236 @@
+{
+  "schema": "gpuwm.qnse.real-forecast.v1",
+  "configuration": {
+    "start": "2026-10-16T09:00:00Z",
+    "end": "2026-10-16T12:00:00Z",
+    "shape_xyz": [
+      300,
+      300,
+      49
+    ],
+    "dx_m": 3000,
+    "dt_s": 15,
+    "steps": 720,
+    "bl_pbl_physics": 4,
+    "sf_sfclay_physics": 4,
+    "mfshconv": 1,
+    "mp_physics": 6,
+    "radiation": [
+      4,
+      4
+    ],
+    "sf_surface_physics": 2,
+    "cu_physics": 0
+  },
+  "namelist_sha256": "49884ccafb9838bc798ae3cfc87e5487d7cab1e5257ece2458f18562769cac06",
+  "arwen": {
+    "device": "RTX 4090",
+    "numerics": "fast",
+    "exit_code": 0,
+    "wall_s_reported": 83.9,
+    "run_receipt_wall_s": 84.65198490594048,
+    "forecast_execution_s": 81.36215679801535,
+    "log": "arwen-forecast-finish2.log",
+    "exported_source_without_git": true,
+    "provenance_note": "Exported source had no .git; distribution version metadata was borrowed. Kernel manifest and source hashes, rather than that version label, identify the run."
+  },
+  "native": {
+    "version": "WRF v4.7.1",
+    "ranks": 8,
+    "threads_per_rank": 1,
+    "numerics": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+    "completion_recorded": true,
+    "build_log": "native-build-capture-tile.log",
+    "run_log": "native-forecast.log",
+    "completion": {
+      "status": "PASS",
+      "exit_code": 0,
+      "steps": 720,
+      "last_valid_time": "2026-10-16T12:00:00Z",
+      "success_text": "d01 2026-10-16_12:00:00 wrf: SUCCESS COMPLETE WRF",
+      "ranks": 8,
+      "omp_threads_per_rank": 1,
+      "elapsed_wall_seconds": 4352,
+      "executable_sha256": "888ed58b99da805acb014c2801adb1525b57964f8806120491a4be8bff93815f",
+      "logs": {
+        "native-forecast.log": {
+          "bytes": 1222,
+          "sha256": "8be1df6234695acbff3ee0ea8a808a1adbe806ef1c40ace0cea589095c6b7406"
+        },
+        "native-rsl.out.0000": {
+          "bytes": 64089,
+          "sha256": "c532e73329f554be6497eae4b6de2cc920ef78b99e7cf94ec20de36d522004d4"
+        },
+        "native-build-capture-tile.log": {
+          "bytes": 103368,
+          "sha256": "2eb0eb5d6d3ba5ec57f36b511a0ac5a4a8845e4e6676b06d35782c8e1ecba45d"
+        },
+        "configure-final.wrf": {
+          "bytes": 21221,
+          "sha256": "453de164f2e2e6af7a561cf787f299e1278cff53e99eae8142a8e0441a7f6121"
+        }
+      }
+    }
+  },
+  "strict_module_replay": "qnse-native-module-replay.json",
+  "native_diagnostic_witness": "qnse-native-detr-witness.json",
+  "commands": {
+    "native_build": "cd <scratch>/port-qnse-pbl-sfc/native && ./compile -j 4 em_real",
+    "native_forecast": "ssh test-host-D bash <scratch>/port-qnse-pbl-sfc/run-native.sh",
+    "arwen_forecast": "ssh test-host-A bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh env GPUWM_WRF_EXACT=0 GPUWM_WRF_GLIBC=2.43 GPUWM_RW_WRFBATCH=<scratch>/port-qnse-pbl-sfc/bridges/rw_wrfbatch GPUWM_VERIFY_VISUALS=0 <scratch>/wrfx-child-start/venv-engine/bin/python -m gpuwm go --wrfinput <scratch>/port-qnse-pbl-sfc/native-input --outdir <scratch>/port-qnse-pbl-sfc/forecast-finish2 --allow-shared-gpu --products none",
+    "strict_replay": "ssh test-host-A bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh env GPUWM_WRF_GLIBC=2.43 <scratch>/wrfx-child-start/venv-engine/bin/python tools/qnse_wrf461_oracle/replay_native.py <scratch>/port-qnse-pbl-sfc/captures <scratch>/port-qnse-pbl-sfc/evidence/capture-manifest.json <scratch>/port-qnse-pbl-sfc/evidence/native-replay-shipping.json",
+    "strict_tests": "ssh test-host-A bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-checks.sh",
+    "fast_nest_health_tests": "ssh test-host-A bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh env GPUWM_WRF_EXACT=0 <scratch>/wrfx-child-start/venv-engine/bin/python -m pytest -q tests/test_qnse_nests_gpu.py tests/test_qnse_fast_numerics.py tests/test_qnse_native_detr_health.py",
+    "ensemble_tests": "ssh test-host-A bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh env GPUWM_WRF_EXACT=0 <scratch>/wrfx-child-start/venv-engine/bin/python -m pytest -q tests/test_ensemble_physics_execution_gpu.py",
+    "stage_time": "ssh test-host-A bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh env GPUWM_WRF_EXACT=0 <scratch>/wrfx-child-start/venv-engine/bin/python ../scripts/stage-time.py",
+    "interleaved_stage_time": "ssh test-host-A bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh env GPUWM_WRF_EXACT=0 <scratch>/wrfx-child-start/venv-engine/bin/python ../scripts/stage-time-paired.py",
+    "render_09_10Z": "ssh test-host-A \"cd <scratch>/port-qnse-pbl-sfc/engine && PYTHONPATH=. GPUWM_RW_WRFBATCH=<scratch>/port-qnse-pbl-sfc/bridges/rw_wrfbatch GPUWM_RW_VERIFY=<scratch>/port-qnse-pbl-sfc/bridges/rw_verify RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 <scratch>/wrfx-child-start/venv-engine/bin/python ../scripts/render-proof.py --forecast forecast-finish2 9 10\"",
+    "offline_pblh_statistics": "ssh test-host-A bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh <scratch>/wrfx-child-start/venv-engine/bin/python ../scripts/analyze-pblh.py",
+    "wheel": "ssh test-host-A \"cd <scratch>/port-qnse-pbl-sfc/engine && OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 GPUWM_ALLOW_UNPINNED_WHEEL=1 <scratch>/wrfx-child-start/venv-engine/bin/python -m pip wheel . --no-deps --no-build-isolation --wheel-dir ../wheel && <scratch>/wrfx-child-start/venv-engine/bin/python ../scripts/check-wheel.py\"",
+    "render_11Z": "ssh test-host-A \"cd <scratch>/port-qnse-pbl-sfc/engine && PYTHONPATH=. GPUWM_RW_WRFBATCH=<scratch>/port-qnse-pbl-sfc/bridges/rw_wrfbatch GPUWM_RW_VERIFY=<scratch>/port-qnse-pbl-sfc/bridges/rw_verify RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 <scratch>/wrfx-child-start/venv-engine/bin/python ../scripts/render-proof.py --forecast forecast-finish2 11\"",
+    "render_12Z": "ssh test-host-A \"cd <scratch>/port-qnse-pbl-sfc/engine && PYTHONPATH=. GPUWM_RW_WRFBATCH=<scratch>/port-qnse-pbl-sfc/bridges/rw_wrfbatch GPUWM_RW_VERIFY=<scratch>/port-qnse-pbl-sfc/bridges/rw_verify RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 <scratch>/wrfx-child-start/venv-engine/bin/python ../scripts/render-proof.py --forecast forecast-finish2 12\""
+  },
+  "station_source": "IEM ASOS archive via production Rust rw_asos",
+  "comparisons": {
+    "09Z": {
+      "valid_time": "2026-10-16T09:00:00Z",
+      "sources": [
+        {
+          "artifact": {
+            "bytes": 674831908,
+            "path": "<scratch>/port-qnse-pbl-sfc/forecast-finish2/wrfout/wrfout_d01_2026-10-16_09_00_00",
+            "sha256": "7f2a9cf438cebd8207f9aaa04905a92c36c617f8bbd5fdfc3419f1d7f96d7ed8"
+          },
+          "metadata": {
+            "dx_km": 3.0,
+            "dy_km": 3.0,
+            "init_time": "2026-10-16T09:00:00",
+            "projection": {
+              "lambert_conformal": {
+                "central_meridian_deg": -97.30000305175781,
+                "standard_parallel_1_deg": 32.56999969482422,
+                "standard_parallel_2_deg": 32.56999969482422
+              }
+            },
+            "valid_time": "2026-10-16T09:00:00"
+          },
+          "prepared_from": null
+        },
+        {
+          "artifact": {
+            "bytes": 116280904,
+            "path": "<scratch>/port-qnse-pbl-sfc/native-history/wrfout_d01_2026-10-16_09_00_00",
+            "sha256": "90a377b5d18f74ad54128384ae8183e00c19e61aceca524e046fc031c2495e08"
+          },
+          "metadata": {
+            "dx_km": 3.0,
+            "dy_km": 3.0,
+            "init_time": "2026-10-16T09:00:00",
+            "projection": {
+              "lambert_conformal": {
+                "central_meridian_deg": -97.30000305175781,
+                "standard_parallel_1_deg": 32.56999969482422,
+                "standard_parallel_2_deg": 32.56999969482422
+              }
+            },
+            "valid_time": "2026-10-16T09:00:00"
+          },
+          "prepared_from": null
+        },
+        {
+          "bytes": 125907,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/observations/09Z/surface.json",
+          "sha256": "f0c925cd849af3ca41fb8bce3087c3b6ff64e433eaa04be54a677945b22905bf"
+        },
+        {
+          "observation_provenance": {
+            "fetched_at": "2026-11-01T10:07:23",
+            "is_stub": false,
+            "product": "iem-asos-metar",
+            "sha256": "db2abb235eca65ff4b3e24dd1f0e8c5376b47f63bb376b6f8e4120e4c5054bc6",
+            "source": "asos",
+            "stub_reason": "",
+            "uri": "<scratch>/port-qnse-pbl-sfc/evidence/observations/09Z/observations.csv"
+          },
+          "source": "asos"
+        }
+      ],
+      "stations": [
+        {
+          "arms": [
+            {
+              "bias": 0.013948352618990611,
+              "count": 235,
+              "label": "ArWen QNSE fast",
+              "rmse": 1.392389894822125
+            },
+            {
+              "bias": 0.013948352618990611,
+              "count": 235,
+              "label": "Native WRF QNSE strict",
+              "rmse": 1.392389894822125
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": null
+        },
+        {
+          "arms": [
+            {
+              "bias": 1.511548460186032,
+              "count": 235,
+              "label": "ArWen QNSE fast",
+              "rmse": 2.3897812512386634
+            },
+            {
+              "bias": 1.511548460186032,
+              "count": 235,
+              "label": "Native WRF QNSE strict",
+              "rmse": 2.3897812512386634
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": null
+        }
+      ],
+      "artifacts": [
+        {
+          "bytes": 516088,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_temperature_2m/2026-10-16/verification_20261016090000.png",
+          "product": "verify_temperature_2m",
+          "sha256": "8e2fbc8a7d56b525de6eefe6845b9454b1e1bef49b1b026f9d9c8496c09d3f0d"
+        },
+        {
+          "bytes": 529315,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_dewpoint_2m/2026-10-16/verification_20261016090000.png",
+          "product": "verify_dewpoint_2m",
+          "sha256": "45a9a683ba207e2643244a2d6e5ae9bce013f528ac2a956d2abc26c5369f18b9"
+        },
+        {
+          "bytes": 502969,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_wind_speed_10m/2026-10-16/verification_20261016090000.png",
+          "product": "verify_wind_speed_10m",
+          "sha256": "3ada5e0b565365c82cbaff53181c34ae149f015f89e2ea699d92fcfe52ecb643"
+        },
+        {
+          "bytes": 35953,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/scorecard/2026-10-16/09Z.png",
+          "product": "verification_scorecard",
+          "sha256": "68d5711314ac93a9d8e69427e9533c74e043e6b9b5afc2de651544043adc26f9"
+        }
+      ]
+    },
+    "10Z": {
+      "valid_time": "2026-10-16T10:00:00Z",
+      "sources": [
+        {
+          "artifact": {
+            "bytes": 675912716,
+            "path": "<scratch>/port-qnse-pbl-sfc/forecast-finish2/wrfout/wrfout_d01_2026-10-16_10_00_00",
+            "sha256": "88151f915fb83240a84c3b7670d8065fb65a7aff8c977298c53e759aab72bf30"
+          },
+          "metadata": {
+            "dx_km": 3.0,
+            "dy_km": 3.0,
+            "init_time": "2026-10-16T09:00:00",
+            "projection": {
+              "lambert_conformal": {
+                "central_meridian_deg": -97.30000305175781,
+                "standard_parallel_1_deg": 32.56999969482422,
+                "standard_parallel_2_deg": 32.56999969482422
+              }
+            },
+            "valid_time": "2026-10-16T10:00:00"
+          },
+          "prepared_from": null
+        },
+        {
+          "artifact": {
+            "bytes": 145825702,
+            "path": "<scratch>/port-qnse-pbl-sfc/native-history/wrfout_d01_2026-10-16_10_00_00",
+            "sha256": "23575acec1a3063025e76f0bc6f2c63b260d8289e67c91913810a7e96d7fc3f8"
+          },
+          "metadata": {
+            "dx_km": 3.0,
+            "dy_km": 3.0,
+            "init_time": "2026-10-16T09:00:00",
+            "projection": {
+              "lambert_conformal": {
+                "central_meridian_deg": -97.30000305175781,
+                "standard_parallel_1_deg": 32.56999969482422,
+                "standard_parallel_2_deg": 32.56999969482422
+              }
+            },
+            "valid_time": "2026-10-16T10:00:00"
+          },
+          "prepared_from": null
+        },
+        {
+          "bytes": 126424,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/observations/10Z/surface.json",
+          "sha256": "4947cf11475483958c6c42d0869392f1f2775b66c09bc11ac0c9fa8c7fb4db41"
+        },
+        {
+          "observation_provenance": {
+            "fetched_at": "2026-11-01T10:07:24",
+            "is_stub": false,
+            "product": "iem-asos-metar",
+            "sha256": "b3bb5fda44c575596396b0c991abd94818edabe29ddeb9ea23fce446a5aae2da",
+            "source": "asos",
+            "stub_reason": "",
+            "uri": "<scratch>/port-qnse-pbl-sfc/evidence/observations/10Z/observations.csv"
+          },
+          "source": "asos"
+        }
+      ],
+      "stations": [
+        {
+          "arms": [
+            {
+              "bias": -0.14885105608709565,
+              "count": 236,
+              "label": "ArWen QNSE fast",
+              "rmse": 1.3268876175059807
+            },
+            {
+              "bias": -0.14954258052038866,
+              "count": 236,
+              "label": "Native WRF QNSE strict",
+              "rmse": 1.3268809802055956
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF QNSE strict"
+        },
+        {
+          "arms": [
+            {
+              "bias": 0.14818298794428933,
+              "count": 234,
+              "label": "ArWen QNSE fast",
+              "rmse": 1.7797595706689735
+            },
+            {
+              "bias": 0.14756602407352432,
+              "count": 234,
+              "label": "Native WRF QNSE strict",
+              "rmse": 1.7795106792282656
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "Native WRF QNSE strict"
+        }
+      ],
+      "artifacts": [
+        {
+          "bytes": 987985,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_temperature_2m/2026-10-16/verification_20261016100000.png",
+          "product": "verify_temperature_2m",
+          "sha256": "a3fcdb16190311fba23dbdc32573252bf0aad549875c1a6066f5dd770a25f988"
+        },
+        {
+          "bytes": 719906,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_dewpoint_2m/2026-10-16/verification_20261016100000.png",
+          "product": "verify_dewpoint_2m",
+          "sha256": "9af3435ada4658517f46f207ce8dd3268fae7f71ebd2e1221deb9f06abaafc1d"
+        },
+        {
+          "bytes": 1080881,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_wind_speed_10m/2026-10-16/verification_20261016100000.png",
+          "product": "verify_wind_speed_10m",
+          "sha256": "992e985048bc496f302a49dd194580d349a7501a9ef816806b1a56a47ba0d84a"
+        },
+        {
+          "bytes": 39686,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/scorecard/2026-10-16/10Z.png",
+          "product": "verification_scorecard",
+          "sha256": "f1e5ef8e012dde1b5797b2b94ebe2a434d9776e8d42ddc0fecb046a564f98d6a"
+        }
+      ]
+    },
+    "11Z": {
+      "valid_time": "2026-10-16T11:00:00Z",
+      "sources": [
+        {
+          "artifact": {
+            "bytes": 675912716,
+            "path": "<scratch>/port-qnse-pbl-sfc/forecast-finish2/wrfout/wrfout_d01_2026-10-16_11_00_00",
+            "sha256": "afad058b5f4644e922e5949d2f459d399c090a5137958da2cd939099be03366a"
+          },
+          "metadata": {
+            "dx_km": 3.0,
+            "dy_km": 3.0,
+            "init_time": "2026-10-16T09:00:00",
+            "projection": {
+              "lambert_conformal": {
+                "central_meridian_deg": -97.30000305175781,
+                "standard_parallel_1_deg": 32.56999969482422,
+                "standard_parallel_2_deg": 32.56999969482422
+              }
+            },
+            "valid_time": "2026-10-16T11:00:00"
+          },
+          "prepared_from": null
+        },
+        {
+          "artifact": {
+            "bytes": 147618902,
+            "path": "<scratch>/port-qnse-pbl-sfc/native-history/wrfout_d01_2026-10-16_11_00_00",
+            "sha256": "8e58da79a7d635278d48821708556ece8fc481105012718e268d2a7d19bd48f9"
+          },
+          "metadata": {
+            "dx_km": 3.0,
+            "dy_km": 3.0,
+            "init_time": "2026-10-16T09:00:00",
+            "projection": {
+              "lambert_conformal": {
+                "central_meridian_deg": -97.30000305175781,
+                "standard_parallel_1_deg": 32.56999969482422,
+                "standard_parallel_2_deg": 32.56999969482422
+              }
+            },
+            "valid_time": "2026-10-16T11:00:00"
+          },
+          "prepared_from": null
+        },
+        {
+          "bytes": 126791,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/observations/11Z/surface.json",
+          "sha256": "d1d7d6c3d1e8b655f5f1b279ada1f5753309be344a69dc1019f06e4bdfaf4b1a"
+        },
+        {
+          "observation_provenance": {
+            "fetched_at": "2026-11-01T10:07:25",
+            "is_stub": false,
+            "product": "iem-asos-metar",
+            "sha256": "4afdb88f52069a52d8133d43495f1d74aa7d53d8a711ec39e459173b02efd54b",
+            "source": "asos",
+            "stub_reason": "",
+            "uri": "<scratch>/port-qnse-pbl-sfc/evidence/observations/11Z/observations.csv"
+          },
+          "source": "asos"
+        }
+      ],
+      "stations": [
+        {
+          "arms": [
+            {
+              "bias": -0.1812210462792482,
+              "count": 238,
+              "label": "ArWen QNSE fast",
+              "rmse": 1.25627430624934
+            },
+            {
+              "bias": -0.18054592493485283,
+              "count": 238,
+              "label": "Native WRF QNSE strict",
+              "rmse": 1.2565407688102284
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "ArWen QNSE fast"
+        },
+        {
+          "arms": [
+            {
+              "bias": 0.04460319778530919,
+              "count": 237,
+              "label": "ArWen QNSE fast",
+              "rmse": 1.9898831527100087
+            },
+            {
+              "bias": 0.04182749295654246,
+              "count": 237,
+              "label": "Native WRF QNSE strict",
+              "rmse": 1.9891032630195846
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "Native WRF QNSE strict"
+        }
+      ],
+      "artifacts": [
+        {
+          "bytes": 992624,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_temperature_2m/2026-10-16/verification_20261016110000.png",
+          "product": "verify_temperature_2m",
+          "sha256": "436d25b53007db1a0c4aec56bdee73260bb6919f0dda8f608ea030f0dc5e30b2"
+        },
+        {
+          "bytes": 761345,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_dewpoint_2m/2026-10-16/verification_20261016110000.png",
+          "product": "verify_dewpoint_2m",
+          "sha256": "60c8d0e2166e93810655917f5d313675db5597f90446ad42bab038d9f90185e1"
+        },
+        {
+          "bytes": 1154653,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_wind_speed_10m/2026-10-16/verification_20261016110000.png",
+          "product": "verify_wind_speed_10m",
+          "sha256": "4bef8f729a1c090c5999bd00833108acb275b3b5eaec0e7868aff9cf4e651c88"
+        },
+        {
+          "bytes": 39546,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/scorecard/2026-10-16/11Z.png",
+          "product": "verification_scorecard",
+          "sha256": "822f1cebc2096abe028292ba96b11179e9176c173797e60fb8623d41f61600b5"
+        }
+      ]
+    },
+    "12Z": {
+      "valid_time": "2026-10-16T12:00:00Z",
+      "sources": [
+        {
+          "artifact": {
+            "bytes": 675912716,
+            "path": "<scratch>/port-qnse-pbl-sfc/forecast-finish2/wrfout/wrfout_d01_2026-10-16_12_00_00",
+            "sha256": "d645812cfe4fcad0076e0fd000f305a901bdc4d903eb824f8d6ab61d0e4f0fc9"
+          },
+          "metadata": {
+            "dx_km": 3.0,
+            "dy_km": 3.0,
+            "init_time": "2026-10-16T09:00:00",
+            "projection": {
+              "lambert_conformal": {
+                "central_meridian_deg": -97.30000305175781,
+                "standard_parallel_1_deg": 32.56999969482422,
+                "standard_parallel_2_deg": 32.56999969482422
+              }
+            },
+            "valid_time": "2026-10-16T12:00:00"
+          },
+          "prepared_from": null
+        },
+        {
+          "artifact": {
+            "bytes": 148686321,
+            "path": "<scratch>/port-qnse-pbl-sfc/native-history/wrfout_d01_2026-10-16_12_00_00",
+            "sha256": "dffc90b25b770311f313560289dead0ea1facfa2395f3397639a8a23e0ab3f90"
+          },
+          "metadata": {
+            "dx_km": 3.0,
+            "dy_km": 3.0,
+            "init_time": "2026-10-16T09:00:00",
+            "projection": {
+              "lambert_conformal": {
+                "central_meridian_deg": -97.30000305175781,
+                "standard_parallel_1_deg": 32.56999969482422,
+                "standard_parallel_2_deg": 32.56999969482422
+              }
+            },
+            "valid_time": "2026-10-16T12:00:00"
+          },
+          "prepared_from": null
+        },
+        {
+          "bytes": 125465,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/observations/12Z/surface.json",
+          "sha256": "2a9f03fa29967c51301dd6342625fb17b22e381f3f03e8907f5e7980d51020b9"
+        },
+        {
+          "observation_provenance": {
+            "fetched_at": "2026-11-01T10:07:26",
+            "is_stub": false,
+            "product": "iem-asos-metar",
+            "sha256": "a42f3cf41809e5902dc569614e12ccdbe316cdb53677cf8ea010874e4abc2834",
+            "source": "asos",
+            "stub_reason": "",
+            "uri": "<scratch>/port-qnse-pbl-sfc/evidence/observations/12Z/observations.csv"
+          },
+          "source": "asos"
+        }
+      ],
+      "stations": [
+        {
+          "arms": [
+            {
+              "bias": -0.30893908023205185,
+              "count": 233,
+              "label": "ArWen QNSE fast",
+              "rmse": 1.3957240751316937
+            },
+            {
+              "bias": -0.3083752181297463,
+              "count": 233,
+              "label": "Native WRF QNSE strict",
+              "rmse": 1.3966555808653067
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "ArWen QNSE fast"
+        },
+        {
+          "arms": [
+            {
+              "bias": -0.17994628377388255,
+              "count": 233,
+              "label": "ArWen QNSE fast",
+              "rmse": 2.1773316071770097
+            },
+            {
+              "bias": -0.17869918649676128,
+              "count": 233,
+              "label": "Native WRF QNSE strict",
+              "rmse": 2.1783628325984887
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "ArWen QNSE fast"
+        }
+      ],
+      "artifacts": [
+        {
+          "bytes": 1010100,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_temperature_2m/2026-10-16/verification_20261016120000.png",
+          "product": "verify_temperature_2m",
+          "sha256": "aa62c0525966e969def0aac32d85f33fe93b548d42fd9e5c52536c339252a4c5"
+        },
+        {
+          "bytes": 778578,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_dewpoint_2m/2026-10-16/verification_20261016120000.png",
+          "product": "verify_dewpoint_2m",
+          "sha256": "e97789ff90b34390a4cd38e07487d71532e0753031e7db3bb7a99a11f368e5a4"
+        },
+        {
+          "bytes": 1201497,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/verify_wind_speed_10m/2026-10-16/verification_20261016120000.png",
+          "product": "verify_wind_speed_10m",
+          "sha256": "442f03ed076c8a0b33fbf61f491474c70acf2ef2b97181ea303254ee2eaeffbf"
+        },
+        {
+          "bytes": 39776,
+          "path": "<scratch>/port-qnse-pbl-sfc/evidence/figures/d01-3km/scorecard/2026-10-16/12Z.png",
+          "product": "verification_scorecard",
+          "sha256": "bdefa7594850559737ab3c7597a326156e7120d5b164c932b5d48bdf615785bb"
+        }
+      ]
+    }
+  },
+  "pblh_comparison": {
+    "10": {
+      "shape": [
+        300,
+        300
+      ],
+      "max_location_yx": [
+        263,
+        273
+      ],
+      "arwen_pblh_m": 2221.26611328125,
+      "native_pblh_m": 1312.0048828125,
+      "rmse_m": 17.530242673923958,
+      "abs_quantiles_m": {
+        "p50": 0.003662109375,
+        "p90": 0.015625,
+        "p99": 0.1650854492187257,
+        "p99.9": 224.91787792968762,
+        "max": 909.26123046875
+      },
+      "count_gt_1m": 840,
+      "count_gt_100m": 637,
+      "native_tke_fields": [
+        "TKE_PBL"
+      ],
+      "arwen_tke_profile_at_max": [
+        6.102834701538086,
+        4.998723983764648,
+        4.477804183959961,
+        4.068352222442627,
+        3.6951725482940674,
+        3.3328521251678467,
+        2.967118978500366,
+        2.5883378982543945,
+        2.1667137145996094,
+        1.6736822128295898,
+        1.1203902959823608,
+        0.6019831895828247,
+        0.2355032116174698,
+        0.054730042815208435,
+        0.005993685219436884,
+        0.005107746925204992,
+        0.007114909589290619,
+        0.005403445567935705,
+        0.005000271834433079,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.0
+      ],
+      "native_tke_profile_at_max": [
+        6.110204696655273,
+        4.998402118682861,
+        4.480838775634766,
+        4.076099872589111,
+        3.706359386444092,
+        3.3471171855926514,
+        2.982759714126587,
+        2.6026813983917236,
+        2.1783061027526855,
+        1.6833932399749756,
+        1.1284122467041016,
+        0.6090185642242432,
+        0.24087482690811157,
+        0.057501424103975296,
+        0.006404171697795391,
+        0.005004331469535828,
+        0.006451229564845562,
+        0.005061142612248659,
+        0.005000036675482988,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.0
+      ]
+    },
+    "11": {
+      "shape": [
+        300,
+        300
+      ],
+      "max_location_yx": [
+        229,
+        256
+      ],
+      "arwen_pblh_m": 3714.44873046875,
+      "native_pblh_m": 1314.457763671875,
+      "rmse_m": 28.059598437411378,
+      "abs_quantiles_m": {
+        "p50": 0.005126953125,
+        "p90": 0.026123046875,
+        "p99": 127.13527465819115,
+        "p99.9": 262.63159790039066,
+        "max": 2399.990966796875
+      },
+      "count_gt_1m": 1270,
+      "count_gt_100m": 1099,
+      "native_tke_fields": [
+        "TKE_PBL"
+      ],
+      "arwen_tke_profile_at_max": [
+        5.555635452270508,
+        4.486666679382324,
+        3.951655149459839,
+        3.5193839073181152,
+        3.1340835094451904,
+        2.77942156791687,
+        2.4467687606811523,
+        2.134289026260376,
+        1.8366531133651733,
+        1.533836007118225,
+        1.1747004985809326,
+        0.7445082664489746,
+        0.3375715911388397,
+        0.0800711065530777,
+        0.005302480887621641,
+        0.005075659137219191,
+        0.04467164725065231,
+        0.24353034794330597,
+        0.3792729377746582,
+        0.08628641068935394,
+        0.005101698916405439,
+        0.005000010598450899,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.0
+      ],
+      "native_tke_profile_at_max": [
+        5.6331787109375,
+        4.524511814117432,
+        3.977872371673584,
+        3.5396227836608887,
+        3.1503407955169678,
+        2.7948107719421387,
+        2.4611546993255615,
+        2.1468825340270996,
+        1.8458759784698486,
+        1.5370502471923828,
+        1.171443223953247,
+        0.7400422692298889,
+        0.335663378238678,
+        0.07978799194097519,
+        0.005301698576658964,
+        0.005024000070989132,
+        0.024735772982239723,
+        0.172550231218338,
+        0.26144689321517944,
+        0.04700367897748947,
+        0.005032587330788374,
+        0.005000003147870302,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.0
+      ]
+    },
+    "12": {
+      "shape": [
+        300,
+        300
+      ],
+      "max_location_yx": [
+        229,
+        256
+      ],
+      "arwen_pblh_m": 3706.8994140625,
+      "native_pblh_m": 1308.458740234375,
+      "rmse_m": 32.98564765446099,
+      "abs_quantiles_m": {
+        "p50": 0.0067138671875,
+        "p90": 0.03980712890625071,
+        "p99": 158.0826025390624,
+        "p99.9": 305.3094256591801,
+        "max": 2398.440673828125
+      },
+      "count_gt_1m": 1291,
+      "count_gt_100m": 1221,
+      "native_tke_fields": [
+        "TKE_PBL"
+      ],
+      "arwen_tke_profile_at_max": [
+        6.569511890411377,
+        5.232003688812256,
+        4.57746696472168,
+        4.059274673461914,
+        3.6025424003601074,
+        3.1852149963378906,
+        2.795382022857666,
+        2.429046154022217,
+        2.076277256011963,
+        1.7048296928405762,
+        1.2618556022644043,
+        0.7766522169113159,
+        0.36069682240486145,
+        0.09912970662117004,
+        0.007518297992646694,
+        0.005087605211883783,
+        0.04925505071878433,
+        0.25533443689346313,
+        0.3624947667121887,
+        0.0833636224269867,
+        0.005094605032354593,
+        0.005000010598450899,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.0
+      ],
+      "native_tke_profile_at_max": [
+        6.575104713439941,
+        5.213294982910156,
+        4.554112911224365,
+        4.035754203796387,
+        3.579996347427368,
+        3.164600133895874,
+        2.7765390872955322,
+        2.4111721515655518,
+        2.057849407196045,
+        1.6855177879333496,
+        1.2451303005218506,
+        0.7656169533729553,
+        0.35513874888420105,
+        0.09711019694805145,
+        0.0072592939250171185,
+        0.005028506275266409,
+        0.02717258594930172,
+        0.17974327504634857,
+        0.23364923894405365,
+        0.039907585829496384,
+        0.005023487377911806,
+        0.005000002682209015,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.004999999888241291,
+        0.005000000353902578,
+        0.0
+      ]
+    }
+  },
+  "stage_timing": {
+    "sequential": {
+      "device": "NVIDIA GeForce RTX 4090",
+      "shape": [
+        49,
+        128,
+        128
+      ],
+      "dt": 15,
+      "warmups": 3,
+      "samples": 12,
+      "timing": "CUDA events around the real driver stage; health ledger drained after timed samples",
+      "rows": {
+        "2/2/mf0": {
+          "surface": {
+            "median_ms": 0.1366880014538765
+          },
+          "pbl": {
+            "median_ms": 1.1325439810752869
+          }
+        },
+        "4/4/mf0": {
+          "surface": {
+            "median_ms": 0.13812799751758575,
+            "ratio_to_myj": 1.01053491197759
+          },
+          "pbl": {
+            "median_ms": 0.92876797914505,
+            "ratio_to_myj": 0.8200723280196475
+          }
+        },
+        "4/4/mf1": {
+          "surface": {
+            "median_ms": 0.09788800030946732,
+            "ratio_to_myj": 0.716141865184109
+          },
+          "pbl": {
+            "median_ms": 1.3957120180130005,
+            "ratio_to_myj": 1.2323689334235395
+          }
+        }
+      }
+    },
+    "interleaved": {
+      "device": "NVIDIA GeForce RTX 4090",
+      "shape": [
+        49,
+        128,
+        128
+      ],
+      "dt": 15,
+      "warmups": 5,
+      "samples": 20,
+      "timing": "CUDA events around real driver stages, interleaved alternating case order on shared GPU; deferred health drained after samples",
+      "rows": {
+        "2/2/mf0": {
+          "surface": {
+            "median_ms": 0.17654400318861008,
+            "median_paired_ratio_to_myj": 1.0,
+            "ratio_iqr": [
+              1.0,
+              1.0
+            ]
+          },
+          "pbl": {
+            "median_ms": 1.8749439716339111,
+            "median_paired_ratio_to_myj": 1.0,
+            "ratio_iqr": [
+              1.0,
+              1.0
+            ]
+          }
+        },
+        "4/4/mf0": {
+          "surface": {
+            "median_ms": 0.1696000024676323,
+            "median_paired_ratio_to_myj": 0.8509351353887011,
+            "ratio_iqr": [
+              0.6152891590121724,
+              1.07717202694786
+            ]
+          },
+          "pbl": {
+            "median_ms": 1.064303994178772,
+            "median_paired_ratio_to_myj": 0.6488818130715073,
+            "ratio_iqr": [
+              0.32983973753081,
+              0.7618488900640165
+            ]
+          }
+        },
+        "4/4/mf1": {
+          "surface": {
+            "median_ms": 0.173055998980999,
+            "median_paired_ratio_to_myj": 0.8124785565643236,
+            "ratio_iqr": [
+              0.6225432568346752,
+              1.396869395000467
+            ]
+          },
+          "pbl": {
+            "median_ms": 1.4039520025253296,
+            "median_paired_ratio_to_myj": 0.7330590448552361,
+            "ratio_iqr": [
+              0.615010111590151,
+              0.9894820596858445
+            ]
+          }
+        }
+      }
+    }
+  },
+  "source_comment_ptx_equivalence": {
+    "nvrtc": [
+      12,
+      9
+    ],
+    "options": [
+      "-std=c++17",
+      "--gpu-architecture=compute_89"
+    ],
+    "rows": {
+      "forecast": {
+        "source_sha256": "38220c19259bdc80ad07142ca74eda29240edf07d5586e4f0d32ae65294f7ca0",
+        "ptx_sha256": "d0fb7643f88b49d93fb86177c332b6c8332a564ed8abf2eb905707526e6d103b",
+        "ptx_bytes": 46856
+      },
+      "shipping": {
+        "source_sha256": "471d3fba4303cd938a385d6b64cadd96a2db17a7d2c15536603d0da99ca81f8d",
+        "ptx_sha256": "d0fb7643f88b49d93fb86177c332b6c8332a564ed8abf2eb905707526e6d103b",
+        "ptx_bytes": 46856
+      }
+    },
+    "equal_ptx": true
+  },
+  "build_input_artifacts": {
+    "bridges/gfs_grib2_bridge": {
+      "bytes": 1113920,
+      "sha256": "387b3e64264f75621169315199349c2400b23d0f2a0a251ec4b865f16a440379",
+      "link_target": null
+    },
+    "bridges/libgpuwm_preprocess_cpu.so": {
+      "bytes": 2334056,
+      "sha256": "2d69a726a47a99c8e2809c3bd2e1eb4629199d4f4f4443bb5b88c2c5e4c0ef3a",
+      "link_target": null
+    },
+    "bridges/libnetcdf_writer.so": {
+      "bytes": 494296,
+      "sha256": "578c00ead49d27d547105c1f849db941c3891ea227d1a3290d6fe9f0431d82bf",
+      "link_target": null
+    },
+    "bridges/libstatic_fields.so": {
+      "bytes": 3578936,
+      "sha256": "23b6fc7d85b50f18dcf02d38c3b2333f9cad9c86587bc156bdfe160a75b2cedd",
+      "link_target": null
+    },
+    "bridges/rw_asos": {
+      "bytes": 3659376,
+      "sha256": "055ee1d75fb41933c6885c54691a239bb6482a9b2b2f8d34a9776a2a7dc19a7e",
+      "link_target": null
+    },
+    "bridges/rw_netcdf": {
+      "bytes": 2636680,
+      "sha256": "7cdc487d779006ec6e9b9ac0ff6a831e08f931e1342d9720165240ed18fb514d",
+      "link_target": null
+    },
+    "bridges/rw_verify": {
+      "bytes": 366520,
+      "sha256": "c99378535c7b8c8dd93b5f1af01cc75718bb251af632428934b65d1ead63a04f",
+      "link_target": null
+    },
+    "bridges/rw_wrfbatch": {
+      "bytes": 27434792,
+      "sha256": "08fa26e7a8582dca0f83a27aa940d529278acdeca6197afe085768204aab2b00",
+      "link_target": null
+    },
+    "native-input/wrfbdy_d01": {
+      "bytes": 52267644,
+      "sha256": "bb77061a5bca7f385a8d55fcf2b48505308652d173426ce4acffbaa577cebafb",
+      "link_target": "/workspace/shared-prepared/jax-arwen-AB-original/wrfbdy_d01"
+    },
+    "native-input/wrfinput_d01": {
+      "bytes": 403379504,
+      "sha256": "8121a77ddddc8ba5637ca1e729a90d1ca3cb0dd52826a6fafdeda3496400c569",
+      "link_target": "/workspace/shared-prepared/jax-arwen-AB-original/wrfinput_d01"
+    }
+  },
+  "option_off": {
+    "candidate": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+    "strict": false,
+    "steps": 6,
+    "cases": [
+      [
+        1,
+        91
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "arrays": 334,
+    "bytes": 442752,
+    "different_entries": [],
+    "header": "all keys except creation timestamp compared",
+    "commands": [
+      "bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh env GPUWM_WRF_EXACT=0 PYTHONPATH=<scratch>/port-qnse-pbl-sfc/baseline <scratch>/wrfx-child-start/venv-engine/bin/python <scratch>/port-qnse-pbl-sfc/scripts/off-defaults.py <scratch>/port-qnse-pbl-sfc/off-base-shipping",
+      "bash <scratch>/port-qnse-pbl-sfc/scripts/gpu-command.sh env GPUWM_WRF_EXACT=0 <scratch>/wrfx-child-start/venv-engine/bin/python <scratch>/port-qnse-pbl-sfc/scripts/off-defaults.py <scratch>/port-qnse-pbl-sfc/off-tip-shipping"
+    ]
+  },
+  "limits": [
+    "One 3-hour real case, not broad scientific qualification or whole-forecast bitwise equality.",
+    "Some PBLH cells differ by whole model levels. Profiles are consistent with the native hard TKE threshold, but saved post-call TKE does not prove the pre-call decision.",
+    "Native MF diagnostics depend on tile-wide COUNT(GTEST). Runtime uses the full device domain as one native tile; replay uses the captured complete native tile.",
+    "Stage timings were taken on a shared GPU. Sequential default EDMF PBL cost is about 1.23 times MYJ due to additional plume/cloud physics and the native tile reduction/two-pass calculation.",
+    "The development wheel used the repository unpinned-bridge opt-in. No release, signing, publication, other GPU architecture or multi-hour nested real-case claim is made."
+  ],
+  "speed_shipping_qualification": {
+    "historical_samples": "Retained as historical data; median ratios affected by baseline stalls.",
+    "replacement": "retime-pbl-forecast.json",
+    "default_mfshconv": 1,
+    "forecast_audit_ratio_to_myj": 1.033530449818007
+  }
+}

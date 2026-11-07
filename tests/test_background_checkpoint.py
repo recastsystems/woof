@@ -135,7 +135,7 @@ def test_the_writer_never_retires_the_set_the_heartbeat_is_reading(
         monkeypatch, tmp_path):
     """Hourly checkpoints with ``--keep-checkpoints 1`` rotate cleanly.
 
-    Breakage (ml-probs T1, 2026-10-27, woof 2.9.8): every 60 h GFS 12 km
+    Breakage (ml-probs T1, 2026-10-27, gpuwm 2.9.8): every 60 h GFS 12 km
     parent with ``restart_interval_s = 3600`` died 3-7 h in with
     FileNotFoundError on its own checkpoint (run dir held the 08Z set, the
     run asked for the 07Z one).  The 08Z restart handler joins the 07Z

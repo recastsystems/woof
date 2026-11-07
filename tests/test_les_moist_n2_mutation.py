@@ -135,7 +135,7 @@ def test_the_launcher_goes_through_the_selector():
     import woof.core
     src = (Path(woof.core.__file__).parent / "dycore.py").read_text(
         encoding="utf-8")
-    assert "calc_n2_kernel()(" in src
+    assert "calc_n2_kernel(use_theta_m=cfg.use_theta_m)(" in src
     assert "from woof.core.moist_n2_mutation import calc_n2_kernel" in src
     assert 'get_kernel("smag2d", "wrf_calc_n2")' not in src
 

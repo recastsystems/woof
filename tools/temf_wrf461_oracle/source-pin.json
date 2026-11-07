@@ -1,0 +1,30 @@
+{
+  "wrf_version": "v4.6.1",
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "public_source": "https://github.com/wrf-model/WRF",
+  "licence": "WRF public-domain statement, with no commercial-use restriction",
+  "table_files": [],
+  "tables": "63 constants folded from WRF source; no external TEMF table",
+  "files": {
+    "LICENSE.txt": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "bytes": 1027
+    },
+    "phys/module_bl_temf.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_bl_temf.F",
+      "sha256": "0c4d731ca3124198342a3a2f90e0a43f34ddf5731b545460fb27bf794ed77475",
+      "bytes": 65574
+    },
+    "phys/module_sf_temfsfclay.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_sf_temfsfclay.F",
+      "sha256": "70f2ed6bc48aad5b1bf68be4e01753a132f2ecdb4fa6d95c0ecce5d5554fcd94",
+      "bytes": 19515
+    },
+    "share/module_check_a_mundo.F": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/share/module_check_a_mundo.F",
+      "sha256": "2d6d4eb1f9183b4a4157f32de2ba34753bc4c0c10c380ad2ba4cfb524885b038",
+      "bytes": 177710
+    }
+  }
+}

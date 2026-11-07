@@ -50,8 +50,8 @@ def test_totality_recovery_scales_heating_and_all_sw_fluxes(monkeypatch):
     eclipse.capture(driver)
     state=SimpleNamespace(elapsed_seconds=0)
     for obscuration in (0.5,1.0,0.25,0.0):
-        eclipse.geometry.at=lambda valid: cp.full((4,5), obscuration, cp.float32)
-        eclipse.apply(driver,state,SimpleNamespace())
+        eclipse.geometry.at=lambda valid, **kwargs: cp.full((4,5), obscuration, cp.float32)
+        eclipse.apply(driver,state,SimpleNamespace(radt=0,radt_minutes=0))
         for name in ("swdown","gsw","swddir","swddif","swddni","swupt","swdntc"):
             cp.testing.assert_array_equal(driver.fields[name], cp.full((4,5),800*(1-obscuration),cp.float32))
         cp.testing.assert_allclose(driver.rthratensw, 0.01*(1-obscuration))
@@ -73,7 +73,8 @@ def test_cuda_against_unmodified_wrf461_geometry():
 
     tools/evidence: original phys/module_ra_eclipse.F at WRF v4.6.1,
     solar_eclipse with radt=0, julian=98, gmt=0, year=2024. The fixture
-    is source-rounded FP32; CUDA's FP64 geometry avoids cancellation.
+    is source-rounded FP32. Real native-run bitwise captures are replayed
+    separately by tools/cloud_aerosol_wrf471_oracle/replay_eclipse.py.
     """
     from pathlib import Path
     import cupy as cp
@@ -99,8 +100,8 @@ def test_undimmed_checkpoint_cache_and_interpolated_fluxes(monkeypatch):
     original.bind(driver)
     assert not original.ready()
     original.capture(driver)
-    original.geometry.at=lambda valid:cp.ones((4,5),cp.float32)
-    original.apply(driver,SimpleNamespace(elapsed_seconds=0),SimpleNamespace())
+    original.geometry.at=lambda valid, **kwargs:cp.ones((4,5),cp.float32)
+    original.apply(driver,SimpleNamespace(elapsed_seconds=0),SimpleNamespace(radt=0,radt_minutes=0))
     # Restored storage remains undimmed even when its published flux is zero.
     resumed=EclipseRadiation(radiation)
     resumed.bind(driver)
@@ -109,8 +110,8 @@ def test_undimmed_checkpoint_cache_and_interpolated_fluxes(monkeypatch):
     # SWINT freshly evaluates undimmed sunlight before each overlay call.
     for undimmed in (900,880):
         driver.fields['swdown'].fill(undimmed)
-        resumed.geometry.at=lambda valid:cp.full((4,5),.5,cp.float32)
-        resumed.apply(driver,SimpleNamespace(elapsed_seconds=60),SimpleNamespace())
+        resumed.geometry.at=lambda valid, **kwargs:cp.full((4,5),.5,cp.float32)
+        resumed.apply(driver,SimpleNamespace(elapsed_seconds=60),SimpleNamespace(radt=0,radt_minutes=0))
         cp.testing.assert_array_equal(driver.fields['swdown'],undimmed/2)
         cp.testing.assert_allclose(driver.rthratensw,.005)
 
@@ -177,7 +178,7 @@ def test_zero_shadow_preserves_held_carrier_rounding_exactly():
     overlay=EclipseRadiation(radiation)
     overlay.capture(driver)
     for elapsed in range(0,3600,60):
-        overlay.apply(driver,SimpleNamespace(elapsed_seconds=elapsed),SimpleNamespace())
+        overlay.apply(driver,SimpleNamespace(elapsed_seconds=elapsed),SimpleNamespace(radt=0,radt_minutes=0))
         cp.testing.assert_array_equal(driver._wrf_rthraten,held)
         cp.testing.assert_array_equal(driver.rthraten,held)
         cp.testing.assert_array_equal(driver.rthratensw,sw)

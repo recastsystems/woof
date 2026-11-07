@@ -37,6 +37,7 @@ from woof.wrf461_compatibility import (
     SURFACE_LAYER_OPTIONS,
     WRFVerdict,
     pbl_surface_layer_verdict,
+    PBL_RUNTIME_BREAKAGE,
 )
 
 
@@ -288,7 +289,7 @@ def _table_root_is_complete(root: "Path") -> bool:
         return False
 
 
-def thompson_table_root() -> str:
+def thompson_table_root(*, env=None) -> str:
     """Resolved mp8 table root: env override, then staged, then packaged.
 
     The override exists for byte-identical mirrors (fast local disks,
@@ -318,7 +319,8 @@ def thompson_table_root() -> str:
     one pip line.
     """
 
-    override = os.environ.get(THOMPSON_TABLE_ROOT_ENV)
+    environ = os.environ if env is None else env
+    override = environ.get(THOMPSON_TABLE_ROOT_ENV)
     if override:
         return override
     packaged: "Path | None"
@@ -364,6 +366,13 @@ def thompson_fork_table_root() -> str:
     if override:
         return override
     return str(user_thompson_table_root().parent / "thompson-wrf39-noaa")
+
+
+def thompson_hail_table_root() -> str:
+    """The density-binned mp38 table cache, independent of mp8 and mp28."""
+    import os
+    override = os.environ.get("WOOF_THOMPSON_HAIL_TABLE_ROOT", "").strip()
+    return override or str(user_thompson_table_root().parent / "thompson-wrf461-hail")
 
 
 def thompson_guard_exports() -> tuple[str, str]:
@@ -643,12 +652,19 @@ THOMPSON_MYNN_RUC_DUDHIA_PROFILE_ID = (
 #
 # None of them reads anything source-specific, which is why the route
 # declarations offer them on every source that declares any suite at all.
+#: Thompson with the stock WRF Grell-Devenyi closure.
+GRELL_DEVENYI_PROFILE_ID = (
+    "thompson-mp8-ysu-mm5-noah-grell-devenyi-rte-rrtmgp-v1"
+)
 #: Milbrandt-Yau two-moment (mp_physics=9) with New Tiedtke cumulus, on
 #: legacy RRTMG: the composition the mp9 radiation constraint admits.
 MILBRANDT2MOM_NTIEDTKE_PROFILE_ID = (
     "milbrandt2mom-mp9-ysu-mm5-noah-ntiedtke-rrtmg-legacy-v1"
 )
 #: WDM6 (mp_physics=16) with Grell-Freitas cumulus on RTE+RRTMGP.
+WDM5_GRELL_FREITAS_PROFILE_ID = (
+    "wdm5-mp14-ysu-mm5-noah-grell-freitas-rte-rrtmgp-v1"
+)
 WDM6_GRELL_FREITAS_PROFILE_ID = (
     "wdm6-mp16-ysu-mm5-noah-grell-freitas-rte-rrtmgp-v1"
 )
@@ -683,12 +699,23 @@ CONSTANT_K_PROFILE_ID = (
 #: six when its cold-start arm landed (audit R-044): the prepared
 #: single-domain runner builds its initialization like any other suite's,
 #: with nwfa/nifa from the WIF monthly climatology.
+OSAS_PROFILE_ID = "wsm6-ysu-mm5-noah-osas-rrtmg-legacy-v1"
 NSAS_PROFILE_ID = "wsm6-ysu-mm5-noah-nsas-rrtmg-legacy-v1"
 CCPP_TKE_EDMF_PROFILE_ID = "ccpp-tke-edmf-thompson-mm5-noah-gf-rte-v1"
 
 COMPOSITION_SUITE_PROFILE_IDS = (
+    'ferrier-aligo-advect-mp15-ysu-mm5-noah-rrtmg-legacy-v1',
+    'goddard4ice-mp7-ysu-mm5-noah-rrtmg-legacy-v1',
+    'morrison-aero-mp40-ysu-mm5-noah-rrtmg-legacy-v1',
+    'thompson-mp8-ysu-mm5-noah-cam3-v1',
+    "thompson-graupel-hail-mp38-ysu-mm5-noah-kf-rrtmg-legacy-v1",
+    OSAS_PROFILE_ID,
     NSAS_PROFILE_ID,
     CCPP_TKE_EDMF_PROFILE_ID,
+    "wsm6-eeps-mm5-noah-dudhia-sw-v1",
+    GRELL_DEVENYI_PROFILE_ID,
+    WDM5_GRELL_FREITAS_PROFILE_ID,
+    "wdm7-mp26-ysu-mm5-noah-grell-freitas-rte-rrtmgp-v1",
     MILBRANDT2MOM_NTIEDTKE_PROFILE_ID,
     WDM6_GRELL_FREITAS_PROFILE_ID,
     THOMPSON_AEROSOL_MYJ_PROFILE_ID,
@@ -696,6 +723,7 @@ COMPOSITION_SUITE_PROFILE_IDS = (
     TKE_1_5_ORDER_PROFILE_ID,
     SMAGORINSKY_3D_PROFILE_ID,
     CONSTANT_K_PROFILE_ID,
+    "wsm6-ysu-mm5-ssib-rrtm-dudhia-v1",
 )
 #: Option-identity knobs that are NOT part of a shipped profile's runtime
 #: product (audit R-067, deriving what used to be nineteen hand-typed
@@ -1186,7 +1214,7 @@ CONSTANT_DOWNWARD_LONGWAVE_ACK = "constant-downward-longwave-v1"
 #: the contract directly because ``woof.config`` imports this module and
 #: the contract imports ``woof.config``; the registry sits between them.
 _GLW_CONSUMING_SURFACE_SCHEMES = MappingProxyType({
-    2: "Noah LSM", 3: "RUC LSM", 4: "Noah-MP",
+    1: "the slab scheme", 2: "Noah LSM", 3: "RUC LSM", 4: "Noah-MP", 7: "Pleim-Xiu LSM", 8: "SSiB",
 })
 
 
@@ -1845,7 +1873,8 @@ def _one_dead_cumulus_cadence(settings: Mapping[str, object] | object):
     THE DEFECT THIS CLOSES.  ``cudt_minutes`` is the interval between
     cumulus calls, and at ``cu_physics = 0`` there are none:
     woof/core/clock.py builds a cumulus calendar only for cu_physics in
-    (1, 3, 16), and woof/core/physics.py takes no cumulus step without
+    (1, 3, 16) and the column schemes (95), and woof/core/physics.py
+    takes no cumulus step without
     one, so the value is dead namelist state that reaches no kernel and
     changes no number.  Its two producers spell the dead value
     differently -- the WRF namelist importer omits the key for a
@@ -2315,6 +2344,8 @@ def validate_resolved_physics_vertical_levels(
     from woof.config import radiation_scheme_ids
     radiation_settings = (SimpleNamespace(**settings) if isinstance(settings, Mapping) else settings)
     pair = radiation_scheme_ids(radiation_settings)
+    if pair[0] == 7:
+        bounded("WRF Fu-Liou-Gu radiation", (4, 100))
     if 4 in pair:
         top_pressure = 0.0 if p_top is None else float(p_top)
         if rrtmg_variant(settings) == RRTMG_VARIANT_LEGACY:
@@ -3534,6 +3565,17 @@ def pending_wrf_physics_components(
     silent widening of a numeric range check.
     """
     blockers: list[PhysicsPortBlocker] = []
+    from woof.config import selector_coupling_refusal
+    refusal = selector_coupling_refusal({
+        "bl_pbl_physics": bl_pbl_physics,
+        "sf_sfclay_physics": sf_sfclay_physics})
+    if refusal:
+        blockers.append(PhysicsPortBlocker(
+            component="coupled PBL and surface layer",
+            selectors=(("bl_pbl_physics", bl_pbl_physics),
+                       ("sf_sfclay_physics", sf_sfclay_physics)),
+            missing=(refusal,)))
+
     # mp_physics == 8 no longer appends a blocker: Thompson was promoted to
     # a first-class selection when the canonical classic tables became
     # package data (see the EXPERIMENTAL_THOMPSON_ENV comment block above).
@@ -3566,7 +3608,7 @@ def pending_wrf_physics_components(
     #     thompson_init's synthetic CCN/IN profile.  Same physics, an
     #     initialization WRF's initializer refuses to produce.  That is
     #     published as woof.config.MP28_AEROSOL_SOURCE_DEFAULT (the
-    #     WIF climatology, default since lane/wif-default) with
+    #     WIF climatology, default since development branch) with
     #     MP28_AEROSOL_SYNTHETIC_FALLBACK as its named fallback, and is
     #     carried in the namelist importer's printed receipt;
     #   * the registry decides REACHABILITY.  Audit R-067 gave mp=28 its
@@ -3598,9 +3640,7 @@ def pending_wrf_physics_components(
     # restart, a reflectivity route on its own rain number, a wrfout
     # inventory and a registry option.  What is NOT admitted is refused by
     # NAME somewhere a user can see it, never by a silent numeric gate here:
-    #   * WDM5 (14) and WDM7 (26) fail closed in woof.config with the
-    #     scheme spelled out -- different hydrometeor sets, and WDM6 may not
-    #     stand in for either;
+    #   * WDM5, WDM6 and WDM7 retain their native selector rows;
     #   * a MIXED nest edge touching 16 RESOLVES (audit R-004): the entry
     #     closure seeds nc=0, nr=0 and nn at the domain's own ccn_conc,
     #     which is what this tree's cold start writes and what WRF's
@@ -3640,8 +3680,7 @@ def pending_wrf_physics_components(
                 missing=(
                     "WRF v4.6.1 refuses this pairing, and so does woof: "
                     "select the revised MM5 (1) or classic MM5 (91) "
-                    "surface layer, which publish the full similarity "
-                    "functions every ported PBL scheme reads, or pair "
+                    "surface layer, or pair "
                     "each PBL scheme with the surface layer its own "
                     "registry option declares",
                     f"{pair_citation.anchor}: {pair_citation.law}",
@@ -3659,13 +3698,24 @@ def pending_wrf_physics_components(
                     # surface-layer output is allocated as zeros for all
                     # schemes, so the pairing does not raise: it
                     # integrates on fm=fh=0 for the whole forecast.
+                    PBL_RUNTIME_BREAKAGE.get(
+                        bl_pbl_physics,
+                    ("ACM2 requires the surface initialization contract "
+                     "isfc=1 or 7 (module_physics_init.F:3728-3730) and "
+                     "stops the model before any integration; "
+                     "the selected layer does not provide it"
+                     if bl_pbl_physics == 7 else
                     "in woof the mechanism is the fm/fh pair: only the "
                     "MM5 surface layers publish the full similarity "
                     "denominators ln(z/z0)-psi, and YSU and Shin-Hong "
                     "bind them directly and divide by them, so a pairing "
                     "that leaves them unwritten runs on the allocated "
                     "zeros -- finite, plausible and wrong -- rather than "
-                    "failing",
+                    "failing; MRF reads the MM5 layers' raw PSIM/PSIH and "
+                    "GZ1OZ0 and divides by GZ1OZ0-PSIM "
+                    "(module_bl_mrf.F:767-774), which is a division by "
+                    "zero when no surface layer writes them"
+                    )),
                 )))
     if sf_surface_physics == 3:
         # Deferred exactly as woof.config defers it: ruc_contract is
@@ -3813,6 +3863,7 @@ __all__ = [
     "NOAHMP_MEASURED_COLUMN_CEILING",
     "NOAHMP_MEASURED_SLAB_CALL_SECONDS",
     "COMPOSITION_SUITE_PROFILE_IDS",
+    "GRELL_DEVENYI_PROFILE_ID",
     "SINGLE_DOMAIN_PHYSICS_PROFILES",
     "route_physics_profiles",
     "MORRISON_PROFILE_ID",
@@ -3918,6 +3969,13 @@ def _templates_outside_the_single_domain_menu() -> dict[str, str]:
         DEFAULT_TEMPLATE_ID: (
             "audit R-068: the registry's DEFAULT_TEMPLATE_ID, registered for "
             "plan review, never given a _SINGLE_DOMAIN_RUNTIME_SWITCHES row"),
+        **{
+            f"thompson-mp8-ysu-mm5-noah-kf-trigger{trigger}-rte-rrtmgp-v1": (
+                "Global KF trigger variant of the plan-only default template; "
+                "select it in a domain-tree plan or import a WRF case through "
+                "woof go. It has no sealed single-domain product receipt.")
+            for trigger in (2, 3)
+        },
     }
 
 

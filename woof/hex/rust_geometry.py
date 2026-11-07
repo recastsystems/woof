@@ -76,37 +76,73 @@ def _run(mesh: Any, *, mode: int, dtype: np.dtype, include_halos: bool = True,
     xp = _mesh_value(mesh, "x_period", 0.0) if x_period is None else x_period
     yp = _mesh_value(mesh, "y_period", 0.0) if y_period is None else y_period
     wire_dtype = dtype.newbyteorder("<")
-    parts = [struct.pack("<8sQQQQBBBB", b"HEXGEO1\0", n_cells, n_edges,
-                         max_edges, solved, dtype.itemsize, sphere, periodic, mode),
-             np.asarray([xp, yp], dtype=wire_dtype).tobytes()]
-    parts.extend(np.asarray(a, dtype=wire_dtype).tobytes(order="C") for a in (cell, edge))
-    parts.extend(np.asarray(a, dtype="<i8").tobytes(order="C") for a in (coe, eoc, counts))
+    header = struct.pack("<8sQQQQBBBB", b"HEXGEO1\0", n_cells, n_edges,
+                         max_edges, solved, dtype.itemsize, sphere, periodic, mode)
+    header += np.asarray([xp, yp], dtype=wire_dtype).tobytes()
+    inputs = [(cell, wire_dtype), (edge, wire_dtype),
+              (coe, "<i8"), (eoc, "<i8"), (counts, "<i8")]
     if mode == 2:
-        parts.extend(np.asarray(a, dtype=wire_dtype).tobytes(order="C") for a in
-                     (geometry.edge_normal_vectors, geometry.cell_tangent_plane))
-    engine, _ = geometry_engine()
-    result = subprocess.run([str(engine), "--protocol", "hex-geometry-v1"],
-                            input=b"".join(parts), capture_output=True, check=False)
-    if result.returncode:
-        message = result.stderr.decode("utf-8", errors="replace").strip()
-        if "singular RBF reconstruction matrix" in message:
-            raise np.linalg.LinAlgError(message)
-        raise ValueError(message or f"geometry bridge exited {result.returncode}")
+        inputs.extend((a, wire_dtype) for a in
+                      (geometry.edge_normal_vectors, geometry.cell_tangent_plane))
     shapes = ([(n_cells, max_edges, 3)] if mode == 2 else
               [(n_edges, 3), (n_cells, 3), (n_cells, 2, 3)] +
               ([(n_cells, max_edges, 3)] if mode == 0 else []))
-    expected = sum(int(np.prod(shape)) for shape in shapes) * dtype.itemsize
-    if len(result.stdout) != expected:
-        raise EngineRefusal(f"geometry bridge returned {len(result.stdout)} bytes, "
-                            f"expected {expected}; incomplete geometry cannot initialize a mesh")
-    values = np.frombuffer(result.stdout, dtype=wire_dtype)
-    arrays = []
-    offset = 0
-    for shape in shapes:
-        count = int(np.prod(shape))
-        arrays.append(values[offset:offset + count].reshape(shape).copy())
-        offset += count
-    return arrays
+    engine, _ = geometry_engine()
+    # The former tobytes + join + communicate path held two complete input
+    # streams and the complete response beside the retained output arrays.
+    # Read directly into each final array and send bounded views instead.
+    import tempfile
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen([str(engine), "--protocol", "hex-geometry-v1"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
+        assert process.stdin is not None and process.stdout is not None
+        arrays = []
+        incomplete = None
+        try:
+            try:
+                process.stdin.write(header)
+                for value, kind in inputs:
+                    contiguous = np.ascontiguousarray(value, dtype=kind)
+                    data = memoryview(contiguous).cast("B")
+                    for offset in range(0, len(data), 1024 * 1024):
+                        process.stdin.write(data[offset:offset + 1024 * 1024])
+                process.stdin.close()
+            except BrokenPipeError:
+                pass  # The bridge's diagnostic below names rejected inputs.
+            for shape in shapes:
+                value = np.empty(shape, dtype=wire_dtype)
+                data = memoryview(value).cast("B")
+                offset = 0
+                while offset < len(data):
+                    count = process.stdout.readinto(data[offset:offset + 1024 * 1024])
+                    if not count:
+                        incomplete = f"geometry bridge returned {offset} of {len(data)} array bytes"
+                        break
+                    offset += count
+                arrays.append(value)
+                if incomplete:
+                    break
+            excess = process.stdout.read(1)
+            code = process.wait()
+            errors.seek(0)
+            message = errors.read().decode("utf-8", errors="replace").strip()
+            if code:
+                if "singular RBF reconstruction matrix" in message:
+                    raise np.linalg.LinAlgError(message)
+                raise ValueError(message or f"geometry bridge exited {code}")
+            if incomplete or excess:
+                raise EngineRefusal((incomplete or "geometry bridge returned excess bytes") +
+                                    "; incomplete geometry cannot initialize a mesh")
+            return arrays
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            for stream in (process.stdin, process.stdout):
+                try:
+                    stream.close()
+                except BrokenPipeError:
+                    pass
 
 
 def vector_geometry(mesh: Any, **options):

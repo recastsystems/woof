@@ -23,8 +23,25 @@ __device__ __forceinline__ double wm_nan() { return __longlong_as_double(0x7ff80
 __device__ __forceinline__ double wm_inf() { return __longlong_as_double(0x7ff0000000000000LL); }
 __device__ __forceinline__ float wm_nanf() { return __int_as_float(0x7fc00000); }
 
+#if defined(__HIP_PLATFORM_AMD__)
+// Rust's `as i64` saturates, including when range reduction sees a huge
+// argument. A C++ floating-to-integer cast outside the range is undefined
+// and HIP and NVCC choose different results. Keep the canonical twins equal.
+__device__ __forceinline__ long long wm_to_i64(double v) {
+    if (v != v) return 0;
+    if (v >= 0x1p63) return 0x7fffffffffffffffLL;
+    if (v <= -0x1p63) return (-0x7fffffffffffffffLL - 1LL);
+    return (long long)v;
+}
+
+#endif
+
 __device__ __forceinline__ double wm_floor(double v) {
+#if defined(__HIP_PLATFORM_AMD__)
+    double t = (double)wm_to_i64(v);
+#else
     double t = (double)(long long)v;
+#endif
     return t > v ? t - 1.0 : t;
 }
 
@@ -115,7 +132,11 @@ __device__ __forceinline__ void wm_sin_cos_reduced(double r, double* so, double*
 __device__ __forceinline__ long long wm_reduce_pio2(double x, double* r) {
     double n = wm_floor(x * WM_TWO_OVER_PI + 0.5);
     *r = ((x - n * WM_PIO2_1) - n * WM_PIO2_2) - n * WM_PIO2_3;
+#if defined(__HIP_PLATFORM_AMD__)
+    return wm_to_i64(n) & 3LL;
+#else
     return ((long long)n) & 3LL;
+#endif
 }
 
 __device__ double wm_sin(double x) {

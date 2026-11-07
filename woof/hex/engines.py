@@ -283,7 +283,7 @@ POINTS = EngineSpec(
 
 #: The WPS intermediate writer every init-source row decodes through.
 #: THE BREAKAGE THIS ROW PREVENTS, measured on a clean pip install of the
-#: 0.4.0 candidate beside woof 2.9.0 (g16 fresh-install QA, 2026-10-12):
+#: 0.4.0 candidate beside gpuwm 2.9.0 (g16 fresh-install QA, 2026-10-12):
 #: ``init-source`` read only ``--writer``, ``$WOOF_MET_INTERMEDIATE`` and
 #: PATH, so it refused "met_intermediate was not found" while the woof
 #: wheel in the same venv carried the binary in ``libexec/bridges`` and
@@ -540,7 +540,7 @@ def remedy(spec: EngineSpec) -> str:
         return "\n".join(
             [
                 # The engine range is DERIVED, never typed: this line read
-                # `woof>=2.5.5` for a whole release cycle, naming a version
+                # `gpuwm>=2.5.5` for a whole release cycle, naming a version
                 # that is not on PyPI at all and whose bytes the seam
                 # manifest refuses.  A remedy that cannot be executed costs
                 # the next refusal its credibility.
@@ -654,7 +654,7 @@ def resolve(spec: EngineSpec, explicit: str | Path | None = None) -> Path:
                 if os.name == "posix" and not os.access(candidate, os.X_OK):
                     _refuse_not_executable(spec, candidate)
                 return candidate.resolve()
-        # woof 2.9.10 leaves rw_mpas_init_v831 and rw_mpas_gsl_oro to its release
+        # gpuwm 2.9.10 leaves rw_mpas_init_v831 and rw_mpas_gsl_oro to its release
         # bundle (PyPI's per-file limit); their first use stages them where woof's
         # ladder reads, so a plain install's RRFS init runs instead of refusing.
         if attempt or not _fetch_on_demand(spec):

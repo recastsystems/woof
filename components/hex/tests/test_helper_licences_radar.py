@@ -1,6 +1,6 @@
 """tools/helper_licences.py reads crates the source notice inventories only in its radar appendix.
 
-THE BREAKAGE THIS PREVENTS (hex 0.4.0 repin to woof 2.9.0): at the 2.9.0 release commit rw-mpas links
+THE BREAKAGE THIS PREVENTS (hex 0.4.0 repin to gpuwm 2.9.0): at the 2.9.0 release commit rw-mpas links
 libloading 0.9.0, so the observation scorer publish.yml builds against the declared floor links it.  The
 engine's bridge notice carries libloading's ISC text only in its WOOF simulated radar appendix, so the tool
 stopped with "linked but not inventoried in the source notice" and the wheel's helper notice could not

@@ -267,7 +267,7 @@ def test_tag_binds_shape_options_and_numerics_but_ignores_output(monkeypatch):
 
 
 def test_members_of_one_configuration_share_one_tag(monkeypatch):
-    # Breakage: each DA member's own --init/--iau-analysis/--start-time made a new ~22 MB plan
+    # Breakage: each state analysis member's own --init/--iau-analysis/--start-time made a new ~22 MB plan
     # and manifest that no other member could find (own24 cycle members, 2026-10-28).
     monkeypatch.setenv("WOOF_HEX_NUMERICS", "fast")
     def member(n, start):
@@ -681,7 +681,7 @@ def _raw_row(source="gf-source", options=("--fmad=false", "-DGF=1"), filename="g
 
 
 def test_a_cold_start_compiles_raw_nvrtc_rows_on_the_pool_and_the_unit_takes_that_image(monkeypatch, plan_dir):
-    """THE BREAKAGE (an RTX 5090 host and V8X6000, 2026-10-29): _catalog_rows skipped raw NVRTC rows, so with no pack
+    """THE BREAKAGE (an RTX 5090 host and eight-card system, 2026-10-29): _catalog_rows skipped raw NVRTC rows, so with no pack
     Grell-Freitas compiled in the foreground on one core at its first call while the card waited."""
     from woof.hex import kernel_compile_worker, kernel_warm
     calls = []
@@ -781,7 +781,7 @@ def test_raw_image_takes_the_pool_image_without_compiling(monkeypatch):
 def test_a_v842_run_leaves_the_rrfs_forks_catalog_rows_out(monkeypatch, plan_dir, table):
     """THE BREAKAGE (an RTX 5090 host, 2026-10-29): a cold strict hl-3 (v8.4.2 convection_permitting) compiled the RRFS
     fork's rows too; two workers held 35-37 GB of host RAM each.  Slots are not matched to families for the
-    skip: thompson_aero runs thompson_workspace and sf_mynn runs sfclay_mm5 (V8X6000, 2026-10-29)."""
+    skip: thompson_aero runs thompson_workspace and sf_mynn runs sfclay_mm5 (eight-card system, 2026-10-29)."""
     from types import SimpleNamespace
     from woof.hex import kernel_compile_worker, kernel_warm
     monkeypatch.setattr(kernel_compile_worker, "raw_compile", lambda arguments, arch: b"gf")

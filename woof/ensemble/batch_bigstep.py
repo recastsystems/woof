@@ -249,11 +249,15 @@ def prepare_slow_buoyancy(state, cfg=None):
     mode = 0
     moisture = {name: "p" for name in ("qv", "qc", "qr", "qi", "qs", "qg", "qh")}
     if cfg.moist:
+        from woof.physics_registry import consumer_row_for_selector
+        native = consumer_row_for_selector("microphysics", "native_column", cfg.mp_physics)
         mode = 3 if getattr(state, "qh", None) is not None else (2 if getattr(state, "qi", None) is not None else 1)
         moisture.update({name: name for name in ("qv", "qc", "qr")})
         if mode >= 2:
             moisture["qi"] = "qi"
-            if getattr(state, "qs", None) is None:
+            if native:
+                moisture.update(zip(("qi", "qs", "qg"), native["mass_slots"], strict=True))
+            elif getattr(state, "qs", None) is None:
                 absent = state.existing_scratch("moist_absent_mass")
                 if absent is None:
                     raise BatchStateUnsupported("absent snow/graupel mass needs its admitted zero plane before moist buoyancy")
@@ -286,15 +290,19 @@ def prepare_slow_geopotential(state, cfg=None, *, ww="scratch:rk_ww", add_vertic
     a = lambda name: _allocation(state, name)
     nz, ny, nx = cfg.nz, cfg.ny, cfg.nx
     rdx, rdy = 1.0 / cfg.dx, 1.0 / cfg.dy
-    if (cfg.open_x or cfg.open_y) and not dycore._boundary_forced(cfg):
-        # The scalar helper sends this configuration to the native open
-        # kernel (890e2523a); the members must take the same entry or their
-        # words differ from a single run's.
+    if (((cfg.open_x or cfg.open_y) and not dycore._boundary_forced(cfg))
+            or cfg.h_sca_adv_order in (0, 3, 4, 6)
+            or (cfg.h_sca_adv_order == 2 and not getattr(cfg, "_legacy_h_sca", False))):
+        # The scalar helper sends these configurations to the native open
+        # kernel (890e2523a; 2582c065c99 added the WRF orders 0/2/3/4/6 and
+        # the forced-boundary flag); the members must take the same entry
+        # with the same arguments or their words differ from a single run's.
         args = (a("rph_t"), a(ww), a("w"), a("u"), a("v"), a("php"), a("phb"),
                 a("mup"), a("mub2d"), a("rdnw"), a("fnm"), a("fnp"), a("c1f"), a("c2f"),
                 state.cfn, state.cfn1, a("msft"), a("msfu"), a("msfv"), a("mup"), a("mup"),
                 np.float32(0.25 / cfg.dx), np.float32(0.25 / cfg.dy), np.int32(state.has_msf),
-                np.int32(cfg.open_x), np.int32(cfg.open_y), np.int32(0),
+                np.int32(dycore._boundary_x(cfg)), np.int32(dycore._boundary_y(cfg)),
+                np.int32(dycore._boundary_forced(cfg)), np.int32(0),
                 np.int32(add_vertical), np.int32(cfg.h_sca_adv_order),
                 np.int32(len(_shape(state, "phb")) == 3),
                 np.int32(nz), np.int32(ny), np.int32(nx))

@@ -54,7 +54,12 @@ class ChemPrep:
               p if qv is None else qv,state.fnm,state.fnp,
               np.int32(state.thb.ndim==3),np.int32(state.phb.ndim==3),
               np.int32(qv is not None),np.int32(nz),np.int32(ny),np.int32(nx))
-        get_kernel('chem_prep','chem_prep')(((ny*nx+127)//128,),(128,),
+        kernel = get_kernel('chem_prep', 'chem_prep')
+        if getattr(state, 'use_theta_m', 0):
+            from woof.core.kernels import get_kernel_int_defines
+            kernel = get_kernel_int_defines('chem_prep', 'chem_prep',
+                                             (('GPUWM_USE_THETA_M', 1),))
+        kernel(((ny*nx+127)//128,),(128,),
                    args+tuple(self._fields[name] for name in NAMES))
         for name in ('qv','qc','qr'):
             value=getattr(state,name,None)

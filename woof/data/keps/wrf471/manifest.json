@@ -1,0 +1,59 @@
+{
+  "schema": "keps-native-undefined-witness-v1",
+  "compiler": "GNU Fortran 13.3, glibc 2.39, -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+  "only_changes": [
+    "GET_PBLH: ttke -> tke in comparison and assignment",
+    "surface_bl_pra_ri: radsum=0 before accumulation"
+  ],
+  "captures": [
+    {
+      "name": "keps-000001.bin",
+      "bytes": 482716,
+      "original_sha256": "8af20731afc08b87df27f2b9020d6589b99b98f1e6e7525008844d3612a269d4",
+      "defined_sha256": "8af20731afc08b87df27f2b9020d6589b99b98f1e6e7525008844d3612a269d4",
+      "unmodified_standalone_identical": true
+    },
+    {
+      "name": "keps-000002.bin",
+      "bytes": 482716,
+      "original_sha256": "aba75da6443ad8f6d93f686afccc05ecebe7ff11c07c7ab6a19a5ee07fe40433",
+      "defined_sha256": "aba75da6443ad8f6d93f686afccc05ecebe7ff11c07c7ab6a19a5ee07fe40433",
+      "unmodified_standalone_identical": true
+    },
+    {
+      "name": "keps-000003.bin",
+      "bytes": 482716,
+      "original_sha256": "dfb17d114127750487330a9696ff1bc6b4aa291ffc8a0883c1c95b06fbd2d8b7",
+      "defined_sha256": "dfb17d114127750487330a9696ff1bc6b4aa291ffc8a0883c1c95b06fbd2d8b7",
+      "unmodified_standalone_identical": true
+    },
+    {
+      "name": "keps-000004.bin",
+      "bytes": 482716,
+      "original_sha256": "af9371b69acccafd0cd0fa75c7c8d0c673afba2c791e8b76a98d7b8f9bf9ab1d",
+      "defined_sha256": "af9371b69acccafd0cd0fa75c7c8d0c673afba2c791e8b76a98d7b8f9bf9ab1d",
+      "unmodified_standalone_identical": true
+    },
+    {
+      "name": "keps-000060.bin",
+      "bytes": 482716,
+      "original_sha256": "4fdb946f1891d3a25a3af429176d2b5e9776630a1935cec557a029c61366bd58",
+      "defined_sha256": "4c8136325243622e59a6ad79be05384550cdc734f73d3613d9139d28b0103f34",
+      "unmodified_standalone_identical": true
+    },
+    {
+      "name": "keps-000120.bin",
+      "bytes": 482716,
+      "original_sha256": "97c7eca44efda22873dc91182d186024778acd3e2195b2cb410d6c1522f05310",
+      "defined_sha256": "787535c0479f591a0dc4bc00a1f7f29b3176f4ac96842cdf8a4275b2a669dca5",
+      "unmodified_standalone_identical": true
+    },
+    {
+      "name": "keps-000180.bin",
+      "bytes": 482716,
+      "original_sha256": "c742b5311120e74e065bd07a4932d6a71e8499454752a103995bba0e90453354",
+      "defined_sha256": "84c2dcd79aba4f63f958ca35b46a8ce9dff0245b8c07f14f960a38846ff7866c",
+      "unmodified_standalone_identical": true
+    }
+  ]
+}

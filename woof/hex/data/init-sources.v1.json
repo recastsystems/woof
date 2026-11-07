@@ -195,6 +195,23 @@
         "contract": "gfs16-noah-to-mpas842-stas",
         "product_role": "cold-soil-donor",
         "analysis_only": true
+      },
+      "tc_composition": {
+        "profile": "gfs-pressure-grib2-v1",
+        "use_spechumd": "yes",
+        "about": "TC inner-core initialization (hexcore.tc_vortex): the same staged GFS file composed on the canonical pressure frame, where the vortex is relocated and corrected before the WPS export"
+      },
+      "intermediate": {
+        "row": "gfs",
+        "backend": "mapped-composition",
+        "engine_source_id": "gfs-pressure",
+        "profile": "gfs-pressure-grib2-v1",
+        "cadence_hours": 3,
+        "first_guess": {
+          "nfglevels": 34,
+          "nfgsoillevels": 4,
+          "use_spechumd": "yes"
+        }
       }
     },
     {
@@ -1889,6 +1906,74 @@
             ]
           }
         ]
+      },
+      "tc_composition": {
+        "profile": "gefs-ensemble-grib2-v1",
+        "use_spechumd": "yes",
+        "in_band_supplement_role": "gefs_member_in_band_surface",
+        "about": "TC inner-core initialization (hexcore.tc_vortex): one member's pgrb2a+pgrb2b pair on the canonical frame (the pair again as its in-band surface supplement), plus WEASD and PRMSL (pgrb2a) for the WPS export; SKINTEMP is the initial surface temperature (no SST slab)",
+        "surface_policy": "native-gfs-skin",
+        "mapping_fields": {
+          "snow_water_equivalent": {
+            "selectors": [
+              {
+                "format": "grib2",
+                "discipline": 0,
+                "category": 1,
+                "parameter": 13,
+                "level_type": 1,
+                "level_value": 0,
+                "pdt": 1
+              }
+            ],
+            "units": {
+              "source": "kg m-2",
+              "target": "kg m-2"
+            },
+            "source_axes": [
+              "y",
+              "x"
+            ],
+            "target_axes": [
+              "y",
+              "x"
+            ],
+            "location": "surface",
+            "staggering": "none",
+            "missing": {
+              "kind": "landmask_zero_water"
+            }
+          },
+          "air_pressure_at_mean_sea_level": {
+            "selectors": [
+              {
+                "format": "grib2",
+                "discipline": 0,
+                "category": 3,
+                "parameter": 1,
+                "level_type": 101,
+                "pdt": 1
+              }
+            ],
+            "units": {
+              "source": "Pa",
+              "target": "Pa"
+            },
+            "source_axes": [
+              "y",
+              "x"
+            ],
+            "target_axes": [
+              "y",
+              "x"
+            ],
+            "location": "surface",
+            "staggering": "none",
+            "missing": {
+              "kind": "reject"
+            }
+          }
+        }
       }
     },
     {
@@ -2496,7 +2581,7 @@
       "limits": [
         "the archive holds only the newest cycles, so ICON can be initialised and checked for recent dates but not scored against a past case like 2026-10-03",
         "remapped from the native mesh to 0.25 degrees before the init's own horizontal interpolation (two interpolation steps)",
-        "the open-data pressure ladder tops at 30 hPa"
+        "the open-data pressure ladder tops at 30 hPa; GFS 0.25 deg supplies 20-1 hPa above it (the upper-air donor), so the RRFS v2 grid hrrrv5 starts on (top 25.9 km) has a first guess to its top"
       ],
       "posting": {
         "cycle_hours": [
@@ -2507,6 +2592,89 @@
         ],
         "lag_minutes": 158,
         "basis": "2.64 h, measured (posting lags, 2026-10-16)"
+      },
+      "upper_air_donor": {
+        "about": "ICON's open-data pressure ladder tops at 30 hPa, below the top of the RRFS v2 L60 grid hrrrv5 starts on (25.9 km), and the RRFS producer's lapse-rate case 7 refuses to extrapolate above the first-guess top. The column above comes from NCEP GFS 0.25 deg at the same valid time (gpuwm/ingest/upper_air_donor.py): its 20-1 hPa levels are appended, and from 50 hPa up to 30 hPa ICON's own levels move toward GFS linearly in log-pressure, reaching GFS at 30 hPa. Humidity above is GFS's RH as published.",
+        "source_id": "gfs",
+        "licence": "NCEP GFS, US government work, public domain",
+        "transport": {
+          "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{cycle:%Y%m%d}/{cycle:%H}/atmos/gfs.t{cycle:%H}z.pgrb2.0p25.f{lead:03d}",
+          "index_suffix": ".idx",
+          "valid_from": "2021-03-22T12:00:00Z"
+        },
+        "cycle_hours": 6,
+        "max_lead_hours": 120,
+        "levels_pa": [
+          2000,
+          1500,
+          1000,
+          700,
+          500,
+          300,
+          200,
+          100
+        ],
+        "fields": {
+          "TT": {
+            "index": "TMP",
+            "discipline": 0,
+            "category": 0,
+            "parameter": 0
+          },
+          "UU": {
+            "index": "UGRD",
+            "discipline": 0,
+            "category": 2,
+            "parameter": 2
+          },
+          "VV": {
+            "index": "VGRD",
+            "discipline": 0,
+            "category": 2,
+            "parameter": 3
+          },
+          "RH": {
+            "index": "RH",
+            "discipline": 0,
+            "category": 1,
+            "parameter": 1
+          },
+          "SPECHUMD": {
+            "index": "SPFH",
+            "discipline": 0,
+            "category": 1,
+            "parameter": 0
+          },
+          "GHT": {
+            "index": "HGT",
+            "discipline": 0,
+            "category": 3,
+            "parameter": 5
+          },
+          "HGT": {
+            "index": "HGT",
+            "discipline": 0,
+            "category": 3,
+            "parameter": 5
+          },
+          "GEOPT": {
+            "index": "HGT",
+            "discipline": 0,
+            "category": 3,
+            "parameter": 5,
+            "scale": 9.80665
+          },
+          "PRES": {
+            "level_pressure": true
+          }
+        },
+        "blend": {
+          "kind": "log_pressure_linear",
+          "bottom_pa": 5000
+        },
+        "horizontal": {
+          "kind": "bilinear"
+        }
       }
     },
     {
@@ -3071,6 +3239,300 @@
       },
       "limits": [
         "Covers the CONUS HRRR domain only, so it initialises a limited-area cull (woof hex regional), never a global mesh: a global init from it would have no meteorology outside that domain."
+      ]
+    },
+    {
+      "id": "gem-hrdps",
+      "aliases": [
+        "hrdps",
+        "eccc-hrdps",
+        "gem-continental"
+      ],
+      "engine_source_id": "gem-hrdps",
+      "display_name": "ECCC HRDPS 2.5 km continental (GEM, rotated lat-lon), MSC Datamart",
+      "role": "deterministic",
+      "license": "ECCC Data Servers End-use Licence v2.1.1 (worldwide, royalty-free, commercial use allowed; attribution: \"Data Source: Environment and Climate Change Canada\"; no endorsement; https://eccc-msc.github.io/open-data/licence/readme_en/)",
+      "coverage": "limited_area",
+      "grid": {
+        "family": "rotated_latitude_longitude",
+        "resolution_m": 2500,
+        "winds": "grid-relative on the rotated lattice; rotated to earth-relative by the mapped engine"
+      },
+      "intermediate": {
+        "row": "gem-hrdps",
+        "about": "A packaged gpuwm source: the intermediate door's packaged road (hexcore.packaged_intermediate) fetches it through gpuwm's table route and composes it with the mapped engine, which rotates its grid-relative winds to the earth basis and resamples it onto a regular lat-lon box over the cull, one WPS file per hour."
+      },
+      "vertical": {
+        "coordinate": "isobaric, 28 levels 1015-50 hPa, then GFS 0.25 deg at 40-1 hPa (the upper-air donor)",
+        "humidity": "SPECHUMD",
+        "height": "GHT"
+      },
+      "first_guess": {
+        "nfglevels": 39,
+        "nfgsoillevels": 4,
+        "use_spechumd": "yes"
+      },
+      "limits": [
+        "Covers HRDPS's continental domain (Canada and the northern contiguous US) only, so it initialises a limited-area cull (woof hex regional), never a global mesh.",
+        "Soil: HRDPS's own 0-10 cm layer, with GFS 0.25 deg's layers below it at the same valid time (the deep-soil donor); every land surface, RUC included, starts from it.",
+        "Upper air: HRDPS's own column to 50 hPa, with GFS 0.25 deg's 40-1 hPa levels above it at the same valid time (the upper-air donor; HRDPS's 50 hPa level takes GFS's value, so the column has no seam). The RRFS v2 grid hrrrv5 starts on tops at 25.9 km, above HRDPS's own top.",
+        "MSC Datamart keeps about 30 days of cycles; older dates are not obtainable from this source."
+      ],
+      "deep_soil": {
+        "about": "HRDPS publishes one 0-10 cm soil layer. gpuwm's composition declares GFS 0.25 deg as its deep-soil donor, so the WPS box carries GFS's 10-40, 40-100 and 100-200 cm layers below it at the same valid time (four first-guess layers). The init keeps the source's own layer and moves the donor's moisture onto the suite's land model by relative wetness (RUC's hydraulics for hrrrv5 and the RRFS suites; Noah's are the donor's own).",
+        "source_id": "gfs",
+        "soil_model": "noah",
+        "keep_above_m": 0.1
+      },
+      "upper_air": {
+        "about": "HRDPS's isobaric column stops at 50 hPa. gpuwm's composition declares GFS 0.25 deg as its upper-air donor, so every WPS file of the box carries GFS's 40, 30, 20, 15, 10, 7, 5, 3, 2 and 1 hPa levels above it at the same valid time, and HRDPS's 50 hPa level is blended to GFS's (from 100 hPa, linear in log-pressure). The intermediate receipt's level count (39) reaches the init and the boundaries. Without it the RRFS producer (hrrrv5) refused: temperature extrapolation above the first-guess column top is not implemented for the lapse-rate mode.",
+        "source_id": "gfs",
+        "levels_hpa": [
+          40,
+          30,
+          20,
+          15,
+          10,
+          7,
+          5,
+          3,
+          2,
+          1
+        ],
+        "blend_bottom_hpa": 100
+      }
+    },
+    {
+      "id": "gem-rdps",
+      "aliases": [
+        "rdps",
+        "eccc-rdps",
+        "gem-regional"
+      ],
+      "engine_source_id": "gem-rdps",
+      "display_name": "ECCC RDPS 10 km regional (GEM, rotated lat-lon), MSC Datamart",
+      "role": "deterministic",
+      "license": "ECCC Data Servers End-use Licence v2.1.1 (worldwide, royalty-free, commercial use allowed; attribution: \"Data Source: Environment and Climate Change Canada\"; no endorsement; https://eccc-msc.github.io/open-data/licence/readme_en/)",
+      "coverage": "limited_area",
+      "grid": {
+        "family": "rotated_latitude_longitude",
+        "resolution_m": 10000,
+        "winds": "grid-relative on the rotated lattice; rotated to earth-relative by the mapped engine"
+      },
+      "intermediate": {
+        "row": "gem-rdps",
+        "about": "A packaged gpuwm source: the intermediate door's packaged road (hexcore.packaged_intermediate) fetches it through gpuwm's table route and composes it with the mapped engine, which rotates its grid-relative winds to the earth basis and resamples it onto a regular lat-lon box over the cull, one WPS file per hour."
+      },
+      "vertical": {
+        "coordinate": "isobaric, 33 levels 1015-1 hPa",
+        "humidity": "SPECHUMD",
+        "height": "GHT"
+      },
+      "first_guess": {
+        "nfglevels": 34,
+        "nfgsoillevels": 4,
+        "use_spechumd": "yes"
+      },
+      "limits": [
+        "Covers RDPS's North American domain only, so it initialises a limited-area cull (woof hex regional), never a global mesh.",
+        "Soil: RDPS's own 0-10 cm layer, with GFS 0.25 deg's layers below it at the same valid time (the deep-soil donor); every land surface, RUC included, starts from it.",
+        "MSC Datamart keeps about 30 days of cycles; older dates are not obtainable from this source."
+      ],
+      "deep_soil": {
+        "about": "RDPS publishes one 0-10 cm soil layer. gpuwm's composition declares GFS 0.25 deg as its deep-soil donor, so the WPS box carries GFS's 10-40, 40-100 and 100-200 cm layers below it at the same valid time (four first-guess layers). The init keeps the source's own layer and moves the donor's moisture onto the suite's land model by relative wetness (RUC's hydraulics for hrrrv5 and the RRFS suites; Noah's are the donor's own).",
+        "source_id": "gfs",
+        "soil_model": "noah",
+        "keep_above_m": 0.1
+      }
+    },
+    {
+      "id": "rrfs",
+      "coverage_label": "RRFS v1's CONUS map",
+      "aliases": [
+        "rrfs-v1"
+      ],
+      "engine_source_id": "rrfs",
+      "display_name": "RRFS v1 3 km CONUS public pressure-level state",
+      "role": "deterministic",
+      "license": "US government work, public domain",
+      "coverage": "limited_area",
+      "coverage_window": {
+        "family": "lambert_conformal",
+        "nx": 1799,
+        "ny": 1059,
+        "lat1": 21.138123,
+        "lon1": -122.719528,
+        "dx_m": 3000.0,
+        "truelat1": 38.5,
+        "truelat2": 38.5,
+        "stand_lon": -97.5
+      },
+      "grid": {
+        "family": "lambert_conformal",
+        "resolution_m": 3000,
+        "winds": "grid-relative; rotated to earth-relative by the mapped engine"
+      },
+      "intermediate": {
+        "row": "rrfs",
+        "profile": "rrfs-prslev-2dfld-state-grib2-v1",
+        "soil_node_depths_cm": [
+          0,
+          1,
+          4,
+          10,
+          30,
+          60,
+          100,
+          160,
+          300
+        ]
+      },
+      "cycles": {
+        "first": "2026-08-12T00",
+        "hours": [
+          0,
+          3,
+          6,
+          9,
+          12,
+          15,
+          18,
+          21
+        ],
+        "basis": "Public ops pressure and surface pair"
+      },
+      "forecast": {
+        "max_hours": 84,
+        "interval_hours": 1,
+        "ladders": [
+          {
+            "cycle_hours": [
+              0,
+              6,
+              12,
+              18
+            ],
+            "steps": [
+              [
+                84,
+                1
+              ]
+            ]
+          },
+          {
+            "cycle_hours": [
+              3,
+              9,
+              15,
+              21
+            ],
+            "steps": [
+              [
+                18,
+                1
+              ]
+            ]
+          }
+        ]
+      },
+      "boundaries": {
+        "default": "gfs",
+        "selectable": [
+          "gfs",
+          "rrfs"
+        ]
+      },
+      "vertical": {
+        "coordinate": "45 pressure levels, 2-1000 hPa, plus surface",
+        "humidity": "SPECHUMD with 2 m RH",
+        "height": "GHT"
+      },
+      "first_guess": {
+        "nfglevels": 46,
+        "nfgsoillevels": 4,
+        "use_spechumd": "yes"
+      },
+      "limits": [
+        "Public pressure-level state, not the native-level input used by the NOAA real-time experiment.",
+        "No published droplet, ice or rain number concentrations; aerosols use the suite climatology.",
+        "CONUS map only. A region outside the map must use a global start or a declared blend.",
+        "Nine native RUC soil nodes for source-nodes producers; four interpolated soil layers otherwise.",
+        "State pair at eight cycles daily: f084 at 00/06/12/18 UTC, f018 at 03/09/15/21 UTC, from 2026-08-12."
+      ]
+    },
+    {
+      "id": "rrfs-gfs",
+      "display_name": "RRFS v1 inside CONUS, GFS outside, blended",
+      "role": "deterministic",
+      "license": "US government work, public domain",
+      "coverage": "global",
+      "blend": {
+        "inside": "rrfs",
+        "outside": "gfs",
+        "taper_km": 400,
+        "about": "Selected by name. The cut uses the whole-mesh vertical grid; the start uses RRFS f000 only."
+      }
+    },
+    {
+      "id": "hafs-a",
+      "aliases": [
+        "hfsa"
+      ],
+      "engine_source_id": "hafs-a",
+      "display_name": "NOAA HAFS-A parent or storm grid",
+      "role": "deterministic",
+      "license": "NOAA US government output, public domain; attribution requested, no endorsement. https://registry.opendata.aws/noaa-nws-hafs/",
+      "coverage": "limited_area",
+      "grid": {
+        "family": "regular_latlon",
+        "winds": "earth-relative; each lead owns its grid origin"
+      },
+      "intermediate": {
+        "row": "hafs-a",
+        "backend": "mapped-composition",
+        "profile": "hafs-pressure-grib2-v1",
+        "cadence_hours": 3
+      },
+      "first_guess": {
+        "nfglevels": 46,
+        "nfgsoillevels": 4,
+        "use_spechumd": "yes"
+      },
+      "limits": [
+        "Source parameters require STORM=basin-coded-ID; DOMAIN defaults to parent or accepts storm.",
+        "All target cells and interpolation halo must lie inside the finite source footprint at every lead.",
+        "Five mass hydrometeors are present; number concentrations are not published. Soil, snow and ice come from declared same-cycle GDAS."
+      ]
+    },
+    {
+      "id": "hafs-b",
+      "aliases": [
+        "hfsb"
+      ],
+      "engine_source_id": "hafs-b",
+      "display_name": "NOAA HAFS-B parent or storm grid",
+      "role": "deterministic",
+      "license": "NOAA US government output, public domain; attribution requested, no endorsement. https://registry.opendata.aws/noaa-nws-hafs/",
+      "coverage": "limited_area",
+      "grid": {
+        "family": "regular_latlon",
+        "winds": "earth-relative; each lead owns its grid origin"
+      },
+      "intermediate": {
+        "row": "hafs-b",
+        "backend": "mapped-composition",
+        "profile": "hafs-pressure-grib2-v1",
+        "cadence_hours": 3
+      },
+      "first_guess": {
+        "nfglevels": 46,
+        "nfgsoillevels": 4,
+        "use_spechumd": "yes"
+      },
+      "limits": [
+        "Source parameters require STORM=basin-coded-ID; DOMAIN defaults to parent or accepts storm.",
+        "All target cells and interpolation halo must lie inside the finite source footprint at every lead.",
+        "Five mass hydrometeors are present; number concentrations are not published. Soil, snow and ice come from declared same-cycle GDAS."
       ]
     }
   ]

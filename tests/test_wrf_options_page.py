@@ -13,6 +13,10 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import tempfile
+import tomllib
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,5 +55,131 @@ def test_every_wrf_selector_value_has_a_row():
 def test_the_ocean_mixed_layer_imports():
     tool = _tool()
     assert tool.probe("sf_ocean_physics", 1)["imports"] is True
-    # WRF's 3-D PWP ocean is ported (lane/cap-slab-ocean, aa6bdeed308).
+    # WRF's 3-D PWP ocean is ported (development branch, aa6bdeed308).
     assert tool.probe("sf_ocean_physics", 2)["imports"] is True
+
+
+def test_readme_only_options_are_not_lost_at_package_extraction():
+    spec = importlib.util.spec_from_file_location(
+        "wrf_options_extract", ROOT / "tools/wrf_physics_options/extract.py")
+    extractor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(extractor)
+    labels = extractor._labels(
+        " mp_physics (max_dom)\n"
+        "                                     = 18, NSSL\n"
+        "                                     = 17, 19, 21, 22: legacy NSSL\n"
+        " cu_physics (max_dom)\n", "mp_physics")
+    assert set(labels) == {17, 18, 19, 21, 22}
+    table = json.loads(_tool().OPTIONS.read_text())
+    values = {r["value"] for r in table["selectors"]["mp_physics"]}
+    assert {17, 19, 21, 22} <= values
+    for selector in ("ra_lw_physics", "ra_sw_physics", "sf_urban_physics",
+                     "sf_ocean_physics"):
+        assert 0 in {r["value"] for r in table["selectors"][selector]}
+
+
+def test_fitch_uses_a_valid_companion_and_declares_its_input_fixture():
+    result = _tool().probe("windfarm_opt", 1)
+    assert result["imports"]
+    assert result["resolved"]["shared"]["bl_pbl_physics"] == 5
+    assert result["resolved"]["shared"]["sf_sfclay_physics"] == 5
+    assert result["resolved"]["domains"][0]["wind_farms"].endswith("windturbines.txt")
+    page = (ROOT / "docs/public/WRF-OPTIONS.md").read_text()
+    assert "synthetic JSON turbine input fixture" in page
+
+
+def test_ssib_and_mav_probes_use_their_required_native_companions():
+    tool = _tool()
+    ssib = tool.probe("sf_surface_physics", 8)
+    assert ssib["imports"], ssib
+    assert ssib["resolved"]["shared"]["sf_surface_physics"] == 8
+    assert ssib["resolved"]["shared"]["num_soil_layers"] == 3
+    assert ssib["resolved"]["shared"]["fractional_seaice"] == 1
+    mav = tool.probe("windfarm_opt", 2)
+    assert mav["imports"], mav
+    domain = mav["resolved"]["domains"][0]
+    assert domain["wind_farm_scheme"] == "mav"
+    assert domain["windfarm_ij"] == 2
+    assert domain["wind_farms"].endswith("windturbines-ll.txt")
+
+
+def test_radiation_off_uses_prescribed_surface_instead_of_missing_glw():
+    for key in ("ra_lw_physics", "ra_sw_physics"):
+        result = _tool().probe(key, 0)
+        assert result["imports"]
+        assert result["physics"]["sf_surface_physics"] == 0
+
+
+def test_legacy_nssl_resolution_is_visible_beside_native_471_expectation():
+    tool = _tool()
+    for value in (17, 22):
+        result = tool.probe("mp_physics", value)
+        assert result["imports"]
+        assert result["resolved"]["shared"]["mp_physics"] == 18
+        assert result["report"]["defaults_applied"]
+        assert result["resolved"]["shared"]["nssl_ccn_on"] == 1
+        assert result["native_differences"] == []
+    for value, hail, density in ((19, 2, 1), (21, 0, 0)):
+        result = tool.probe("mp_physics", value)
+        assert result["imports"], result
+        shared = result["resolved"]["shared"]
+        assert shared["mp_physics"] == 18
+        assert shared["nssl_2moment_on"] == 0
+        assert shared["nssl_hail_on"] == hail
+        assert shared["nssl_density_on"] == density
+
+
+@pytest.mark.parametrize("selector", [17, 22, 18])
+def test_stock_nssl_471_legacy_rewrite_overrides_explicit_ccn_only_for_aliases(selector):
+    from woof.namelist_import import import_namelists
+
+    tool = _tool()
+    with tempfile.TemporaryDirectory() as directory:
+        wps, namelist = tool._pair(
+            Path(directory), {**tool.BASE, "mp_physics": selector, "nssl_ccn_on": 0})
+        text, _ = import_namelists(wps, namelist, rrtmg_variant="rrtmg_legacy")
+    shared = tomllib.loads(text)["shared"]
+    assert shared["mp_physics"] == 18
+    assert shared["nssl_ccn_on"] == (0 if selector == 18 else 1)
+    # The runtime mode consumes the translated selectors and allocates the
+    # predicted reservoir. Merely changing the admission report is insufficient.
+    from woof.config import RunConfig
+    from woof.core.nssl2_contract import (
+        NSSL2_SELECTOR_FIELDS, resolve_nssl2_mode_for_config)
+    mode = resolve_nssl2_mode_for_config(RunConfig(
+        nx=2, ny=2, nz=40, dx=12000., dy=12000., ztop=20000., dt=60.,
+        run_seconds=60., **{
+            key: shared[key] for key in NSSL2_SELECTOR_FIELDS if key in shared}))
+    assert ("qnn" in mode.transported_fields) == (selector != 18)
+
+
+def test_program_errors_cannot_be_published_as_scheme_refusals(monkeypatch):
+    from woof import namelist_import
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("unexpected implementation failure")
+
+    monkeypatch.setattr(namelist_import, "import_namelists", broken)
+    with pytest.raises(RuntimeError, match="unexpected implementation failure"):
+        _tool().probe("mp_physics", 8)
+
+
+def test_registry_default_audit_preserves_dropped_and_refused_meanings(monkeypatch):
+    from woof import wrf_namelist_registry as registry
+    selected = {("time_control", "debug_level"), ("physics", "mp_physics"),
+                ("physics", "windfarm_opt"), ("afwa", "afwa_bad_data_check"),
+                ("time_control", "start_year")}
+    rows = [r for r in registry.wrf_namelist_table()["keys"]
+            if (r["section"], r["key"]) in selected]
+    assert len(rows) == len(selected)
+    monkeypatch.setattr(registry, "wrf_namelist_table", lambda: {"keys": rows})
+    results = {r["key"]: r for r in _tool().registry_audit()}
+    assert set(results) == {key for _, key in selected}
+    assert results["debug_level"]["status"] == "dropped"
+    assert results["mp_physics"]["status"] == "default-refused"
+    assert results["windfarm_opt"]["status"] == "dropped"
+    assert results["afwa_bad_data_check"]["status"] == "dropped"
+    assert results["start_year"]["status"] == "translated"
+    assert results["start_year"]["fixture_companions"]["share/start_date"][0].startswith(
+        str(results["start_year"]["probed"][0]))
+    assert all(r["line"] > 0 for r in results.values())

@@ -43,6 +43,7 @@ use sha2::{Digest, Sha256};
 pub mod composite;
 pub mod convert;
 pub mod error;
+pub mod execution;
 pub mod fieldmap;
 pub mod geometry;
 pub mod history;
@@ -78,6 +79,10 @@ pub use error::{MpasError, MpasResult};
 /// SHA-256 of a file, streamed. Every digest this crate publishes -- and
 /// every digest it refuses against -- comes from here.
 pub fn sha256_file(path: &Path) -> MpasResult<String> {
+    source_digest::digest(path)
+}
+
+fn sha256_file_uncached(path: &Path) -> MpasResult<String> {
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; 16 * 1024 * 1024];
@@ -90,5 +95,7 @@ pub fn sha256_file(path: &Path) -> MpasResult<String> {
     }
     Ok(weights::hex(&hasher.finalize()))
 }
+
+mod source_digest;
 
 pub mod native_gwd;

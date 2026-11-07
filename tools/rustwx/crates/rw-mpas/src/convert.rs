@@ -10,6 +10,7 @@
 //! method and the engine that wrote it.
 
 use std::path::{Path, PathBuf};
+use rayon::prelude::*;
 
 use rw_store::netcdf_classic::{
     NcAttr, NcData, NcDim, NcFormat, NcType, NcVarDef,
@@ -1123,7 +1124,11 @@ fn convert_frame_inner(
             }
         }
 
-        for planned in &plan {
+        // Bound temporary remapped slabs while letting independent fields
+        // share the same Rayon pool (including single-level fields).
+        for batch in plan.chunks(8) {
+          let prepared: Vec<MpasResult<_>> = batch.par_iter().map(|planned| {
+            let mut composite_fallbacks = Vec::new();
             let mapping = &FIELD_MAP[planned.mapping.expect("every planned entry maps")];
             let levels = expected_levels(mapping, frame).ok_or_else(|| {
                 MpasError::Refusal(format!(
@@ -1193,6 +1198,15 @@ fn convert_frame_inner(
                 },
                 _ => {}
             }
+            Ok((values, levels, composite_fallbacks))
+          }).collect();
+          let mut slabs: Vec<(&str, Vec<f32>)> = Vec::new();
+          for (planned, prepared) in batch.iter().zip(prepared) {
+            let mapping = &FIELD_MAP[planned.mapping.expect("every planned entry maps")];
+            let (values, levels, fallbacks) = prepared?;
+            for note in fallbacks {
+                if !composite_fallbacks.contains(&note) { composite_fallbacks.push(note); }
+            }
             if radar_winds {
                 let mass_name = match mapping.wrf_name {
                     "U" => Some(RADAR_U_EARTH),
@@ -1200,7 +1214,7 @@ fn convert_frame_inner(
                     _ => None,
                 };
                 if let Some(name) = mass_name {
-                    writer.put_record(name, 0, NcData::Floats(&values))?;
+                    slabs.push((name, values.clone()));
                     written.push(name.to_string());
                 }
             }
@@ -1247,8 +1261,10 @@ fn convert_frame_inner(
                     }
                 }
             }
-            writer.put_record(mapping.wrf_name, 0, NcData::Floats(&staggered))?;
+            slabs.push((mapping.wrf_name, staggered));
             written.push(mapping.wrf_name.to_string());
+          }
+          writer.put_float_records(0, &slabs)?;
         }
 
         if let Some(gather) = composite {

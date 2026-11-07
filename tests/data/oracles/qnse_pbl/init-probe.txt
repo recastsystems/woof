@@ -1,0 +1,1 @@
+init_probe -finit-logical=true: true_count=64; =false: true_count=0

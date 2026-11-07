@@ -144,7 +144,7 @@ def test_run_refuses_a_missing_runner_even_when_experimental(tmp_path, monkeypat
 
 def test_an_installed_hex_outside_the_pair_is_a_blocker(tmp_path_factory):
     # woof hex 0.3.3 is the newest release on the index today; it ships neither
-    # runner and declares woof>=2.8.0,<2.8.1.
+    # runner and declares gpuwm>=2.8.0,<2.8.1.
     site = _fake_hex(tmp_path_factory.mktemp("site") / "site", "0.3.3", runners=False)
     env = dict(os.environ, CUDA_VISIBLE_DEVICES="", GPUWM_NO_LOCAL_GPU="1",
                PYTHONPATH=os.pathsep.join([str(site), str(ROOT)]))

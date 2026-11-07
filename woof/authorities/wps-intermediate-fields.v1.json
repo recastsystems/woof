@@ -71,7 +71,8 @@
       "field": "air_pressure_at_mean_sea_level",
       "wps": "PMSL",
       "units": "Pa",
-      "axis": "surface"
+      "axis": "surface",
+      "absent": "skip"
     },
     {
       "field": "eastward_wind_10m",
@@ -102,7 +103,8 @@
       "wps": "SST",
       "units": "K",
       "axis": "surface",
-      "missing": "preserve_mask"
+      "missing": "preserve_mask",
+      "absent": "skip"
     },
     {
       "field": "sea_ice_fraction",
@@ -115,7 +117,12 @@
       "field": "snow_water_equivalent",
       "wps": "SNOW",
       "units": "kg m-2",
-      "axis": "surface"
+      "axis": "surface",
+      "from": {
+        "field": "snow_depth",
+        "units": "m",
+        "scale": 200.0
+      }
     },
     {
       "field": "land_fraction",
@@ -137,6 +144,186 @@
       "units": "m3 m-3",
       "axis": "soil",
       "missing": "preserve_mask"
+    },
+    {
+      "field": "cloud_water_mixing_ratio",
+      "wps": "QC",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "absent": "skip",
+      "compositions": [
+        "rrfs-conus-prslev-2dfld-with-in-band-terrain-and-ruc9-node-soil-hex-state"
+      ]
+    },
+    {
+      "field": "cloud_ice_mixing_ratio",
+      "wps": "QI",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "absent": "skip",
+      "compositions": [
+        "rrfs-conus-prslev-2dfld-with-in-band-terrain-and-ruc9-node-soil-hex-state"
+      ]
+    },
+    {
+      "field": "rain_water_mixing_ratio",
+      "wps": "QR",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "absent": "skip",
+      "compositions": [
+        "rrfs-conus-prslev-2dfld-with-in-band-terrain-and-ruc9-node-soil-hex-state"
+      ]
+    },
+    {
+      "field": "snow_mixing_ratio",
+      "wps": "QS",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "absent": "skip",
+      "compositions": [
+        "rrfs-conus-prslev-2dfld-with-in-band-terrain-and-ruc9-node-soil-hex-state"
+      ]
+    },
+    {
+      "field": "graupel_or_hail_mixing_ratio",
+      "wps": "QG",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "absent": "skip",
+      "compositions": [
+        "rrfs-conus-prslev-2dfld-with-in-band-terrain-and-ruc9-node-soil-hex-state"
+      ]
+    },
+    {
+      "field": "relative_humidity_2m",
+      "wps": "RH",
+      "units": "%",
+      "axis": "surface",
+      "absent": "skip",
+      "compositions": [
+        "rrfs-conus-prslev-2dfld-with-in-band-terrain-and-ruc9-node-soil-hex-state"
+      ]
+    },
+    {
+      "field": "cloud_water_mixing_ratio",
+      "wps": "QCLOUD",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "optional": true
+    },
+    {
+      "field": "rain_water_mixing_ratio",
+      "wps": "QRAIN",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "optional": true
+    },
+    {
+      "field": "cloud_ice_mixing_ratio",
+      "wps": "QICE",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "optional": true
+    },
+    {
+      "field": "snow_mixing_ratio",
+      "wps": "QSNOW",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "optional": true
+    },
+    {
+      "field": "graupel_or_hail_mixing_ratio",
+      "wps": "QGRAUP",
+      "units": "kg kg-1",
+      "axis": "pressure",
+      "optional": true
+    },
+    {
+      "field": "cloud_droplet_number",
+      "wps": "QNC",
+      "units": "kg-1",
+      "axis": "pressure",
+      "optional": true,
+      "missing": "preserve_mask"
+    },
+    {
+      "field": "cloud_ice_number",
+      "wps": "QNI",
+      "units": "kg-1",
+      "axis": "pressure",
+      "optional": true,
+      "missing": "preserve_mask"
+    },
+    {
+      "field": "rain_number",
+      "wps": "QNR",
+      "units": "kg-1",
+      "axis": "pressure",
+      "optional": true,
+      "missing": "preserve_mask"
+    },
+    {
+      "field": "snow_number",
+      "wps": "QNS",
+      "units": "kg-1",
+      "axis": "pressure",
+      "optional": true,
+      "missing": "preserve_mask"
+    },
+    {
+      "field": "graupel_number",
+      "wps": "QNG",
+      "units": "kg-1",
+      "axis": "pressure",
+      "optional": true,
+      "missing": "preserve_mask"
+    },
+    {
+      "field": "hail_number",
+      "wps": "QNH",
+      "units": "kg-1",
+      "axis": "pressure",
+      "optional": true,
+      "missing": "preserve_mask"
+    },
+    {
+      "field": "water_friendly_aerosol_number",
+      "wps": "QNWFA",
+      "units": "kg-1",
+      "axis": "pressure",
+      "optional": true,
+      "missing": "preserve_mask"
+    },
+    {
+      "field": "ice_friendly_aerosol_number",
+      "wps": "QNIFA",
+      "units": "kg-1",
+      "axis": "pressure",
+      "optional": true,
+      "missing": "preserve_mask"
     }
-  ]
+  ],
+  "soil_layers_from_nodes_cm": [
+    [
+      0,
+      10
+    ],
+    [
+      10,
+      40
+    ],
+    [
+      40,
+      100
+    ],
+    [
+      100,
+      200
+    ]
+  ],
+  "map_sources": {
+    "rrfs-conus-prslev-2dfld-with-in-band-terrain-and-ruc9-node-soil-hex-state": "NCEP HRRR Model"
+  }
 }

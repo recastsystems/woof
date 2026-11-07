@@ -1,8 +1,80 @@
 # Changelog
 
+## 0.4.14
+
+Requires gpuwm>=2.9.12,<2.10.
+
+Fixed:
+- Native MPAS restart files now restart the dynamics on every physics suite. On the default route a restart continues the run that wrote it exactly; with `--numerics strict` it reproduces native MPAS's own restart.
+- Checkpoint resumes and same-mesh resumes of storm-following regions on MPAS physics continue the run exactly, on one card or several ranks.
+- Several ranks on one card use much less memory: radiation work space is shared between them and the TEMPO tables are held once per card.
+- Memory admission prices MPAS-physics runs from measurements on this release: one member at 120, 60 and 30 km, co-resident members, ranks sharing a card and one rank per card. Shapes that were refused before now start.
+- Same-host ranks no longer grow their memory over a long run.
+- `--samehost-ranks threads` runs again on both physics routes.
+- Waves run on several ranks and cards with one wave model per run, give the same numbers run to run, keep their state in checkpoints, and runs on one host download the bathymetry once.
+- WOOF-physics runs with waves start on the native global meshes.
+- WOOF-physics runs write the 2-5 km updraft-helicity maximum and draw its maps, on one card, with local time stepping and on several cards.
+- Variable-resolution globes with a coarse background draw their "around the core" map instead of stopping the run.
+- A region run no longer stops now and then with "boundary intermediate digest differs".
+- Runs with observation scoring turned off finish instead of stopping after the forecast.
+- RUC land: frozen-soil runoff matches native MPAS in the last bit.
+- Strict runs refuse TEMPO tables that are not the strict ones, and a named table folder must hold every table.
+- Prebuilt kernel packs cover NVRTC 13.5.37 and 13.4.59, so a fresh `[gpu-cu13]` install starts without compiling. The RRFS MYNN-EDMF kernel compiles to the same machine code every time.
+
+## 0.4.13
+
+Requires gpuwm>=2.9.12,<2.10.
+
+Fixed:
+- A fresh `woof hex[gpu-cu13]` install loads prebuilt kernels again instead of compiling them for about 100 s: the extra keeps NVRTC below 13.5, which has no pack yet. A 13.5 pack comes in a later release.
+- `woof hex doctor` warns when the loaded NVRTC has no prebuilt kernel pack.
+- Storm-following and setup-following runs write the 0-1/0-2/0-3 km updraft-helicity maxima on every segment.
+- The README, the PyPI page and the manual state this release's version, engine range and kernel packs, and the PyPI page's links work.
+
+## 0.4.12
+
+Requires gpuwm>=2.9.12,<2.10.
+
+New:
+- Regional forecasts start from RRFS v1, with separate boundary sources and cycles.
+- HRDPS and RDPS regional starts, with deep-soil and upper-air donors.
+- Held-Suarez forcing on global meshes (`ra_lw_physics = 31`).
+- Opt-in hurricane line: cyclone tracking, HAFS starts and storm-following regions.
+- Opt-in wave forecasts, stations and maps.
+- SPPT and SKEB stochastic physics, written from the published method (opt-in).
+- 0-1, 0-2 and 0-3 km updraft helicity maxima in history and on maps.
+- A 10 km global mesh, with parallel download and unpack.
+- An experimental AMD (ROCm/HIP) backend, opt-in. CUDA stays the default.
+- Storm-following regions run on several cards.
+
+Changed:
+- RRFS conus3km transport went from 93.4 ms to 71.5 ms.
+- hrrrv5 with the storm scheme runs at 1.18x the MPAS-physics step, down from 1.60x, and its final pass went from 227 s to 31 s.
+- Less device memory: 120 km MPAS 10.44 to 5.49 GiB, 60 km engine 14.95 to 11.96 GiB, an hrrrv5 region 6.49 to 2.86 GiB.
+- Less host memory during mesh preparation and history writes.
+- Sources are prepared and maps finished across more cores, and a region's source preparation runs beside mesh preparation. Sub-area end-of-run maps went from 81.5 s to 13.5 s.
+- Process-rank device memory is priced from its measured whole-run peak, and low-memory forecasts are priced before launch.
+
+Fixed:
+- Four-card MPAS-physics runs start: the process transport links only the ranks that share halo words.
+- 1 km runs split across cards no longer stop at random: each card checks only the columns it owns.
+- rrfs_v2_dev and every column suite without Noah-MP run again, on one card or several.
+- Reflectivity maps include the rain from active cumulus schemes.
+- Coastal water cells take their sea temperature by the WPS SKINTEMP rule.
+- A refused cap mesh is built at another centre and turned to the requested point.
+- Stale run files are recovered, MPAS device memory is checked before startup, and waiting ranks stop when the forecast coordinator fails.
+- Native restarts, checkpoints and history timing are preserved.
+- Runs that write checkpoints no longer write zeros for boundary-layer height, surface heat fluxes and reflectivity in their first frame.
+- `--dynamics KEY=VALUE` now reaches runs on the MPAS-physics route.
+- A run resumed from a checkpoint keeps its maps' start time, and frames written past the checkpoint are set aside.
+- The 96 -> 3 km zoom globe is priced from its measured peak, so restarts that fit are admitted.
+- Fixes to source soil layers, static culls, field units and worker refusals.
+
+NOAA GSL UGWP is now credited under its Apache-2.0 licence in NOTICE.
+
 ## 0.4.11
 
-Requires woof>=2.9.11,<2.10.
+Requires gpuwm>=2.9.11,<2.10.
 
 New:
 - `hrrrv5` on the 96 -> 3 km zoom globe: `woof hex mesh-plan --global-mesh ... --run --geog ROOT --forecast-arg=--physics-suite=hrrrv5` builds NOAA's RRFS start state and the GSL drag statistics itself. `--forecast-arg=--physics=config_convection_scheme=cu_grell_freitas_li` adds NOAA GSL's scale-aware Grell-Freitas on the GPU as the labelled variant "hrrrv5 + storm scheme", so the coarse cells keep their convective rain (hrrrv5 itself has no cumulus scheme); it fades out on the 3 km cells.
@@ -29,7 +101,7 @@ Fixed:
 
 ## 0.4.10
 
-Requires woof>=2.9.10,<2.10.
+Requires gpuwm>=2.9.10,<2.10.
 
 New:
 - RRFS-MPAS `hrrrv5` runs with no native library: its physics runs GPU-resident on the ported fork framework, and its history and diagnostics are written by `rw_mpas_stream` with the fork's stream contract.
@@ -38,8 +110,8 @@ New:
 - RRFS `hrrrv5` runs NSSL two-moment microphysics (`mp_nssl2m`) on the GPU; a 3 km step costs about 1.17x the TEMPO default.
 - RRFS-SD smoke and dust run on the GPU on the default 44c0849 pin; a 3 km step with real fires costs about 1.12x the same run without smoke.
 - RRFS at 3 km steps faster: TEMPO microphysics (176 -> 143 ms of a 3 km step) and the limited-area dycore's stencils and acoustic solve (about 12 % of the step), with every word unchanged in strict numerics.
-- The RRFS init engines (`rw_mpas_init_v831`, `rw_mpas_gsl_oro`), which woof 2.9.10 ships in its release bundle rather than its wheel, are staged automatically the first time an RRFS init needs them.
-- Optional Icechunk output stores native forecast history as atomic Zarr v3 snapshots, locally or on S3 (`--output-format netcdf,icechunk` on every forecast door; needs woof 2.9.10, whose writer is fetched on first use).
+- The RRFS init engines (`rw_mpas_init_v831`, `rw_mpas_gsl_oro`), which gpuwm 2.9.10 ships in its release bundle rather than its wheel, are staged automatically the first time an RRFS init needs them.
+- Optional Icechunk output stores native forecast history as atomic Zarr v3 snapshots, locally or on S3 (`--output-format netcdf,icechunk` on every forecast door; needs gpuwm 2.9.10, whose writer is fetched on first use).
 
 Changed:
 - MPAS-physics history and diagnostics files are written lossless-compressed (NetCDF-4, the same values in a fraction of the disk), compressed on every core by the engine's `rw_mpas_stream`. Init, restart and boundary files keep their native format. `GPUWM_HISTORY_COMPRESSION=none` writes them as before.
@@ -48,10 +120,11 @@ Changed:
 - GEFS member inits and boundaries download only the records the init reads, about 34 MB instead of 106-118 MB per member and lead.
 
 Fixed:
+- Limited-area runs (RRFS `hrrrv5`, hex limited-area regions) take less card time per step: the vertically implicit acoustic solve runs level-parallel around its column sweeps and the acoustic flux sums read the mesh tables in thread order. Every word is unchanged in fast and strict numerics.
 - A local-time-stepping run on MPAS physics records every class step, the coordinator's work between them and the loop's own measured rate in `native-runtime-timings.json`; it used to hold only the class that finished last, so most of each step was unlabelled.
 - A local-time-stepping profile run (`WOOF_HEX_LTS_DEVICE_SPANS=1`) records each class step's device time. The default receipt's per-class rows are host wall, which on one card includes the device work queued ahead of a class, and the receipt now says so.
 - The zoom-globe receipt (`global-vr-receipt.json`) names the physics mode the forecast ran. A run that named a suite but no mode ran correct mode, and the receipt said exact.
-- A hex run on MPAS-A physics started from HRRR (or any first guess that carries hydrometeors) starts from its cloud, rain, ice, snow and graupel and HRRR's own numbers, as the hrrrv5 route does, instead of from no condensate (no echo at hour zero); `woof hex init --first-guess-hydrometeors no`, and strict numerics, keep MPAS-A v8.4.2 case 7's dry start. Needs woof 2.9.10's `rw_mpas_init`; an older engine is a named gap.
+- A hex run on MPAS-A physics started from HRRR (or any first guess that carries hydrometeors) starts from its cloud, rain, ice, snow and graupel and HRRR's own numbers, as the hrrrv5 route does, instead of from no condensate (no echo at hour zero); `woof hex init --first-guess-hydrometeors no`, and strict numerics, keep MPAS-A v8.4.2 case 7's dry start. Needs gpuwm 2.9.10's `rw_mpas_init`; an older engine is a named gap.
 - A hex run started from GFS also starts from GFS's own cloud, rain, ice, snow and graupel (the GFS rows now decode them), instead of from no condensate.
 - The hour-zero radar maps of the MPAS-A suites (Thompson microphysics) show the reflectivity of the starting state instead of nothing.
 - So does the hour-zero radar map of a mesoscale_reference run (WSM6 microphysics).
@@ -95,7 +168,7 @@ Fixed:
 - An init from ECMWF open data (`--source ifs`, `ifs-0p1`, `aifs`, `ifs-ens` or `aifs-ens`, any door) has sea ice. ECMWF publishes sea-ice thickness only (AIFS no sea-ice field), so every ECMWF init started ice-free; the rows now take the same cycle's GFS analysis sea-ice concentration (two records, about 130 kB) as the init's surface input, interpolated over water with its own land mask.
 - `--source ifs-0p1` refuses its first cycle (2026-10-20 06Z, published without soil layers) before the mesh, the static or any download, naming the `ifs` row as the remedy, on `init-source`, `global`, `mesh-plan --run` and the regional doors; a cycle before that one is refused as predating the publication. A row declares this in its new `cycles` block.
 - IFS, IFS 0.1, AIFS and IFS ENS starts download only the records the init reads, and IFS inits carry the real 2 m temperature and humidity.
-- Hex with Regional nest maps are headlined `nest 3 km` instead of `d01 3 km` (with woof 2.9.10).
+- Hex with Regional nest maps are headlined `nest 3 km` instead of `d01 3 km` (with gpuwm 2.9.10).
 - `woof hex render --products qpf_1h` (or any windowed product) over several history hours draws the window instead of refusing every run: naming a windowed product puts the frames in one store, as `--series` does.
 - A delayed start reads hex history under its own variable names and keeps soil water and snow, so delayed-start backgrounds take their surface from history instead of the initial state.
 - A regional parent run shorter than 15 steps completes: the boundary mint runs inside the boundaries the run admitted.
@@ -139,11 +212,11 @@ Fixed:
 - RRFS `hrrrv5` boundary layer and RUC land surface hand data to their schemes through persistent device buffers and a few fused copy launches per call, instead of about 2,000 small copies and launches per step, and RUC no longer reads two words back from the GPU at every call. An hrrrv5 step on x1.2562 (RTX 5090, fast numerics) goes from 0.071 s to 0.059 s, with identical output in both numerics modes.
 - RRFS `hrrrv5` radiation is about 8x cheaper: the longwave slot no longer builds per-column profile views that nothing reads, and the shortwave aerosol optics run one thread per column and level. On x1.40962 (RTX 5090, fast numerics) a radiation step goes from 1.60 s to 0.51 s and the mean step from 0.98 s to 0.46 s, with identical output in both numerics modes.
 - The UGWP gravity-wave drag ports ship again, so RRFS hrrrv5's drag (`bl_ugwp_gwdo`) runs on the GPU with no opt-in. `--licence-opt-in ugwp-held` is retired: a run that still names it is told so and runs normally.
-- The engine programs the package bundles are rebuilt from woof 2.9.10: maps of a history that leaves the terrain unset reduce sea-level pressure from the run's initial terrain (an RRFS 3 km frame showed a tangle of isobars around an 868 hPa low), sea-level pressure is smoothed over high ground, a limited-area mesh's boundary rings are left blank, composite reflectivity includes parameterised convection, map frames are written lossless-compressed (a 3 km frame 1.23 GB -> 306 MB), history frames are written about 4x faster with the same bytes, and RRFS boundary files carry the 2.9.10 numbers.
+- The engine programs the package bundles are rebuilt from gpuwm 2.9.10: maps of a history that leaves the terrain unset reduce sea-level pressure from the run's initial terrain (an RRFS 3 km frame showed a tangle of isobars around an 868 hPa low), sea-level pressure is smoothed over high ground, a limited-area mesh's boundary rings are left blank, composite reflectivity includes parameterised convection, map frames are written lossless-compressed (a 3 km frame 1.23 GB -> 306 MB), history frames are written about 4x faster with the same bytes, and RRFS boundary files carry the 2.9.10 numbers.
 
 ## 0.4.9
 
-Requires woof>=2.9.7,<2.10.
+Requires gpuwm>=2.9.7,<2.10.
 
 Fixed:
 - The s2s door wires its ocean on the MPAS-physics route: a prescribed surface series updates SST and sea ice, and the default prognostic ocean runs MPAS's mixed layer on the GPU.
@@ -177,7 +250,7 @@ Fixed:
 
 ## 0.4.8
 
-Requires woof>=2.9.7,<2.10.
+Requires gpuwm>=2.9.7,<2.10.
 
 Fixed:
 - A global ensemble retries a member stage that fails once, and a member that still fails is recorded as missing while the other members finish.
@@ -186,7 +259,7 @@ Fixed:
 
 ## 0.4.7
 
-Requires woof>=2.9.7,<2.10.
+Requires gpuwm>=2.9.7,<2.10.
 
 Fixed:
 - Storm-following runs no longer refuse a move with "FP32 moving integral cannot meet its conservation tolerance".
@@ -196,7 +269,7 @@ Fixed:
 
 ## 0.4.6
 
-Requires woof>=2.9.7,<2.10.
+Requires gpuwm>=2.9.7,<2.10.
 
 New:
 - MPAS physics is the default on every door: a run that names no physics runs MPAS-A's own `convection_permitting` suite on the GPU (the suite follows MPAS-A practice by mesh, `data/profiles/physics-default.v1.json`). WOOF physics stays one flag away: `--physics-suite arwen_mpas_column` (`--physics-row arwen` on `global`).
@@ -212,7 +285,7 @@ Fixed:
 
 ## 0.4.5
 
-Requires woof>=2.9.7,<2.10.
+Requires gpuwm>=2.9.7,<2.10.
 
 New:
 - The MPAS physics route runs every hex shape: limited-area regions, storm-following regions and ensembles, local time stepping, Hex with Regional, add-nest, restart, IAU, stochastic physics, chemistry, member rosters and two or more cards, with no native library.
@@ -241,12 +314,12 @@ Fixed:
 - Region prepares build the parent's static from the region's halo instead of the whole globe.
 - Storm-following segments resume on every core, and an MPAS-route segment moved over a geography with lakes no longer stops at its first land-surface call.
 - MPAS-route exports carry terrain height and reflectivity, so keep-as-init, the column store and Hex with Regional work on that route.
-- The WOOF route runs on woof 2.9.7.
+- The WOOF route runs on gpuwm 2.9.7.
 - Moving runs on column suites (HRRR shape) and over sea ice move past their first move, and a new member's sea ice brings its own albedo, emissivity and ice fraction.
 
 ## 0.4.4
 
-Requires woof>=2.9.4,<2.10.
+Requires gpuwm>=2.9.4,<2.10.
 
 New:
 - Global and variable-resolution forecasts draw their first maps the moment the forecast writes its first frame, instead of after the whole forecast.
@@ -255,17 +328,17 @@ New:
 
 Fixed: every hex map carries a labelled latitude and longitude graticule.
 
-Fixed: `woof hex global`, `mesh-plan`, `regional`, `country`, `moving` and `forecast` take `--model-label` and `--brand` and pass them to the point soundings and meteograms; with woof 2.9.6 or later the brand is drawn in bold at the top right.
+Fixed: `woof hex global`, `mesh-plan`, `regional`, `country`, `moving` and `forecast` take `--model-label` and `--brand` and pass them to the point soundings and meteograms; with gpuwm 2.9.6 or later the brand is drawn in bold at the top right.
 
 ## 0.4.3
 
-Requires woof>=2.9.4,<2.10.
+Requires gpuwm>=2.9.4,<2.10.
 
-Fixed: global and subseasonal forecasts with sea ice no longer stop at their first step on woof 2.9.4, and `woof hex s2s` runs of any length finish their energy products.
+Fixed: global and subseasonal forecasts with sea ice no longer stop at their first step on gpuwm 2.9.4, and `woof hex s2s` runs of any length finish their energy products.
 
 ## 0.4.2
 
-Requires woof>=2.9.4,<2.10.
+Requires gpuwm>=2.9.4,<2.10.
 
 New:
 - `woof hex regional`: one-command limited-area forecasts from HRRR around a point, with mesh, boundaries, products and a stage receipt.
@@ -293,7 +366,7 @@ Fixed:
 
 ## 0.4.1
 
-Requires woof>=2.9.2,<2.10.
+Requires gpuwm>=2.9.2,<2.10.
 
 New:
 - MPAS-A v8.4.2 dycore, GPU physics and LES closures, with four acoustic substeps and a native-free framework. WOOF physics remains the default.
@@ -310,7 +383,7 @@ New:
 - Kernel packs fetched on demand from `kernel-packs-v0.4.1`; `woof hex fetch-assets --from DIR` and `WOOF_HEX_ASSETS_FROM` support offline staging.
 
 Fixed:
-- MPAS shortwave shape specialization and YSU memory probes support woof 2.9.3.
+- MPAS shortwave shape specialization and YSU memory probes support gpuwm 2.9.3.
 - Physics routing, vegetation, soil columns and variable-mesh convection follow the selected suite. MPAS physics without a namelist selects `mesoscale_reference`; default YSU timesteps respect engine limits and explicit selections.
 - WSM6 precipitation checks accept valid step scalings; limited-area forecasts avoid the first-step buffer failure, and CUDA graph replay refreshes heating and tendencies.
 - Same-host forecasts handle IAU, per-card kernels and memory admission; local time stepping supports even acoustic counts and exchanges multi-card interface fluxes.
@@ -325,7 +398,7 @@ Fixed:
 
 ## 0.3.3 (2026-09-29)
 
-Requires woof 2.8.0 (woof>=2.8.0,<2.8.1), as 0.3.2 did.
+Requires gpuwm 2.8.0 (gpuwm>=2.8.0,<2.8.1), as 0.3.2 did.
 
 New:
 - Every NVIDIA architecture NVRTC can compile the kernels for is admitted
@@ -368,7 +441,7 @@ Fixed:
   (run_cuda_v841_forecast_2gpu.py) is unchanged and still refuses a card
   below compute capability 12.0.
 - `woof hex render` refused every frame with "rw_wrfbatch produced no
-  catalog rows" on woof 2.8.0, whose renderer prints six fields per
+  catalog rows" on gpuwm 2.8.0, whose renderer prints six fields per
   catalog row. The door reads five or more.
 - The hex tests find the package by its import name, so they hold in any
   layout the package is installed or folded into.
@@ -398,7 +471,7 @@ New:
   engine's column seam does not take as an argument is refused by name.
 
 Changed:
-- The physics seam re-pins to woof 2.8.0: woof>=2.8.0,<2.8.1. Eight of
+- The physics seam re-pins to gpuwm 2.8.0: gpuwm>=2.8.0,<2.8.1. Eight of
   the sixteen pinned engine files moved between the published 2.7.4 and
   2.8.0 wheels (woof/config.py, woof/core/gf.py, woof/core/kernels/gf.cu,
   woof/core/kernels/__init__.py, woof/core/microphysics.py,
@@ -505,10 +578,10 @@ Fixed:
 ## 0.3.1 (2026-09-15)
 
 New:
-- The physics seam re-pins to woof 2.7.4. The sixteen-file manifest
+- The physics seam re-pins to gpuwm 2.7.4. The sixteen-file manifest
   carries the published 2.7.4 wheel's bytes (tag ed957997, whose tree
   agrees with all three platform wheels on every pinned path) and the
-  derived range is woof>=2.7.4,<2.7.5. Two of the sixteen paths moved
+  derived range is gpuwm>=2.7.4,<2.7.5. Two of the sixteen paths moved
   between the published 2.7.3 and 2.7.4 wheels, measured wheel against
   wheel (verification/engine-verdicts/repin-274-20260915.json): the config
   loader gained one settings-map reader of the radiation rule that the
@@ -530,7 +603,7 @@ New:
   each other and with the tree's HEAD): the same five of sixteen paths
   differ from the public bytes as before and the composed glacier unit is
   the pin's. The row on the 2.7.3 base is dropped with the range, because
-  pip no longer resolves 2.7.3+x.1 inside woof>=2.7.4,<2.7.5 and a row
+  pip no longer resolves 2.7.3+x.1 inside gpuwm>=2.7.4,<2.7.5 and a row
   whose base the specifier refuses admits nothing; tests/test_engine_pin.py
   refuses such a row by name. The forecast driver's checkout guard is
   unchanged and follows the admitted row as before.
@@ -721,7 +794,7 @@ New:
 - A private engine with a measured row is admitted. An engine that is not
   on PyPI, carrying a PEP 440 local version label on the pinned base,
   already satisfies the declared range (2.7.3+x.1 sits inside
-  woof>=2.7.3,<2.7.4); what decides whether this port runs on it is now
+  gpuwm>=2.7.3,<2.7.4); what decides whether this port runs on it is now
   the same thing that decides for a published engine, its sixteen seam
   bytes. tools/measure_engine_verdicts.py --admit hashes those files
   inside the engine's own wheels and source tree (which must agree with
@@ -768,7 +841,7 @@ Fixed:
   carries an LBC row ($WOOF_HEX_RW_MPAS_LBC, $RW_MPAS_LBC kept as the
   legacy spelling, $WOOF_RW_MPAS_LBC, the bridge directories, PATH), the
   cycle chain and woof hex lbc resolve through it, and doctor reports it.
-- Requires woof 2.7.3 and refuses every earlier engine, 2.6.4 and 2.6.5
+- Requires gpuwm 2.7.3 and refuses every earlier engine, 2.6.4 and 2.6.5
   included. Eleven of the sixteen pinned seam files moved between the
   published 2.6.5 wheel 0.2.3 pinned and the published 2.7.3 wheel: the
   Grell-Freitas adapter and its kernel, the phase-one physics driver, the
@@ -824,7 +897,7 @@ New:
   carries the same contract.
 
 Fixed:
-- Requires woof 2.6.4 or 2.6.5. Eight of the sixteen pinned seam files
+- Requires gpuwm 2.6.4 or 2.6.5. Eight of the sixteen pinned seam files
   moved between the published 2.6.1 wheel 0.2.2 pinned and the published
   2.6.4: three at the 2.6.3 cut (the column batch's mp=28 row, a
   config-relative file key in the config loader, the contract document) and
@@ -859,7 +932,7 @@ New:
   v841 chain to eight species is its own campaign.
 
 Fixed:
-- Requires woof 2.6.1. Three of the sixteen pinned seam files moved at
+- Requires gpuwm 2.6.1. Three of the sixteen pinned seam files moved at
   that cut, each re-measured against the published wheel; the x4
   frozen-source proof re-run at the new pins hashes all four snapshots
   byte-identical to the 2.6.0 proof (one mesh, one case, one hour).
@@ -896,7 +969,7 @@ Fixed:
 - The swath probe stops reporting a coverage-refused spec as having cleared
   the gradient gate; its verdict now fails closed over the refusal classes
   and its coverage fragments are pinned against the Rust that prints them.
-- Requires woof 2.6.0: the engine release carrying the repaired
+- Requires gpuwm 2.6.0: the engine release carrying the repaired
   steepest-gradient meter, P3 microphysics (mp_physics = 50) and the ten
   P3 reachability fixes.
 
@@ -972,12 +1045,12 @@ Changed:
 
 Fixed:
 - **A fresh `pip install woof hex` resolved an engine this port's own pin
-  refuses.** The dependency was `woof>=2.5.5` with no ceiling, so pip took
+  refuses.** The dependency was `gpuwm>=2.5.5` with no ceiling, so pip took
   the newest published engine (at the time 2.5.7) and the forecast lane
   then refused at launch with two SHA-256 digests and no version number while
   `woof hex doctor` reported the estate healthy and exited 0. A green
   install and a dead run, with no route out by reading. Three changes, all
-  default-on: the declared range is now **`woof>=2.5.8,<2.5.9`**, derived by
+  default-on: the declared range is now **`gpuwm>=2.5.8,<2.5.9`**, derived by
   `woof.hex.engine_pin` from a measured table of every published engine rather
   than typed, with an **exclusive ceiling at the first engine nobody has
   measured** so a future engine cut cannot re-open it; `doctor` hashes the
@@ -998,7 +1071,7 @@ Fixed:
   files are in this install and all 16 match`, and the next line said an
   installed woof cannot satisfy the pin and that lane needs a source
   checkout. The second was a constant string written when the manifest pinned
-  `docs/mpas-seam.md`, which no wheel carried; woof 2.5.8 ships it inside the
+  `docs/mpas-seam.md`, which no wheel carried; gpuwm 2.5.8 ships it inside the
   wheel at the manifest's own key. Measured 2026-08-28 in a virtualenv holding
   only the published wheels: `inspect_seam` over the install returns
   `checked=16, matched=16, moved=(), absent=()`, `doctor` exits 0, and the
@@ -1731,5 +1804,5 @@ Fixed:
 - The forecast door leaves output creation to the driver; an admitted run
   no longer fails on a directory that already exists.
 
-Requires woof 2.5.5 or newer for the seam bytes and the bundled engine
+Requires gpuwm 2.5.5 or newer for the seam bytes and the bundled engine
 binaries.

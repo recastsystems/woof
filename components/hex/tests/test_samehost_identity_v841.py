@@ -266,6 +266,22 @@ def test_history_reconstruction_preserves_all_bits_and_ignores_halos(owned_only)
     assert result["constant"].tobytes() == mappings[0]["constant"].tobytes()
 
 
+@pytest.mark.parametrize("owned_only", [False, True])
+def test_consuming_history_reconstruction_releases_inputs_and_preserves_bits(owned_only):
+    layouts = _layouts(3)
+    truth = np.array([0, 0x80000000, 0x7FC00001, 0x3F800000] * 3, dtype=np.uint32).view(np.float32)
+    mappings = []
+    for layout in layouts:
+        local = truth[layout.cell_l2g].copy()
+        if owned_only:
+            local = local[:layout.n_owned_cells]
+        mappings.append({"field": local, "constant": np.array(5, dtype=np.int32)})
+    result = assemble_owned_arrays(layouts, mappings, kinds={"field":"cell", "constant":"none"}, consume=True)
+    assert result["field"].tobytes() == truth.tobytes()
+    assert result["constant"].tobytes() == np.array(5,dtype=np.int32).tobytes()
+    assert all(not mapping for mapping in mappings)
+
+
 def test_history_infers_cell_and_edge_trailing_axes():
     layouts = _layouts(3)
     cells = np.arange(24, dtype=np.float32).reshape(2, 12)

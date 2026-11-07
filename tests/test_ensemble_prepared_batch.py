@@ -91,7 +91,7 @@ def test_native_snapshot_rebuilds_only_registered_boundary_mirrors_without_chang
     before = {name: value.tobytes() for name, value in state._scratch.items()}
     snapshot = prepared_host_from_node(node)
     # Exactly the two registered boundary mirrors leave the snapshot; every
-    # other scratch slot rides it.  Since lane/cap-hail (97e9a3ca061) a
+    # other scratch slot rides it.  Since development branch (97e9a3ca061) a
     # convection-allowing node also carries the HAILCAST diagnostic slots.
     assert set(snapshot.scratch) == set(before) - {"lbc_forcing_tables", "lbc_evaluated_tables"}
     assert "lbc_weights_member" in snapshot.scratch

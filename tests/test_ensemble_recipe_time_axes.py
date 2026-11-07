@@ -40,9 +40,17 @@ def test_analysis_can_be_the_recentered_base():
     assert recipe.donor_population
 
 
-def test_analysis_off_clock_knots_are_not_rounded_or_silently_dropped():
+def test_analysis_off_clock_knots_are_not_rounded_or_silently_dropped(monkeypatch):
+    from woof import source_adapters
+    from woof.source_cycles import CycleGrid
+    ordinary = source_adapters.get_source_adapter
+    six_hourly = replace(ordinary("era5-l137"), source_id="six-hourly-analysis", aliases=(),
+                         forcing_interval_seconds=21600,
+                         cycle_grid=CycleGrid((0, 6, 12, 18)))
+    monkeypatch.setattr(source_adapters, "get_source_adapter",
+                        lambda name: six_hourly if name == "six-hourly-analysis" else ordinary(name))
     with pytest.raises(ValueError, match="analysis valid-time knots"):
-        singleton("era5", start=START + timedelta(hours=1))
+        singleton("six-hourly-analysis", start=START + timedelta(hours=1))
     # An end between analyses keeps its requested end and is bracketed by
     # the next analysis, as the single-run door fetches it (U-E2).
     bracketed = singleton("era5", hours=7)
@@ -131,3 +139,33 @@ def test_legacy_native_fetch_owner_accepts_shifted_published_gfs_window():
     args = trajectory.fetch_argv(START + timedelta(hours=1), START + timedelta(hours=13), "inputs")
     assert args[args.index("--forecast-start-hour") + 1] == "1"
     assert args[args.index("--hours") + 1] == "12"
+
+
+def test_era5_hourly_analyses_start_off_the_six_hourly_clock():
+    """WOOF Pickens, 2026-11-06: ERA5 2011-04-27T16, 12 h, refused by the WoFS
+    ladder with "era5 2011-04-27T16Z does not cover the requested window".
+    ERA5 analyses are hourly; the 6 h forcing spacing is taken from 16Z."""
+    from woof.ensemble.wofs_recipe import WofsOptions, plan_ladder
+    start = datetime(2011, 4, 27, 16, tzinfo=timezone.utc)
+    end = start + timedelta(hours=12)
+    trajectory = SourceTrajectory("era5", start)
+    assert trajectory.window(start, end, native_bracketing=True) == (0, 12)
+    args = trajectory.fetch_argv(start, end, "inputs")
+    assert args[args.index("--cycle") + 1] == "2011-04-27T16"
+    assert args[args.index("--hours") + 1] == "12"
+    assert args[args.index("--cadence") + 1] == "6"
+    ladder = plan_ladder(source="era5", cycle=start, start=start, end=end,
+                         options=WofsOptions(members=12, provider="arco"))
+    assert ladder.counts() == {"source-member": 1, "time-lagged": 0, "perturbation": 11}
+    assert {m.cycle for m in ladder.members} == {start}
+
+
+def test_era5_eda_has_no_member_off_its_three_hourly_clock(monkeypatch):
+    from woof.ensemble.wofs_recipe import WofsOptions, plan_ladder, source_population
+    monkeypatch.setattr("woof.fetch.cds_credentials_present", lambda: True)
+    start = datetime(2011, 4, 27, 16, tzinfo=timezone.utc)
+    assert len(source_population("era5", start)) == 1
+    assert len(source_population("era5", start - timedelta(hours=1))) == 10
+    ladder = plan_ladder(source="era5", cycle=start, start=start,
+                         end=start + timedelta(hours=12), options=WofsOptions(members=4))
+    assert ladder.counts() == {"source-member": 1, "time-lagged": 0, "perturbation": 3}

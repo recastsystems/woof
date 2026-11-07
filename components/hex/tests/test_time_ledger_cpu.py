@@ -38,7 +38,7 @@ def test_marks_and_relayed_boundaries_carry_no_cpu():
 
 
 def test_tree_clock_walks_the_thread_children_at_most_every_refresh(monkeypatch):
-    """Host-bound V5090 2026-10-27: woof's tree walk read /proc/<pid>/task/<tid>/children for ~170 threads at
+    """Host-bound reference system 2026-10-27: woof's tree walk read /proc/<pid>/task/<tid>/children for ~170 threads at
     every stage boundary (34 % of the MPAS-physics LTS class threads' step CPU).  The pid list is reused for
     TREE_REFRESH_SECONDS; each boundary still reads the tree's own and reaped ticks, so the clock moves."""
     import sys

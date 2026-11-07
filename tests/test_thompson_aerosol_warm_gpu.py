@@ -73,7 +73,7 @@ REGENERATED oracle (all three CSVs reproduce their committed SHA-256s):
     pnr_wau                                                  1.2337e-07
 
 Those last two lines were transcription, not rounding, and were repaired on
-lane/mp28fix-warm-network: pnr_wau's divisor is now WRF's left-to-right
+development branch: pnr_wau's divisor is now WRF's left-to-right
 chain, and the collection rates read lamr = 1./ilamr(k) as WRF does
 (:2198, :2213).  _RATE_TOLERANCE asserts every rate equal.
 
@@ -364,7 +364,7 @@ BALANCE = _table(_NCTEN_BALANCE_ORACLE)
 #:     tools/thompson_wrf461_oracle/build_aero_probes.sh <wrf> <build> <ccn>
 #:     tools/thompson_wrf461_oracle/measure_probe_oracles_gpu_aero.py <build>/probe-oracle-aero
 #:
-#: RETIRED 2026-10-07 (lane/mp28fix-warm-network): the last six non-zero
+#: RETIRED 2026-10-07 (development branch): the last six non-zero
 #: bounds named two transcription defects, both fixed.  pnr_wau's 2.0e-7
 #: was WRF's divisor am_r*nu_c*10.*D0r*D0r*D0r grouped as
 #: (...*D0r)*(D0r*D0r) instead of left to right; lamr, prr_rcw, pnc_rcw,
@@ -1432,7 +1432,7 @@ def test_promoted_bound_rain_number_is_bitwise_identical_to_the_local_copy():
         f"(qr={qr[bad[0]]!r}, nr={nr[bad[0]]!r}, rho={rho[bad[0]]!r})")
 
 
-# RETIRED 2026-10-07 (lane/mp28fix-warm-network):
+# RETIRED 2026-10-07 (development branch):
 # test_promoted_entry_rain_distribution_is_bitwise_identical held the shared
 # thompson_aa_entry_rain_distribution to the byte-copy of its pre-promotion
 # body.  That body carried two transcription defects the helper no longer

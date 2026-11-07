@@ -1,0 +1,82 @@
+{
+  "schema": "gpuwm-osas-live-native-replay-v1",
+  "cu_physics": 95,
+  "strict": true,
+  "native_ql_backout": true,
+  "shape": {
+    "im": 300,
+    "jm": 1,
+    "kx": 49
+  },
+  "calls": 1,
+  "fields": [
+    {
+      "field": "rthcuten",
+      "words": 14700,
+      "differing_words": 0,
+      "native_nonzero_words": 3617,
+      "native_sha256": "bde4c18ef0f4d77ddd112f763bfce3cbb1242646e08a8f01fb11c5f08dd1e42a",
+      "cuda_sha256": "bde4c18ef0f4d77ddd112f763bfce3cbb1242646e08a8f01fb11c5f08dd1e42a"
+    },
+    {
+      "field": "rqvcuten",
+      "words": 14700,
+      "differing_words": 0,
+      "native_nonzero_words": 14700,
+      "native_sha256": "28110f8a3b2e159c3e419330517b695fed8977352e58a6a1529b5a857ff96f32",
+      "cuda_sha256": "28110f8a3b2e159c3e419330517b695fed8977352e58a6a1529b5a857ff96f32"
+    },
+    {
+      "field": "rqccuten",
+      "words": 14700,
+      "differing_words": 0,
+      "native_nonzero_words": 59,
+      "native_sha256": "deb8f75f4622edcf19cf231ba22aff1f08ddf6f8ab0463cf856fd9f3d37abbf1",
+      "cuda_sha256": "deb8f75f4622edcf19cf231ba22aff1f08ddf6f8ab0463cf856fd9f3d37abbf1"
+    },
+    {
+      "field": "rqicuten",
+      "words": 14700,
+      "differing_words": 0,
+      "native_nonzero_words": 39,
+      "native_sha256": "d9dcc22ec0e099d50c8a8e3012f37db869f434264e2e7febbd6275a3e8801212",
+      "cuda_sha256": "d9dcc22ec0e099d50c8a8e3012f37db869f434264e2e7febbd6275a3e8801212"
+    },
+    {
+      "field": "raincv",
+      "words": 300,
+      "differing_words": 0,
+      "native_nonzero_words": 58,
+      "native_sha256": "f7d66e7c46467c0d39b4bc294c8ae6ba09f61e949df534b434f1c0c2a67c698e",
+      "cuda_sha256": "f7d66e7c46467c0d39b4bc294c8ae6ba09f61e949df534b434f1c0c2a67c698e"
+    },
+    {
+      "field": "pratec",
+      "words": 300,
+      "differing_words": 0,
+      "native_nonzero_words": 58,
+      "native_sha256": "ad718a29d6df4d35928c85712aae259dca256238413ceb4d53ba147d8df510f7",
+      "cuda_sha256": "ad718a29d6df4d35928c85712aae259dca256238413ceb4d53ba147d8df510f7"
+    },
+    {
+      "field": "htop",
+      "words": 300,
+      "differing_words": 0,
+      "native_nonzero_words": 58,
+      "native_sha256": "d412ef48866dc1d13f20fca47b813742845b1a94b29bc84f8bdec63b35bf8b48",
+      "cuda_sha256": "d412ef48866dc1d13f20fca47b813742845b1a94b29bc84f8bdec63b35bf8b48"
+    },
+    {
+      "field": "hbot",
+      "words": 300,
+      "differing_words": 0,
+      "native_nonzero_words": 300,
+      "native_sha256": "dee6056682bc1a48ea07f0b64288a71c73ad9ce740d03b016a75d8e5f00dc3ce",
+      "cuda_sha256": "dee6056682bc1a48ea07f0b64288a71c73ad9ce740d03b016a75d8e5f00dc3ce"
+    }
+  ],
+  "words": 60000,
+  "differing_words": 0,
+  "capture_sha256": "247858ff4d5ce3221d3381b0711e67eb79baeb3fbf84f4c5276a647c478aa08c",
+  "native_output_sha256": "9cbe73d147265fcd70fd171d304a920fd6a29d15d08a0f7afe6cf8cdd671fb2e"
+}

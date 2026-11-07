@@ -9,6 +9,7 @@ preprocessor depend on the full forecast I/O implementation.
 from __future__ import annotations
 
 import hashlib
+import json
 
 import numpy as np
 
@@ -17,19 +18,58 @@ import numpy as np
 WRF_MUTS_SLOT = "wrf_exact_muts"
 
 
+def carried_wrf_muts(state):
+    """The last produced acoustic mass, excluding a cold transport buffer.
+
+    Streaming allocates its entire inventory before the first step. Allocation
+    alone must not turn start_em's first diagnosis into a continuation step.
+    """
+    if getattr(state, "_wrf_mass_carriers_cold", False):
+        return None
+    return state.existing_scratch(WRF_MUTS_SLOT)
+
+
+def carried_wrf_mu_halo(state):
+    """The produced boundary mass ring, excluding cold transport capacity."""
+    if getattr(state, "_wrf_mass_carriers_cold", False):
+        return None
+    return state.existing_scratch("wrf_exact_mu_halo")
+
+
 from woof.core.fast_sbm_contract import BIN_SPECIES as _FSBM_BIN_SPECIES
+from woof.core.passive_tracer_contract import TRACER_NAMES
+
+# Registry.EM_COMMON:1672-1683 activation carriers. One declaration for
+# writer, reader, digest, and the microphysics allocation inventory.
+MORRISON_AEROSOL_RESTART_FIELDS = ('efcg','efig','efsg','wact','ccn1_gs','ccn2_gs','ccn3_gs','ccn4_gs','ccn5_gs','ccn6_gs','ccn7_gs')
 
 STATE_SERIALIZED_ATTRS = (
+    # RASM reads the preceding pre-feedback theta before the next solve.
+    # Parent feedback changes thp, so this held copy cannot be rebuilt.
+    "_wrf_th_phy_m_t0",
+
+    # Observation FDDA: mutable reports, innovations, cadence and held weights.
+    "fddaobs_rko", "fddaobs_varobs", "fddaobs_errf", "fddaobs_savwt",
+    "fddaobs_clock", "fddaobs_frame", "fddaobs_uratx", "fddaobs_vratx", "fddaobs_tratx",
+    "traj_coordinates", "traj_status",
     # FDDA tendencies persist between calculation times. Off creates none.
     "nudging_tendency_u", "nudging_tendency_v", "nudging_tendency_temperature",
     "nudging_tendency_geopotential", "nudging_tendency_qv",
+    # Native C-grid FDDA carries mass-coupled rates between FGDT calls.
+    # These are allocated only for surface nudging, before checkpoint read.
+    "surface_fdda_u", "surface_fdda_v", "surface_fdda_theta", "surface_fdda_qv", "hfx_fdda", "sda_hfx", "sda_qfx", "qnorm", "hfx_both", "qfx_both",
     "u", "v", "w", "thp", "php", "mup",
+    # Optional stress history retains unchanged native boundary words.
+    # Absent when m_opt=sfs_opt=0, preserving the default inventory.
+    "m11", "m22", "m33", "m12", "m13", "m23",
     "p", "al", "alt",
     # The strict diagnostic retains WRF's perturbation-pressure words.
     # Pressure force and history read them across stage boundaries; a
     # reconstruction from rounded full pressure loses their low bits.
     # Absent outside that arm, so ordinary inventories are unchanged.
     "p_perturbation",
+    # Optional dry global held-radiation history carrier.
+    "global_rthraten",
     "qv", "qc", "qr", "h_diabatic",
     # WRF RTHFTEN/RQVFTEN: the dycore's pure advective theta/qv forcing
     # pair, exported at RK stage 1 of step N and read by the cumulus call
@@ -50,15 +90,19 @@ STATE_SERIALIZED_ATTRS = (
     "rthften", "rqvften",
     # WRF's prognostic SGS TKE (Registry.EM_COMMON:312 ``state real tke ikj
     # dyn_em 2 - r``): the trailing ``r`` puts it in the restart stream, and
-    # nothing reconstructs it -- a resumed km_opt=2 run that re-zeroed the
+    # nothing reconstructs it -- a resumed km_opt=2/5 run that re-zeroed the
     # carrier would cold-start the closure on a fully developed field.
-    # Absent (None) under every other km_opt, so non-LES inventories are
+    # Absent (None) under every other km_opt, so other inventories are
     # unchanged.
     "tke", "tke_edmf",
+    "gamu", "gamv",  # SMS-3DTKE: WRF restart-carried nonlocal momentum.
     "qi", "qs", "qg", "nc", "nr", "ni", "ns", "ng",
     "qh", "qndrop", "qnr", "qni", "qns", "qng", "qnh", "qnn",
     "qvolg", "qvolh",
     "volg",
+    # CAMMGMP cross-step macrophysics, diagnostic radii and sedimentation.
+    "cldfra_old_mp", "cldfra_mp", "cldfra_mp_all", "cldfra_conv",
+    "cldfrai", "cldfral", "wsedl3d", "lradius", "iradius", "rh_old_mp", "lcd_old_mp",
     # mp_physics=9 (Milbrandt-Yau) hail number and mp_physics=16 (WDM6)
     # CCN concentration.  Both are transported prognostics (MY2_SPECIES /
     # WDM6_NUMBER_SPECIES in woof/core); a restart that dropped either
@@ -66,6 +110,8 @@ STATE_SERIALIZED_ATTRS = (
     # are absent (None) on every other scheme's state and the writer and
     # reader skip on ``is None``, so no existing inventory moves.
     "nh", "nn",
+    # NTU aerosol, shape, volume and higher moments are prognostic state.
+    'qdcn', 'qtcn', 'qccn', 'qrcn', 'qnin', 'fi', 'fs', 'vi', 'vs', 'vg', 'ai', 'as_', 'ag', 'ah', 'i3m',
     "effc", "effr", "effi", "effs",
     # mp_physics=28 (Thompson aerosol-aware).  ``nc`` is already listed
     # above (Morrison allocates it).  ``nwfa``/``nifa`` are prognostic
@@ -111,12 +157,43 @@ STATE_SERIALIZED_ATTRS = (
     # would restore unrimed ice.  Absent on every other scheme, and the
     # writer and the reader skip on ``is None``.
     "qt", "f_ice", "f_rain", "f_rimef",
+    # mp_physics=13 (SBU-YLin) riming intensity: WRF ``state`` field with
+    # IO ``irh`` (Registry.EM_COMMON:491), so it rides the restart stream.
+    # Absent (None) on every other scheme's state; the writer and the
+    # reader skip on ``is None``, so no existing inventory moves.
+    "rimi",
+    "qi2", "ni2", "qir2", "qib2",
+    # mp_physics=53 (P3 three-moment ice): ``qzi``, the advected
+    # (N*Z)**0.5 ice moment, a Registry ``scalar`` with the restart ``r``
+    # in its IO string (Registry.EM_COMMON:563).  A resume that dropped it
+    # would restart Z at zero, and the scheme's zsmall floor and mu bounds
+    # (module_mp_p3.F:2612, :2654-2660) would then put every ice PSD at the
+    # mu_i = 20 edge.  Its droplet number ``nc`` is already serialized above.
+    "qzi",
+    "qi3", "ni3", "qvoli", "qaoli", "qvoli2", "qaoli2", "qvoli3", "qaoli3",
+    "qrimef",
     # SASE prognostic subgrid turbulence energy.  Like the optional
     # microphysics moments above, the attribute is ABSENT on a state that
     # did not select the closure, and the manifest walk skips what is not
     # there -- so adding it moves no existing restart.
-    "e_sgs", "qke_adv",
-) + _FSBM_BIN_SPECIES
+    "f_ice_phy", "f_rain_phy", "f_rimef_phy",
+    "etanew_restart_state", "etanew_tbpvs", "etanew_tbpvs0", "etanew_restart_dt",
+    "e_sgs", "qke_adv", "aerocu", "pek_adv", "pep_adv",
+    "keps_tke_adv", "keps_diss_adv", "keps_tpe_adv",
+) + _FSBM_BIN_SPECIES + TRACER_NAMES
+
+# Optional registry-bound column state. Absence keeps existing checkpoints
+# unchanged. ACPHYS* are carried accumulators and must survive a resume.
+from woof.physics_registry import component_options as _component_options
+_COLUMN_STATE_FIELDS = tuple(dict.fromkeys(
+    name
+    for option in _component_options('microphysics').values()
+    for name in option.get('extensions', {}).get('column_kernel', {}).get('volume_fields', ())
+))
+STATE_SERIALIZED_ATTRS += tuple(name for name in _COLUMN_STATE_FIELDS
+                                if name not in STATE_SERIALIZED_ATTRS)
+
+STATE_SERIALIZED_ATTRS += MORRISON_AEROSOL_RESTART_FIELDS
 
 # STATE_SETUP_ARRAYS is deliberately NOT extended with nwfa2d/nifa2d, even
 # though they are per-domain constants and read like setup: ``setup_fingerprint``
@@ -124,12 +201,52 @@ STATE_SERIALIZED_ATTRS = (
 # name only some configurations allocate would raise AttributeError on every
 # non-mp28 run.  They are covered as serialized state above instead, where
 # both the writer and the reader skip on ``is None``.
+
 STATE_SETUP_ARRAYS = (
     "thb", "pb", "alb", "phb", "mub2d", "ht",
     "c1h", "c2h", "c1f", "c2f", "c3h", "c4h", "c3f", "c4f",
     "msft", "msfu", "msfv", "msfv_inv", "f", "e", "sina", "cosa",
     "dnw", "rdnw", "dn", "rdn", "fnp", "fnm", "znu", "znw",
 )
+
+# WRF's Registry-u base fields evolve under strict two-way feedback. The
+# preparation remains the identity; the evolved fields travel separately.
+FEEDBACK_BASE_ATTRS = ("mub2d", "alb", "pb", "phb")
+FEEDBACK_GEOGRAPHY_ATTRS = ("msft", "msfu", "msfv", "msfv_inv", "f", "e", "sina", "cosa")
+
+
+def retain_feedback_geography(state, arrays=None) -> None:
+    """Bind original setup while carrying evolved Registry-u geography."""
+    if getattr(state, "_setup_feedback_geography", None) is None:
+        arrays = arrays or {name: getattr(state, name) for name in FEEDBACK_GEOGRAPHY_ATTRS}
+        _freeze_streamed_setup(state, arrays)
+        # Keep setup on host. This one-time capture precedes the first feedback;
+        # no device snapshot is retained alongside the priced state arrays.
+        state._setup_feedback_geography = {name: _host(value).copy()
+                                          for name, value in arrays.items() if value is not None}
+        state._setup_feedback_geography_flags = {
+            name: bool(getattr(state, name, False)) for name in ("has_msf", "rotational")}
+
+
+def _freeze_streamed_setup(state, arrays):
+    owner = getattr(state, "_streamed_domain", None)
+    if owner is not None and hasattr(owner, "restart_setup"):
+        setup = owner.restart_setup()
+        # Host geography and DomainSetup can share backing. Freeze only the
+        # fields about to evolve; output uses the live geography separately.
+        for name in arrays:
+            setup.arrays[name] = _host(setup.arrays[name]).copy()
+
+
+def retain_feedback_setup(state, arrays=None) -> None:
+    """Keep the original preparation before the first base restriction."""
+    if getattr(state, "_setup_feedback_base", None) is None:
+        arrays = arrays or {name: getattr(state, name) for name in FEEDBACK_BASE_ATTRS}
+        _freeze_streamed_setup(state, arrays)
+        state._setup_feedback_base = {name: _host(value).copy()
+                                      for name, value in arrays.items()}
+        state._feedback_base_children = {}
+GLOBAL_SETUP_ARRAYS = ("global_tx", "global_ux", "global_vy", "global_lat", "global_lon")
 
 #: Setup arrays that are DETERMINISTIC FUNCTIONS of the tuple above and
 #: are rebuilt beside it, so they carry no information the fingerprint
@@ -152,6 +269,10 @@ STATE_DERIVED_SETUP_ARRAYS = (
     # call before reading it; the root grid is fixed and resident nests refuse.
     "aerodm",
 )
+
+STATE_OPTIONAL_SETUP_ARRAYS = ("aeromcu", "aeropcu")
+STATE_OPTIONAL_SETUP_SCALARS = ("aerosol_start_time",)
+STATE_OPTIONAL_SETUP_JSON = ("aerosol_forcing",)
 
 STATE_SETUP_SCALARS = (
     "mub", "p_top", "cf1", "cf2", "cf3", "cfn", "cfn1",
@@ -177,7 +298,8 @@ def _digest_array(digest, name: str, value) -> None:
         digest.update(memoryview(contiguous.reshape(-1).view(np.uint8)))
 
 
-def _update_setup_core(digest, state, *, error_type: type[Exception]) -> bool:
+def _update_setup_core(digest, state, *, error_type: type[Exception],
+                       setup_arrays=None) -> bool:
     """Hash setup that cannot grow; return whether this is a nest.
 
     The byte stream is deliberately the prefix of :func:`setup_fingerprint`'s
@@ -186,8 +308,18 @@ def _update_setup_core(digest, state, *, error_type: type[Exception]) -> bool:
     half for the explicit sealed-forcing extension contract.
     """
 
-    for name in STATE_SETUP_ARRAYS:
+    observation_identity = getattr(state, "_fddaobs_identity", None)
+    if observation_identity is not None:
+        digest.update(b"observation-fdda:")
+        digest.update(observation_identity.encode())
+    for name in STATE_SETUP_ARRAYS if setup_arrays is None else setup_arrays:
         value = getattr(state, name)
+        feedback_setup = getattr(state, "_setup_feedback_base", None)
+        if feedback_setup is not None and name in FEEDBACK_BASE_ATTRS:
+            value = feedback_setup[name]
+        geography = getattr(state, "_setup_feedback_geography", None)
+        if geography is not None and name in geography:
+            value = geography[name]
         if name == "thb":
             # Strict mode's theta carrier (woof.core.state.
             # adopt_wrf_theta_carrier) re-expresses a prepared base as
@@ -198,9 +330,27 @@ def _update_setup_core(digest, state, *, error_type: type[Exception]) -> bool:
         _digest_array(digest, name, value)
     for name in STATE_SETUP_SCALARS:
         value = getattr(state, name)
+        geography_flags = getattr(state, "_setup_feedback_geography_flags", None)
+        if geography_flags is not None and name in geography_flags:
+            value = geography_flags[name]
         if value is not None and not isinstance(value, bool):
             value = float(value)
         digest.update(f"{name}={value!r};".encode())
+    for name in STATE_OPTIONAL_SETUP_ARRAYS:
+        value = getattr(state, name, None)
+        if value is not None:
+            _digest_array(digest, name, value)
+    for name in STATE_OPTIONAL_SETUP_SCALARS:
+        value = getattr(state, name, None)
+        if value is not None:
+            digest.update(f"{name}={float(value)!r};".encode())
+    for name in GLOBAL_SETUP_ARRAYS:
+        if hasattr(state, name):
+            _digest_array(digest, name, getattr(state, name))
+    for name in STATE_OPTIONAL_SETUP_JSON:
+        value = getattr(state, name, None)
+        if value is not None:
+            digest.update(name.encode() + json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
     nest_class = getattr(state, "_nest_restart_classification", None)
     if nest_class is not None:
         if nest_class != "REBUILT":
@@ -493,6 +643,33 @@ def setup_fingerprint(state, *, error_type: type[Exception] = ValueError) -> str
     return digest.hexdigest()
 
 
+def legacy_derived_map_setup_fingerprint(state) -> str | None:
+    """Verify a prepared cache predating the stored V-map inverse.
+
+    Older preparations bound MAPFAC_V and rebuilt its FP32 reciprocal.
+    Their digest omitted that derived array. Only that exact reciprocal
+    may use the old walk; independent MF_VX_INV words remain bound by the
+    current fingerprint. Forecast checkpoints always use the current walk.
+    """
+    factor = _host(state.msfv)
+    inverse = _host(state.msfv_inv)
+    if (factor.dtype != np.float32 or inverse.dtype != np.float32
+            or factor.shape != inverse.shape
+            or not np.isfinite(factor).all() or not (factor > 0).all()):
+        return None
+    derived = np.float32(1.0) / factor
+    if not np.array_equal(inverse.view(np.uint32), derived.view(np.uint32)):
+        return None
+    digest = hashlib.sha256()
+    nested = _update_setup_core(
+        digest, state, error_type=ValueError,
+        setup_arrays=tuple(name for name in STATE_SETUP_ARRAYS
+                           if name != "msfv_inv"))
+    if not nested:
+        _update_lateral_fingerprint(digest, state)
+    return digest.hexdigest()
+
+
 #: The dycore's exported advective forcing pair (WRF RTHFTEN/RQVFTEN) as
 #: a NAME TABLE, so a reader's key-set refusal can say WHICH change moved
 #: the layout instead of printing two sorted lists.  Its members are two
@@ -569,8 +746,9 @@ def chem_state_attrs(state) -> tuple[str, ...]:
 
 
 def serialized_state_attrs(state) -> tuple[str, ...]:
-    """:data:`STATE_SERIALIZED_ATTRS` plus this state's chem species fields."""
-    return STATE_SERIALIZED_ATTRS + chem_state_attrs(state)
+    """The active serialized fields, including moist-theta's old thermal level."""
+    thermal = ("thp0",) if getattr(state, "use_theta_m", 0) else ()
+    return STATE_SERIALIZED_ATTRS + thermal + chem_state_attrs(state)
 
 
 __all__ = [
@@ -597,3 +775,5 @@ __all__ = [
     "serialized_state_attrs",
     "setup_fingerprint",
 ]
+
+STATE_SERIALIZED_ATTRS += tuple(name for name in MORRISON_AEROSOL_RESTART_FIELDS if name not in STATE_SERIALIZED_ATTRS)

@@ -11,7 +11,12 @@ import pytest
 #: production validator over range(0, 107), exactly as
 #: ``test_the_accepted_selector_list_this_module_uses_is_the_real_one``
 #: does; not hand-extended.
-_ACCEPTED_MP_PHYSICS = (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106, 900)
+_ACCEPTED_MP_PHYSICS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 27, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106, 900)
+
+#: Coupled selectors the run door still holds for a named guard: RCON (29)
+#: has its cloud-optics row, but validate_run_config refuses it until its
+#: release speed proof lands (RCON-SPEED-01). Retire with that guard.
+_HELD_COUPLED_MP_PHYSICS = (29,)
 
 #: The admitted selectors without a cloud-optics coupling: FAST_SBM (30)
 #: alone, refused against the 4/4 pair with the legacy-RRTMG remedy until
@@ -23,7 +28,9 @@ _ACCEPTED_MP_PHYSICS = (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 1
 #: module_mp_milbrandt2mom.F:3351-3378, evaluated over the transported
 #: number moments).  The tuple stays so the partition checks below keep
 #: asserting that nothing is admitted and uncoupled.
-_NO_RTE_RRTMGP_CLOUD_OPTICS = (2, 30)
+# 3.0 ports UDM (27), old Eta Ferrier (95) and MAD-WRF (96) carry recorded
+# exclusions in woof.core.rrtmgp too: legacy RRTMG serves them.
+_NO_RTE_RRTMGP_CLOUD_OPTICS = (2, 13, 27, 30, 56, 95, 96)
 
 #: The selectors the RTE+RRTMGP cross-checks below may actually drive.
 #: Derived, so a scheme cannot be dropped from coverage by hand.
@@ -48,11 +55,11 @@ def test_every_accepted_selector_is_judged():
     coupled = set(_MP_CLOUD_OPTICS_SCHEME)
     uncoupled = set(_NO_RTE_RRTMGP_CLOUD_OPTICS)
     assert coupled.isdisjoint(uncoupled)
-    assert coupled | uncoupled == set(_ACCEPTED_MP_PHYSICS), (
+    assert coupled | uncoupled == set(_ACCEPTED_MP_PHYSICS) | set(_HELD_COUPLED_MP_PHYSICS), (
         "these accepted selectors are neither coupled nor refused: "
         f"{sorted(set(_ACCEPTED_MP_PHYSICS) - coupled - uncoupled)}")
-    assert uncoupled == {2, 30}, (
-        "the accepted selectors refused against RTE+RRTMGP are FAST_SBM and Lin; "
+    assert uncoupled == {2, 13, 27, 30, 56, 95, 96}, (
+        "the accepted selectors refused against RTE+RRTMGP are FAST_SBM, SBU, NTU and Lin; "
         "50, then 9, were retired by writing their rows")
 
     # Every coupled selector validates against the 4/4 pair on the DEFAULT
@@ -60,7 +67,7 @@ def test_every_accepted_selector_is_judged():
     # in this loop now; it used to be the one refusal, and with the
     # variant defaulting to rte-rrtmgp that refusal fired on every bare
     # mp=9 run.
-    for mp_physics in sorted(coupled):
+    for mp_physics in sorted(coupled - set(_HELD_COUPLED_MP_PHYSICS)):
         if mp_physics == 0:
             continue
         cfg = validate_run_config(RunConfig(
@@ -81,15 +88,15 @@ def test_the_uncoupled_selectors_are_a_decision_in_the_module_that_raises():
     coupled = set(_MP_CLOUD_OPTICS_SCHEME)
     recorded = set(_NO_CLOUD_OPTICS_COUPLING)
     assert coupled.isdisjoint(recorded)
-    assert coupled | recorded == set(_ACCEPTED_MP_PHYSICS), (
+    assert coupled | recorded == set(_ACCEPTED_MP_PHYSICS) | set(_HELD_COUPLED_MP_PHYSICS), (
         "these accepted selectors have neither a cloud-optics row nor a "
         "recorded reason for not having one: "
         f"{sorted(set(_ACCEPTED_MP_PHYSICS) - coupled - recorded)}")
     assert (tuple(sorted(_NO_CLOUD_OPTICS_COUPLING))
             == tuple(sorted(_NO_RTE_RRTMGP_CLOUD_OPTICS)))
-    assert set(_NO_CLOUD_OPTICS_COUPLING) == {2, 30}, (
-        "the recorded exclusions are FAST_SBM and Lin; mp=9 was retired by "
-        "writing the scheme's own row")
+    assert set(_NO_CLOUD_OPTICS_COUPLING) == {2, 13, 27, 30, 56, 95, 96}, (
+        "the recorded exclusions are Lin, SBU-YLin, NTU and FAST_SBM; implemented "
+        "couplings retire their own refusal rows")
     assert "Lin supplies no effective radii" in _NO_CLOUD_OPTICS_COUPLING[2]
     with pytest.raises(NotImplementedError, match="Lin supplies no effective radii"):
         cloud_optics_scheme(2)
@@ -118,7 +125,7 @@ def test_the_uncoupled_selectors_are_a_decision_in_the_module_that_raises():
     # 5. The record does not soften the gate.  An unjudged selector still
     #    fails closed, and is told how to make the omission speak.
     with pytest.raises(NotImplementedError) as unjudged:
-        cloud_optics_scheme(51)
+        cloud_optics_scheme(37)
     assert "add a row" in str(unjudged.value)
     assert "_NO_CLOUD_OPTICS_COUPLING" in str(unjudged.value)
 
@@ -184,12 +191,10 @@ def test_the_accepted_selector_list_this_module_uses_is_the_real_one():
         return True
 
     from woof.microphysics_schemes import NAMED_MP_IDS
-    admitted = tuple(mp for mp in (*range(0, 107), *NAMED_MP_IDS) if admits(mp))
+    admitted = tuple(mp for mp in dict.fromkeys((*range(0, 107), *NAMED_MP_IDS)) if admits(mp))
     assert admitted == _ACCEPTED_MP_PHYSICS
-    # The named refusals are the reason the helper cannot key on one
-    # sentence; pin that they exist, so a lane cannot "fix" a future
-    # mismatch by deleting the explanation.
-    assert "WDM5" in refusals[14] and "WDM7" in refusals[26]
+    # WDM5 and WDM7 now have native ports and pass this same door.
+    assert 14 not in refusals and 26 not in refusals
     assert all("mp_physics must be" in refusals[mp]
                for mp in (2, 5, 55) if mp in refusals)
 
@@ -226,8 +231,8 @@ def test_thompsonaero_mp28_resolves_to_the_thompson_cloud_optics_coupling():
     # selector either has a cloud-optics row or is refused against
     # RTE+RRTMGP by name -- see test_every_accepted_selector_is_judged.
     assert (tuple(sorted(_MP_CLOUD_OPTICS_SCHEME))
-            == tuple(mp for mp in _ACCEPTED_MP_PHYSICS
-                     if mp not in _NO_RTE_RRTMGP_CLOUD_OPTICS))
+            == tuple(sorted(mp for mp in _ACCEPTED_MP_PHYSICS + _HELD_COUPLED_MP_PHYSICS
+                            if mp not in _NO_RTE_RRTMGP_CLOUD_OPTICS)))
 
 
 def test_wdm6_mp16_resolves_to_the_wsm6_cloud_optics_coupling():
@@ -267,8 +272,8 @@ def test_wdm6_mp16_resolves_to_the_wsm6_cloud_optics_coupling():
     # selector either has a cloud-optics row or is refused against
     # RTE+RRTMGP by name -- see test_every_accepted_selector_is_judged.
     assert (tuple(sorted(_MP_CLOUD_OPTICS_SCHEME))
-            == tuple(mp for mp in _ACCEPTED_MP_PHYSICS
-                     if mp not in _NO_RTE_RRTMGP_CLOUD_OPTICS))
+            == tuple(sorted(mp for mp in _ACCEPTED_MP_PHYSICS + _HELD_COUPLED_MP_PHYSICS
+                            if mp not in _NO_RTE_RRTMGP_CLOUD_OPTICS)))
     # ... and the legacy engine agrees, which is the pairing that used to
     # make ice clouds appear or vanish with the radiation selector.
     from woof.core.rrtmg_legacy import _MP_DECLARES_RADII, legacy_ice_active
@@ -287,7 +292,7 @@ def test_cloud_optics_scheme_fails_closed_on_an_unmapped_selector():
     """
     from woof.core.rrtmgp import cloud_optics_scheme
 
-    for unmapped in (2, 51, 95):
+    for unmapped in (2, 37, 95):
         with pytest.raises(NotImplementedError, match="cloud-optics"):
             cloud_optics_scheme(unmapped)
 

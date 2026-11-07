@@ -143,7 +143,7 @@ def test_the_route_default_is_the_strongest_admissible_full_radiation_suite():
     """
     from woof.hrrr_route_inputs import route_physics_problems
     from woof.physics_compat import SINGLE_DOMAIN_PHYSICS_PROFILES
-    # 4193eb0da, lane/286-fork-mynn: select the HRRR GSD4.1 composition.
+    # 4193eb0da, development branch: select the HRRR GSD4.1 composition.
     assert ROUTE_DEFAULT_PHYSICS_PROFILE == (
         "thompson-mp28-mynn-gsd41-mynn-ruc-rrtmg-legacy-v1")
     admissible = [profile for profile in SINGLE_DOMAIN_PHYSICS_PROFILES
@@ -157,7 +157,7 @@ def test_the_route_default_is_the_strongest_admissible_full_radiation_suite():
     # radiation streams on, no cumulus at its 3 km grid.  Which 4/4
     # implementation runs is a setting this assertion does not read.
     switches = single_domain_runtime_switches(ROUTE_DEFAULT_PHYSICS_PROFILE)
-    # 4193eb0da, lane/286-fork-mynn: the named HRRR route now selects
+    # 4193eb0da, development branch: the named HRRR route now selects
     # MP28/GSD4.1/RUC. Source authority is not numerical certification.
     assert int(switches["mp_physics"]) == 28
     assert int(switches["bl_pbl_physics"]) == 5
@@ -506,7 +506,7 @@ def test_first_local_night_time_both_directions():
 #
 # Measured 2026-08-09 on 1.8.7: `woof domain --physics-profile <asymmetric>`
 # over a night window wrote acknowledgements = [<ack>] into the emitted file
-# by itself.  lane/advisory made that emission speak; speaking is necessary
+# by itself.  the advisory change made that emission speak; speaking is necessary
 # and not sufficient, because the FILE still carried a statement its owner
 # had never made, and every later reader of the file -- `check`, `run`, `go`,
 # run-plan, both prepared runners -- reads the file and not the terminal.
@@ -608,7 +608,7 @@ def test_wizard_door_negative_controls_still_emit_without_any_ack(tmp_path):
                     "--out", str(hrrr)]) == 0
     assert _loaded(hrrr).acknowledgements == ()
     # This point root is 12 km on a cone centred on the point, not the HRRR
-    # row's cone, so since f0acb58ada7 (lane/improve-44-hrrr-ladder-static:
+    # row's cone, so since f0acb58ada7 (development branch:
     # no [static] source emitted for a HRRR grid off the row cone) the door
     # writes no [static] table: the metadata default stays a DEFAULT and
     # takes the WPS_GEOG fallback instead of becoming a declared source that
@@ -776,7 +776,7 @@ def test_nowcast_default_change_does_not_requalify_archived_measurements():
     archived = "wsm6-ysu-mm5-noah-no-radiation-v1"
     fixture = Path(__file__).resolve().parent / "fixtures/nowcast_archived_physics.json"
     payload = fixture.read_bytes()
-    # 7db661c65, lane/286-staging-repair: preserve the historical receipt
+    # 7db661c65, development branch: preserve the historical receipt
     # composition in public tests; release snapshots exclude evidence/**.
     assert hashlib.sha256(payload).hexdigest() == (
         "dfff21eccbb9309af3c3421e3952e740e4bc302eb400137566341457021255e6")

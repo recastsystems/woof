@@ -1,0 +1,192 @@
+{
+  "native_commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "native_recipe": "GNU Fortran REAL32 dmpar -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+  "engine_runtime_commit": "48ba57e0b5a1c921887c558e4f3736c18751b0d5",
+  "timing": {
+    "engine_commit": "48ba57e0b5a1c921887c558e4f3736c18751b0d5",
+    "card": "RTX PRO 6000 Blackwell, card 1",
+    "method": "A-B-B-A; CUDA events around actual forecast stages; exclude parent preflight calls; discard first forecast call; ratio of pooled warm medians",
+    "rows": {
+      "mp95": {
+        "stage": "microphysics",
+        "nearest": "mp5",
+        "median_ms": 0.7127520143985748,
+        "nearest_median_ms": 0.7859200239181519,
+        "ratio": 0.906901456518689,
+        "warm_samples_per_scheme": 358,
+        "arms": [
+          {
+            "file": "timed-mp95-1.2961295.json",
+            "sha256": "6f5946882eb9968df125d6bc38d66916f1225d683e5556bded583d9549ab7be1",
+            "scheme": "mp95",
+            "samples": 180,
+            "warm_median_ms": 0.7720959782600403
+          },
+          {
+            "file": "timed-mp95-2.2973892.json",
+            "sha256": "0a3de2393b85a188e939f1d86867b32a46504b8c8a5b5a8a620fb508d4482279",
+            "scheme": "mp5",
+            "samples": 180,
+            "warm_median_ms": 0.8427519798278809
+          },
+          {
+            "file": "timed-mp95-3.2986343.json",
+            "sha256": "5651408384311bec59293da14cdd5e55b0176fbeda5a45ce2d24cc3297dbc146",
+            "scheme": "mp5",
+            "samples": 180,
+            "warm_median_ms": 0.6193280220031738
+          },
+          {
+            "file": "timed-mp95-4.2997195.json",
+            "sha256": "6382d89811ed763ae76f579e171a450982098a3dfb33409b612eb872e3d5f1aa",
+            "scheme": "mp95",
+            "samples": 180,
+            "warm_median_ms": 0.6442559957504272
+          }
+        ]
+      },
+      "sf89": {
+        "stage": "surface_layer",
+        "nearest": "sf1",
+        "median_ms": 0.09911999851465225,
+        "nearest_median_ms": 0.716048002243042,
+        "ratio": 0.13842647169485267,
+        "warm_samples_per_scheme": 358,
+        "arms": [
+          {
+            "file": "timed-sf89-1.3000642.json",
+            "sha256": "5d5c0c4a5e3e00ccb4d55dd7b708d830ffde7f88e8ef3c7c95cbc89ff9bd4853",
+            "scheme": "sf89",
+            "samples": 180,
+            "warm_median_ms": 0.08428800106048584
+          },
+          {
+            "file": "timed-sf89-2.3002063.json",
+            "sha256": "29200972e289c3e4228f596dbf9b239b7325a48f7287e25d3910dfa8e7c935f1",
+            "scheme": "sf1",
+            "samples": 180,
+            "warm_median_ms": 0.7131519913673401
+          },
+          {
+            "file": "timed-sf89-3.3003363.json",
+            "sha256": "4752d885fa9c38d91cc1c7fd82b223f2970f6b3f0259ae81306572ceac2a41fb",
+            "scheme": "sf1",
+            "samples": 180,
+            "warm_median_ms": 0.7174400091171265
+          },
+          {
+            "file": "timed-sf89-4.3004760.json",
+            "sha256": "4db949b06010d95adda86cb7660189e9f83218ef593526afe897f8764596486a",
+            "scheme": "sf89",
+            "samples": 180,
+            "warm_median_ms": 0.10995200276374817
+          }
+        ]
+      }
+    }
+  },
+  "rows": {
+    "mp95": {
+      "selectors": {
+        "mp_physics": 95
+      },
+      "differing_words": 0,
+      "words": 20604340,
+      "captures": 32,
+      "exclusions": [],
+      "capture_root": "~/weather/data/datasets/paper/wrf-ports/port-misc-schemes/mp95-pbl0-cu0",
+      "replay": "replay.py captures replay-current.json",
+      "forecast_log": "<reports>/WRF-PORTS-2026-11-01/evidence/port-misc-schemes/timing/timed-mp95-1.log",
+      "forecast_hours": 3,
+      "maps_looked_at": true,
+      "stage_ratio": 0.906901456518689,
+      "nearest": "mp5"
+    },
+    "sf89": {
+      "selectors": {
+        "sf_sfclay_physics": 89
+      },
+      "differing_words": 0,
+      "words": 219072,
+      "captures": 32,
+      "exclusions": [],
+      "capture_root": "~/weather/data/datasets/paper/wrf-ports/port-misc-schemes/sf89-valid",
+      "replay": "replay.py captures replay-current.json",
+      "forecast_log": "<reports>/WRF-PORTS-2026-11-01/evidence/port-misc-schemes/timing/timed-sf89-1.log",
+      "forecast_hours": 3,
+      "maps_looked_at": true,
+      "stage_ratio": 0.13842647169485267,
+      "nearest": "sf1"
+    },
+    "mp27": {
+      "selectors": {
+        "mp_physics": 27
+      },
+      "engine_runtime_commit": "04d560a6785042ca4edfc5aabbbfddb53fe17e36",
+      "differing_words": 0,
+      "words": 21260544,
+      "captures": 32,
+      "exclusions": [],
+      "capture_root": "~/weather/data/datasets/paper/wrf-ports/port-misc-schemes/mp27-driver",
+      "replay": "GPUWM_NUMERICS=strict GPUWM_WRF_EXACT=1 python tools/udm_wrf471_oracle/replay_driver.py <mp27-driver> <mp27-gfs> woof/core/kernels/udm_generated.cuh replay.json",
+      "forecast_log": "<reports>/WRF-PORTS-2026-11-01/evidence/port-misc-schemes/udm-node4/misc-udm-mass-1.log",
+      "forecast_hours": 3,
+      "maps_looked_at": true,
+      "stage_ratio": 1.1497813984652174,
+      "nearest": "mp26",
+      "coupling_scope": "Legacy RRTMG, native has_req*=0; native optional radius routine receives uninitialized den1d.",
+      "wrf_source": "WRF 4.7.1 module_mp_udm.F:289,411",
+      "option_off": {
+        "upstream_commit": "94199e02b96002613e581c549721795abb35296e",
+        "engine_commit": "04d560a6785042ca4edfc5aabbbfddb53fe17e36",
+        "differing_bytes": 0,
+        "bytes": 135592576,
+        "frames": 4,
+        "evidence": "udm-node4/misc-option-off-comparison.json"
+      },
+      "timing": {
+        "commit": "fec41d70082",
+        "wheel_sha256": "61e54d1ef9c442a478091b5e713f8062e92a54080c17b21b383ef9c2b415898d",
+        "card": "RTX 5070 Ti, test host D, shared",
+        "stage": "microphysics",
+        "method": "A-B-B-A whole 180-step forecasts; CUDA events; discard only each first call; pooled warm medians",
+        "ratio": 1.1497813984652174,
+        "scheme": 27,
+        "nearest": 26,
+        "scheme_ms": 16.39321517944336,
+        "nearest_ms": 14.25767993927002,
+        "warm_samples_per_scheme": 358,
+        "arms": [
+          {
+            "file": "misc-udm-mass-1.3878233.json",
+            "sha256": "1e5dbf3dcf3357b81fe0ea818b6aa1a97ce2245954093c7417611ba6726317a4",
+            "scheme": 27,
+            "calls": 180,
+            "warm_median_ms": 16.36966323852539
+          },
+          {
+            "file": "misc-udm-mass-2.3885338.json",
+            "sha256": "7ed8ba09ffa525352fb9b45ee6f3c949c4d530e95adb25a42ac149e6b734b0a9",
+            "scheme": 26,
+            "calls": 180,
+            "warm_median_ms": 13.58131217956543
+          },
+          {
+            "file": "misc-udm-mass-3.3903017.json",
+            "sha256": "4412ea273884961df49d8b53a6e39bd8bfc05ee201a5cd412cae309e706a2e33",
+            "scheme": 26,
+            "calls": 180,
+            "warm_median_ms": 17.747968673706055
+          },
+          {
+            "file": "misc-udm-mass-4.3916900.json",
+            "sha256": "4d10e1e787a0f783c10ddd7dc2df175fb06a1970cc70d3422e7b1d9360c36fcb",
+            "scheme": 27,
+            "calls": 180,
+            "warm_median_ms": 16.475135803222656
+          }
+        ]
+      }
+    }
+  }
+}

@@ -43,7 +43,10 @@ impl Goldens {
     }
 
     pub(crate) fn load_reference() -> Self {
-        let native = std::env::var_os("GPUWM_STATIC_LANE1_GOLDENS");
+        Self::load_reference_from(std::env::var_os("GPUWM_STATIC_LANE1_GOLDENS"))
+    }
+
+    fn load_reference_from(native: Option<std::ffi::OsString>) -> Self {
         let root = native.as_ref().map(PathBuf::from).unwrap_or_else(||
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("tests").join("goldens").join("lane1"));
@@ -394,10 +397,17 @@ fn grid_refusals_name_the_breakage() {
 #[test]
 fn corridor_geometry_cost_equal_python() {
     let g = Goldens::load();
-    let expected_geometry = &g.case("corridor")["geometry"];
+    let mut expected_geometry = g.case("corridor")["geometry"].clone();
+    // The pinned Windows capture predates the explicit frame metadata.
+    // Its independently specified parent placement supplies these aliases.
+    if !g.native_authority {
+        expected_geometry["frame_grid_id"] = 1.into();
+        expected_geometry["ratio_to_frame"] = 3.into();
+        expected_geometry["reference_origin_child_cells"] = serde_json::json!([51, 42]);
+    }
     let geometry = CorridorGeometry::derive(2, 1, 3, 18, 15, 45, 39, 51, 44)
         .unwrap();
-    assert_eq!(&serde_json::to_value(&geometry).unwrap(), expected_geometry);
+    assert_eq!(serde_json::to_value(&geometry).unwrap(), expected_geometry);
 
     let expected_cost = &g.case("corridor")["cost"];
     let planes = expected_cost["planes_per_cell"].as_i64().unwrap();
@@ -448,13 +458,35 @@ fn field_from_golden(g: &Goldens, case: &str, key: &str) -> Field {
     }
 }
 
+/// The frame metadata `gpuwm/static/corridor.py::corridor_geometry` writes
+/// for its default frame (the child's own parent), for a pinned capture that
+/// predates it (29607438637 added the three fields to `CorridorGeometry`):
+/// `frame_grid_id = parent_id`, `ratio_to_frame = parent_grid_ratio` and
+/// `reference_origin_child_cells = ((ref_i - 1) * ratio, (ref_j - 1) * ratio)`.
+/// A capture that carries them keeps its own values.
+fn with_own_parent_frame(mut geometry: Value) -> Value {
+    let int = |key: &str| geometry[key].as_i64()
+        .unwrap_or_else(|| panic!("corridor geometry golden has no {key}"));
+    let (parent_id, ratio) = (int("parent_id"), int("parent_grid_ratio"));
+    let origin = serde_json::json!([(int("reference_i_parent_start") - 1) * ratio,
+                                    (int("reference_j_parent_start") - 1) * ratio]);
+    let object = geometry.as_object_mut().expect("corridor geometry is an object");
+    object.entry("frame_grid_id").or_insert(parent_id.into());
+    object.entry("ratio_to_frame").or_insert(ratio.into());
+    object.entry("reference_origin_child_cells").or_insert(origin);
+    geometry
+}
+
 #[test]
 fn corridor_crop_bit_equal_and_refuses_off_corridor() {
     let g = Goldens::load();
-    let geometry: CorridorGeometry = serde_json::from_value(
-        g.case("corridor")["crop_geometry"].clone(),
-    )
-    .unwrap();
+    let mut crop_geometry = g.case("corridor")["crop_geometry"].clone();
+    // The pinned Windows capture predates the explicit frame metadata, as in
+    // corridor_geometry_cost_equal_python above.
+    if !g.native_authority {
+        crop_geometry = with_own_parent_frame(crop_geometry);
+    }
+    let geometry: CorridorGeometry = serde_json::from_value(crop_geometry).unwrap();
     let mut fields = FieldSet::default();
     for name in ["PLANE_A", "PLANE_B", "STACK_C"] {
         fields.fields.insert(
@@ -693,7 +725,9 @@ fn portable_sampling_surfaces_bit_equal() {
 #[test]
 fn portable_arrays_remain_bounded_by_numpy() {
     let portable = Goldens::load();
-    let reference = Goldens::load_reference();
+    // These empirical bounds name the pinned Windows NumPy payloads.
+    // Native-platform exact comparisons above use their own Python authority.
+    let reference = Goldens::load_reference_from(None);
     let bounds: Value = serde_json::from_slice(&std::fs::read(
         portable.portable_root.join("numpy-bounds.json")).unwrap()).unwrap();
     for (case, row) in portable.portable["cases"].as_object().unwrap() {

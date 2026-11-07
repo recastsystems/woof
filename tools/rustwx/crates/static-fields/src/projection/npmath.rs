@@ -191,10 +191,12 @@ pub fn np_expf(x_in: f32) -> f32 {
         return 0.0;
     }
     let mut x = x_in;
-    // Same measured MSVC contraction as the trig kernel: the wheel
-    // computes the rint product fused (one divergent sweep value
-    // otherwise; tools/static_rust_port/check_exp_case.py).
+    // NumPy's Windows wheel contracts this multiply/add; its Linux
+    // wheel preserves the two operations in loops_exponent_log.dispatch.c.
+    #[cfg(target_env = "msvc")]
     let mut quadrant = x.mul_add(LOG2E, RINT_CVT_MAGIC);
+    #[cfg(not(target_env = "msvc"))]
+    let mut quadrant = x * LOG2E + RINT_CVT_MAGIC;
     quadrant -= RINT_CVT_MAGIC;
 
     x = quadrant.mul_add(EXP_CODYW_C1, x);

@@ -1,7 +1,7 @@
 """Original member physics drivers with coordinated native column leaves.
 
 Each driver retains its real mass and staggered grids, cadence, carriers,
-surface wrapper and tendency composition. Only the four column leaves join
+surface wrapper and tendency composition. Only the supported column leaves join
 members. This component does not admit or qualify a complete forecast graph.
 """
 
@@ -56,8 +56,30 @@ def validate_production_physics_group(drivers, configs):
             raise ValueError(f"packed physics member {member} has a different due schedule; a leaf rendezvous would change its ordinary cadence")
         if (int(cfg.sf_sfclay_physics), int(cfg.sf_surface_physics), int(cfg.bl_pbl_physics)) != (5, 3, 5):
             raise ValueError("packed production leaves bind MYNN surface, RUC and MYNN PBL; another selector needs its own ordinary member driver")
-        if int(getattr(cfg, "cu_physics", 0)) or getattr(driver, "cam_ozone", None) is not None:
-            raise ValueError("packed production leaves do not bind cumulus or external CAM ozone; their update ordering remains an ordinary-member path")
+        if int(getattr(cfg, "cu_physics", 0)) not in (0, 99):
+            raise ValueError("packed production cumulus binds cu_physics=99; another scheme needs its own column producer")
+        if getattr(driver, "cam_ozone", None) is not None:
+            raise ValueError("packed production leaves do not bind external CAM ozone")
+        if int(getattr(cfg, "cu_physics", 0)) == 99:
+            from woof.core.kf import KainFritsch
+            adapter = driver.cumulus_callable
+            if type(adapter) is not KainFritsch or adapter.scheme != 99:
+                raise ValueError("packed CU99 needs each original KainFritsch owner")
+            if "_call_kfcps" in vars(adapter):
+                raise ValueError("packed CU99 cannot replace a customized member column method")
+            if any(adapter is other.cumulus_callable for other in drivers[:member]):
+                raise ValueError("packed CU99 members share a mutable cumulus owner")
+            # Driver initialization owns these arrays; sharing a view would
+            # let another member's kernel overwrite the held trigger state.
+            for name, array in (("cu_nca", driver.cu_nca), ("w0avg", adapter.w0avg)):
+                if array is None:
+                    raise ValueError(f"packed CU99 needs initialized private {name}")
+                lo, hi = int(array.data.ptr), int(array.data.ptr) + int(array.nbytes)
+                for other in drivers[:member]:
+                    previous = other.cu_nca if name == "cu_nca" else other.cumulus_callable.w0avg
+                    start = int(previous.data.ptr)
+                    if lo < start + int(previous.nbytes) and start < hi:
+                        raise ValueError(f"packed CU99 members share mutable {name} storage")
         if int(getattr(cfg, "spp_pbl", 0)) or int(getattr(cfg, "spp_lsm", 0)):
             raise ValueError("packed production leaves have no member-indexed SPP pattern arguments; ordinary members retain their seeded patterns")
         if int(getattr(cfg, "mosaic_lu", 0)) or int(getattr(cfg, "mosaic_soil", 0)):
@@ -239,12 +261,31 @@ class PackedProductionPhysics:
             raise ValueError("packed production member compute received another member's state")
         if _config_identity(cfg) != _config_identity(self.configs[member]):
             raise ValueError("packed production member configuration changed after its current-clock rendezvous")
+        adapter, previous = None, None
+        had_override = False
+        if int(getattr(cfg, "cu_physics", 0)) == 99:
+            # Rebind the exact original adapter method on its private owner.
+            # Its result provenance, diagnostics and fatal handling remain
+            # the ordinary driver's; only the CUDA column call rendezvous
+            # changes. Module globals and other members are never patched.
+            adapter = self.drivers[member].cumulus_callable
+            had_override = "_call_kfcps" in vars(adapter)
+            previous = vars(adapter).get("_call_kfcps")
+            function = _rebind_function(type(adapter)._call_kfcps,
+                {"launch_kf_old": lambda *args, **kwargs:
+                    self.proxies[member]._leaf("cumulus", args, kwargs)})
+            adapter._call_kfcps = MethodType(function, adapter)
         try:
             return self.proxies[member].compute(state, cfg)
         except BaseException as error:
             self.abort(error)
             raise
         finally:
+            if adapter is not None:
+                if had_override:
+                    adapter._call_kfcps = previous
+                else:
+                    del adapter._call_kfcps
             with self._condition:
                 self._finished.add(member)
                 self._condition.notify_all()
@@ -521,6 +562,38 @@ class PackedProductionPhysics:
         return tuple({name: array[member] for name, array in returned.items()}
                      for member in range(self.members))
 
+    def _cumulus(self, ordinal, requests):
+        from dataclasses import asdict
+        from woof.core.kf import launch_kf_old
+        from woof.ensemble.batch_kf import KF_OLD_INPUTS, kf_old_call_reservation
+        namespace = f"cumulus:{ordinal}"
+        knobs = self._common_kwargs(requests,
+            ("dx", "dt", "cudt_minutes", "adaptive", "stepcu", "kf_edrates"))
+        species = requests[0][1]["species"]
+        if any(asdict(kwargs["species"]) != asdict(species) for _, kwargs, _ in requests):
+            raise ValueError("packed CU99 members have different native moist-package flags")
+        inputs = {name: self._gather(namespace + ":inputs", name,
+                      [args[index] for args, _, _ in requests])
+                  for index, name in enumerate(KF_OLD_INPUTS)}
+        if ordinal not in self._components:
+            cfg = self.configs[0]
+            amount = kf_old_call_reservation(cfg.nz, cfg.ny, cfg.nx,
+                members=self.members, edrates=knobs["kf_edrates"],
+                multiprocessors=self.xp.cuda.Device(self.device).attributes["MultiProcessorCount"])
+            self._reserve(namespace + ":workspace_and_outputs", amount)
+            self._components[ordinal] = {"required_call_bytes": amount}
+        result = launch_kf_old(*(inputs[name] for name in KF_OLD_INPUTS),
+                               species=species, **knobs)
+        # KFCPS advances W0AVG even for held columns. Copy that in-place
+        # mutation back before the original adapter resumes on its stream.
+        self._scatter({"w0avg": inputs["w0avg"]},
+            [{"w0avg": args[9]} for args, _, _ in requests])
+        returned = {name: self._gather(namespace + ":returned", name,
+                    [self._member_view(array, member) for member in range(self.members)], joined=False)
+                    for name, array in result.items()}
+        return tuple({name: array[member] for name, array in returned.items()}
+                     for member in range(self.members))
+
     def _radiation(self, ordinal, requests):
         from woof.ensemble.batch_rrtmgp import prepare_rrtmgp_column_batch
         from woof.core.physics import RadiationResult
@@ -530,7 +603,7 @@ class PackedProductionPhysics:
             names=("pressure", "p_interface", "temperature", "exner", "qv", "qc", "qi"))
         field_maps = [kwargs["fields"] for _, kwargs, _ in requests]
         fields = self._gather_maps(namespace + ":fields", field_maps,
-            names=tuple(name for name in ("tsk", "albedo", "emiss", "glw", "xland", "qc_bl", "qi_bl", "cldfra_bl") if name in field_maps[0]))
+            names=tuple(name for name in ("tsk", "albedo", "emiss", "glw", "xland", "swddir", "qc_bl", "qi_bl", "cldfra_bl") if name in field_maps[0]))
         state = SimpleNamespace(elapsed_seconds=float(states[0].elapsed_seconds), p_top=float(states[0].p_top),
             physics=SimpleNamespace(microphysics_updates=int(states[0].physics.microphysics_updates)))
         for name in ("qc", "qr", "qi", "qs", "effc", "effr", "effi", "effs", "nc", "nr", "ni", "ns", "qnc", "qnr", "qni", "qns"):

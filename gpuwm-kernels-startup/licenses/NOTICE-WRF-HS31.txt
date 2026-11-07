@@ -1,0 +1,57 @@
+WRF selector 31 forcing source notice
+
+WRF was developed at the National Center for Atmospheric Research (NCAR) which is operated by the University Corporation for Atmospheric Research (UCAR). NCAR and UCAR make no proprietary claims, either statutory or otherwise, to this version and release of WRF and consider WRF to be in the public domain for use by any person or entity for any purpose without any fee or charge. UCAR requests that any WRF user include this notice on any partial or full copies of WRF. WRF is provided on an "AS IS" basis and any warranties, either express or implied, including but not limited to implied warranties of non-infringement, originality, merchantability and fitness for a particular purpose, are disclaimed. In no event shall UCAR be liable for any damages, whatsoever, whether direct, indirect, consequential or special, that arise out of or in connection with the access, use or performance of WRF, including infringement actions.
+
+WRF® is a registered trademark of the University Corporation for Atmospheric Research (UCAR).
+
+Source: https://github.com/wrf-model/WRF/blob/v4.7.1/LICENSE.txt
+
+The forcing sources have identical SHA-256 hashes in WRF 4.6.1 and 4.7.1:
+phys/module_ra_hs.F
+  7a83582205dedd31071a8fbb3307e227be7e244f282db278c84368e6ae232e3e
+dyn_em/module_damping_em.F
+  933628eae4ef09513d338317529d252933ef602c8659972b99ad67d70583c98f
+
+No coefficient table files are required. Source headers carry no additional
+licence restriction. The existing float32 math helpers retain their own
+permissive notices in the kernel headers and packaged licences.
+
+The initial zero surface-longwave convention was also checked against:
+https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_radiation_driver.F
+  779875651512709c47d50ef6c1e1216ad94726f1996c5e45a0db8eb800733ffa
+This file is part of the same public-domain WRF distribution. Its GLW
+clear precedes the HSRAD dispatch; this scheme computes no surface flux.
+
+The global ideal building blocks were checked at source against the same
+distribution notice, before transcription. No source header adds a licence
+restriction and none requires a coefficient table:
+dyn_em/module_initialize_heldsuarez.F (identical in 4.6.1 and 4.7.1)
+  f93af2b6e3303af3efb92dc119decd8cf3bd60489d5a12845a00041f45167c33
+dyn_em/module_polarfft.F (identical in 4.6.1 and 4.7.1)
+  12d62a8493f78e09a68aa6a216facebea90f4b456c800b62a605010813754d1e
+dyn_em/module_big_step_utilities_em.F (4.6.1, calc_p_rho_phi)
+  8f0649b458fceabd5c31c87ec9f266840fb164e2629322904a3f6ee04c72331a
+
+The GPU polar transform calls the installed CUDA toolkit's cuFFT binary64
+batched API through CuPy. No cuFFT binary or proprietary source is vendored.
+The shipped weighting, packing and writeback kernels are derived from WRF.
+The required CUDA toolkit is already a platform runtime dependency.
+
+dyn_em/module_small_step_em.F (4.6.1, hydrostatic calc_p_rho)
+  cabf1a177d50fb0096db79644af20cfe6d75217dbe63ab406a7e29bb54c17634
+Same WRF distribution notice; source inspected before transcription.
+
+The directional Coriolis and polar curvature operators also derive from
+the pinned module_big_step_utilities_em.F above. Global advection derives
+from the same public-domain distribution, inspected before transcription:
+dyn_em/module_advect_em.F (4.6.1, advect_scalar/u/v)
+  58253bdbeb188dd47ed0579fcd2891086be1889b75c0c7d3696c9ad1d213559d
+
+The global schedule follows the same public-domain WRF distribution:
+dyn_em/solve_em.F (4.6.1)
+  e42df5d7db4b6ec4a3b8e2f228a8ec8f9a4c426656093bfcebe58a8de6c3e8f4
+The unedited stock namelist is retained as tests/data/global_heldsuarez.input:
+test/em_heldsuarez/namelist.input (4.6.1)
+  349086813259f42c38714477d9bc94ae4b61b54fc2a9f7ca05c7f187fee786f2
+Both sources were checked under LICENSE.txt above. Neither source adds a
+licence restriction or requires an external coefficient table.

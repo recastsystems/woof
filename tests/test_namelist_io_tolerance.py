@@ -83,20 +83,21 @@ def test_all_wrf_registry_inputout_alarm_spellings_are_accepted():
     assert controls <= TIME_CONTROL_IGNORED_KEYS.keys()
 
 
-def test_auxiliary_stream_does_not_bypass_active_sst_update_or_nudging():
+def test_auxiliary_stream_admits_sst_update_but_does_not_bypass_nudging():
     wps, inp = _base_pair()
     inp["time_control"].update(auxinput4_inname=["synthetic"],
                                 auxinput4_interval=[60],
                                 io_form_auxinput4=[2])
     inp["physics"]["sst_update"] = [1, 1]
     refusals = [str(error) for error in namelist_refusals(wps, inp)]
-    assert any("sst_update" in message and "SST update cycling" in message
-               for message in refusals)
+    assert not any("sst_update" in message for message in refusals)
     assert not any("unmapped key" in message for message in refusals)
     inp["physics"].pop("sst_update")
-    inp["fdda"] = {"grid_fdda": [1, 1], "gfdda_inname": ["synthetic"]}
+    inp["fdda"] = {"grid_sfdda": [1, 1], "gfdda_inname": ["synthetic"]}
     refusals = [str(error) for error in namelist_refusals(wps, inp)]
-    assert any("grid_fdda" in message and "set it to 0" in message
+    # Surface analysis nudging is ported (port-fdda-sfc): an auxiliary
+    # stream still does not stand in for its parent grid nudging.
+    assert any("grid_sfdda" in message and "WRF_SURFACE_FDDA_PARENT" in message
                for message in refusals)
 
 

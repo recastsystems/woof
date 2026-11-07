@@ -14,6 +14,21 @@ import pytest
 from woof import rustwx, verification_visuals as visuals
 
 
+@pytest.fixture(autouse=True)
+def _foreground_cap_out_of_the_way(request, monkeypatch):
+    """Tests of what the queue records do not also time the launcher thread.
+
+    finish_run returns its "pending" placeholder when the launcher misses the two
+    second foreground cap, and that placeholder has no phase or declared_empty.
+    Breakage (2.9.12 pass 3d4c7a81 R5, a 20-way Stage 1 beside the GPU shards and
+    the cut battery on one host): five tests here read those keys from the
+    placeholder.  The cap itself stays proven by the stalled-launcher test, which
+    runs at the shipped 2.0 s.
+    """
+    if request.node.originalname != "test_finish_foreground_cap_covers_stalled_filesystem_or_process_launcher":
+        monkeypatch.setattr(visuals, "FINISH_FOREGROUND_SECONDS", 30.0)
+
+
 @pytest.fixture
 def hour_request(tmp_path):
     field = tmp_path / "forecast.nc"
@@ -359,7 +374,9 @@ def test_finish_queues_once_without_waiting_for_native_or_online_sources(tmp_pat
         started = time.monotonic()
         first = visuals.finish_run(root)
         second = visuals.finish_run(root)
-    assert time.monotonic() - started < 1.0
+    # No native or online source is waited on (the pytest.fail stand-ins); the wall bound only catches a
+    # hang and holds under a loaded Stage 1 (it read 2.0 s against a 1.0 s bound there, 2.9.12 pass 3d4c7a81).
+    assert time.monotonic() - started < 10.0
     assert len(calls) == 1 and first["token"] == second["token"]
     command, options = calls[0]
     assert "--finish-worker" in command and "--job-token" in command
@@ -713,8 +730,10 @@ def test_finish_run_returns_within_bound_with_unreachable_observation_endpoint(
     begin = time.monotonic()
     state = visuals.finish_run(root, sections={"run_shape": {"start_time": "2026-01-01T00:00:00Z"},
         "output": {"frames": [{"path": str(field), "sha256": "a" * 64}]}})
-    assert time.monotonic() - begin < 2.75 and state["phase"] == "queued"
-    assert done.wait(3) and outcomes == [0] and attempts == []
+    # The unreachable endpoint is never attempted (attempts == [] below); the wall bound catches a wait on it
+    # (its urlopen timeout is 30 s) and holds under a loaded Stage 1.
+    assert time.monotonic() - begin < 10.0 and state["phase"] == "queued"
+    assert done.wait(30) and outcomes == [0] and attempts == []
     job = json.loads((root / visuals.BACKGROUND_NAME).read_text())
     assert job["phase"] == "finished" and job["compact_inputs_ready"]
     assert (root / "retained.npz").is_file() and not (root / ".keep").exists()

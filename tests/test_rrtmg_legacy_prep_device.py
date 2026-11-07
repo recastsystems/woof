@@ -24,7 +24,8 @@ def host_oracle(monkeypatch):
 
 
 def device_kwargs(kw):
-    return {k: cp.asarray(v) if isinstance(v, np.ndarray) and v.ndim else v
+    return {k: device_kwargs(v) if isinstance(v, dict) else
+            cp.asarray(v) if isinstance(v, np.ndarray) and v.ndim else v
             for k, v in kw.items()}
 
 
@@ -357,3 +358,28 @@ def test_canonical_microns_keep_stock_cloud_prep_bits(sw, snow_radius):
 def test_unknown_radius_units_refused():
     with pytest.raises(ValueError, match="radii_units must be meters or microns"):
         dev.lwrad_prep_batch_device(radii_units="unknown")
+
+@pytest.mark.parametrize("selector", [5, 15])
+@pytest.mark.parametrize("icloud", [0, 1])
+@pytest.mark.parametrize("sw", [False, True])
+def test_ferrier_remap_matches_the_reference_outside_icloud(selector, icloud, sw):
+    kw = synthetic(7)
+    kw.update(mp_physics=selector, icloud=icloud,
+              has_reqc=0, has_reqi=0, has_reqs=0,
+              f_qc=True, f_qr=True, f_qi=True, f_qs=False, f_qg=False)
+    dual(side_kwargs(kw, sw), sw)
+
+@pytest.mark.gpu
+def test_ssib_four_albedos_reach_the_device_engine_bitwise():
+    kw = side_kwargs(synthetic(5, nz=12), True)
+    kw['sf_surface_physics'] = 8
+    kw['spectral_albedo'] = {name: np.full(5, np.float32(value), np.float32)
+        for name, value in [('asdir',.1),('asdif',.2),('aldir',.3),('aldif',.4)]}
+    dual(kw, True)
+    actual = dev.swrad_prep_batch_device(**device_kwargs(kw))
+    for name, value in kw['spectral_albedo'].items():
+        assert_bits(actual[name], value, name)
+    for bad in (None, {'asdir': np.zeros(5,np.float32)}):
+        broken = device_kwargs(kw); broken['spectral_albedo'] = bad
+        with pytest.raises(ValueError,match='four spectral albedos'):
+            dev.swrad_prep_batch_device(**broken)

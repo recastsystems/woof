@@ -12,6 +12,8 @@ from __future__ import annotations
 import numpy as np
 
 from woof.core import acoustic as original
+from woof.core.mp_column_schemes import (SIX_MASS_TABLE_SCHEMES,
+                                         TABLE_SCHEMES)
 from woof.ensemble.batch_kernel import KernelSpec, PointerSpec, prepare_batch_kernel_launch
 from woof.ensemble.batch_state import BatchedDomainState, BatchStateUnsupported
 from woof.microphysics_schemes import mass_loading_species as _mass_loading_species
@@ -100,6 +102,11 @@ class _Bindings:
         return name, spec
 
     def bind(self, entry, args, pointers, grid, *, defines=()):
+        from woof.core.kernel_shape import shape_defines
+        # The scalar launcher specializes these dimensions before NVRTC.
+        # Keeping a runtime loop bound here changes contraction on SM89.
+        defines += shape_defines("acoustic", entry,
+                                 (self.cfg.nz, self.cfg.ny, self.cfg.nx))
         rows, strides = [], {}
         for name, value in pointers:
             owner, spec = self.owner(value)
@@ -130,7 +137,12 @@ def prepare_moist_cq(state, cfg):
     cqu = state.scratch((nz, ny, nx + 1), "acoustic_cqu")
     cqv = state.scratch((nz, ny + 1, nx), "acoustic_cqv")
     cqw = state.scratch((nz + 1, ny, nx), "acoustic_cqw")
-    if cfg.mp_physics == 0:
+    from woof.physics_registry import consumer_row_for_selector
+    native = consumer_row_for_selector("microphysics", "native_column", cfg.mp_physics)
+    if native:
+        qi, qs, qg = (getattr(state, name) for name in native["mass_slots"])
+        n_mass = 6
+    elif cfg.mp_physics == 0:
         qi = qs = qg = state.qv
         n_mass = 1
     elif cfg.mp_physics in (1, 3):
@@ -141,9 +153,15 @@ def prepare_moist_cq(state, cfg):
         qs = qg = state.scratch((nz, ny, nx), "moist_absent_mass")
         qs[...] = 0.0
         n_mass = 6
-    elif cfg.mp_physics in (2, 6, 8, 9, 10, 16, 18, 24, 28, 30, 106):
+    elif cfg.mp_physics == 13:
+        # Five-class (SBU-YLin, mp=13): no graupel; see acoustic.py.
+        qi, qs = state.qi, state.qs
+        qg = state.scratch((nz, ny, nx), "moist_absent_mass")
+        qg[...] = 0.0
+        n_mass = 6
+    elif cfg.mp_physics in (2, 6, 7, 8, 9, 10, 16, 18, 24, 28, 30, 40, 56, 106) + SIX_MASS_TABLE_SCHEMES:
         qi, qs, qg = state.qi, state.qs, state.qg
-        n_mass = 7 if cfg.mp_physics in (9, 18, 24) else 6
+        n_mass = 7 if cfg.mp_physics in (7, 9, 18, 24, 56) else 6
     elif _mass_loading_species(cfg.mp_physics) == ("qi", "qs", "qg"):
         # A NAMED scheme whose capability row declares the six-mass moist
         # package: the same calc_cq call as the Thompson family.
@@ -152,7 +170,7 @@ def prepare_moist_cq(state, cfg):
         n_mass = 6
     else:
         raise ValueError(f"unsupported mp_physics={cfg.mp_physics} for cq")
-    qh = state.qh if cfg.mp_physics in (9, 18, 24) else state.qv
+    qh = state.qh if cfg.mp_physics in (7, 9, 18, 24, 56) else state.qv
     arrays = (state.qv, state.qc, state.qr, qi, qs, qg, qh, cqu, cqv, cqw)
     args = arrays + (_I32(n_mass), _I32(nz), _I32(ny), _I32(nx))
     n = (nz + 1) * (ny + 1) * (nx + 1)

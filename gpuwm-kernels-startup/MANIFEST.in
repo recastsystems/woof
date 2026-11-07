@@ -1,0 +1,4 @@
+recursive-include gpuwm_kernels_startup/data *
+include gpuwm_kernels_startup/VERSION
+recursive-include licenses *
+include LICENSE NOTICE README.md

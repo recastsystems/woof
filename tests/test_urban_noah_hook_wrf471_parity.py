@@ -31,11 +31,11 @@ UNBLENDED = (
 SURFACE = ("tsk", "hfx", "qfx", "lh", "grdflx", "albedo", "qsfc", "emiss", "ust")
 
 # Architecture -> case -> field -> measured maximum ULP against WRF v4.7.1.
-# MEASURED 2026-10-07 on box W1 (RTX PRO 6000, sm_120, NVRTC 12.9.86) at
-# lane/verify-noah-lsm, under GPUWM_WRF_EXACT=1 and under default arithmetic
+# MEASURED 2026-10-07 on test host (RTX PRO 6000, sm_120, NVRTC 12.9.86) at
+# development branch, under GPUWM_WRF_EXACT=1 and under default arithmetic
 # alike: ZERO in every field of every case and of both column groups.  The
-# rows this table held before (sm_89 from a development machine, 2026-09-30; sm_120 from
-# a development machine and a development machine, re-recorded 2026-10-01; in git history) were the plain
+# rows this table held before (sm_89 from test host 1, 2026-09-30; sm_120 from
+# test host 2 and test host 4, re-recorded 2026-10-01; in git history) were the plain
 # Noah column's own classes -- the HFX/GRDFLX flux family, the runoff and
 # snowmelt accumulators and the float64 NOAHRES residual -- and that lane
 # closed them (WOOF's own float32 libm words, integer powers, NOAHRES summed

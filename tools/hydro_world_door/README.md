@@ -73,7 +73,7 @@ the driver's state is part of the atmosphere checkpoint.
   excluded), harvested with non-blocking queries; no device sync in the step
   loop. Reports ms per LSM call, ms per atmosphere step, the fraction of the
   atmosphere step, and each stage's parallelism. Above 5 percent it is the named
-  defect `hydro-cost-over-budget` (owner lane-hydro-speed): the receipt and the
+  defect `hydro-cost-over-budget` (owner hydro-speed): the receipt and the
   forecast outputs are written first, then the run is refused with a non-zero exit.
 - `hydro_products` (`woof.hydro.forecast_products`): at the output boundary only,
   the realization's GPU history goes through the Rust writer, its renderer

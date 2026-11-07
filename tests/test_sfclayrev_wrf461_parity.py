@@ -11,7 +11,7 @@ desert, tall roughness on thin layers, and edge cases (``ust < 0.001``,
 ``isftcflx`` 1 and 2; ``iz0tlnd`` 1 and 2; ``isfflx = 0``), three chained
 steps each: 1,980 column calls, 34 output words per call.
 
-Before lane/verify-revised-mm5-sfclay the kernel had never met a WRF number
+Before development branch the kernel had never met a WRF number
 for this scheme.  It measured 3,721 ULP from WRF under the strict build and
 786,432 ULP under default arithmetic.  It is now WRF's word on every compared
 lane under both builds.
@@ -31,7 +31,7 @@ step 2, case 69, one ULP, because at -O2 gfortran turns the four ``x**2.``
 powers of the unstable similarity functions (sf_sfclayrev.F90:1012, 1014,
 1027, 1029) into ``x*x``.  Until 2026-10-29 the kernel kept them as powf
 calls (the -O0 spelling) and this test graded against -O0; against the strict
-wrf.exe that put 1-ULP surface fluxes in 3 of 12,000 9 km columns after
+wrf.exe that put 1-ULP surface fluxes in 3 of 12,000 nested-domain 9 km columns after
 one physics-on step.  The strict build's compared words equal the stock
 as-built build's (``sfclayrev-outputs-asbuilt.hex``, -O2 -ftree-vectorize).
 """

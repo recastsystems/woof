@@ -897,6 +897,7 @@ def validate_soil_layer_contract(
             "temperature_field", "moisture_field", "depth_units",
             "source_layers", "source_nodes", "target_layers", "remap",
             "missing", "moisture_provenance", "selector_depth_binding",
+            "deep_donor", "deep_donor_layers",
         },
         required={
             "temperature_field", "moisture_field", "depth_units",
@@ -1042,6 +1043,30 @@ def validate_soil_layer_contract(
         )
         if source[0][0] != 0.0:
             raise ValueError("soil source_layers must begin at the 0 m surface")
+    if contract.get("deep_donor") is not None:
+        # The layers below the source's own come from a declared donor
+        # analysis (woof/ingest/deep_soil_donor.py).  The source's own
+        # layers are still checked against its mapping below; the donor's
+        # are checked here, against those.
+        if not has_layers:
+            raise ValueError(
+                "a deep_donor extends a layer source below its published "
+                "layers; a node source declares its own ladder")
+        from woof.ingest.deep_soil_donor import validate_deep_donor
+        contract["deep_donor"] = validate_deep_donor(contract["deep_donor"], source)
+    donor_layers = contract.get("deep_donor_layers")
+    if donor_layers is not None:
+        # Only the stacked contract deep_soil_donor builds carries this.
+        donor_layers = _object(
+            donor_layers, "composition.soil_layers.deep_donor_layers",
+            allowed={"first_index", "source_id", "soil_model"},
+            required={"first_index", "source_id", "soil_model"},
+        )
+        first = donor_layers["first_index"]
+        if contract.get("deep_donor") is not None or not has_layers                 or isinstance(first, bool) or not isinstance(first, int)                 or not 1 <= first < len(source):
+            raise ValueError(
+                "deep_donor_layers names the donor's layers inside a stacked "
+                "layer contract; it needs at least one source layer above them")
     target = _layer_bounds(contract["target_layers"], "soil target_layers")
     if target != NOAH_LAYER_BOUNDS_M:
         raise ValueError(
@@ -1407,6 +1432,15 @@ def ruc_soil_remap_policy(value: object) -> dict[str, object]:
     """
 
     contract = validate_soil_layer_contract(value)
+    if contract.get("deep_donor") is not None:
+        # A declared deep-soil donor supplies the layers below the source's
+        # own (woof/ingest/deep_soil_donor.py), so RUC sees the stacked
+        # column: the one-slab refusal below names a source with nothing
+        # under its slab, which this source no longer is.
+        from woof.ingest.deep_soil_donor import effective_soil_layer_contract
+
+        contract = validate_soil_layer_contract(
+            effective_soil_layer_contract(contract))
     if contract.get("source_nodes") is not None:
         scaled, scale = _scaled_depths(soil_node_depths(contract))
         return dict(

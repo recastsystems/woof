@@ -66,7 +66,8 @@ PROGRAMS = (("S", "hex_obs_scorecard", "the observation scorer (rust/obs-scoreca
             # THE BREAKAGE THIS PREVENTS (hex 0.4.5 licence census, 2026-10-25): the wheel ships rw_hex_ugwp_oro
             # (rust/ugwp-oro), which links rayon and serde_json, and no program row listed it, so their texts did
             # not travel with the binary and the census refused it as an unrecognized ELF.
-            ("U", "rw_hex_ugwp_oro", "the GSL orographic drag statistics builder (rust/ugwp-oro)"))
+            ("U", "rw_hex_ugwp_oro", "the GSL orographic drag statistics builder (rust/ugwp-oro)"),
+            ("V", "rw_hex_wave_products and wave_audit", "the wave maps and audit (rust/wave-products)"))
 
 
 def cargo_tree(cwd: Path, *args: str, linked: bool, target: str = "all") -> list[tuple[str, str, str | None]]:
@@ -115,7 +116,7 @@ def closures(engines: dict[str, Path], work: Path) -> dict[str, dict[str, list]]
     (energy / "Cargo.toml").write_text(text)
     (energy / "Cargo.lock").write_bytes((crate / "Cargo.lock").read_bytes())
     out = {}
-    for key, args, locked in (("S", ("--manifest-path", str(manifest)), ()),
+    for key, args, locked in (("S", ("--manifest-path", str(manifest)), ("--locked",)),
                               ("B", ("-p", "rw-mpas"), ("--locked",)),
                               ("O", ("-p", "rw-obs"), ("--locked",)),
                               ("W", ("-p", "rw-wrfbatch"), ("--locked",)),
@@ -125,12 +126,14 @@ def closures(engines: dict[str, Path], work: Path) -> dict[str, dict[str, list]]
                               ("R", ("-p", "rw-s2s"), ("--locked",)),
                               ("H", ("--manifest-path", str(TREE / "rust/chem-sources/Cargo.toml")), ("--locked",)),
                               ("U", ("--manifest-path", str(TREE / "rust/ugwp-oro/Cargo.toml")), ("--locked",)),
+                              ("V", ("--manifest-path", str(TREE / "rust/wave-products/Cargo.toml")), ("--locked",)),
                               ("E", ("--manifest-path", str(energy / "Cargo.toml")), ("--locked",))):
         # E resolves from the engine workspace directory so its vendored sources apply, exactly as
         # tools/build_s2s_energy.sh builds it.
         root = {"F": sfc, "P": TREE / "rust/physics-pool", "R": TREE / "tools/rustwx",
-                "H": TREE / "rust/chem-sources", "U": TREE / "rust/ugwp-oro"}.get(key, engines[key] / "tools/rustwx")
-        target = "x86_64-unknown-linux-gnu" if key in ("F", "P", "R", "H", "E", "U") else "all"
+                "H": TREE / "rust/chem-sources", "U": TREE / "rust/ugwp-oro",
+                "V": TREE / "rust/wave-products"}.get(key, engines[key] / "tools/rustwx")
+        target = "x86_64-unknown-linux-gnu" if key in ("F", "P", "R", "H", "E", "U", "V") else "all"
         linked = cargo_tree(root, *locked, *args, linked=True, target=target)
         every = cargo_tree(root, *locked, *args, linked=False, target=target)
         out[key] = {"linked": linked,
@@ -219,7 +222,7 @@ RADAR_END = "END WOOF SIMULATED RADAR DEPENDENCY LICENCE TEXTS"
 def radar_appendix(text: str) -> tuple[dict, dict, dict]:
     """Inventory rows, text-less reasons and texts of the source notice's radar appendix.
 
-    THE BREAKAGE THIS PREVENTS (hex 0.4.0 repin to woof 2.9.0, 2026-10-14): at the 2.9.0 release commit
+    THE BREAKAGE THIS PREVENTS (hex 0.4.0 repin to gpuwm 2.9.0, 2026-10-14): at the 2.9.0 release commit
     rw-mpas links libloading 0.9.0, so the scorer publish.yml builds against the floor's engine links it
     too.  The source notice carries libloading's ISC text only in this appendix, so section 3 alone found
     no row for it and the helper notice could not be written: the wheel would have shipped the scorer
@@ -382,6 +385,10 @@ def render(engines: dict[str, Path], notice_sha: str, notice: dict, sets: dict, 
     if scorer != bridges:
         out.append(f"  scorer resolved against  woof commit {scorer[0]},\n"
                    f"                           Cargo.lock sha256 {scorer[1]}\n")
+    energy = identity(engines["E"])
+    if energy != scorer:
+        out.append(f"  [E] resolved against     woof commit {energy[0]},\n"
+                   f"                           Cargo.lock sha256 {energy[1]}\n")
     for extra in engines.get("B+", ()):
         commit, lock = identity(extra)
         out.append(f"  [B] also resolved against woof commit {commit},\n"
@@ -405,7 +412,8 @@ def render(engines: dict[str, Path], notice_sha: str, notice: dict, sets: dict, 
                "woof/hex/data/licenses/rustwx-LICENSE-MIT.\n\n")
     out.append("rw-sfc-series is project code with MPAS-derived portions under Apache-2.0\n"
                "AND BSD-3-Clause. The Registry pool reader is MIT. rw-s2s, rw-s2s-energy and\n"
-               "rust/chem-sources (hex-chem-sources) and rust/ugwp-oro (hex-ugwp-oro) are this project's own code (Apache-2.0).\n\n")
+               "rust/chem-sources (hex-chem-sources), rust/ugwp-oro (hex-ugwp-oro) and\n"
+               "rust/wave-products (hex-wave-products) are this project's own code (Apache-2.0).\n\n")
     out += [f"  {name} {version}\n" for name, version in sorted(own)]
     if two:
         out.append(f"\n{RULE}\n2.  NOTICES THAT ARE NOT CRATE LICENCES\n{DASH}\n\n"
@@ -457,6 +465,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scorer-engine", type=Path,
                         help="the woof source the scorer is built against, when it is another one "
                              "(publish.yml builds it against the engine release the declared floor names)")
+    parser.add_argument("--energy-engine", type=Path,
+                        help="the woof source the S2S energy helper was built against, when it differs "
+                             "from the cached scorer's source")
     parser.add_argument("--prebuilt-engine", type=Path,
                         help="the woof source the renderer prebuilts are built from "
                              "(engine-bridges.json source_prebuilts.gpuwm_source_rev), when it is another one")
@@ -477,8 +488,8 @@ def main(argv: list[str] | None = None) -> int:
     # engine source than the bridges (source_prebuilts); listing their crates from the bridges' source would
     # ship texts for crates the renderer no longer links and none for those it now does.
     engines["W"] = engines["C"] = (args.prebuilt_engine or args.engine).resolve()
-    # rw_s2s_energy is built by setup.py against the same engine source as the scorer.
-    engines["E"] = engines["S"]
+    # A retained scorer and a newly built energy helper can have different engine inputs.
+    engines["E"] = (args.energy_engine or args.scorer_engine or args.engine).resolve()
     extras = tuple(path.resolve() for path in args.bridge_engine if path.resolve() != engine)
     if extras:
         engines["B+"] = extras
@@ -505,7 +516,7 @@ def main(argv: list[str] | None = None) -> int:
                            "licence": (notice["inventory"][(n, v)][0] if (n, v) in notice["inventory"] else
                                        ("Apache-2.0" if n == "hex-obs-scorecard" else
                                         "Apache-2.0 AND BSD-3-Clause" if n == "rw-sfc-series" else
-                                        "Apache-2.0" if n in ("rw-s2s", "rw-s2s-energy", "hex-chem-sources", "hex-ugwp-oro") else
+                                        "Apache-2.0" if n in ("rw-s2s", "rw-s2s-energy", "hex-chem-sources", "hex-ugwp-oro", "hex-wave-products") else
                                         crate_source(n, v, s, engines)[1].get("license", "UNKNOWN")))}
                           for n, v, s in closure["linked"]] for key, closure in sets.items()}
             args.closures_json.write_text(json.dumps({"engine": identity(engine), "programs": rows}, indent=2) + "\n")

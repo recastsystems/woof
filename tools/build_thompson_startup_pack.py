@@ -22,7 +22,10 @@ def bind_pack(output):
         row['effective_compile']['options'] = kernel_aot.portable_options(
             row['effective_compile']['options'])
         options = kernel_aot.local_options(row['options'])
-        if include_roots(options):
+        # kernel_aot_build already bound each compiled row to what its source
+        # can open; rebinding to the whole folder here would tie the image to
+        # this build host's exact set of CUDA library headers again.
+        if include_roots(options) and 'include_trees' not in row:
             row['include_trees'] = include_tree_dependencies(options, snapshots)
     kernel_pack.write(output, identity, shipped)
 

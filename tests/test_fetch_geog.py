@@ -199,7 +199,7 @@ def test_pin_table_binds_the_static_builders_dataset_list():
     assert (geog_assets.datasets_required_by(geog_assets.GEOG_CONSUMER_WRF)
             == WRF_PINS)
     # Licence: nothing on a door's required column, and nothing in the
-    # default fetch, carries a licence hold (the project owner, 2026-10-14/2026-10-21).
+    # default fetch, carries a licence hold (the project ruling, 2026-10-14/2026-10-21).
     for archive in geog_assets.GEOG_ARCHIVES:
         if archive.licence_hold:
             assert not archive.required_by and not archive.fetch_by_default

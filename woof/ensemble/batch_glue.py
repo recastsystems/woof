@@ -73,7 +73,7 @@ def prepare_total_mass(state, *, out="batch_mass"):
     return launch
 
 
-def prepare_total_theta(state, *, out="batch_theta"):
+def prepare_total_theta(state, *, out="batch_theta", perturbation="thp"):
     """Bind the existing glue_total_theta body into a priced output backing."""
     cfg = state.cfg
     shape = (cfg.nz, cfg.ny, cfg.nx)
@@ -81,13 +81,13 @@ def prepare_total_theta(state, *, out="batch_theta"):
     if base_shape not in ((cfg.nz,), shape):
         raise ValueError("theta base has neither original scalar layout")
     base = _array(state, "thb", base_shape)
-    perturbation = _array(state, "thp", shape)
+    perturbation_array = _array(state, perturbation, shape)
     result = _array(state, out, shape, output=True)
-    _disjoint(result, (base, perturbation))
+    _disjoint(result, (base, perturbation_array))
     size = cfg.nz * cfg.ny * cfg.nx
     return _bind(state, "bandwidth_glue", "glue_total_theta",
-                 (("thb", "thb"), ("thp", "thp"), ("dst", out)),
-                 (base, perturbation, result, np.uint64(size),
+                 (("thb", "thb"), ("thp", perturbation), ("dst", out)),
+                 (base, perturbation_array, result, np.uint64(size),
                   np.int32(cfg.ny * cfg.nx), np.int32(len(base_shape) == 3)),
                  ((size + 511) // 512,))
 

@@ -306,7 +306,7 @@ def test_ohio_like_lake_edge_requires_explicit_radius_ten():
 
 #: The two HRRR 2 m specific-humidity stencils that refused a nested run.
 #:
-#: woof 1.8.4, HRRR cycle 2026-08-08T09 f00, nested 12-3 km tree centred
+#: gpuwm 1.8.4, HRRR cycle 2026-08-08T09 f00, nested 12-3 km tree centred
 #: 39.0,-103.0.  Both preparation stages passed and the tree forecast then
 #: refused its own d02 input: "prepared near-surface surface_qv is outside
 #: the physical range 0.0..0.2".  These are the source values behind it,

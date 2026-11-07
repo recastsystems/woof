@@ -120,15 +120,50 @@ extern "C" __global__ void rrfs_tempo_aerosol_surface(
 _LOOKUP_PREFETCH: dict = {}
 
 
-def tempo_lookup_path_in(named, filename, *, resource='mpas-source-rrfs', pin_set='rrfs'):
-    """One NOAA lookup file: the last named table directory that holds it, else the fetched fork source's
-    (FrameworkInitializationRRFS.tempo_lookup_path, for a ``named`` directory list known before the backend)."""
+def _named_roots(named):
+    """The run's --native-physics-tables directories as Paths, in the order named ([] when none is named)."""
     from pathlib import Path
-    if named is not None:
-        roots = [named] if isinstance(named, (str, Path)) else list(named)
+    if named is None:
+        return []
+    return [Path(named)] if isinstance(named, (str, Path)) else [Path(root) for root in named]
+
+
+def missing_named_tables(named, filenames):
+    """The refusal when named table directories do not hold every lookup file the scheme reads, else None.
+
+    THE BREAKAGE THIS PREVENTS (box-4x, hrrrv5 x1.40962, 8 rank processes, fast, 2026-11-06): the strict TEMPO
+    lookup files were being copied into a directory the runs named while two runs started; neither found them,
+    both silently read the fork source's NOAA copies (freeze_water_data_tempo_v3 sha256 4624... against the
+    strict 9cf5...), and differed from every later run on the same tree by 228,559 history words at step 1
+    (306,577,394 by step 12), read as a "cold first run" defect.  A named directory list is binding: every lookup
+    file comes from it, or the run refuses, in any numerics.  With no directory named, the fork copies are the
+    default, unchanged.
+    """
+    roots = _named_roots(named)
+    if not roots:
+        return None
+    missing = [name for name in filenames if not any((root / name).is_file() for root in roots)]
+    if not missing:
+        return None
+    from ...errors import ConfigurationRefusal
+    return ConfigurationRefusal(
+        "--native-physics-tables", ", ".join(str(root) for root in roots),
+        f"no named table directory holds {', '.join(missing)}, and a named directory list is never filled "
+        "from the fork source's copies",
+        "a directory that holds every listed file, or no --native-physics-tables to read the fork source's copies")
+
+
+def tempo_lookup_path_in(named, filename, *, resource='mpas-source-rrfs', pin_set='rrfs'):
+    """One NOAA lookup file: the last named table directory that holds it; with none named, the fetched fork
+    source's (FrameworkInitializationRRFS.tempo_lookup_path, for a ``named`` directory list known before the
+    backend).  Named directories that lack it refuse (:func:`missing_named_tables` names the breakage)."""
+    from pathlib import Path
+    roots = _named_roots(named)
+    if roots:
         for root in reversed(roots):
-            if (Path(root) / filename).is_file():
-                return Path(root) / filename
+            if (root / filename).is_file():
+                return root / filename
+        raise missing_named_tables(roots, (filename,))
     from ..resources_build import ensure_route_resources
     source = ensure_route_resources((resource,), pin_set=pin_set)[resource]
     return Path(source) / 'src/core_atmosphere/physics/physics_wrf/files' / filename
@@ -463,11 +498,10 @@ class FrameworkInitializationRRFS(FrameworkInitialization):
         field's origin. Native would read the stream's file; a field that came from the Registry's initial
         value instead would run the drag on zero var2d/oa/ol statistics, so that is refused by name.
         """
-        import json
-        from pathlib import Path
+        from ..pool_v842 import payload_manifest
         stream = self.session.layout.root.find("./streams/stream[@name='ugwp_oro_data_in']")
         names = [] if stream is None else [v.get('name') for v in stream.findall('var')]
-        manifest = json.loads((Path(self.session.hydration.payload) / 'manifest.json').read_text())
+        manifest = payload_manifest(self.session.hydration.payload)
         origins = {r['name']: r.get('origins') or [] for r in manifest['fields']
                    if r['pool'] in ('sfc_input', 'mesh')}
         missing = [name for name in names if not origins.get(name)
@@ -666,15 +700,20 @@ class FrameworkInitializationRRFS(FrameworkInitialization):
 
         ``resource``/``pin_set``: the fork source the backend resolves its tables from (the row's bound backend
         arguments; tempo_lookup_path).  THE BREAKAGE THIS PREVENTS (RRFS hrrrv5 on the 44c0849 default row,
-        mv3km, V8X6000, 2026-10-29): the read-ahead always resolved the 1d6e370e fork's files, so on the default
+        mv3km, eight-card system, 2026-10-29): the read-ahead always resolved the 1d6e370e fork's files, so on the default
         row it never matched, read_tempo_lookup_files read the 44c0849 files again on the main thread, and the
         unused read-ahead (~0.93 GB) stayed held for the whole run in every rank process.
         """
         import threading
         from concurrent.futures import Future
+        if str(configs.get('config_microp_scheme', '')).strip() != 'mp_tempo':
+            return None
+        # Named table directories that lack a lookup file refuse here, before the dycore inputs, naming every
+        # missing file at once (missing_named_tables names the breakage).
+        refusal = missing_named_tables(named, [row[0] for row in cls.TEMPO_LOOKUP_FILES])
+        if refusal is not None:
+            raise refusal
         try:
-            if str(configs.get('config_microp_scheme', '')).strip() != 'mp_tempo':
-                return None
             paths = tuple(tempo_lookup_path_in(named, row[0], resource=resource, pin_set=pin_set)
                           for row in cls.TEMPO_LOOKUP_FILES)
         except Exception:  # noqa: BLE001 - read_tempo_lookup_files resolves and raises by itself
@@ -694,6 +733,56 @@ class FrameworkInitializationRRFS(FrameworkInitialization):
         _LOOKUP_PREFETCH[key] = future
         threading.Thread(target=run, name='hex-tempo-lookup-prefetch', daemon=True).start()
         return future
+
+    @classmethod
+    def verify_strict_tables(cls, configs, named, packet=None, *, future=None,
+                             resource='mpas-source-rrfs', pin_set='rrfs'):
+        """Strict numerics: refuse before the run starts when a TEMPO lookup file it would read is not the strict one.
+
+        THE BREAKAGE THIS PREVENTS (hrrrv5 x1.40962, strict, a test host, 2026-11-06): the run's named table directories
+        did not hold the strict reference's lookup files, so TEMPO silently read the fork source's NOAA copies
+        (freeze_water_data_tempo_v3 sha256 4624...) where native and a test host read the strict-rebuilt 9cf5..., and the
+        bitwise comparison ran against different tables.  Expected digests: the packet's ``mp_tempo.lookup_sha256``
+        (a referee packet records the files its native reference ran with), else the fork manifest's pinned files
+        (the NOAA files a plain install fetches).  Fast (default) runs are not checked.  ``future`` is
+        prefetch_tables' read-ahead, whose digests are used, so no file is read twice (a strict run waits for it).
+        """
+        from ...numerics import is_strict
+        if not is_strict() or str(configs.get('config_microp_scheme', '')).strip() != 'mp_tempo':
+            return None
+        if packet is not None and not isinstance(packet, dict):
+            from ..resources_build import load_packet
+            packet = load_packet(packet)
+        recorded = dict(((packet or {}).get('mp_tempo') or {}).get('lookup_sha256') or {})
+        source = 'the strict packet' if recorded else f'the pinned {pin_set} fork file'
+        if not recorded:
+            from ..native_library_build import source_manifest
+            tables = source_manifest(pin_set)['tables']
+            recorded = {row[0]: tables[row[0]]['sha256'] for row in cls.TEMPO_LOOKUP_FILES if row[0] in tables}
+        paths = tuple(tempo_lookup_path_in(named, row[0], resource=resource, pin_set=pin_set)
+                      for row in cls.TEMPO_LOOKUP_FILES)
+        digests = None
+        if future is not None:
+            try:
+                digests = future.result()[0]
+            except Exception:  # noqa: BLE001 - hashed here below
+                digests = None
+        if not digests:
+            import hashlib
+            from concurrent.futures import ThreadPoolExecutor
+
+            def digest(path):
+                with open(path, 'rb') as stream:
+                    return hashlib.file_digest(stream, 'sha256').hexdigest()
+            with ThreadPoolExecutor(len(paths)) as pool:
+                digests = dict(zip((row[0] for row in cls.TEMPO_LOOKUP_FILES), pool.map(digest, paths)))
+        wrong = [f"{row[0]} sha256 {digests.get(row[0])} ({path}) is not {source}'s {recorded[row[0]]}"
+                 for row, path in zip(cls.TEMPO_LOOKUP_FILES, paths)
+                 if row[0] in recorded and digests.get(row[0]) != recorded[row[0]]]
+        if wrong:
+            raise ValueError('strict numerics refuses the TEMPO lookup tables: ' + '; '.join(wrong)
+                             + ' (name the directory holding the strict tables with --native-physics-tables)')
+        return digests
 
     def read_tempo_lookup_files(self):
         """The four NOAA lookup files' arrays, straight into the held tables (about 1 GB): the words

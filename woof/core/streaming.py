@@ -2098,6 +2098,11 @@ class StreamedDomain:
         """``{name: array}`` of the whole domain, wherever it lives."""
         return self._run.store
 
+    def read_store(self) -> dict:
+        """Read canonical arrays; ranked readers do not dirty the slabs."""
+        reader = getattr(self._run, "read_store", None)
+        return reader() if callable(reader) else self._run.store
+
     @property
     def state(self):
         """The prepared state this domain was attached to.
@@ -2245,7 +2250,7 @@ class StreamedDomain:
             from woof.sfire_debug import report_streamed
             report_streamed(self, cfg)
 
-    def history_fields(self) -> dict:
+    def history_fields(self, *, state=None) -> dict:
         """One wrfout history frame, assembled off the store, host arrays.
 
         Built by :class:`tilestream.output.StoreFrame`, whose classification
@@ -2359,7 +2364,30 @@ class StreamedDomain:
         drain = getattr(self._run, "drain", None)
         if drain is not None:
             drain()
-        return self._frame.fields()
+        fields = self._frame.fields()
+        if self.steps and "scratch/wrf_history_t" in self._run.store:
+            # WRF's T is the solve-end snapshot; THM follows feedback and
+            # FORCE. The tile hook captured these words before either one.
+            fields = dict(fields)
+            fields["T"] = self._run.store["scratch/wrf_history_t"]
+        state = self._state if state is None else state
+        from woof.wrf_exact import ENABLED as wrf_exact
+        if wrf_exact and state is not None:
+            from woof.core.nest_operands import (
+                NestWindowSource, radiation_canonical_frame,
+                round_tripped_canonical_frame, streamed_chunk_shape)
+            if not hasattr(self, "_strict_frame_destinations"):
+                self._strict_frame_destinations = {}
+            source = NestWindowSource(state)
+            chunks = streamed_chunk_shape(state)
+            fields = radiation_canonical_frame(
+                source, fields, chunk_shape=chunks,
+                destinations=self._strict_frame_destinations)
+            if getattr(state, "_wrf_frame_round_trip_due", False):
+                fields = round_tripped_canonical_frame(
+                    source, self._run.cfg, fields, self._frame.plan,
+                    chunk_shape=chunks, destinations=self._strict_frame_destinations)
+        return fields
 
     # -- the ranked road's output ------------------------------------------
     #
@@ -2712,6 +2740,7 @@ class StreamedDomain:
             elif self._geography is not None:
                 self._setup = restart_stream.domain_setup_from_stream(
                     self._geography, self.template_state,
+                    setup_thb=getattr(self, "_original_setup_thb", None),
                     lateral_boundaries=self._boundaries,
                     lateral_boundary_device=getattr(
                         self.template_state, "_lateral_boundary_device", None),
@@ -2765,11 +2794,26 @@ class StreamedDomain:
         from tilestream import checkpoint as _checkpoint
 
         if self._statics_setup is None:
-            if self._state is not None and self._template is None:
+            feedback_owner = self._state if self._state is not None else self._nest_archive_state()
+            feedback_evolved = (getattr(feedback_owner, "_setup_feedback_base", None) is not None
+                                or getattr(feedback_owner, "_setup_feedback_geography", None) is not None)
+            if self._state is not None and self._template is None and not feedback_evolved:
                 self._statics_setup = _checkpoint.DomainSetup.capture(
                     self._state, self._run.cfg)
             else:
                 stream_setup = self.restart_setup()
+                # Restart identity is the preparation; history must expose
+                # the live base after strict two-way feedback.
+                archive_owner = self._state if self._state is not None else self._nest_archive_state()
+                if (getattr(archive_owner, "_setup_feedback_base", None) is not None
+                        or getattr(archive_owner, "_setup_feedback_geography", None) is not None):
+                    import dataclasses
+                    from woof.core.nest_operands import NestWindowSource
+                    source = NestWindowSource(archive_owner)
+                    evolved = dict(getattr(archive_owner, "_setup_feedback_base", None) or {})
+                    evolved.update(getattr(archive_owner, "_setup_feedback_geography", None) or {})
+                    stream_setup = dataclasses.replace(stream_setup, arrays={
+                        **stream_setup.arrays, **{name: source.array(name) for name in evolved}})
                 # The two DomainSetup classes name the same three
                 # passthroughs differently (``restart_stream.DomainSetup`` is
                 # a dataclass, ``checkpoint.DomainSetup`` duck-types a
@@ -2805,6 +2849,7 @@ class StreamedDomain:
             path, self.store, cfg, scalars=self.scalars,
             setup=self.restart_setup(), template_state=self.template_state,
             archive_state=self._nest_archive_state(),
+            feedback_state=getattr(self, "_state", None) or self._nest_archive_state(),
             run_trackers=run_trackers, tree_header=tree_header,
             extra_scratch_slots=extra_scratch_slots,
             stochastic_binding=StreamedDomain._ensemble_stochastic_binding(self),
@@ -2835,6 +2880,7 @@ class StreamedDomain:
             path, store, cfg, scalars=self.scalars,
             setup=self.restart_setup(), template_state=self.template_state,
             archive_state=self._nest_archive_state(),
+            feedback_state=getattr(self, "_state", None) or self._nest_archive_state(),
             run_trackers=run_trackers, tree_header=tree_header,
             extra_scratch_slots=extra_scratch_slots,
             stochastic_binding=StreamedDomain._ensemble_stochastic_binding(self),
@@ -2867,6 +2913,7 @@ class StreamedDomain:
             path, self.store, cfg, setup=self.restart_setup(),
             template_state=self.template_state, scalars=self.scalars,
             archive_state=self._nest_archive_state(),
+            feedback_state=getattr(self, "_state", None) or self._nest_archive_state(),
             extra_scratch_slots=extra_scratch_slots,
             stochastic_binding=StreamedDomain._ensemble_stochastic_binding(self))
 
@@ -2879,6 +2926,13 @@ class StreamedDomain:
 
     def apply_restart(self, validated):
         info = validated.apply()
+        # The checkpoint's HAILCAST generation, on every buffer that steps
+        # this domain and the template the next checkpoint's header reads.
+        from woof.core.hail import adopt_generation
+        adopt_generation(
+            (*getattr(self._run, "tiles", ()), getattr(self, "_template", None),
+             getattr(self, "_state", None)),
+            getattr(validated, "hailcast_version", None))
         spotting_owner = getattr(self, "_spotting_owner", None)
         if spotting_owner is not None:
             spotting_owner.synchronize()
@@ -2943,6 +2997,16 @@ class StreamedDomain:
                 "forecast")
         arrays = dict(self._run.canonical_store()
                       if getattr(self, "ranked", False) else self.store)
+        from woof.wrf_exact import ENABLED as wrf_exact
+        if wrf_exact:
+            # Davies coefficients are the same tiny vector on every tile.
+            # Hash the live producer, rather than a cold facade's absence.
+            weights = self.template_state.existing_scratch("lbc_weights_0")
+            if weights is not None:
+                arrays.setdefault("scratch/lbc_weights_0", weights)
+        from woof.io.restart import _feedback_manifest
+        arrays.update(_feedback_manifest(self._state if self._state is not None
+                                         else self._nest_archive_state()))
         if self._state is not None:
             # The nest coupler rebuilds rolling and SINT tables on the domain
             # facade, outside the transported forecast carrier store. Hash
@@ -2987,6 +3051,15 @@ class StreamedDomain:
             # returns no store view for it; the caller still zeroes the
             # state's own copy if one exists.
             self._run.zero_scratch(key)
+        return True
+
+    def arm_avgflx_reset(self) -> bool:
+        """Preserve interval means while arming every ranked slab's reset."""
+        if not self._ranked_road():
+            return False
+        key = "scratch/avgflx_clock"
+        if key in self._store_keys():
+            self._run.fill_scratch(key, 1, plane=1)
         return True
 
     def impose_clock(self, seconds: float) -> None:
@@ -3564,6 +3637,7 @@ class StreamedStability:
             if isinstance(state, CanonicalStoreState):
                 from tilestream import gather
                 from tilestream.driver import geography_inventory
+                from tilestream.global_inventory import global_keys
                 import cupy as cp
                 owner = state._streamed_domain
                 initial_cfg = self.cfg if cfg is None else cfg
@@ -3579,7 +3653,8 @@ class StreamedStability:
                         tile = self._run.tiles[0]
                         for index, window in enumerate(self._run.specs):
                             gather.gather_tile(owner.store, tile, window,
-                                inventory_fn=streamed_store_inventory(), nz=initial_cfg.nz)
+                                inventory_fn=streamed_store_inventory(), nz=initial_cfg.nz,
+                                global_keys=global_keys(owner.store))
                             gather.gather_tile(owner._geography, tile, window,
                                 inventory_fn=geography_inventory, nz=initial_cfg.nz)
                             self.observe(tile, window, index, cp.cuda.Stream.null)
@@ -4367,7 +4442,35 @@ def prime_lazy_carriers(state, cfg) -> tuple:
     report what it did rather than assume.
     """
     primed = []
+    from woof.wrf_exact import ENABLED as strict
+    if strict and state.existing_scratch("wrf_exact_muts") is None:
+        # Allocate transport capacity without claiming that an acoustic loop
+        # already ran. The scalar rides with the clock and is reset before
+        # every reused tile, until the first sweep produces the real mass.
+        state.scratch(state.mup.shape, "wrf_exact_muts")[...] = state.total_mu()
+        state._wrf_mass_carriers_cold = True
+        primed.append("scratch/wrf_exact_muts")
+    if (strict and (cfg.specified or cfg.nested)
+            and state.existing_scratch("wrf_exact_mu_halo") is None):
+        state.scratch(state.mup.shape, "wrf_exact_mu_halo")[...] = state.mup
+        primed.append("scratch/wrf_exact_mu_halo")
     primed.extend(prime_coordinate_reference(state, cfg))
+    from woof.wrf_exact import ENABLED as wrf_exact
+    if wrf_exact and state is not None and hasattr(state, "scratch"):
+        # Both are cross-step carriers. Cold values are the same mass that
+        # the absent-slot fallback reads; existing restart values are sacred.
+        if state.existing_scratch("wrf_exact_muts") is None:
+            state.scratch(state.mup.shape, "wrf_exact_muts")[...] = state.mub2d + state.mup
+            # Allocation is not an acoustic update. A cold child must still
+            # diagnose its first forced state before physics consumes it.
+            state._wrf_mass_carriers_ready = False
+            primed.append("scratch/wrf_exact_muts")
+        if state.existing_scratch("wrf_exact_mu_halo") is None:
+            state.scratch(state.mup.shape, "wrf_exact_mu_halo")[...] = state.mup
+            primed.append("scratch/wrf_exact_mu_halo")
+        if state.existing_scratch("wrf_history_t") is None:
+            state.scratch(state.thp.shape, "wrf_history_t")[...] = state.thp
+            primed.append("scratch/wrf_history_t")
     if prime_refl_10cm(state, cfg):
         primed.append(REFL_STORE_KEY)
     primed.extend(prime_hmix_k_diag(state, cfg))
@@ -4376,7 +4479,9 @@ def prime_lazy_carriers(state, cfg) -> tuple:
     ensure = getattr(cumulus, "ensure_trigger_history", None)
     if ensure is not None:
         ensure(state)
-        primed.append("cumulus/w0avg")
+        from woof.io.restart import CUMULUS_CALLABLE_ARRAYS
+        primed.extend(f"cumulus/{name}" for name in sorted(CUMULUS_CALLABLE_ARRAYS)
+                      if getattr(cumulus, name, None) is not None)
     return tuple(primed)
 
 
@@ -4513,6 +4618,10 @@ def diagnostic_inventory(base):
                 continue
             if names is None or key in names:
                 live[key] = array
+        existing = getattr(obj, "existing_scratch", None)
+        history_t = existing("wrf_history_t") if existing is not None else None
+        if history_t is not None and (names is None or "scratch/wrf_history_t" in names):
+            live["scratch/wrf_history_t"] = history_t
         return live
 
     return inventory
@@ -4575,6 +4684,10 @@ def refl_handoff_hook():
     from woof.core.refl import consume_refl_10cm, refl_10cm_is_stashed
 
     def hook(tile_state, tspec, itile, stream):
+        history_t = tile_state.existing_scratch("wrf_history_t")
+        if history_t is not None:
+            with stream:
+                history_t[...] = tile_state.thp
         if refl_10cm_is_stashed(tile_state):
             consume_refl_10cm(tile_state)
         # Only on a step that ends on a history time.  Built every step, the
@@ -5065,16 +5178,51 @@ def _twin_composed_radiation(scheme, cls, lat, lon):
                shortwave_adapter=_tile_scheme(scheme.shortwave_adapter, tile_lat, tile_lon))
 
 
+def _twin_relaxation_radiation(scheme, cls, lat, lon):
+    return cls(scheme.start_time,
+               _tile_geography_like(lat, scheme.latitude_deg),
+               _tile_geography_like(lon, scheme.longitude_deg))
+
+
 def _twin_column_cumulus(scheme, cls, lat, lon):
     """Rebuild :class:`~woof.core.column_cumulus.ColumnCumulus`.
 
-    Its whole policy is its row of ``COLUMN_CUMULUS_SCHEMES``, selected by
-    ``cu_physics``; the namelist knobs it reads come from ``cfg`` at every
-    call and it holds no state between calls, so the twin is exact.  It
-    carries no geography.  The tile's own PhysicsDriver binds itself through
-    ``bind_driver`` on the first cumulus call, as for the domain's adapter.
+    Its policy is its row of ``COLUMN_CUMULUS_SCHEMES``, selected by
+    ``cu_physics``; namelist knobs come from ``cfg``. Persistent cloud
+    diagnostics and replay draws use the carrier inventory. OSAS column
+    indices use the geography gather. The tile's own PhysicsDriver binds
+    itself through ``bind_driver`` on the first cumulus call.
     """
-    return cls(scheme.scheme.cu_physics)
+    twin = cls(scheme.scheme.cu_physics)
+    if getattr(scheme, "_injected", None) is not None:
+        import cupy as cp
+        # Allocate at tile extents before the inventory is frozen. The
+        # domain's retained replay input is filled by the carrier gather.
+        twin.inject_random(cp.empty(lat.shape, dtype=cp.float64))
+    return twin
+
+
+def _twin_gfdleta(scheme, cls, lat, lon):
+    # Tables are rebuilt from the tile's identical vertical grid. Retained
+    # horizontal state belongs to the driver carriers, never this adapter.
+    return cls(scheme.start_time,
+               _tile_geography_like(lat, scheme.latitude_deg),
+               _tile_geography_like(lon, scheme.longitude_deg),
+               p_top=scheme.p_top, co2tf=scheme.co2tf,
+               longwave=scheme.longwave, shortwave=scheme.shortwave,
+               column_chunk=scheme.column_chunk)
+
+
+def _twin_cam3(scheme, cls, lat, lon):
+    # Keep the resolved native table root even if the ambient table setting
+    # changes. Absorption arrays and their clock start private and fresh;
+    # persistent runtime transport is checked separately by the tile inventory.
+    return cls(scheme.start_time,
+               _tile_geography_like(lat, scheme.latitude_deg),
+               _tile_geography_like(lon, scheme.longitude_deg),
+               table_root=scheme.tables.root, column_chunk=scheme.column_chunk,
+               icloud=scheme.icloud, longwave=scheme.longwave,
+               shortwave=scheme.shortwave)
 
 
 @dataclass(frozen=True)
@@ -5114,6 +5262,26 @@ class _TwinRecipe:
 #: rather than a special case because the next such adapter should cost a
 #: recipe, not another rewrite of the dispatch.
 _TWIN_RECIPES = {
+    "woof.core.cam3:Cam3Radiation": _TwinRecipe(
+        build=_twin_cam3,
+        reproduces=frozenset({"start_time", "latitude_deg", "longitude_deg",
+                              "table_root", "column_chunk", "icloud",
+                              "longwave", "shortwave"}),
+        volatile=frozenset({"update_count"}),
+    ),
+    "woof.core.gfdleta:GFDLEtaRadiation": _TwinRecipe(
+        build=_twin_gfdleta,
+        reproduces=frozenset({"start_time", "latitude_deg", "longitude_deg",
+                              "p_top", "co2tf", "longwave", "shortwave",
+                              "column_chunk"}),
+        volatile=frozenset({"update_count"}),
+    ),
+    "woof.core.radiation_composition:NewtonianRelaxationRadiation": _TwinRecipe(
+        build=_twin_relaxation_radiation,
+        reproduces=frozenset({"start_time", "latitude_deg", "longitude_deg",
+                              "momentum_v_active"}),
+        volatile=frozenset({"update_count"}),
+    ),
     "woof.core.radiation_composition:ComposedRadiation": _TwinRecipe(
         build=_twin_composed_radiation,
         reproduces=frozenset({"start_time", "latitude_deg", "longitude_deg",
@@ -5122,6 +5290,10 @@ _TWIN_RECIPES = {
     # The column-cumulus table's one adapter (New SAS, cu_physics = 96): a
     # plain class whose constructor requires the table row's cu_physics.
     "woof.core.column_cumulus:ColumnCumulus": _TwinRecipe(
+        build=_twin_column_cumulus,
+        reproduces=frozenset({"cu_physics"}),
+    ),
+    "woof.core.column_cumulus_r8:ColumnCumulus": _TwinRecipe(
         build=_twin_column_cumulus,
         reproduces=frozenset({"cu_physics"}),
     ),
@@ -5469,6 +5641,15 @@ def _surface_tile_initialization_inputs(driver, cfg):
     import numpy as np
 
     extra = {}
+    # Resolved Noah tables belong to the prepared domain. Re-loading the
+    # default MODIS legend for a USGS input changes both the column physics
+    # and its checkpoint identity, even though every carrier shape matches.
+    # These frozen parameter tables contain no per-column mutable state.
+    if int(getattr(cfg, "sf_surface_physics", 0) or 0) == 2:
+        params = getattr(driver, "noah_params", None)
+        if params is not None:
+            extra["noah_params"] = params
+            extra["landuse_dataset"] = params.lutype
     # A RunConfig always carries these fields; minimal tile configs used by
     # the terrain-drag and boundary factory tests do not, and select no RUC.
     if int(getattr(cfg, "sf_surface_physics", 0) or 0) == 3:
@@ -5544,8 +5725,11 @@ def prepared_tile_state_factory(state, cfg, *, tables0=None, seed: int = 4242,
     # rebuilding it is where a buffer stops being a model of the domain.  See
     # :func:`domain_vertical_coord`.
     coord = domain_vertical_coord(state, cfg)
-    from woof.io.restart import lifecycle_window_slots
-    tracker_slots = lifecycle_window_slots(state)
+    from woof.io.restart import (
+        CHECKPOINTED_CARRIED_SCRATCH_SLOTS, lifecycle_window_slots)
+    tracker_slots = lifecycle_window_slots(state) + tuple(
+        slot for slot in sorted(CHECKPOINTED_CARRIED_SCRATCH_SLOTS)
+        if state.existing_scratch(slot) is not None)
 
     def make(tile_cfg):
         import numpy as np
@@ -5558,7 +5742,7 @@ def prepared_tile_state_factory(state, cfg, *, tables0=None, seed: int = 4242,
         # 10-06): the ranked road spent its whole 18 s between the second
         # admission pass and "[devices] ON" in ruclsminit's host column
         # loop, one rank after the other; on the full HRRR lattice that is
-        # the 84-92 s gap of the lane/pi-startup-idle profile.
+        # the 84-92 s gap of the development branch profile.
         extra["lsm_cold_start"] = False
         # The same argument for the seeded fields: constant poison, not
         # 16.5 s of host random numbers per HRRR rank (harness.
@@ -5611,6 +5795,13 @@ def prepared_tile_state_factory(state, cfg, *, tables0=None, seed: int = 4242,
                 owner.start_time, lat, lon, owner.mode, owner.column_chunk))
         for slot in tracker_slots:
             tile.scratch((int(tile_cfg.ny), int(tile_cfg.nx)), slot)
+        # A domain attached after a strict step carries the previous acoustic
+        # mass and boundary halo. Allocate matching tile destinations before
+        # comparing inventories; gather supplies their actual values. Cold
+        # domains retain their existing first-step initialization semantics.
+        for slot in ("wrf_exact_muts", "wrf_exact_mu_halo"):
+            if state.existing_scratch(slot) is not None:
+                tile.scratch((int(tile_cfg.ny), int(tile_cfg.nx)), slot)
         make.setup_entries_imposed = _impose_domain_setup(tile, state)
         # The buffer's own lazily-allocated carriers, so its inventory matches
         # the store's WITHOUT integrating anything.  See prime_lazy_carriers:
@@ -5682,6 +5873,12 @@ def prepared_domain_builder(node, *, seam: str = "zeros",
     def build(state, cfg, decision):
         from woof.ingest.lateral_bc import LateralBoundaries
         from tilestream import driver as _driver
+        from woof.core.state import adopt_wrf_theta_carrier
+
+        # Canonical carriers and gathered geography must use the same theta
+        # representation as each strict tile. In particular, a cold child
+        # need not have taken a resident diagnosis before this attachment.
+        adopt_wrf_theta_carrier(state)
 
         # Inside build, not beside it: build runs only for a domain whose
         # decision STREAMS, so a tree that configures mode = "auto" and
@@ -5912,7 +6109,7 @@ def store_domain_builder(bundle, *, clock=DERIVE_CLOCK, node=None, seam: str = "
                 "its whole length, and look healthy doing it.  Pass the "
                 "node's clock, or clock=None to ask for the legacy "
                 "semantics deliberately.")
-        return attach(None, cfg, decision, tile_state_factory=factory,
+        owner = attach(None, cfg, decision, tile_state_factory=factory,
                       store=bundle.store, scalars=bundle.scalars,
                       geography=bundle.geography, boundary_tables=tables,
                       boundaries=boundaries, template=bundle.template,
@@ -5921,6 +6118,13 @@ def store_domain_builder(bundle, *, clock=DERIVE_CLOCK, node=None, seam: str = "
                       external_clock=(None if clock is DERIVE_CLOCK
                                       else clock),
                       inventory_fn=streamed_store_inventory())
+        # The slabs use WRF's T carrier in strict mode; checkpoint identity
+        # still binds the immutable full-domain preparation, never a tile's
+        # or the last slab's original base. This is host setup only.
+        if getattr(bundle.template, "_setup_thb", None) is not None:
+            import numpy as np
+            owner._original_setup_thb = np.asarray(bundle.base.thb, dtype=np.float32)
+        return owner
 
     return build
 
@@ -9054,6 +9258,38 @@ def is_streaming(stepper) -> bool:
     ``tilestream.test_history`` is the gate that would have caught it.
     """
     return isinstance(stepper, StreamedDomain)
+
+
+def defer_step_health(stepper, state, cfg, *, boundary_width: int,
+                      grid_id: int, step_count: int) -> bool:
+    """Record resident stability failures without reading a device scalar.
+
+    Streamed sweeps already own their store health reduction. Their existing
+    report remains authoritative. Resident callers can poll the ledger and
+    must drain it before publishing output or returning a completed run.
+    """
+    from woof.core import health_ledger
+    ledger = health_ledger.active()
+    if (ledger is None or is_streaming(stepper)
+            or not hasattr(getattr(state, 'u', None), '__cuda_array_interface__')):
+        return False
+    import cupy as cp
+    from woof.core.dycore import stability_device_record
+
+    record = stability_device_record(state, cfg, boundary_width=boundary_width)
+    flags = (cp.logical_not(cp.isfinite(record[:3]).all()).astype(cp.uint32)
+             | (cp.logical_not(cp.isfinite(record[5])).astype(cp.uint32) << 1))
+
+    def refuse(bits):
+        detail = ("a non-finite state" if bits & 1 else
+                  "a non-finite vertical Courant number: a model layer's "
+                  "live thickness is non-positive or non-finite")
+        raise RuntimeError(
+            f"d{grid_id:02d} integration produced {detail} by model step "
+            f"{step_count}" + health_ledger.deferred_note())
+
+    ledger.record(f"d{grid_id:02d}.integration", flags.reshape(1), refuse)
+    return True
 
 
 def step_health(stepper, state, cfg, *, boundary_width: int):

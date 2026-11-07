@@ -378,7 +378,17 @@ def capture_domain_setup(state) -> DomainSetup:
 
     arrays = {name: _as_host(getattr(state, name))
               for name in STATE_SETUP_ARRAYS}
+    # A nest can perform its initial two-way feedback before streaming is
+    # attached.  Header identity still belongs to the prepared domain;
+    # evolved setup is carried separately in the checkpoint payload.
+    for attr in ("_setup_feedback_base", "_setup_feedback_geography"):
+        for name, value in (getattr(state, attr, None) or {}).items():
+            if name in arrays:
+                arrays[name] = _as_host(value)
+    if getattr(state, "_setup_thb", None) is not None:
+        arrays["_setup_thb"] = _as_host(state._setup_thb)
     scalars = {name: getattr(state, name) for name in STATE_SETUP_SCALARS}
+    scalars.update(getattr(state, "_setup_feedback_geography_flags", None) or {})
     scheme = {key: _as_host(value)
               for key, value in _driver.geography_inventory(state).items()
               if not key.startswith("setup/")}
@@ -394,7 +404,7 @@ def capture_domain_setup(state) -> DomainSetup:
 def domain_setup_from_stream(geography, template_state, *,
                              lateral_boundaries=None,
                              lateral_boundary_device=None,
-                             nest_classification=None) -> DomainSetup:
+                             nest_classification=None, setup_thb=None) -> DomainSetup:
     """The same snapshot, assembled from what a STREAMED run actually has.
 
     ``geography`` is the domain geography store the tiled run gathers from
@@ -429,6 +439,8 @@ def domain_setup_from_stream(geography, template_state, *,
         key = f"setup/{name}"
         source = geo[key] if key in geo else getattr(template_state, name)
         arrays[name] = _as_host(source)
+    if setup_thb is not None:
+        arrays["_setup_thb"] = np.asarray(setup_thb, dtype=np.float32)
     flags = _driver.geography_scalars(geo)
     scalars = {name: flags.get(name, getattr(template_state, name))
                for name in STATE_SETUP_SCALARS}
@@ -488,6 +500,11 @@ class _HeaderView:
             return setup.lateral_boundary_device
         if name == "_nest_restart_classification":
             return setup.nest_classification
+        if name in ("_setup_thb", "_setup_feedback_base",
+                    "_setup_feedback_geography", "_setup_feedback_geography_flags"):
+            # Original domain setup is already represented above. A tile's
+            # private preparation snapshots describe its neutral geography.
+            return None
         carriers = self.__dict__["_carriers"]
         if carriers:
             if name == "_scratch":
@@ -649,7 +666,8 @@ def _checkpoint_carriers(arrays, extra_scratch_slots=()):
         extra = restart._opted_in_scratch_manifest(SimpleNamespace(_scratch=pool), slots)
     selected = physics_inventory.checkpointed_carriers(arrays)
     selected.update(extra)
-    return selected
+    return {key: value for key, value in selected.items()
+            if not key.startswith(("feedback_base/", "feedback_geography/"))}
 
 
 def write_streamed_restart(path, store, cfg, *, scalars, setup,
@@ -657,7 +675,7 @@ def write_streamed_restart(path, store, cfg, *, scalars, setup,
                            check_pinned: bool = True,
                            tree_header: dict | None = None,
                            extra_scratch_slots=(), stochastic_binding=None,
-                           archive_state=None) -> StreamedRestartInfo:
+                           archive_state=None, feedback_state=None) -> StreamedRestartInfo:
     """Write a woof restart file from a pinned host store now.
 
     :func:`prepare_streamed_restart` followed at once by its publication;
@@ -668,7 +686,7 @@ def write_streamed_restart(path, store, cfg, *, scalars, setup,
         template_state=template_state, run_trackers=run_trackers, drop=drop,
         check_pinned=check_pinned, tree_header=tree_header,
         extra_scratch_slots=extra_scratch_slots,
-        stochastic_binding=stochastic_binding, archive_state=archive_state)()
+        stochastic_binding=stochastic_binding, archive_state=archive_state, feedback_state=feedback_state)()
 
 
 def prepare_streamed_restart(path, store, cfg, *, scalars, setup,
@@ -676,7 +694,7 @@ def prepare_streamed_restart(path, store, cfg, *, scalars, setup,
                              check_pinned: bool = True,
                              tree_header: dict | None = None,
                              extra_scratch_slots=(), stochastic_binding=None,
-                             archive_state=None):
+                             archive_state=None, feedback_state=None):
     """Snapshot a woof restart file of a pinned host store. No device state.
 
     Every refusal, the header and the member list are decided HERE; the
@@ -769,6 +787,11 @@ def prepare_streamed_restart(path, store, cfg, *, scalars, setup,
     arrays.update({'scratch/' + k: _as_host(v)
                    for k, v in capture_nest_archive(
                        template_state if archive_state is None else archive_state).items()})
+    feedback_owner = (template_state if archive_state is None else archive_state) if feedback_state is None else feedback_state
+    # Domain-level evolving setup is deliberately outside the sweep's
+    # ordinary carrier inventory. Never substitute a tile's geography.
+    arrays.update({key: value for key, value in restart._feedback_manifest(feedback_owner).items()
+                   if key.startswith(("feedback_base/", "feedback_geography/"))})
     drop = tuple(drop)
     for name in drop:
         if name not in arrays:
@@ -816,6 +839,28 @@ def prepare_streamed_restart(path, store, cfg, *, scalars, setup,
                              else dict(run_trackers)),
             "array_manifest": {},
         }
+        if "scratch/wrf_exact_muts" in arrays:
+            header["strict_mass_carriers"] = {
+                "ready": bool(scalars.get("wrf_mass_carriers_ready", True)),
+                "start_diagnostics_carried": bool(scalars.get(
+                    "wrf_start_diagnostics_carried", False))}
+        if cfg.tslist and cfg.max_ts_locs:
+            from woof.core.tslist import checkpoint as tslist_checkpoint
+            header["tslist"] = tslist_checkpoint(
+                template_state if archive_state is None else archive_state)
+        # The resident writer's key (woof.io.restart
+        # HAILCAST_VERSION_HEADER_KEY): the generation this run integrates.
+        from woof.core.hail import generation as _hail_generation
+        header[restart.HAILCAST_VERSION_HEADER_KEY] = _hail_generation(
+            template_state, cfg)
+        if getattr(feedback_owner, "_setup_feedback_base", None) is not None:
+            header["strict_feedback_base"] = {
+                "schema": 1, "children": dict(feedback_owner._feedback_base_children)}
+        if getattr(feedback_owner, "_setup_feedback_geography", None) is not None:
+            header["surface_feedback_geography"] = {
+                "schema": 1, "names": sorted(feedback_owner._setup_feedback_geography),
+                "has_msf": bool(feedback_owner.has_msf),
+                "rotational": bool(feedback_owner.rotational)}
         if stream is not None:
             header.update({
                 "forcing_extension_mode": restart.PRESERVED_FORCING_PREFIX_MODE,
@@ -894,7 +939,7 @@ def _utcnow() -> str:
 def validate_streamed_restart(path, store, cfg, *, setup, template_state,
                           allow_missing: bool = False,
                           scalars: dict | None = None, extra_scratch_slots=(), stochastic_binding=None,
-                          archive_state=None) -> ValidatedStreamedRestart:
+                          archive_state=None, feedback_state=None) -> ValidatedStreamedRestart:
     """Validate a restart without mutating the pinned host store.
 
     The mirror of :func:`write_streamed_restart`, and the same refusals in the
@@ -927,6 +972,10 @@ def validate_streamed_restart(path, store, cfg, *, setup, template_state,
     path = Path(path)
     t0 = time.perf_counter()
     header, stored = restart._load_restart(path, with_arrays=True)
+    if cfg.tslist and cfg.max_ts_locs or "tslist" in header:
+        from woof.core.tslist import validate_saved
+        with _as_refusal("tslist output differs from the streamed checkpoint"):
+            validate_saved(header.get("tslist"), cfg)
     required = {"format_version", "config", "setup_fingerprint",
                 "physics_setup", "physics_setup_fingerprint",
                 "array_manifest", "elapsed_seconds"}
@@ -942,6 +991,7 @@ def validate_streamed_restart(path, store, cfg, *, setup, template_state,
         # resumes such a checkpoint, so the walk's notes must not lead.
         restart._require_current_algorithm_identities(header, cfg, path)
         restart._require_config_match(header["config"], cfg, path)
+        hailcast_version = restart.resume_hailcast_version(header, cfg, path)
         elapsed = restart._admissible_elapsed_seconds(
             header["elapsed_seconds"], f"restart file {path}")
 
@@ -1029,6 +1079,13 @@ def validate_streamed_restart(path, store, cfg, *, setup, template_state,
     # Spectra are full-domain owner state, not ordinary streamed carriers.
     # Validate their identity and words before writing a single store value.
     from types import SimpleNamespace
+    feedback_owner = (template_state if archive_state is None else archive_state) if feedback_state is None else feedback_state
+    with _as_refusal("checkpoint feedback setup differs from this domain"):
+        restart._validate_feedback_base(header, stored, feedback_owner, path)
+        restart._validate_feedback_geography(header, stored, feedback_owner, path)
+    feedback_arrays = {key: value for key, value in stored.items()
+                       if key.startswith(("feedback_base/", "feedback_geography/"))}
+    stored = {key: value for key, value in stored.items() if key not in feedback_arrays}
     with _as_refusal("stochastic checkpoint differs from this original member"):
         restart._validate_ensemble_stochastic_checkpoint(header, stored,
             SimpleNamespace(_ensemble_stochastic=stochastic_binding))
@@ -1071,7 +1128,7 @@ def validate_streamed_restart(path, store, cfg, *, setup, template_state,
         for key in stored:
             head, _, rest = key.partition("/")
             if head == "state":
-                kind = restart.classify_state_attr(rest)
+                kind = restart.classify_state_attr(rest, cfg)
                 if kind != "serialize":
                     raise RestartRefused(
                         f"restart carries state/{rest}, which woof "
@@ -1098,7 +1155,9 @@ def validate_streamed_restart(path, store, cfg, *, setup, template_state,
         started=t0, stochastic_binding=stochastic_binding,
         stochastic_metadata=header.get("ensemble_stochastic"), stochastic_arrays=stochastic_arrays,
         nest_archive=nest_archive,
-        nest_archive_owner=template_state if archive_state is None else archive_state)
+        nest_archive_owner=template_state if archive_state is None else archive_state,
+        feedback_arrays=feedback_arrays, feedback_owner=feedback_owner,
+        hailcast_version=hailcast_version)
 
 
 @dataclasses.dataclass
@@ -1119,6 +1178,11 @@ class ValidatedStreamedRestart:
     stochastic_arrays: object = None
     nest_archive: object = None
     nest_archive_owner: object = None
+    feedback_arrays: object = None
+    feedback_owner: object = None
+    #: The HAILCAST generation the resumed run keeps; the stepper binds it
+    #: on its tile buffers (woof.core.streaming StreamedDomain.apply_restart).
+    hailcast_version: str | None = None
     _stochastic_applied: bool = False
 
     def apply(self) -> StreamedRestartInfo:
@@ -1126,6 +1190,16 @@ class ValidatedStreamedRestart:
 
         if self.stochastic_metadata is not None and self._stochastic_applied:
             raise RestartRefused("full-domain stochastic checkpoint was already applied")
+
+        if self.feedback_arrays:
+            from woof.io import restart
+            restart._restore_feedback_setup(self.header, self.feedback_arrays,
+                                            self.feedback_owner)
+        if "tslist" in self.header and self.nest_archive_owner is not None:
+            owner = self.nest_archive_owner
+            if owner._tslist_output is not None:
+                owner._tslist_output.close()
+            owner._tslist_resume = self.header["tslist"]
 
         for key, host in self.stored.items():
             np.copyto(self.arrays[key], host)
@@ -1144,10 +1218,11 @@ class ValidatedStreamedRestart:
             restore_checkpoint_payload(self.stochastic_binding, self.stochastic_metadata, self.stochastic_arrays)
             self._stochastic_applied = True
         return StreamedRestartInfo(
-            path=self.path, members=len(self.stored) + len(self.stochastic_arrays or {}) + len(self.nest_archive or {}),
+            path=self.path, members=len(self.stored) + len(self.stochastic_arrays or {}) + len(self.nest_archive or {}) + len(self.feedback_arrays or {}),
             bytes=sum(int(np.asarray(a).nbytes) for a in self.stored.values())
                 + sum(int(np.asarray(a).nbytes) for a in (self.stochastic_arrays or {}).values())
-                + sum(int(np.asarray(a).nbytes) for a in (self.nest_archive or {}).values()),
+                + sum(int(np.asarray(a).nbytes) for a in (self.nest_archive or {}).values())
+                + sum(int(np.asarray(a).nbytes) for a in (self.feedback_arrays or {}).values()),
             seconds=time.perf_counter() - self.started, device_copies=len(self.stochastic_arrays or {}),
             missing=self.missing, elapsed_seconds=self.elapsed, header=self.header)
 

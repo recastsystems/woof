@@ -4,6 +4,8 @@ Arrays use MPAS Fortran shapes (levels, cells), float32, Fortran contiguous.
 Only owned cells are written, and any requested UPP field computes all four.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -57,7 +59,7 @@ def _compile_cuda_device(source, device_id):
         binary, _ = compiler.compile_using_nvrtc(source,
             options=_hex_numerics.options(("--std=c++17", "--fmad=false", "--ftz=false",
                      "--prec-div=true", "--prec-sqrt=true")),
-            arch=cp.cuda.Device(device_id).compute_capability)
+            arch=_compilation_target(device_id, xp=cp))
         module = cp.cuda.function.Module()
         module.load(binary)
         return module

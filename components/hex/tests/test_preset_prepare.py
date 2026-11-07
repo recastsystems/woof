@@ -8,6 +8,22 @@ import pytest
 from woof.hex import preset_prepare as prep
 
 
+def test_native_suite_preparation_keeps_its_own_soil_and_species():
+    from woof.hex.physics_suites import load_table, suite_selectors
+    from woof.hex.species_row import species_row_for_scheme
+
+    selectors = suite_selectors("hrrrv5", "conus3km")
+    table = load_table()
+    assert selectors == table["mpas_suites"]["suites"]["hrrrv5"]
+    soil = table["options"]["config_lsm_scheme"][selectors["config_lsm_scheme"]]
+    assert soil["carried"]["n_soil_levels"] == 9
+    assert selectors["config_microp_scheme"] == "mp_tempo"
+    assert {"ng", "volg", "nwfa", "nifa"} <= set(
+        species_row_for_scheme(selectors["config_microp_scheme"]).names())
+    # The former preparation workaround selected a different microphysics row.
+    assert suite_selectors("rrfs_v2_dev")["config_microp_scheme"] == "mp_thompson_aerosols"
+
+
 def test_cycle_selects_packaged_public_source_and_vertical_contract():
     from woof.hex.source_profiles import load_source_profiles
     from importlib import resources

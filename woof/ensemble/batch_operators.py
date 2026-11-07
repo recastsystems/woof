@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from woof.core.kernel_shape import shape_defines
 
 from woof.grid_requirements import FIFTH_ORDER_STENCIL_AXIS
 from woof.ensemble.batch_kernel import KernelSpec, PointerSpec, prepare_batch_kernel_launch
@@ -197,9 +198,39 @@ def prepare_rayleigh_damp(f, rdamp):
                                       args, pointer_strides=strides)
 
 
+def advection_order_defines(horder=5, *, theta_offset=False, stagger=""):
+    """The integer tier the single-member launcher compiles for ``horder``.
+
+    Mirrors ``woof.core.advection._launch``: order 5 is the untiered module,
+    order 0 is ``GPUWM_NO_HADV`` (plus ``GPUWM_THETA_OFFSET`` for the theta
+    row when the scalar driver asks for it), and 2/3/4/6 are ``GPUWM_HORDER``.
+    A batch launch compiled at another tier differs from a single run.
+    """
+    if isinstance(horder, (bool, np.bool_)) or int(horder) not in (0, 2, 3, 4, 5, 6):
+        raise ValueError("advection horder must be 0, 2, 3, 4, 5 or 6")
+    horder = int(horder)
+    if theta_offset and (horder != 0 or stagger != ""):
+        raise ValueError("the theta offset tier exists only for the scalar row with horder 0")
+    if horder == 5:
+        return ()
+    defines = (("GPUWM_NO_HADV", 1),) if horder == 0 else (("GPUWM_HORDER", horder),)
+    if theta_offset:
+        defines += (("GPUWM_THETA_OFFSET", 1),)
+    return defines
+
+
+def flux_row_horizontal_orders(cfg):
+    """Per-staggering horizontal orders exactly as the scalar dycore passes them."""
+    from woof.core.advection import scalar_horizontal_order
+    scalar = scalar_horizontal_order(cfg)
+    momentum = int(getattr(cfg, "h_mom_adv_order", 5))
+    return {"": scalar, "x": momentum, "y": momentum, "z": scalar}
+
+
 def prepare_flux_div(field, ru, rv, rw, tend, spacing, fnm, fnp, msf, *,
                      dx, dy, stagger="", open_x=False, open_y=False,
-                     has_msf=False, spec=False, vorder=3):
+                     has_msf=False, spec=False, vorder=3, horder=5,
+                     theta_offset=False):
     """Bind existing flux-form advection arithmetic over a member batch.
 
     Field, mass-flux and tendency arrays expose complete four-dimensional
@@ -213,9 +244,11 @@ def prepare_flux_div(field, ru, rv, rw, tend, spacing, fnm, fnp, msf, *,
     This primitive adds to ``tend``. It neither constructs the mass fluxes
     nor couples the resulting tendencies or advances RK/acoustic state.
     ``vorder`` is WRF's vertical order for this field (3 or 5), the same
-    value the single-member launcher takes.
+    value the single-member launcher takes; ``horder``/``theta_offset`` are
+    its horizontal order tier (see :func:`advection_order_defines`).
     """
     members, nlev, nys, nxs, stride = _member_field(field, "field")
+    order_defines = advection_order_defines(horder, theta_offset=theta_offset, stagger=stagger)
     if vorder not in (3, 5):
         raise ValueError("advection vorder must be 3 or 5 (the WRF vert_order ladders the kernel carries)")
     if stagger not in _FLUX_SPECS:
@@ -260,7 +293,9 @@ def prepare_flux_div(field, ru, rv, rw, tend, spacing, fnm, fnp, msf, *,
             np.int32(vorder))
     grid = ((nxs + _TPB - 1) // _TPB, nys, nlev)
     return prepare_batch_kernel_launch(kernel_spec, members, grid, (_TPB, 1, 1),
-                                      args, pointer_strides=strides)
+                                      args, pointer_strides=strides,
+                                      defines=order_defines + shape_defines(
+                                          kernel_spec.module, kernel_spec.entry, (nz, ny, nx)))
 
 
 def prepare_flux_div_scalar(q, ru, rv, rw, tend, rdnw, fnm, fnp, msf, **options):

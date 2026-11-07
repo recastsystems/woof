@@ -238,6 +238,8 @@ def source_behind_fields(details: Mapping[str, Any]) -> dict[str, Any]:
 #: :data:`EVENT_TAGS` itself.
 WARNING_CODES = {
     "local_publish_failed": "rendered pictures could not be committed to the local static web root",
+    "series_not_written":
+        "the point-forecast series for a finished run could not be written; readers use the hourly files",
     "chain_stage_failed":
         "one stage of a chained run failed; the chain's own reader is "
         "told which stage before the run's terminal event",
@@ -1220,6 +1222,8 @@ _RUN_OPTION_DEFAULTS: dict[str, Any] = {
     "grib2": False,
     "data_dir": None,
     "initial_inputs": None,
+    "storm_merge_arguments": [],
+    "vortex_arguments": [],
     "geog_root": None,
     "physics_profile": None,
     "supplement": [],
@@ -1380,6 +1384,19 @@ def _run_option(key: str, value: object, base: Path) -> Any:
             raise PlanError(f"{label} = {value!r} is not a host `woof fetch "
                             f"--transport` takes; it takes one of {list(FETCH_TRANSPORTS)}")
         return value
+    if key in ("storm_merge_arguments", "vortex_arguments"):
+        if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
+            raise PlanError(f"{label} must be a list of storm merge arguments")
+        if not value:
+            return []
+        if key == "vortex_arguments":
+            from woof.tc.mapped_vortex import normalize_arguments
+        else:
+            from woof.storm_merge import normalize_arguments
+        try:
+            return normalize_arguments(value, base)
+        except ValueError as exc:
+            raise PlanError(str(exc)) from exc
     if key in ("restart", "data_dir", "geog_root", "prepared_root", "wps_namelist", "initial_inputs"):
         return None if value is None else str(_absolute(value, base, label))
     raise PlanError(f"{label} is not a run option this build understands")
@@ -5246,6 +5263,18 @@ def _hrrr_chain(plan: RunPlan, *, config_path: Path, exp,
     prep_root = run_dir / "chain" / "hrrr-root-prep"
     forecast_dir = run_dir / "chain" / "run"
 
+    # The cold-start contract tools/prepare_hrrr_wrf checks after the fetch,
+    # computed before it.  THE BREAKAGE IT PREVENTS (IFS-9KM-DEFAULT-
+    # 2026-11-04): an HRRR start fetched its whole 11.8 GB window before its
+    # preparation could say the microphysics had no cold-start contract.
+    from woof.ingest.microphysics_cold_start import hrrr_cold_start_preflight
+    run_selection = getattr(getattr(exp, "root", None), "run", None)
+    if run_selection is not None:
+        try:
+            hrrr_cold_start_preflight(run_selection)
+        except ValueError as error:
+            raise PlanError(str(error)) from error
+
     # -- fetch ---------------------------------------------------------
     # AS POSTED (A136 L7c (b)): the native route's fetch runs beside
     # its preparation, which starts once the fetch has scheduled the window,
@@ -6996,6 +7025,8 @@ def _staged_chain(plan: RunPlan, *, config_path: Path, exp,
                       for token in ("--supplement", binding)]
         if initial_inputs is not None:
             arguments += ["--initial-inputs", str(initial_inputs)]
+        arguments += plan.run_options.get("storm_merge_arguments", [])
+        arguments += plan.run_options.get("vortex_arguments", [])
         arguments += [
             # The four paths the handoff declares are the caller's.
             "--wps-namelist", str(namelist),
@@ -7593,7 +7624,7 @@ ROUTES: dict[str, Route] = {
            # The staged chain's separately fetched analysis; this route reads
            # its [case_data] inputs only, so a plan naming one is refused
            # rather than silently ignored.
-           "initial_inputs"},
+           "initial_inputs", "storm_merge_arguments", "vortex_arguments"},
         execute=_execute_experiment_route),
 }
 
@@ -8025,7 +8056,7 @@ def execute_plan(plan: RunPlan, *, events: EventStream) -> int:
             # Before anything can import cupy: the mask is read at
             # context creation, so setting it afterwards would select
             # nothing while appearing to.
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(device)
+            os.environ.update(__import__("woof.gpu_smi",fromlist=["visibility_environment"]).visibility_environment(str(device)))
 
         # run_options.cycle (`woof go --cycle`): the configuration is
         # re-timed into the run directory before anything reads it, and
@@ -9916,7 +9947,7 @@ def physics_profile_menu() -> dict[str, Any]:
     default".
 
     This exists because a picker had no way to ask.  WOOF Studio ships
-    a physics list hand-typed out of woof 1.7.1, which cannot know that
+    a physics list hand-typed out of gpuwm 1.7.1, which cannot know that
     the native HRRR route refuses every Kain-Fritsch suite, so it offers
     launches that refuse -- and the refusal a user then met named
     another suite that the same route refuses.  Both halves are the same

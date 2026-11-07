@@ -2,7 +2,7 @@
 // SFLX and its subtree are mapped from module_sf_noahlsm.F.
 // D1 uses the corrected 4*t+ns soil index; D2 weights cell increments;
 // D3 RC/LAI mosaic consumer outputs are absent. CuPy FTZ may flush inputs.
-// UA_PHYS, FASDAS and WRF-Hydro are not ported.
+// FASDAS and WRF-Hydro are not ported.
 // UCM is composed only under NOAH_MOSAIC_UCM; the plain unit stays inert.
 // Qualified against the committed scalar WRF column fixtures; FTZ pairs pinned in tests.
 /* Correctly-rounded radix-10 logarithm function for binary32 value.
@@ -144,6 +144,7 @@ __device__ static float noah_log10(float x) {
   return ub;
 }
 
+#if !NOAH_MATH_ONLY
 #undef RCP
 #define RCP __uint_as_float(0x3e924925u) // WRF CAPA=R_D/CP
 #define NSOIL 4
@@ -969,7 +970,11 @@ __device__ static void noah_shflx(real* stc, const real* smc,
 // module_sf_noahlsm.F:3417
 __device__ static void noah_snowpack(real esd, real dtsec, real& snowh,
                                      real& sndens, real tsnow,
-                                     real tsoil)
+                                     real tsoil
+#if NOAH_UA_PHYS
+,real snomlt=-1.0f
+#endif
+)
 {
     const real c1k = 0.01f, c2k = 21.0f;
     real snowhc = FMUL(snowh, 100.0f);
@@ -993,6 +998,10 @@ __device__ static void noah_snowpack(real esd, real dtsec, real& snowh,
     sndens = dsx;
     if (tsnowc >= 0.0f) {
         real dw = FDIV(FMUL(0.13f, dthr), 24.0f);
+
+#if NOAH_UA_PHYS
+        if(tsoilc>=0.0f && snomlt>=0.0f)dw=noah_ua_retention(dw,snomlt,esdcx);
+#endif
         sndens = FADD(FMUL(sndens, (FSUB(1.0f, dw))), dw);
         if (sndens >= 0.40f) sndens = 0.40f;
     }
@@ -1002,6 +1011,10 @@ __device__ static void noah_snowpack(real esd, real dtsec, real& snowh,
 
 // ---------------------------------------------------------------- kernel
 struct MosaicState {
+#if NOAH_UA_PHYS
+ real flx4,fvb,fbur,fgsn;
+#endif
+
 #if NOAH_MOSAIC_UCM
  bool urban_tile; int natural; real rural_t1, rural_q1, rural_initial;
 #endif
@@ -1364,7 +1377,11 @@ __device__ static void noah_mosaic_tile_glacial(MosaicState& s,
 __device__ static void noah_mosaic_tile(MosaicState& s,
  const real* vegtbl,const real* soiltbl,const real* genp,const real* dzs,
  real dt,int lucats,int slcats,int isurban,int isice,real xice_threshold,
- int itimestep,int frpcpn,int usemonalb,int rdlai2d,int opt_thcnd)
+ int itimestep,int frpcpn,int usemonalb,int rdlai2d,int opt_thcnd
+#if NOAH_UA_PHYS
+,const real* canopy
+#endif
+)
 {
  const size_t idx=0,plane=1;
  const int* ivgtyp=&s.ivgtyp; const int* isltyp=&s.isltyp;
@@ -1642,6 +1659,10 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
         prcpf = prcp;
     }
 
+
+#if NOAH_UA_PHYS
+    real flx4=0.0f,fvb=0.0f,gama=0.0f,fbur=0.0f,fgsn=0.0f,etpn=0.0f;
+#endif
     // snow cover fraction, snow albedo, emissivity
     real albedo;
     if (sneqv == 0.0f) {
@@ -1650,6 +1671,11 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
         emissi = embrd;
     } else {
         sncovr = noah_snfrac(sneqv, snup, salp);
+#if NOAH_UA_PHYS
+        noah_ua_cover(sneqv,snowhk,shdfac,canopy[2*(vegtyp-1)],canopy[2*(vegtyp-1)+1],xlai,fvb,gama,fbur,fgsn);
+        chk=noah_ua_exchange(sfctmp,t1,shdfac,fgsn,xlai,chk);
+#endif
+
         sncovr = fminf(sncovr, 0.98f);
         noah_alcalc(alb, snoalb1, embrd, sncovr, dt, snowng, snotime1,
                     lvcoef, albedo, emissi);
@@ -1680,6 +1706,10 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
     if (sncovr > 0.0f) z0k = noah_snowz0(sncovr, z0brd, snowhk);
     else z0k = z0brd;
 
+
+#if NOAH_UA_PHYS
+    z0k=noah_ua_roughness(shmax,fbur,fgsn,z0brd);
+#endif
     // Penman potential evaporation
     real fdown = FADD(solnet, lwdn);
     real t2v = FMUL(sfctmp, (FADD(1.0f, FMUL(0.61f, q2k))));
@@ -1687,8 +1717,13 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
     noah_penman(sfctmp, sfcprs, chk, t2v, th2, prcp, fdown, ssoil, q2k,
                 q2sat, dqsdt2, snowng, frzgra, emissi, sncovr, etp,
                 rch, rr, epsca, t24, flx2);
+#if NOAH_UA_PHYS
+    noah_ua_adjust_penman(sfctmp,th2,emissi,t24,fdown,ssoil,flx2,rch,rr,q2k,q2sat,dqsdt2,sncovr,sneqv,albedo,soldn,fvb,gama,stc[0],etpn,flx4);
+#endif
+
 
     // canopy resistance
+    // Complete burial skips CANRES. WRF leaves PC undefined; retain zero.
     real rc = 0.0f, pc = 0.0f;
     if (shdfac > 0.0f && xlai > 0.0f)
         noah_canres(soldn, chk, sfctmp, q2k, swc, zsoil, smcwlt,
@@ -1789,6 +1824,10 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
                 etns = FMUL(etns1, 1000.0f);
             }
             esnow = FMUL(etp, sncovr);
+#if NOAH_UA_PHYS
+            esnow=FMUL(etpn,sncovr);
+#endif
+
             esnow1 = FMUL(esnow, 0.001f);
             esnow2 = FMUL(esnow1, dt);
             etanrg = FADD(FMUL(esnow, NLSUBS), FMUL(etns, NLSUBC));
@@ -1811,6 +1850,10 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
             ssoil_pac = FDIV(FMUL(df1, (FSUB(t1, stc[0]))), dtot);
             esd = fmaxf(0.0f, FSUB(esd, esnow2));
             flx3 = 0.0f;
+#if NOAH_UA_PHYS
+            flx4=0.0f;
+#endif
+
 
         } else {
             t1 = FADD(FMUL(NTFREEZ, fmaxf(0.01f, gfk_pow(sncovr, snoexp))), FMUL(t12, (FSUB(1.0f, fmaxf(0.01f, gfk_pow(sncovr, snoexp))))));
@@ -1822,6 +1865,10 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
                 ex = 0.0f;
                 snomlt = 0.0f;
                 flx3 = 0.0f;
+#if NOAH_UA_PHYS
+            flx4=0.0f;
+#endif
+
                 clipped = true;
             } else {
                 esd = FSUB(esd, esnow2);
@@ -1832,6 +1879,10 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
                 real flx3_def = flx3;
                 if (flx3 <= 0.0f) flx3 = 0.0f;
                 if (flx3 != flx3_def) clipped = true;
+
+#if NOAH_UA_PHYS
+                noah_ua_melt_flux(flx3,flx4);
+#endif
                 ex = FDIV(FMUL(flx3, 0.001f), NLSUBF);
                 snomlt = FMUL(ex, dt);
                 if (FSUB(esd, snomlt) >= esdmin) {
@@ -1863,7 +1914,11 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
                    zbot, psisat, swc, bexp, df1, quartz, csoil,
                    vegtyp, isurban, soiltyp, opt_thcnd, ssoil1);
         if (esd > 0.0f) {
-            noah_snowpack(esd, dt, snowhk, sndens, t1, yy);
+            noah_snowpack(esd, dt, snowhk, sndens, t1, yy
+#if NOAH_UA_PHYS
+,snomlt
+#endif
+);
         } else {
             esd = 0.0f;
             snowhk = 0.0f;
@@ -1877,6 +1932,10 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
     real q1 = FADD(q2k, FDIV(FMUL(eta_kin, CP), rch));
     real sheat = FMUL(FDIV(-(FMUL(FMUL(chk, CP), sfcprs)), (FMUL(NR_SHEAT, t2v))), (FSUB(th2, t1)));
 
+
+#if NOAH_UA_PHYS
+    sheat=FADD(sheat,flx4);
+#endif
     // kinematic -> energy conversions (SFLX epilogue)
     real edir_e = FMUL((FMUL(edir1k, 1000.0f)), NLVH2O);
     real ec_e = FMUL((FMUL(ec1k, 1000.0f)), NLVH2O);
@@ -1953,6 +2012,11 @@ __device__ static void noah_mosaic_tile(MosaicState& s,
     }
     real t14 = FMUL(t1, t1); t14 = FMUL(t14, t14);
     noahres_a[idx] = FSUB(FSUB(FSUB(FSUB(FSUB(FADD(FSUB((FADD(solnet, lwdn)), sheat), ssoil_out), eta_e), (FMUL(FMUL(emissi, NSTBOLT), t14))), flx1), flx2), flx3);
+
+#if NOAH_UA_PHYS
+    noahres_a[idx]=FSUB(noahres_a[idx],flx4);
+    s.flx4=flx4;s.fvb=fvb;s.fbur=fbur;s.fgsn=fgsn;
+#endif
     chklowq_a[idx] = 1.0f;
     smstav_a[idx] = soilw;
     smstot_a[idx] = FMUL(soilm, 1000.0f);
@@ -2013,6 +2077,10 @@ __device__ static void noah_mosaic_accumulate(MosaicState& s,const MosaicState& 
  for(int k=0;k<4;++k)avg.soil[2][k]=FADD(avg.soil[2][k], FMUL(tile.sh2o[k], area));
  avg.r1=FADD(avg.r1, FMUL(tile.sfcrunoff, area));avg.r2=FADD(avg.r2, FMUL(tile.udrunoff, area));
  avg.pe=FADD(avg.pe, FMUL(tile.potevp, area));avg.sm=FADD(avg.sm, FMUL(tile.acsnom, area));avg.sx=FADD(avg.sx, FMUL((-tile.snopcx), area));
+
+#if NOAH_UA_PHYS
+ s.flx4=tile.flx4;s.fvb=tile.fvb;s.fbur=tile.fbur;s.fgsn=tile.fgsn;
+#endif
  s.cqs2=tile.cqs2;s.chs2=tile.chs2;s.lai=tile.lai;s.snotime=tile.snotime;
  s.smstav=tile.smstav;s.smstot=tile.smstot;s.noahres=tile.noahres;s.chklowq=tile.chklowq;
  for(int k=0;k<4;++k)s.smcrel[k]=tile.smcrel[k];
@@ -2144,6 +2212,10 @@ extern "C" __global__ void noah_mosaic_column(
  int mosaic_cat,
  int ny,
  int nx
+#if NOAH_UA_PHYS
+,const real* canopy,real* flx4_a,real* fvb_a,real* fbur_a,real* fgsn_a
+#endif
+
 #if NOAH_MOSAIC_UCM
  , const unsigned long long* urban_state,
  const unsigned long long* urban_tiles,
@@ -2155,6 +2227,10 @@ extern "C" __global__ void noah_mosaic_column(
  int col=blockIdx.x*blockDim.x+threadIdx.x; if(col>=ny*nx)return;
  const size_t idx=col,plane=(size_t)ny*nx;
  MosaicState s;
+#if NOAH_UA_PHYS
+ s.flx4=flx4_a[idx];s.fvb=fvb_a[idx];s.fbur=fbur_a[idx];s.fgsn=fgsn_a[idx];
+#endif
+
 #if NOAH_MOSAIC_UCM
  s.urban_tile=false; s.natural=natural;
 #endif
@@ -2264,7 +2340,11 @@ extern "C" __global__ void noah_mosaic_column(
  if(tile.urban_tile)tile.rural_initial=PLANE(urban_tiles,7)[off];
 #endif
  if(tile.ivgtyp==isice)noah_mosaic_tile_glacial(tile,vegtbl,soiltbl,genp,dzs,dt,lucats,slcats,isurban,isice,xice_threshold,itimestep,frpcpn,usemonalb,rdlai2d,opt_thcnd);
- else noah_mosaic_tile(tile,vegtbl,soiltbl,genp,dzs,dt,lucats,slcats,isurban,isice,xice_threshold,itimestep,frpcpn,usemonalb,rdlai2d,opt_thcnd);
+ else noah_mosaic_tile(tile,vegtbl,soiltbl,genp,dzs,dt,lucats,slcats,isurban,isice,xice_threshold,itimestep,frpcpn,usemonalb,rdlai2d,opt_thcnd
+#if NOAH_UA_PHYS
+,canopy
+#endif
+);
 #if NOAH_MOSAIC_UCM
  if(tile.urban_tile) {
   // noahdrv.F:3733-4057. Roof/wall/road stacks tile; SMR/TGRL stay grid.
@@ -2382,6 +2462,10 @@ extern "C" __global__ void noah_mosaic_column(
  acsnom_a[idx]=s.acsnom;
  snopcx_a[idx]=s.snopcx;
  potevp_a[idx]=s.potevp;
+
+#if NOAH_UA_PHYS
+ flx4_a[idx]=s.flx4;fvb_a[idx]=s.fvb;fbur_a[idx]=s.fbur;fgsn_a[idx]=s.fgsn;
+#endif
  noahres_a[idx]=s.noahres;
  chklowq_a[idx]=s.chklowq;
  for(int k=0;k<4;++k)smois_a[k*plane+idx]=s.smois[k];
@@ -2389,3 +2473,5 @@ extern "C" __global__ void noah_mosaic_column(
  for(int k=0;k<4;++k)sh2o_a[k*plane+idx]=s.sh2o[k];
  for(int k=0;k<4;++k)smcrel_a[k*plane+idx]=s.smcrel[k];
 }
+
+#endif // !NOAH_MATH_ONLY

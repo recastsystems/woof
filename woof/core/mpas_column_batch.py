@@ -140,6 +140,10 @@ transported species set (:data:`_SPECIES_BY_SCHEME`):
   byte-identical to schema v2 before this arm existed, so stored WSM6
   payloads keep restoring and a cross-scheme restore refuses on the
   identity gate.
+* ``"p3_nc"`` (mp_physics=51, P3 with predicted droplet number): the
+  ``"p3"`` row plus ``nc``, the cloud droplet number WRF's mp=51 driver
+  arm passes as ``nc_3d`` (module_microphysics_driver.F:1631), in WRF's
+  scalar order (qnc first).  Everything else is the ``"p3"`` row's.
 * ``"thompson_aero"`` (mp_physics=28, aerosol-aware Thompson): the
   ELEVEN scalars WRF's own mp=28 driver arm transports
   (module_microphysics_driver.F's THOMPSONAERO arm into
@@ -215,6 +219,7 @@ from datetime import datetime
 
 import numpy as np
 
+from woof.config import is_p3
 from woof.core import constants as _constants
 from woof.core.microphysics import apply as _arw_microphysics_apply
 from woof.core.physics import PhysicsDriver, initialize_physics
@@ -261,6 +266,7 @@ _PHASE1, _PHASE2 = 1, 2
 _SPECIES_BY_SCHEME = {
     "wsm6": ("qv", "qc", "qr", "qi", "qs", "qg"),
     "p3": ("qv", "qc", "qr", "qi", "ni", "nr", "qir", "qib"),
+    "p3_nc": ("qv", "qc", "qr", "qi", "nc", "ni", "nr", "qir", "qib"),
     "thompson_aero": ("qv", "qc", "qr", "qi", "qs", "qg",
                       "ni", "nr", "nc", "nwfa", "nifa"),
     "tempo": ("qv", "qc", "qr", "qi", "qs", "qg",
@@ -271,7 +277,7 @@ _SPECIES = _SPECIES_BY_SCHEME["wsm6"]
 #: woof ``mp_physics`` selector per scheme row.  One table, so the
 #: RunConfig the seam builds and the species row it enforces cannot
 #: drift apart.
-_MP_PHYSICS_BY_SCHEME = {"wsm6": 6, "p3": 50, "thompson_aero": 28, "tempo": 900}
+_MP_PHYSICS_BY_SCHEME = {"wsm6": 6, "p3": 50, "p3_nc": 51, "thompson_aero": 28, "tempo": 900}
 
 #: Scheme rows whose driver arm binds a GRAUPEL accumulator, and so
 #: report ``graupelncv`` in the per-call receipt and ``GRAUPELNC`` in
@@ -290,6 +296,8 @@ _RHO_DRY_REFUSAL_BY_SCHEME = {
     "tempo": "TEMPO derives its density from pressure, temperature and vapour",
     "p3": ("P3's kernels derive density from the EOS pressure where "
            "the authority does (module_mp_p3.F)"),
+    "p3_nc": ("P3's kernels derive density from the EOS pressure where "
+              "the authority does (module_mp_p3.F)"),
     "thompson_aero": ("mp_gt_driver builds its own rho from the EOS "
                       "pressure, temperature and vapour "
                       "(module_mp_thompson.F:1802) and the mp=28 "
@@ -314,6 +322,7 @@ _STATE_RESTART_FIELDS_BY_SCHEME = {
     "tempo": ("effc", "effi", "effs", "h_diabatic", "nwfa2d", "nifa2d"),
     "wsm6": ("effc", "effi", "effs", "h_diabatic"),
     "p3": ("effc", "effi", "h_diabatic", "th_old", "qv_old"),
+    "p3_nc": ("effc", "effi", "h_diabatic", "th_old", "qv_old"),
     "thompson_aero": ("effc", "effi", "effs", "h_diabatic",
                       "nwfa2d", "nifa2d"),
 }
@@ -517,8 +526,8 @@ class _ColumnBatchState:
             self.tempo_first_call = True
         for name in species:
             setattr(self, name, zeros(*shape3))
-        if cfg.mp_physics == 50:
-            # Mirror DomainState's mp=50 arm exactly (woof/core/
+        if is_p3(cfg.mp_physics):
+            # Mirror DomainState's P3 arm exactly (woof/core/
             # state.py): qs/qg/effs stay None -- P3's single ice
             # category has no snow or graupel species and WRF's
             # has_reqs=0 override means no snow radius either; every

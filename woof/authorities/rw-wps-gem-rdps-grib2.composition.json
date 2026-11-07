@@ -1,0 +1,249 @@
+{
+ "schema": "gpuwm-mapped-composition-v2",
+ "name": "rdps-primary-with-analysis-invariant-terrain-and-single-layer-soil-and-gfs-deep-soil",
+ "mapping_binding": "input_manifest_sha256",
+ "supplements": {
+  "terrain_height": {
+   "data_role": "rdps_analysis_invariant_surface",
+   "provenance_role": "rdps_analysis_invariant_surface_provenance",
+   "format": "grib2",
+   "field": "terrain_height",
+   "selector_authority": "mapping_field_exact",
+   "grid_alignment": "exact_coordinate_subset",
+   "time_alignment": "cycle_invariant_broadcast",
+   "require_invariant_across_time": true
+  }
+ },
+ "soil_layers": {
+  "temperature_field": "soil_temperature",
+  "moisture_field": "volumetric_soil_moisture",
+  "depth_units": "m",
+  "source_layers": [
+   {
+    "top": 0.0,
+    "bottom": 0.1,
+    "selectors": {
+     "soil_temperature": {
+      "format": "grib2",
+      "discipline": 2,
+      "category": 0,
+      "parameter": 2,
+      "level_type": 106,
+      "level_value": 0.0,
+      "second_level_type": 106,
+      "second_level_value": 0.1
+     },
+     "volumetric_soil_moisture": {
+      "format": "grib2",
+      "discipline": 2,
+      "category": 0,
+      "parameter": 25,
+      "level_type": 106,
+      "level_value": 0.0,
+      "second_level_type": 106,
+      "second_level_value": 0.1
+     }
+    }
+   }
+  ],
+  "target_layers": [
+   {
+    "top": 0.0,
+    "bottom": 0.1
+   },
+   {
+    "top": 0.1,
+    "bottom": 0.4
+   },
+   {
+    "top": 0.4,
+    "bottom": 1.0
+   },
+   {
+    "top": 1.0,
+    "bottom": 2.0
+   }
+  ],
+  "remap": {
+   "kind": "linear_point_samples",
+   "source_value_location": "wrf_integer_cm_layer_midpoint",
+   "target_value_location": "layer_midpoint",
+   "top_anchor": {
+    "depth": 0.0,
+    "temperature": "skin_temperature",
+    "moisture": "repeat_shallowest"
+   },
+   "bottom_anchor": {
+    "depth": 3.0,
+    "temperature": "deep_soil_temperature",
+    "moisture": "repeat_deepest"
+   }
+  },
+  "missing": {
+   "land": "reject",
+   "ocean": {
+    "stage": "after_horizontal_interpolation",
+    "temperature": "skin_temperature",
+    "moisture": 1.0
+   }
+  },
+  "deep_donor": {
+   "about": "The source publishes one 0-10 cm soil layer. The layers below it come from NCEP GFS 0.25 deg at the same valid time (its 10-40, 40-100 and 100-200 cm Noah layers: TSOIL and SOILW, with its LAND mask), sampled land-only onto the target points; the source's own layer is kept. The donor's moisture is on Noah's hydraulics and is moved onto the target land model's by the soil-moisture index remap (gpuwm/data/soil/land-state.v1.json). Defect it fixes: RUC (hrrrv5, the RRFS v2 suites) was refused from every ECCC source because one slab does not hold the 3 m column RUC integrates.",
+   "source_id": "gfs",
+   "soil_model": "noah",
+   "licence": "NCEP GFS, US government work, public domain",
+   "layers": [
+    {
+     "top": 0.1,
+     "bottom": 0.4,
+     "selectors": {
+      "soil_temperature": {
+       "format": "grib2",
+       "discipline": 2,
+       "category": 0,
+       "parameter": 2,
+       "center": 7,
+       "subcenter": 0,
+       "master_table_version": 2,
+       "local_table_version": 1,
+       "level_type": 106,
+       "level_value": 0.1,
+       "second_level_type": 106,
+       "second_level_value": 0.4
+      },
+      "volumetric_soil_moisture": {
+       "format": "grib2",
+       "discipline": 2,
+       "category": 0,
+       "parameter": 192,
+       "center": 7,
+       "subcenter": 0,
+       "master_table_version": 2,
+       "local_table_version": 1,
+       "level_type": 106,
+       "level_value": 0.1,
+       "second_level_type": 106,
+       "second_level_value": 0.4
+      }
+     }
+    },
+    {
+     "top": 0.4,
+     "bottom": 1.0,
+     "selectors": {
+      "soil_temperature": {
+       "format": "grib2",
+       "discipline": 2,
+       "category": 0,
+       "parameter": 2,
+       "center": 7,
+       "subcenter": 0,
+       "master_table_version": 2,
+       "local_table_version": 1,
+       "level_type": 106,
+       "level_value": 0.4,
+       "second_level_type": 106,
+       "second_level_value": 1.0
+      },
+      "volumetric_soil_moisture": {
+       "format": "grib2",
+       "discipline": 2,
+       "category": 0,
+       "parameter": 192,
+       "center": 7,
+       "subcenter": 0,
+       "master_table_version": 2,
+       "local_table_version": 1,
+       "level_type": 106,
+       "level_value": 0.4,
+       "second_level_type": 106,
+       "second_level_value": 1.0
+      }
+     }
+    },
+    {
+     "top": 1.0,
+     "bottom": 2.0,
+     "selectors": {
+      "soil_temperature": {
+       "format": "grib2",
+       "discipline": 2,
+       "category": 0,
+       "parameter": 2,
+       "center": 7,
+       "subcenter": 0,
+       "master_table_version": 2,
+       "local_table_version": 1,
+       "level_type": 106,
+       "level_value": 1.0,
+       "second_level_type": 106,
+       "second_level_value": 2.0
+      },
+      "volumetric_soil_moisture": {
+       "format": "grib2",
+       "discipline": 2,
+       "category": 0,
+       "parameter": 192,
+       "center": 7,
+       "subcenter": 0,
+       "master_table_version": 2,
+       "local_table_version": 1,
+       "level_type": 106,
+       "level_value": 1.0,
+       "second_level_type": 106,
+       "second_level_value": 2.0
+      }
+     }
+    }
+   ],
+   "transport": {
+    "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{cycle:%Y%m%d}/{cycle:%H}/atmos/gfs.t{cycle:%H}z.pgrb2.0p25.f{lead:03d}",
+    "index_suffix": ".idx",
+    "records": [
+     [
+      "TSOIL",
+      "0.1-0.4 m below ground"
+     ],
+     [
+      "SOILW",
+      "0.1-0.4 m below ground"
+     ],
+     [
+      "TSOIL",
+      "0.4-1 m below ground"
+     ],
+     [
+      "SOILW",
+      "0.4-1 m below ground"
+     ],
+     [
+      "TSOIL",
+      "1-2 m below ground"
+     ],
+     [
+      "SOILW",
+      "1-2 m below ground"
+     ],
+     [
+      "LAND",
+      "surface"
+     ]
+    ],
+    "valid_from": "2021-03-22T12:00:00Z"
+   },
+   "land_selector": {
+    "format": "grib2",
+    "discipline": 2,
+    "category": 0,
+    "parameter": 0,
+    "level_type": 1
+   },
+   "cycle_hours": 6,
+   "max_lead_hours": 120,
+   "horizontal": {
+    "kind": "land_bilinear_then_nearest",
+    "search_radius_cells": 4
+   }
+  }
+ }
+}

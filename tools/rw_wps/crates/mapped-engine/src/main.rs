@@ -76,6 +76,7 @@ fn run() -> Result<(), Refusal> {
         "capabilities" => {
             let mut capabilities = mapped_engine::engine::run_capabilities();
             capabilities["wps_intermediate_v5"] = serde_json::json!(true);
+            capabilities["wps_mesh_support_v1"] = serde_json::json!(true);
             emit(capabilities);
             Ok(())
         }

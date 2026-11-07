@@ -161,7 +161,7 @@ CANDIDATE_MAP_PATH = Path(__file__).with_name(
 #: The adaptive-clock entries this reading takes in place of the shipped
 #: map's on the 2 and 3 km four-substep rows of crests 3000, 3500 and
 #: 4500 m: 224 rows re-measured for 12 hours under the same blow-up held
-#: test as the candidate's fixed rows, at both arms' dynamics (box W1,
+#: test as the candidate's fixed rows, at both arms' dynamics (test host,
 #: 2026-10-07, CLOCK-CHECK-NCAR-2026-10-06/fix/step4/ADAPTIVE-ROWS.md).
 #: Breakage they answer: the shipped adaptive entries (three hours, the
 #: old ``4 x wind x slope + 20`` bound, generated dynamics only) said

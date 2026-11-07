@@ -260,6 +260,10 @@ class DomainTicks:
 
     history_interval2_ticks: int | None = None
     history_interval_change_ticks: int = 0
+    #: A spawned nest keeps its birth frame (elapsed 0) while its later
+    #: frames sit on the root clock's history lattice (history_begin_ticks
+    #: carries the phase).  False everywhere else.
+    history_birth_frame: bool = False
 
     def next_history_offset(self, elapsed: int) -> int:
         """First history alarm strictly after elapsed (domain-relative ticks)."""
@@ -280,6 +284,8 @@ class DomainTicks:
         """Whether a frame is due ``elapsed`` ticks after this domain's
         start: on the interval lattice anchored at the begin offset, and
         inside the begin/end window."""
+        if elapsed == 0 and self.history_birth_frame:
+            return True
         if elapsed < self.history_begin_ticks:
             return False
         if (self.history_end_ticks is not None
@@ -360,7 +366,7 @@ class DomainClock:
 
     __slots__ = ("spec", "tick_den", "run_ticks", "ticks", "step_count",
                  "dtbc_fp32", "step_ticks", "dt_fp32",
-                 "adaptive_state")
+                 "adaptive_state", "dfi_start_ticks")
 
     def __init__(self, spec: DomainTicks, tick_den: int, run_ticks: int):
         self.spec = spec
@@ -368,6 +374,7 @@ class DomainClock:
         self.run_ticks = run_ticks
         self.ticks = 0
         self.step_count = 0
+        self.dfi_start_ticks = 0
         self.dtbc_fp32 = np.float32(0.0)
         # THE LIVE STEP, distinct from the CONFIGURED one.
         #
@@ -497,7 +504,7 @@ class DomainClock:
         boundary on this domain's own clock."""
         return (self.ticks >= self.spec.start_ticks
                 and self.spec.history_offset_due(
-                    self.ticks - self.spec.start_ticks))
+                    self.ticks - self.spec.start_ticks - self.dfi_start_ticks))
 
     def history_rings_within_step(self) -> bool:
         """WRF ``Is_alarm_tstep`` for the step NOW being solved
@@ -509,13 +516,14 @@ class DomainClock:
         predicate is not re-derived per consumer."""
         return (self.ticks >= self.spec.start_ticks
                 and self.spec.history_offset_due(
-                    self.ticks + self.step_ticks - self.spec.start_ticks))
+                    self.ticks + self.step_ticks - self.spec.start_ticks - self.dfi_start_ticks))
 
     def restart_due(self) -> bool:
         """Restart alarm predicate: d01 clock only (children carry
         ``restart_ticks = None``), never at t = 0."""
         rt = self.spec.restart_ticks
-        return rt is not None and self.ticks > 0 and self.ticks % rt == 0
+        local = self.ticks - self.dfi_start_ticks
+        return rt is not None and local > 0 and local % rt == 0
 
     def lbc_reset_due(self) -> bool:
         """External-LBC dtbc reset predicate (root only): true at every
@@ -721,6 +729,18 @@ def resolve_clock(exp: ExperimentConfig, *,
             require_step_multiple=not run.use_adaptive_time_step)
         history_begin_ticks, history_end_ticks = _history_window_ticks(
             dc, step_ticks, tick_den, adaptive=run.use_adaptive_time_step)
+        # A spawned nest (a dormant slot whose episode began at start_ticks)
+        # writes its birth frame and then frames on the ROOT clock's history
+        # lattice, so its last frame is the run's end and its valid times
+        # match the parent's. A nest born one minute after the root clock
+        # otherwise writes hourly frames one minute late and misses the
+        # forecast-end frame on the shared history lattice.
+        history_birth_frame = False
+        if (dc.spawn is not None and start_ticks > 0
+                and history_ticks > 0 and history_begin_ticks == 0
+                and start_ticks % history_ticks):
+            history_begin_ticks = (-start_ticks) % history_ticks
+            history_birth_frame = True
 
         # Restart alarms evaluate on the d01 clock ONLY (section B/C).
         restart_ticks = None
@@ -762,7 +782,8 @@ def resolve_clock(exp: ExperimentConfig, *,
             history_begin_ticks=history_begin_ticks,
             history_end_ticks=history_end_ticks,
             history_interval2_ticks=history_interval2_ticks,
-            history_interval_change_ticks=history_interval_change_ticks))
+            history_interval_change_ticks=history_interval_change_ticks,
+            history_birth_frame=history_birth_frame))
         step_by_id[dc.grid_id] = step_ticks
         fp32_by_id[dc.grid_id] = dt_fp32
 
@@ -1135,7 +1156,8 @@ def execute_schedule(schedule: Schedule, *,
                      started_grid_ids=None,
                      committed_initial_history_grid_ids=(),
                      on_period_steps=None,
-                     stop_ticks: int | None = None
+                     stop_ticks: int | None = None,
+                     stop_at_restart_ticks: int | None = None
                      ) -> ExecutionReport:
     """Walk the flat op table with integer-tick clocks (the hot loop).
 
@@ -1232,6 +1254,16 @@ def execute_schedule(schedule: Schedule, *,
     target_ticks = run_ticks if stop_ticks is None else stop_ticks
     root_id = schedule.clock.root.grid_id
     restart_enabled = clocks[root_id].spec.restart_ticks is not None
+    if stop_at_restart_ticks is not None:
+        stop = stop_at_restart_ticks
+        cadence = clocks[root_id].spec.restart_ticks
+        if (type(stop) is not int or stop <= start_ticks or stop > run_ticks
+                or cadence is None or stop % cadence != 0
+                or stop % period_ticks != 0):
+            raise ValueError("cycle stop must be a future synchronized restart boundary within the original horizon")
+        if stop_ticks is not None and stop_ticks != stop:
+            raise ValueError("stop_ticks and stop_at_restart_ticks must name the same boundary")
+        target_ticks = stop
     if started_grid_ids is None:
         started = {
             gid for gid, dom in clocks.items()

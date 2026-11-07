@@ -37,8 +37,14 @@ def fake_pins(tmp_path):
     return source, pins
 
 
-def test_stages_all_pin_shapes_with_hashes_commands_and_http(tmp_path):
+@pytest.mark.parametrize("repository", ["FahrenheitResearch/gpuwm-hex", "recastsystems/gpuwm-hex"])
+def test_stages_all_pin_shapes_with_hashes_commands_and_http(tmp_path, repository):
     source, pins = fake_pins(tmp_path)
+    for pin in pins[1::2]:
+        path = Path(pin)
+        document = json.loads(path.read_text())
+        document["release_assets"]["repository"] = repository
+        path.write_text(json.dumps(document))
     out = tmp_path / "staged with spaces"
     assert stage.main([*pins, "--source", str(source), "--out", str(out), "--serve-check"]) == 0
     manifest = json.loads((out / "assets-manifest.json").read_text())
@@ -52,7 +58,7 @@ def test_stages_all_pin_shapes_with_hashes_commands_and_http(tmp_path):
         assert row["found"] is True
         assert Path(row["staged_path"]).read_bytes() == (source / row["name"]).read_bytes()
         assert command[:3] == ["gh", "release", "create"]
-        assert command[4:6] == ["--repo", "FahrenheitResearch/gpuwm-hex"]
+        assert command[4:6] == ["--repo", repository]
         assert command[-2] == row["staged_path"]
         assert Path(command[-1]).read_text() == f"{row['sha256']}  {row['name']}\n"
         assert check["url"].endswith(f"/{row['tag']}/{row['name']}")

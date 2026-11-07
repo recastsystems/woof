@@ -35,10 +35,15 @@ def test_g3_is_an_admitted_scheme_with_a_stock_callable():
     assert cls.__name__ == "Grell3D"
     # every admitted nonzero scheme has exactly one dispatch row: a stock
     # callable, or a row of the column-cumulus table (New SAS, 96), never both
+    # BMJ (2) is the third table: a column-kernel scheme built through
+    # ColumnCumulus.for_scheme (woof.config.COLUMN_KERNEL_CU_SCHEMES).
+    from woof.config import COLUMN_KERNEL_CU_SCHEMES
     from woof.core.column_cumulus import COLUMN_CUMULUS_SCHEMES
     assert not set(CU_STOCK_CALLABLES) & set(COLUMN_CUMULUS_SCHEMES)
+    assert not set(COLUMN_KERNEL_CU_SCHEMES) & (
+        set(CU_STOCK_CALLABLES) | set(COLUMN_CUMULUS_SCHEMES))
     assert (set(CU_STOCK_CALLABLES) | set(COLUMN_CUMULUS_SCHEMES)
-            == set(CU_SCHEMES) - {0})
+            | set(COLUMN_KERNEL_CU_SCHEMES) == set(CU_SCHEMES) - {0})
 
 
 @pytest.mark.parametrize("avedx", [1, 3])
@@ -130,13 +135,21 @@ def test_short_ensemble_arrays_name_the_out_of_bounds_read():
 def test_g3_specific_controls_name_the_only_runtime_consumer():
     from woof.physics_registry import physics_registry, registry_knob_is_read
     registry = physics_registry()
-    for name in ("maxiens", "maxens", "maxens2", "maxens3", "ensdim",
-                 "cu_diag", "convtrans_avglen_m"):
+    for name in ("maxiens", "maxens", "maxens2", "maxens3", "ensdim"):
         row = registry["parameters"][name]
         assert row["read_when"] == {"cu_physics": 5}
         assert registry_knob_is_read(name, {"cu_physics": 5}, registry)
         for selector in (0, 1, 3, 16):
             assert not registry_knob_is_read(name, {"cu_physics": selector}, registry)
+    # GD always carries convective transport diagnostics. GF reads the
+    # averaging clock only when its radiation feedback is requested.
+    for name in ("cu_diag", "convtrans_avglen_m"):
+        for selector in (5, 93):
+            assert registry_knob_is_read(name, {"cu_physics": selector}, registry)
+        for selector in (0, 1, 3, 16):
+            assert not registry_knob_is_read(name, {"cu_physics": selector}, registry)
+    assert registry_knob_is_read("convtrans_avglen_m",
+                                 {"cu_physics": 3, "cu_rad_feedback": True}, registry)
 
 
 def test_inactive_g3_controls_do_not_change_existing_cumulus_requirements():

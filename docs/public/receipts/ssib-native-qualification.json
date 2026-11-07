@@ -1,0 +1,498 @@
+{
+  "schema": "gpuwm-ssib-native-qualification-v1",
+  "date": "2026-11-01",
+  "selector": {
+    "sf_surface_physics": 8
+  },
+  "source": "WRF v4.6.1 d66e442fccc04111067e29274c9f9eaccc3cef28; module_sf_ssib.F byte-identical in v4.7.1",
+  "license": "WRF public domain; original notice and SHA-256 manifest in gpuwm/data/ssib/",
+  "native_replay": {
+    "strict": true,
+    "calls": 8,
+    "words": 13320,
+    "different_words": 0,
+    "native": "WRF v4.6.1 actual module_surface_driver CASE (SSIBSCHEME)"
+  },
+  "capture": {
+    "steps": [
+      1,
+      241,
+      481,
+      721
+    ],
+    "ranks": 2,
+    "columns_per_rank_call": 15,
+    "fields_per_column": 111,
+    "inputs": [
+      {
+        "file": "ssib-000001-0001-0001-in.bin",
+        "sha256": "75f16799c5b071f5f630b07865c18f9d95e27776b00480e94a44fe0d1b4cfe38",
+        "native_output_sha256": "80bafdd9d4b5d6d69bbc3034153952c66a518d1a9734f5aa022b57cc1a787f49"
+      },
+      {
+        "file": "ssib-000001-0001-0076-in.bin",
+        "sha256": "dcf342159ff99ed625680206aa3613354981a3b3f40c4701f8a676f5816ae7e9",
+        "native_output_sha256": "3121521d2f2844f1921ecd2293a88339c76618b0161d450b98ea5908f8a13e35"
+      },
+      {
+        "file": "ssib-000241-0001-0001-in.bin",
+        "sha256": "863f74eb05fa01782610a1f4d815b11c366ea6f494ed5a041d922f6ce18bfe06",
+        "native_output_sha256": "35a344d14db5fd28828a5b5638823e0a2a5308bc0d38068d95f939fdc51e8d30"
+      },
+      {
+        "file": "ssib-000241-0001-0076-in.bin",
+        "sha256": "289db05ab779e0a2a42262ed3d107fb3c1a2a60216db9272f8246efd55859fca",
+        "native_output_sha256": "48a3515dedb29c82b774b531ffc771e6171f4e3cad2033bb87e19842f2cd99e9"
+      },
+      {
+        "file": "ssib-000481-0001-0001-in.bin",
+        "sha256": "76ee384ec13d01f1f650bec5416bac4d3bcfa1985a55a39927c101b89a40c1cc",
+        "native_output_sha256": "d92d46afd856f4ed3c26cd55b47a5a0389d5e2c57e02e3e38cc07b378a012ade"
+      },
+      {
+        "file": "ssib-000481-0001-0076-in.bin",
+        "sha256": "1aadbb050ae459524c935a60b1331db24a279fb056ab54795327ff5e95115489",
+        "native_output_sha256": "44ddf6ab9a013cc9031e5adc96af0e5cbed1c2026ef792a220e9cabb9d7a8187"
+      },
+      {
+        "file": "ssib-000721-0001-0001-in.bin",
+        "sha256": "fcacd37a1bf5140ad7d332a502ca34d86bae3362438a5a0d7acd515133aa4f1e",
+        "native_output_sha256": "9fe5e34dc96d85082ccb988b03beace028723135c73eabbd88dc770c3fbae3be"
+      },
+      {
+        "file": "ssib-000721-0001-0076-in.bin",
+        "sha256": "7c979289fb913b62f3d16a46a0bbed3f87b291e7e55d016eaa93f40fdb315cc5",
+        "native_output_sha256": "26ebc035ca1d4fa8867d6c03eb8b82402576f47880b556ba062c8e8af69bd37f"
+      }
+    ]
+  },
+  "constructed_oracle": {
+    "columns": 78,
+    "calls_per_column": 288,
+    "words": 2493504,
+    "strict_differing_words": 0,
+    "native_undefined": "Uninitialized snow locals and ICASE are witnessed; the finite oracle initializes the former to zero. Real native captures need no mismatch exemption."
+  },
+  "forecast": {
+    "door": "gpuwm go --wrfinput DIR",
+    "start": "2024-05-25T18:00:00Z",
+    "end": "2024-05-25T21:00:00Z",
+    "steps": 900,
+    "dt_s": 12,
+    "grid": [
+      150,
+      150,
+      49
+    ],
+    "dx_m": 3000,
+    "mp_physics": 6,
+    "pbl": 1,
+    "surface_layer": 1,
+    "radiation_lw_sw": [
+      4,
+      4
+    ],
+    "radiation_variant": "rrtmg_legacy",
+    "fractional_seaice": 1,
+    "status": "PASS",
+    "model_step_median_ms": 19.9
+  },
+  "observations": {
+    "source": "IEM ASOS historical station service",
+    "valid_hours_utc": [
+      19,
+      20,
+      21
+    ],
+    "maps": "Rust rw_verify and rw_wrfbatch through gpuwm.rustwx.verify_observations",
+    "scores": [
+      {
+        "hour": 19,
+        "stations": [
+          {
+            "arms": [
+              {
+                "bias": 4.41432345479888,
+                "count": 65,
+                "label": "ArWen SSiB",
+                "rmse": 5.260831807099642
+              },
+              {
+                "bias": 4.5797188098926345,
+                "count": 65,
+                "label": "Native WRF SSiB",
+                "rmse": 5.424335038465677
+              }
+            ],
+            "quantity": "temperature_2m",
+            "status": "ready",
+            "units": "K",
+            "winner": "ArWen SSiB"
+          },
+          {
+            "arms": [
+              {
+                "bias": -0.580957182675054,
+                "count": 65,
+                "label": "ArWen SSiB",
+                "rmse": 1.6765403033637511
+              },
+              {
+                "bias": -0.5856110960832999,
+                "count": 65,
+                "label": "Native WRF SSiB",
+                "rmse": 1.6770794113516225
+              }
+            ],
+            "quantity": "dewpoint_2m",
+            "status": "ready",
+            "units": "K",
+            "winner": "ArWen SSiB"
+          },
+          {
+            "arms": [
+              {
+                "bias": 0.43019869546237544,
+                "count": 64,
+                "label": "ArWen SSiB",
+                "rmse": 1.3425727750907281
+              },
+              {
+                "bias": 0.1114140377603808,
+                "count": 64,
+                "label": "Native WRF SSiB",
+                "rmse": 1.2400889399401764
+              }
+            ],
+            "quantity": "wind_speed_10m",
+            "status": "ready",
+            "units": "m s-1",
+            "winner": "Native WRF SSiB"
+          }
+        ],
+        "grid_errors": []
+      },
+      {
+        "hour": 20,
+        "stations": [
+          {
+            "arms": [
+              {
+                "bias": 3.9071679121314826,
+                "count": 64,
+                "label": "ArWen SSiB",
+                "rmse": 4.817451411745974
+              },
+              {
+                "bias": 4.145221417944214,
+                "count": 64,
+                "label": "Native WRF SSiB",
+                "rmse": 5.052454472273485
+              }
+            ],
+            "quantity": "temperature_2m",
+            "status": "ready",
+            "units": "K",
+            "winner": "ArWen SSiB"
+          },
+          {
+            "arms": [
+              {
+                "bias": -0.7274949112396536,
+                "count": 64,
+                "label": "ArWen SSiB",
+                "rmse": 2.091162917558644
+              },
+              {
+                "bias": -0.7288595377467963,
+                "count": 64,
+                "label": "Native WRF SSiB",
+                "rmse": 2.0896647411778067
+              }
+            ],
+            "quantity": "dewpoint_2m",
+            "status": "ready",
+            "units": "K",
+            "winner": "Native WRF SSiB"
+          },
+          {
+            "arms": [
+              {
+                "bias": 0.337239939319738,
+                "count": 63,
+                "label": "ArWen SSiB",
+                "rmse": 1.3762487885052288
+              },
+              {
+                "bias": -0.21077292380394355,
+                "count": 63,
+                "label": "Native WRF SSiB",
+                "rmse": 1.3098012285335983
+              }
+            ],
+            "quantity": "wind_speed_10m",
+            "status": "ready",
+            "units": "m s-1",
+            "winner": "Native WRF SSiB"
+          }
+        ],
+        "grid_errors": []
+      },
+      {
+        "hour": 21,
+        "stations": [
+          {
+            "arms": [
+              {
+                "bias": 3.128670387518483,
+                "count": 65,
+                "label": "ArWen SSiB",
+                "rmse": 4.237161201858173
+              },
+              {
+                "bias": 3.36816356090646,
+                "count": 65,
+                "label": "Native WRF SSiB",
+                "rmse": 4.460356218650166
+              }
+            ],
+            "quantity": "temperature_2m",
+            "status": "ready",
+            "units": "K",
+            "winner": "ArWen SSiB"
+          },
+          {
+            "arms": [
+              {
+                "bias": -0.7604769749652099,
+                "count": 65,
+                "label": "ArWen SSiB",
+                "rmse": 2.7413877083394427
+              },
+              {
+                "bias": -0.7609025130073064,
+                "count": 65,
+                "label": "Native WRF SSiB",
+                "rmse": 2.737761261216374
+              }
+            ],
+            "quantity": "dewpoint_2m",
+            "status": "ready",
+            "units": "K",
+            "winner": "Native WRF SSiB"
+          },
+          {
+            "arms": [
+              {
+                "bias": 0.5282019218056463,
+                "count": 64,
+                "label": "ArWen SSiB",
+                "rmse": 1.5141744072220804
+              },
+              {
+                "bias": -0.15454162502630192,
+                "count": 64,
+                "label": "Native WRF SSiB",
+                "rmse": 1.2928647501104484
+              }
+            ],
+            "quantity": "wind_speed_10m",
+            "status": "ready",
+            "units": "m s-1",
+            "winner": "Native WRF SSiB"
+          }
+        ],
+        "grid_errors": []
+      }
+    ],
+    "looked_at": "Similar warm-west/cool-east and moisture boundary structure. Both runs are warm against ASOS. ArWen winds are faster and have higher station RMSE. Weak edge reflectivity cells resemble native WRF; no radar observations were supplied.",
+    "scope": "One case, no isolated SSiB skill attribution or general observation-skill certification."
+  },
+  "timing": {
+    "device": "shared NVIDIA RTX 5090",
+    "columns": 22500,
+    "method": "CUDA events, first five calls excluded; synchronization at process exit only",
+    "ssib": {
+      "_run_radiation": {
+        "calls": 15,
+        "total_ms": 1780.0958709716797,
+        "steady_mean_ms": 105.56051483154297,
+        "steady_median_ms": 100.74316787719727,
+        "steady_p95_ms": 135.48527679443356
+      },
+      "_run_sfclay": {
+        "calls": 900,
+        "total_ms": 1252.7669120430946,
+        "steady_mean_ms": 1.3883203217437148,
+        "steady_median_ms": 1.2149120569229126,
+        "steady_p95_ms": 2.4054816484451287
+      },
+      "ssib_record_gather": {
+        "calls": 900,
+        "total_ms": 49.18236818164587,
+        "steady_mean_ms": 0.054783034838694435,
+        "steady_median_ms": 0.05110400170087814,
+        "steady_p95_ms": 0.06581439971923823
+      },
+      "ssib_kernel_launch": {
+        "calls": 900,
+        "total_ms": 111.26905551552773,
+        "steady_mean_ms": 0.12364324415362747,
+        "steady_median_ms": 0.1138560026884079,
+        "steady_p95_ms": 0.11865919977426527
+      },
+      "ssib_record_scatter": {
+        "calls": 900,
+        "total_ms": 8.033375994767994,
+        "steady_mean_ms": 0.008929251390899527,
+        "steady_median_ms": 0.008832000195980072,
+        "steady_p95_ms": 0.010304000228643417
+      },
+      "_run_column_land_surface": {
+        "calls": 900,
+        "total_ms": 187.7311678081751,
+        "steady_mean_ms": 0.20816511263727475,
+        "steady_median_ms": 0.19750399887561798,
+        "steady_p95_ms": 0.23117119520902618
+      },
+      "_run_ysu": {
+        "calls": 900,
+        "total_ms": 1537.2200638651848,
+        "steady_mean_ms": 1.7023481204523054,
+        "steady_median_ms": 1.158560037612915,
+        "steady_p95_ms": 4.369932937622069
+      }
+    },
+    "noah": {
+      "_run_radiation": {
+        "calls": 15,
+        "total_ms": 2002.511734008789,
+        "steady_mean_ms": 122.8180030822754,
+        "steady_median_ms": 115.68088150024414,
+        "steady_p95_ms": 163.6821296691894
+      },
+      "_run_sfclay": {
+        "calls": 900,
+        "total_ms": 604.5712965130806,
+        "steady_mean_ms": 0.666156443071099,
+        "steady_median_ms": 0.636352002620697,
+        "steady_p95_ms": 0.7462720096111296
+      },
+      "_run_noah": {
+        "calls": 900,
+        "total_ms": 127.51692771911621,
+        "steady_mean_ms": 0.13541152140115226,
+        "steady_median_ms": 0.07782399654388428,
+        "steady_p95_ms": 0.24929920136928552
+      },
+      "_run_ysu": {
+        "calls": 900,
+        "total_ms": 1098.9676162600517,
+        "steady_mean_ms": 1.2219023020573834,
+        "steady_median_ms": 1.1032639741897583,
+        "steady_p95_ms": 2.0931328535079925
+      }
+    },
+    "surface_mean_ratio": 1.5372777034281473,
+    "surface_median_ratio": 2.5378290456240857,
+    "within_1p2": false,
+    "physics_cost": {
+      "columns": 22500,
+      "native_capture": "[1397967170, 15, 50, 721, 1, 150, 76, 150, 1, 50]",
+      "kernel_attributes": {
+        "max_threads_per_block": 256,
+        "shared_size_bytes": 0,
+        "const_size_bytes": 10680,
+        "local_size_bytes": 896,
+        "num_regs": 250,
+        "ptx_version": 120,
+        "binary_version": 120,
+        "cache_mode_ca": 0,
+        "max_dynamic_shared_size_bytes": 49152,
+        "preferred_shared_memory_carveout": -1
+      },
+      "block_readings": {
+        "64": {
+          "samples": 50,
+          "median_ms": 0.09883200004696846,
+          "mean_ms": 0.09936064034700394,
+          "min_ms": 0.09772799909114838,
+          "p95_ms": 0.10089920088648796
+        },
+        "128": {
+          "samples": 50,
+          "median_ms": 0.12492799758911133,
+          "mean_ms": 0.12510271787643432,
+          "min_ms": 0.12390399724245071,
+          "p95_ms": 0.12697599828243256
+        },
+        "256": {
+          "samples": 50,
+          "median_ms": 0.12697599828243256,
+          "mean_ms": 0.12692032068967818,
+          "min_ms": 0.12492799758911133,
+          "p95_ms": 0.12748800218105316
+        }
+      },
+      "method": "CUDA events around only ssib_surface_step, reset from real native input outside events"
+    },
+    "optimization": "Fused precipitation clearing, ice-state saving and status masking into scatter: surface mean 0.320 -> 0.208 ms. 64-thread physics block outperformed 128 and 256. Kernel alone 0.099 ms before 111-state record transport, versus Noah whole-stage median 0.078 ms. Required fractional-ice interface adds a second MM5 call."
+  },
+  "wiring": {
+    "stock_namelist": "PASS",
+    "history": "PASS",
+    "nests_feedback_0_and_1": "production coupler entry plus bounded canonical/resident operator checks, ratios 3 and 4; private SSiB fields have no native feedback flag",
+    "native_restart": "real native wrfrst at hour 1 advanced in strict and default modes",
+    "checkpoint": {
+      "status": "PASS",
+      "resumed_steps": 600,
+      "final_numeric_fields": 286,
+      "numeric_bytes": 113018868,
+      "differing_bytes": 0
+    },
+    "optimization_checkpoint_identity": {
+      "arrays": 310,
+      "numeric_bytes": 214795204,
+      "different_bytes": 0
+    },
+    "ensembles": {
+      "status": "PASS",
+      "members": 2,
+      "steps_per_member": 2,
+      "all_device_words_and_rust_products_equal": true,
+      "distinct_ssib_ect_hashes": [
+        "82462f58b62e8d0e2802a7524e79b95c3bf444f94790b2c3574505e70ae6056a",
+        "70153e72040f016f53be799ba60187ebb1429b23a93ebc9d3de21423ca75a077"
+      ],
+      "runner": "ordinary member CUDA streams; packed ensemble factory not claimed"
+    }
+  },
+  "option_off": {
+    "candidate": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+    "scheme": 2,
+    "steps": 2,
+    "device": "shared RTX 4090",
+    "netcdf_files": 3,
+    "all_file_bytes_identical": true
+  },
+  "retained_constraints": [
+    "WRF-required YSU/revised-MM5/three-soil/fractional-ice pairing and radiation 1,3,4",
+    "Lake coupling and NLCD40 cannot provide SSiB native state/category mapping.",
+    "Noah-MP opt_btr=3 is a separate ENERGY branch under land option 4; not called by option 8."
+  ],
+  "evidence_directory": "<reports>/WRF-PORTS-2026-11-01/evidence/port-sf8-ssib/",
+  "source_sha256": {
+    "gpuwm/core/ssib.py": "c2f7848da02787986ef374694810f20d3175b8785add08da10cd3216209d3a7f",
+    "gpuwm/core/ssib_records.py": "a4a6fa6e98f88e5247519f188dbe36a64d511d38a74b27010ca0a8ef849f6658",
+    "gpuwm/core/ssib_nesting.py": "e77d2c59ebda9db7656bf9831bfc464cf38a5f9b61b935928a3b9d11f4d120bb",
+    "gpuwm/core/kernels/ssib.cu": "3aa6d566ddcc909b5592467782024f2fc4b35c4b38ff3c9752fc3003fdd41b36",
+    "gpuwm/core/kernels/ssib_records.cu": "e6f02a042b7ffa4b284938685c57065d45f99b2936fa0e3e76b0363398da8b1a",
+    "gpuwm/core/kernels/__init__.py": "56ca9053164dbc655bb0308d80a77ab45da44247e5e04ac03f4a6d3efd0df3ae",
+    "gpuwm/core/physics.py": "cccbc4099e1b73e946adedb8e5d0ef37ec30d825f78035e4203ccf57c36378d7",
+    "gpuwm/core/nest.py": "2a443c542edf5fe62a71f67df1cbf43a28d4070b5503ed7fff739c6fd6383462",
+    "gpuwm/core/preflight.py": "e1472b2ffb2cdc57e909fc1ba4e23d93115118d482c1deccd5867ea5edd6b049",
+    "gpuwm/ingest/wrfrst.py": "396ba46179d3cbaee894ad0a093ade0dd25c79b5bb9a2c146283cc6c7db5325e",
+    "gpuwm/go_cli.py": "9864d755da3dd223f2640a655f92f8582cfe14d6221676d41da7da7b89cae856",
+    "gpuwm/static/rust_bridge.py": "64e9e61fbc4bd71cdc64d70f07de65d270225eaa923300f573e71a75281165c3"
+  }
+}

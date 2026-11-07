@@ -458,16 +458,17 @@ def cuda_source(*, device_math_source: str, max_levels: int, workspace: bool = F
     return source.replace(marker, "static constexpr bool is_aerosol_aware = true;")
 
 
-@lru_cache(maxsize=1)
 def workspace_layout():
-    """Workspace slots per kernel of this module's source (levels, maths and numerics do not change them)."""
+    """Workspace slots matching this module's numerical mode."""
     core = _shared_core()
-    declarations = ",".join(f"const {'float' if n == 'tnccn_act' else 'double'}* input_{n}"
-                            for n in core.TABLE_ARGUMENTS)
-    assignments = "\n".join(f"m.{n}=input_{n};" for n in core.TABLE_ARGUMENTS)
-    driver = _AERO_DRIVER.replace("TABLE_DECLARATIONS", declarations).replace("TABLE_ASSIGNMENTS", assignments)
-    return core._workspace_source(f"#define THOMPSON_COLUMN_KMAX {core.MAX_LEVELS}\n" + core._SUPPORT
-                                  + core._COLUMN + driver + core._RADAR_DRIVER)[1]
+    return _workspace_layout(core._hex_numerics.mode())
+
+
+@lru_cache(maxsize=2)
+def _workspace_layout(mode):
+    core = _shared_core()
+    return core._layout_from_source(cuda_source(device_math_source='// layout only', max_levels=core.MAX_LEVELS, workspace=True,
+                                                numerics=mode))
 
 
 # Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x

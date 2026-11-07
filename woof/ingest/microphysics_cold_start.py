@@ -38,9 +38,15 @@ def source_absent_microphysics(cfg):
     if mp == 10:
         return (("QNRAIN", "QNICE", "QNSNOW", "QNGRAUPEL"),
                 dict.fromkeys(("nc", "nr", "ni", "ns", "ng"), 0.0))
-    if mp == 16:
+    if mp in (14, 16):
         return (("QNCLOUD", "QNRAIN", "QNCCN"),
                 {"nc": 0.0, "nr": 0.0, "nn": float(cfg.wdm6_ccn_conc)})
+    if mp in (26, 27):
+        # WDM7 (Registry.EM_COMMON:3035): WDM6's three plus the hail mass,
+        # which an analysis without hail starts at zero.
+        return (("QHAIL", "QNCLOUD", "QNRAIN", "QNCCN"),
+                {"qh": 0.0, "nc": 0.0, "nr": 0.0,
+                 "nn": float(cfg.wdm6_ccn_conc)})
     if mp == 18:
         from woof.core.microphysics_transition import NSSL2_BACKGROUND_CCN_PER_KG
         values = dict.fromkeys(("qh", "qndrop", "qnr", "qni", "qns", "qng",
@@ -48,22 +54,39 @@ def source_absent_microphysics(cfg):
         values["qnn"] = NSSL2_BACKGROUND_CCN_PER_KG
         return (("QHAIL", "QNDROP", "QNRAIN", "QNICE", "QNSNOW", "QNGRAUPEL",
                  "QNHAIL", "QNCCN", "QVGRAUPEL", "QVHAIL"), values)
+    if mp == 15:
+        return ("QRIMEF",), {"qrimef": 0.0}
     if mp == 5:
         # Ferrier-Aligo: the scalar qt (WRF output name CWM) has no analysed
         # source and real.exe never computes it; FER_HIRES rebuilds it from
         # qc+qr+qi on the first call (module_mp_fer_hires.F:388).  The
         # f_* state starts where fer_hires_init puts it (woof/core/state.py).
         return ("CWM",), {"qt": 0.0}
+    if mp == 52:
+        return (("QNCLOUD", "QNICE", "QNRAIN", "QIR", "QIB", "QICE2", "QNICE2", "QIR2", "QIB2"),
+                dict.fromkeys(("nc", "ni", "nr", "qir", "qib", "qi2", "ni2", "qir2", "qib2"), 0.0))
     if mp == 50:
         return (("QNICE", "QNRAIN", "QIR", "QIB"),
                 dict.fromkeys(("ni", "nr", "qir", "qib"), 0.0))
-    if mp == 28:
+    if mp == 53:
+        # P3 three-moment ice (Registry.EM_COMMON:3041): mp=50's four
+        # scalars plus the droplet number and the advected ice moment, all
+        # at the exact zero WRF's allocator and real.exe leave them at when
+        # the analysis carries none.  P3 itself floors what it needs: the
+        # wrapper sets Z = 0 where Ni < qsmall (module_mp_p3.F:830-834) and
+        # p3_main floors Z at zsmall and clamps it into the mu_i bounds
+        # wherever ice exists (:2612, :2654-2660).
+        return (("QNICE", "QNRAIN", "QIR", "QIB", "QNCLOUD", "QZI"),
+                dict.fromkeys(("ni", "nr", "qir", "qib", "nc", "qzi"), 0.0))
+    if mp in THOMPSON_AEROSOL_FAMILY:
         # Aerosol-aware Thompson (Registry.EM_COMMON:3036).  The three
         # number species a cold start owns are nc, nr and ni, and every
         # one of them is allocated at exact zero -- the value
         # woof/core/state.py allocates and the value real.exe keeps where
-        # the paired analysed mass is zero.  Where that mass is above zero
-        # real.exe seeds the number (cold_start_seeded_numbers below).
+        # the paired analysed mass is zero. For mp=28, real.exe seeds the
+        # number where mass is positive (cold_start_seeded_numbers below).
+        # WRF v4.7.1 module_initialize_real.F:4801-4804 excludes mp=38
+        # from that block, so its initial numbers remain zero everywhere.
         #
         # nwfa/nifa (and the two 2-D emission fields) are deliberately NOT
         # here.  Their initial condition is not "absent from the analysed
@@ -88,8 +111,10 @@ def source_absent_microphysics(cfg):
         # woof.config.mp28_aerosol_lateral_forcing_precondition: reported
         # at plan review and raised at the run door by
         # woof.config.validate_run_preparation.
-        return (("QNCLOUD", "QNRAIN", "QNICE"),
-                dict.fromkeys(("nc", "nr", "ni"), 0.0))
+        extra = THOMPSON_AEROSOL_FAMILY[mp].graupel_species
+        fields = ("QNGRAUPEL", "QVGRAUPEL") if extra else ()
+        return (("QNCLOUD", "QNRAIN", "QNICE") + fields,
+                dict.fromkeys(("nc", "nr", "ni") + extra, 0.0))
     from woof.microphysics_schemes import scheme as _named_scheme
     named = _named_scheme(mp)
     if named is not None:
@@ -99,7 +124,7 @@ def source_absent_microphysics(cfg):
         # The aerosol tracers are owned by the aerosol initialisation, as
         # for mp=28.
         wrf_names = {"nc": "QNCLOUD", "nr": "QNRAIN", "ni": "QNICE",
-                     "ng": "QNGRAUPEL", "volg": "QVGRAUPEL"}
+                     "ng": "QNGRAUPEL", "ns": "QNSNOW", "volg": "QVGRAUPEL"}
         names = tuple(n for n in named.moment_species if n in wrf_names)
         return (tuple(wrf_names[n] for n in names), dict.fromkeys(names, 0.0))
     raise ValueError(f"no native prognostic-species initialization for mp_physics={mp}")
@@ -147,6 +172,53 @@ def cold_start_seeded_numbers(cfg):
     return seeded
 
 
+def cold_start_ndcnst_numbers(cfg):
+    """Number moments a cold start sets to the scheme's NDCNST diagnostic.
+
+    Morrison (mp=10) under correct-mode ``hydrometeor_handover_numbers``
+    (:func:`woof.ingest.handover_numbers.closure_active`) starts its droplet
+    number ``nc`` at NDCNST*1e6/rho everywhere (morrison.cu), not at the
+    allocation zero :func:`source_absent_microphysics` lists, so its receipt
+    states "finite and above zero" instead of an exact value
+    (tools/hrrr_single_domain_benchmark._initial_hrrr_microphysics_receipt).
+    Every other selection returns an empty set.
+    """
+    cfg = SimpleNamespace(**cfg) if isinstance(cfg, dict) else cfg
+    if int(cfg.mp_physics) != 10:
+        return frozenset()
+    from woof.ingest.handover_numbers import closure_active
+    return frozenset({"nc"}) if closure_active(cfg) else frozenset()
+
+
+def hrrr_cold_start_preflight(selection):
+    """Refuse, before any download, a microphysics an HRRR start cannot prepare.
+
+    The HRRR preparation (tools/prepare_hrrr_wrf._validated_physics_receipt)
+    checks a cold-start receipt for every source-absent prognostic field only
+    after the whole forcing window is fetched.  This computes the same
+    contract from the run's selection first, so a selection without one is
+    refused by name while nothing has been spent.  Returns the field names.
+    """
+    cfg = SimpleNamespace(**selection) if isinstance(selection, dict) else selection
+    try:
+        fields, expected = cold_start_contract(cfg)
+        special = set(cold_start_seeded_numbers(cfg)) | set(cold_start_ndcnst_numbers(cfg))
+    except (ValueError, AttributeError, TypeError) as error:
+        raise ValueError(
+            "an HRRR start cannot prepare this microphysics "
+            f"(mp_physics={getattr(cfg, 'mp_physics', None)!r}): its cold-start "
+            f"contract is undefined ({error}); refused before the download, so "
+            "nothing was spent") from error
+    unknown = special - set(expected)
+    if unknown:
+        raise ValueError(
+            "an HRRR start cannot prepare this microphysics "
+            f"(mp_physics={int(cfg.mp_physics)}): number moment(s) {sorted(unknown)} "
+            "have no source-absent contract; refused before the download, so "
+            "nothing was spent")
+    return fields
+
+
 def cold_start_contract(selection):
     """Wire-level expected FP32 values and bits, computed from active settings."""
     cfg = SimpleNamespace(**selection) if isinstance(selection, dict) else selection
@@ -156,3 +228,5 @@ def cold_start_contract(selection):
         packed = struct.pack("<f", value)
         expected[name] = (struct.unpack("<f", packed)[0], struct.unpack("<I", packed)[0])
     return fields, expected
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

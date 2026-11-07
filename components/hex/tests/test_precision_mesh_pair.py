@@ -12,6 +12,36 @@ from woof.hex.mesh import Mesh, MeshValidationError
 from test_mesh_validation import graded_sphere_mesh
 
 
+@pytest.mark.parametrize('producer_pi', [module.GRID_ROTATE_DEFAULT_REAL_PI,
+                                       module.GRID_ROTATE_X4_REAL_PI])
+def test_reconcile_both_exact_pi_signatures_without_changing_geometry(producer_pi):
+    mesh = graded_sphere_mesh(level=1, zoom=1.0, dtype=np.float64)
+    original = {k: v.tobytes() for k, v in mesh.arrays.items() if not k.startswith('lon')}
+    for entity in ('Cell', 'Edge', 'Vertex'):
+        mesh.arrays['lon'+entity] = module._grid_rotate_convert_xl_longitude(
+            mesh.arrays['x'+entity], mesh.arrays['y'+entity], producer_pi=producer_pi)[0]
+    evidence = module.reconcile_grid_rotate_longitudes(mesh)
+    assert evidence['producer_default_real_pi'] == producer_pi
+    assert all(mesh.arrays[k].tobytes() == v for k, v in original.items())
+    mesh.validate()
+
+
+def test_x4_signature_rejects_corruption_and_mixed_producers():
+    for corrupt in (False, True):
+        mesh = graded_sphere_mesh(level=1, zoom=1.0, dtype=np.float64)
+        for entity in ('Cell', 'Edge', 'Vertex'):
+            pi = (module.GRID_ROTATE_DEFAULT_REAL_PI if not corrupt and entity == 'Edge'
+                  else module.GRID_ROTATE_X4_REAL_PI)
+            mesh.arrays['lon'+entity] = module._grid_rotate_convert_xl_longitude(
+                mesh.arrays['x'+entity], mesh.arrays['y'+entity], producer_pi=pi)[0]
+        if corrupt:
+            mesh.arrays['lonCell'][0] += 1e-6
+        before = {k: mesh.arrays[k].copy() for k in ('lonCell','lonEdge','lonVertex')}
+        with pytest.raises(MeshValidationError, match='mixed producer|pinned producer formula'):
+            module.reconcile_grid_rotate_longitudes(mesh)
+        assert all(np.array_equal(mesh.arrays[k], v) for k, v in before.items())
+
+
 @pytest.mark.parametrize("layout", ["vector", "reversed", "fortran", "scalar", "empty"])
 def test_blocked_ulp_check_preserves_special_values_and_shapes(monkeypatch, layout):
     from woof.hex import host_parallel

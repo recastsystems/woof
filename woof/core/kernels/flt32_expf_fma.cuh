@@ -8,12 +8,12 @@
 //
 // WHY A SECOND FORM.  gfk_exp evaluates every a*b+c of the algorithm as a
 // separate multiply and add.  The reference a WRF column oracle calls on an
-// x86-64 host with FMA (every oracle host here: W1's Xeon Platinum 8559C,
-// a development machine) is the C library's run-time-selected FMA build of expf, whose
+// x86-64 host with FMA (the reference
+// host) is the C library's run-time-selected FMA build of expf, whose
 // multiply-adds are fused.  The two forms differ at exactly two float32
 // inputs over the whole line -- x = 0x4202422F (32.5646324) and
 // x = 0xC27C65D9 (-63.0994606), 1 ULP each -- measured by
-// tools/myjpbl_wrf461_oracle/libm_sweep.py over all 2**32 inputs on W1.
+// tools/myjpbl_wrf461_oracle/libm_sweep.py over all 2**32 inputs on x86-64.
 // gfk_exp_fma fuses the same five sites (the shift add, the reduced
 // argument, both polynomial halves and their combination) with explicit
 // __fma_rn, so it is unaffected by --fmad and matches the reference at every

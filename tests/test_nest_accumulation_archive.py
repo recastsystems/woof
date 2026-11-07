@@ -113,3 +113,20 @@ def test_archive_policy_reuses_prepared_initial_state_but_not_restart():
         for live in (old, off, on):
             assert compare_prepared_domain_config(cached, live) == ([], [])
             assert effective_prepared_domain_config(cached) == effective_prepared_domain_config(live)
+
+
+def test_old_checkpoint_physics_fingerprint_rebuilds_legacy_archive_policy():
+    from dataclasses import replace
+    from woof.config import RunConfig
+    from woof.io.restart import (
+        configuration_echo, _run_config_from_header, _configuration_fingerprint)
+    run = RunConfig(nx=12, ny=12, nz=4, dx=3000., dy=3000.,
+                    ztop=20000., dt=10., run_seconds=3600.,
+                    nested=True, nest_accumulation_archive=False)
+    old_echo = configuration_echo(run)
+    assert 'nest_accumulation_archive' not in old_echo
+    rebuilt = _run_config_from_header(old_echo)
+    assert rebuilt is not None and rebuilt.nest_accumulation_archive is False
+    assert _configuration_fingerprint(rebuilt) == _configuration_fingerprint(run)
+    assert _configuration_fingerprint(rebuilt) != _configuration_fingerprint(
+        replace(run, nest_accumulation_archive=True))

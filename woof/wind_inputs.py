@@ -82,14 +82,21 @@ def inventory_table(year=0) -> Path:
     return result
 
 
-def table_bytes(path) -> bytes:
+def table_bytes(path, *, windfarm_ij=0, scheme="fitch") -> bytes:
+    if type(windfarm_ij) is not int or windfarm_ij not in ((1, 2) if scheme == "mav" else (0, 1)):
+        raise ValueError("MAV windfarm_ij must be 1 (xy) or 2 (geographic)" if scheme == "mav" else "Fitch windfarm_ij must be 0 (geographic) or 1 (WRF domain-local indices)")
     if str(path) == "uswtdb":
+        if windfarm_ij:
+            raise ValueError("windfarm_ij=1 requires a WRF windturbines-ij.txt file; inventories use geographic coordinates")
         path = inventory_table()
     source = Path(path)
     raw = source.read_bytes()
     if raw.lstrip().startswith(b"{"):
+        if windfarm_ij:
+            raise ValueError("windfarm_ij=1 requires a WRF windturbines-ij.txt file; JSON coordinates are already explicit")
         return raw
-    completed = subprocess.run([str(table_binary()), "--wrf", str(source.resolve())],
+    mode = ("--mav-xy" if windfarm_ij == 1 else "--mav-ll") if scheme == "mav" else ("--wrf-ij" if windfarm_ij else "--wrf")
+    completed = subprocess.run([str(table_binary()), mode, str(source.resolve())],
                                check=False, capture_output=True, timeout=90)
     if completed.returncode:
         raise ValueError(f"WRF turbine input {source}: {completed.stderr.decode(errors='replace').strip()}")
@@ -113,8 +120,11 @@ def prepare_launch(args):
         selected = str(inventory_table(getattr(when, "year", 0)))
     shared = raw.setdefault("shared", {})
     shared.update(wind_farms=selected, wind_farm_scheme="off", wind_farm_table="")
+    # A replacement inventory uses explicit JSON or geographic WRF locations.
+    # Discard the old file's index interpretation along with its path.
+    shared.pop("windfarm_ij", None)
     for domain in raw.get("domain", []):
-        for key in ("wind_farms", "wind_farm_scheme", "wind_farm_table"):
+        for key in ("wind_farms", "wind_farm_scheme", "wind_farm_table", "windfarm_ij"):
             domain.pop(key, None)
     payload = emit_experiment_toml(raw).encode()
     target = authority.source.with_name(authority.source.stem + ".wind-" + hashlib.sha256(payload).hexdigest()[:16] + ".toml")

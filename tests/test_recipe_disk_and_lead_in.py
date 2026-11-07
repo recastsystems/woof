@@ -1,6 +1,6 @@
 """The event page's layouts count their download and preparation, and time them from their own source.
 
-Breakage these prevent, measured on a development machine on 2026-09-26: the event page
+Breakage these prevent, measured on test host 4 on 2026-09-26: the event page
 projected the 2021-12-10 tornado's 12 GB layout at 15.2 GiB and picked it
 for a disk with 24 GiB free, and the run had written 28.9 GB by its first
 forecast step (18.9 GB of HRRR files and 9.6 GB of preparation); and the

@@ -467,7 +467,9 @@ class HeightConservativeMap:
         ground=self.source_zgrid[0,c]
 
         def pressure(z):
-            return 1e5*(exner[c]+rate*(centre-z))**(cp/rgas)
+            # np.float_power is the platform libm pow on every CPU, as the device glibc port; `**` takes
+            # numpy's AVX-512 SIMD pow where present and differs in the last place (woof.hex.libm_identity).
+            return 1e5*np.float_power(exner[c]+rate*(centre-z),cp/rgas)
 
         self.below_ground=np.zeros(self.sample_height.shape)
         ground_pressure=pressure(ground)

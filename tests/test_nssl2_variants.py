@@ -89,15 +89,14 @@ def test_deprecated_scheme_ids_transcribe_wrfs_rewrite():
     assert canonicalize_deprecated_mp_physics(8) == (8, {})
 
 
-def test_exactly_the_four_two_moment_modes_are_ported():
-    assert len(PORTED_VARIANT_MODES) == 4
+def test_two_and_one_moment_modes_are_ported():
+    assert len(PORTED_VARIANT_MODES) == 8
     for selectors in ({}, {"nssl_ccn_on": 0}, {"nssl_hail_on": 0},
                       {"nssl_hail_on": 0, "nssl_ccn_on": 0}):
         require_ported_nssl2_mode(resolve_nssl2_mode(**selectors))
 
 
 @pytest.mark.parametrize("selectors,message", [
-    ({"nssl_2moment_on": 0}, "one-moment"),
     ({"nssl_3moment": 1}, "three-moment"),
 ])
 def test_unported_families_refuse_rather_than_substitute(selectors, message):
@@ -122,11 +121,14 @@ def test_wrfs_own_undefined_pairings_refuse_at_resolution():
     # :1674-1679 and then loads qvolh at :2778 and stores it at :3336.
     with pytest.raises(ValueError, match="unallocated qvolh"):
         resolve_nssl2_mode(nssl_hail_on=1, nssl_density_on=1)
-    # The one-moment spelling of the first pairing is legal in WRF and is
-    # simply unported, so it fails the coverage gate rather than resolution.
-    unported = resolve_nssl2_mode(nssl_2moment_on=0, nssl_hail_on=2)
-    with pytest.raises(ValueError, match="one-moment"):
-        require_ported_nssl2_mode(unported)
+    # Native one-moment hail does not read an unallocated hail number.
+    one = resolve_nssl2_mode(nssl_2moment_on=0, nssl_hail_on=2)
+    assert require_ported_nssl2_mode(one) is one
+    assert "qh" in one.transported_fields and "qnh" not in one.transported_fields
+    assert "qvolg" in one.transported_fields and "qvolh" not in one.transported_fields
+    plain = resolve_nssl2_mode(nssl_2moment_on=0,nssl_hail_on=0,nssl_density_on=0)
+    assert require_ported_nssl2_mode(plain) is plain
+    assert all(n not in plain.transported_fields for n in ("qh","qnr","qng","qvolg"))
 
 
 def test_pinned_zero_fields_name_what_the_registry_would_not_allocate():
@@ -157,8 +159,7 @@ def test_validate_admits_every_ported_variant():
 
 
 def test_validate_refuses_an_unported_variant_before_state_allocation():
-    with pytest.raises(ValueError, match="NSSL variant selectors"):
-        validate_run_config(_cfg(nssl_2moment_on=0))
+    validate_run_config(_cfg(nssl_2moment_on=0))
     with pytest.raises(ValueError, match="NSSL variant selectors"):
         validate_run_config(_cfg(nssl_3moment=1))
 

@@ -67,6 +67,10 @@ pub struct Passes {
 /// NVRTC to a CUBIN for compute capability `cc` (defaults otherwise: no fast
 /// math, no flush to zero, IEEE division and square root).
 fn compile_cubin(src: &str, cc: (i32, i32)) -> Result<Vec<u8>> {
+    if cudarc::gpuwm_hip::requested() {
+        return cudarc::gpuwm_hip::compile(src, &["--std=c++17".into(),"--fmad=false".into()])
+            .map_err(|e| -> crate::Error {e.into()});
+    }
     use cudarc::nvrtc::{result, sys};
     use std::ffi::CString;
     let csrc = CString::new(src)?;

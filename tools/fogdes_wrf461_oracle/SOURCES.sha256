@@ -1,0 +1,4 @@
+# WRF v4.6.1 (d66e442) files the FogDES oracle compiles, byte-unmodified.
+5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062  share/module_model_constants.F
+94d6b4ed3f82c6d7ca9b14107ee07af8ace058dd65f7e07ab5fa0ab8ea1b0ed7  phys/module_bl_fogdes.F
+288a8619c24821700d8e347950e07630e886846ffbd32502e4333dfbe3c5765b  phys/module_sf_fogdes.F

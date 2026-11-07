@@ -268,7 +268,8 @@ def _inert_run_fields():
 
 
 @pytest.mark.parametrize("field", sorted(ROUTE_FORECAST_TOML_FIELDS))
-def test_a_forecast_toml_field_is_inert_unspelled_and_read_where_cited(field):
+def test_a_forecast_toml_field_is_inert_unspelled_and_read_where_cited(
+        field, tmp_path):
     """What makes a group (b) exemption true, held per field.
 
     * preparation-inert: preparing from the pair's default stamps the
@@ -304,8 +305,18 @@ def test_a_forecast_toml_field_is_inert_unspelled_and_read_where_cited(field):
 
             emitter = inspect.getsource(render_namelist_input)
             assert "&chem" not in emitter and field not in emitter, field
-        else:
-            assert field not in importer
+        elif field in importer:
+            # A stock namelist's key the importer reads (do_radar_ref since
+            # 5c995111329, the lightning controls): the route's own native
+            # namelist still never spells it, so the pair cannot carry the
+            # TOML's value.
+            from woof.namelist_import import parse_namelist_text
+
+            _, paths = _emit_config(
+                tmp_path, "configs/recipes/hrrr_configuration_cut.toml")
+            native = parse_namelist_text(
+                paths["namelist_input"].read_text(encoding="utf-8"))
+            assert not any(field in group for group in native.values()), field
     reader = ROUTE_FORECAST_TOML_FIELDS[field].split()[0].rstrip(",")
     assert field in (ROOT / reader).read_text(encoding="utf-8"), reader
 

@@ -251,9 +251,9 @@ def test_ysu_is_finite_where_wrf_divides_zero_by_zero():
 @requires_gpu
 def test_ysu_tanhf_is_the_reference_platforms_tanhf():
     """get_pblh's tanh, against stored words of the reference platform's
-    tanhf (glibc 2.39, box W1).  The first block is every argument of a W1
+    tanhf (glibc 2.39, test host).  The first block is every argument of a W1
     sweep where that tanhf is not the correctly rounded tanh, which the
-    kernel used before lane/verify-ysu; tools/ysu_wrf461_oracle/
+    kernel used before development branch; tools/ysu_wrf461_oracle/
     tanhf_sweep.py checks all 2,159,017,986 floats in [-0.5, 22]."""
     import cupy as cp
 

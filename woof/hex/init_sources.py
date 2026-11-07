@@ -39,6 +39,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -63,7 +64,8 @@ RECEIPT_SCHEMA = "gpuwm-hex.init-source-receipt/v1"
 _ROW_KEYS = {"id", "aliases", "engine_source_id", "display_name", "role", "license", "grid",
              "products", "decode", "vertical", "first_guess", "surface", "limits", "members",
              "status", "refusal", "sets", "remap", "archive", "posting", "forecast", "surface_series",
-             "generation", "attribution", "coverage", "intermediate", "cold_soil", "cycles", "surface_input"}
+             "generation", "attribution", "coverage", "intermediate", "cold_soil", "deep_soil", "upper_air",
+             "upper_air_donor", "cycles", "surface_input", "tc_composition", "coverage_window", "coverage_label", "boundaries", "blend"}
 #: ``surface_input``: products of one declared role, decoded with their OWN Vtable into a second WPS intermediate
 #: that the init reads as MPAS's surface input (``--sfc-met``, MPAS config_input_sst / config_sfc_prefix): its
 #: SEAICE is interpolated with that file's own LANDSEA mask, so a companion analysis on another grid fills a
@@ -74,12 +76,15 @@ _ROW_KEYS = {"id", "aliases", "engine_source_id", "display_name", "role", "licen
 _SURFACE_INPUT_KEYS = {"product_role", "vtable", "map_source", "basis"}
 #: ``cycles``: the publication's own cycle window, as a row declares it.  ``first`` is the earliest cycle the
 #: publisher posted; ``refused`` lists half-open windows ``[from, until)`` of posted cycles that cannot make an
-#: init, each with the sentence that says why and what to use instead.  THE BREAKAGE THIS PREVENTS (woof 2.9.9,
+#: init, each with the sentence that says why and what to use instead.  THE BREAKAGE THIS PREVENTS (gpuwm 2.9.9,
 #: an RTX 4090 host, 2026-10-29, the same publication on the ArWen route): ECMWF's first 0.1-degree cycle, 2026-10-20 06Z,
 #: publishes no soil layers, and a start from it moved the whole download before decode refused for missing
 #: soil.  Both checks run on the table alone, before any byte moves.
-_CYCLES_KEYS = {"first", "refused", "basis"}
+_CYCLES_KEYS = {"first", "refused", "basis", "hours"}
 _CYCLES_REFUSED_KEYS = {"from", "until", "refusal"}
+# tc_composition: the row's canonical composition for TC inner-core initialization (woof.hex.tc_vortex.composition)
+_TC_COMPOSITION_KEYS = {"profile", "use_spechumd", "in_band_supplement_role", "mapping_fields",
+                        "surface_policy", "about"}
 _PRODUCT_KEYS = {"role", "transport", "filename", "url", "index", "cds", "codec", "fields", "reason", "fetch_args",
                  "id", "expand", "remap", "streams", "request"}
 _REMAP_KEYS = {"tool", "mesh_cells", "centre", "target", "coordinates", "about"}
@@ -161,9 +166,17 @@ def _norm(name: str) -> str:
 
 def validate_row(row: dict[str, Any]) -> None:
     unknown = set(row) - _ROW_KEYS
+    if not unknown and "tc_composition" in row:
+        unknown = {f"tc_composition.{k}" for k in set(row["tc_composition"]) - _TC_COMPOSITION_KEYS}
     if unknown:
         _refuse(f"source row {row.get('id')!r} carries unknown keys {sorted(unknown)}; a misspelt key "
                 "would be ignored and its declaration lost")
+    if row.get("upper_air_donor") is not None:
+        from woof.ingest.upper_air_donor import validate_upper_air_donor
+        try:
+            validate_upper_air_donor(row["upper_air_donor"])
+        except (TypeError, ValueError) as error:
+            _refuse(f"source row {row.get('id')!r}: {error}")
     posting = row.get("posting")
     if posting is not None:
         hours = posting.get("cycle_hours")
@@ -177,6 +190,12 @@ def validate_row(row: dict[str, Any]) -> None:
     cycles = row.get("cycles")
     if cycles is not None:
         _validate_cycles(row.get("id"), cycles)
+    if row.get("blend") is not None and row.get("status") != "refused":
+        from .blend_start import blend_block
+        blend_block(row)
+        if row.get("coverage", "global") != "global":
+            _refuse(f"source row {row['id']!r}: a blend needs global outside coverage")
+        return
     if row.get("status") == "refused":
         if not str(row.get("refusal", "")).strip():
             _refuse(f"source row {row['id']!r} is refused without naming the breakage")
@@ -208,6 +227,18 @@ def validate_row(row: dict[str, Any]) -> None:
                 or any(not donor.get(key) for key in ("provider", "acquisition_receipt", "data_role"))):
             _refuse(f"{row['id']}: global_donor must declare the complete global extent and acquisition role")
         return
+    intermediate = row.get("intermediate", {})
+    if intermediate.get("backend") == "mapped-composition":
+        if not intermediate.get("profile") or not intermediate.get("row"):
+            _refuse(f"{row['id']}: mapped intermediate requires profile and row")
+        cadence = intermediate.get("cadence_hours")
+        if type(cadence) is not int or cadence < 1:
+            _refuse(f"{row['id']}: intermediate cadence must be positive whole hours")
+        guess = intermediate.get("first_guess", first_guess)
+        if (type(guess.get("nfglevels")) is not int or guess["nfglevels"] < 2
+                or type(guess.get("nfgsoillevels")) is not int or guess["nfgsoillevels"] < 1
+                or guess.get("use_spechumd") not in ("yes", "no")):
+            _refuse(f"{row['id']}: invalid intermediate first_guess")
     coverage = row.get("coverage", "global")
     if coverage not in COVERAGES:
         _refuse(f"source row {row.get('id')!r}: coverage {coverage!r} is not one of {list(COVERAGES)}")
@@ -359,6 +390,11 @@ def resolve_source(table: dict[str, Any], name: str, accepted_licences=(), *, co
                 _refuse(f"source {row['id']!r} is declared refused: {row['refusal']}")
             require_source_licences(row, accepted_licences)
             held = row.get("coverage", "global")
+            if coverage == "limited_area" and row.get("intermediate", {}).get("backend") == "mapped-composition":
+                # The same global fields can initialize a covered regional mesh.
+                # A row may declare different humidity/level conventions for
+                # its canonical exporter without changing its global path.
+                return {**row, "first_guess": row["intermediate"].get("first_guess", row["first_guess"])}
             if held != coverage:
                 if held == "limited_area":
                     _refuse(f"source {row['id']!r} covers a limited area ({row.get('display_name')}); a global "
@@ -430,6 +466,11 @@ def _validate_cycles(row_id: Any, cycles: Any) -> None:
         _refuse(f"source row {row_id!r}: cycles declares only {sorted(_CYCLES_KEYS)}")
     if "first" in cycles:
         _table_cycle(row_id, "first", cycles["first"])
+    hours = cycles.get("hours")
+    if hours is not None and (not isinstance(hours, list) or not hours
+            or any(type(h) is not int or not 0 <= h <= 23 for h in hours)
+            or len(set(hours)) != len(hours)):
+        _refuse(f"source row {row_id!r}: cycles.hours must list distinct UTC hours 0-23")
     refused = cycles.get("refused", [])
     if not isinstance(refused, list):
         _refuse(f"source row {row_id!r}: cycles.refused must be a list of windows")
@@ -453,6 +494,9 @@ def admit_cycle(row: dict[str, Any], cycle: "Cycle | datetime") -> None:
     when = cycle.when if isinstance(cycle, Cycle) else cycle
     when = when.replace(tzinfo=timezone.utc) if when.tzinfo is None else when.astimezone(timezone.utc)
     label = when.strftime("%Y-%m-%dT%H")
+    hours = cycles.get("hours")
+    if hours is not None and (when.hour not in hours or when.minute or when.second):
+        _refuse(f"source {row['id']!r} has no full state at cycle {label}; choose UTC hours {hours}")
     first = cycles.get("first")
     if first is not None and when < _table_cycle(row["id"], "first", first):
         _refuse(f"source {row['id']!r} cycle {label} predates the publication: its first cycle is {first}")
@@ -705,7 +749,7 @@ _USER_AGENT = "gpuwm-hex-init-source/1"
 #: Every https read of every row (index, record ranges, whole objects, the HEAD that sizes them) goes through
 #: :func:`_hedged`.  A request whose connections have delivered no byte for this long is stalled: the same request
 #: starts again on a NEW connection beside it, and the first copy that finishes is kept.  THE BREAKAGE THIS
-#: PREVENTS (hex LAM vs zoom-globe measurement, V5090, 2026-10-27): one GFS f006 byte-range request stalled on its
+#: PREVENTS (hex LAM vs zoom-globe measurement, reference system, 2026-10-27): one GFS f006 byte-range request stalled on its
 #: S3 connection and the region's boundaries waited the full 300 s socket timeout before retrying it, 300 s of a
 #: 557 s prep.  A 4 MiB piece from the NOAA, ECMWF or DWD buckets normally finishes well inside a second.
 FETCH_STALL_SECONDS = 10.0
@@ -1087,7 +1131,7 @@ def _fetch_selected_from(plan: ProductPlan, target: Path, jobs: int, data_url: s
     spans = [(int(r["_offset"]),
               None if r["_length"] is None else int(r["_offset"]) + int(r["_length"]) - 1) for r in records]
     pieces = coalesce_spans(spans)
-    partial = target.with_name(target.name + ".part")
+    partial = target.with_name(f"{target.name}.{uuid.uuid4().hex}.part")
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool, partial.open("wb") as handle:
         # map() yields in submission order: the pieces land in file order while
         # every stream keeps working ahead.
@@ -1137,7 +1181,7 @@ def _fetch_whole_parallel(target: Path, url: str, jobs: int) -> dict[str, Any] |
     if size is None:
         return None
     pieces = coalesce_spans([(0, size - 1)])
-    partial = target.with_name(target.name + ".part")
+    partial = target.with_name(f"{target.name}.{uuid.uuid4().hex}.part")
     with partial.open("wb") as handle:
         handle.truncate(size)
     descriptor = os.open(partial, os.O_WRONLY)
@@ -1165,7 +1209,7 @@ def _fetch_whole_from(plan: ProductPlan, target: Path, url: str) -> dict[str, An
     each copy streams to its own ``.part<n>`` file and the first complete one becomes the product."""
 
     path, how = _hedged(url, attempts=10, label=plan.filename,
-                        sink_factory=lambda n: _FileSink(target.with_name(f"{target.name}.part{n}"), plan.codec))
+                        sink_factory=lambda n: _FileSink(target.with_name(f"{target.name}.{uuid.uuid4().hex}.part{n}"), plan.codec))
     path.replace(target)
     return {"attempts": how["copies"], "hedges": how["hedges"]}
 
@@ -1181,7 +1225,7 @@ def _fetch_cds(plan: ProductPlan, target: Path, cycle: Cycle) -> dict[str, Any]:
                     "month": [cycle.when.strftime("%m")], "day": [cycle.when.strftime("%d")],
                     "time": [cycle.when.strftime("%H:00")], "data_format": "grib",
                     "download_format": "unarchived"})
-    partial = target.with_name(target.name + ".part")
+    partial = target.with_name(f"{target.name}.{uuid.uuid4().hex}.part")
     cdsapi.Client(quiet=True).retrieve(plan.cds["dataset"], request, str(partial))
     partial.replace(target)
     return {"dataset": plan.cds["dataset"]}
@@ -1547,6 +1591,28 @@ def decode(row: dict[str, Any], inputs: list[str], cycle: Cycle, out_dir: Path,
             "met_bytes": met.stat().st_size}
 
 
+def upper_air(row: dict[str, Any], met: Path, cycle: Cycle, source_cycle: Cycle, out_dir: Path) -> dict[str, Any] | None:
+    """The row's declared upper-air donor on its WPS intermediate (woof.ingest.upper_air_donor), or None.
+
+    THE BREAKAGE IT PREVENTS: a source whose isobaric column stops below the RRFS v2 L60 top (25.9 km; ICON at
+    30 hPa) could not start hrrrv5: the producer's lapse-rate case 7 refuses to extrapolate above the first-guess
+    top.  The donor's levels above the source's top, and its blend of the top layer, are the row's declaration."""
+
+    block = row.get("upper_air_donor")
+    if not block:
+        return None
+    from woof.ingest.upper_air_donor import append_upper_air_to_wps, validate_upper_air_donor
+
+    try:
+        return append_upper_air_to_wps(met, validate_upper_air_donor(block),
+                                       valid_time=cycle.when.replace(tzinfo=None),
+                                       primary_cycle=source_cycle.when.replace(tzinfo=None),
+                                       cache_dir=out_dir / "upper-air")
+    except (ValueError, RuntimeError) as error:
+        _refuse(f"{row['id']}: upper-air donor: {error}")
+        raise AssertionError("unreachable")
+
+
 def resolve_surface_input_vtable(row: dict[str, Any], vtable_root: Path = VTABLE_ROOT) -> Path | None:
     """The row's surface-input Vtable (``surface_input``), resolved before any download; None without one."""
     spec = row.get("surface_input")
@@ -1805,7 +1871,19 @@ def add_init_source_parser(commands: Any) -> None:
     parser.add_argument("--keep-unordered", action="store_true",
                         help="keep init.nc after ordering (default: removed; its digest stays in the provenance)")
     parser.add_argument("--list", action="store_true", help="print the table's rows and exit")
+    parser.add_argument("--blend-fallback", choices=("refuse", "outside"), default="refuse")
+    parser.add_argument("--boundary-cycle", metavar="YYYY-MM-DDTHH",
+                        help="for a named blend: outside source cycle, with its lead counted to the start")
+    parser.add_argument("--blend-core", type=_blend_core, metavar="LAT,LON,KM")
     parser.set_defaults(handler=run_init_source_command)
+
+
+def _blend_core(text):
+    try:
+        lat, lon, radius = map(float, text.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not LAT,LON,KM") from None
+    return (lat, lon), radius
 
 
 def cold_soil_products(products, policy):
@@ -1871,10 +1949,15 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
     started = time.time()
     accepted = getattr(arguments, "accept_licence", ())
     row = resolve_source(table, arguments.source, accepted)
+    if row.get("blend"):
+        from .blend_start import run_blend
+        return run_blend(arguments, table, row)
     source_cycle = Cycle.parse(arguments.cycle)
     admit_cycle(row, source_cycle)
     lead = getattr(arguments, "lead_hours", 0)
     cycle = Cycle(source_cycle.when + timedelta(hours=lead))
+    if getattr(arguments, "boundary_cycle", None):
+        _refuse("--boundary-cycle applies to a named blend source")
     # Everything the later stages need from this install is resolved BEFORE
     # the download: a missing writer, remapper or Vtable found after the
     # acquire stage costs the user the whole transfer and then refuses.
@@ -2016,6 +2099,15 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
             receipt["effective_first_guess"] = row["first_guess"]
         else:
             receipt["decode"] = decode(row, inputs, cycle, out_dir, writer)
+            upper = upper_air(row, Path(receipt["decode"]["met"]), cycle, source_cycle, out_dir)
+            if upper is not None:
+                # The donor's levels sit above the source's top in the file; the init reads them all.
+                receipt["decode"]["upper_air"] = upper
+                receipt["decode"]["met_sha256"] = _sha256_file(Path(receipt["decode"]["met"]))
+                receipt["decode"]["met_bytes"] = Path(receipt["decode"]["met"]).stat().st_size
+                row = {**row, "first_guess": {**row["first_guess"], "nfglevels": int(row["first_guess"]["nfglevels"])
+                                              + int(upper["appended_levels"])}}
+                receipt["effective_first_guess"] = row["first_guess"]
             if companions:
                 receipt["surface_input"] = decode_surface_input(
                     row, [product["file"] for product in companions], source_cycle, out_dir, writer)

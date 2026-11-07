@@ -85,18 +85,14 @@ def _kernel(levels):
         const double *pressure,const double *budget_r,const double *budget_h,
         double *r,double *h,double *error,double *scratch,const int nc) {
         int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=nc)return;
-        #if L > 128
-        // Long columns use only the launched columns' workspace. Large local
-        // arrays otherwise make CUDA reserve spill storage for the whole card,
-        // even for a one-column tail block.
+        // Keep every column's work arrays in a coalesced level-major workspace.
+        // Local arrays spill even for ordinary vertical grids, causing strided
+        // device-memory traffic and expensive compiler register allocation.
+        // Vec preserves each indexed load, store and arithmetic operation.
         #define V(name,index) Vec name={scratch+(long long)(index)*L*nc+c,nc};
         V(vr,0) V(vh,1) V(cr,2) V(ch,3) V(rl,4) V(ru,5) V(hl,6) V(hu,7)
         V(br,8) V(bh,9) V(d,10) V(off,11) V(x,12) V(ur,13) V(uh,14) V(lf,15) V(tmp,16)
         #undef V
-        #else
-        double vr[L],vh[L],cr[L],ch[L],rl[M],ru[M],hl[M],hu[M],br[M],bh[M];
-        double d[M],off[M],x[M],ur[M],uh[M],lf[M],tmp[L];
-        #endif
         for(int k=0;k<L;++k) {
             long long i=(long long)k*nc+c;
             vr[k]=P(rho[i],rho[i]);vh[k]=P(heat[i],heat[i]);
@@ -178,7 +174,7 @@ def project_columns(rho, heat, tracer, acceleration, v, ref):
     pressure=cp.empty_like(dh)
     br,bh=cp.empty_like(fixed[-2]),cp.empty_like(fixed[-1])
     error=cp.empty(r.shape[1],dtype=cp.float64)
-    scratch=cp.empty((17,len(r),r.shape[1]) if len(r)>128 else (0,),dtype=cp.float64)
+    scratch=cp.empty((17,len(r),r.shape[1]),dtype=cp.float64)
     step=_kernel(len(r))
     for it in range(8):
         # Compatibility boundary: same installed NumPy power and BLAS, on the
@@ -188,7 +184,7 @@ def project_columns(rho, heat, tracer, acceleration, v, ref):
             from .moving_math_cuda import balance_pressure
             balance_pressure(fixed[4],dh,pressure)
         else:
-            pressure.set(np.ascontiguousarray(1e5*(287*zz*h/1e5)**1.4))
+            pressure.set(np.ascontiguousarray(1e5*np.float_power(287*zz*h/1e5,1.4)))
         br.set(np.ascontiguousarray(dz@r));bh.set(np.ascontiguousarray(dz@h))
         step(((r.shape[1]+63)//64,), (64,), (*fixed,pressure,br,bh,dr,dh,error,scratch,np.int32(r.shape[1])))
         r,h=cp.asnumpy(dr),cp.asnumpy(dh)

@@ -8,6 +8,8 @@ split-three outer scalar RK.
 from __future__ import annotations
 
 import os
+import weakref
+from threading import get_ident as _thread_id
 from typing import Any
 
 import numpy as np
@@ -394,9 +396,8 @@ extern "C" __global__ void fct_finish_v841(
 #ifndef HEX_HOIST_CELL
 #define HEX_HOIST_CELL 10
 #endif
-/* Thread per (tracer, edge) form of transport_edge_values: the edge's
-   advection stencil is read once into registers and the thread walks the
-   levels.  Each (tracer, level) runs the element body unchanged, including
+/* One thread per edge and level chunk. The advection stencil is read
+   once into registers, then reused across every scalar of the launch.  Each (tracer, level) runs the element body unchanged, including
    the subnormal-sensitivity test and its exact re-evaluation, so every edge
    value carries the same bits. */
 extern "C" __global__ void transport_edge_values_hoist_v841(
@@ -409,10 +410,9 @@ extern "C" __global__ void transport_edge_values_hoist_v841(
 {
     const int hex_chunks = (nlev + lpt - 1) / lpt;
     const int element = blockDim.x * blockIdx.x + threadIdx.x;
-    if (element >= ntracers * nedges * hex_chunks) return;
+    if (element >= nedges * hex_chunks) return;
     const int edge = element % nedges;
-    const int tracer = (element / nedges) % ntracers;
-    const int hex_k0 = (element / nedges / ntracers) * lpt;
+    const int hex_k0 = (element / nedges) * lpt;
     const int hex_k1 = min(nlev, hex_k0 + lpt);
     const int count = n_adv[edge];
     int cl[HEX_HOIST_ADV];
@@ -422,14 +422,15 @@ extern "C" __global__ void transport_edge_values_hoist_v841(
 #pragma unroll
     for (int slot = 0; slot < HEX_HOIST_ADV; ++slot) {
         const bool live = hoisted && slot < count;
-        cl[slot] = live ? adv_cells[ADV(edge, slot, width)] : 0;
-        b[slot] = live ? adv[ADV(edge, slot, width)] : 0.0f;
-        t[slot] = live ? adv3[ADV(edge, slot, width)] : 0.0f;
+        cl[slot] = live ? adv_cells[(slot * nedges + edge)] : 0;
+        b[slot] = live ? adv[(slot * nedges + edge)] : 0.0f;
+        t[slot] = live ? adv3[(slot * nedges + edge)] : 0.0f;
     }
     for (int k = hex_k0; k < hex_k1; ++k) {
-        float value = 0.0f;
         const float velocity_sign = mpas_copysign(
             1.0f, velocity[E2(k, edge, nedges)]);
+      for (int tracer = 0; tracer < ntracers; ++tracer) {
+        float value = 0.0f;
         bool ftz_sensitive = false;
         if (hoisted) {
 #pragma unroll
@@ -480,9 +481,9 @@ extern "C" __global__ void transport_edge_values_hoist_v841(
             }
         } else {
             for (int slot = 0; slot < count; ++slot) {
-                const int cell = adv_cells[ADV(edge, slot, width)];
-                const float base_weight = adv[ADV(edge, slot, width)];
-                const float third_weight = adv3[ADV(edge, slot, width)];
+                const int cell = adv_cells[(slot * nedges + edge)];
+                const float base_weight = adv[(slot * nedges + edge)];
+                const float third_weight = adv3[(slot * nedges + edge)];
                 const float stage_value = stage[Q3(
                     tracer, k, cell, nlev, ncells)];
                 const float correction = coefficient * velocity_sign
@@ -527,16 +528,17 @@ extern "C" __global__ void transport_edge_values_hoist_v841(
         if (ftz_sensitive) {
             value = 0.0f;
             for (int slot = 0; slot < count; ++slot) {
-                const int cell = adv_cells[ADV(edge, slot, width)];
+                const int cell = adv_cells[(slot * nedges + edge)];
                 const float weight = mpas_add(
-                    adv[ADV(edge, slot, width)],
+                    adv[(slot * nedges + edge)],
                     mpas_mul(mpas_mul(coefficient, velocity_sign),
-                        adv3[ADV(edge, slot, width)]));
+                        adv3[(slot * nedges + edge)]));
                 value = mpas_add(value, mpas_mul(weight,
                     stage[Q3(tracer, k, cell, nlev, ncells)]));
             }
         }
         edge_values[QE3(tracer, k, edge, nlev, nedges)] = value;
+      }
     }
 }
 
@@ -567,9 +569,9 @@ extern "C" __global__ void transport_standard_finish_elem_v841(
 #pragma unroll
     for (int slot = 0; slot < HEX_HOIST_CELL; ++slot) {
         const bool live = hoisted && slot < count;
-        const int edge = live ? edges_on_cell[CES(cell, slot, max_edges)] : 0;
+        const int edge = live ? edges_on_cell[(slot * ncells + cell)] : 0;
         ed[slot] = edge;
-        sv[slot] = live ? mpas_mul(-acoustic_sign[CES(cell, slot, max_edges)],
+        sv[slot] = live ? mpas_mul(-acoustic_sign[(slot * ncells + cell)],
             velocity[E2(k, edge, nedges)]) : 0.0f;
     }
     const float inv_area = inv_area_cell[cell];
@@ -589,8 +591,8 @@ extern "C" __global__ void transport_standard_finish_elem_v841(
             }
         } else {
             for (int slot = 0; slot < count; ++slot) {
-                const int edge = edges_on_cell[CES(cell, slot, max_edges)];
-                const float sign = -acoustic_sign[CES(cell, slot, max_edges)];
+                const int edge = edges_on_cell[(slot * ncells + cell)];
+                const float sign = -acoustic_sign[(slot * ncells + cell)];
                 horizontal = mpas_add(horizontal, mpas_mul(mpas_mul(
                     sign, velocity[E2(k, edge, nedges)]),
                     edge_values[QE3(tracer, k, edge, nlev, nedges)]));
@@ -640,8 +642,8 @@ extern "C" __global__ void transport_target_density_elem_v841(
     } else {
         float horizontal = 0.0f;
         for (int slot = 0; slot < n_edges_on_cell[cell]; ++slot) {
-            const int edge = edges_on_cell[CES(cell, slot, max_edges)];
-            const float sign = -acoustic_sign[CES(cell, slot, max_edges)];
+            const int edge = edges_on_cell[(slot * ncells + cell)];
+            const float sign = -acoustic_sign[(slot * ncells + cell)];
             float contribution = mpas_mul(
                 sign, velocity[E2(k, edge, nedges)]);
             contribution = mpas_mul(contribution, dv_edge[edge]);
@@ -662,18 +664,17 @@ extern "C" __global__ void transport_edge_values_mono_hoist_v841(
     const float *adv, const float *adv3,
     const int *n_adv, const int *adv_cells, float *edge_values, const int lpt)
 {
-    /* One thread per (tracer, edge); the edge's stencil is read once into
-       registers and the thread walks the levels.  Both branches of the
+    /* One thread per edge and level chunk; its stencil is read once into
+       registers and reused across every scalar of the launch.  Both branches of the
        original keep their own association: the ten-cell branch weights the
        sum and multiplies by the velocity last; the other branch multiplies
        each weight by the velocity first and accumulates from 0.0f in slot
        order, exactly as the original's in-memory accumulation did. */
     const int hex_chunks = (nlev + lpt - 1) / lpt;
     const int element = blockDim.x * blockIdx.x + threadIdx.x;
-    if (element >= ntracers * nedges * hex_chunks) return;
+    if (element >= nedges * hex_chunks) return;
     const int edge = element % nedges;
-    const int tracer = (element / nedges) % ntracers;
-    const int hex_k0 = (element / nedges / ntracers) * lpt;
+    const int hex_k0 = (element / nedges) * lpt;
     const int hex_k1 = min(nlev, hex_k0 + lpt);
     const int count = n_adv[edge];
     const bool hoisted = count <= HEX_HOIST_ADV;
@@ -683,13 +684,14 @@ extern "C" __global__ void transport_edge_values_mono_hoist_v841(
 #pragma unroll
     for (int slot = 0; slot < HEX_HOIST_ADV; ++slot) {
         const bool live = hoisted && slot < count;
-        cl[slot] = live ? adv_cells[ADV(edge, slot, width)] : 0;
-        b[slot] = live ? adv[ADV(edge, slot, width)] : 0.0f;
-        t[slot] = live ? adv3[ADV(edge, slot, width)] : 0.0f;
+        cl[slot] = live ? adv_cells[(slot * nedges + edge)] : 0;
+        b[slot] = live ? adv[(slot * nedges + edge)] : 0.0f;
+        t[slot] = live ? adv3[(slot * nedges + edge)] : 0.0f;
     }
     for (int k = hex_k0; k < hex_k1; ++k) {
         const float vel = velocity[E2(k, edge, nedges)];
         const float sign = mpas_copysign(1.0f, vel);
+      for (int tracer = 0; tracer < ntracers; ++tracer) {
         float result;
         if (count == 10 && hoisted) {
             float weight = mpas_add(b[0],
@@ -705,17 +707,17 @@ extern "C" __global__ void transport_edge_values_mono_hoist_v841(
             }
             result = mpas_mul(vel, value);
         } else if (count == 10) {
-            const int first_cell = adv_cells[ADV(edge, 0, width)];
-            float weight = mpas_add(adv[ADV(edge, 0, width)],
+            const int first_cell = adv_cells[edge];
+            float weight = mpas_add(adv[edge],
                 mpas_mul(mpas_mul(coefficient, sign),
-                    adv3[ADV(edge, 0, width)]));
+                    adv3[edge]));
             float value = mpas_mul(weight,
                 stage[Q3(tracer, k, first_cell, nlev, ncells)]);
             for (int slot = 1; slot < 10; ++slot) {
-                const int cell = adv_cells[ADV(edge, slot, width)];
-                weight = mpas_add(adv[ADV(edge, slot, width)],
+                const int cell = adv_cells[(slot * nedges + edge)];
+                weight = mpas_add(adv[(slot * nedges + edge)],
                     mpas_mul(mpas_mul(coefficient, sign),
-                        adv3[ADV(edge, slot, width)]));
+                        adv3[(slot * nedges + edge)]));
                 value = mpas_add(value, mpas_mul(weight,
                     stage[Q3(tracer, k, cell, nlev, ncells)]));
             }
@@ -736,10 +738,10 @@ extern "C" __global__ void transport_edge_values_mono_hoist_v841(
         } else {
             float value = 0.0f;
             for (int slot = 0; slot < count; ++slot) {
-                const int cell = adv_cells[ADV(edge, slot, width)];
-                float scalar_weight = mpas_add(adv[ADV(edge, slot, width)],
+                const int cell = adv_cells[(slot * nedges + edge)];
+                float scalar_weight = mpas_add(adv[(slot * nedges + edge)],
                     mpas_mul(mpas_mul(coefficient, sign),
-                        adv3[ADV(edge, slot, width)]));
+                        adv3[(slot * nedges + edge)]));
                 scalar_weight = mpas_mul(vel, scalar_weight);
                 value = mpas_add(value, mpas_mul(scalar_weight,
                     stage[Q3(tracer, k, cell, nlev, ncells)]));
@@ -747,6 +749,7 @@ extern "C" __global__ void transport_edge_values_mono_hoist_v841(
             result = value;
         }
         edge_values[QE3(tracer, k, edge, nlev, nedges)] = result;
+      }
     }
 }
 
@@ -781,7 +784,7 @@ extern "C" __global__ void fct_minmax_source_elem_v841(
         high = mpas_max(high, value);
     }
     for (int slot = 0; slot < n_edges_on_cell[cell]; ++slot) {
-        const int neighbor = cells_on_cell[CES(cell, slot, max_edges)];
+        const int neighbor = cells_on_cell[(slot * ncells + cell)];
         const float value = mpas_add(old[Q3(
             tracer, k, neighbor, nlev, ncells)], mpas_div(mpas_mul(dt, source[Q3(tracer, k, neighbor, nlev, ncells)]), rho_old[C2(k, neighbor, ncells)]));
         low = mpas_min(low, value);
@@ -833,8 +836,8 @@ extern "C" __global__ void fct_horizontal_low_order_elem_v841(
     float incoming = scale_in[index];
     float outgoing = scale_out[index];
     for (int slot = 0; slot < n_edges_on_cell[cell]; ++slot) {
-        const int edge = edges_on_cell[CES(cell, slot, max_edges)];
-        const float sign = -acoustic_sign[CES(cell, slot, max_edges)];
+        const int edge = edges_on_cell[(slot * ncells + cell)];
+        const float sign = -acoustic_sign[(slot * ncells + cell)];
         const int qe = QE3(tracer, k, edge, nlev, nedges);
         cell_mass = mpas_add(cell_mass, mpas_mul(
             mpas_mul(sign, upwind_flux[qe]), inverse_area));
@@ -894,8 +897,8 @@ extern "C" __global__ void fct_horizontal_low_order_scale_elem_v841(
     float incoming = scale_in[index];
     float outgoing = scale_out[index];
     for (int slot = 0; slot < n_edges_on_cell[cell]; ++slot) {
-        const int edge = edges_on_cell[CES(cell, slot, max_edges)];
-        const float sign = -acoustic_sign[CES(cell, slot, max_edges)];
+        const int edge = edges_on_cell[(slot * ncells + cell)];
+        const float sign = -acoustic_sign[(slot * ncells + cell)];
         const int qe = QE3(tracer, k, edge, nlev, nedges);
         cell_mass = mpas_add(cell_mass, mpas_mul(
             mpas_mul(sign, upwind_flux[qe]), inverse_area));
@@ -980,8 +983,8 @@ extern "C" __global__ void fct_finish_elem_v841(
     const int index = Q3(tracer, k, cell, nlev, ncells);
     float value = mass[index];
     for (int slot = 0; slot < n_edges_on_cell[cell]; ++slot) {
-        const int edge = edges_on_cell[CES(cell, slot, max_edges)];
-        const float sign = -acoustic_sign[CES(cell, slot, max_edges)];
+        const int edge = edges_on_cell[(slot * ncells + cell)];
+        const float sign = -acoustic_sign[(slot * ncells + cell)];
         value = mpas_add(value, mpas_mul(mpas_mul(sign,
             horizontal_residual[QE3(
                 tracer, k, edge, nlev, nedges)]), inverse_area));
@@ -1024,12 +1027,92 @@ def _kernel(name: str, kernel_cache: Any | None = None, dimensions=()) -> Any:
     if key not in _KERNELS:
         if dimensions:
             from .cuda_shape import resolve
-            _KERNELS[key] = resolve(selected, name, _CUDA_SOURCE,
-                                    "hexcore.cuda_transport_v841", dimensions)
+            kernel = resolve(selected, name, _CUDA_SOURCE,
+                             "hexcore.cuda_transport_v841", dimensions)
         else:
-            _KERNELS[key] = selected.raw_kernel(
+            kernel = selected.raw_kernel(
                 name, _CUDA_SOURCE, module_key="hexcore.cuda_transport_v841")
+        stencil = _STENCILS.get(name)
+        _KERNELS[key] = kernel if stencil is None else _SlotMajorStencils(kernel, *stencil)
     return _KERNELS[key]
+
+
+
+# Immutable edge geometry is shared by every scalar in a launch. Stream-local
+# transposes prevent consumers from racing an asynchronous first-use producer.
+_EDGE_STENCILS: dict[tuple[int, ...], tuple[Any, Any]] = {}
+
+
+def _stencil_layout(arrays, extent):
+    cp = _cupy()
+    # Per-thread default streams share a sentinel pointer, not an ordering domain.
+    key = (int(cp.cuda.Device().id), int(cp.cuda.get_current_stream().ptr),
+           _thread_id(), int(extent), *(id(array) for array in arrays))
+    cached = _EDGE_STENCILS.get(key)
+    if cached is not None and all(ref() is array for ref, array in zip(cached[0], arrays)):
+        return cached[1]
+    layout = []
+    for array in arrays:
+        if array.shape[0] == extent:
+            # Always own storage, including singleton axes whose transpose is already
+            # contiguous. A view could keep the weakly keyed source alive forever.
+            layout.append(array.T.copy(order="C"))
+        elif array.shape[0] == extent - 1:
+            table = cp.zeros((array.shape[1], extent), dtype=array.dtype)
+            table[:, :-1] = array.T
+            layout.append(table)
+        else:
+            raise ValueError("native stencil extent differs from physical plus dummy")
+    layout = tuple(layout)
+    def release(_):
+        _EDGE_STENCILS.pop(key, None)
+    _EDGE_STENCILS[key] = (tuple(weakref.ref(array, release) for array in arrays), layout)
+    return layout
+
+
+# Kernels whose stencil tables are read slot-major: name -> (extent argument,
+# stencil argument positions).  Every caller, and every hook tapped onto one of
+# these kernels, keeps the NATIVE (owner, slot) ABI; the slot-major copies are
+# made by _SlotMajorStencils, the innermost callable, after any tap has run.
+# rrfs/s6-scalar-default 04b17ec0 swapped the tables in _launch, above the tap,
+# so the fullstep LTS low-order hook (cuda_fullstep_lts_scalars.on_low_order ->
+# lts_donor_guard, and cuda_fullstep_lts_multi._on_low_order) and the finish
+# audit read the transposed edges/signs tables as if they were native.
+_STENCILS = {
+    "transport_edge_values_hoist_v841": (3, (8, 9, 11)),
+    "transport_edge_values_mono_hoist_v841": (3, (8, 9, 11)),
+    "transport_standard_finish_elem_v841": (2, (7, 8)),
+    "transport_target_density_elem_v841": (1, (7, 8)),
+    "fct_minmax_source_elem_v841": (2, (6,)),
+    "fct_horizontal_low_order_elem_v841": (2, (6, 7)),
+    "fct_horizontal_low_order_scale_elem_v841": (2, (6, 7)),
+    "fct_finish_elem_v841": (2, (6, 7)),
+}
+# The edge kernels run one thread per (edge, level chunk) and loop the scalars.
+_EDGE_PER_THREAD = ("transport_edge_values_hoist_v841", "transport_edge_values_mono_hoist_v841")
+
+
+class _SlotMajorStencils:
+    """A compiled kernel that takes native stencil tables and launches on slot-major copies."""
+
+    __slots__ = ("kernel", "extent", "positions")
+
+    def __init__(self, kernel: Any, extent: int, positions: tuple[int, ...]) -> None:
+        self.kernel = kernel
+        self.extent = extent
+        self.positions = positions
+
+    def __call__(self, grid: Any, block: Any, arguments: tuple[Any, ...], **keywords: Any) -> Any:
+        layouts = _stencil_layout(tuple(arguments[i] for i in self.positions),
+                                  int(arguments[self.extent]))
+        mutable = list(arguments)
+        for i, layout in zip(self.positions, layouts):
+            mutable[i] = layout
+        return self.kernel(grid, block, tuple(mutable), **keywords)
+
+    def __getattr__(self, name: str) -> Any:
+        # attributes, max_threads_per_block, the CUfunction (kernel.kernel.ptr), ...
+        return getattr(object.__getattribute__(self, "kernel"), name)
 
 
 def _launch(
@@ -1039,6 +1122,8 @@ def _launch(
     kernel_cache: Any | None,
 ) -> None:
     threads = 128
+    if name in _EDGE_PER_THREAD:
+        count = int(count) // int(arguments[0])
     dimensions = tuple(zip(("ntracers", "nlev", "ncells", "nedges", "width"), arguments[:5])) if name == "transport_edge_values_hoist_v841" else ()
     _kernel(name, kernel_cache, dimensions)(
         ((int(count) + threads - 1) // threads,), (threads,), arguments
@@ -1100,6 +1185,24 @@ def _common_inputs(
         if tuple(value.shape) != (nlev,):
             raise ValueError(f"{name} must have shape ({nlev},)")
     return values
+
+
+def _regional_target_density_check(cp: Any, target: Any, nlev: int, ncells: int, bdy_mask_cell: Any,
+                                    garbage_cell: int, validation_flag: Any) -> None:
+    """Set ``validation_flag[0] = 1`` when a kept cell's FCT target density is not finite and strictly positive.
+
+    Kept: every cell but the garbage element and the specified zone (bdyMaskCell >= 6). Stays on the device."""
+    mask = cp.asarray(bdy_mask_cell).reshape(-1)[:ncells]
+    if mask.size < ncells:
+        mask = cp.concatenate([mask, cp.full(ncells - mask.size, 7, dtype=mask.dtype)])
+    keep = mask < 6
+    if garbage_cell is not None and 0 <= int(garbage_cell) < ncells:
+        keep = keep.copy()
+        keep[int(garbage_cell)] = False
+    values = target.reshape(nlev, ncells)[:, keep]
+    bad = cp.any(~(cp.isfinite(values) & (values > 0))).astype(cp.int32)
+    flag = _v823._i32(validation_flag)
+    cp.maximum(flag, bad, out=flag)
 
 
 def _check_density(
@@ -1470,10 +1573,21 @@ def advance_scalars_monotonic_cuda_v841(
     if garbage_cell is not None:
         _launch("fct_pool_density_v841", nlev,
             (np.int32(nlev), np.int32(ncells), np.int32(garbage_cell), target), kernel_cache)
-    _check_density(
-        target, name="target_density", count=nlev * ncells,
-        invalid_flag=validation_flag, kernel_cache=kernel_cache,
-    )
+    if garbage_cell is not None and bdy_mask_cell is not None and validation_flag is not None:
+        # A regional lane: the test runs over the cells whose transported scalars the step keeps. The specified zone
+        # (bdyMaskCell 6 and 7) is overwritten from the boundary file right after this transport
+        # (reset_speczone_values / bdy_adjust_scalars), and native MPAS-A (atm_advance_scalars_mono) runs the same
+        # arithmetic there with no density test, so its target density is not a state the forecast publishes.
+        # THE BREAKAGE THIS PREVENTS (DA door hex-proof-5/-6, 2026-11-03, NOAA conus3km cut 51,509 cells, RRFS 06Z):
+        # step 1 refused "v8.4.1 CUDA validation flag ... flag=1" for every member and the RRFS mean alike; the only
+        # non-positive target densities were 8 lowest-level cells, all in boundary rings 6 and 7 on the western edge.
+        # Every relaxation-zone and interior cell is still tested, term for term, on the device (no host read).
+        _regional_target_density_check(cp, target, nlev, ncells, bdy_mask_cell, garbage_cell, validation_flag)
+    else:
+        _check_density(
+            target, name="target_density", count=nlev * ncells,
+            invalid_flag=validation_flag, kernel_cache=kernel_cache,
+        )
     width = int(coefficients.adv_coefs.shape[1])
     # Census item 4 (the 2026-10-14 memory census, ranked opportunities):
     # the limiter runs a few species per pass.  Every FCT kernel indexes
@@ -1585,8 +1699,9 @@ def limiter_species_per_pass(
         return per_pass
     value = os.environ.get("WOOF_HEX_LIMITER_SPECIES_PER_PASS")
     if value is None and all(v is not None for v in (nlev, ncells, nedges)):
+        from .device_memory_release import shared_card_memory
         budget = int(os.environ.get("WOOF_HEX_TRANSPORT_WORKSPACE_BYTES",
-                                    TRANSPORT_WORKSPACE_BYTES))
+                                    (512 << 20) if shared_card_memory() else TRANSPORT_WORKSPACE_BYTES))
         if budget <= 0:
             raise ValueError("WOOF_HEX_TRANSPORT_WORKSPACE_BYTES must be positive")
         if available_bytes is not None:

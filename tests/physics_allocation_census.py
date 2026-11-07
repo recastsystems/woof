@@ -78,13 +78,20 @@ def cell_config(cell: tuple[int, int, int, float]):
     sfclay, pbl, lsm, bldt = cell
     cfg = RunConfig(
         **GRID, dx=3000.0, dy=3000.0, ztop=12000.0, dt=12.0,
-        run_seconds=60.0, time_step_sound=4, moist=True, mp_physics=0,
+        run_seconds=60.0, time_step_sound=4, moist=True, mp_physics=6 if pbl == 12 else 0,
         sf_sfclay_physics=sfclay, bl_pbl_physics=pbl,
         sf_surface_physics=lsm,
         num_soil_layers=validated_soil_layer_count(lsm), bldt=bldt,
         # SASE supplies the horizontal mixing km_opt would apply and is
         # refused beside it; every other PBL runs the default operator.
         km_opt=0 if pbl == SASE_PBL_SCHEME else 1)
+    from woof.physics_registry import column_surface_contract
+    contract = column_surface_contract(lsm)
+    if contract is not None:
+        # Price a valid column coupling, preserving the swept PBL/layer.
+        from dataclasses import replace
+        cfg = replace(cfg, ra_lw_physics=1, ra_sw_physics=1,
+                      ra_rrtmg_variant="rrtmg_legacy", fractional_seaice=1)
     try:
         cfg = validate_run_config(cfg)
     except ValueError:
@@ -296,6 +303,9 @@ def census() -> dict[str, dict]:
             state = DomainState(cfg)
             driver = initialize_physics(
                 state, cfg, glw=300.0,
+                thermal_inertia=0.04 if cfg.sf_surface_physics == 1 else None,
+                radiation_start_time=datetime.datetime(2020, 6, 1, 12),
+                radiation_latitude=latitude, radiation_longitude=latitude - 135.0,
                 noahmp_start_time=datetime.datetime(2020, 6, 1, 12),
                 noahmp_latitude=latitude,
                 noahmp_longitude=latitude - 135.0)

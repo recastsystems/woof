@@ -4,20 +4,26 @@ import shutil
 import pytest
 
 from woof import tables
-from woof.core.p3_tables import TABLE_1_2MOM_ASSET, packaged_p3_table_root
+from woof.core.p3_tables import (TABLE_1_2MOM_ASSET, TABLE_2_ASSET,
+                                  packaged_p3_table_root)
 from woof.table_assets import fetch_tables_main
 
 
 def test_status_partitions_missing_valid_and_same_size_corruption(tmp_path, monkeypatch):
     monkeypatch.setenv("WOOF_TABLE_ROOT", str(tmp_path))
+    # The scheme names every P3 table (3600feffd: mp_physics=52's nCat=2
+    # table too); mp_physics=50 needs the one-category table alone.
     required = tables.status(["p3"])
     assert required.needed == required.missing
     assert not required.present and not required.corrupt
-    item = required.missing[0]
+    names = [entry.path.name for entry in required.needed]
+    assert TABLE_1_2MOM_ASSET.filename in names and TABLE_2_ASSET.filename in names
+    item = next(entry for entry in required.missing
+                if entry.path.name == TABLE_1_2MOM_ASSET.filename)
     item.path.parent.mkdir(parents=True)
     shutil.copyfile(packaged_p3_table_root() / TABLE_1_2MOM_ASSET.filename, item.path)
     valid = tables.status({"mp_physics": 50})
-    assert valid.ready and valid.present == required.needed
+    assert valid.ready and valid.present == (item,) == valid.needed
     raw = bytearray(item.path.read_bytes())
     original = item.path.stat()
     raw[-50] ^= 1
@@ -25,7 +31,7 @@ def test_status_partitions_missing_valid_and_same_size_corruption(tmp_path, monk
     import os
     os.utime(item.path, ns=(original.st_atime_ns, original.st_mtime_ns))
     damaged = tables.status(["p3"])
-    assert damaged.corrupt == required.needed
+    assert damaged.corrupt == (item,)
     with pytest.raises(tables.CorruptTableAssets, match="woof fetch-tables --schemes p3"):
         tables.ensure(["p3"], fetch=False)
 
@@ -44,10 +50,14 @@ def test_offline_repair_refuses_bad_source_and_keeps_existing_bytes(tmp_path, mo
     source.mkdir()
     asset = TABLE_1_2MOM_ASSET
     shutil.copyfile(packaged_p3_table_root() / asset.filename, source / asset.filename)
+    # The scheme's other table (mp_physics=52's nCat=2 table), staged intact.
+    shutil.copyfile(packaged_p3_table_root() / TABLE_2_ASSET.filename,
+                    source / TABLE_2_ASSET.filename)
     monkeypatch.setenv("WOOF_TABLE_ROOT", str(tmp_path / "tables"))
     args = Namespace(schemes=["p3"], from_dir=str(source), replace_damaged=False)
     assert fetch_tables_main(args) == 0
-    item = tables.status(["p3"]).present[0]
+    item = next(entry for entry in tables.status(["p3"]).present
+                if entry.path.name == asset.filename)
     item.path.write_bytes(b"damaged destination")
     assert fetch_tables_main(args) == 2
     args.replace_damaged = True

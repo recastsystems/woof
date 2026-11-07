@@ -201,7 +201,7 @@ def door_step(named: Mapping[str, Any], dt_seconds: Any, finest_dx_m: Any) -> li
     A named MPAS suite takes the forecast door's own step for it (``mpas_defaults.default_dt_seconds``: 6 s per km
     of the finest nominal spacing), so the door passes no step of its own -- unless the door's mesh step is SHORTER
     than that rule, and then the mesh step is passed.  THE BREAKAGE THIS PREVENTS (shapes run zc1200, 2026-10-29,
-    V8X6000): the 96 -> 3 km zoom globe with a 1,200 km core was admitted at 12 s (shortest dual edge 1,342 m,
+    eight-card system): the 96 -> 3 km zoom globe with a 1,200 km core was admitted at 12 s (shortest dual edge 1,342 m,
     acoustic Courant limit 12.45 s), but the default MPAS suite stepped it at the rule's 18 s, 1.45x past the
     mesh's own measured limit, because the zoom door passed no ``--dt`` beside the suite.  A namelist (its
     ``config_dt`` decides) and the WOOF suite keep their roads unchanged."""

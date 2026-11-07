@@ -100,8 +100,13 @@ def apply_generated(state, cfg, dt, *, refl_10cm_due=False):
     th, pii, temperature, dz = [state.scratch(shape, name) for name in ("mp_th", "mp_pii", "mp_thompson_temperature", "mp_dz8w")]
     thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
     phb = state.phb if state.phb.ndim == 3 else state.phb[:, None, None]
-    th[...] = thb + state.thp
-    state.h_diabatic[...] = th
+    th[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
+    if getattr(state, "use_theta_m", 0):
+        from woof.core.microphysics import save_pre_mp_theta
+        save_pre_mp_theta(state)
+    else:
+        state.h_diabatic[...] = th
     launch_aerosol_exner(state.p, pii)
     temperature[...] = th * pii
     z = state.scratch((nz+1,ny,nx), "mp_z8w")
@@ -137,7 +142,13 @@ def apply_generated(state, cfg, dt, *, refl_10cm_due=False):
     from woof.core.microphysics import thompson_negative_vapour_fill
     thompson_negative_vapour_fill(state.qv)
     th[...] = temperature / pii
-    if not cfg.no_mp_heating:
+    if not getattr(state, "use_theta_m", 0):
+        from woof.core.afwa_diagnostics import capture_microphysics_theta
+        capture_microphysics_theta(state, cfg, th)
+    if getattr(state, "use_theta_m", 0):
+        from woof.core.microphysics import moist_physics_finish
+        moist_physics_finish(state, cfg, th, dt)
+    elif not cfg.no_mp_heating:
         limit = np.float32(cfg.mp_tend_lim) * np.float32(dt)
         increment = cp.clip(th - state.h_diabatic, -limit, limit)
         state.thp[...] += increment

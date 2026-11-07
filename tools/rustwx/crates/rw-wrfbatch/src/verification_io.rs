@@ -15,6 +15,10 @@ pub struct ArmSpec {
     pub label: String,
     pub kind: String,
     pub path: PathBuf,
+    /// Record within a native NetCDF history file. Other formats use their
+    /// existing selectors. Zero preserves single-frame requests.
+    #[serde(default)]
+    pub time_index: usize,
     #[serde(default)]
     pub grid_path: Option<PathBuf>,
     #[serde(default)]
@@ -835,7 +839,7 @@ pub fn hourly_messages(
 }
 
 pub fn load_arm(spec: &ArmSpec) -> Result<ArmData, String> {
-    load_arm_at(spec, 0)
+    load_arm_at(spec, spec.time_index)
 }
 
 /// Read one native history record; other formats retain their native selector.
@@ -921,7 +925,14 @@ pub fn load_arm_at(spec: &ArmSpec, time_index: usize) -> Result<ArmData, String>
         "netcdf" | "wrfout" => {
             let file = netcrust::open(&spec.path).map_err(|e| e.to_string())?;
             let wrf = wrf_core::WrfFile::open(&spec.path).ok();
-            result.provenance["metadata"] = serde_json::json!({"valid_time":file.read_strings("Times").ok().and_then(|v|v.into_iter().nth(time_index)).map(|s|s.replace('_',"T")),"init_time":file.attribute("SIMULATION_START_DATE").or_else(||file.attribute("START_DATE")).and_then(|a|a.as_string().map(|s|s.replace('_',"T"))),"dx_km":file.attribute("DX").and_then(|a|a.as_f64()).map(|v|v*0.001),"dy_km":file.attribute("DY").and_then(|a|a.as_f64()).map(|v|v*0.001)});
+            // Share the renderer's exact time-axis reader. NetCDF-4 char
+            // matrices can decode as one string per character; selecting
+            // read_strings()[time_index] would label a whole frame "2".
+            let axis = crate::local_import::netcdf_source_times(&file, &spec.path)
+                .map_err(|e| e.to_string())?;
+            let valid = &axis.records.get(time_index)
+                .ok_or("verification record is outside the native time axis")?.label;
+            result.provenance["metadata"] = serde_json::json!({"valid_time":valid.replace('_',"T"),"init_time":file.attribute("SIMULATION_START_DATE").or_else(||file.attribute("START_DATE")).and_then(|a|a.as_string().map(|s|s.replace('_',"T"))),"dx_km":file.attribute("DX").and_then(|a|a.as_f64()).map(|v|v*0.001),"dy_km":file.attribute("DY").and_then(|a|a.as_f64()).map(|v|v*0.001)});
             let read = |name: &str| -> Result<Array, String> {
                 let a = file
                     .read_array_f64_record_or_all(name, time_index as u64)
@@ -943,7 +954,7 @@ pub fn load_arm_at(spec: &ArmSpec, time_index: usize) -> Result<ArmData, String>
             let cells = result.grid.as_ref().unwrap().nx * result.grid.as_ref().unwrap().ny;
             let requested: BTreeSet<_> = fields.keys().cloned().collect();
             if requested.iter().any(|q|q.starts_with("ivt_") || q=="integrated_water_vapour") {
-                let native=crate::wrf_column_planes::read_vapour_integrals(wrf.as_ref().ok_or("IVT requires native WRF model levels")?,0)?;
+                let native=crate::wrf_column_planes::read_vapour_integrals(wrf.as_ref().ok_or("IVT requires native WRF model levels")?,time_index)?;
                 for (quantity,values) in [
                     ("ivt_1000_300",native.magnitude),("ivt_eastward_1000_300",native.eastward),
                     ("ivt_northward_1000_300",native.northward),("integrated_water_vapour",native.iwv),
@@ -1006,13 +1017,10 @@ pub fn load_arm_at(spec: &ArmSpec, time_index: usize) -> Result<ArmData, String>
                     let now_time = result.provenance["metadata"]["valid_time"].as_str().ok_or(
                         "hourly precipitation needs the current frame's native valid time",
                     )?;
-                    let old_time = previous
-                        .read_strings("Times")
-                        .map_err(|e| e.to_string())?
-                        .into_iter()
-                        .next()
-                        .ok_or("previous frame has no valid time")?
-                        .replace('_', "T");
+                    let old_axis = crate::local_import::netcdf_source_times(&previous, before)
+                        .map_err(|e| e.to_string())?;
+                    let old_time = old_axis.records.first()
+                        .ok_or("previous frame has no valid time")?.label.replace('_', "T");
                     if (crate::verification::parse_time(now_time)?
                         - crate::verification::parse_time(&old_time)?)
                     .num_seconds()
@@ -1585,6 +1593,13 @@ mod tests {
         writer
             .write_record(0, td, VarData::F32(&[290.; 4]))
             .unwrap();
+        writer
+            .write_record(1, times, VarData::Char(b"2030-01-01_02:00:00"))
+            .unwrap();
+        writer.write_record(1, lat, VarData::F32(&[30., 30., 30.009, 30.009])).unwrap();
+        writer.write_record(1, lon, VarData::F32(&[-100., -99.9896, -100., -99.9896])).unwrap();
+        writer.write_record(1, t, VarData::F32(&[301.; 4])).unwrap();
+        writer.write_record(1, td, VarData::F32(&[291.; 4])).unwrap();
         writer.finish().unwrap();
         let spec:ArmSpec=serde_json::from_value(serde_json::json!({"label":"A","kind":"netcdf","path":path,"fields":{"temperature_2m":"T2","dewpoint_2m":"Td2"}})).unwrap();
         let arm = load_arm(&spec).unwrap();
@@ -1606,8 +1621,40 @@ mod tests {
                    vec![290.0_f64.to_bits();4]);
         validate_arm_time(&spec, &arm, "2030-01-01T01:00:00").unwrap();
         assert!(validate_arm_time(&spec, &arm, "2030-01-01T02:00:00").is_err());
+        let mut next = spec.clone();
+        next.time_index = 1;
+        let second = load_arm(&next).unwrap();
+        validate_arm_time(&next, &second, "2030-01-01T02:00:00").unwrap();
+        assert!(validate_arm_time(&next, &second, "2030-01-01T01:00:00").is_err());
+        assert_eq!(second.fields["temperature_2m"], vec![301.; 4]);
+        assert_eq!(second.fields["dewpoint_2m"], vec![291.; 4]);
         std::fs::remove_file(path).unwrap();
     }
+    #[test]
+    fn verification_reads_full_netcdf4_char_and_string_timestamps() {
+        for name in ["times_char_netcdf4_cut.nc", "times_string_netcdf4_cut.nc"] {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/time_axis_fixtures").join(name);
+            let spec: ArmSpec = serde_json::from_value(serde_json::json!({
+                "label":"forecast", "kind":"netcdf", "path":path,
+                "fields":{"temperature_2m":"T2"}
+            })).unwrap();
+            let arm = load_arm(&spec).unwrap();
+            validate_arm_time(&spec, &arm, "2025-03-16T00:00:00Z").unwrap();
+            assert!(validate_arm_time(&spec, &arm, "2025-03-15T12:00:00Z").is_err());
+            assert_eq!(arm.fields["temperature_2m"], vec![291., 291., 292., 293.]);
+            // The previous-frame path must use the same complete time axis,
+            // rather than accepting the first character as a timestamp.
+            let mut same_frame = spec.clone();
+            same_frame.previous_path = Some(spec.path.clone());
+            let error = match load_arm(&same_frame) {
+                Ok(_) => panic!("same-time previous frame must be refused"),
+                Err(error) => error,
+            };
+            assert!(error.contains("not exactly one hour apart"), "{error}");
+        }
+    }
+
     #[test]
     fn spacing_is_measured_from_native_one_kilometre_geometry() {
         let unit = (1.0 / 111.195) as f32;

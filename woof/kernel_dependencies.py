@@ -25,41 +25,168 @@ def include_roots(options):
     return roots
 
 
-def include_tree_dependencies(options, snapshots):
+#: CUDA host-library wheels that install their headers into the toolkit's shared
+#: include folder (CUDA 13: site-packages/nvidia/cu13/include) beside the compiler's
+#: own headers. ``pip install cupy-cuda13x[ctk]`` adds the first six; other stacks add
+#: more. A device compile opens none of them unless the kernel source or a bound header
+#: names one, so :func:`include_tree_dependencies` with ``source=`` leaves out the
+#: unnamed ones. Matched with and without a -cu12/-cu13 suffix.
+LIBRARY_HEADER_DISTRIBUTIONS = (
+    "nvidia-cublas", "nvidia-cufft", "nvidia-curand", "nvidia-cusolver", "nvidia-cusparse",
+    "nvidia-nvjitlink", "nvidia-cusparselt", "nvidia-npp", "nvidia-nvjpeg", "nvidia-cufile",
+    "nvidia-nccl", "nvidia-cudnn", "nvidia-cutensor", "nvidia-nvshmem", "nvidia-cuda-cupti",
+    "nvidia-nvfatbin", "nvidia-nvml-dev")
+
+_LIBRARY_FILES = None
+
+
+def library_header_files():
+    """Resolved paths of every file the installed library wheels above own."""
+    global _LIBRARY_FILES
+    if _LIBRARY_FILES is None:
+        from importlib import metadata
+        owned = set()
+        for name in LIBRARY_HEADER_DISTRIBUTIONS:
+            for variant in (name, name + "-cu12", name + "-cu13"):
+                try:
+                    distribution = metadata.distribution(variant)
+                except metadata.PackageNotFoundError:
+                    continue
+                for item in distribution.files or ():
+                    owned.add(Path(distribution.locate_file(item)).resolve())
+        _LIBRARY_FILES = frozenset(owned)
+    return _LIBRARY_FILES
+
+
+def include_tree_dependencies(options, snapshots, *, exclude_python_bytecode=False, source=None):
     """Conservative binding for header macros, including CCCL dispatch.
 
     NVRTC has no host system-header search. Bind all files in every explicit
     include root, in search order, including extensionless C++ headers. Roots
     are snapshotted once per compiler session, just like its loaded libraries;
     a new process rehashes bytes and detects changed or added headers.
+
+    With ``source`` (the kernel text), bind what the compile can open rather
+    than the whole folder: headers that CUDA library wheels drop into the
+    shared toolkit include folder (:data:`LIBRARY_HEADER_DISTRIBUTIONS`) are
+    left out unless the source or a bound header names them. THE BREAKAGE
+    (2.9.12 R11, 2026-11-04): shipped startup images were built where that
+    folder held only the runtime and NVRTC headers; ``pip install
+    recast-woof[all-cu13]`` (cupy[ctk]) adds cuBLAS/cuFFT/cuRAND/cuSOLVER/cuSPARSE/
+    nvJitLink headers there, the whole-folder hash changed, and every image
+    missed (header_tree_mismatch: each module compiled on one core at the
+    first forecast step). Every other file stays bound by bytes, so a changed,
+    added or shadowing compiler header still misses. A header a compile can
+    open is spelled in the source or a bound header, literally or in the
+    macro that computes it (thrust's system headers), so the name check is a
+    substring check over their bytes. In a folder with no library headers the
+    result equals the whole-folder binding, so packs built there need no
+    rebuild.
     """
     from concurrent.futures import ThreadPoolExecutor
     result = []
     roots = include_roots(options)
-    resolved_roots = [root.resolve() for root in roots]
+    resolved_roots = tuple(root.resolve() for root in roots)
+    library = library_header_files() if source is not None else frozenset()
+    library_rows = {}
     for root in roots:
-        key = str(root.resolve())
+        # Match the fold's complete search-root identity and memoized refusals.
+        # HIP's bytecode exclusion gets its own cache entry.
+        key = (resolved_roots, root.resolve())
+        if exclude_python_bytecode:
+            key = (key, True)
+        previous = snapshots.get(key)
+        if isinstance(previous, ValueError):
+            raise ValueError(str(previous)) from None
         if key not in snapshots:
-            paths = sorted(p for p in root.rglob("*") if p.is_file())
+            paths = sorted(p for p in root.rglob("*") if p.is_file()
+                           and not (exclude_python_bytecode and
+                                    ("__pycache__" in p.relative_to(root).parts
+                                     or p.suffix in (".pyc", ".pyo"))))
             def read(path):
                 data = path.read_bytes()
                 # A computed dependency outside these roots cannot safely be
                 # served from a tree snapshot. Ordinary NVRTC still handles it.
                 directives = re.findall(rb'^\s*#\s*(?:include|define)\b[^\n]*', data, re.M)
                 for directive in directives:
-                    for name in re.findall(rb'["<]((?:/|\.\./)[^">\n]*)[">]', directive):
+                    # Tokenize whole strings before looking for paths. NVTX's
+                    # Windows linker pragma contains an escaped "/EXPORT:"
+                    # inside a string; that is not an absolute header name.
+                    tokens = re.findall(rb'"((?:\\.|[^"\\\n])*)"|<([^>\n]*)>', directive)
+                    for quoted, angled in tokens:
+                        name = quoted or angled
+                        if not name.startswith((b"/", b"../")):
+                            continue
                         target = (path.parent / name.decode()).resolve()
                         if not any(target.is_relative_to(base) for base in resolved_roots):
                             raise ValueError(f"header may escape include roots: {path.name}")
                 return (path.relative_to(root).as_posix(), hashlib.sha256(data).hexdigest())
-            with ThreadPoolExecutor(min(16, max(1, len(paths)))) as pool:
-                rows = list(pool.map(read, paths))
+            try:
+                with ThreadPoolExecutor(min(16, max(1, len(paths)))) as pool:
+                    rows = list(pool.map(read, paths))
+            except ValueError as error:
+                snapshots[key] = ValueError(str(error))
+                raise
             from woof.compiler_metadata import _digest
             snapshots[key] = _digest(rows)
+            snapshots[("files", key)] = (paths, rows, tuple(path.resolve() for path in paths))
+        files = snapshots.get(("files", key))
+        if library and files is not None:
+            library_rows[len(result)] = files
         result.append(dict(tree_sha256=snapshots[key]))
     if not result:
         raise ValueError("computed header dependency has no explicit include roots")
+    if library_rows:
+        _leave_out_unnamed_library_headers(result, library_rows, library, source, snapshots,
+                                           (resolved_roots, exclude_python_bytecode))
     return result
+
+
+def _leave_out_unnamed_library_headers(result, library_rows, library, source, snapshots, roots_key):
+    """Rebind each root without the library headers nothing names (see above)."""
+    from woof.compiler_metadata import _digest
+    candidates = {}
+    for paths, _, resolved in library_rows.values():
+        for path, real in zip(paths, resolved):
+            if real in library:
+                candidates.setdefault(path.name, set()).add(real)
+    if not candidates:
+        return
+    names = tuple(sorted(candidates, key=len, reverse=True))
+    pattern = re.compile(b"|".join(re.escape(name.encode()) for name in names))
+    # Per compiler session, like the tree snapshot (a new process rereads bytes).
+    session = snapshots.setdefault(("library-names", roots_key, names), {})
+    if "mentions" not in session:
+        mentions, base = {}, set()
+        for paths, _, resolved in library_rows.values():
+            for path, real in zip(paths, resolved):
+                if real not in mentions:
+                    mentions[real] = frozenset(match.decode() for match in pattern.findall(path.read_bytes()))
+                    if real not in library:
+                        base |= mentions[real]
+        session.update(mentions=mentions, base=frozenset(base))
+    mentions = session["mentions"]
+    # Names spelled by the source or any bound (non-library) header, then
+    # every library header those names reach, to a fixed point.
+    spelled = frozenset(match.decode() for match in pattern.findall(source.encode("utf-8")))
+    digests = session.get(spelled)
+    if digests is None:
+        named = set(session["base"] | spelled)
+        pending = list(named)
+        while pending:
+            for real in candidates.get(pending.pop(), ()):
+                for name in mentions[real] - named:
+                    named.add(name)
+                    pending.append(name)
+        digests = {}
+        for index, (paths, rows, resolved) in library_rows.items():
+            kept = [row for path, row, real in zip(paths, rows, resolved)
+                    if real not in library or path.name in named]
+            digests[index] = _digest(kept)
+        session[spelled] = digests
+    for index, digest in digests.items():
+        result[index] = dict(tree_sha256=digest)
+
 
 _BUILTIN = frozenset({"assert.h", "ctype.h", "float.h", "limits.h", "math.h",
     "stddef.h", "stdint.h", "stdbool.h", "stdio.h", "stdlib.h", "string.h",

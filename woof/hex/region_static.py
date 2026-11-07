@@ -84,7 +84,7 @@ PADDED = {"nCells": "nEdgesOnCell", "nEdges": "nEdgesOnEdge"}
 def _pad_like_halo(values, name: str, var, grid, halo) -> None:
     """Fill a topology table's padded slots the way the static builder does, read off the halo static.
 
-    The grid file repeats an entry in the slots past ``nEdgesOnCell``; woof 2.9.7's builder writes 0 there
+    The grid file repeats an entry in the slots past ``nEdgesOnCell``; gpuwm 2.9.7's builder writes 0 there
     (measured on this row: ``cellsOnCell`` and ``edgesOnCell`` in 180,920 padded slots of the parent).  When
     every padded slot of the halo's table holds one value, the parent's padded slots take it; otherwise the
     builder kept the grid's padding and so does this.

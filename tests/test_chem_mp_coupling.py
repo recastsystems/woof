@@ -6,7 +6,7 @@
 aerosol mass.  The port is the table-driven kernel in
 ``woof/core/kernels/chem_mp_coupling.cu`` handed GSL's twelve bins as rows.
 
-Measured on the a development machine RTX 4090 (sm_89): nifa and nwfa bit-identical to the
+Measured on the test host 1 RTX 4090 (sm_89): nifa and nwfa bit-identical to the
 Fortran, both as the float64 before rounding and as the float32 stored.
 """
 from __future__ import annotations
@@ -82,7 +82,7 @@ def test_pack_terms_refuses_ambiguous_slots_and_bad_rows():
 
 @requires_gpu
 def test_niwfa_is_bitwise_gsl():
-    """Made to fire before commit, on the a development machine RTX 4090: taking GSL's
+    """Made to fire before commit, on the test host 1 RTX 4090: taking GSL's
     denominators as float64 literals (``denominator=d``) instead of the
     float32 literals the Fortran widens moves the float64 result in 25 of
     the 30 nifa cells."""

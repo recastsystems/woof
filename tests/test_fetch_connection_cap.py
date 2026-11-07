@@ -121,6 +121,14 @@ def test_range_failure_never_publishes_a_partial_file(tmp_path, monkeypatch, fai
                         headers, 200 if failure == "ignored" else 206)
     monkeypatch.setattr(fetch_ranges, "paced_urlopen", open_object)
     dest = tmp_path / "input.grib2"
+    if failure in ("ignored", "wrong-span"):
+        # fix/ecmwf-open-data-range: a host that refuses ranges moves the
+        # object on one plain stream instead of failing it.
+        size, digest = fetch_ranges.download("https://example.test/file",
+                                             tmp_path / "plain.part",
+                                             user_agent="test", streams=3)
+        assert (size, digest) == (100, hashlib.sha256(payload).hexdigest())
+        assert (tmp_path / "plain.part").read_bytes() == payload
     with pytest.raises(ValueError):
         fetch_routes._download_object("https://example.test/file", dest,
                                        magic="GRIB", streams=3)
@@ -261,7 +269,7 @@ def test_small_cap_uses_python_when_bridge_may_retain_idle_sockets(tmp_path, mon
 
 
 def test_lease_grants_what_is_free_and_names_holders_while_waiting(tmp_path, monkeypatch, capfd):
-    """V56 2026-10-20: another process's slots left setup waiting silently forever."""
+    """test host 2026-10-20: another process's slots left setup waiting silently forever."""
     monkeypatch.setenv(fetch_connections.DIRECTORY_ENV, str(tmp_path))
     monkeypatch.setenv(fetch_connections.MAX_CONNECTIONS_ENV, "4")
     monkeypatch.setattr(fetch_connections, "WAIT_NOTICE_AFTER_S", 0.1)

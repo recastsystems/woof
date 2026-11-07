@@ -448,24 +448,17 @@ def test_support_report_rejects_inconsistent_boundary_width(tmp_path):
 
 def test_the_compat_door_gives_the_same_theta_m_answer_as_the_importer(
         tmp_path):
-    """An omitted use_theta_m takes WRF's Registry default 1 on both
-    doors, and both book it as the same declared divergence: the importer
-    announces a Substitution, and this report states it without failing
-    the runtime verdict it used to fail."""
+    """Omitted WRF 4 theta_m stays selected, with any concrete runtime gate."""
     wps, inp = _write_pair(tmp_path, mp=6)
     inp.write_text(
         inp.read_text(encoding="utf-8").replace(" use_theta_m = 0,\n", ""),
         encoding="utf-8",
     )
     report = analyze_namelists(wps, inp)
-    assert report["verdict"] == "PASS"
-    assert report["required_state"]["stock_wrf_export"]["verdict"] == "PASS"
     runtime = report["required_state"]["gpuwm_runtime"]
     assert runtime["verdict"] != "FAIL"
-    assert not [reason for reason in runtime["reasons"]
-                if "requires the dry-theta branch" in reason]
     issue = next(item for item in report["issues"]
-                 if item["code"] == "THETA_M_DRY_SUBSTITUTION")
+                 if item["code"] == "THETA_M_PROGNOSTIC")
     assert issue["severity"] == SEVERITY_ADVISORY
     assert "WRF Registry default 1" in issue["message"]
     # The importer's own sentence, from the function both doors call.
@@ -518,10 +511,10 @@ def test_an_omitted_use_theta_m_on_the_wrf3_line_is_matched(tmp_path):
     report = analyze_namelists(wps, inp, wrf_version="3")
     assert report["verdict"] == "PASS"
     assert not [item for item in report["issues"]
-                if item["code"] == "THETA_M_DRY_SUBSTITUTION"]
+                if item["code"] == "THETA_M_PROGNOSTIC"]
     report4 = analyze_namelists(wps, inp, wrf_version="4")
     issue = next(item for item in report4["issues"]
-                 if item["code"] == "THETA_M_DRY_SUBSTITUTION")
+                 if item["code"] == "THETA_M_PROGNOSTIC")
     assert "WRF Registry default 1" in issue["message"]
     with pytest.raises(ValueError, match="wrf_version"):
         analyze_namelists(wps, inp, wrf_version="5")
@@ -1161,16 +1154,16 @@ def test_an_unported_microphysics_selector_fails_the_runtime_row(tmp_path):
     """The runtime row still fails when the ENGINE is what is missing.
 
     Decoupling the two verdicts must not make the runtime row unable to
-    fail: mp_physics=14 (WDM5) is ported nowhere, so it is the engine's
+    fail: mp_physics=15 (advected Ferrier-Aligo) has no runtime, so it is the engine's
     own answer, named, and it is asked for every domain rather than
     abandoned at the first one.
     """
 
-    report = analyze_namelists(*_write_pair(tmp_path, mp=14))
+    report = analyze_namelists(*_write_pair(tmp_path, mp=37))
     runtime = report["required_state"]["gpuwm_runtime"]
     assert runtime["verdict"] == "FAIL"
     assert len(runtime["reasons"]) == 6
-    assert all("mp_physics=14" in reason for reason in runtime["reasons"])
+    assert all("mp_physics=37" in reason for reason in runtime["reasons"])
 
 
 # ---------------------------------------------------------------------------

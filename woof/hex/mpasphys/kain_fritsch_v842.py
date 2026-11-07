@@ -10,6 +10,8 @@ that upper interface and other arrays retain its unused padding. The driver
 owns persistent state and calls step1 before convection and step2 afterwards.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -2429,7 +2431,7 @@ def _module(device_id: int):
         # standalone witness has 7 differing words). Invoke the same NVRTC
         # compiler directly so --ftz=false reaches it without that override.
         source = shared_math_source() + CUDA_SOURCE
-        architecture = cp.cuda.Device(device_id).compute_capability
+        architecture = _compilation_target(device_id, xp=cp)
         image_path = os.environ.get("MPAS_KF_CUDA_IMAGE")
         if image_path:
             binary = cuda_image(image_path, source, architecture)

@@ -196,7 +196,7 @@ def clone_checkout(root: pathlib.Path, destination: pathlib.Path) -> list[str]:
 def make_environment(clone: pathlib.Path, venv: pathlib.Path, python: str,
                      numpy: str, uv: str | None) -> pathlib.Path:
     """A fresh environment holding the clone exactly as the cpu job installs it."""
-    packages = ["-e", "./recast-woof-data", "-e", ".[dev]", f"numpy=={numpy}"]
+    packages = ["-e", "./recast-woof-data", "-e", "./gpuwm-kernels", "-e", ".[dev]", f"numpy=={numpy}"]
     if uv:
         _run([uv, "venv", "-q", "--seed", "--python", python, venv], cwd=clone)
         interpreter = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")

@@ -1380,7 +1380,7 @@ def manifest_md(m: dict) -> str:
             "",
             f"The same harness was run under {rp['label']} with {rp['compiler']}. "
             f"{rp['streams_identical']} of {rp['streams_compared']} raw streams, including "
-            "the production-flag evidence build, came out byte-identical to the a development machine "
+            "the production-flag evidence build, came out byte-identical to the test-machine-1 "
             "streams"
             + (". " if not rp["streams_differing"] else
                f"; these differ: {', '.join(rp['streams_differing'])}. ")

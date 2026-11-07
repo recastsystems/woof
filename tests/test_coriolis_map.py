@@ -142,7 +142,7 @@ def test_msf_one_f_zero_bitwise_phase2(case):
     # adjudicated on GPU (u/v/w/thp/php/mup/qv moved; qc/qr and all
     # dry/terrain/open entries stayed bitwise, 38/39 pre-recapture).
     #
-    # RECAPTURED TWICE on 2026-09-03 (lane/fp32-eos-spelling, commits
+    # RECAPTURED TWICE on 2026-09-03 (development branch, commits
     # 962c068da then 6b11e4c99), 25 of 27 entries moving each time -- the
     # two that held are moist/qc and moist/qr, which are identically zero.
     #
@@ -158,7 +158,7 @@ def test_msf_one_f_zero_bitwise_phase2(case):
     #   every run's bits by construction (calc_p_alpha stopped forming the
     #   base layer thickness by cancelling two totals).
     #
-    # RECAPTURED on 2026-09-16 (lane/2.7.6-omega-column-scan) by
+    # RECAPTURED on 2026-09-16 (the 2.7.6 column verification) by
     # tools/recapture_phase2_pin.py, the generator now kept in the tree, in
     # two readings because the move has two causes:
     #
@@ -222,8 +222,8 @@ def test_msf_one_f_zero_bitwise_phase2(case):
     # (npref.py:2837 differences the geopotential in float64) -- and that
     # is the instrument the follow-up should use.
     #
-    # 2026-09-17 (lane/2.7.6-pin-gates): THE CARD, AND THE ATTRIBUTION OF
-    # (a) ABOVE.  A development machine's card became an RTX 4090 (compute capability 8.9,
+    # 2026-09-17 (the 2.7.6 verification change): THE CARD, AND THE ATTRIBUTION OF
+    # (a) ABOVE.  test host 1's card became an RTX 4090 (compute capability 8.9,
     # driver 610.57.04); every 2026-09-16 reading above was taken on the
     # RTX 5070 Ti (12.0) it replaced, and the two 2026-09-03 recaptures say
     # RTX 3080 (8.6) in their messages.  Measured on the 4090 in one
@@ -267,7 +267,7 @@ def test_msf_one_f_zero_bitwise_phase2(case):
     #   runs this test on the release node's card before a cut and records
     #   the card in its receipt, which is what 2.7.4 and 2.7.5 lacked.
     #
-    # RECAPTURED 2026-09-30 (lane/281-nvrtc-literal-div, A146) on the RTX
+    # RECAPTURED 2026-09-30 (development branch, A146) on the RTX
     # 5070 Ti (12.0, driver 595.91.07, NVRTC 13.4.92), the card the 5070 Ti
     # file describes.  NVRTC had compiled every float division by a
     # compile-time constant as a multiply by the rounded reciprocal on
@@ -604,7 +604,7 @@ def test_coriolis_sina_zero_bitwise_old_path():
     #
     # PER CARD since 2026-09-17 (tests/_card_pins.py).  The original
     # capture (2026-07-19, card unrecorded) against the same launch on
-    # a development machine's RTX 4090 (compute capability 8.9, driver 610.57.04): 105 of
+    # test host 1's RTX 4090 (compute capability 8.9, driver 610.57.04): 105 of
     # 560 words differ, max 3.05e-05, max relative 1.07e-05, one launch of
     # launch_coriolis_curvature, ULP-scale: the card, as for the phase-2
     # pin above.  The 4090 file (tests/data/coriolis_map_sina0_pin.rtx4090

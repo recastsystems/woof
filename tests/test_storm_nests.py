@@ -196,13 +196,15 @@ def test_inland_daily_mean_takes_each_time_on_its_own_grid():
     from datetime import timedelta
 
     series = [SimpleNamespace(valid_time=t0 + timedelta(hours=h),
+                              latitude=np.arange(3), longitude=np.arange(4), projection=None,
                               fields={field: np.full((3, 4), 280.0 + h),
                                       "SKINTEMP": np.zeros((3, 4))})
               for h in range(3)]
     provider = horiz.DailyMeanAirTemperature(series)
     same, receipt = provider(series[0])
     assert np.allclose(same, 281.0) and "3 forcing time" in receipt["window"]
-    analysis = SimpleNamespace(valid_time=t0, fields={
+    analysis = SimpleNamespace(valid_time=t0, latitude=np.arange(5),
+                               longitude=np.arange(6), projection=None, fields={
         field: np.full((5, 6), 290.0), "SKINTEMP": np.zeros((5, 6))})
     own, receipt = provider(analysis)
     assert own.shape == (5, 6) and np.allclose(own, 290.0)

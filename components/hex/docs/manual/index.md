@@ -81,7 +81,7 @@ page rather than remembering the code. Install, `doctor`, `mesh-check`, the
 init door, the forecast door and the render door all reach real output:
 16 min 46 s from an empty machine to the first rendered products. Three
 things did not, and all three were against the engine published that day,
-woof 2.5.7. Two are closed by the 2.5.8 floor this distribution now declares,
+gpuwm 2.5.7. Two are closed by the 2.5.8 floor this distribution now declares,
 re-measured 2026-08-28 against the published bundle: the **limited-area lane**
 of chapter 6.8 and the `cull` door of chapter 9 have the engine capabilities
 they need, and the render door's **default window** is understood by the
@@ -101,7 +101,7 @@ in [`docs/declared-divergences.md`](../declared-divergences.md), and never
 hidden behind an option. The dycore identity result and its scope are in
 [MPAS compatibility](../mpas-compatibility.md). Read both before trusting a number.
 
-**Version.** This manual describes the woof hex 0.4.11 candidate with the woof 2.9.11
+**Version.** This manual describes woof hex 0.4.14 with the gpuwm 2.9.12
 engine. Chapters 1 to 9 were walked against the earlier wheels named in
 *Conventions*; chapter 10 says where each 0.4 result was measured. Where a
 measurement was taken on specific hardware, the card is named beside the

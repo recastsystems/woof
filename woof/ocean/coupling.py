@@ -55,14 +55,28 @@ extern "C" __global__ void roughness(const float* hs,const float* tp,const float
 """
 
 class DeviceCoupler:
-    def __init__(self, grid, bathymetry, *, waves=None, surge=None, interval=60.):
+    def __init__(self, grid, bathymetry, *, waves=None, surge=None, interval=60.,
+                 roughness_feedback=False):
         import cupy as cp
         self.grid,self.bathymetry=grid,bathymetry
         grid.validate();validate_fields(bathymetry,grid)
         if not math.isfinite(interval) or interval<=0: raise ValueError("coupling interval must be finite and positive")
         self.interval=float(interval);self.waves=waves;self.surge=surge
+        self.roughness_feedback=bool(roughness_feedback)
         self.next_time=None;self.last_time=None;self.steps=0
-        self.buffers={k:cp.empty(grid.shape,dtype=cp.float32) for k in ('u10','v10','psfc','ustar','tau_x','tau_y','rho_air')}
+        self.buffers={k:cp.zeros(grid.shape,dtype=cp.float32) for k in ('u10','v10','psfc','ustar','tau_x','tau_y','rho_air')}
+        self.exchange=None
+        self.cost=None
+        self.timeline=None
+        self.station_metadata=[]
+        self.diagnostics=[]
+        self._collected_steps=None
+        self.output=None
+        self.prepared_identity={}
+        self.pending_seconds=0.
+        self.atmosphere_steps=0
+        self.output_interval=None
+        self.run_end=None
         self.alpha=cp.full(grid.shape,0.0185,dtype=cp.float32)
         self.zero=cp.zeros(grid.shape,dtype=cp.float32)
         self.z0=cp.where(bathymetry.wet>0.5,cp.float32(1.e-4),cp.float32(0.)).astype(cp.float32)
@@ -71,20 +85,33 @@ class DeviceCoupler:
         record_module('woof.ocean.coupling:device',source=_CUDA,options=(),module=module)
         self._forcing=module.get_function('forcing')
         self._roughness=module.get_function('roughness')
+        from .roughness import CUDA as roughness_cuda
+        roughness_module=cp.RawModule(code=roughness_cuda,options=())
+        record_module('woof.ocean.coupling:roughness',source=roughness_cuda,options=(),module=roughness_module)
+        self._spectral_roughness=roughness_module.get_function('spectral_roughness')
         self.forcing=None
+
+    @property
+    def feedback_z0(self):
+        if self.waves is None or not self.roughness_feedback:return None
+        return self.z0 if self.exchange is None else self.exchange.roughness
 
     def handoff(self, *, u10,v10,psfc,ustar,temperature,qv,time_seconds,grid_relative=False):
         import cupy as cp
         import numpy as np
         from .interface import validate_plane
+        shape=self.grid.shape if self.exchange is None else self.exchange.shape
         for name,a in [('u10',u10),('v10',v10),('psfc',psfc),('ustar',ustar),('temperature',temperature),('qv',qv)]:
-            validate_plane(a,self.grid.shape,name)
+            validate_plane(a,shape,name)
             if a.device.id!=self.buffers['u10'].device.id: raise ValueError("forcing belongs to another CUDA device")
         n=self.grid.nx*self.grid.ny;b=self.buffers
-        self._forcing(((n+255)//256,),(256,),
-            (u10,v10,psfc,ustar,temperature,qv,self.grid.cosalpha,self.grid.sinalpha,
-             *(b[k] for k in ('u10','v10','psfc','ustar','tau_x','tau_y','rho_air')),
-             np.int32(grid_relative),np.int32(n)))
+        outputs=tuple(b[k] for k in ('u10','v10','psfc','ustar','tau_x','tau_y','rho_air'))
+        if self.exchange is None:
+            self._forcing(((n+255)//256,),(256,),
+                (u10,v10,psfc,ustar,temperature,qv,self.grid.cosalpha,self.grid.sinalpha,
+                 *outputs,np.int32(grid_relative),np.int32(n)))
+        else:
+            self.exchange.forcing((u10,v10,psfc,ustar,temperature,qv),outputs,grid_relative=grid_relative)
         f=AtmosphereForcing(**b,time_seconds=float(time_seconds));self.forcing=f
         if self.waves is not None:self.waves.set_forcing(f)
         if self.surge is not None:self.surge.set_forcing(f)
@@ -95,7 +122,10 @@ class DeviceCoupler:
         if not math.isfinite(dt) or dt<=0:raise ValueError("ocean dt must be finite and positive")
         if self.waves is not None:
             if self.surge is not None:self.waves.set_water_level(self.surge.outputs.eta)
-            self.waves.step(dt)
+            if self.cost is not None:self.cost.stages['wave_solver'].begin()
+            if self.timeline is None:self.waves.step(dt)
+            else:self.timeline.step(dt)
+            if self.cost is not None:self.cost.stages['wave_solver'].end()
         if self.surge is not None:
             if self.waves is not None:self.surge.set_waves(self.waves.outputs)
             self.surge.step(dt)
@@ -103,31 +133,75 @@ class DeviceCoupler:
 
     def surface_roughness(self, znt,ustar,*,ice=None):
         import numpy as np
-        if self.waves is None:return
+        if self.waves is None or not self.roughness_feedback:return
+        if self.cost is not None:self.cost.stages['roughness_feedback'].begin()
         o=self.waves.outputs;n=self.grid.nx*self.grid.ny
+        if hasattr(o,'z0') and hasattr(o,'dspr'):
+            self._spectral_roughness(((n+255)//256,),(256,),
+                (o.z0,o.dspr,self.buffers['u10'],self.buffers['v10'],self.buffers['ustar'],
+                 self.bathymetry.wet,self.alpha,self.z0,np.int32(n)))
+            if self.exchange is not None:
+                self.exchange.prolong(self.z0,self.bathymetry.wet,
+                                      target=self.exchange.roughness,ice=ice)
+                if znt is not self.z0:self.exchange.apply(znt,ice=ice)
+            elif znt is not self.z0:
+                # Legacy common-grid callers use the same wet/ice-preserving
+                # write path via the device block map installed at attachment.
+                import cupy as cp
+                mask=(self.bathymetry.wet>.5)
+                if ice is not None:mask &= ice<=.01
+                cp.copyto(znt,self.z0,where=mask & (self.z0>0))
+            if self.cost is not None:self.cost.stages['roughness_feedback'].end()
+            return
+        if self.exchange is not None and self.exchange.factor != 1:
+            raise RuntimeError('coarsened coupling requires spectral z0 and dspr outputs')
         if znt is not self.z0:
-            self.surface_roughness(self.z0,ustar,ice=ice)
+            self._roughness(((n+255)//256,),(256,),
+                (o.hs,o.tp,ustar,self.bathymetry.depth,self.bathymetry.wet,
+                 self.zero if ice is None else ice,self.alpha,self.z0,np.int32(1),np.int32(n)))
         self._roughness(((n+255)//256,),(256,),
             (o.hs,o.tp,ustar,self.bathymetry.depth,self.bathymetry.wet,
              self.zero if ice is None else ice,self.alpha,znt,np.int32(znt is self.z0),np.int32(n)))
+        if self.cost is not None:self.cost.stages['roughness_feedback'].end()
 
     def atmosphere_step(self, fields, atmosphere, time_seconds,dt):
-        # Surface diagnostics are refreshed upstream. Every atmosphere step
-        # updates held forcing, and substeps partition that step exactly.
-        self.handoff(u10=fields['u10'],v10=fields['v10'],psfc=fields['psfc'],
+        # The atmosphere driver is read-only here. In particular PSFC is not
+        # refreshed outside the normal surface cadence in a one-way run.
+        if self.cost is not None:self.cost.stages['forcing_exchange'].begin()
+        self.handoff(u10=fields['u10'],v10=fields['v10'],psfc=atmosphere['p_interface'][0],
                      ustar=fields['ust'],temperature=atmosphere['temperature'][0],
                      qv=atmosphere['qv'][0],time_seconds=time_seconds,grid_relative=True)
-        remaining=float(dt)
-        while remaining>1.e-9:
-            sub=min(self.interval,remaining);self.advance(sub);remaining-=sub
+        if self.cost is not None:self.cost.stages['forcing_exchange'].end()
+        self.pending_seconds+=float(dt)
+        while self.pending_seconds>=self.interval-1.e-9:
+            self.advance(self.interval)
+            self.pending_seconds=max(0.,self.pending_seconds-self.interval)
+        self.atmosphere_steps+=1
         self.last_time=float(time_seconds)+float(dt)
+        output_due=(self.output_interval is not None and
+                    abs(self.last_time/self.output_interval-round(self.last_time/self.output_interval))<1.e-8)
+        final_due=self.run_end is not None and self.last_time>=self.run_end-1.e-8
+        if (output_due or final_due) and self.pending_seconds>1.e-9:
+            self.advance(self.pending_seconds)
+            self.pending_seconds=0.
 
     def history_fields(self):
         """Output-cadence device views, consumed by the existing Rust writer."""
+        if (self.waves is not None and callable(getattr(self.waves,'collect',None))
+                and self._collected_steps!=self.steps):
+            self.diagnostics.append(self.waves.collect())
+            self._collected_steps=self.steps
+        if self.cost is not None:self.cost.collect()
+        if self.output is not None:self.output.collect()
         from .door import rows
         values={'elevation':self.bathymetry.elevation,'wet':self.bathymetry.wet}
         if self.waves is not None:
-            o=self.waves.outputs;values.update(hs=o.hs,tp=o.tp,direction=o.direction)
+            o=self.waves.outputs
+            values.update({key:getattr(o,key) for key in rows()['products'] if hasattr(o,key)})
+            if self.roughness_feedback:
+                values.update(feedback_z0=self.z0,feedback_charnock=self.alpha)
         if self.surge is not None:
             o=self.surge.outputs;values.update(eta=o.eta,inundation=o.inundation)
-        return {rows()['products'][key]['history_name']:array for key,array in values.items()}
+        return {rows()['products'][key]['history_name']:
+                (array if self.exchange is None else self.exchange.history_field(key,array,self.bathymetry.wet))
+                for key,array in values.items()}

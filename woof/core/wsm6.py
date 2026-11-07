@@ -61,6 +61,18 @@ def _init_words_on_device(hail_opt: int):
     return words
 
 
+def prepare_model_graph(cfg):
+    """Upload immutable scheme coefficients before cold stream capture.
+
+    This does not call a column routine or advance any state. The normal
+    launcher consumes the same cache and the same words.
+    """
+    if cfg.mp_physics == 6:
+        _init_words_on_device(cfg.wsm6_hail_opt)
+    elif cfg.mp_physics == 106:
+        _wsm6r_coefficients()
+
+
 def wsm6_radar_words_on_device(hail_opt: int, *, initialization="column_oracle"):
     """mp_radar's radar_init words for ``refl10cm_wsm6``: (float32, float64).
 
@@ -122,7 +134,8 @@ def wsm6_tile_columns(kernel, ncol: int) -> int:
     try:
         from cupy_backends.cuda.api import driver
 
-        resident = driver.occupancyMaxActiveBlocksPerMultiprocessor(
+        from woof.backend import active_blocks_per_multiprocessor
+        resident = active_blocks_per_multiprocessor(
             getattr(kernel, "kernel", kernel).ptr, _COLUMN_TPB, 0)
         per_sm = min(per_sm, int(resident))
     except Exception:                              # noqa: BLE001

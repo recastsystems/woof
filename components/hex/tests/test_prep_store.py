@@ -159,6 +159,25 @@ def test_static_key_depends_on_grid_geog_and_options(env):
     assert ps.static_request(argv, {})[0] != k1
 
 
+@pytest.mark.parametrize("dataset", ["soilgrids/texture_top", "soiltemp_era5_1deg",
+                                     "soiltype_top_30s", "soiltemp_1deg"])
+def test_static_key_tracks_current_and_older_soil_inputs(env, dataset):
+    tmp, _, _ = env
+    geog = _geog(tmp / "geog")
+    grid = tmp / "grid.nc"
+    grid.write_bytes(b"grid")
+    argv = [*_engine(tmp, "rw_mpas_static"), "--grid", str(grid),
+            "--geog", str(geog), "--out", str(tmp / "s.nc")]
+    index = geog / dataset / "index"
+    if not index.exists():
+        # an older input beside the current one (GEOG_DATASETS keys every directory of a slot that exists)
+        index.parent.mkdir(parents=True)
+        index.write_text(f"type=categorical\n# {dataset}\n")
+    before = ps.static_request(argv, {})[0]
+    index.write_text(index.read_text() + "# revised scale or categories\n")
+    assert ps.static_request(argv, {})[0] != before
+
+
 def test_geog_layout_flat_or_container_is_not_keyed(tmp_path):
     nested = _geog(tmp_path / "a")
     flat = tmp_path / "b"
@@ -323,7 +342,7 @@ def test_expired_ticket_is_a_miss(env, monkeypatch):
 
 
 def test_the_engines_current_dataset_names_are_keyed(tmp_path):
-    """woof 2.9.5's rw_mpas_static reads texture_top (in soilgrids), soiltemp_era5_1deg and the lake-free land use.
+    """gpuwm 2.9.5's rw_mpas_static reads texture_top (in soilgrids), soiltemp_era5_1deg and the lake-free land use.
     A root laid out that way (the WOOF run-box image) keys; before, two slots read as missing and no static was
     ever stored (318 s rebuilt on every run of the 30 km region, 2026-10-23)."""
     geog = _geog(tmp_path / "geog")

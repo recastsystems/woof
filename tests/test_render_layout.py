@@ -1233,7 +1233,8 @@ def test_the_history_writer_and_the_delivered_tree_agree_on_the_segment():
 
     import types
     node = types.SimpleNamespace(
-        cfg=types.SimpleNamespace(grid_id=5),
+        cfg=types.SimpleNamespace(grid_id=5, run=types.SimpleNamespace(
+            mean_diag=0, diurnal_diag=0, output_diagnostics=0, auxhist3_interval=0)),
         clock=types.SimpleNamespace(tick_den=1),
         state=types.SimpleNamespace())
     writers.submit(node, 0)

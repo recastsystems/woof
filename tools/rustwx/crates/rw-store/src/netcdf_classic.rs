@@ -433,19 +433,187 @@ impl NcOwned {
 }
 
 /// What a [`NcClassicWriter::put_parallel`] producer hands back: data the
-/// caller already holds, or data the worker built.
+/// caller already holds, data the worker built, or bytes another classic file
+/// already stores in this file's encoding.
 pub enum NcSlab<'a> {
     Borrowed(NcData<'a>),
     Owned(NcOwned),
+    Copy(NcCopy<'a>),
+    /// Explicit typed positive-zero words in a fresh classic file.
+    Zero { ty: NcType, len: usize },
+}
+
+/// `elems` values of type `ty` stored big-endian at `offset` in `file` (another classic
+/// NetCDF file, e.g. a variable's whole slab there), copied byte for byte.
+///
+/// Carried variables already have the destination encoding. A positional
+/// kernel copy avoids temporary decoded and encoded arrays.
+pub struct NcCopy<'a> {
+    pub file: &'a File,
+    pub offset: u64,
+    pub ty: NcType,
+    pub elems: u64,
 }
 
 impl NcSlab<'_> {
-    fn data(&self) -> NcData<'_> {
+    fn data(&self) -> Option<NcData<'_>> {
         match self {
-            NcSlab::Borrowed(d) => *d,
-            NcSlab::Owned(o) => o.as_data(),
+            NcSlab::Borrowed(d) => Some(*d),
+            NcSlab::Owned(o) => Some(o.as_data()),
+            NcSlab::Copy(_) | NcSlab::Zero { .. } => None,
         }
     }
+}
+
+/// Copy `len` bytes from `src` at `from` to `dst` at `to`.  With `skip_holes` (the destination
+/// range is known zero), stretches the source stores as holes are left as the destination's own
+/// zeros, as the encoded path leaves an all-zero slab. Stored zeros that occupy
+/// data blocks still use the ordinary copy path.
+/// A source shorter than the range is refused, never read as zeros.
+fn copy_range(src: &File, from: u64, dst: &File, to: u64, len: u64, skip_holes: bool) -> std::io::Result<()> {
+    let end = from
+        .checked_add(len)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "copy range overflows"))?;
+    if src.metadata()?.len() < end {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "copy source ends before the declared slab",
+        ));
+    }
+    #[cfg(target_os = "linux")]
+    if skip_holes {
+        if let Some(segments) = data_segments(src, from, end) {
+            for (a, b) in segments {
+                copy_bytes(src, a, dst, to + (a - from), b - a)?;
+            }
+            return Ok(());
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = skip_holes;
+    copy_bytes(src, from, dst, to, len)
+}
+
+/// The stored (non-hole) stretches of `src` within `[from, end)`, or `None` where the filesystem
+/// does not report holes (the caller then copies everything).  `lseek` is called with explicit
+/// offsets and only its result is used, so workers sharing the descriptor do not interfere.
+#[cfg(target_os = "linux")]
+fn data_segments(src: &File, from: u64, end: u64) -> Option<Vec<(u64, u64)>> {
+    use std::os::fd::AsRawFd;
+    // A separately opened description keeps the caller's cursor unchanged.
+    // Copying itself uses explicit offsets, and this handle is local to one worker.
+    let reader = File::open(format!("/proc/self/fd/{}", src.as_raw_fd())).ok()?;
+    let fd = reader.as_raw_fd();
+    let mut segments = Vec::new();
+    let mut at = from;
+    while at < end {
+        // SAFETY: plain lseek on a descriptor open for the borrow.
+        let data = unsafe { libc::lseek(fd, at as libc::off_t, libc::SEEK_DATA) };
+        if data < 0 {
+            return match std::io::Error::last_os_error().raw_os_error() {
+                Some(libc::ENXIO) => Some(segments), // no stored byte after `at`: the rest is a hole
+                _ => None,
+            };
+        }
+        let data = data as u64;
+        if data >= end {
+            break;
+        }
+        // SAFETY: as above.
+        let hole = unsafe { libc::lseek(fd, data as libc::off_t, libc::SEEK_HOLE) };
+        if hole < 0 {
+            return None;
+        }
+        let stop = (hole as u64).min(end);
+        if stop <= data { return None; }
+        segments.push((data, stop));
+        at = stop;
+    }
+    Some(segments)
+}
+
+/// Copy `len` bytes: the kernel's `copy_file_range` where it takes the pair (no user buffer), else
+/// bounded positional reads and writes.  Neither file's cursor moves.
+fn copy_bytes(src: &File, from: u64, dst: &File, to: u64, len: u64) -> std::io::Result<()> {
+    // Kernel copying also consumes a core. Independent positional ranges
+    // share the existing pool instead of copying a whole large field on one
+    // caller. Fallback scratch remains bounded to 8 MiB per active worker.
+    const CHUNK: u64 = 32 << 20;
+    if len > CHUNK {
+        use rayon::prelude::*;
+        return (0..len.div_ceil(CHUNK)).into_par_iter().try_for_each(|i| {
+            let offset = i * CHUNK;
+            copy_bytes_serial(src, from + offset, dst, to + offset, (len - offset).min(CHUNK))
+        });
+    }
+    copy_bytes_serial(src, from, dst, to, len)
+}
+
+fn copy_bytes_serial(src: &File, from: u64, dst: &File, to: u64, len: u64) -> std::io::Result<()> {
+    let mut done = 0u64;
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::fd::AsRawFd;
+        while done < len {
+            let mut off_in = (from + done) as libc::loff_t;
+            let mut off_out = (to + done) as libc::loff_t;
+            let want = (len - done).min(1 << 30) as usize;
+            // SAFETY: both descriptors are open for the borrow; the offsets are ours, so neither
+            // file position is read or changed.
+            let n = unsafe {
+                libc::copy_file_range(src.as_raw_fd(), &mut off_in, dst.as_raw_fd(), &mut off_out, want, 0)
+            };
+            if n > 0 {
+                done += n as u64;
+                continue;
+            }
+            if n == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "copy source ends before the declared slab",
+                ));
+            }
+            let error = std::io::Error::last_os_error();
+            match error.raw_os_error() {
+                Some(libc::EINTR) => continue,
+                // A pair the kernel does not copy (another filesystem, an old kernel, a special
+                // file): the same bytes go through a bounded buffer below.
+                Some(libc::EXDEV | libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP | libc::EPERM | libc::EBADF)
+                    if done == 0 =>
+                {
+                    break
+                }
+                _ => return Err(error),
+            }
+        }
+    }
+    let mut buf = vec![0u8; (len - done).min(8 << 20) as usize];
+    while done < len {
+        let n = (len - done).min(buf.len() as u64) as usize;
+        read_exact_at(src, &mut buf[..n], from + done)?;
+        write_all_at(dst, &buf[..n], to + done)?;
+        done += n as u64;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn read_exact_at(file: &File, buf: &mut [u8], offset: u64) -> std::io::Result<()> {
+    std::os::unix::fs::FileExt::read_exact_at(file, buf, offset)
+}
+
+#[cfg(windows)]
+fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> std::io::Result<()> {
+    use std::os::windows::fs::FileExt;
+    while !buf.is_empty() {
+        let n = file.seek_read(buf, offset)?;
+        if n == 0 {
+            return Err(std::io::ErrorKind::UnexpectedEof.into());
+        }
+        buf = &mut buf[n..];
+        offset += n as u64;
+    }
+    Ok(())
 }
 
 /// Positional write: no shared cursor, so workers can write disjoint slabs at once.
@@ -527,6 +695,8 @@ pub struct NcClassicWriter {
     /// One flag per slab: `written[i]` has 1 entry for a fixed variable and
     /// `num_records` entries for a record variable.
     written: Vec<Vec<bool>>,
+    /// A failed write can leave bytes in a slab that a caller retries.
+    partial_write_failed: bool,
     /// Total file length, so `finish` can size the file even when the last
     /// slab written is not the last slab in the layout.
     file_len: u64,
@@ -724,6 +894,7 @@ impl NcClassicWriter {
             record_stride,
             num_records,
             written,
+            partial_write_failed: false,
             file_len,
         })
     }
@@ -837,19 +1008,72 @@ impl NcClassicWriter {
         let file = &self.file;
         let layouts = &self.layouts;
         let record_stride = self.record_stride;
-        targets
+        let sparse_zero_safe = !self.partial_write_failed;
+        let result = targets
             .par_iter()
             .enumerate()
             .try_for_each(|(i, &(idx, record))| -> RwResult<()> {
                 let slab = produce(i)?;
-                let data = slab.data();
                 let layout = &layouts[idx];
+                let at = layout.begin + record * record_stride;
+                let Some(data) = slab.data() else {
+                    if let NcSlab::Zero { ty, len } = &slab {
+                        if *ty != layout.ty || *len as u64 != layout.slab_elems {
+                            return Err(RwStoreError::Format(format!("netcdf_classic: zero slab '{}' type or length differs from its declaration", layout.name)));
+                        }
+                        if !sparse_zero_safe {
+                            let bytes=vec![0u8;(layout.slab_stride.min(8 << 20)) as usize];
+                            let mut done=0;
+                            while done<layout.slab_stride {
+                                let n=(layout.slab_stride-done).min(bytes.len() as u64) as usize;
+                                write_all_at(file,&bytes[..n],at+done)?;done+=n as u64;
+                            }
+                        }
+                        return Ok(());
+                    }
+                    let NcSlab::Copy(copy) = &slab else { unreachable!("only a copy has no data") };
+                    if copy.ty != layout.ty || copy.elems != layout.slab_elems {
+                        return Err(RwStoreError::Format(format!(
+                            "netcdf_classic: variable '{}' is {} x {} but the copied range is {} x {}",
+                            layout.name,
+                            layout.slab_elems,
+                            layout.ty.name(),
+                            copy.elems,
+                            copy.ty.name()
+                        )));
+                    }
+                    copy_range(copy.file, copy.offset, file, at, layout.slab_bytes, sparse_zero_safe)?;
+                    // Alignment padding is zero from create(); after a failed write it is rewritten.
+                    if !sparse_zero_safe && layout.slab_stride > layout.slab_bytes {
+                        let pad = vec![0u8; (layout.slab_stride - layout.slab_bytes) as usize];
+                        write_all_at(file, &pad, at + layout.slab_bytes)?;
+                    }
+                    return Ok(());
+                };
                 check_slab(layout, &data)?;
+                // Test stored bits before encoding an all-zero field.
+                let zero = match data {
+                    NcData::Chars(v) => v.par_chunks(1 << 18).all(|c| c.iter().all(|&x| x == 0)),
+                    NcData::Shorts(v) => v.par_chunks(1 << 16).all(|c| c.iter().all(|&x| x == 0)),
+                    NcData::Ints(v) => v.par_chunks(1 << 16).all(|c| c.iter().all(|&x| x == 0)),
+                    NcData::Floats(v) => v.par_chunks(1 << 16).all(|c| c.iter().all(|x| x.to_bits() == 0)),
+                    NcData::Doubles(v) => v.par_chunks(1 << 16).all(|c| c.iter().all(|x| x.to_bits() == 0)),
+                };
+                if sparse_zero_safe && zero {return Ok(());}
                 let mut buf = vec![0u8; layout.slab_stride as usize];
                 data.encode_par(&mut buf);
-                write_all_at(file, &buf, layout.begin + record * record_stride)?;
+                // create() truncates and set_len defines zero bytes throughout.
+                // Successful slabs cannot be written twice. After any failed
+                // write, retries must physically overwrite even zero payloads.
+                if !sparse_zero_safe || buf.par_iter().any(|&byte| byte != 0) {
+                    write_all_at(file, &buf, at)?;
+                }
                 Ok(())
-            })?;
+            });
+        if result.is_err() {
+            self.partial_write_failed = true;
+        }
+        result?;
         for (idx, record) in targets {
             self.written[idx][record as usize] = true;
         }
@@ -873,7 +1097,10 @@ impl NcClassicWriter {
         buf.resize(layout.slab_stride as usize, 0);
 
         self.file.seek(SeekFrom::Start(offset))?;
-        self.file.write_all(&buf)?;
+        if let Err(error) = self.file.write_all(&buf) {
+            self.partial_write_failed = true;
+            return Err(error.into());
+        }
         self.written[idx][record as usize] = true;
         Ok(())
     }
@@ -1309,6 +1536,193 @@ mod tests {
         let got = std::fs::read(&p).unwrap();
         assert_bytes_eq(&got, GOLDEN_CDF2, "cdf2 put_parallel");
         let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn sparse_zero_slabs_preserve_stored_words() {
+        let serial = tmp_path("zero-serial.nc");
+        let parallel = tmp_path("zero-parallel.nc");
+        let arrays = [vec![0.0f32; 7], vec![-0.0, f32::from_bits(0x7fc01234), 0., 1., 0., 0., 0.]];
+        for (path, sparse) in [(&serial, false), (&parallel, true)] {
+            let mut writer = NcClassicWriter::create(path, NcFormat::Data64,
+                vec![NcDim::fixed("n", 7)], vec![],
+                vec![NcVarDef::new("zero", NcType::Float, vec![0]),
+                     NcVarDef::new("bits", NcType::Float, vec![0]),
+                     NcVarDef::new("declared", NcType::Int, vec![0])], 0).unwrap();
+            if sparse {
+                writer.put_parallel(&[("zero", None), ("bits", None), ("declared", None)], |i| {
+                    Ok(if i == 2 { NcSlab::Zero {ty: NcType::Int, len: 7} }
+                       else { NcSlab::Borrowed(NcData::Floats(&arrays[i])) })
+                }).unwrap();
+            } else {
+                writer.put("zero", NcData::Floats(&arrays[0])).unwrap();
+                writer.put("bits", NcData::Floats(&arrays[1])).unwrap();
+                writer.put("declared", NcData::Ints(&[0; 7])).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        assert_eq!(std::fs::read(&serial).unwrap(), std::fs::read(&parallel).unwrap());
+        std::fs::remove_file(serial).unwrap();
+        std::fs::remove_file(parallel).unwrap();
+    }
+
+    #[test]
+    fn copied_slabs_write_the_same_file_as_encoded_slabs() {
+        // Source: a classic file holding `big` (fixed) and `rec` (records 0 and 1) at known offsets.
+        let n = 300_001usize;
+        let big: Vec<f32> = (0..n).map(|i| if i % 7 == 0 { -0.0 } else { i as f32 * 0.5 - 3.0 }).collect();
+        let rec: [Vec<i32>; 2] = [(0..5).collect(), (10..15).collect()];
+        let schema = || {
+            (
+                vec![NcDim::record("Time"), NcDim::fixed("n", n), NcDim::fixed("m", 5)],
+                vec![
+                    NcVarDef::new("big", NcType::Float, vec![1]),
+                    NcVarDef::new("rec", NcType::Int, vec![0, 2]),
+                    NcVarDef::new("other", NcType::Short, vec![0, 2]),
+                ],
+            )
+        };
+        let source = tmp_path("copy-src.nc");
+        let (dims, vars) = schema();
+        let mut w = NcClassicWriter::create(&source, NcFormat::Data64, dims, vec![], vars, 2).unwrap();
+        w.put("big", NcData::Floats(&big)).unwrap();
+        for r in 0..2u64 {
+            w.put_record("rec", r, NcData::Ints(&rec[r as usize])).unwrap();
+            w.put_record("other", r, NcData::Shorts(&[1, 2, 3, 4, 5])).unwrap();
+        }
+        let (big_at, rec_at, stride) =
+            (w.layouts[w.by_name["big"]].begin, w.layouts[w.by_name["rec"]].begin, w.record_stride);
+        w.finish().unwrap();
+        let encoded = tmp_path("copy-encoded.nc");
+        let copied = tmp_path("copy-copied.nc");
+        std::fs::write(&copied, vec![0xa5; 3 << 20]).unwrap();
+        let src = File::open(&source).unwrap();
+        let jobs: [(&str, Option<u64>); 5] =
+            [("rec", Some(1)), ("big", None), ("rec", Some(0)), ("other", Some(0)), ("other", Some(1))];
+        for (path, copy) in [(&encoded, false), (&copied, true)] {
+            let (dims, vars) = schema();
+            let mut w = NcClassicWriter::create(path, NcFormat::Data64, dims, vec![], vars, 2).unwrap();
+            w.put_parallel(&jobs, |i| {
+                Ok(match (jobs[i], copy) {
+                    (("big", _), true) => {
+                        NcSlab::Copy(NcCopy { file: &src, offset: big_at, ty: NcType::Float, elems: n as u64 })
+                    }
+                    (("big", _), false) => NcSlab::Borrowed(NcData::Floats(&big)),
+                    (("rec", Some(r)), true) => NcSlab::Copy(NcCopy {
+                        file: &src,
+                        offset: rec_at + r * stride,
+                        ty: NcType::Int,
+                        elems: 5,
+                    }),
+                    (("rec", Some(r)), false) => NcSlab::Borrowed(NcData::Ints(&rec[r as usize])),
+                    _ => NcSlab::Owned(NcOwned::Shorts(vec![1, 2, 3, 4, 5])),
+                })
+            })
+            .unwrap();
+            w.finish().unwrap();
+        }
+        let (a, b) = (std::fs::read(&encoded).unwrap(), std::fs::read(&copied).unwrap());
+        assert_eq!(a.len(), b.len());
+        assert!(a == b, "copied slabs differ from encoded slabs");
+        assert!(a == std::fs::read(&source).unwrap(), "both equal the source file");
+        // A range of the wrong type or length is refused by name, not written.
+        let (dims, vars) = schema();
+        let mut w = NcClassicWriter::create(&encoded, NcFormat::Data64, dims, vec![], vars, 2).unwrap();
+        let err = w
+            .put_parallel(&[("big", None)], |_| {
+                Ok(NcSlab::Copy(NcCopy { file: &src, offset: big_at, ty: NcType::Int, elems: n as u64 }))
+            })
+            .unwrap_err();
+        assert!(err.to_string().contains("copied range"), "{err}");
+        for p in [&source, &encoded, &copied] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn copied_hole_ranges_stay_unwritten_and_short_sources_are_refused() {
+        use std::io::{Seek, SeekFrom, Write};
+        let n = 3usize << 20; // 12 MiB of floats: whole 4 KiB blocks of hole in the middle
+        let source = tmp_path("hole-src.bin");
+        {
+            let mut f = File::create(&source).unwrap();
+            f.write_all(&[0x3f; 4 << 20]).unwrap();
+            f.seek(SeekFrom::Start(8 << 20)).unwrap();
+            f.write_all(&[0x40; 4 << 20]).unwrap(); // [4 MiB, 8 MiB) is a hole
+        }
+        let schema = || (vec![NcDim::fixed("n", n)], vec![NcVarDef::new("v", NcType::Float, vec![0])]);
+        let out = tmp_path("hole-dst.nc");
+        let (dims, vars) = schema();
+        let mut w = NcClassicWriter::create(&out, NcFormat::Data64, dims, vec![], vars, 0).unwrap();
+        let src = File::open(&source).unwrap();
+        w.put_parallel(&[("v", None)], |_| {
+            Ok(NcSlab::Copy(NcCopy { file: &src, offset: 0, ty: NcType::Float, elems: n as u64 }))
+        })
+        .unwrap();
+        let begin = w.layouts[0].begin as usize;
+        w.finish().unwrap();
+        let bytes = std::fs::read(&out).unwrap();
+        assert!(bytes[begin..] == std::fs::read(&source).unwrap()[..], "copied bytes differ");
+        let alloc = std::fs::metadata(&out).map(|m| std::os::unix::fs::MetadataExt::blocks(&m) * 512).unwrap();
+        let hole_backed = std::fs::metadata(&source).map(|m| std::os::unix::fs::MetadataExt::blocks(&m) * 512).unwrap();
+        if hole_backed < (12 << 20) {
+            // The filesystem keeps holes: the destination must not allocate the hole either.
+            assert!(alloc < (12 << 20), "the hole was written: {alloc} bytes allocated");
+        }
+        // A source shorter than the slab is refused by name, never read as zeros.
+        let (dims, vars) = schema();
+        let mut w = NcClassicWriter::create(&out, NcFormat::Data64, dims, vec![], vars, 0).unwrap();
+        let err = w
+            .put_parallel(&[("v", None)], |_| {
+                Ok(NcSlab::Copy(NcCopy { file: &src, offset: 8, ty: NcType::Float, elems: n as u64 }))
+            })
+            .unwrap_err();
+        assert!(err.to_string().contains("ends before"), "{err}");
+        for p in [&source, &out] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    #[test]
+    fn parallel_zero_slabs_replace_old_files_and_preserve_negative_zero() {
+        let p = tmp_path("zero-par.nc");
+        std::fs::write(&p, vec![0xff; 100_000]).unwrap();
+        let dims = vec![NcDim::fixed("n", 4097)];
+        let vars = vec![NcVarDef::new("zero", NcType::Float, vec![0]),
+                        NcVarDef::new("negative_zero", NcType::Float, vec![0])];
+        let mut w = NcClassicWriter::create(&p, NcFormat::Data64, dims, vec![], vars, 0).unwrap();
+        let jobs = [("zero", None), ("negative_zero", None)];
+        w.put_parallel(&jobs, |i| Ok(NcSlab::Owned(NcOwned::Floats(vec![if i==0 {0.0} else {-0.0};4097])))).unwrap();
+        assert!(w.put("zero", NcData::Floats(&vec![1.0;4097])).unwrap_err().to_string().contains("already written"));
+        assert!(w.put_parallel(&[("zero",None)], |_| Ok(NcSlab::Owned(NcOwned::Floats(vec![0.;4097])))).is_err());
+        let offsets:Vec<u64> = w.layouts.iter().map(|l|l.begin).collect();
+        w.finish().unwrap();
+        let got=std::fs::read(&p).unwrap();
+        assert!(got[offsets[0] as usize..offsets[0] as usize+4097*4].iter().all(|&v|v==0));
+        for word in got[offsets[1] as usize..offsets[1] as usize+4097*4].chunks_exact(4) {
+            assert_eq!(word, &(-0.0f32).to_be_bytes());
+        }
+        std::fs::remove_file(p).unwrap();
+    }
+
+    #[test]
+    fn failed_parallel_batch_retry_zeroes_partial_nonzero_payload() {
+        let p=tmp_path("retry-zero-par.nc");
+        let vars=vec![NcVarDef::new("a",NcType::Float,vec![0]), NcVarDef::new("b",NcType::Float,vec![0])];
+        let mut w=NcClassicWriter::create(&p,NcFormat::Data64,vec![NcDim::fixed("n",2)],vec![],vars,0).unwrap();
+        let jobs=[("a",None),("b",None)];
+        rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap().install(|| {
+            assert!(w.put_parallel(&jobs, |i| if i==0 {
+                Ok(NcSlab::Owned(NcOwned::Floats(vec![7.,8.])))
+            } else {Err(RwStoreError::Format("injected producer error".into()))}).is_err());
+        });
+        let begin=w.layouts[0].begin as usize;
+        assert_eq!(&std::fs::read(&p).unwrap()[begin..begin+4], &7.0f32.to_be_bytes());
+        w.put_parallel(&jobs, |_| Ok(NcSlab::Owned(NcOwned::Floats(vec![0.;2])))).unwrap();
+        w.finish().unwrap();
+        assert!(std::fs::read(&p).unwrap()[begin..begin+16].iter().all(|&v|v==0));
+        std::fs::remove_file(p).unwrap();
     }
 
     #[test]

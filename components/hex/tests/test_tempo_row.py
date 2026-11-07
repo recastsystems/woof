@@ -65,7 +65,7 @@ def _engine_root_with_tempo() -> Path:
 
 def test_factory_and_repeat_measurement_bind_the_same_selected_microphysics_files():
     # The engine's column suite imports its microphysics, which imports cupy
-    # at module level (woof 2.9.0 woof/core/microphysics.py), so loading the
+    # at module level (gpuwm 2.9.0 woof/core/microphysics.py), so loading the
     # factory needs the device stack; the conftest marks this test gpu.  THE
     # BREAKAGE THIS PREVENTS: the public CPU tier (no CuPy) failed here.
     pytest.importorskip("cupy")

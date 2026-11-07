@@ -241,7 +241,7 @@ def test_import_default_byte_identity_and_missing_notice(tmp_path):
     missing,report3=import_namelists(*pair,geogrid_tbl=tmp_path/'absent')
     assert missing==before
     assert len(report3.notices)==len(report.notices)+1
-    assert 'was not imported' in report3.notices[-1]
+    assert any('was not imported' in notice for notice in report3.notices)
 
 @pytest.mark.parametrize('partial',[False,True])
 @pytest.mark.parametrize('setting',[WPS_DEFAULT,TerrainSmoothing('none'),TerrainSmoothing('1-2-1',3),WPS_EXACT_DEFAULT])
@@ -420,7 +420,7 @@ def test_import_missing_namelist_table_notice(tmp_path):
     pair=_pair(tmp_path,wps=text)
     toml,report=import_namelists(*pair)
     assert all('static' not in d for d in tomllib.loads(toml)['domain'])
-    assert 'was not imported' in report.notices[-1]
+    assert any('was not imported' in notice for notice in report.notices)
 
 @pytest.mark.parametrize('setting',[TerrainSmoothing('none'),TerrainSmoothing('1-2-1',3),WPS_EXACT_DEFAULT])
 def test_production_overlay_threads_domain_policy(tmp_path,monkeypatch,setting):
@@ -875,7 +875,7 @@ def test_import_precision_leaves_a_one_arithmetic_smoother(tmp_path):
     flagged, report = _import(tmp_path, table, terrain_smoothing_precision='wps-float32')
     assert plain == flagged
     assert all(s == {'smooth_option': '1-2-1', 'smooth_passes': 3} for s in _statics(flagged))
-    assert 'leaves terrain smoothing 1-2-1 x3 as it is' in report.notices[-1]
+    assert any('leaves terrain smoothing 1-2-1 x3 as it is' in notice for notice in report.notices)
 
 
 @pytest.mark.parametrize('table,match', [

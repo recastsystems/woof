@@ -274,6 +274,52 @@ def test_mixed_engines_match_independent_spectra_and_tile_identity(env, variant)
         assert identity != changed
 
 
+@pytest.mark.gpu
+@pytest.mark.parametrize("shortwave", [1, 90])
+def test_relaxation_keeps_shortwave_heating_fluxes_and_restart_identity(env, shortwave):
+    import cupy as cp
+    from test_rrtmg_legacy_wiring import START
+    from woof.core.radiation_composition import radiation_adapters
+    from woof.core.streaming import _tile_scheme
+    from woof.io.restart import (_radiation_setup_identity, _callable_state_check,
+        RADIATION_CALLABLE_ARRAYS, RADIATION_CALLABLE_CONTAINERS)
+    cfg = SimpleNamespace(**(vars(env.cfg) | dict(ra_physics=0,
+        ra_lw_physics=31, ra_sw_physics=shortwave, swrad_scat=1.,
+        dt=10., wrf_rrtmg_compatibility="none")))
+    lat = env.lat.reshape(env.ny, env.nx)
+    lon = env.lon.reshape(env.ny, env.nx)
+    fields = dict(env.fields, glw=cp.full_like(lat, 300.))
+    atmosphere = dict(env.atmosphere,
+        theta=env.atmosphere["temperature"] / env.atmosphere["exner"])
+    arguments = dict(atmosphere=atmosphere, fields=fields, state=env.state)
+    combined = make_radiation(cfg, START, lat, lon)
+    result = combined(**arguments, cfg=cfg)
+    lw_cfg = SimpleNamespace(**(vars(cfg) | dict(ra_sw_physics=0)))
+    sw_cfg = SimpleNamespace(**(vars(cfg) | dict(ra_lw_physics=0)))
+    lw = make_radiation(lw_cfg, START, lat, lon)(**arguments, cfg=lw_cfg)
+    sw = make_radiation(sw_cfg, START, lat, lon)(**arguments, cfg=sw_cfg)
+    for reference, names in ((lw, ("rthratenlw", "glw")),
+                             (sw, ("rthratensw", "swdown", "gsw", "coszen"))):
+        for name in names:
+            np.testing.assert_array_equal(cp.asnumpy(getattr(result, name)),
+                cp.asnumpy(getattr(reference, name)), err_msg=name)
+    assert bool(cp.any(result.rthratenlw != 0))
+    assert bool(cp.any(result.swdown > 0))
+    for leaf in radiation_adapters(combined):
+        _callable_state_check(leaf, RADIATION_CALLABLE_ARRAYS,
+                             RADIATION_CALLABLE_CONTAINERS, "radiation component")
+    identity = _radiation_setup_identity(
+        SimpleNamespace(radiation_callable=combined), cfg)
+    assert identity["scheme_ids"] == {"lw":31, "sw":shortwave}
+    assert identity["algorithm"] == "independent-radiation-spectra-v1"
+    twin = _tile_scheme(combined, cp.full((2,3), 42., cp.float32),
+                        cp.full((2,3), -88., cp.float32))
+    assert all(fresh is not old for fresh, old in
+               zip(radiation_adapters(twin), radiation_adapters(combined)))
+    assert identity != _radiation_setup_identity(
+        SimpleNamespace(radiation_callable=twin), cfg)
+
+
 def test_legacy_shortwave_only_prices_no_inactive_longwave(monkeypatch):
     from woof.core import rrtmg_legacy as legacy
     from woof.core.preflight import estimate_experiment

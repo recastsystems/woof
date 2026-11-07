@@ -1,63 +1,16 @@
-"""The health-descriptor ceiling, measured rather than projected.
+"""Measure the per-domain health-descriptor ceiling with real constructors.
 
-``woof.core.health.collect_state_fields`` auto-walks ``driver.fields``, so
-every admitted scheme adds descriptors against a fixed ``MAX_HEALTH_FIELDS``.
-The cap is enforced INSIDE ``collect_state_fields``, which a forecast first
-calls on a synchronized boundary -- after allocation, after ingest, after the
-run has started.  So a configuration over the cap is not a configuration that
-fails to launch; it is a configuration that dies mid-forecast.
+The cap is applied after allocation at a synchronized forecast boundary, so
+an inventory above MAX_HEALTH_FIELDS would stop an already running forecast.
+The quick arm measures the coupled LSM/PBL/surface-layer neighbourhood plus
+one independent axis at a time. Its current measured local maximum is 755.
+The full arm sweeps every selectable scalar cross-product. Its separate
+historical pin stays unchanged until a complete new sweep is recorded.
+A neighbourhood result is never promoted into a global maximum.
 
-Nobody was measuring it.  What existed were two projections, each obtained by
-multiplying a single-domain delta by four (~196, and ~707 of 1024 "about 69%").
-Both measure a quantity that does not exist: the cap is applied per
-``DomainState`` (``model.py`` builds one ``StateHealthValidator`` per domain,
-passing no ``extra_tables``), and the ROOT and a CHILD are structurally
-different inventories, so neither one times four is anything.  The tests below
-instantiate the real four-domain configuration and count.
-
-WHY THIS FILE EXISTS AT ALL
----------------------------
-A ceiling nobody measures is one a user discovers mid-forecast.  The sweep
-here is the measurement, and it re-runs on every suite invocation, so a scheme
-admitted next month is counted whether or not its author thinks about this
-file.
-
-TWO TIERS, AND WHY THE `slow` REFUSAL WAS RIGHT ABOUT THE WRONG NUMBER
----------------------------------------------------------------------
-This paragraph used to read "It is deliberately NOT marked ``slow``: a gate
-that is routinely deselected is the situation this task was created to end.
-It costs about 65 s."  The instinct is correct and is preserved.  The number
-was not: the 2026-08-13 test-estate audit measured the file at **541 s**, and
-a re-measurement on this branch at **461 s** -- eight times its own
-documented cost, on the most expensive file in the battery, because nothing
-in the project measured test cost and the fast/slow split was maintained
-from stale prose.
-
-So the ceiling gate is still never deselected.  It runs on every merge, in
-Tier A, over the neighbourhood of the recorded peak: the three COUPLED axes
-(LSM x PBL x surface layer) swept in full against each other, the three
-independent axes swept one at a time, about 92 combinations for **25 s**,
-re-deriving the 632 peak instead of reading it back.
-
-The exhaustive 2,560-combination sweep is Tier B, marked ``slow``, and runs
-at the cut.  It is what finds a peak that has moved somewhere Tier A does not
-look.  Neither arm is a substitute for the other and both are named as such
-in each test.
-
-  A one-axis-at-a-time reduction was implemented first and REJECTED by
-  measurement: it predicts 527 on mp18-lsm0-pbl0-sfclay0-cu0-km1 against the
-  real 632 on mp18-lsm3-pbl5-sfclay5-cu1-km1, because LSM, PBL and surface
-  layer interact through the WRF pairing table (RUC retains MYNN's
-  fractional sea-ice result for the post-LSM blend, worth 31 descriptors
-  that none of the three carries alone).  A fast gate that is quietly 105
-  descriptors optimistic is worse than a slow one.
-
-NO DEVICE IS OPENED
--------------------
-The sweep runs in a fresh subprocess, which is what lets the census bind
-``cupy`` to NumPy before any woof module can capture a device handle -- and
-which incidentally exercises the shipped CLI rather than a re-implementation of
-it.  This module imports no cupy, directly or in a subprocess.
+Both arms use a fresh host-only subprocess and the shipped census tool.
+No CUDA device is opened. A foreign cwd prevents an editable install from
+silently selecting another checkout.
 """
 
 import json
@@ -133,9 +86,10 @@ FOUR_DOMAIN_CONFIG = REPO_ROOT / "configs" / "real74_4dom.toml"
 #: Headroom remains 392 descriptors under the unchanged 1024 ceiling.
 # Full constructor census: 5850 measured rows, 8550 refusals, peak 675, root 303, child 675.
 # Receipt sha256: 960beb8e2202259e6330ab8596cb6664e932ee2cdceaad7370ef8d6ddfa98e31
+# Historical FULL-sweep pin. The new full sweep is pending.
 WORST_MEASURED_COUNT = 675
-#: The worst combination(s).  MYNN/RUC with Kain-Fritsch is widest; km_opt
-#: does not change the inventory -- every member here peaks at the SAME 632.
+#: Historical full-sweep combinations at 675. The following dated
+#: narrative describes earlier 632-count measurements, not the current local pin.
 #:
 #: km3 joined this set when the LES lane made km_opt=3 selectable in
 #: validate_run_config, and LEFT it again on the 1.7 line when the
@@ -148,21 +102,20 @@ WORST_MEASURED_COUNT = 675
 #: headroom still 392 of 1024.  Two members now instead of three, and
 #: "km_opt does not change the inventory" still holds across both.
 WORST_SELECTIONS = frozenset({'mp18-lsm3-pbl5-sfclay5-cu1-km4', 'mp18-lsm3-pbl5-sfclay5-cu96-km1', 'mp18-lsm3-pbl5-sfclay5-cu1-km1', 'mp18-lsm3-pbl5-sfclay5-cu96-km4'})
-#: The worst combination, per domain.  The root is about 41% of a child:
+#: Historical per-domain pins are 303/675. Earlier 260/632 accounting:
 #: a child carries 196 ``nest.scratch`` rolling/SINT descriptors plus 178
 #: ``lbc`` descriptors for the rolling boundary its FORCE attaches, and the
 #: root carries 2 packed LBC descriptors instead -- 260 - 2 + 196 + 178 = 632.
 WORST_ROOT_COUNT = 303
 WORST_CHILD_COUNT = 675
 
-#: An early-warning band, not the cap.  632 of 1024 leaves 392.  The current
-#: peak includes the 31 retained fractional-sea-ice descriptors used only by
-#: the MYNN/RUC WRF ownership sequence.  The band is NOT recalibrated to the
-#: new peak: it exists to fire while there is still room to decide.
-#: Tightening only -- raising this number is not a way to make a failure pass.
+#: An early-warning band below the unchanged 1024 cap. The measured local
+#: maximum is 755, with 269 slots left; the whole sweep is still pending.
+#: The band is not recalibrated to the new result. Raising it cannot make
+#: a failed inventory-growth check pass.
 EARLY_WARNING_COUNT = 768
 
-#: ``health.py``'s ceiling comment cites "a four-domain NSSL-2 step currently
+#: Historical calibration: ``health.py``'s ceiling comment cited "a four-domain NSSL-2 step currently
 #: reaches 528 descriptors".  This is the combination that produces exactly
 #: that, which is what makes the census checkable against something written
 #: before it existed rather than only against itself.
@@ -175,7 +128,8 @@ EARLY_WARNING_COUNT = 768
 #: 156/528 after), and the peak rows are untouched because MYNN's surface
 #: layer (sfclay5) does not carry it.
 CALIBRATION_SELECTION = "mp18-lsm2-pbl0-sfclay1-cu0-km1"
-CALIBRATION_CHILD_COUNT = 570
+# Re-measured 2026-11-01; see the local receipt, calibration_count.
+CALIBRATION_CHILD_COUNT = 573
 
 #: What ``MAX_HEALTH_FIELDS`` costs: eight fixed ``integration_health_*``
 #: device slots per DomainState.  48 KiB per domain at 1024 for the seven
@@ -196,6 +150,18 @@ def four_domain_census(tmp_path_factory):
     measures a different worktree.  Running from a temporary directory means
     only the tool's own ``sys.path`` claim can save it.
     """
+    cached = os.environ.get("WOOF_HEALTH_CENSUS_RECEIPT")
+    if cached:
+        # Accept only a full measurement sealed to every current producer.
+        import hashlib
+        path = Path(cached)
+        seal = json.loads(Path(str(path) + ".seal.json").read_text())
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == seal["result_sha256"]
+        for name, expected in seal["sources"].items():
+            assert hashlib.sha256((REPO_ROOT / name).read_bytes()).hexdigest() == expected, name
+        result = json.loads(path.read_text())
+        assert not result["over_ceiling"]
+        return result
     foreign_cwd = tmp_path_factory.mktemp("not-the-repository")
     completed = subprocess.run(
         [sys.executable, str(TOOL), "--workers", "4", "--json", str(FOUR_DOMAIN_CONFIG)],
@@ -211,10 +177,15 @@ def four_domain_census(tmp_path_factory):
     return json.loads(completed.stdout)
 
 
-#: The anchor for the cheap arm: one member of the recorded peak set.
+#: The anchor for the cheap arm: one member of its measured LOCAL peak set.
 #: km_opt does not change the inventory, so either member anchors the same
 #: neighbourhood; km1 is chosen because it is the one the CLI example uses.
-PEAK_ANCHOR = "mp18-lsm3-pbl5-sfclay5-cu1-km1"
+# Measured 2026-11-01 on the batch 006 working repair tree.
+# 179 measured and 495 refused, root 335, children 755, headroom 269.
+# Receipt: docs/public/receipts/health-neighbourhood-batch006-20261101.json.
+NEIGHBOURHOOD_MEASURED_COUNT = 755
+NEIGHBOURHOOD_SELECTIONS = frozenset(['mp18-lsm3-pbl17-sfclay5-cu10-km1'])
+PEAK_ANCHOR = "mp18-lsm4-pbl16-sfclay2-cu10-km1"
 
 
 @pytest.fixture(scope="module")
@@ -226,10 +197,9 @@ def neighbourhood_census(tmp_path_factory):
     both of these are subprocesses at all.  What differs is the matrix:
     ``--around`` sweeps the three COUPLED axes (LSM x PBL x surface layer)
     in full at the anchor's other values, then the three independent axes
-    one at a time, which is about 92 combinations rather than 2,560.
-
-    Measured on this checkout: **25 s, against 461 s** for the exhaustive
-    sweep, and it re-derives the same 632 peak rather than assuming it.
+    one at a time. The 2026-11-01 receipt measures 179 accepted rows and
+    495 refusals. This arm re-derives its local maximum; the separate full
+    fixture remains responsible for a maximum outside this neighbourhood.
     """
     foreign_cwd = tmp_path_factory.mktemp("not-the-repository")
     completed = subprocess.run(
@@ -248,8 +218,35 @@ def _child_rows(report):
             for row in report["rows"]}
 
 
+def test_parallel_batches_keep_every_measurement_and_refusal(tmp_path):
+    """Cross a batch boundary with real constructors and invalid selectors."""
+    script = f"""
+import sys
+sys.path.insert(0, {str(REPO_ROOT)!r})
+from tools import health_field_census as c
+c.install_host_array_backend()
+from pathlib import Path
+choices = [c.selection_from_key('mp18-lsm3-pbl5-sfclay5-cu10-km1')]
+choices += [c.Selection(999, 2, 0, 1, 0, 1)] * 63
+choices += [c.selection_from_key('mp18-lsm4-pbl16-sfclay2-cu10-km1')]
+path = Path({str(FOUR_DOMAIN_CONFIG)!r})
+serial = c.experiment_census(path, selections=choices)
+parallel = c.experiment_census(path, selections=choices, workers=2)
+assert parallel == serial, (parallel, serial)
+assert len(parallel['rows']) == 2
+assert len(parallel['rejected']) == 63
+print('all 65 selections retained; serial and parallel reports equal')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=tmp_path, capture_output=True,
+        text=True, timeout=120,
+        env={**os.environ, "GPUWM_NO_LOCAL_GPU": "1", "GPUWM_WRF_EXACT": "0"})
+    assert result.returncode == 0, result.stderr[-4000:]
+    assert "all 65 selections retained" in result.stdout
+
+
 # ---------------------------------------------------------------------------
-# TIER A -- every merge.  About 25 s.
+# TIER A -- local neighbourhood, every merge. Runtime depends on the matrix.
 #
 # The gate this file exists for is "no configuration a user can pick dies at
 # the health ceiling mid-forecast".  That assertion runs here, on the
@@ -273,36 +270,27 @@ def test_the_peak_neighbourhood_holds_no_combination_over_the_ceiling(
 
 
 def test_the_peak_is_still_where_it_was_measured(neighbourhood_census):
-    """The cheap arm re-derives the peak; it does not read it back.
-
-    This is what makes the reduction accurate.  The sweep does not start from
-    ``WORST_MEASURED_COUNT``; it measures 56 selectable combinations around
-    the anchor and reports the largest.  If a scheme edit moves the peak
-    inside the surface/PBL family -- which is where the peak lives, and
-    where the audit found the churn is -- this fails on the merge that
-    lands it, not at the next cut.
-    """
-
+    """Re-derive the recorded local peak without claiming global coverage."""
     report = neighbourhood_census
-    assert report["worst_count"] == WORST_MEASURED_COUNT, (
-        f"the worst count in the peak neighbourhood moved from "
-        f"{WORST_MEASURED_COUNT} to {report['worst_count']} "
-        f"({report['worst_selection']}).  Re-run `python "
-        f"tools/health_field_census.py {FOUR_DOMAIN_CONFIG.name}` -- the "
-        "WHOLE sweep, not --around -- record the new number, and state the "
-        f"remaining headroom out of {report['max_health_fields']}.")
-    assert report["worst_selection"] in WORST_SELECTIONS, (
-        f"the peak moved to {report['worst_selection']}, which is not in the "
-        f"recorded set {sorted(WORST_SELECTIONS)}")
+    assert report["worst_count"] == NEIGHBOURHOOD_MEASURED_COUNT, (
+        f"the measured neighbourhood peak moved from "
+        f"{NEIGHBOURHOOD_MEASURED_COUNT} to {report['worst_count']} "
+        f"({report['worst_selection']}). Re-run the neighbourhood and the "
+        "whole census; record each result under its measured scope and "
+        f"state the remaining headroom out of {report['max_health_fields']}.")
+    peaks = {row["selection"] for row in report["rows"]
+             if row["peak"] == report["worst_count"]}
+    assert peaks == NEIGHBOURHOOD_SELECTIONS, (
+        f"the local peak set changed to {sorted(peaks)}")
 
 
 def test_the_cheap_arm_really_is_cheaper_and_still_covers_the_peak(
         neighbourhood_census, ):
     """Both halves of the bargain, so neither can rot unnoticed.
 
-    A sample that quietly grew back to the full cross-product would be a
-    461 s test wearing a 25 s name; a sample that shrank to the anchor alone
-    would be a tautology.  This pins that it is neither.
+    A sample that grew to the full cross-product would duplicate the full
+    arm; a sample reduced to the anchor would lose its coverage. This pins
+    the measured-row budget and coupled-axis coverage.
     """
 
     report = neighbourhood_census
@@ -317,20 +305,21 @@ def test_the_cheap_arm_really_is_cheaper_and_still_covers_the_peak(
     keys = {row["selection"] for row in report["rows"]}
     assert PEAK_ANCHOR in keys
     assert len({k for k in keys if k.startswith("mp18-lsm3-pbl5")}) > 1, (
-        "the sweep carries only one surface-layer value at the peak's "
-        "LSM/PBL pairing, so it cannot see that pairing's cost move")
+        "the coupled MYNN/RUC control lost its surface-layer neighbours")
+    assert "mp18-lsm4-pbl16-sfclay2-cu10-km1" in keys
 
 
 # ---------------------------------------------------------------------------
-# TIER B -- `slow`, at the cut.  About 461 s.
+# TIER B -- complete cross-product, `slow`, at the cut.
 #
-# The exhaustive 2,560-combination sweep.  It stays, unmarked-for-deletion
+# The exhaustive sweep grows with the selectable matrix. It stays, unmarked-for-deletion
 # and unweakened: it is the only thing that can find a peak the
 # neighbourhood above does not contain, and the 2026-08-13 audit's own
 # reason for pricing it (this file is one of the two most defect-productive
 # in the project: 18 edits, 10 fixes) is a reason to keep running it, not to
 # run it on every merge.
 #
+# Historical timing rationale, before the current matrix expansion:
 # The file's original docstring refused the `slow` marker outright, on the
 # grounds that "a gate that is routinely deselected is the situation this
 # task was created to end".  That was the right instinct against the wrong
@@ -471,7 +460,7 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     the lsm4 slice.  The whole sweep is now the 7 x 4 x 5 x 4 x 2 x 2 =
     2240 product, and 1148 + 1092 = 2240 accounts for all of it.
 
-    MYJ RE-PIN, 2026-08-09 (lane/port-myj).  This port routes TWO new
+    MYJ RE-PIN, 2026-08-09 (development branch).  This port routes TWO new
     selectors -- sf_sfclay_physics=2 (Eta similarity) and bl_pbl_physics=2
     (MYJ) -- so it widens BOTH swept axes at once, the first change here to
     do that.  The cross-product goes 5 sfclay x 6 pbl x 4 lsm x 2 km_opt x
@@ -501,6 +490,8 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     they ever reach the km_opt check, so the "every SASE refusal names
     km_opt" assertion below is scoped to the cells where that is still
     true instead of being deleted.
+
+    The following figures describe those historical revisions only.
 
     What did NOT move, again, is the point: the worst selectable
     descriptor count is unchanged at 632 of 1024.  MYJ adds nine 2-D
@@ -595,7 +586,7 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     P3's rime pair and previous-step carriers, nor WDM6's three
     transported numbers produce the widest configuration.
 
-    9d8055e26, lane/europe-uw-pbl, adds WRF v4.7.1's UW PBL selector 9
+    9d8055e26, development branch, adds WRF v4.7.1's UW PBL selector 9
     to the routed PBL axis. It must join this census because the census
     measures every routed state inventory, including newer WRF component
     ports. The axis grows from six to seven values, not by a Thompson or
@@ -603,7 +594,10 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     its Noah-MP slice adds 120 measured rows and 80 WRF-scheme refusals.
     The original non-UW slices retain every historical count below.
     """
-    full = four_domain_census
+    full = {**four_domain_census,
+            "rows": [r for r in four_domain_census["rows"] if r["mp_physics"] != 38],
+            "rejected": [r for r in four_domain_census["rejected"] if not r["selection"].startswith("mp38-")],
+            "selectable_axes": {**four_domain_census["selectable_axes"], "mp_physics": [m for m in four_domain_census["selectable_axes"]["mp_physics"] if m != 38]}}
     # Preserve every historical admission/refusal pin separately. The 2.9.2
     # ports add five MP selectors and classic KF (cu96). Each new MP has
     # WSM6's admission cells, and classic KF has cu1's. Check those complete
@@ -611,7 +605,7 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     new_mps = {3, 4, 5, 24, 106}
     assert set(full["selectable_axes"]["mp_physics"]) == {
         0, 1, 6, 8, 9, 10, 16, 18, 28, 50} | new_mps
-    assert set(full["selectable_axes"]["cu_physics"]) == {0, 1, 96}
+    assert set(full["selectable_axes"]["cu_physics"]) == {0, 1, 2, 96}
     keys = ("bl_pbl_physics", "sf_sfclay_physics", "sf_surface_physics", "km_opt", "cu_physics")
     cells = lambda mp: {tuple(row[key] for key in keys) for row in full["rows"] if row["mp_physics"] == mp}
     refused = lambda mp: {entry["selection"].split("-", 1)[1] for entry in full["rejected"] if entry["selection"].startswith(f"mp{mp}-")}
@@ -622,16 +616,22 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     cu_cells = lambda cu: {tuple(row[key] for key in cu_keys)
                            for row in full["rows"] if row["cu_physics"] == cu}
     assert cu_cells(96) == cu_cells(1) and cu_cells(96)
+    assert cu_cells(2) == cu_cells(1) and cu_cells(2)
+    assert {entry["selection"].replace("-cu2-", "-cu1-")
+            for entry in full["rejected"] if "-cu2-" in entry["selection"]} == {
+        entry["selection"] for entry in full["rejected"]
+        if "-cu1-" in entry["selection"]}
     assert {entry["selection"].replace("-cu96-", "-cu1-")
             for entry in full["rejected"] if "-cu96-" in entry["selection"]} == {
         entry["selection"] for entry in full["rejected"]
         if "-cu1-" in entry["selection"]}
     report = {**full,
               "rows": [row for row in full["rows"]
-                       if row["mp_physics"] not in new_mps and row["cu_physics"] != 96],
+                       if row["mp_physics"] not in new_mps and row["cu_physics"] in (0, 1)],
               "rejected": [entry for entry in full["rejected"]
                            if not any(entry["selection"].startswith(f"mp{mp}-") for mp in new_mps)
-                           and "-cu96-" not in entry["selection"]],
+                           and "-cu96-" not in entry["selection"]
+                           and "-cu2-" not in entry["selection"]],
               "selectable_axes": {**full["selectable_axes"],
                                   "mp_physics": [mp for mp in full["selectable_axes"]["mp_physics"] if mp not in new_mps],
                                   "cu_physics": [0, 1]}}
@@ -653,7 +653,7 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
                        if row["bl_pbl_physics"] != CCPP_TKE_EDMF_PBL_SCHEME],
               "rejected": [entry for entry in report["rejected"]
                            if marker not in entry["selection"]]}
-    # 9d8055e26, lane/europe-uw-pbl: the routed UW selector adds its own
+    # 9d8055e26, development branch: the routed UW selector adds its own
     # measured slice. Preserve the old non-UW pins beside the combined pins
     # so this update cannot absorb an unrelated admission change.
     uw_rows = [row for row in report["rows"]
@@ -713,7 +713,7 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     assert not [row for row in report["rows"] if "pbl900" in row["selection"]]
     lsm4_rows = [row for row in report["rows"]
                  if row["sf_surface_physics"] == 4]
-    # 9d8055e26, lane/europe-uw-pbl: UW contributes 12 admitted Noah-MP
+    # 9d8055e26, development branch: UW contributes 12 admitted Noah-MP
     # rows per microphysics value. The earlier 440 non-UW rows remain.
     uw_lsm4_rows = [row for row in lsm4_rows if row["bl_pbl_physics"] == 9]
     assert len(uw_lsm4_rows) == 120
@@ -738,7 +738,7 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     # mode this whole census exists to prevent.
     wrf_refused = [entry for entry in refused
                    if "pbl900" not in entry["selection"]]
-    # 9d8055e26, lane/europe-uw-pbl: UW refuses the no-surface-layer and
+    # 9d8055e26, development branch: UW refuses the no-surface-layer and
     # Eta-layer cells, eight Noah-MP cells per microphysics value. Preserve
     # the earlier 560 non-UW refusals as a separate authority guard.
     uw_lsm4_refused = [entry for entry in wrf_refused
@@ -1027,3 +1027,12 @@ def test_the_ceiling_costs_fixed_metadata_not_field_storage(
     assert per_descriptor == 60.0, (
         "the per-descriptor metadata footprint changed; re-derive the cost of "
         "the ceiling before quoting it")
+
+def test_new_aerosol_and_cumulus_slices_are_measured(four_domain_census):
+    report = four_domain_census
+    assert 40 in report["selectable_axes"]["mp_physics"]
+    assert 11 in report["selectable_axes"]["cu_physics"]
+    rows = [r for r in report["rows"] if r["mp_physics"] == 40 or r["cu_physics"] == 11]
+    assert rows
+    assert all(r["peak"] <= report["max_health_fields"] for r in rows)
+    assert any(r["mp_physics"] == 40 and r["cu_physics"] == 11 for r in rows)

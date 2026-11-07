@@ -7,7 +7,7 @@ table-driven kernel ``chem_inventory_add``: the six ``gocart_ecptec``
 emissions become six terms whose arithmetic path comes from the target row's
 units (ppmv -> the mol km-2 hr-1 ``conv`` path; ug kg-1 -> ``alt*dt/dz8w``).
 
-Measured on the a development machine RTX 4090 (sm_89): every species of every case,
+Measured on the test host 1 RTX 4090 (sm_89): every species of every case,
 including the untouched ones and the levels above kemit, bit-identical.
 """
 from __future__ import annotations
@@ -59,7 +59,7 @@ def _gpu(a):
 
 @requires_gpu
 def test_every_case_is_bitwise_wrf():
-    """Made to fire before commit, on the a development machine RTX 4090: writing conv as
+    """Made to fire before commit, on the test host 1 RTX 4090: writing conv as
     ``4.828e-4/(rho*(dz*60))*dt`` instead of WRF's left-to-right order moves
     SO2 and sulfate in every case (1 to 31 of 768 cells per species; the
     kemit=1 case is the weakest, one SO2 and two sulfate cells)."""

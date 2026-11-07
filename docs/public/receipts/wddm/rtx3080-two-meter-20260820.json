@@ -1,5 +1,5 @@
 {
- "card": "NVIDIA GeForce RTX 3080 10 GiB, Windows 11 WDDM (a development machine)",
+ "card": "NVIDIA GeForce RTX 3080 10 GiB, Windows 11 WDDM (test desktop)",
  "tip": "163f4e72c3fd on lane/pins-3080 (base fd1d0699d)",
  "suite": "thompson-mp8-ysu-mm5-noah-rrtmg-legacy-v1, 12 km, nz 49, 6 h GFS 2026-08-20T06Z, single domain",
  "why": "Task 240 read the 2026-08-19 calibration's `machine peak minus desktop baseline` as the run's cost and concluded the model was 0.76 GiB conservative.  These points sample BOTH meters at once: the machine-wide NVML series at 250 ms, and the runtime's own 20 Hz cudaMemGetInfo watcher, which on WDDM does not see the desktop compositor's allocations and is therefore the run's OWN device footprint.",

@@ -32,7 +32,7 @@ measurement and the margin derivation are recorded beside the constant in
 
 4. CROSS-BOX TOLERANCE.  Measured 2026-08-20 on sha256-identical input and
    module bytes: the Windows desktop (Python 3.13.7, numpy 2.2.6, UCRT) and
-   a development machine (Python 3.14.4, numpy 2.3.5, glibc 2.43) agree on 103 of
+   test host 1 (Python 3.14.4, numpy 2.3.5, glibc 2.43) agree on 103 of
    279 metric values to the bit and differ on the rest.  The receipt
    self-hash is therefore a THIS-BOX identity, exactly as the portable frame
    header rule already says for a decode; what travels is the metric values
@@ -515,7 +515,7 @@ def test_the_registration_policy_hash_survives_a_move_between_boxes(tmp_path):
     """The raw registration hash binds resolved paths; the policy one does not.
 
     Found against the artifact: the same source TOML registered on the
-    Windows desktop and on a development machine produced registration hashes
+    Windows desktop and on test host 1 produced registration hashes
     31607149b0ed and a419270a4e9c, because one spells the inputs
     ``C:\\Users\\<user>\\...`` and the other ``/home/<user>/...``.  A
     cross-box comparison keyed on that hash refuses every real pair.

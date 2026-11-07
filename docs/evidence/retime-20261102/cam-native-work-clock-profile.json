@@ -1,0 +1,45 @@
+{
+  "scope": "Diagnostic inclusive clock64 cycles, block0/thread0 per module, whole real forecast. Nested times overlap; these are not matched speed measurements or a lower bound.",
+  "commit": "36b0f256631277dbcd55beec5d496a01ac9cb0d5",
+  "functions": [
+    "camrad_",
+    "radctl_",
+    "radclwmx_",
+    "radabs_",
+    "radcswmx_",
+    "radabs_parallel_",
+    "radems_"
+  ],
+  "images": [
+    {
+      "camrad_": {
+        "selected_thread_cycles": 687533803,
+        "selected_thread_calls": 26
+      },
+      "radctl_": {
+        "selected_thread_cycles": 602063397,
+        "selected_thread_calls": 26
+      },
+      "radclwmx_": {
+        "selected_thread_cycles": 81649476,
+        "selected_thread_calls": 26
+      },
+      "radabs_": {
+        "selected_thread_cycles": 1387385,
+        "selected_thread_calls": 4
+      },
+      "radcswmx_": {
+        "selected_thread_cycles": 398159204,
+        "selected_thread_calls": 24
+      },
+      "radabs_parallel_": {
+        "selected_thread_cycles": 3557630,
+        "selected_thread_calls": 2
+      },
+      "radems_": {
+        "selected_thread_cycles": 6518518,
+        "selected_thread_calls": 2
+      }
+    }
+  ]
+}

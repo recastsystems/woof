@@ -2,7 +2,7 @@
 
 THE BREAKAGE THIS PREVENTS
 --------------------------
-Until lane/verify-mynn-sfclay-wrf461 the CUDA MYNN surface layer
+Until development branch the CUDA MYNN surface layer
 (sf_sfclay_physics=5) called CUDA's expf/logf/powf/atanf, fused the psi table
 interpolation into one FMA and associated several products differently from
 gfortran.  Against WRF 4.6.1's SFCLAY1D_mynn over the 110-column oracle's
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "data" / "oracles" / "mynn" / "sfclay-columns-wrf461"
 KERNELS = ROOT / "woof" / "core" / "kernels"
 
-#: SHA-256 of the uncompressed oracle file build.sh wrote on box W1
+#: SHA-256 of the uncompressed oracle file build.sh wrote on test host
 #: (gfortran 13.3.0, glibc 2.39, Xeon 8559C); also in PROVENANCE.txt.
 ORACLE_SHA256 = (
     "c938d98dcd99430804f99b2f0cf00ba15c98e2b87e3f88adb8e69801ad8b027c")
@@ -98,7 +98,7 @@ def test_surface_unit_compiles_without_fma_and_with_its_libm():
 
 def test_surface_unit_keeps_its_heavy_helpers_out_of_line():
     # Breakage: with these helpers __forceinline__, NVRTC took 33-40 s on the
-    # wrf_461 form and 12-13 minutes on gsl_wrf39 (box W1, 2026-10-07),
+    # wrf_461 form and 12-13 minutes on gsl_wrf39 (test host, 2026-10-07),
     # paid on every first run on a new machine and every cache miss; out of
     # line, both forms compile in about 1.5 s with the same words.
     code = (KERNELS / "mynn_surface.cu").read_text(encoding="utf-8")

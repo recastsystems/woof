@@ -1,0 +1,534 @@
+{
+  "schema": "gpuwm.pxlsm.coupled-proof.v1",
+  "date": "2026-11-01",
+  "qualified_selector": {
+    "sf_surface_physics": 7,
+    "pxlsm_soil_nudge": 0
+  },
+  "held": {},
+  "licence": "WRF public domain. Own public WRF source only; source-pin.json and coupling-source-pin.json record each source and notice.",
+  "strict_replay": {
+    "strict": true,
+    "compared_words": 525600,
+    "differing_words": 0,
+    "excluded_words": 0,
+    "cupy": "14.2.0",
+    "numpy": "2.5.4",
+    "device": "NVIDIA GeForce RTX 4090"
+  },
+  "native": {
+    "steps": [
+      1,
+      61,
+      121
+    ],
+    "compiler": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+    "artifacts": {
+      "files": [
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-capture/main/wrf.exe",
+          "bytes": 50020408,
+          "sha256": "e31cc9a4dfc6f8502f75eda8891c6b379481cc7ea6d49af4a093fa2961a2fe51",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-capture/configure.wrf",
+          "bytes": 21238,
+          "sha256": "543c42344c505ffbeee89a3233b7753095d1a7b2b56b806fdf93e28926bf7570",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-capture/phys/module_sf_pxlsm.F",
+          "bytes": 107112,
+          "sha256": "0ed96ff5fb7dce0724391d22570410417a49d603eb12a91c92e1acb2eb05de00",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-capture/phys/module_sf_pxlsm_data.F",
+          "bytes": 45222,
+          "sha256": "c89d7b9fa4a925539189dadb0174c593ffc69cfbedc3a128b3ea94de39f2fa0d",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000001.bin",
+          "bytes": 2277696,
+          "sha256": "d8fd603e0dde63802c248a98972d8b0bd76900eff610c8e41e8894c7cad9c03c",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000061.bin",
+          "bytes": 2277696,
+          "sha256": "fa1b7f6290a989a62adc8b47b8ba5d2e0af786f08f0c2c66ef8e76d727c5134d",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/capture/case-native-step000121.bin",
+          "bytes": 2277696,
+          "sha256": "c6dd441e9cab15833a28d7a4fc17ec615f5d0dca287eb5d05f04eeff0fb86d70",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000001.bin",
+          "bytes": 700800,
+          "sha256": "e1399dd066a42014bca0fe872b6632ca8b34e6d5029362db1abe6cb727bc8411",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000061.bin",
+          "bytes": 700800,
+          "sha256": "8e7d25d78f42e2e8482532646bb01b3a73d21c2cead30746cc4eb5e15d2b50f2",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/capture/out-native-step000121.bin",
+          "bytes": 700800,
+          "sha256": "41a8c63648b5388208643cb46902f5ae76ce8f6494993202ccfa847fb0727704",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/wrfout_d01_2000-01-24_12:00:00",
+          "bytes": 6685010,
+          "sha256": "896f3ef310396a8b25767e47e9696d0ce09a3527261b17b6aed8ee1886a27c13",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/wrfout_d01_2000-01-24_13:00:00",
+          "bytes": 8093548,
+          "sha256": "052e2183ab473baeed88572fb125d543c64bb331ea3698d97addd2a89d61a082",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/wrfout_d01_2000-01-24_14:00:00",
+          "bytes": 8173086,
+          "sha256": "76174c901272ff3489a1e60810ccc9daa0cdf1e71c2924b58bbcb0bbcb767259",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/wrfout_d01_2000-01-24_15:00:00",
+          "bytes": 8231185,
+          "sha256": "8c19b48354f8d4523f0b919beca40cff4fafd1fe71d7300a7212d05d73475c89",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/wrfrst_d01_2000-01-24_15:00:00",
+          "bytes": 36714262,
+          "sha256": "0739329e43c6d7d6cf88beb694a02efb22a49264fcbf1d4ca5fbdeef03f61fcd",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/namelist.input",
+          "bytes": 1548,
+          "sha256": "5f3da484a55dccca9218029d10a2478181621ee215640bdcd09f977d2388bb89",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/namelist.output",
+          "bytes": 86455,
+          "sha256": "5d2679919a28fc2734b8ffce8d56aaf74e90c7cb9e4551dec5880a995f884114",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/wrfinput_d01",
+          "bytes": 7594741,
+          "sha256": "7d1e065cb5b58a08d01bf46daeeed1b2eb09100d10a55ef7c2917bc066f85e72",
+          "symlink": false
+        },
+        {
+          "path": "<scratch>/port-sf7-pxlsm/native-forecast/wrfbdy_d01",
+          "bytes": 2578723,
+          "sha256": "46dac57816a68b0507226d3997462848d29db80426064b5bf83c16b248e17877",
+          "symlink": false
+        }
+      ],
+      "captures": [
+        1,
+        61,
+        121
+      ],
+      "strict_compiler": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+      "native_tree": "reused strict build with unrelated source differences retained separately"
+    },
+    "build_scope": "Reused strict native build. PX and PX data match public 4.6.1/4.7.1 exactly before capture instrumentation. Other native-tree differences in surface driver, physics initialization and configuration checks are retained in evidence/module_*.native-build.diff; selected PX cases are unaffected. Whole tree is not claimed byte-identical to upstream."
+  },
+  "forecast": {
+    "start": "2000-01-24T12:00:00Z",
+    "end": "2000-01-24T15:00:00Z",
+    "grid": [
+      73,
+      60,
+      47
+    ],
+    "dx_m": 30000,
+    "dt_s": 60,
+    "steps": 180,
+    "selectors": {
+      "mp_physics": 6,
+      "cu_physics": 1,
+      "bl_pbl_physics": 7,
+      "sf_sfclay_physics": 7,
+      "sf_surface_physics": 7,
+      "ra_lw_physics": 1,
+      "ra_sw_physics": 1,
+      "pxlsm_soil_nudge": 0
+    },
+    "mode": "fast",
+    "wall_seconds": 32.382791774347425,
+    "forecast_execution_s": 9.17585065215826,
+    "front_door": "woof go --wrfinput native-input --outdir gpu-forecast-corrected --products none --allow-shared-gpu --run-stamp off",
+    "input_authority_sha256": {
+      "adapter_code": "d9e1381c52b31e8814b7a5adaac38d21c041ded84cf08f54e45481366a112b70",
+      "experiment_config": "1cedf08558c623368873fa459a0a1735c35dc482d50ffa5a276ee7d50b996432",
+      "namelist_input": "8ee68b8fdcf1795d5d9d690ebcbfbcc09852a358222a6f7e9413c0e83352e735",
+      "nest_initial_code": "f2b878a7033aac37ead1dedcee6e96838734faf7c71c1134222388e725ab730e",
+      "preparation_receipt": "ca4f1b079e36501dbc2a8716a3d25e698d445b4cd97769ca46612b67482159a7",
+      "soil_recovery_code": "b2e2f4bf367fb097a7314664324a32ddf117eba5975b34f3cdd71206596d2007",
+      "state_adapter_code": "96ddfc1c581c729964e5798f4095dfb3499e418e835027e0e2cab99131243834",
+      "surface_adapter_code": "d6636cbf416e808823eff6882fb09e8fb333d3bad558d71d6368402d28e4ed11",
+      "wrfbdy": "46dac57816a68b0507226d3997462848d29db80426064b5bf83c16b248e17877",
+      "wrfinput_d01": "7d1e065cb5b58a08d01bf46daeeed1b2eb09100d10a55ef7c2917bc066f85e72"
+    },
+    "limitations": [
+      "Native real.exe two-layer input handoff; generic source soil preparation is not qualified here.",
+      "Native use_theta_m=1 is imported as dry theta, an existing declared dycore divergence.",
+      "One case is not general observation skill or whole-trajectory bitwise parity.",
+      "Forecast ran from a dirty integration tree based on fcb7949c941a; subsequent changes only finalize schema metadata, restart-field classification, tests and receipts. CUDA source manifests are retained.",
+      "CuPy exposes no compiled PTX/cubin here; actual loader sources/options and device frame attributes are retained."
+    ]
+  },
+  "visual_inspection": {
+    "renderer": "gpuwm.rustwx.run_renderer_series -> rw_wrfbatch; rw_compare with observed ASOS dots",
+    "hours": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "fields": [
+      "T2",
+      "Td2",
+      "10m wind",
+      "HFX",
+      "LH",
+      "UST"
+    ],
+    "observations": "1904 screened reports, 476 stations; F003 matched counts differ by variable and screening.",
+    "seen": "Cold Midwest and warmer Gulf/Atlantic, dry inland dewpoint gradient, first-hour inland wind adjustment, and stronger water/coastal turbulent fluxes agree in structure. No evident striping, seams or divergent coastal patches. Coarse grid misses some station values.",
+    "F003_station_scores": {
+      "valid_time": "2000-01-24T15:00:00Z",
+      "stations": [
+        {
+          "arms": [
+            {
+              "bias": -0.3457930378912776,
+              "count": 383,
+              "label": "Native WRF",
+              "rmse": 1.7139118769935093
+            },
+            {
+              "bias": -0.363330725108857,
+              "count": 383,
+              "label": "WOOF PX",
+              "rmse": 1.716123560340984
+            }
+          ],
+          "quantity": "temperature_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF"
+        },
+        {
+          "arms": [
+            {
+              "bias": -0.030704772291693463,
+              "count": 378,
+              "label": "Native WRF",
+              "rmse": 1.888043538686114
+            },
+            {
+              "bias": -0.03986948669912482,
+              "count": 378,
+              "label": "WOOF PX",
+              "rmse": 1.8909414960897444
+            }
+          ],
+          "quantity": "dewpoint_2m",
+          "status": "ready",
+          "units": "K",
+          "winner": "Native WRF"
+        },
+        {
+          "arms": [
+            {
+              "bias": 0.4504971294146663,
+              "count": 382,
+              "label": "Native WRF",
+              "rmse": 1.7307686429408375
+            },
+            {
+              "bias": 0.4514143600919724,
+              "count": 382,
+              "label": "WOOF PX",
+              "rmse": 1.7316252679028727
+            }
+          ],
+          "quantity": "wind_speed_10m",
+          "status": "ready",
+          "units": "m s-1",
+          "winner": "Native WRF"
+        }
+      ]
+    }
+  },
+  "timing": {
+    "PX": {
+      "stage": "_run_pxlsm",
+      "columns": 87600,
+      "soil_layers": 2,
+      "dt": 60.0,
+      "dtbl": 60.0,
+      "samples_ms": [
+        0.5293868637084961,
+        0.5309542465209961,
+        0.5298252868652343,
+        0.5297721481323242,
+        0.5304070281982421,
+        0.5364940643310547,
+        0.5333062362670898
+      ],
+      "graph_launches_per_sample": 50,
+      "median_ms": 0.5304070281982421
+    },
+    "Noah": {
+      "stage": "_run_noah",
+      "columns": 87600,
+      "soil_layers": 4,
+      "dt": 60.0,
+      "dtbl": 60.0,
+      "samples_ms": [
+        0.4475263977050781,
+        0.4433631896972656,
+        0.4430246353149414,
+        0.44294593811035154,
+        0.44287742614746095,
+        0.4446803283691406,
+        0.44545406341552735
+      ],
+      "graph_launches_per_sample": 50,
+      "median_ms": 0.4433631896972656
+    },
+    "ordering": "paired alternating PX/Noah and Noah/PX, same shared card",
+    "px_over_noah": 1.1963262637126262,
+    "device": "NVIDIA GeForce RTX 5090",
+    "mode": "fast",
+    "input": "native-step000061 real 2000-01-24 13Z, replicated 20 times; Noah soil interpolated on GPU"
+  },
+  "timing_earlier_shared_4090": {
+    "PX": {
+      "stage": "_run_pxlsm",
+      "columns": 87600,
+      "soil_layers": 2,
+      "dt": 60.0,
+      "dtbl": 60.0,
+      "samples_ms": [
+        0.9400934600830078,
+        0.9417113494873047,
+        0.9390080261230469,
+        0.9377382659912109,
+        0.939315185546875,
+        0.9406463623046875,
+        0.9411583709716796
+      ],
+      "median_ms": 0.9400934600830078,
+      "graph_launches_per_sample": 50
+    },
+    "Noah": {
+      "stage": "_run_noah",
+      "columns": 87600,
+      "soil_layers": 4,
+      "dt": 60.0,
+      "dtbl": 60.0,
+      "samples_ms": [
+        0.7939276885986328,
+        0.9023693084716797,
+        0.9236479949951172,
+        0.8531558227539062,
+        0.6509977722167969,
+        0.6508544158935546,
+        0.6471270751953125
+      ],
+      "median_ms": 0.7939276885986328,
+      "graph_launches_per_sample": 50
+    },
+    "px_over_noah": 1.1841046402379203,
+    "device": "NVIDIA GeForce RTX 4090",
+    "mode": "fast",
+    "input": "native-step000061 real 2000-01-24 13Z, replicated 20 times; Noah soil interpolated on GPU"
+  },
+  "timing_scope": "Production land stages including forcing, column, post-call bookkeeping, repeated native call-61 forcing. Noah four-layer initial soil states interpolated on GPU from native PX two-layer centres. Paired alternating order on RTX 5090 is the final comparison; shared-4090 Noah samples varied 0.647-0.924 ms.",
+  "lifecycle": {
+    "gpu_checks": "6 passed: coupled continuation, ensemble isolation/equivalence, fractional ice continuation, nests feedback 0/1 and tree checkpoint",
+    "CPU_schema_checks": "13 passed, 7 GPU cases skipped in CPU invocation; actual GPU cases ran separately",
+    "native_restart_scope": "Actual native wrfrst read, restore and physics overlay, elapsed=10800 s, AKPBL rebuilt from KPBL. Native warm forecast continuation was not run; GPU checkpoint continuation was tested.",
+    "stock_admission": "Real namelist selects 7/7/7 and two soil layers. Analysis nudge=1 refused by name."
+  },
+  "default_off": {
+    "mode": "fast",
+    "steps": 4,
+    "arrays": 181,
+    "words": 97892,
+    "differing_bytes": 0
+  },
+  "registry_checks": {
+    "base": {
+      "citation_failures": [
+        "ocean_analysis: consuming_read 'gpuwm/ocean/mixed_layer/__init__.py' does not reference it in code; the claim has outlived the read that justified it",
+        "ocean_analysis_source: consuming_read 'gpuwm/ocean/mixed_layer/__init__.py' does not reference it in code; the claim has outlived the read that justified it",
+        "omdt: consuming_read 'gpuwm/core/surface_ocean.py' does not reference it in code; the claim has outlived the read that justified it",
+        "seaice_threshold: implemented=false, but it is a gpuwm configuration field -- something carries the value, so the roadmap row has outlived the gap it describes. Either register it as implemented with its consuming read, or record in _UNIMPLEMENTED_BUT_CARRIED why the field exists while the knob does not"
+      ],
+      "uncited_defaults": [
+        "ocean_mld_climatology"
+      ]
+    },
+    "lane": {
+      "citation_failures": [
+        "ocean_analysis: consuming_read 'gpuwm/ocean/mixed_layer/__init__.py' does not reference it in code; the claim has outlived the read that justified it",
+        "ocean_analysis_source: consuming_read 'gpuwm/ocean/mixed_layer/__init__.py' does not reference it in code; the claim has outlived the read that justified it",
+        "omdt: consuming_read 'gpuwm/core/surface_ocean.py' does not reference it in code; the claim has outlived the read that justified it",
+        "seaice_threshold: implemented=false, but it is a gpuwm configuration field -- something carries the value, so the roadmap row has outlived the gap it describes. Either register it as implemented with its consuming read, or record in _UNIMPLEMENTED_BUT_CARRIED why the field exists while the knob does not"
+      ],
+      "uncited_defaults": [
+        "ocean_mld_climatology"
+      ]
+    },
+    "new_citation_failures": [],
+    "new_uncited_defaults": [],
+    "px_rows": {
+      "pxlsm_smois_init": {
+        "component_id": "land_surface",
+        "consuming_read": "woof/core/pxlsm_runtime.py",
+        "default": 1,
+        "per_domain": false,
+        "read_when": {
+          "sf_surface_physics": 7
+        },
+        "type": "integer"
+      },
+      "pxlsm_modis_veg": {
+        "component_id": "land_surface",
+        "consuming_read": "woof/core/pxlsm_runtime.py",
+        "default": 0,
+        "per_domain": false,
+        "read_when": {
+          "sf_surface_physics": 7
+        },
+        "type": "integer"
+      },
+      "pxlsm_soil_nudge": {
+        "component_id": "land_surface",
+        "consuming_read": "woof/core/pxlsm_runtime.py",
+        "default": 0,
+        "per_domain": false,
+        "read_when": {
+          "sf_surface_physics": 7
+        },
+        "type": "integer",
+        "warnings": [
+          "Value 1 is refused under PX_ANALYSIS_STREAM until the live surface-FDDA analysis stream and its record clock are attached."
+        ]
+      },
+      "sgfdda_interval_m": {
+        "component_id": "land_surface",
+        "consuming_read": "woof/core/pxlsm_runtime.py",
+        "default": 180,
+        "per_domain": false,
+        "read_when": {
+          "sf_surface_physics": 7
+        },
+        "type": "integer"
+      }
+    },
+    "inherited_failed_rows_unchanged": true
+  },
+  "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/port-sf7-pxlsm",
+  "evidence_sha256": {
+    "replay-o2.json": {
+      "sha256": "1bc6f0debb134f2051a809c76d355cd31189dc9d84c53758e0d6c99d6b4e57b7",
+      "bytes": 44627
+    },
+    "native-o2-artifacts.json": {
+      "sha256": "bdb176df07e1d00cb888e4ab0a64a7c6a7764dd26c1ea3fc22fe18e357e617de",
+      "bytes": 4746
+    },
+    "px-runtime-tests-final.log": {
+      "sha256": "f1da4c350e6d159f30f7a710b6cf9dd91d909113e62509592e2102d986f18e22",
+      "bytes": 110
+    },
+    "px-cpu-final.log": {
+      "sha256": "f697af7c848551ed779989b256e0fd12c171908276017c590b0aab45236a0f98",
+      "bytes": 629
+    },
+    "px-admission-final.json": {
+      "sha256": "868b9d913fb8e6ef82a85b76b8669de368bd32e274f5b6cb155fdb17e5e73877",
+      "bytes": 897
+    },
+    "native-restart.json": {
+      "sha256": "3210cd8146656b797774af1d968609978b22bf68dba42e700dfb8b6e729f990a",
+      "bytes": 13409
+    },
+    "stage-timing-paired-fast.json": {
+      "sha256": "c8b4c417f359fdd484d6b5668eee1a69654a73bc3f02fcaafc9675dbafb57836",
+      "bytes": 1082
+    },
+    "stage-timing-fast.json": {
+      "sha256": "9df57cb26e22a48573f049850c7f1584eedcd6b14a157cebb2a584a9eee513b3",
+      "bytes": 1004
+    },
+    "default-off-fast.json": {
+      "sha256": "786528e9c9cff84b03a82ab169254ce9304c52bc9b19c9e52d0244788c3d62ec",
+      "bytes": 48297
+    },
+    "loader-fast.json": {
+      "sha256": "c0ed9aee25b3e865466fcd034f378c195c1fdf8cf14992e58b74b564655894bc",
+      "bytes": 52824
+    },
+    "loader-strict.json": {
+      "sha256": "0e969b1977e9e699ffdfb502f406a6c75e58715369685709436f55ad81f53214",
+      "bytes": 114332
+    },
+    "px-frames-fast.json": {
+      "sha256": "c0c8b8c0dcc750d010170eae545d014c727018405225df4a658ad214e31d75fb",
+      "bytes": 2062
+    },
+    "px-frames-strict.json": {
+      "sha256": "c1c547949936ec7d41c9a20c06b3986a22db6b7eaf246956367a14094ff2a0b9",
+      "bytes": 2064
+    },
+    "rust-record-test.log": {
+      "sha256": "902d18689ee25939a4d1ed4b43df2f055377292fe417952f51f91ae31c26e2f5",
+      "bytes": 3713
+    },
+    "registry-inherited.json": {
+      "sha256": "084b5c833dbf5518357eba5a06e60d2a902100ce22e425d5116f30935142434a",
+      "bytes": 3110
+    },
+    "asos-scores-final.json": {
+      "sha256": "e5a8fd6ff6244ea7e010630bfd7c08d94ea66a250c5409edc4ed344ceb695f59",
+      "bytes": 6213
+    },
+    "forecast-artifacts-final.json": {
+      "sha256": "e82874c4317ec090508be0eafbdc3e895d2526e085590590d99677a2354c3a8b",
+      "bytes": 2499
+    }
+  },
+  "source_sha256": {
+    "woof/core/pxlsm.py": "0941fab682eabb1692178551f1e1366e5756bc60180aff6fb58db9f318dcbee8",
+    "woof/core/pxlsm_runtime.py": "d42c04d9fafa5a91d46b5d11fb0bbf122d6b61611c99fc2d8034c4a2f1955064",
+    "woof/core/kernels/pxlsm.cu": "2314d6eee0119a7beeda745573a64f432472d742056a77d22f6cd4d116f2fa22",
+    "woof/core/kernels/pxlsm_driver.cu": "f6cc4bd694150cbc89c0aab72b626fe9d2c96690ee69ec3b3f6a8ef68b1cf27f",
+    "woof/core/kernels/pxlsm_init.cu": "b37f2a874af0e8de43e3dc68cff6a09b7ed027f9e307179085ca4ced161e154c",
+    "tools/rustwx/crates/rw-netcdf/src/main.rs": "434345f64949f161145ea465bdfa028e302a4c8aac6d0207d67037a8ae46b1e5",
+    "tools/rustwx/crates/rw-netcdf/src/stored_words.rs": "f0614ee3fb50242b4bde13db5a028a300a30e77c041a70e35c50581c2ee8e694"
+  },
+  "soil_nudging_followup": "soil-nudging-proof.json qualifies the live auxinput9/clock path; this historical receipt describes soil nudging off."
+}

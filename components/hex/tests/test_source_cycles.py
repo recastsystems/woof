@@ -1,6 +1,6 @@
 """A source's own cycle window, refused from the table before any byte moves.
 
-The breakage (woof 2.9.9, an RTX 4090 host, 2026-10-29, the same publication on the WOOF route): ECMWF's first 0.1-degree
+The breakage (gpuwm 2.9.9, an RTX 4090 host, 2026-10-29, the same publication on the WOOF route): ECMWF's first 0.1-degree
 cycle, 2026-10-20 06Z, publishes no soil layers, and a start from it moved the whole 1.3 GB window before decode
 refused for missing soil.  hex's ifs-0p1 row had no per-cycle gate, so the same start would have no soil.
 """

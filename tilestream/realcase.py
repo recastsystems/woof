@@ -1025,8 +1025,8 @@ def prepare_slabbed(config_path: str, *, rows_per_slab: int = 64,
             result = initialize_real(
                 met, slab_cfg, coord, terrain[slab.g0:slab.g1],
                 source_orography=None, p_top=exp.vertical.p_top,
-                # FROM lane/wif-door, the two routes lane/static-dataset-
-                # door did not reach.  ``gw`` is the SLAB's window grid, not
+                # The two routes did not reach it.
+                #  ``gw`` is the SLAB's window grid, not
                 # the full domain's -- which is the correct carrier here:
                 # this initialize_real builds exactly those rows, so the
                 # mass-point lat/lon the WIF interpolation needs are the

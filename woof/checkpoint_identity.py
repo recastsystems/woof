@@ -37,13 +37,18 @@ from __future__ import annotations
 
 
 #: The 2.9.4 capabilities campaign's start-only and door keys at the value
-#: every earlier header ran: lane/cap-waves-couple's ocean door (no ocean
-#: contract) and lane/cap-lake's lake-state analysis (an initialization
+#: every earlier header ran: development branch's ocean door (no ocean
+#: contract) and development branch's lake-state analysis (an initialization
 #: input; a resumed lake continues from its checkpointed columns).  Absent
 #: means this value on either side of a resume; any other value binds.
 CAMPAIGN_IMPLICIT_RUN_KEYS = {
+    # The shared fog/KF defaults are absent in both writer and reader.
+    "grav_settling": 0,
+    "kfeta_trigger": 1,
     "smoke_off_reason": "",
     "ocean_config": "",
+    "waves": "off",
+    "waves_options": "",
     "lake_state_source": "auto",
     "lake_state_path": "",
     "lake_state_accept_licence": "",
@@ -53,18 +58,26 @@ CAMPAIGN_IMPLICIT_RUN_KEYS = {
     # bytes, and 1 binds.  Named breakage: with it always present every
     # checkpoint digest, echo and public document moved (2.9.10 pass 2).
     "ghg_input": 0,
+    "cu_rad_feedback": False,
+    "rrtmg_aer3_source": "operational_fork",
     # Disabled moving frames preserve all earlier document/restart identities.
     "umove": 0.0,
     "vmove": 0.0,
+    "pxlsm_smois_init": 1,
+    "pxlsm_modis_veg": 0,
+    "pxlsm_soil_nudge": 0,
+    "sgfdda_interval_m": 180,
+    "sgfdda_inname": "sgfdda_d<domain>",
+    "io_form_sgfdda": 2,
 }
 
-#: lane/cap-seaice: prognostic sea ice and its parameters are read only
+#: development branch: prognostic sea ice and its parameters are read only
 #: where a land surface runs it (woof.ocean.seaice: ``seaice_prognostic``
 #: and ``sf_surface_physics``).
 SEAICE_RUN_KEYS = ("seaice_prognostic", "seaice_initial_thickness",
                    "seaice_new_ice_thickness", "seaice_ocean_heat_flux")
 
-#: lane/cap-hail: HAILCAST's output-only selectors at their defaults
+#: development branch: HAILCAST's output-only selectors at their defaults
 #: (CONFIG_DIAGNOSTIC_FIELDS keeps them out of the resume walk).
 HAILCAST_DEFAULT_RUN_KEYS = {"hailcast_opt": -1, "haildt": 60.0,
                              "hailcast_version": "wrf_39_noaa"}
@@ -73,6 +86,17 @@ HAILCAST_DEFAULT_RUN_KEYS = {"hailcast_opt": -1, "haildt": 60.0,
 def seaice_read(values: dict) -> bool:
     return bool(values.get("sf_surface_physics", 0)) and bool(
         values.get("seaice_prognostic", False))
+
+
+def drop_unread_mp_switches(values: dict) -> None:
+    """Keep only switches read by the selected column microphysics scheme."""
+    from woof.core.mp_column_schemes import MP_COLUMN_SCHEMES
+    selected = MP_COLUMN_SCHEMES.get(int(values.get("mp_physics", 0) or 0))
+    owned = set(selected.switches) if selected is not None else set()
+    for row in MP_COLUMN_SCHEMES.values():
+        for name in row.switches:
+            if name not in owned:
+                values.pop(name, None)
 
 
 def drop_capability_campaign_keys(values: dict) -> None:
@@ -84,6 +108,53 @@ def drop_capability_campaign_keys(values: dict) -> None:
     breakage: every 2.9.3 checkpoint refused on resume ("lake_state_path:
     absent from the restart file") and every public document's bytes moved.
     """
+    # lic-snicar's seven controls are read only by Noah-MP opt_alb=3.
+    # Keeping them in an inactive echo changed every pre-port checkpoint's
+    # configuration hash despite identical stored arrays (test_restart).
+    # This projection is shared by public documents, writers and resume.
+    if (int(values.get("sf_surface_physics", 0) or 0) != 4
+            or int(values.get("opt_alb", 2)) != 3):
+        for name in ("snicar_snowshape_opt", "snicar_snowbc_intmix",
+                     "snicar_snowdust_intmix", "snicar_bc_ppb",
+                     "snicar_dust_ppm", "snicar_ice_density",
+                     "snicar_bubble_radius_um"):
+            values.pop(name, None)
+    drop_unread_mp_switches(values)
+    # Only NTU reads its aerosol population selector. Earlier non-NTU
+    # checkpoint and experiment identities contain no such key.
+    if int(values.get("mp_physics", 0) or 0) != 56:
+        values.pop("ntu_ccnty", None)
+    if int(values.get("mp_physics", 0) or 0) != 40 and values.get("aercu_opt", 0) == 0:
+        values.pop("aercu_opt", None)
+    # The QNSE-only switch did not exist in earlier configurations.
+    # Keep inactive checkpoint and experiment identities unchanged.
+    if values.get("bl_pbl_physics", 0) != 4:
+        values.pop("mfshconv", None)
+
+    from woof.level_output_config import drop_inert as drop_inert_levels
+    drop_inert_levels(values)
+    from woof.core.misc_buckets import drop_inert as drop_inert_buckets
+    drop_inert_buckets(values)
+    from woof.core.physics_tendency_output import drop_inert as drop_inert_tendencies
+    drop_inert_tendencies(values)
+    from woof.core.misc_diag_print import drop_inert as drop_inert_print
+    drop_inert_print(values)
+    from woof.afwa_config import drop_inert as drop_inert_afwa
+    drop_inert_afwa(values)
+    # Newly admitted RUN5 alone reads WTDDT. Preserve earlier default
+    # experiment and checkpoint bytes while binding every active cadence.
+    if int(values.get("sf_surface_physics",0)) != 4 or int(values.get("opt_run",3)) != 5:
+        values.pop("wtddt",None)
+    # Only Noah-MP's papers-based snow optics reads these controls. Keeping
+    # them in an inactive identity refuses checkpoints written before the
+    # controls existed and changes default public experiment documents.
+    if (int(values.get("sf_surface_physics", 0)) != 4
+            or int(values.get("opt_alb", 2)) != 3):
+        for name in ("snicar_snowshape_opt", "snicar_snowbc_intmix",
+                     "snicar_snowdust_intmix", "snicar_bc_ppb",
+                     "snicar_dust_ppm", "snicar_ice_density",
+                     "snicar_bubble_radius_um"):
+            values.pop(name, None)
     for name, default in CAMPAIGN_IMPLICIT_RUN_KEYS.items():
         if values.get(name, default) == default:
             values.pop(name, None)
@@ -93,6 +164,17 @@ def drop_capability_campaign_keys(values: dict) -> None:
     for name, default in HAILCAST_DEFAULT_RUN_KEYS.items():
         if values.get(name, default) == default:
             values.pop(name, None)
+    if not int(values.get("dfi_opt",0)):
+        from woof.dfi_control import DFI_KEYS
+        for name in DFI_KEYS:
+            values.pop(name,None)
+
+    if not values.get("obs_nudge_opt", 0):
+        # Disabled FDDA allocates nothing and preserves earlier public
+        # documents and checkpoint identities byte for byte.
+        for key in tuple(values):
+            if key.startswith("obs_") or key in ("max_obs", "fdda_start", "fdda_end"):
+                values.pop(key, None)
     # 4c82704f8f's seaice_threshold is a real.exe rule read only by the
     # initial surface; the Registry default 100 K converts nothing, so it is
     # absent there and a stated threshold binds.  Named breakage: every
@@ -108,7 +190,11 @@ def drop_default_output_controls(values: dict) -> None:
     Nondefault output requests remain explicit. The GSD reset cadence is
     implicit only while its diagnostic package is off at the default cadence.
     """
-    for key in ("prec_acc_dt", "prec_acc_dt1", "history_interval2_s",
+    if not values.get("tslist", ""):
+        for key in ("tslist", "ts_buf_size", "max_ts_locs", "max_ts_level", "tslist_unstagger_winds"):
+            values.pop(key, None)
+    for key in ("solar_diagnostics", "mean_diag", "diurnal_diag", "mean_freq", "mean_interval", "auxhist3_interval", "do_avgflx_em", "do_avgflx_cugd",
+                "prec_acc_dt", "prec_acc_dt1", "history_interval2_s",
                 "history_interval_change_s"):
         if float(values.get(key, 0.0) or 0.0) == 0.0:
             values.pop(key, None)
@@ -117,6 +203,8 @@ def drop_default_output_controls(values: dict) -> None:
         for key, default in (("diag_int", 15), ("wind_int", 5)):
             if values.get(key, default) == default:
                 values.pop(key, None)
+    if int(values.get("uh_layers", 0) or 0) == 0:
+        values.pop("uh_layers", None)
     if int(values.get("gsd_diagnostics", 0) or 0) == 0:
         values.pop("gsd_diagnostics", None)
         if int(values.get("reset_interval1", 60)) == 60:
@@ -132,8 +220,39 @@ def drop_default_cumulus_selectors(values: dict) -> None:
             values.pop(name, None)
 
 
+def drop_default_sms_selectors(values: dict) -> None:
+    """Preserve identity bytes when the added SMS controls are unchanged."""
+    # These controls arrived with SMS-3DTKE. Their defaults preserve the
+    # earlier transport and stress paths, so old checkpoint and experiment
+    # bytes must omit them. Explicit nondefaults still bind on continuation.
+    for key, default in (("tke_adv_opt", 1), ("sfs_opt", 0), ("m_opt", 0),
+                         ("tke_mix2_off", False), ("tke_mix6_off", False)):
+        if values.get(key, default) == default:
+            values.pop(key, None)
+
+
+def drop_default_surface_port_keys(values: dict) -> None:
+    """The unchanged surface options have the identity of older checkpoints.
+
+    Lives here, not in woof.io.restart, because woof.experiment (staged in
+    the standalone RW-WPS package) applies it to public config documents and
+    the restart writer is forecast-executor code that package never carries.
+    """
+    for name, default in (("seaice_albedo_opt",0),("seaice_thickness_opt",0),
+                          ("seaice_snowdepth_opt",0),("seaice_thickness_default",3.0),
+                          ("seaice_snowdepth_min",.001),("seaice_snowdepth_max",1.e10)):
+        if values.get(name,default)==default: values.pop(name,None)
+    if not values.get('ua_phys',False): values.pop('ua_phys',None)
+    if not values.get('sf_surf_irr_scheme', 0):
+        for key in ('sf_surf_irr_scheme', 'irr_daily_amount', 'irr_start_hour',
+                    'irr_num_hours', 'irr_start_julianday', 'irr_end_julianday',
+                    'irr_freq', 'irr_ph'):
+            values.pop(key, None)
+
+
 def drop_default_diffusion_selectors(values: dict) -> None:
     """Preserve pre-selector identity bytes for the unchanged metric form."""
+    drop_default_sms_selectors(values)
     if values.get("diff_opt", 2) == 2 and values.get("mix_full_fields", True) is True:
         values.pop("diff_opt", None)
         values.pop("mix_full_fields", None)
@@ -189,6 +308,9 @@ def drop_default_spp_selectors(values: dict) -> None:
 CONFIG_DIAGNOSTIC_FIELDS = frozenset(
     {"hailcast_opt", "haildt", "hailcast_version", "nwp_diagnostics", "tke_budget", "sase_flux_diag", "hmix_k_diag",
      "surface_energy_diag",
+     # The 0-1/0-2/0-3 km updraft-helicity maxima (woof/core/uh_layers.py):
+     # output only, they change no prognostic word.
+     "uh_layers",
      # Correct mode WB1 (woof/correct_mode.py OUTPUT_ONLY_KEYS): books the
      # settled-cloud total CLOUDNC and changes no prognostic word.
      "thompson_cloud_surface_booking"})
@@ -219,8 +341,11 @@ CONFIG_DIAGNOSTIC_FIELDS = frozenset(
 #: not km_opt's, and it is closed by ONE string,
 #: :data:`DYCORE_MIXING_ALGORITHM_IDENTITY` below, not a per-option table.
 MICROPHYSICS_ALGORITHM_IDENTITIES = {
+    96: "madwrf-wrf471-passive-cloud-v1",
+    40: "morrison-aero-wrf461-v1-fixed-droplets-pinned-t0-finite-freezing",
     2: "lin-wrf461-six-class-v1",
     30: "fast-sbm-wrf461-33bin-corrected-d1-d20-v1",
+    95: "eta-ferrier-qt-partition-wrf-v4.6.1-v1",
     0: "disabled",
     # "real-clamp-product" (2.8.8) on every row whose scheme finishes
     # through woof.core.microphysics.moist_physics_finish (mp=1, 6, 9, 10,
@@ -248,6 +373,7 @@ MICROPHYSICS_ALGORITHM_IDENTITIES = {
     # radii diagnosed for RTE+RRTMGP).
     106: ("wsm6r-revised-wsm6-wrf-v4.6.1-v1-step-rainncv-"
           "wsm6-effectrad-diagnosis"),
+    7: "gsfcgce-four-ice-hail-nuwrf-wrf-v4.6.1-v1",
     # Milbrandt-Yau two-moment (WRF v4.6.1 MILBRANDT2MOM).  Named at the
     # mp=8/28/50 granularity -- the trajectory-defining configuration,
     # not the scheme name --
@@ -293,7 +419,8 @@ MICROPHYSICS_ALGORITHM_IDENTITIES = {
     # zero rate (rain with no number) into evaporation, which changes the
     # vapour, ice and theta trajectory wherever such rain meets
     # subsaturated air (docs/wdm6_oracle_known_deltas.md, section 6).
-    # v6 (lane/verify-wdm6-mp16, landed on 2.8.9's v5 by golden/parity):
+    14: "wdm5-wrf461-v2-stock-rain-plm-condensation-melt-collapse",
+    # v6 (development branch, landed on 2.8.9's v5 by golden/parity):
     # "wrf-words" -- the coefficients are wdm6init's own float32 words, the
     # transcendentals WOOF's own float32 exp/log/pow, every expression in
     # the Fortran's operation order and no multiply-add contraction, so the
@@ -313,6 +440,10 @@ MICROPHYSICS_ALGORITHM_IDENTITIES = {
     # where WRF's PLM remap drops mass, "refl-hail-term" D2.
     24: "wsm7-single-moment-hail-wrf-v4.6.1-v1-remap-search-reaches-"
         "top-interface-refl-hail-term",
+    # Independent stock WRF unit. Earlier modified-reference checkpoints
+    # cannot resume across its rain, melting and number arithmetic changes.
+    26: "wdm7-wrf461-v2-stock-rain-plm-condensation-hail-melt-number",
+
     # Thompson AEROSOL-AWARE (WRF v4.6.1 THOMPSONAERO,
     # Registry/Registry.EM_COMMON:3036).  Named at the granularity the mp=8
     # row uses -- the trajectory-defining pieces, not the scheme name --
@@ -353,13 +484,16 @@ MICROPHYSICS_ALGORITHM_IDENTITIES = {
          "ccn-activate-table-demott-koop-scavenging-surface-emission-"
          "synthetic-aerosol-init-wrf-arithmetic-rain-graupel-slab1-"
          "real-clamp-product"),
+    27: "udm-wrf471-v1-native-kinds-frozen-tables-native-radius-flags-zero",
+    29: "rcon-wrf-v4.7.1-v1-native-kinds-frozen-initialized-tables",
+    38: "thompson-graupel-hail-wrf-v4.6.1-v1-prognostic-ng-qvolg-density-binned-tables",
     # P3 (WRF v4.6.1 P3_1CATEGORY, Registry.EM_COMMON:3038).  Named at the
     # granularity the mp=8/28 rows use -- the trajectory-defining
     # configuration, not the scheme name -- because that is what makes an
     # incompatible resume fail BEFORE restore.  "1cat" and "2mom-ice" name
     # the nCat=1 / log_3momentIce=.false. build (module_mp_p3.F:1043-1050);
     # "specified-nc" names log_predictNc=.false., which is the difference
-    # between this row and the unported mp=51; "diagnosed-ssat" names
+    # between this row and mp=51's; "diagnosed-ssat" names
     # log_predictSsat=.false., the branch that makes th_old/qv_old the
     # cross-step carriers this restart serializes (:2325-2337); "rime-mass-
     # volume-transported" records that qir/qib advect with qi
@@ -367,6 +501,8 @@ MICROPHYSICS_ALGORITHM_IDENTITIES = {
     # transporting them would integrate a DIFFERENT trajectory while
     # staying finite, which is exactly the silent resume this string is
     # here to refuse.
+    # Native five-class SBU-YLin with unadvected diagnostic RIMI.
+    13: "sbu-ylin-five-class-wrf-v4.7.1-native-v3-rimi-state",
     50: ("p3-one-category-wrf-v4.6.1-v2-2mom-ice-specified-nc-"
          "diagnosed-ssat-rime-mass-volume-transported-real-clamp-product"),
     # Ferrier-Aligo (WRF v4.6.1 FER_MP_HIRES, Registry.EM_COMMON:3019).
@@ -376,14 +512,54 @@ MICROPHYSICS_ALGORITHM_IDENTITIES = {
     # names the one statement fixed rather than transcribed (the droplet
     # radius from RHO*QW, not its square; kernels/fer_hires.cu), which
     # changes riming trajectories wherever cloud water exceeds QAUT0.
+    15: "ferrier-aligo-advect-wrf-v4.6.1-v1-qrimef-transported-stock-rcw",
     5: ("ferrier-aligo-wrf-v4.6.1-v1-total-ice-transported-rimef-carried-"
         "etampnew-expanded-rain-rcw-from-lwc"),
+    # P3 with predicted droplet number (WRF v4.6.1 P3_1CATEGORY_NC,
+    # Registry.EM_COMMON:3039): the mp=50 build with log_predictNc=.true.
+    # (module_mp_p3.F:819-820).  "predicted-nc" is the difference from the
+    # mp=50 row; "ccn-activation-2mode-derf" names the prescribed two-mode
+    # lognormal activation (:268-294, :3313-3339) evaluated with P3's own
+    # DERF (:6090-6204) -- a prognostic-aerosol replacement of those modes
+    # is a different trajectory and must advance this tag; "nc-transported"
+    # records that the droplet number advects with the rest of the package
+    # (woof/core/moist.py::P3_NC_SPECIES).
+    51: ("p3-one-category-wrf-v4.6.1-v2-2mom-ice-predicted-nc-"
+         "ccn-activation-2mode-derf-diagnosed-ssat-rime-mass-volume-nc-"
+         "transported-real-clamp-product"),
+    52: "p3-two-category-wrf-v4.6.1-v1-prognostic-nc-iceice-merge-table2-v5.3",
+    # Unmodified WRF 4.7.1 column operation order; the recovered modified
+    # source trajectory is incompatible. CCNTY remains part of setup.
+    56: "ntu-native-wrf-v4.7.1-v1-log10-native-aero-moments",
 }
+# Every further P3 package carries its identity in its woof.config
+# P3_VARIANTS row (mp=53: "3mom-ice-predicted-nc", qnc and qzi transported).
+# The mp=50 literal above stays the one written into existing checkpoints;
+# the import-time check below holds the row to it.
+from woof.config import P3_VARIANTS as _P3_VARIANTS
+MICROPHYSICS_ALGORITHM_IDENTITIES.update({
+    _mp: _row.algorithm_identity for _mp, _row in _P3_VARIANTS.items()
+    if _mp != 50})
+if _P3_VARIANTS[50].algorithm_identity != MICROPHYSICS_ALGORITHM_IDENTITIES[50]:
+    raise RuntimeError(
+        "woof.config.P3_VARIANTS[50].algorithm_identity disagrees with the "
+        "mp=50 restart identity every existing P3 checkpoint carries")
 from woof.microphysics_schemes import NAMED_SCHEMES as _NAMED_MP_SCHEMES
 MICROPHYSICS_ALGORITHM_IDENTITIES.update({
     _s.mp_id: _s.algorithm_identity for _s in _NAMED_MP_SCHEMES.values()})
 
+# Table-admitted column schemes carry their identity in their row
+# (woof.core.mp_column_schemes.ColumnScheme.restart_identity).  mp=97:
+# "three-ice" is the class set the kernel integrates; the gsfcgce_hail and
+# gsfcgce_2ice switches are bound separately as scheme-scoped run fields.
+from woof.core.mp_column_schemes import (  # noqa: E402
+    MP_COLUMN_SCHEMES as _TABLE_ROWS)
+MICROPHYSICS_ALGORITHM_IDENTITIES.update(
+    {mp: row.restart_identity for mp, row in _TABLE_ROWS.items()})
+MICROPHYSICS_ALGORITHM_IDENTITIES[55] = "ishmael-wrf471-3ice-habit-volume-fast-default-native-strict-v2"
 SURFACE_LAYER_ALGORITHM_IDENTITIES = {
+    89: "ideal-scm-surface-wrf471-native-real32-forcing-scalars-v1",
+    10: "temf-surface-wrf-v4.6.1-v2-F3-cr-math-fast-default",
     0: "disabled",
     # v2 (2.8.8): the sfclay unit compiles without FMA contraction and
     # keeps denormal values instead of flushing them to zero
@@ -419,12 +595,28 @@ SURFACE_LAYER_ALGORITHM_IDENTITIES = {
     # the sfclay unit and takes its arithmetic (no FMA, denormals kept), so
     # a 2.8.7 (v1) checkpoint may not continue under v2.
     91: "classic-mm5-surface-layer-v2-no-fma-denormals-kept",
+    # The GFS layer: WRF v4.6.1 module_sf_gfs.F in binary64 over
+    # GFUNCPHYS's FPVS table, with the FRACTIONAL_SEAICE wrapper's two
+    # declared repairs (the open-water call gets XLAND_SEA; the open-water
+    # TSK_SEA is published).  A build without either computes a different
+    # sea-ice cell, so a checkpoint may not resume across one.
+    3: "gfs-surface-layer-wrf-v4.6.1-v2-fast-default-xland-sea-tsk-sea",
+    4: "qnse-surface-layer-wrf-v4.7.1-v3-fast-intrinsics-frozen-init",
+
+    # The Pleim-Xiu surface layer.  It carries UST, ZNT (Charnock over
+    # water), QSFC and the fluxes across steps and averages the new u* with
+    # the old one over land, so a resume onto a different transcription is
+    # a different trajectory; the identity binds the WRF version of the
+    # byte-frozen module_sf_pxsfclay.F and its sea-ice wrapper.
+    7: "pleim-xiu-surface-layer-wrf-v4.6.1-v1",
 }
 #: WRF v4.7.1 lsm_mosaic; bound only for the enabled tile path.
 NOAH_MOSAIC_ALGORITHM_IDENTITY = "noah-mosaic-wrf-v4.7.1-v1"
 
 LAND_SURFACE_ALGORITHM_IDENTITIES = {
     0: "disabled",
+    # WRF v4.6.1 module_sf_slab.F SLAB1D, word for word.
+    1: "wrf-v4.7.1-slab-5layer-snow-fast-v3",
     2: "noah-lsm-v2-post-sflx-chs2-source-water-lake-skin",
     # v2 (2.8.5): a LAKEMASK column is bypassed only when the lake model is
     # selected (module_sf_ruclsm.F:824, lakemodel==1 .and. lakemask==1).
@@ -466,6 +658,8 @@ LAND_SURFACE_ALGORITHM_IDENTITIES = {
     # moisture floor act at cold start only and need no identity.)
     3: "ruc-lsm-wrf-v4.6.1-v7-woof-libm-fractional-seaice-gate",
     4: "noahmp-lsm-wrf-v4.6.1-v2-wrf470-night-snow-aging",
+    7: "pleim-xiu-land-wrf-v4.6.1-v1",
+    8: "ssib-wrf-v4.6.1-v1-seaice-unit-repair",
 }
 NOAHMP_SNOW_AGE_ALGORITHM_IDENTITIES = {
     "wrf_461": "noahmp-lsm-wrf-v4.6.1-v1",
@@ -473,6 +667,7 @@ NOAHMP_SNOW_AGE_ALGORITHM_IDENTITIES = {
 }
 
 PBL_ALGORITHM_IDENTITIES = {
+    10: "temf-pbl-wrf-v4.6.1-v2-native-arithmetic-fast-default",
     0: "disabled",
     # v2 (2.8.8): YSU compiles without FMA contraction on WOOF's float32
     # pow/exp (gfk_pow/gfk_exp, kernels/ysu.cu), reads theta as WRF's
@@ -505,17 +700,64 @@ PBL_ALGORITHM_IDENTITIES = {
     # re-transcription against another WRF advances the suffix rather than
     # silently resuming onto this one.
     2: "myj-pbl-wrf-v4.6.1-v1-mellor-yamada-2.5-janjic",
+    # QNSE carries MYJ's prognostic TKE column and, with mfshconv = 1, the
+    # mass flux's RC_MF.  The identity binds the WRF version the port
+    # transcribes (module_bl_qnsepbl.F and module_bl_mfshconvpbl.F at
+    # v4.6.1); mfshconv itself is a RunConfig value the restart header
+    # compares, so it is not repeated here.
+    4: "qnse-pbl-wrf-v4.7.1-v2-fast-default-edmf-mass-flux",
     # The UW moist-turbulence PBL carries prognostic state across steps --
     # the interface diffusivities it reads back as kvm_in/kvh_in and the
     # residual surface stress -- and its saturation table is WRF's own
     # words (woof/core/uwpbl_constants.py).  The identity binds the WRF
     # version the port transcribes, v4.7.1.
+    # The GFS nonlocal PBL carries no state of its own between calls, but
+    # its rewrite of UST/WSPD and its held tendencies are its arithmetic;
+    # the identity binds the WRF version the port transcribes.
+    3: "gfs-pbl-wrf-v4.6.1-v2-fast-default",
+
+    # BouLac carries prognostic TKE_PBL (INOUT every call, floored at
+    # temin) and, under BEP, writes DLG_BEP back; a resume that dropped the
+    # TKE would continue a different boundary layer.  The identity binds
+    # the WRF version whose module_bl_boulac.F object the port is graded
+    # against word for word.
+    # v3 retains native WU_TUR/WV_TUR/WT_TUR/WQ_TUR restart diagnostics.
+    8: "boulac-pbl-wrf-v4.7.1-v3",
     9: "uw-moist-turbulence-pbl-wrf-v4.7.1-v1",
     # v2 (2.8.8): Shin-Hong compiles without FMA contraction on WOOF's
     # float32 pow/exp (kernels/shinhong.cu), which moved its exchange
     # coefficient by up to 8 ULP, so a 2.8.7 (v1) checkpoint may not
     # continue under v2.
     11: "shinhong-pbl-wrf-v4.6.1-v2-no-fma-woof-libm",
+    # GBM carries prognostic TKE_PBL across steps (read at the top of every
+    # call, rewritten with the first GBM2D pass's TKE).  The identity binds
+    # the WRF version whose module_bl_gbmpbl.F the port transcribes.
+    # v4 uses warp-register recurrences, shared live-range reuse and removes
+    # calculations whose results WRF does not publish.
+    # Compiler FMA placement can change, so older fast checkpoints must not
+    # silently continue under this schedule. Strict replay bytes are retained.
+    12: "gbm-moist-tke-pbl-wrf-v4.6.1-v4-live-shared-fast",
+    # EEPS carries prognostic TKE and dissipation across steps (the
+    # transported PEK_ADV/PEP_ADV and the PBL's PEK_PBL/PEP_PBL).  The
+    # identity binds the WRF version the port transcribes and its one
+    # declared divergence, RADSUM initialised to zero.
+    16: "eeps-pbl-wrf-v4.6.1-v1-radsum-zero",
+    # MRF carries no prognostic state of its own (UST, PBLH, KPBL and HOL
+    # are fields every restart already carries); the identity binds the
+    # WRF version whose module_bl_mrf.F the kernel is graded against.
+    99: "mrf-pbl-wrf-v4.6.1-v1",
+
+    # K-epsilon carries prognostic TKE, dissipation and TPE across calls.
+    # The identity binds the WRF version the port transcribes and the
+    # declared fixes it carries (tools/keps_wrf461_oracle/
+    # declared-divergences.patch); a change to either advances the suffix.
+    17: "keps-pbl-wrf-v4.7.1-v2-defined-wv-native-undefined-initialized",
+
+    # ACM2 carries PBLH across steps (it reads the previous height for the
+    # convective velocity scale before writing the new one) and EXCH_H/
+    # EXCH_M's top level; the identity binds the WRF version whose
+    # byte-pinned module_bl_acm.F the port transcribes.
+    7: "acm2-pbl-wrf-v4.6.1-v1",
     # SASE carries no WRF version in its identity because there is no WRF
     # scheme it transcribes.  What the identity DOES have to bind is the
     # closure's constant registry: sase_config_id() is a SHA-256 over
@@ -532,6 +774,11 @@ PBL_ALGORITHM_IDENTITIES = {
 #: resume against a silently different table set.  Adding a scheme means
 #: adding its row, not relaxing the check.
 LAND_SURFACE_PARAMETER_SOURCES = {
+    # The slab's bundle is its geometry, ifsnow and constants
+    # (woof.core.slab.SlabParameters); the one table value it reads, THC,
+    # comes from LANDUSE.TBL at initialization and rides the fields.
+    1: ("slab_params", ("noah_landuse",)),
+    7: ("pxlsm_params", ("pxlsm_tables",)),
     2: ("noah_params", ("noah_vegparm", "noah_soilparm",
                         "noah_genparm", "noah_landuse")),
     # RUC reads the RUC SECTIONS of the same three files Noah reads --
@@ -542,18 +789,27 @@ LAND_SURFACE_PARAMETER_SOURCES = {
     3: ("ruc_params", ("noah_vegparm", "noah_soilparm", "noah_genparm")),
     4: ("noahmp_params", ("noahmp_mptable", "noahmp_soilparm",
                           "noahmp_genparm")),
+    8: ("column_surface_params", ("ssib_vegetation", "noah_landuse")),
 }
 LONGWAVE_ALGORITHM_IDENTITIES = {
+    7: "wrf461-flg-rad-all-v1",
+    31: "wrf-v4.6.1-relaxation-31-v1",
     5: "wrf461-goddard-defined-visible-depth-v1",
+    99: "wrf-v4.6.1-gfdleta-lw-v1",
     0: "disabled",
     1: "wrf-v4.6.1-rrtm-longwave-v1",
+    3: "wrf-v4.6.1-cam3-v1",
     4: "rte-rrtmgp-v1",
     90: "analytic-clear-sky-v1",
 }
 SHORTWAVE_ALGORITHM_IDENTITIES = {
+    7: "wrf461-flg-rad-all-v1",
     5: "wrf461-goddard-defined-visible-depth-v1",
+    99: "wrf-v4.6.1-gfdleta-sw-v1",
+    2: "wrf-v4.7.1-gsfc-shortwave-v2",
     0: "disabled",
     1: "wrf-v4.6.1-dudhia-shortwave-v1",
+    3: "wrf-v4.6.1-cam3-v1",
     4: "rte-rrtmgp-v1",
     90: "analytic-clear-sky-v1",
 }
@@ -561,16 +817,24 @@ SHORTWAVE_ALGORITHM_IDENTITIES = {
 #: identity because changing the cap changes model-top fluxes while retaining
 #: the same packaged coefficient tables and solver.
 LONGWAVE_ABOVE_ATMOSPHERE_POLICIES = {
+    7: "model-column-top-interface-no-added-cap",
+    31: "not-applicable-idealized-column-forcing",
     5: "model-column-top-interface-zero-hpa",
+    99: "wrf-v4.6.1-gfdl-model-column",
     0: "not-applicable-radiation-disabled",
     1: "wrf-v4.6.1-rrtm-deltap-4mb-buffer-layers",
+    3: "wrf-v4.6.1-cam-model-column",
     4: "wrf-v4.6.1-lw-4hpa-sw-half-ptop-clear-cap-to-rte-floor-v1",
     90: "not-applicable-analytic-surface-flux-proxy",
 }
 SHORTWAVE_ABOVE_ATMOSPHERE_POLICIES = {
+    7: "model-column-top-interface-no-added-cap",
     5: "model-column-top-interface-zero-hpa",
+    99: "wrf-v4.6.1-gfdl-model-column",
+    2: "wrf-v4.7.1-gsfc-clear-top-layer-to-zero-pressure",
     0: "not-applicable-radiation-disabled",
     1: "not-applicable-dudhia-model-column-only",
+    3: "wrf-v4.6.1-cam-model-column",
     4: "wrf-v4.6.1-lw-4hpa-sw-half-ptop-clear-cap-to-rte-floor-v1",
     90: "not-applicable-analytic-surface-flux-proxy",
 }
@@ -610,8 +874,35 @@ def urban_algorithm_identity(cfg):
             if option == 1 else URBAN_ALGORITHM_IDENTITIES[option])
 
 from woof.wrf_exact import ENABLED as _WRF_EXACT  # noqa: E402
+from woof.numerics import is_strict as _strict_numerics  # noqa: E402
+from woof.wrf_exact import referee_correctly_rounded_trig as _new_native_trig  # noqa: E402
+from woof.numerics import mode as _numerics_mode  # noqa: E402
+
+# The registry declares all generations, independently of the builder's
+# environment. Checkpoints still bind the generation actually selected.
+KSAS_ALGORITHM_IDENTITIES = {
+    "fast": "kiaps-sas-wrf471-fast-v1",
+    "strict-glibc239": "kiaps-sas-wrf471-strict-glibc239-v1",
+    "strict-glibc241": "kiaps-sas-wrf471-strict-glibc241-v1",
+}
+
+SAS_ALGORITHM_IDENTITIES = {
+    "fast": "gfs-sas-2015-arw-shallow-cuda-fast-v2",
+    "strict": "gfs-sas-2015-arw-shallow-wrf461-v1",
+}
+
+MSKF_ALGORITHM_IDENTITIES = {
+    "strict": "multiscale-kf-wrf461-defined-aerosol-reads-v2-fast-default",
+    "fast": "multiscale-kf-wrf461-v3-cuda-float32-fast",
+}
 
 CUMULUS_ALGORITHM_IDENTITIES = {
+    95: ("old-gfs-sas-wrf461-cu_osas-strict-ql-backout-v2" if _WRF_EXACT else
+         "old-gfs-sas-wrf461-cu_osas-counter-rng-ql-backout-v2"),
+
+    7: "camzm-wrf471-stock-r8-v1",
+    11: MSKF_ALGORITHM_IDENTITIES[
+        "strict" if _WRF_EXACT or _numerics_mode() == "strict" else "fast"],
     0: "disabled",
     # The WRF v4.6.1 KF_eta_PARA port (2026-10-07), graded at 0 ULP on
     # every KF_eta_CPS output by tools/kf_wrf461_oracle.  It replaced a
@@ -620,6 +911,7 @@ CUMULUS_ALGORITHM_IDENTITIES = {
     # under it: the held tendencies and W0AVG it carries were made by a
     # different algorithm.
     1: "kain-fritsch-wrf461-kfeta-port-v1",
+    10: "kfcup-wrf461-corrected-pdf-native-rain-clock-v1",
     # The corrected-k22 identity IS the shipped algorithm (owner ruling);
     # a restart written under it must never resume under a WRF-faithful
     # build, which would be a different identity string.
@@ -636,6 +928,9 @@ CUMULUS_ALGORITHM_IDENTITIES = {
     # same slot a different meaning, and that is exactly the kind of
     # cross-resume this string exists to refuse.
     6: "tiedtke-wrf461-tiecnv-v1",
+    14: KSAS_ALGORITHM_IDENTITIES[
+        ("strict-glibc241" if _new_native_trig() else "strict-glibc239")
+        if _WRF_EXACT or _numerics_mode() == "strict" else "fast"],
     # v2: default arithmetic bounds the explicit rates so no layer loses more water than it
     # holds over the step (woof.core.ntiedtke.bound_donor_depletion); strict keeps v1.
     16: ("new-tiedtke-wrf461-cumastrn-v1" if _WRF_EXACT
@@ -649,7 +944,16 @@ CUMULUS_ALGORITHM_IDENTITIES = {
     # and persistent per-step rain. Equal to the scheme's
     # table row (woof.core.column_cumulus), held there by
     # tests/test_nsas_admission.py.
+    94: SAS_ALGORITHM_IDENTITIES["strict" if _strict_numerics() else "fast"],
     96: "new-sas-nscv-wrf461-cu_nsas-v1",
+    2: "betts-miller-janjic-wrf461-bmjdrv-v1",
+    93: "grell-devenyi-wrf461-grelldrv-stock-v1",
+
+    # The previous Kain-Fritsch, KFCPS/KFPARA as shipped in WRF v4.6.1
+    # (woof/core/kernels/kf_old.cu, graded at 0 ULP by
+    # tools/kf_old_wrf461_oracle).  Same adapter class as 1, different
+    # scheme, so a cu=1 checkpoint must never resume as 99 or back.
+    99: "kain-fritsch-cu99-wrf461-kfcps-v1",
 }
 
 #: The implementation of the dycore's once-per-step mixing: WRF's diff_opt

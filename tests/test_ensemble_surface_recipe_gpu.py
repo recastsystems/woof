@@ -95,6 +95,20 @@ def test_validation_does_not_half_apply_soil_when_sst_would_be_invalid():
         np.testing.assert_array_equal(values.view(np.uint32), state.physics.fields[name].get().view(np.uint32))
 
 
+def test_sst_offset_refusal_names_cells_field_domain_and_zero_k_source():
+    # WOOF 2026-11-06 Pickens: 0 K sst on coastal water refused a member with
+    # no count, field or cause; the refusal now names them.
+    cp = pytest.importorskip("cupy")
+    from woof.ensemble.surface_recipe import apply_surface_recipe
+    state = _state(cp)
+    state.physics.fields["sst"] = cp.full((3, 5), 290, dtype=cp.float32)
+    state.physics.fields["sst"][0, 3:] = 0
+    with pytest.raises(ValueError, match=r"on domain 1 \(sst: 2 of 3 open-water cells, initialized "
+                       r"0\.\.0 K before the \+0\.500 K offset; the initialization left 0 K there"):
+        apply_surface_recipe(state, value={"kind": "surface-state", "sst_offset_k": 0.5},
+                             member_id=1, seed=913, domain_id=1)
+
+
 def test_ruc_availability_recomputed_from_perturbed_top_soil_on_gpu():
     cp = pytest.importorskip("cupy")
     from woof.ensemble.surface_recipe import apply_surface_recipe

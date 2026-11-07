@@ -102,7 +102,7 @@ def test_gsl_drag_matches_wrf461_word_for_word(case):
 @requires_gpu
 def test_the_spp_cases_fail_without_the_pattern():
     """The defect the spp cases caught: launched with rstoch = 0 (the port
-    before lane/verify-gsl-drag), every spp case differs from WRF."""
+    before development branch), every spp case differs from WRF."""
     from woof.verify.gsl_drag_oracle import load, measure
 
     cases = load()

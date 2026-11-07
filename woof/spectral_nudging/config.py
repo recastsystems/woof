@@ -42,10 +42,39 @@ class NudgingConfig:
     gfdda_end_h: float | None = None
     if_ramping: int = 0
     dtramp_min: float = 0.0
+    grid_sfdda: int = 0
+    sgfdda_inname: str = "sgfdda_d<domain>"
+    io_form_sgfdda: int = 2
+    sgfdda_interval_m: float = 0.0
+    sgfdda_end_h: float = 0.0
+    guv_sfc: float = 0.0
+    gt_sfc: float = 0.0
+    gq_sfc: float = 0.0
+    rinblw: float = 0.0
+    gfdda_inname: str = "wrffdda_d<domain>"
+    io_form_gfdda: int = 2
 
     def __post_init__(self):
         if type(self.enabled) is not bool:
             raise ValueError("enabled must be a boolean")
+        if type(self.grid_sfdda) is not int or self.grid_sfdda not in (0, 1, 2):
+            raise ValueError("grid_sfdda must be 0, 1 or 2")
+        if self.grid_sfdda:
+            if self.mode != "grid" or self.convention != "wrf":
+                raise ValueError("WRF surface FDDA runs inside grid_fdda=1")
+            if self.io_form_sgfdda != 2:
+                raise ValueError("surface FDDA requires NetCDF auxinput9 (io_form_sgfdda=2)")
+            if self.io_form_gfdda != 2:
+                raise ValueError("surface FDDA's native grid driver requires NetCDF auxinput10 (io_form_gfdda=2)")
+            if self.sgfdda_interval_m <= 0 or self.rinblw < .001:
+                raise ValueError("surface FDDA requires sgfdda_interval_m > 0 and rinblw >= .001 km")
+            if not isinstance(self.sgfdda_inname, str) or not self.sgfdda_inname:
+                raise ValueError("surface FDDA needs its native sgfdda_inname")
+            if any(self.coefficient(name)>0 for name in ("u","v","temperature","qv")):
+                if self.gfdda_interval_m is None or self.gfdda_interval_m <= 0:
+                    raise ValueError("surface FDDA with upper nudging requires gfdda_interval_m > 0")
+                if not isinstance(self.gfdda_inname,str) or not self.gfdda_inname:
+                    raise ValueError("surface FDDA with upper nudging needs gfdda_inname")
         if self.mode not in ("spectral", "grid"):
             raise ValueError("nudging mode must be spectral or grid")
         if self.convention not in ("regional", "wrf"):
@@ -60,7 +89,8 @@ class NudgingConfig:
             if name.startswith(("k_zfac_", "dk_zfac_")):
                 if type(value) is not int or value < int(name.startswith("dk_")):
                     raise ValueError(f"{name} has an invalid model-level count")
-        for name in ("guv", "gt", "gph", "gq", "fgdt", "gfdda_interval_m", "gfdda_end_h", "dtramp_min"):
+        for name in ("guv", "gt", "gph", "gq", "fgdt", "gfdda_interval_m", "gfdda_end_h", "dtramp_min",
+                     "sgfdda_interval_m", "sgfdda_end_h", "guv_sfc", "gt_sfc", "gq_sfc", "rinblw"):
             value = getattr(self, name)
             if value is None:
                 continue
@@ -93,7 +123,11 @@ class NudgingConfig:
             raise ValueError("the protected boundary consumes the entire grid")
 
     def to_dict(self):
-        return asdict(self)
+        values = asdict(self)
+        if not self.grid_sfdda:
+            for name in SURFACE_KEYS:
+                values.pop(name)
+        return values
 
     def coefficient(self, name):
         key = {"u": "guv", "v": "guv", "temperature": "gt",
@@ -106,6 +140,11 @@ class NudgingConfig:
     def cadence_steps(self, dt):
         # WRF module_physics_init: nearest integer, at least one step.
         return max(1, int(self.fgdt * 60.0 / dt + 0.5))
+
+
+SURFACE_KEYS = ("grid_sfdda", "sgfdda_inname", "io_form_sgfdda",
+                "sgfdda_interval_m", "sgfdda_end_h", "guv_sfc", "gt_sfc", "gq_sfc", "rinblw",
+                "gfdda_inname", "io_form_gfdda")
 
 
 @dataclass(frozen=True)

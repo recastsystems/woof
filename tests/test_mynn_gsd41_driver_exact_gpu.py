@@ -18,7 +18,7 @@ families oracle, twelve 20 s steps (tests/_mynn_families_gsd41.py).
   change a zero sign when the corrected clipping path is used; its nonzero
   values and all other output words must still agree.
 
-lane/mynn-exact made this exact: the fork's mym_level2 and mym_turbulence
+development branch made this exact: the fork's mym_level2 and mym_turbulence
 divide by a2den where v4.6.1 multiplies by a2fac; its thetav is
 th*(1+0.608*sqv); its cpm reads the mixing ratio it was handed; and the unit
 runs WOOF's own float32 elementary functions with no FMA contraction.

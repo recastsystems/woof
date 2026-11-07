@@ -17,7 +17,13 @@ extern "C" __global__ void gsd_refl_first_time_step(
    const size_t i=(size_t)k*ncol+col;
    // State route fuses the fork's initial phy_prep thermodynamics. The
    // prepared-input route below is also the native-routine oracle door.
-   const float theta=state_inputs ? th[thb_full ? i : k]+pii[i] : th[i];
+   const float thermal=state_inputs ? th[thb_full ? i : k]+pii[i] : th[i];
+#ifdef GPUWM_USE_THETA_M
+   const float theta=state_inputs ? __fdiv_rn(thermal,
+       __fadd_rn(1.f,__fmul_rn(RVOVRD,qv[i]))) : thermal;
+#else
+   const float theta=thermal;
+#endif
    const float exner=state_inputs ? gfk_pow(FDIV(p[i],P0),RCP) : pii[i];
    const float rho=state_inputs ? FDIV(1.f,rho_curr[i])*(1.f+qv[i]) : rho_curr[i];
    if(qnr[i]<=0.f && qr[i]>=1.e-12f){

@@ -41,7 +41,7 @@ PERSISTENT = (*HISTORY, "cl_nsteps", "cl_nsteps_wind")
 
 
 def scratch_shapes(cfg):
-    if not cfg.output_diagnostics:
+    if not cfg.output_diagnostics or cfg.auxhist3_interval:
         return {}
     return {slot: (cfg.ny, cfg.nx) for slot in (*PERSISTENT, "cl_zero")}
 
@@ -54,6 +54,10 @@ def update(state, cfg, *, is_restart=False, curr_secs2=None):
     the absolute clock and continue the same window, without restarting it.
     """
     if not cfg.output_diagnostics:
+        return
+    if cfg.auxhist3_interval:
+        from woof.core.clwrf import update as stock_update
+        stock_update(state, cfg, curr_secs2=curr_secs2)
         return
     from woof.core.kernels import get_kernel
 

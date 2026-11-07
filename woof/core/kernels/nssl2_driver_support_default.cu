@@ -65,7 +65,12 @@ extern "C" __global__ void nssl2_driver_gather_initialize(
     int first_step,
     int cu_used,
     int n,
+#ifdef NSSL2_VARIABLE_CCCN
+    int predicted_ccn,
+    float background_ccn_per_kg)
+#else
     int predicted_ccn)
+#endif
 {
     const int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx >= n) return;
@@ -103,13 +108,21 @@ extern "C" __global__ void nssl2_driver_gather_initialize(
     // density at :2935-2944, so the product is formed after the difference.
     float ccn_number = predicted_ccn
         ? qnn[idx] * rho
+#ifdef NSSL2_VARIABLE_CCCN
+        : (background_ccn_per_kg - qndrop[idx]) * rho;
+#else
         : (408163264.0f - qndrop[idx]) * rho;
+#endif
     float graupel_volume = qvolg[idx] * rho;
     float hail_volume = qvolh[idx] * rho;
 
     if (first_step != 0) {
         if (cloud_number <= cxmin && cloud > qxmin_init) {
+#ifdef NSSL2_VARIABLE_CCCN
+            const float qccn = background_ccn_per_kg;
+#else
             const float qccn = 408163264.0f;
+#endif
             const float cwmas_inverse = 327479132160.0f;
             cloud_number = fminf(qccn, cloud * cwmas_inverse) * rho;
             ccn_number -= cloud_number;

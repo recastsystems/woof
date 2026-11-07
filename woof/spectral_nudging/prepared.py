@@ -90,6 +90,8 @@ class AnalysisWriter:
         self.root = series_path(root, domain.grid_id)
         self.root.mkdir(parents=True, exist_ok=True)
         self.header = dict(schema='gpuwm-nudging-analysis-v2', start_time=exp.start_time.isoformat(), offsets=offsets, shape=[cfg.nz,cfg.ny,cfg.nx], source_sha256=source_sha256)
+        if cfg.use_theta_m:
+            self.header['use_theta_m'] = 1
         marker = self.root / 'series.json'
         if marker.exists() and json.loads(marker.read_text()) != self.header:
             raise ValueError('nudging analysis directory belongs to different forcing or geometry')
@@ -124,6 +126,9 @@ class AnalysisWriter:
 
 def allocate_held_tendencies(state,cfg,controls):
     """Allocate persistent cadence buffers before restoring a checkpoint."""
+    if controls is not None and controls.grid_sfdda:
+        from .surface_forecast import allocate
+        allocate(state,controls.grid_sfdda==2)
     if controls is None or controls.cadence_steps(cfg.dt) == 1:
         return
     import cupy as cp
@@ -146,6 +151,8 @@ class PreparedNudging:
         self.header = json.loads((self.root/'series.json').read_text())
         if (self.header['schema'] != 'gpuwm-nudging-analysis-v2' or self.header['start_time'] != exp.start_time.isoformat() or self.header['shape'] != [cfg.nz,cfg.ny,cfg.nx] or self.header['source_sha256'] != source_sha256):
             raise ValueError('nudging analysis identity differs from the prepared forecast')
+        if int(self.header.get('use_theta_m', 0)) != cfg.use_theta_m:
+            raise ValueError('nudging analysis thermal carrier differs from the forecast use_theta_m')
         self.offsets = self.header['offsets']
         self.loads = 0
         self.refresh_seconds = 0.
@@ -191,6 +198,9 @@ class PreparedNudging:
                 values[name] = values[name][:,None,None]
         self.frame_digests[str(index)] = digest(marker)
         temperature = values['thp']+values['thb']
+        if self.cfg.use_theta_m:
+            from woof.core.constants import RVOVRD
+            temperature /= cp.float32(1.0) + cp.float32(RVOVRD) * values['qv']
         if self.controls.convention == 'regional':
             temperature *= (values['pressure']/cp.float32(100000.))**cp.float32(287./1004.5)
         return dict(u=values['u'],v=values['v'],temperature=temperature,geopotential=values['php']+values['phb'],qv=values['qv'])
@@ -279,29 +289,63 @@ class PreparedTreeNudging:
         exp=inputs.experiment
         validate_fixed_domains(exp)
         self.owners=[]
-        chosen=[node for gid,node in nodes.items() if selected(exp,gid) is not None]
+        chosen=[node for gid,node in nodes.items() if selected(exp,gid) is not None or
+                (node.cfg.run.sf_surface_physics == 7 and node.cfg.run.pxlsm_soil_nudge)]
         if any(int(node.cfg.grid_id) in steppers for node in chosen):
             raise ValueError('NUDGING_FULL_HORIZONTAL_FFT: a selected domain must be resident; tile-local FFTs change the requested wavelengths')
         root=model.root
-        if selected(exp,root.cfg.grid_id) is None:
+        if exp.nudging is not None and selected(exp,root.cfg.grid_id) is None:
             from woof.ingest.lateral_bc import attach_streaming_lateral_boundaries
             elapsed=root.state.elapsed_seconds
             attach_streaming_lateral_boundaries(root.state,root.state.lateral_boundaries,allow_prestaged=False)
             root.state.elapsed_seconds=elapsed
-        bundles={b.grid_id:b for b in inputs.domains}
+        bundles={b.grid_id:b for b in inputs.domains} if hasattr(inputs,'domains') else {exp.root.grid_id:inputs}
         for node in chosen:
-            owner=PreparedNudging(node.state,node.cfg.run,exp,inputs.prepared_root,
-                bundles[node.cfg.grid_id].cache_identity['source_manifest_sha256'],grid_id=node.cfg.grid_id)
-            self.owners.append(owner)
+            controls=selected(exp,node.cfg.grid_id)
+            if node.cfg.run.sf_surface_physics == 7 and node.cfg.run.pxlsm_soil_nudge:
+                from .px_inputs import PxInputs
+                base=Path(inputs.artifact_paths['namelist_input']).parent if getattr(inputs,'source',None)=='wrfinput' else Path(inputs.prepared_root)
+                name=node.cfg.run.sgfdda_inname.replace('<domain>',f'{node.cfg.grid_id:02d}')
+                name=name.replace('<date>',exp.start_time.strftime('%Y-%m-%d_%H:%M:%S'))
+                self.owners.append(PxInputs(node.state,node.cfg.run,base/name,exp.start_time,exp.run_seconds))
+            if controls is None:
+                continue
+            if controls.grid_sfdda:
+                from .surface_forecast import SurfaceForecast, upper_enabled
+                base=Path(inputs.artifact_paths['namelist_input']).parent if getattr(inputs,'source',None)=='wrfinput' else Path(inputs.prepared_root)
+                name=controls.sgfdda_inname.replace('<domain>',f'{node.cfg.grid_id:02d}')
+                name=name.replace('<date>',exp.start_time.strftime('%Y-%m-%d_%H:%M:%S'))
+                native_upper = getattr(inputs,'source',None)=='wrfinput' and upper_enabled(controls)
+                upper_name = controls.gfdda_inname.replace('<domain>',f'{node.cfg.grid_id:02d}')
+                upper_name = upper_name.replace('<date>',exp.start_time.strftime('%Y-%m-%d_%H:%M:%S'))
+                owner=SurfaceForecast(node.state,node.cfg.run,controls,base/name,exp.start_time,exp.run_seconds,
+                                      upper_path=base/upper_name if native_upper else None)
+                self.owners.append(owner)
+            else:
+                native_upper = False
+            if not native_upper and any(controls.coefficient(name)>0 for name in ('u','v','temperature','geopotential','qv')):
+                owner=PreparedNudging(node.state,node.cfg.run,exp,inputs.prepared_root,
+                    bundles[node.cfg.grid_id].cache_identity['source_manifest_sha256'],grid_id=node.cfg.grid_id)
+                self.owners.append(owner)
         self.root=root.state
         self.root._spectral_nudging_interval=self.replace
 
     def replace(self,interval):
         for owner in self.owners:
-            owner.replace(interval)
+            if hasattr(owner,'replace'):
+                owner.replace(interval)
 
     def receipt(self):
-        return {str(owner.cfg.grid_id):owner.receipt() for owner in self.owners}
+        rows={}
+        for owner in self.owners:
+            key=str(owner.cfg.grid_id)
+            if type(owner).__name__ == 'PxInputs':
+                rows.setdefault(key,{})['px_auxinput9']=owner.receipt()
+            elif type(owner).__name__ == 'SurfaceForecast':
+                rows.setdefault(key,{})['surface']=owner.receipt()
+            else:
+                rows.setdefault(key,{}).update(owner.receipt())
+        return rows
 
     def detach(self):
         for owner in self.owners:

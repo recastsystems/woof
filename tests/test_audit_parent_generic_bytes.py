@@ -102,6 +102,14 @@ FORK_GENERATION_LINES = {"rap": ('mynn_sfclay_variant = "gsl_wrf39"\n',)}
 RUC_AUTHORING_LINE = 'ruc_qvg_cold_start = "air"\n'
 
 
+def uh_layers_line(shared):
+    """The line every wizard recipe gained after these parents were pinned:
+    feat/uh-layers (3.0.0) writes the 0-1/0-2/0-3 km UH maxima beside
+    nwp_diagnostics, on with it and off with it (domain_wizard turns both off
+    when a history cadence has no whole-minute NWP window)."""
+    return f"uh_layers = {1 if shared.get('nwp_diagnostics') == 1 else 0}\n"
+
+
 def assert_old_recipe_bytes(parent, pins, source, candidate):
     """The parent's recipe bytes, plus exactly the fork-generation lines and,
     on RUC land, the RUC air cold-start line."""
@@ -118,6 +126,10 @@ def assert_old_recipe_bytes(parent, pins, source, candidate):
         lines.remove(RUC_AUTHORING_LINE)
     else:
         assert RUC_AUTHORING_LINE not in lines
+    uh_line = uh_layers_line(shared)
+    assert lines.count(uh_line) == 1, uh_line
+    assert shared["uh_layers"] == shared["nwp_diagnostics"]
+    lines.remove(uh_line)
     assert_old_bytes(parent, pins, "recipe/" + source, "".join(lines))
 
 

@@ -25,3 +25,7 @@ sha2 = "0.10"
 codegen-units = 1
 
 [workspace]
+
+# The shared GPU adapter is a recorded local patch of cudarc.
+[patch.crates-io]
+cudarc = { path = "../rustwx/vendor/crates-io/cudarc-0.19.8" }

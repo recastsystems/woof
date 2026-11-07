@@ -270,7 +270,8 @@ pub struct GeoSource {
     /// File-name glob of one band of one scan (`*` any run of characters):
     /// the time tokens above plus `{band}` (the `bands` token of the band).
     pub file: String,
-    /// Files per band per scan (AHI full disk: 10 segments).
+    /// Files per band per scan. AHI instead validates the sequence and total
+    /// declared in each HSD filename (historical whole disks use S0101).
     #[serde(default = "one")]
     pub files_per_band: usize,
     /// Band number -> file-name token.
@@ -383,6 +384,27 @@ pub struct ScanListing {
     pub complete: bool,
 }
 
+fn complete_ahi_segments<'a>(names: impl IntoIterator<Item = &'a str>) -> bool {
+    let mut expected = None;
+    let mut sequences = std::collections::BTreeSet::new();
+    for name in names {
+        let Some((_, suffix)) = name.rsplit_once("_S") else { return false };
+        let Some(segment) = suffix.strip_suffix(".DAT.bz2") else { return false };
+        if segment.len() != 4 || !segment.bytes().all(|b| b.is_ascii_digit()) {
+            return false;
+        }
+        let sequence = segment[..2].parse::<usize>().unwrap();
+        let total = segment[2..].parse::<usize>().unwrap();
+        if total == 0 || sequence == 0 || sequence > total || expected.is_some_and(|n| n != total)
+            || !sequences.insert(sequence)
+        {
+            return false;
+        }
+        expected = Some(total);
+    }
+    expected.is_some_and(|n| sequences.len() == n)
+}
+
 pub fn list_scan(
     agent: &ureq::Agent,
     source: &GeoSource,
@@ -418,10 +440,15 @@ pub fn list_scan(
             .collect();
         hits.sort_by(|a, b| a.key.cmp(&b.key));
         // Two files for one ABI band and scan are reprocessings: keep the newest.
-        if source.files_per_band == 1 && hits.len() > 1 {
+        if source.instrument != "ahi" && source.files_per_band == 1 && hits.len() > 1 {
             hits = vec![hits.pop().unwrap()];
         }
-        if hits.len() != source.files_per_band {
+        let complete = if source.instrument == "ahi" {
+            complete_ahi_segments(hits.iter().map(|o| object_filename(&o.key)))
+        } else {
+            hits.len() == source.files_per_band
+        };
+        if !complete {
             out.complete = false;
         }
         out.bands.insert(band, hits);
@@ -481,6 +508,24 @@ pub fn fetch_scan(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ahi_whole_disk_and_segmented_archives_require_every_segment() {
+        let historical = "HS_H08_20191006_0000_B13_FLDK_R20_S0101.DAT.bz2";
+        assert!(complete_ahi_segments([historical]));
+        let names: Vec<String> = (1..=10).map(|i|
+            format!("HS_H09_20241007_0300_B13_FLDK_R20_S{i:02}10.DAT.bz2")
+        ).collect();
+        assert!(complete_ahi_segments(names.iter().map(String::as_str)));
+        assert!(!complete_ahi_segments(names[..9].iter().map(String::as_str)));
+        assert!(!complete_ahi_segments([historical, historical]));
+        assert!(!complete_ahi_segments([historical, names[0].as_str()]));
+        assert!(!complete_ahi_segments(["HS_H08_B13_FLDK_R20_S0001.DAT.bz2"]));
+        assert!(!complete_ahi_segments(std::iter::empty()));
+        let source = find_source("H08", "F").unwrap();
+        let scan = Utc.with_ymd_and_hms(2019, 10, 6, 0, 0, 0).unwrap();
+        assert!(glob_match(&expand(&source.file, scan, Some("B13")), historical));
+    }
 
     #[test]
     fn the_table_parses_and_every_row_names_its_bands() {

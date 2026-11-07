@@ -925,7 +925,9 @@ def test_every_native_z_refusal_carries_a_reason_and_its_authority():
             f"the reason for mp_physics={mp} cites no WRF authority line")
     assert 18 not in table
     assert 50 not in table
-    assert set(obsop.STATE_REFLECTIVITY_OPERATORS) == {50}
+    # The P3 family shares p3_zdiag.cu's H(x); NTU (mp=56) landed with its
+    # own state-reading operator, woof.core.ntu.reflectivity.
+    assert set(obsop.STATE_REFLECTIVITY_OPERATORS) == {50, 51, 52, 53, 56}
 
 
 def test_reflectivity_requires_a_moist_state():

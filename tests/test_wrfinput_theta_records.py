@@ -14,13 +14,16 @@ from woof.ingest.lateral_bc import evaluate_boundary_side
 from test_analyzed_scalar_boundaries import _cfg, _input, _read, _boundary
 
 
-@pytest.mark.parametrize("moist", [False, True])
-def test_file_temperature_forcing_matches_its_declared_representation(tmp_path, moist):
+@pytest.mark.parametrize("moist,selected", [(False, 0), (True, 0), (True, 1)])
+def test_file_temperature_forcing_matches_its_declared_representation(tmp_path, monkeypatch, moist, selected):
+    if selected:
+        monkeypatch.setattr(wi, "WRF_EXACT", True)
     cfg = _cfg()
     path = _input(tmp_path / "input", cfg)
     with netCDF4.Dataset(path, "a") as dataset:
         dataset.USE_THETA_M = int(moist)
     initial = _read(path, cfg)
+    cfg = SimpleNamespace(**{**vars(cfg), "use_theta_m": selected})
     boundary = _boundary(tmp_path / "boundary", initial, cfg)
     ratio = np.float32(461.6) / np.float32(287.0)
     with netCDF4.Dataset(boundary, "a") as dataset:
@@ -52,12 +55,26 @@ def test_file_temperature_forcing_matches_its_declared_representation(tmp_path, 
                 encoded = A + seconds * Ad
                 expected = (13. * ((encoded / 13. + 300.) /
                             (1. + float(ratio) * (Q + seconds * Qd) / 13.) - 300.)
-                            if moist else encoded)
+                            if moist and not selected else encoded)
                 actual, _ = evaluate_boundary_side(
                     getattr(result.intervals[0].fields["theta"], side), seconds)
                 np.testing.assert_allclose(actual, expected.transpose(order),
                                            rtol=2e-13, atol=2e-12)
 
+
+
+def test_selected_moist_input_retains_native_prognostic_and_dry_history(tmp_path):
+    cfg = _cfg()
+    path = _input(tmp_path / "input", cfg)
+    with netCDF4.Dataset(path, "a") as dataset:
+        dataset.USE_THETA_M = 1
+        dry = np.asarray(dataset["T"][:], dtype=np.float32)
+        moist = (dry + np.float32(300.)) * np.float32(1.02) - np.float32(300.)
+        dataset.createVariable("THM", "f4", dataset["T"].dimensions)[:] = moist
+    cfg = SimpleNamespace(**{**vars(cfg), "use_theta_m": 1})
+    restored = _read(path, cfg)
+    np.testing.assert_array_equal(restored.raw["THM"], moist[0])
+    np.testing.assert_array_equal(restored.raw["T"], dry[0])
 
 def test_moist_flag_with_dry_temperature_records_is_not_silently_accepted(tmp_path):
     cfg = _cfg()

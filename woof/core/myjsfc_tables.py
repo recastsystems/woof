@@ -114,4 +114,66 @@ def build_psi_tables(correctly_rounded_atan: bool = False):
     })
 
 
-__all__ = ["KZTM", "KZTM2", "build_psi_tables"]
+# ---------------------------------------------------------------------------
+# QNSESFCINIT (WRF v4.6.1 phys/module_sf_qnsesfc.F:1125-1279), the tables of
+# the QNSE surface layer (sf_sfclay_physics=4).
+#
+# Same shape as MYJSFCINIT's -- KZTM words per table, a float32 running ZETA,
+# ZTMAX the accumulated endpoint minus EPS -- and NO array is shared with it
+# byte for byte: the range is [-5, 2.3] rather than [-5, 1], so DZETA and
+# every grid point differ; the stable branch is Sukoriansky's quasi-normal
+# scale elimination form rather than Holtslag and de Bruin; and the unstable
+# branch is MAX(QNSE cubic, Paulson).  What IS reused is the Paulson
+# expression, written in MYJSFCINIT's operation order.
+#
+# LOG and ATAN are WOOF's own float32 routines (woof.core.noahmp_libm), not
+# NumPy's, whose float32 loops change with the host CPU.  The integer powers
+# are the multiply chains WRF's optimised build emits: ZETA**2 = Z*Z,
+# ZETA**3 = Z*(Z*Z), and (ZETA-0.5)**5 = X2*(X*X2) with X2 = X*X.  That last
+# one is not the square-and-multiply order libgcc's __powisf2 uses at -O0
+# (X*(X2*X2)), which rounds 79 PSIH words per table differently by up to
+# 2 ULP (tools/qnsesfc_wrf461_oracle/o0-difference); WRF's executable is the
+# optimised build.  tests/test_qnsesfc_wrf461_parity.py holds all four tables
+# and the six scalars to the oracle's QNSESFCINIT dump word for word, and
+# QNSE_PSI_TABLES_SHA256 pins the bytes so a builder change cannot move them
+# silently.
+# ---------------------------------------------------------------------------
+
+#: SHA-256 of the four QNSE tables' little-endian float32 bytes, concatenated
+#: in (psim1, psih1, psim2, psih2) order, as QNSESFCINIT builds them on the
+#: WRF v4.6.1 oracle (tools/qnsesfc_wrf461_oracle).
+QNSE_PSI_TABLES_SHA256 = (
+    "2b4ebed9007976815c462a11171714c8f59e54ff7c8e85158fb1d7450e1e02e7")
+
+
+@lru_cache(maxsize=2)
+def build_qnse_psi_tables(correctly_rounded_atan: bool = False):
+    """Read frozen QNSESFCINIT words through the existing Rust NetCDF path.
+
+    Generation is an offline verification tool, not a serial startup stage.
+    The two assets follow the native referee's scalar libm generation.
+    """
+    import hashlib
+    import json
+    from pathlib import Path
+    from woof.netcdf_bridge import open_dataset
+
+    directory = Path(__file__).resolve().parents[1] / "data" / "qnse"
+    generation = "glibc241" if correctly_rounded_atan else "glibc239"
+    receipt = json.loads((directory / "source.json").read_text())
+    path = directory / f"qnsesfcinit-{generation}.nc"
+    if hashlib.sha256(path.read_bytes()).hexdigest() != receipt[generation]["file_sha256"]:
+        raise RuntimeError(f"QNSESFCINIT asset checksum mismatch: {path}")
+    with open_dataset(path) as nc:
+        tables = {name: np.asarray(var[:], dtype=F)
+                  for name, var in nc.variables.items()}
+    for name, value in tables.items():
+        if value.ndim == 0:
+            tables[name] = F(value)
+        else:
+            value.setflags(write=False)
+    return MappingProxyType(tables)
+
+
+__all__ = ["KZTM", "KZTM2", "QNSE_PSI_TABLES_SHA256", "build_psi_tables",
+           "build_qnse_psi_tables"]

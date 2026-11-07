@@ -465,7 +465,7 @@ def test_without_the_scaffold_gate_the_generic_type_error_returns(
 def test_the_skeleton_never_assigns_one_vtable_line_to_two_fields():
     """`woof adapt: Vtable line 11 is assigned more than once`.
 
-    A a development machine validation run filled in every REPLACE_WITH_* placeholder
+    A test host 7 validation run filled in every REPLACE_WITH_* placeholder
     the skeleton emitted, declared the 21 isobaric levels actually in
     the GRIB, and had the battery refuse the result -- because the
     generator had given four 3-D fields their SURFACE counterpart's
@@ -528,7 +528,7 @@ def test_a_descriptor_fault_is_not_reported_as_a_vtable_fault(tmp_path):
 
     `Vtable line 11 is assigned more than once` names the Vtable, and
     line 11 of the Vtable was fine -- the double assignment was in the
-    descriptor, which in the a development machine case the tool itself had written.
+    descriptor, which in the test host 7 case the tool itself had written.
     """
     import pytest as _pytest
 

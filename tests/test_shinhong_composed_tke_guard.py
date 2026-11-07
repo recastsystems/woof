@@ -210,8 +210,11 @@ def test_driver_disposition_repairs_passengers_and_keeps_tendencies_fatal(
     # its coupling; the real coupler, at scalar_pblmix = 0, does nothing.
     driver._couple_scalar_pblmix = types.MethodType(
         ph.PhysicsDriver._couple_scalar_pblmix, driver)
+    # tracer_opt/madwrf_opt: the scalar PBL-mix coupler reads both since the
+    # tracer and MAD-WRF ports (RunConfig defaults, 0).
     cfg = types.SimpleNamespace(dx=12000.0, dy=12000.0, bl_pbl_physics=11,
-                                scalar_pblmix=0)
+                                scalar_pblmix=0, tracer_opt=0, madwrf_opt=0,
+                                tracer_pblmix=1)
     atmosphere = {name: np.full(shape, 0.25, F)
                   for name in ("u", "v", "theta", "qv", "qc", "qi",
                                "pressure", "exner", "dz")}

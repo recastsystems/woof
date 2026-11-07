@@ -10,10 +10,17 @@ import threading
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from woof.hex.mpasphys.streams_output_v842 import PhysicsStreams
 
 from test_mpasphys_streams_output_v842 import session, stream
+
+
+@pytest.fixture(autouse=True)
+def legacy_frame_policy(monkeypatch):
+    # The overlap tests exercise the explicitly selected staged-frame path.
+    monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', 'single')
 
 
 class _Device(np.ndarray):
@@ -143,10 +150,12 @@ def test_held_first_frame_and_snapshot_overrides_keep_the_synchronous_capture(tm
     assert receipt['output_capture'][0]['download'] == 'forecast thread'
 
 
-def test_a_card_without_room_for_the_frame_twice_downloads_in_the_step_stream(tmp_path):
+@pytest.mark.parametrize('policy,free', [('single', 1 << 30), ('compact', 64 << 30)])
+def test_bounded_frame_download_uses_the_step_stream(tmp_path, monkeypatch, policy, free):
+    monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', policy)
     state, fields, _, start = session(resident=True)
     cp, cuda = _fake_cp()
-    cuda.free = 1 << 30   # under the staging reserve
+    cuda.free = free
     state.device_pools.cp = cp
     state.device_pools.field = lambda pool, name: fields[pool, name].view(_Device)
     before = fields['state', 'scalars'][..., :3].copy()

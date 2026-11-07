@@ -1,6 +1,6 @@
 """A named WRF V4 release imports with the scheme generations it runs.
 
-Origin: a two-domain case (2026-10-28, run B).  A WRF 4.6 namelist
+Origin: the nested-domain case (2026-10-28, run B).  A WRF 4.6 namelist
 imported with the line alone ("4") ran WRF 4.8's YSU entrainment cap and
 solar constants, the engine's newest, so WOOF strict differed from
 wrf.exe 4.6.1 strict before the first radiation call.  The release now

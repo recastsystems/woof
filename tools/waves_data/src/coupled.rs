@@ -7,6 +7,7 @@ pub type Result<T> = std::result::Result<T,Box<dyn Error+Send+Sync>>;
 pub const REV:&str=env!("GPUWM_WAVES_DATA_REV");
 pub fn text<'a>(v:&'a Value,k:&str)->Result<&'a str>{v[k].as_str().ok_or_else(||format!("missing string {k}").into())}
 fn main()->Result<()>{
+    if std::env::args().nth(1).as_deref()==Some("--version"){println!("rw_waves_coupled_prepare {}", concat!("GPUWM_BRIDGE_SOURCE_REV=", env!("GPUWM_BRIDGE_SOURCE_REV")));return Ok(());}
     let path=std::env::args().nth(1).ok_or("rw_waves_coupled_prepare REQUEST.json")?;
     let request:Value=serde_json::from_slice(&fs::read(path)?)?;
     let threads=request["threads"].as_u64().unwrap_or(std::thread::available_parallelism()?.get() as u64);

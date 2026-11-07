@@ -440,6 +440,53 @@ def test_the_consumer_accepts_exactly_what_the_producer_emits(profile: str):
         requested_profile=profile)["profile"] == profile
 
 
+def test_the_consumer_accepts_the_correct_mode_morrison_receipt(monkeypatch):
+    """THE BREAKAGE (IFS-9KM-DEFAULT-2026-11-04): ``woof go`` on an HRRR
+    start with the Morrison profile fetched 11.8 GB, then refused its own
+    complete receipt with "omitted deterministic cold-start evidence".
+    In correct mode (HN1 on, the default outside a strict process) the
+    producer states Morrison's nc as the NDCNST droplet number, a shape the
+    consumer did not know.  The receipt here is the real producer's."""
+
+    from woof import correct_mode
+    from woof.ingest.microphysics_cold_start import hrrr_cold_start_preflight
+
+    monkeypatch.setattr(correct_mode, "STRICT", False)
+    monkeypatch.setattr(correct_mode, "CORRECT_KEYS_DEFAULT", True)
+    _producer_receipt.cache_clear()
+    try:
+        receipt = _cold_start_receipt(MORRISON_PROFILE_ID)
+    finally:
+        _producer_receipt.cache_clear()
+    assert receipt["state_source_absent_fields"]["nc"] == {
+        "ndcnst_droplet_number": True, "all_finite_above_zero": True}
+    report = {"physics": {
+        "schema": "gpuwm-prepared-physics-profile-v1",
+        "profile": MORRISON_PROFILE_ID,
+        "hrrr_initialization": receipt}}
+    assert prepare._validated_physics_receipt(
+        report, requested_profile=MORRISON_PROFILE_ID)["profile"] \
+        == MORRISON_PROFILE_ID
+    # The preflight the run plan calls before the fetch admits it too...
+    from woof.physics_compat import single_domain_runtime_switches
+    assert "QNCLOUD" not in hrrr_cold_start_preflight(
+        single_domain_runtime_switches(MORRISON_PROFILE_ID))
+    # ...and a forged nc is still refused.
+    forged = copy.deepcopy(report)
+    forged["physics"]["hrrr_initialization"]["state_source_absent_fields"][
+        "nc"] = {"ndcnst_droplet_number": True}
+    with pytest.raises(RuntimeError, match="cold-start evidence"):
+        prepare._validated_physics_receipt(
+            forged, requested_profile=MORRISON_PROFILE_ID)
+
+
+def test_an_hrrr_start_without_a_cold_start_contract_is_refused_before_the_fetch():
+    from woof.ingest.microphysics_cold_start import hrrr_cold_start_preflight
+
+    with pytest.raises(ValueError, match="refused before the download"):
+        hrrr_cold_start_preflight({"mp_physics": 987654})
+
+
 def test_the_consumer_refuses_the_previous_producer_schema():
     """v1/v2 acceptance is deliberately not retained.
 

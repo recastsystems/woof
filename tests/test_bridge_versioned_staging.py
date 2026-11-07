@@ -1,6 +1,6 @@
 """Two engine versions on one machine never touch each other's bridges.
 
-The defect these bind, observed on a development machine on 2026-10-05: a woof 2.8.0
+The defect these bind, observed on test host 2 on 2026-10-05: a gpuwm 2.8.0
 venv from PyPI found ``~/.woof/bridges/rw_netcdf`` built from source
 revision ``fc5b34e26...`` (a local build another install was running),
 printed "fetching v2.8.0's bridge bundle before this run continues" and
@@ -47,7 +47,7 @@ from woof import bridge_assets, bridges
 
 _ARTIFACTS = ("rw_mpas_mesh", "rw_netcdf")
 
-#: The local build the a development machine flat directory held.
+#: The local build the test host 2 flat directory held.
 _LOCAL_REV = "fc5b34e26c0ffee0c0ffee0c0ffee0c0ffee0c0f"
 _REV_A = "a" * 40
 _REV_B = "b" * 40
@@ -198,7 +198,7 @@ def _resolve(artifact: str) -> Path | None:
 
 
 def _stage_local_build(flat: Path) -> dict[str, bytes]:
-    """The a development machine flat directory: a local build nobody published."""
+    """The test host 2 flat directory: a local build nobody published."""
 
     flat.mkdir(parents=True, exist_ok=True)
     staged = {}

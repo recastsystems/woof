@@ -1075,7 +1075,7 @@ def test_a_failing_stage_replays_its_output_and_stops(
                    "--geog-root", str(staged_geog)])
     printed = capsys.readouterr().out
     assert rc == 3
-    # The hydro door's verdict sits in the memory gate's line block (V59: the
+    # The hydro door's verdict sits in the memory gate's line block (test host: the
     # headline run had hydro off and only the receipt said so).
     lines = printed.splitlines()
     memory = next(i for i, line in enumerate(lines) if line.startswith("go: memory -- "))

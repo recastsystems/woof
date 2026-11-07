@@ -15,6 +15,8 @@ from woof.core.clock import DomainClock, DomainTicks
 from woof.core.dycore import _boundary_forced
 from woof.core.nest import NestCoupler
 from woof.core.microphysics_transition import MP8_TO_MP18_POLICY
+from woof.core.state import adopt_wrf_theta_carrier
+from woof.wrf_exact import ENABLED as WRF_EXACT
 from woof.ingest.lateral_bc import (apply_specified_relaxation,
                                      attach_nest_boundaries,
                                      couple_nest_field, _weights)
@@ -62,12 +64,20 @@ class _State:
         self.msft = np.full((ny, nx), np.float32(1.25))
         self.msfu = np.full((ny, nx + 1), np.float32(1.5))
         self.msfv = np.full((ny + 1, nx), np.float32(1.75))
+        # DomainState.set_map_geometry owns both representations. The strict
+        # relaxation kernel consumes the inverse, including for non-v calls.
+        self.msfv_inv = np.float32(1.0) / self.msfv
         for index, name in enumerate(moisture_fields, start=1):
             setattr(self, name, np.full(
                 (nz, ny, nx), np.float32(index / 100.0)))
         self.has_msf = True
+        # Broadcast base profile, like an unmaterialized production base.
+        self.phb = np.zeros((nz + 1,), np.float32)
         self._scratch = {}
         self.lateral_boundaries = None
+        # Match both production input doors: strict kernels consume WRF t_2
+        # directly, whereas default kernels rebase thp against thb themselves.
+        adopt_wrf_theta_carrier(self)
 
     def scratch(self, shape, slot, dtype=None):
         dtype = np.dtype(np.float32 if dtype is None else dtype)
@@ -77,6 +87,9 @@ class _State:
         result = self._scratch[slot]
         assert result.shape == shape and result.dtype == dtype
         return result
+
+    def existing_scratch(self, slot):
+        return self._scratch.get(slot)
 
 
 class _DeviceState:
@@ -97,6 +110,11 @@ class _DeviceState:
         result = self._scratch[slot]
         assert result.shape == shape and result.dtype == dtype
         return result
+
+    def existing_scratch(self, slot):
+        # A newly loaded state has no acoustic mass halo yet. Its absence is
+        # distinct from allocating a zero halo, just as in DomainState.
+        return self._scratch.get(slot)
 
 
 def _nodes(*, parent_shape=(16, 16), child_start=(4, 4), state_factory=_State):
@@ -205,6 +223,9 @@ def test_skinny_child_routes_full_fields_to_matching_dead_rk_stagger(
             result = self._scratch[slot]
             assert result.shape == shape and result.dtype == dtype
             return result
+
+        def existing_scratch(self, slot):
+            return self._scratch.get(slot)
 
     state = SkinnyState()
     child = SimpleNamespace(state=state)
@@ -498,6 +519,8 @@ def test_force_uses_node_parent_clock_and_preserves_parent(monkeypatch):
                                                          kwargs=kwargs))
     before = {name: getattr(parent.state, name).copy()
               for name in ("mup", "u", "v", "w", "thp", "php")}
+    if WRF_EXACT:
+        before = _np_initial_force_round_trip(parent.state)
     assert isinstance(child.clock, DomainClock)
     coupler.force(child)
 
@@ -516,6 +539,7 @@ def test_force_uses_node_parent_clock_and_preserves_parent(monkeypatch):
         "stock_wrf_equivalent": True,
         "source_domain": 1,
         "target_domain": 2,
+        "surface_feedback_fields": [],
         "requested_policy": "same-scheme-only",
         "effective_policy": "same-scheme-only",
         "observation_scope": "current_process_since_build_or_restore",
@@ -677,8 +701,15 @@ def test_gpu_window_coupling_preserves_words_and_untouched_exterior(
 @pytest.mark.gpu
 def test_gpu_force_tables_match_np_nest_force_real_emulation():
     import cupy as cp
+    from woof.wrf_exact import ENABLED as wrf_exact
 
     host_parent, host_child = _nodes()
+    if wrf_exact:
+        # Strict nesting carries native t_2 = theta - 300. The general
+        # fixture also exercises a varying thb in fast mode; that is a
+        # different state convention, not a native strict input.
+        host_parent.state.thb.fill(np.float32(300.0))
+        host_child.state.thb.fill(np.float32(300.0))
     parent = SimpleNamespace(
         cfg=host_parent.cfg, state=_DeviceState(host_parent.state, cp),
         clock=host_parent.clock)
@@ -695,6 +726,8 @@ def test_gpu_force_tables_match_np_nest_force_real_emulation():
         dtype=np.float32)
     before = {name: cp.asnumpy(getattr(parent.state, name)).copy()
               for name in ("mup", "u", "v", "w", "thp", "php")}
+    if WRF_EXACT:
+        before = _np_initial_force_round_trip(host_parent.state)
     coupler.force(child)
 
     application_name = {"t": "theta", "ph": "phi"}
@@ -706,9 +739,59 @@ def test_gpu_force_tables_match_np_nest_force_real_emulation():
                     cp.asnumpy(got), np.float32(want),
                     err_msg=f"{name}/{side}")
     for name, original in before.items():
+        # Native strict FORCE intentionally leaves couple/uncouple FP32
+        # rounding on prognostics. Parent byte identity is a fast-mode
+        # contract; the rolling-table comparison above applies to both.
+        if wrf_exact and name != "mup":
+            continue
         np.testing.assert_array_equal(cp.asnumpy(getattr(parent.state, name)),
                                       original)
     assert child.clock.dtbc_launch_fp32.view(np.uint32) == np.uint32(0)
+
+
+def _np_initial_force_round_trip(state):
+    """Independent REAL coupling/uncoupling of the fixture's initial state.
+
+    WRF v4.6.1 dyn_em/couple_or_uncouple_em.F:119-166,193-245,279-345.
+    Strict forcing performs both passes in place. An assertion that its
+    input words never change would reject WRF's own rounded arithmetic.
+    This initial state has no previous acoustic mass halo.
+    WRF's public-domain notice is in licenses/LICENSE-WRF-public-domain.txt.
+    """
+    assert state.has_msf
+    assert np.all(state.thb == np.float32(300))
+    f32 = np.float32
+    half = ((state.c1h[:, None, None] * state.mub2d[None])
+            + state.c2h[:, None, None])
+    perturbation = state.c1h[:, None, None] * state.mup[None]
+    full = (((state.c1f[:, None, None] * state.mub2d[None])
+             + state.c2f[:, None, None])
+            + (state.c1f[:, None, None] * state.mup[None]))
+    mass = half + perturbation
+    inverse_u = np.empty_like(state.u)
+    total = ((half[:, :, 1:] + half[:, :, :-1])
+             + perturbation[:, :, 1:]) + perturbation[:, :, :-1]
+    inverse_u[:, :, 1:-1] = (f32(2) * state.msfu[None, :, 1:-1]) / total
+    low = ((half[:, :, 0] + half[:, :, 0])
+           + perturbation[:, :, 0]) + perturbation[:, :, 0]
+    inverse_u[:, :, 0] = (f32(2) * state.msfu[None, :, 0]) / low
+    inverse_u[:, :, -1] = state.msfu[None, :, -1] / mass[:, :, -1]
+    inverse_v = np.empty_like(state.v)
+    total = ((half[:, 1:, :] + half[:, :-1, :])
+             + perturbation[:, 1:, :]) + perturbation[:, :-1, :]
+    inverse_v[:, 1:-1, :] = (f32(2) * state.msfv[None, 1:-1, :]) / total
+    low = ((half[:, 0, :] + half[:, 0, :])
+           + perturbation[:, 0, :]) + perturbation[:, 0, :]
+    inverse_v[:, 0, :] = (f32(2) * state.msfv[None, 0, :]) / low
+    inverse_v[:, -1, :] = state.msfv[None, -1, :] / mass[:, -1, :]
+    return {
+        "mup": state.mup.copy(),
+        "u": np_couple_nest_field(state, "u") * inverse_u,
+        "v": np_couple_nest_field(state, "v") * inverse_v,
+        "w": np_couple_nest_field(state, "w") * (state.msft[None] / full),
+        "thp": (state.thp * mass) * (f32(1) / mass),
+        "php": np_couple_nest_field(state, "ph") * (f32(1) / full),
+    }
 
 
 @requires_gpu
@@ -853,7 +936,9 @@ def test_force_composes_both_store_corridors(monkeypatch):
 
 
 @pytest.mark.parametrize("smooth_option", [0, 1, 2])
-def test_feedback_finalize_commits_only_recomputed_diagnostics(monkeypatch, smooth_option):
+@pytest.mark.parametrize("start", [False, True])
+def test_feedback_finalize_commits_only_recomputed_diagnostics(
+        monkeypatch, smooth_option, start):
     """A windowed diagnosis must never overwrite live off-window store cells."""
     import woof.core.diagnostics as diagnostics
     from woof.core import streaming
@@ -877,9 +962,14 @@ def test_feedback_finalize_commits_only_recomputed_diagnostics(monkeypatch, smoo
             getattr(state, name)[sl] = 42.
             expected[name][sl] = 42.
     monkeypatch.setattr(diagnostics, "update_diagnostics", diagnose)
-    coupler.feedback_finalize(child)
-    assert len(seen) == 1
-    assert seen[0][2] < parent.cfg.run.ny and seen[0][3] < parent.cfg.run.nx
+    coupler.feedback_finalize(child, start=start)
+    if WRF_EXACT and not start:
+        # WRF's per-step update_after_feedback_em exchanges halos only.
+        # Diagnosis at nest start remains required in both arithmetic modes.
+        assert seen == []
+    else:
+        assert len(seen) == 1
+        assert seen[0][2] < parent.cfg.run.ny and seen[0][3] < parent.cfg.run.nx
     for name in expected:
         np.testing.assert_array_equal(live[name], expected[name])
     assert coupler._prepared_feedback is None

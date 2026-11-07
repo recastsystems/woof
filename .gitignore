@@ -16,6 +16,9 @@ woof/libexec/
 # once (they had to be force-added at 4dd3e82).  Output/scratch NetCDF
 # stays ignored; anything under configs/ is a deliberate, reviewed asset.
 !configs/**/*.nc
+# Frozen QNSESFCINIT reference assets ship with the paired QNSE port.
+!woof/data/qnse/qnsesfcinit-glibc239.nc
+!woof/data/qnse/qnsesfcinit-glibc241.nc
 # The companion's shipped reference tables are NetCDF too, and the same
 # rule sprang again: a fresh `git add` of the public release snapshot
 # silently dropped all nine data/rrtmgp/*.nc, so the published tree's
@@ -111,3 +114,8 @@ docs/branch-dispositions-private.md
 
 # Pre-port netCDF-C hydro schema/data identity reference.
 !tools/nextgen_output/tests/fixtures/*.nc
+
+# Local native DFI build output.
+/tools/dfi-runtime/target/
+
+tools/aerosol_grid/target/

@@ -18,6 +18,8 @@ vertical loops and edge reductions retain their original order. No forecast
 identity claim follows from a standalone replay.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -3867,7 +3869,7 @@ def _module(device_id: int, prognostic_viscosity_floor=True):
     with cp.cuda.Device(device_id):
         binary, _ = compiler.compile_using_nvrtc(
             _cuda_source(prognostic_viscosity_floor), options=_hex_numerics.options(CUDA_OPTIONS),
-            arch=cp.cuda.Device(device_id).compute_capability)
+            arch=_compilation_target(device_id, xp=cp))
         module = cp.cuda.function.Module()
         module.load(binary)
         return module

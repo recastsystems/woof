@@ -58,7 +58,7 @@ terminal, native weather processing, and remote-control workflows can run on a
 computer without a local CUDA installation.
 
 Only an intentionally viewer-only or remote-control installation should use
-`recast-woof[render]==2.9.2` without a GPU extra. It cannot execute local forecasts.
+`recast-woof[render]` without a GPU extra. It cannot execute local forecasts.
 
 ## Geography and offline setup
 
@@ -85,7 +85,7 @@ For a manual free-threaded environment:
 
 ```bash
 uv venv --seed --python 3.14t .venv
-.venv/bin/python -m pip install --prefer-binary 'recast-woof[all-cu12]==2.9.2'
+.venv/bin/python -m pip install --prefer-binary 'recast-woof[all-cu12]'
 ```
 
 On Windows, use `.venv\Scripts\python.exe` for the second line.

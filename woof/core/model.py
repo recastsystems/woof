@@ -403,18 +403,27 @@ RESTART_TOLERATED_RUN_FIELDS = (
 #: table exists to prevent; the anchor is back at its lane-base value with
 #: the row in place.  Every scheme-scoped knob goes here.
 #: The mp=28 row was added at the 2.5.8 integration.  Its two aerosol-source
-#: selectors (lane/wif-default) landed unscoped, exactly as the NSSL five
+#: selectors (development branch) landed unscoped, exactly as the NSSL five
 #: had, and moved BOTH frozen anchors in ``tests/test_water_overlay.py`` --
 #: measured by payload diff against the pristine base f27fc897a: exactly
 #: four added keys, these two per domain, no other change.  Unscoped they
 #: would have made every 2.5.7 checkpoint refuse to resume under 2.5.8 for
 #: fields only the aerosol-aware Thompson path reads (every reader in
-#: woof/ingest/real.py sits behind ``cfg.mp_physics == 28``).
+#: woof/ingest/real.py sits behind ``cfg.mp_physics in THOMPSON_AEROSOL_FAMILY``).
 SCHEME_SCOPED_RUN_FIELDS: dict[int, tuple[str, ...]] = {
+    14: ("wdm6_ccn_conc",),
     16: ("wdm6_hail_opt", "wdm6_ccn_conc"),
+    # WDM7 reads ccn_conc (wdm7init) and refuses any hail_opt but 0
+    # (woof/config.py), so both stay scheme-scoped exactly as for WDM6.
+    26: ("wdm6_hail_opt", "wdm6_ccn_conc"),
+    27: ("wdm6_ccn_conc",),
     18: ("nssl_2moment_on", "nssl_hail_on", "nssl_ccn_on",
-         "nssl_density_on", "nssl_3moment"),
+         "nssl_density_on", "nssl_3moment", "nssl_cccn",
+         "nssl_alphah", "nssl_alphahl", "nssl_icdx", "nssl_icdxhl"),
     28: ("wif_climatology_path", "mp28_aerosol_source"),
+    29: ("wif_climatology_path", "mp28_aerosol_source"),
+    38: ("wif_climatology_path", "mp28_aerosol_source"),
+    40: ("aercu_opt",),
     # The mp=50 row was added with the P3 CUDA port.  p3_backend selects
     # WHICH implementation integrates the column, and the three arms are
     # byte-identical on every p3-fortref fixture where they have been
@@ -424,7 +433,20 @@ SCHEME_SCOPED_RUN_FIELDS: dict[int, tuple[str, ...]] = {
     # scoped here, and woof/config.py refuses a non-default value under
     # any other scheme, which is what makes the scoping lossless.
     50: ("p3_backend",),
+    # mp=51 runs the same three P3 arms (woof.config.P3_VARIANTS).
+    51: ("p3_backend",),
+    52: ("p3_backend",),
+    # P3 three-moment ice reads the same selector ('cuda' or 'fused';
+    # 'reference' is refused for it by name in woof/config.py).
+    53: ("p3_backend",),
 }
+# Table-admitted column schemes: each row's switches are its scheme-scoped
+# fields, read from the row (woof.core.mp_column_schemes) rather than
+# respelled, and woof/config.py refuses them off-scheme.
+from woof.core.mp_column_schemes import (  # noqa: E402
+    MP_COLUMN_SCHEMES as _TABLE_ROWS)
+SCHEME_SCOPED_RUN_FIELDS.update(
+    {mp: tuple(row.switches) for mp, row in _TABLE_ROWS.items()})
 
 #: Cumulus-scoped knobs: each RunConfig field and the ``cu_physics`` values
 #: that read it.  Same convention as :data:`SCHEME_SCOPED_RUN_FIELDS`, keyed
@@ -433,9 +455,19 @@ SCHEME_SCOPED_RUN_FIELDS: dict[int, tuple[str, ...]] = {
 #: non-default value there, which is what makes the drop lossless), so no
 #: fingerprint written before the field existed moves.
 def _cumulus_scoped_run_fields() -> dict[str, frozenset]:
-    from woof.config import NSAS_DX_FACTOR_SCHEMES, SAS_PGCON_SCHEMES
-    return {"nsas_dx_factor": NSAS_DX_FACTOR_SCHEMES,
-            "sas_pgcon": SAS_PGCON_SCHEMES}
+    from woof.config import CUMULUS_PARAMETER_IDENTITY_RULES
+    return {name: frozenset(readers)
+            for name, (_, readers) in CUMULUS_PARAMETER_IDENTITY_RULES.items()
+            if readers}
+
+
+def scope_microphysics_run_fields(run: dict) -> None:
+    """Retain a knob when any selected scheme owns it."""
+    active = set(SCHEME_SCOPED_RUN_FIELDS.get(run.get("mp_physics"), ()))
+    scoped = {name for names in SCHEME_SCOPED_RUN_FIELDS.values() for name in names}
+    for name in scoped - active:
+        run.pop(name, None)
+
 
 #: The adaptive-timestep surface, scoped OFF the restart identity whenever
 #: ``use_adaptive_time_step`` is false -- see ``restart_identity_payload``.
@@ -470,6 +502,15 @@ ADAPTIVE_TIMESTEP_RUN_FIELDS: tuple[str, ...] = (
 #: runs, so that stays a refusal.
 ADAPTIVE_POLICY_RUN_FIELDS: frozenset[str] = frozenset(
     ADAPTIVE_TIMESTEP_RUN_FIELDS) - {"use_adaptive_time_step"}
+
+
+def _drop_off_scheme_run_fields(run: dict) -> None:
+    """Preserve settings read by the selected scheme, including shared knobs."""
+    owned = set(SCHEME_SCOPED_RUN_FIELDS.get(run.get("mp_physics"), ()))
+    all_scoped = {name for names in SCHEME_SCOPED_RUN_FIELDS.values()
+                  for name in names}
+    for name in all_scoped - owned:
+        run.pop(name, None)
 
 
 def restart_identity_payload(exp) -> dict:
@@ -627,6 +668,9 @@ def restart_identity_payload(exp) -> dict:
         domain.pop("full_history_interval_s", None)
         domain.pop("quicklook_output", None)
         run = domain.get("run", {})
+        if not run.get("tslist", ""):
+            for key in ("tslist", "ts_buf_size", "max_ts_locs", "max_ts_level", "tslist_unstagger_winds"):
+                run.pop(key, None)
         drop_default_diffusion_selectors(run)
         drop_default_spp_selectors(run)
         # ghg_input, absent-stays-absent: 0 is the fixed-gas radiation
@@ -657,9 +701,12 @@ def restart_identity_payload(exp) -> dict:
             run.pop("aer_asy_val", None)
             run.pop("aer_auxinput15", None)
             run.pop("aer_auxinput15_interval", None)
-        for name in ("swint_opt", "aer_opt", "alb_sol"):
-            if not run.get(name, 0):
+        for name in ("ra_call_offset", "swint_opt", "aer_opt", "alb_sol", "couple_farms", "cu_rad_feedback"):
+            if run.get(name, 0) in (0, False):
                 run.pop(name, None)
+        # The aer_opt=3 aerosol source binds only away from its default.
+        if run.get("rrtmg_aer3_source") == "operational_fork":
+            run.pop("rrtmg_aer3_source", None)
         for name in RESTART_TOLERATED_RUN_FIELDS:
             run.pop(name, None)
         # ``eta_levels`` on the absent-stays-absent convention of the
@@ -709,12 +756,16 @@ def restart_identity_payload(exp) -> dict:
             run.pop("urban_water_balance", None)
         # Scheme-scoped knobs leave the identity of every domain that does
         # not select their scheme (:data:`SCHEME_SCOPED_RUN_FIELDS`).
-        selected = run.get("mp_physics")
-        for scheme, names in SCHEME_SCOPED_RUN_FIELDS.items():
-            if selected == scheme:
-                continue
-            for name in names:
+        if run.get("sf_surface_physics", 0) != 1:
+            run.pop("ifsnow", None)
+        # The coefficient's original default describes pre-coefficient runs.
+        # A nondefault value remains bound only under its consuming scheme.
+        if run.get("nssl_cccn", 0.5e9) == 0.5e9:
+            run.pop("nssl_cccn", None)
+        for name, default in (("nssl_alphah", 0.0), ("nssl_alphahl", 1.0), ("nssl_icdx", 6), ("nssl_icdxhl", 6)):
+            if run.get(name, default) == default:
                 run.pop(name, None)
+        _drop_off_scheme_run_fields(run)
         for name, readers in _cumulus_scoped_run_fields().items():
             if run.get("cu_physics") not in readers:
                 run.pop(name, None)
@@ -792,6 +843,12 @@ def restart_identity_payload(exp) -> dict:
         # An absent key and the default describe the original clock.
         if not run.get("adaptive_nest_lattice", False):
             run.pop("adaptive_nest_lattice", None)
+        if not run.get("sst_update", 0):
+            run.pop("sst_update", None)
+            run.pop("surface_analysis", None)
+        if not run.get("tmn_update", 0):
+            run.pop("tmn_update", None)
+            run.pop("lagday", None)
         if not run.get("use_rap_aero_icbc", False):
             # The absent selector read no analyzed donor and no operational
             # surface source. Keep older default restart identities intact.
@@ -834,16 +891,16 @@ def restart_identity_payload(exp) -> dict:
         # ... and the MYNN generation, omitted at wrf_461 (every earlier
         # fingerprint), bound by name off it; its gsd_41 TKE option is
         # omitted at its default for the same reason.
-        if run.get("wind_farm_scheme", "off") == "off":
-            run.pop("wind_farm_scheme", None)
-            run.pop("wind_farm_table", None)
-            run.pop("wind_farm_max_dx_m", None)
-            run.pop("wind_farms", None)
-            run.pop("windfarm_tke_factor", None)
-        else:
-            from woof.wind_table import read_table
+        from woof.wind_table import drop_inert_config, read_table
+        drop_inert_config(run)
+        if run.get("wind_farm_scheme") == "fitch_legacy":
+            if run.get("windturbines_spec") != "ideal":
+                from woof.wind_legacy import read_spec
+                _, run["wind_farm_table_sha256"] = read_spec(run["windturbines_spec"])
+        elif run.get("wind_farm_scheme", "off") != "off":
             _, run["wind_farm_table_sha256"] = read_table(
-                run["wind_farm_table"], run["wind_farm_scheme"])
+                run["wind_farm_table"], run["wind_farm_scheme"],
+                windfarm_ij=run.get("windfarm_ij", 0))
         if run.get("bl_mynn_version", "wrf_461") == "wrf_461":
             run.pop("bl_mynn_version", None)
         # Headers before this selector ran the legacy YSU kernel.
@@ -891,10 +948,13 @@ def restart_identity_payload(exp) -> dict:
         # non-RUC run's fingerprint does not move.
         if run.get("ruc_snow", "wrf_461") == "wrf_461":
             run.pop("ruc_snow", None)
+        if run.get("h_sca_adv_order") != 2 or run.get("_legacy_h_sca") is not False:
+            run.pop("_legacy_h_sca", None)
         # ... and WRF's vert_order 3 ladder with the flux5 momentum
         # stencil, which every echo before the order fields described.
         for name, default in (("v_sca_adv_order", 3), ("v_mom_adv_order", 3),
-                              ("h_mom_adv_order", 5)):
+                              ("h_mom_adv_order", 5), ("rk_ord", 3),
+                              ("momentum_adv_opt", 1)):
             if int(run.get(name, default)) == default:
                 run.pop(name, None)
         # ... and w_damp measured from Courant 1, WRF's default (A165).
@@ -915,6 +975,19 @@ def restart_identity_payload(exp) -> dict:
         # rural cells an urban fraction WRF's rule leaves at zero.
         # woof/io/restart.py's header and digest drop them on the same
         # conditions.
+        if not run.get("ua_phys",False): run.pop("ua_phys",None)
+        # The sea-ice albedo/thickness/snow-depth options and the irrigation
+        # block at their defaults leave the identity by the checkpoint echo's
+        # own rule.  Unpopped, the six sea-ice options moved every experiment
+        # fingerprint (and every checkpoint's resume identity) without
+        # changing a number any run integrates.
+        from woof.io.restart import _drop_default_surface_port_keys
+        _drop_default_surface_port_keys(run)
+        if not run.get('sf_surf_irr_scheme', 0):
+            for key in ('sf_surf_irr_scheme', 'irr_daily_amount', 'irr_start_hour',
+                        'irr_num_hours', 'irr_start_julianday', 'irr_end_julianday',
+                        'irr_freq', 'irr_ph'):
+                run.pop(key, None)
         if not run.get("sf_surface_mosaic", 0):
             for name in ("sf_surface_mosaic", "mosaic_cat",
                          "mosaic_urban_canopy"):
@@ -924,12 +997,20 @@ def restart_identity_payload(exp) -> dict:
         # ... and no sub-grid terrain drag, WRF's default (topo_wind and
         # gwd_opt 0; woof.core.terrain_drag): absent-stays-absent, so every
         # fingerprint written before the two fields existed keeps its value.
-        for name in ("topo_wind", "gwd_opt"):
+        for name in ("topo_wind", "gwd_opt", "sst_skin"):
             if not run.get(name, 0):
                 run.pop(name, None)
+        # ... and no fog settling, WRF's default (grav_settling 0;
+        # woof.core.fog_settling), on the same absent-stays-absent rule.
+        if run.get("kfeta_trigger", 1) == 1:
+            run.pop("kfeta_trigger", None)
+        if not run.get("grav_settling", 0):
+            run.pop("grav_settling", None)
         # Off, post-PBL scalar diffusion preserves pre-option fingerprints.
         if not run.get("scalar_pblmix", 0):
             run.pop("scalar_pblmix", None)
+        from woof.core.passive_tracer_contract import drop_inactive_tracer_controls
+        drop_inactive_tracer_controls(run)
         # The chem block, on the adaptive block's OFF argument: with
         # chem_sets empty no chem key is read by anything (woof.config.
         # validate_chem_config), so dropping the block keeps every chem-off
@@ -966,9 +1047,11 @@ def restart_identity_payload(exp) -> dict:
             run.pop("aer_asy_val", None)
             run.pop("aer_auxinput15", None)
             run.pop("aer_auxinput15_interval", None)
-        for key in ("swint_opt", "aer_opt"):
-            if not run.get(key, 0):
+        for key in ("ra_call_offset", "swint_opt", "aer_opt", "couple_farms", "cu_rad_feedback"):
+            if run.get(key, 0) in (0, False):
                 run.pop(key, None)
+        if run.get("rrtmg_aer3_source") == "operational_fork":
+            run.pop("rrtmg_aer3_source", None)
         if run.get("rrtmg_cloud_optics_form", "wrf_461") == "wrf_461":
             run.pop("rrtmg_cloud_optics_form", None)
         # Earlier runs took rural aerosol type 1 everywhere; only the
@@ -1239,8 +1322,13 @@ def build_experiment(exp, case_data) -> ExperimentState:
             nz=exp.root.run.nz, column_chunk=exp.column_chunk,
             p_top=exp.vertical.p_top)
         if uses_modern_rrtmgp_workspace(exp) else None)
+    flg_storage = 0
+    if any(radiation_scheme_ids(dc.run)[0] == 7 for dc in exp.domains):
+        from woof.core.flg_radiation import flg_radiation_vram_bytes
+        flg_storage = sum(flg_radiation_vram_bytes(dc.run.nx*dc.run.ny,dc.run.nz)
+                          for dc in exp.domains if radiation_scheme_ids(dc.run)[0] == 7)
     if (radiation_workspace is not None
-            and radiation_workspace.nbytes != estimate.workspace_bytes):
+            and radiation_workspace.nbytes + flg_storage != estimate.workspace_bytes):
         raise RuntimeError(
             "runtime RRTMGP workspace drifted from the memory ledger: "
             f"{radiation_workspace.nbytes} != {estimate.workspace_bytes} bytes")
@@ -1705,7 +1793,8 @@ def execute_experiment(
         skip_feedback_path: bool = False,
         pool_trim_per_period: bool | None = None,
         relocation_runner=None, steppers=None, step_observer=None,
-        experiment=None, delayed_child_initializer=None, schedule_dispatch=None):
+        experiment=None, delayed_child_initializer=None, schedule_dispatch=None,
+        output_directory=None):
     """Wire one :class:`ExperimentState` into ``execute_schedule``.
 
     STEP calls the domain's existing dycore, FORCE calls its node-facing
@@ -1840,6 +1929,39 @@ def execute_experiment(
     # that joins the tree later falls back to the dycore's own step rather
     # than to whatever the last domain happened to bind.
     steppers = dict(steppers or {})
+    station_outputs = []
+    station_resumes = {}
+
+    def station_output(node):
+        from woof.core.tslist import attach as attach_tslist
+        if (node.state._tslist_resume is None
+                and node.cfg.grid_id in station_resumes):
+            node.state._tslist_resume = station_resumes[node.cfg.grid_id]
+        # Reconstruction replaces carriers. Drain the outgoing binding and
+        # carry its durable file cursor into the replacement state.
+        for previous in station_outputs:
+            if (not previous.closed and previous.domain == node.cfg.grid_id
+                    and previous.state is not node.state):
+                previous.close()
+                # Native calc_ts_locations is guarded by the domain's
+                # have_calculated_tslocs, including after a nest move calls
+                # start_domain. Preserve its original indices and headers;
+                # only rebind the replacement weather carriers. Reprojecting
+                # geographic stations here would change native semantics.
+                node.state._tslist_resume = previous.state._tslist_resume
+        output = attach_tslist(node, output_directory,
+            model.schedule.clock.start_time.strftime("%Y-%m-%d_%H:%M:%S"),
+            streamed=_streamed(node.cfg.grid_id))
+        if output not in station_outputs:
+            station_outputs.append(output)
+        return output
+
+    def before_rebuild(grid_id):
+        validators.pop(grid_id, None)
+        for output in station_outputs:
+            if not output.closed and output.domain == grid_id:
+                output.close()
+                station_resumes[grid_id] = output.state._tslist_resume
     #: Grid ids the checkpoint's question has already been asked of, so a
     #: domain is asked once and no later than it can be.
     asked_the_checkpoints_question: set[int] = set()
@@ -1894,7 +2016,8 @@ def execute_experiment(
     if nudging is not None:
         for node in model.walk_parent_first():
             if (nudging.for_domain(node.cfg.grid_id) is not None
-                    and getattr(node.state, "_spectral_nudging_owner", None) is None):
+                    and getattr(node.state, "_spectral_nudging_owner", None) is None
+                    and getattr(node.state, "_surface_fdda_owner", None) is None):
                 raise ValueError("NUDGING_ANALYSES_UNBOUND: this domain has no prepared analysis forcing; use the prepared forecast route")
     feedback_scratch = {
         node.cfg.grid_id: FeedbackScratch()
@@ -2012,7 +2135,7 @@ def execute_experiment(
             # The executor's validator holds live references into the
             # outgoing child; dropping it here is what lets the
             # host-staged release actually free the device bytes.
-            before_rebuild=lambda gid: validators.pop(gid, None),
+            before_rebuild=before_rebuild,
             after_rebuild=validate_rebuilt_child)
         for parent_stream in parent_streams.values():
             # reset_tracker_window already zeroes every live copy, including
@@ -2109,29 +2232,29 @@ def execute_experiment(
     #: pair `step_observer` reports, never a device synchronise.
     step_wall_by_domain: dict[int, float] = {}
 
-    # Scheme health status words (microphysics, YSU, KF, RRTMGP, ...) are
-    # recorded on the device during the step and read ONCE when the step
-    # returns, through woof.core.health_ledger, instead of one blocking
-    # device-to-host read per scheme in the middle of the step.  Each of those
-    # reads drained the launch queue: the host waited for the card, then the
-    # card waited for the host's next launches.  Measured on a 6 h Boston
-    # 250 m run (2.8.5, one RTX PRO 6000): the microphysics read alone held
-    # the main thread 9.4 ms per domain step with the card about 50% busy.
-    # Healthy runs change in nothing but wall time (the reads are error-only;
-    # see health_ledger).  A sick step still raises the same exception, from
-    # the same step, before step_health, output, feedback or a checkpoint can
-    # observe its state.  A ledger lives on one device, so a run that sees
-    # more than one keeps the immediate reads, as does --health-debug, whose
-    # point is the immediate report.
-    step_ledger = None
-    if not health_debug:
-        try:
-            import cupy as _cp
-            if int(_cp.cuda.runtime.getDeviceCount()) == 1:
+    # One bounded asynchronous ledger per domain/device. A step queues a
+    # pinned copy and only queries completed events. Failures may advance
+    # through internal FORCE/FEEDBACK work, but cannot reach a history frame,
+    # checkpoint or successful final return: those boundaries drain all
+    # ledgers. Debug mode keeps immediate attribution. Healthy field bytes
+    # are unchanged; no health check is disabled.
+    step_ledgers = {}
+
+    def ledger_for(grid_id):
+        if health_debug:
+            return None
+        if grid_id not in step_ledgers:
+            try:
                 from woof.core.health_ledger import HealthLedger
-                step_ledger = HealthLedger(label="forecast step")
-        except Exception:  # noqa: BLE001 - no CUDA: immediate reads, as before
-            step_ledger = None
+                step_ledgers[grid_id] = HealthLedger(label=f"forecast d{grid_id:02d}")
+            except Exception:  # noqa: BLE001 - CPU harness: immediate reads
+                step_ledgers[grid_id] = None
+        return step_ledgers[grid_id]
+
+    def drain_health():
+        for ledger in step_ledgers.values():
+            if ledger is not None:
+                ledger.drain()
 
     def on_step(grid_id, clock) -> None:
         # WRF prints one `Timing for main:` line per model time step per
@@ -2165,6 +2288,13 @@ def execute_experiment(
             # Kernel-facing curr_secs mirrors WRF REAL; after the solve the
             # public state clock is refreshed from exact integer ticks.
             refresh_model_time(node.state, clock, kernel_launch=True)
+            if (node.cfg.run.do_avgflx_em and clock.ticks
+                    < clock.spec.start_ticks + clock.spec.history_begin_ticks):
+                # solve_em compares CurrTime with HISTORY_ALARM's initial
+                # previous ring time, which is the future history_begin.
+                # Until that alarm, each step starts a fresh flux mean.
+                from woof.core.avgflx import history_written
+                history_written(node.state)
             # The clock is the CALENDAR AUTHORITY, and a streamed domain
             # does not read the state it was just written onto: its tiles
             # take elapsed_seconds from the sweep's scalar carriers.  Impose
@@ -2172,9 +2302,14 @@ def execute_experiment(
             # domain runs a second free-running clock and every physics
             # cadence -- and dtbc -- is evaluated against it.
             streamed_here = _streamed(grid_id)
+            if node.cfg.run.tslist and node.cfg.run.max_ts_locs:
+                station_output(node).prepare(clock)
             if streamed_here is not None:
+                if node.cfg.run.nwp_diagnostics and not node.cfg.run.gsd_diagnostics:
+                    streamed_here.scalars["_nwp_itimestep"] = clock.step_count + 1
                 streamed_here.impose_clock(node.state.elapsed_seconds)
             from woof.core import health_ledger as _health_ledger
+            step_ledger = ledger_for(grid_id)
             with _health_ledger.deferring(step_ledger):
                 steppers.get(grid_id, step)(
                     node.state, node.cfg.run,
@@ -2192,9 +2327,19 @@ def execute_experiment(
                 # One read for every scheme site of this step; raises the
                 # first site's own refusal.  Before anything downstream.
                 step_ledger.drain()
+            if node.cfg.run.p_lev_diags or node.cfg.run.z_lev_diags:
+                committed_ticks = clock.ticks + clock.step_ticks
+                if io_manager is not None:
+                    io_manager.submit_auxiliary(node, committed_ticks)
             from woof.core.nest_round_trip import th_phy_m_t0_after_step
             th_phy_m_t0_after_step(node)
             refresh_model_time(node.state, clock, after_step=True)
+            live_io_manager=getattr(model,'_io_manager',None)
+            native_aux=getattr(live_io_manager,'submit_native_auxiliary',None)
+            if native_aux is not None:
+                native_aux(node,clock.ticks+clock.step_ticks)
+            if node.cfg.run.tslist and node.cfg.run.max_ts_locs:
+                station_output(node).sample(clock)
             # Scientific accumulators see every committed domain step. This
             # is not the best-effort telemetry seam below: losing a wind
             # maximum must fail the product instead of silently undersampling.
@@ -2219,15 +2364,21 @@ def execute_experiment(
                     streamed=streamed_here is not None)
             if validate_state:
                 # Adaptive single-domain runs use this executor too. Keep the
-                # existing per-step NaN and live-layer CFL gate before output,
-                # feedback or checkpoint consumers can observe this state.
+                # existing per-step NaN and live-layer CFL checks. Resident
+                # failures are drained before publication or successful return.
                 # Streamed reports come from the canonical sweep, not its
                 # unchanged resident initialization snapshot.
-                from woof.core.streaming import step_health
+                from woof.core.streaming import step_health, defer_step_health
 
-                report = step_health(steppers.get(grid_id), node.state,
-                                     node.cfg.run,
-                                     boundary_width=node.cfg.run.spec_bdy_width)
+                with _health_ledger.deferring(step_ledger):
+                    deferred = defer_step_health(
+                        steppers.get(grid_id), node.state, node.cfg.run,
+                        boundary_width=node.cfg.run.spec_bdy_width,
+                        grid_id=grid_id, step_count=clock.step_count + 1)
+                report = ({"nan": False, "cfl": None} if deferred else
+                          step_health(steppers.get(grid_id), node.state,
+                                      node.cfg.run,
+                                      boundary_width=node.cfg.run.spec_bdy_width))
                 if report["nan"]:
                     raise RuntimeError(
                         f"d{grid_id:02d} integration produced a non-finite state "
@@ -2238,6 +2389,8 @@ def execute_experiment(
                         f"d{grid_id:02d} integration produced a non-finite "
                         f"vertical Courant number at model step {clock.step_count + 1}: "
                         "a model layer's live thickness is non-positive or non-finite")
+            if step_ledger is not None:
+                step_ledger.poll()
             poison()
             if streamed_here is not None:
                 # The same authority AFTER the step as before it.  The tiles
@@ -2375,6 +2528,7 @@ def execute_experiment(
 
     def on_history(grid_id, ticks) -> None:
         if history_handler is not None:
+            drain_health()
             if validators:
                 validators[grid_id].require_healthy(
                     phase=f"pre-history.d{grid_id:02d}")
@@ -2382,6 +2536,12 @@ def execute_experiment(
             nudging_owner = getattr(node.state, '_spectral_nudging_owner', None)
             if nudging_owner is not None:
                 nudging_owner.check_at_seam()
+            px_inputs = getattr(node.state, "_px_inputs_owner", None)
+            if px_inputs is not None:
+                px_inputs.check_at_seam()
+            surface_owner = getattr(node.state, '_surface_fdda_owner', None)
+            if surface_owner is not None:
+                surface_owner.check_at_seam()
             from woof.wrf_exact import ENABLED as wrf_exact
             if wrf_exact and node.parent is not None:
                 # WRF writes a nest's frame at an instant it shares with its
@@ -2397,6 +2557,10 @@ def execute_experiment(
             status.pending_d2h = int(io_manager.pending)
 
     def on_restart(ticks) -> None:
+        drain_health()
+        for node in model.walk_parent_first():
+            if node._started and node.cfg.run.tslist and node.cfg.run.max_ts_locs:
+                station_output(node)
         # A handler that orders its checkpoint after the history frames
         # itself (the prepared single-domain door's background checkpoint
         # writer) is not made to wait here for frames still being written.
@@ -2593,16 +2757,16 @@ def execute_experiment(
                     model._resume_committed_history_grid_ids
                     if bool(model._resumed) else ()))
     finally:
-        if adaptive_driver is not None:
-            # THE FOLD IS A MODULE GLOBAL, so it outlives this run.  A
-            # second experiment in the same process -- a chained `woof
-            # go`, a test module -- would otherwise keep launching
-            # w_cfl_stat every RK stage for a run that never asked for
-            # it, hold 4.72 MB per domain, and read this run's row for a
-            # grid_id it reuses.  In a finally so a refused run releases
-            # it too.
-            from woof.core.dycore import reset_wrf_cfl_recording
-            reset_wrf_cfl_recording()
+        # Close every domain even if one output worker reports a write error.
+        # ExitStack also restores the global CFL instrumentation on failure.
+        from contextlib import ExitStack
+        with ExitStack() as cleanup:
+            if adaptive_driver is not None:
+                from woof.core.dycore import reset_wrf_cfl_recording
+                cleanup.callback(reset_wrf_cfl_recording)
+            for output in station_outputs:
+                cleanup.callback(output.close)
+            drain_health()
     if relocation_runner is not None:
         relocation_runner.close_receipt(model)
     return execution
@@ -2614,3 +2778,5 @@ __all__ = [
     "ModelRuntimeStatus", "SharedRRTMGPChunkWorkspace", "build_experiment",
     "execute_experiment", "experiment_fingerprint",
 ]
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

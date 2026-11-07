@@ -1,5 +1,6 @@
-//! Ensemble product mathematics: mean, spread, neighbourhood exceedance
-//! probability (NMEP), probability-matched mean, and the missingness
+//! Ensemble product mathematics: mean, spread, member maximum,
+//! neighbourhood exceedance probability (NMEP), probability-matched
+//! mean, and the missingness
 //! bookkeeping every one of them publishes.
 //!
 //! This is a transcription of `gpuwm/da/enprod.py`'s reduction layer, whose
@@ -340,6 +341,27 @@ pub fn ensemble_mean(stack: &MemberStack, policy: NanPolicy) -> Result<Vec<f64>,
         } else {
             f64::NAN
         };
+    }
+    Ok(out)
+}
+
+/// Member maximum at each grid point, under the stated NaN policy.
+///
+/// The "ensemble max" map: the strongest value any member has at each
+/// point (max composite reflectivity, max updraft helicity).  `Mask`
+/// takes the maximum over the finite members only -- an infinity is no
+/// more data here than in the mean -- and leaves a point no member has
+/// NaN, never `-inf` and never zero.
+pub fn ensemble_max(stack: &MemberStack, policy: NanPolicy) -> Result<Vec<f64>, EnsembleError> {
+    stack.gate(policy)?;
+    let mut out = vec![f64::NAN; stack.points()];
+    for (index, slot) in out.iter_mut().enumerate() {
+        for grid in &stack.values {
+            let value = grid[index];
+            if value.is_finite() && (slot.is_nan() || value > *slot) {
+                *slot = value;
+            }
+        }
     }
     Ok(out)
 }
@@ -808,6 +830,29 @@ mod tests {
         assert_eq!(report.fully_missing_points, 1);
         assert_eq!(report.members_affected, vec![1, 2]);
         assert!(report.caption().unwrap().contains("1 point(s) blank"));
+    }
+
+    // ---- max ---------------------------------------------------------
+
+    #[test]
+    fn the_max_skips_a_nan_member_and_leaves_an_empty_point_nan() {
+        // Member 2 is missing at point 0 and member 3 is +Inf there; the
+        // max is the finite members' max, not NaN and not infinity.
+        let probe = stack(
+            1,
+            3,
+            &[
+                &[10.0, -5.0, f64::NAN],
+                &[f64::NAN, -2.0, f64::NAN],
+                &[f64::INFINITY, -7.0, f64::NAN],
+            ],
+        );
+        let max = ensemble_max(&probe, NanPolicy::Mask).unwrap();
+        assert_eq!(max[0], 10.0);
+        assert_eq!(max[1], -2.0, "an all-negative point keeps its sign");
+        assert!(max[2].is_nan(), "a point no member has is NaN");
+        let refused = ensemble_max(&probe, NanPolicy::Refuse).unwrap_err();
+        assert!(matches!(refused, EnsembleError::Refused(_)), "{refused}");
     }
 
     // ---- spread ------------------------------------------------------

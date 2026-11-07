@@ -38,7 +38,8 @@ def test_the_sdist_carries_the_copier_crate_and_not_its_build_output(monkeypatch
 def test_the_wheel_build_installs_the_copier_into_libexec():
     source = (TREE / "setup.py").read_text(encoding="utf-8")
     assert 'NETCDF_COPY = "gpuwm-hex-netcdf-copy"' in source
-    assert "shutil.copy2(copier, destination.parent / NETCDF_COPY)" in source
+    # Every helper now uses the same-file-safe copier when build output is reused.
+    assert "copy_helper(copier, destination.parent / NETCDF_COPY)" in source
     # the wheel's tag accounts for the copier's glibc floor too
     assert '"rust/netcdf-copy/target/release" / NETCDF_COPY' in source
 

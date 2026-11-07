@@ -28,6 +28,72 @@ STATE_FIELDS = ("t", "p", "w", "dz", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "
 TABLE_LAYOUT = [('av_r', (1, 1, 1, 1, 1)), ('bv_r', (1, 1, 1, 1, 1)), ('av_s', (1, 1, 1, 1, 1)), ('bv_s', (1, 1, 1, 1, 1)), ('fv_s', (1, 1, 1, 1, 1)), ('bv_c', (1, 1, 1, 1, 1)), ('bv_i', (1, 1, 1, 1, 1)), ('av_g_old', (1, 1, 1, 1, 1)), ('bv_g_old', (1, 1, 1, 1, 1)), ('av_g_new', (1, 1, 1, 1, 1)), ('bv_g_new', (1, 1, 1, 1, 1)), ('fv_r', (1, 1, 1, 1, 1)), ('av_c', (1, 1, 1, 1, 1)), ('a_coeff', (1, 1, 1, 1, 1)), ('b_coeff', (1, 1, 1, 1, 1)), ('av_i', (1, 1, 1, 1, 1)), ('am_s', (1, 1, 1, 1, 1)), ('bm_s', (1, 1, 1, 1, 1)), ('bm_g', (1, 1, 1, 1, 1)), ('bm_i', (1, 1, 1, 1, 1)), ('bm_r', (1, 1, 1, 1, 1)), ('rho_i', (1, 1, 1, 1, 1)), ('xm0i', (1, 1, 1, 1, 1)), ('d0c', (1, 1, 1, 1, 1)), ('d0r', (1, 1, 1, 1, 1)), ('d0s', (1, 1, 1, 1, 1)), ('d0g', (1, 1, 1, 1, 1)), ('d0r_max', (1, 1, 1, 1, 1)), ('c_cube', (1, 1, 1, 1, 1)), ('c_sqrd', (1, 1, 1, 1, 1)), ('mu_r', (1, 1, 1, 1, 1)), ('mu_s', (1, 1, 1, 1, 1)), ('mu_g', (1, 1, 1, 1, 1)), ('mu_i', (1, 1, 1, 1, 1)), ('nu_c_scale', (1, 1, 1, 1, 1)), ('nu_c_max', (1, 1, 1, 1, 1)), ('nu_c_min', (1, 1, 1, 1, 1)), ('naccn0', (1, 1, 1, 1, 1)), ('naccn1', (1, 1, 1, 1, 1)), ('nain0', (1, 1, 1, 1, 1)), ('nain1', (1, 1, 1, 1, 1)), ('nwfa_default', (1, 1, 1, 1, 1)), ('nifa_default', (1, 1, 1, 1, 1)), ('aero_max', (1, 1, 1, 1, 1)), ('hgfrz', (1, 1, 1, 1, 1)), ('nt_c_o', (1, 1, 1, 1, 1)), ('nt_c_l', (1, 1, 1, 1, 1)), ('nt_c_max', (1, 1, 1, 1, 1)), ('nt_c_min', (1, 1, 1, 1, 1)), ('tno', (1, 1, 1, 1, 1)), ('ato', (1, 1, 1, 1, 1)), ('rho_s', (1, 1, 1, 1, 1)), ('demott_nuc_ssati', (1, 1, 1, 1, 1)), ('max_ni', (1, 1, 1, 1, 1)), ('icenuc_max', (1, 1, 1, 1, 1)), ('rime_threshold', (1, 1, 1, 1, 1)), ('rime_conversion', (1, 1, 1, 1, 1)), ('ef_si', (1, 1, 1, 1, 1)), ('ef_rs', (1, 1, 1, 1, 1)), ('ef_rg', (1, 1, 1, 1, 1)), ('ef_ri', (1, 1, 1, 1, 1)), ('autocon_nr_factor', (1, 1, 1, 1, 1)), ('timestep_conversion_rime_to_rain', (1, 1, 1, 1, 1)), ('nrhg', (1, 1, 1, 1, 1)), ('nrhg1', (1, 1, 1, 1, 1)), ('min_qv', (1, 1, 1, 1, 1)), ('r1', (1, 1, 1, 1, 1)), ('r2', (1, 1, 1, 1, 1)), ('low_limit_mass_for_precip', (1, 1, 1, 1, 1)), ('eps', (1, 1, 1, 1, 1)), ('meters3_to_liters', (1, 1, 1, 1, 1)), ('gonv_min', (1, 1, 1, 1, 1)), ('gonv_max', (1, 1, 1, 1, 1)), ('t0', (1, 1, 1, 1, 1)), ('rho_w', (1, 1, 1, 1, 1)), ('sc', (1, 1, 1, 1, 1)), ('pi', (1, 1, 1, 1, 1)), ('lsub', (1, 1, 1, 1, 1)), ('lvap0', (1, 1, 1, 1, 1)), ('rv', (1, 1, 1, 1, 1)), ('rdry', (1, 1, 1, 1, 1)), ('roverrv', (1, 1, 1, 1, 1)), ('r', (1, 1, 1, 1, 1)), ('rho_not', (1, 1, 1, 1, 1)), ('rho_not0', (1, 1, 1, 1, 1)), ('cp', (1, 1, 1, 1, 1)), ('r_uni', (1, 1, 1, 1, 1)), ('kap0', (1, 1, 1, 1, 1)), ('kap1', (1, 1, 1, 1, 1)), ('lam0', (1, 1, 1, 1, 1)), ('lam1', (1, 1, 1, 1, 1)), ('nbins', (1, 1, 1, 1, 1)), ('nbc', (1, 1, 1, 1, 1)), ('nbr', (1, 1, 1, 1, 1)), ('nbs', (1, 1, 1, 1, 1)), ('nbi', (1, 1, 1, 1, 1)), ('nbg', (1, 1, 1, 1, 1)), ('ntb_i', (1, 1, 1, 1, 1)), ('ntb_i1', (1, 1, 1, 1, 1)), ('ntb_c', (1, 1, 1, 1, 1)), ('ntb_t', (1, 1, 1, 1, 1)), ('ntb_g1', (1, 1, 1, 1, 1)), ('ntb_s', (1, 1, 1, 1, 1)), ('ntb_g', (1, 1, 1, 1, 1)), ('ntb_r', (1, 1, 1, 1, 1)), ('ntb_r1', (1, 1, 1, 1, 1)), ('ntb_t1', (1, 1, 1, 1, 1)), ('ntb_in', (1, 1, 1, 1, 1)), ('ntb_arc', (1, 1, 1, 1, 1)), ('ntb_arw', (1, 1, 1, 1, 1)), ('ntb_art', (1, 1, 1, 1, 1)), ('ntb_arr', (1, 1, 1, 1, 1)), ('ntb_ark', (1, 1, 1, 1, 1)), ('idx_bg1', (1, 1, 1, 1, 1)), ('nhbins', (1, 1, 1, 1, 1)), ('radar_bins', (1, 1, 1, 1, 1)), ('rho_g', (9, 1, 1, 1, 1)), ('r_c', (37, 1, 1, 1, 1)), ('r_i', (64, 1, 1, 1, 1)), ('r_r', (37, 1, 1, 1, 1)), ('r_s', (37, 1, 1, 1, 1)), ('r_g', (37, 1, 1, 1, 1)), ('n0r_exp', (37, 1, 1, 1, 1)), ('n0g_exp', (37, 1, 1, 1, 1)), ('nt_i', (55, 1, 1, 1, 1)), ('nt_in', (55, 1, 1, 1, 1)), ('ta_na', (7, 1, 1, 1, 1)), ('ta_ww', (9, 1, 1, 1, 1)), ('ta_tk', (7, 1, 1, 1, 1)), ('ta_ra', (5, 1, 1, 1, 1)), ('ta_ka', (4, 1, 1, 1, 1)), ('sa', (10, 1, 1, 1, 1)), ('sb', (10, 1, 1, 1, 1)), ('tc', (9, 1, 1, 1, 1)), ('dim_nrhg', (1, 1, 1, 1, 1)), ('av_g', (9, 1, 1, 1, 1)), ('bv_g', (9, 1, 1, 1, 1)), ('am_i', (1, 1, 1, 1, 1)), ('am_r', (1, 1, 1, 1, 1)), ('am_g', (9, 1, 1, 1, 1)), ('lfus', (1, 1, 1, 1, 1)), ('olfus', (1, 1, 1, 1, 1)), ('orv', (1, 1, 1, 1, 1)), ('ar_volume', (1, 1, 1, 1, 1)), ('sc3', (1, 1, 1, 1, 1)), ('d0i', (1, 1, 1, 1, 1)), ('xm0s', (1, 1, 1, 1, 1)), ('xm0g', (1, 1, 1, 1, 1)), ('obmi', (1, 1, 1, 1, 1)), ('obmr', (1, 1, 1, 1, 1)), ('oams', (1, 1, 1, 1, 1)), ('obms', (1, 1, 1, 1, 1)), ('ocms', (1, 1, 1, 1, 1)), ('oamg', (9, 1, 1, 1, 1)), ('ocmg', (9, 1, 1, 1, 1)), ('obmg', (1, 1, 1, 1, 1)), ('cce', (5, 15, 1, 1, 1)), ('ccg', (5, 15, 1, 1, 1)), ('ocg1', (15, 1, 1, 1, 1)), ('ocg2', (15, 1, 1, 1, 1)), ('cie', (7, 1, 1, 1, 1)), ('cig', (7, 1, 1, 1, 1)), ('oig1', (1, 1, 1, 1, 1)), ('oig2', (1, 1, 1, 1, 1)), ('cre', (13, 1, 1, 1, 1)), ('crg', (13, 1, 1, 1, 1)), ('ore1', (1, 1, 1, 1, 1)), ('org1', (1, 1, 1, 1, 1)), ('org2', (1, 1, 1, 1, 1)), ('org3', (1, 1, 1, 1, 1)), ('cse', (17, 1, 1, 1, 1)), ('csg', (17, 1, 1, 1, 1)), ('cge', (12, 9, 1, 1, 1)), ('cgg', (12, 9, 1, 1, 1)), ('oge1', (1, 1, 1, 1, 1)), ('ogg1', (1, 1, 1, 1, 1)), ('ogg2', (1, 1, 1, 1, 1)), ('ogg3', (1, 1, 1, 1, 1)), ('t1_qr_qc', (1, 1, 1, 1, 1)), ('t1_qr_qi', (1, 1, 1, 1, 1)), ('t2_qr_qi', (1, 1, 1, 1, 1)), ('t1_qs_qc', (1, 1, 1, 1, 1)), ('t1_qs_qi', (1, 1, 1, 1, 1)), ('t1_qr_ev', (1, 1, 1, 1, 1)), ('t2_qr_ev', (1, 1, 1, 1, 1)), ('t1_qs_sd', (1, 1, 1, 1, 1)), ('t2_qs_sd', (1, 1, 1, 1, 1)), ('t1_qs_me', (1, 1, 1, 1, 1)), ('t2_qs_me', (1, 1, 1, 1, 1)), ('t1_qg_sd', (1, 1, 1, 1, 1)), ('t1_qg_me', (1, 1, 1, 1, 1)), ('nic2', (1, 1, 1, 1, 1)), ('nii2', (1, 1, 1, 1, 1)), ('nii3', (1, 1, 1, 1, 1)), ('nir2', (1, 1, 1, 1, 1)), ('nir3', (1, 1, 1, 1, 1)), ('nis2', (1, 1, 1, 1, 1)), ('nig2', (1, 1, 1, 1, 1)), ('nig3', (1, 1, 1, 1, 1)), ('niin2', (1, 1, 1, 1, 1)), ('nic1', (1, 1, 1, 1, 1)), ('dc', (100, 1, 1, 1, 1)), ('dtc', (100, 1, 1, 1, 1)), ('di', (100, 1, 1, 1, 1)), ('dti', (100, 1, 1, 1, 1)), ('dr', (100, 1, 1, 1, 1)), ('dtr', (100, 1, 1, 1, 1)), ('ds', (100, 1, 1, 1, 1)), ('dts', (100, 1, 1, 1, 1)), ('dg', (100, 1, 1, 1, 1)), ('dtg', (100, 1, 1, 1, 1)), ('t_nc', (100, 1, 1, 1, 1)), ('hbins', (50, 1, 1, 1, 1)), ('dhbins', (50, 1, 1, 1, 1)), ('sbins_radar', (50, 1, 1, 1, 1)), ('dsbins_radar', (50, 1, 1, 1, 1)), ('gbins_radar', (50, 1, 1, 1, 1)), ('dgbins_radar', (50, 1, 1, 1, 1)), ('t_efrw', (100, 100, 1, 1, 1)), ('t_efsw', (100, 100, 1, 1, 1)), ('tpc_wev', (100, 37, 100, 1, 1)), ('tnc_wev', (100, 37, 100, 1, 1)), ('tnccn_act', (7, 9, 7, 5, 4)), ('tps_iaus', (64, 55, 1, 1, 1)), ('tni_iaus', (64, 55, 1, 1, 1)), ('tpi_ide', (64, 55, 1, 1, 1)), ('tpi_qcfz', (37, 100, 45, 55, 1)), ('tni_qcfz', (37, 100, 45, 55, 1)), ('tpi_qrfz', (37, 37, 45, 55, 1)), ('tpg_qrfz', (37, 37, 45, 55, 1)), ('tni_qrfz', (37, 37, 45, 55, 1)), ('tnr_qrfz', (37, 37, 45, 55, 1)), ('tcs_racs1', (37, 9, 37, 37, 1)), ('tmr_racs1', (37, 9, 37, 37, 1)), ('tcs_racs2', (37, 9, 37, 37, 1)), ('tmr_racs2', (37, 9, 37, 37, 1)), ('tcr_sacr1', (37, 9, 37, 37, 1)), ('tms_sacr1', (37, 9, 37, 37, 1)), ('tcr_sacr2', (37, 9, 37, 37, 1)), ('tms_sacr2', (37, 9, 37, 37, 1)), ('tnr_racs1', (37, 9, 37, 37, 1)), ('tnr_racs2', (37, 9, 37, 37, 1)), ('tnr_sacr1', (37, 9, 37, 37, 1)), ('tnr_sacr2', (37, 9, 37, 37, 1)), ('tcg_racg', (37, 37, 9, 37, 37)), ('tmr_racg', (37, 37, 9, 37, 37)), ('tcr_gacr', (37, 37, 9, 37, 37)), ('tnr_racg', (37, 37, 9, 37, 37)), ('tnr_gacr', (37, 37, 9, 37, 37))]
 SOURCE_CITATIONS = {'tempo_build_tables': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:21-77', 'build_table_freezewater': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:78-91', 'write_table_freezewater': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:92-120', 'build_table_qr_acr_qs': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:121-259', 'write_table_qr_acr_qs': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:260-295', 'build_table_qr_acr_qg': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:296-393', 'write_table_qr_acr_qg': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:394-421', 'gather': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:424-438', 'get_index_for_rank': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:440-467', 'qr_acr_qs': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:468-598', 'qr_acr_qg': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:599-691', 'freezewater': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_tables.F90:692-782', 'effective_radius': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:12-56', 'reflectivity_10cm': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:57-121', 'find_melting_level': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:122-141', 'complex_water_ray': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:142-172', 'complex_ice_maetzler': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:173-201', 'reflectivity_from_melting_graupel': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:202-252', 'reflectivity_from_melting_snow': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:253-306', 'rayleigh_soak_wetgraupel': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:307-395', 'max_hail_diam': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:396-438', 'freezing_rain': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_diags.F90:439-456', 'init_water_friendly_aerosols': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_aerosols.F90:13-42', 'init_ice_friendly_aerosols': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_aerosols.F90:43-73', 'aerosol_collection_efficiency': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_aerosols.F90:74-118', 'tempo_main': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:73-825', 'aerosol_check_and_update': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:826-848', 'cloud_check_and_update': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:849-941', 'rain_check_and_update': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:942-1009', 'ice_check_and_update': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1010-1082', 'snow_check_and_update': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1083-1117', 'graupel_check_and_update': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1118-1213', 'graupel_init': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1214-1242', 'thermo_vars': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1243-1292', 'check_over_depletion': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1293-1419', 'sum_tendencies': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1420-1494', 'sedimentation': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1495-1542', 'semilagrangian_sedimentation': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1543-1731', 'rain_fallspeed': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1732-1771', 'graupel_fallspeed': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1772-1828', 'snow_fallspeed': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1829-1885', 'ice_fallspeed': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1886-1920', 'cloud_fallspeed': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1921-1955', 'cloud_condensation': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1956-2026', 'rain_evaporation': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2027-2090', 'freeze_cloud_melt_ice': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2091-2133', 'koop_nucleation': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2134-2163', 'activate_cloud_number': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2164-2244', 'warm_rain': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2245-2322', 'riming': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2323-2456', 'get_snow_table_index': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2457-2474', 'get_temperature_table_index': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2475-2489', 'get_rain_table_index': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2490-2521', 'get_graupel_table_index': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2522-2554', 'get_cloud_table_index': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2555-2575', 'get_ice_table_index': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2576-2601', 'rain_snow_rain_graupel': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2602-2692', 'ice_nucleation': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2693-2783', 'demott_nucleation': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2784-2799', 'get_in_table_index': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2800-2821', 'get_t1_subl': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2822-2851', 'ice_processes': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2852-2980', 'melting': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2981-3080', 'aerosol_scavenging': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:3081-3153', 'get_constant_cloud_number': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:11-24', 'calc_gamma_p': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:25-44', 'calc_gamma_series': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:45-78', 'calc_gamma_cf': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:79-118', 'snow_moments': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:119-255', 'calc_rslf': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:256-282', 'calc_rsif': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:283-304', 'get_nuc': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:305-319', 'compute_efrw': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:320-373', 'compute_efsw': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:374-413', 'qi_aut_qs': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:414-463', 'compute_drop_evap': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:464-500', 'get_version': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:382-407', 'initialize_graupel_vars': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:408-425', 'initialize_parameters': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:426-608', 'initialize_bins_for_tables': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:609-656', 'initialize_bins_for_hail_size': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:657-669', 'initialize_bins_for_radar': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:670-690', 'create_bins': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:691-720', 'initialize_arrays_freezewater': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:721-746', 'initialize_arrays_qr_acr_qs': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:747-774', 'initialize_arrays_qr_acr_qg': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:775-796', 'initialize_arrays_ccn': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:797-814', 'initialize_arrays_drop_evap': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:815-825', 'initialize_array_efsw': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:826-835', 'initialize_array_efrw': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:836-845', 'initialize_arrays_qi_aut_qs': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:846-857', 'save_or_read_ml_data': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90:84-101', 'tempo_ml_predict_cloud_number': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90:102-195', 'standard_scaler_transform': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90:196-211', 'relu_activation': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90:212-228', 'tempo_init': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:42-182', 'tempo_run': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:187-438', 'tempo_aerosol_surface_emissions': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:439-454', 'read_table_freezewater': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:455-478', 'read_table_qr_acr_qs': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:479-509', 'read_table_qr_acr_qg': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:510-532', 'read_table_ccn': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:533-554', 'check_before_table_read': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:555-603', 'init_ml_data': 'MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:604-633'}
 _COLUMN = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_3F6E147B_DEFINED
+#define HEX_DIVISOR_3F6E147B_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3f6e147b = 0.93f;
+#else
+static const float hex_divisor_3f6e147b = 0.93f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40A00000_DEFINED
+#define HEX_DIVISOR_40A00000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40a00000 = 5.0f;
+#else
+static const float hex_divisor_40a00000 = 5.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40C00000_DEFINED
+#define HEX_DIVISOR_40C00000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40c00000 = 6.0f;
+#else
+static const float hex_divisor_40c00000 = 6.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41400000_DEFINED
+#define HEX_DIVISOR_41400000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41400000 = 12.0f;
+#else
+static const float hex_divisor_41400000 = 12.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41800000_DEFINED
+#define HEX_DIVISOR_41800000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41800000 = 16.0f;
+#else
+static const float hex_divisor_41800000 = 16.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41A00000_DEFINED
+#define HEX_DIVISOR_41A00000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41a00000 = 20.0f;
+#else
+static const float hex_divisor_41a00000 = 20.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_44610000_DEFINED
+#define HEX_DIVISOR_44610000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_44610000 = 900.0f;
+#else
+static const float hex_divisor_44610000 = 900.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_447A0000_DEFINED
+#define HEX_DIVISOR_447A0000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_447a0000 = 1000.0f;
+#else
+static const float hex_divisor_447a0000 = 1000.0f;
+#endif
+#endif
+
 #define TEMPO_HD __device__ __forceinline__
 #define TEMPO_HDN __device__
 #ifndef TEMPO_NZ_MAX
@@ -758,9 +824,9 @@ TEMPO_HDN inline void init_water_friendly_aerosols(const TempoParams& P, int nz,
   }
   niccn3 = -1.0f * tempo_log(PS(naccn1) / PS(naccn0)) / h_01;
   // Fortran quirk: level 1 uses the level-2 height.
-  nwfa[1] = PS(naccn1) + PS(naccn0) * tempo_exp(-((hgt[2] - hgt[1]) / 1000.0f) * niccn3);
+  nwfa[1] = PS(naccn1) + PS(naccn0) * tempo_exp(-((hgt[2] - hgt[1]) / hex_divisor_447a0000) * niccn3);
   for (int k = 2; k <= nz; ++k) {
-    nwfa[k] = PS(naccn1) + PS(naccn0) * tempo_exp(-((hgt[k] - hgt[1]) / 1000.0f) * niccn3);
+    nwfa[k] = PS(naccn1) + PS(naccn0) * tempo_exp(-((hgt[k] - hgt[1]) / hex_divisor_447a0000) * niccn3);
   }
 }
 
@@ -780,9 +846,9 @@ TEMPO_HDN inline void init_ice_friendly_aerosols(const TempoParams& P, int nz,
     h_01 = 0.8f * mpas_cosf(hgt[1] * 0.001f - 1.0f);
   }
   niin3 = -1.0f * tempo_log(PS(nain1) / PS(nain0)) / h_01;
-  nifa[1] = PS(nain1) + PS(nain0) * tempo_exp(-((hgt[2] - hgt[1]) / 1000.0f) * niin3);
+  nifa[1] = PS(nain1) + PS(nain0) * tempo_exp(-((hgt[2] - hgt[1]) / hex_divisor_447a0000) * niin3);
   for (int k = 2; k <= nz; ++k) {
-    nifa[k] = PS(nain1) + PS(nain0) * tempo_exp(-((hgt[k] - hgt[1]) / 1000.0f) * niin3);
+    nifa[k] = PS(nain1) + PS(nain0) * tempo_exp(-((hgt[k] - hgt[1]) / hex_divisor_447a0000) * niin3);
   }
 }
 
@@ -813,7 +879,7 @@ TEMPO_HDN inline float aerosol_collection_efficiency(const TempoParams& P, doubl
   sc = visc / (rhoa * diff);
   st = (rho_p - rhoa) * da * da * vt * cc / (9.0f * visc * d);
   aval = tempo_log(1.0f + re);
-  st2 = (1.2f + 1.0f / 12.0f * aval) / (1.0f + aval);
+  st2 = (1.2f + 1.0f / hex_divisor_41400000 * aval) / (1.0f + aval);
   eff = 4.0f / (re * sc) * (1.0f + 0.4f * sqrt(re) * tempo_pow(sc, 0.3333f) + 0.16f * sqrt(re) * sqrt(sc))
       + 4.0f * da / d * (0.02f + da / d * (1.0f + 2.0f * sqrt(re)));
   if (st > st2) eff = eff + tempo_pow(((st - st2) / (st - st2 + 0.666667f)), 1.5f);
@@ -849,7 +915,7 @@ TEMPO_HDN inline void get_snow_table_index(const TempoParams& P, float rs, int* 
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:2475-2489 @ 1d6e370e; TEMPO 9adf9ef.
 TEMPO_HDN inline void get_temperature_table_index(const TempoParams& P, float tempk, int* idx_t) {
   float tempc = tempk - PS(t0);
-  int v = (int)((tempc - 2.5f) / 5.0f) - 1;
+  int v = (int)((tempc - 2.5f) / hex_divisor_40a00000) - 1;
   v = imax(1, -v);
   *idx_t = imin(v, PI(ntb_t));
 }
@@ -1156,7 +1222,7 @@ TEMPO_HDN inline void rain_evaporation(const TempoParams& P, const TempoCtx& C, 
           rate_max = tmin((rr[k] * orho * C.global_inverse_dt), (qvs[k] - qv[k]) * C.global_inverse_dt);
           T.prv_rev[k] = tmin(rate_max, T.prv_rev[k] * orho);
           if (T.prr_gml[k] > 0.0f) {
-            eva_factor = tmin(1.0f, 0.01f + (0.99f - 0.01f) * (tempc / 20.0f));
+            eva_factor = tmin(1.0f, 0.01f + (0.99f - 0.01f) * (tempc / hex_divisor_41a00000));
             T.prv_rev[k] = T.prv_rev[k] * eva_factor;
           }
         }
@@ -1231,7 +1297,7 @@ TEMPO_HDN inline void warm_rain(const TempoParams& P, const TempoCtx& C, int nz,
         xdc = tmax(d0c * 1.e6f, (tempo_pow((rc[k] / (am_r * nc[k])), PS(obmr))) * 1.e6f);
         dc_g = (tempo_pow((PA2(ccg, 3, nu_c) * PA1(ocg2, nu_c)), PS(obmr)) / lamc) * 1.e6f;
         dc_b = tempo_pow((xdc * xdc * xdc * dc_g * dc_g * dc_g - xdc * xdc * xdc * xdc * xdc * xdc),
-                   (1.0f / 6.0f));
+                   (1.0f / hex_divisor_40c00000));
         zeta1 = 0.5f * ((6.25e-6f * xdc * dc_b * dc_b * dc_b - 0.4f)
                        + fabs(6.25e-6f * xdc * dc_b * dc_b * dc_b - 0.4f));
         zeta = 0.027f * rc[k] * zeta1;
@@ -2143,7 +2209,7 @@ TEMPO_HDN inline void reflectivity_10cm(const TempoParams& P, const TempoCtx& C,
       ze_rain = n0_r * PA1(crg, 4) * tempo_pow(ilamr[k], PA1(cre, 4));
     }
     if (l_qs[k]) {
-      ze_snow = (0.176f / 0.93f) * (6.0f / pi) * (6.0f / pi) * (am_s / 900.0f) * (am_s / 900.0f) * smoz[k];
+      ze_snow = (0.176f / hex_divisor_3f6e147b) * (6.0f / pi) * (6.0f / pi) * (am_s / hex_divisor_44610000) * (am_s / hex_divisor_44610000) * smoz[k];
       if (refl10cm_from_melting_flag) {
         if (k_melt > 2 && k < k_melt - 1) {
           ze_snow = reflectivity_from_melting_snow(P, rs[k], smob[k], smoc[k], rr[k]);
@@ -2152,8 +2218,8 @@ TEMPO_HDN inline void reflectivity_10cm(const TempoParams& P, const TempoCtx& C,
     }
     if (l_qg[k]) {
       n0_g = ng[k] * PS(ogg2) * tempo_pow((1.0f / ilamg[k]), PA2(cge, 2, 1));
-      ze_graupel = (0.176f / 0.93f) * (6.0f / pi) * (6.0f / pi) * (PA1(am_g, idx[k]) / 900.0f)
-                 * (PA1(am_g, idx[k]) / 900.0f) * n0_g * PA2(cgg, 4, 1) * tempo_pow(ilamg[k], PA2(cge, 4, 1));
+      ze_graupel = (0.176f / hex_divisor_3f6e147b) * (6.0f / pi) * (6.0f / pi) * (PA1(am_g, idx[k]) / hex_divisor_44610000)
+                 * (PA1(am_g, idx[k]) / hex_divisor_44610000) * n0_g * PA2(cgg, 4, 1) * tempo_pow(ilamg[k], PA2(cge, 4, 1));
       if (refl10cm_from_melting_flag) {
         if (k_melt > 2 && k < k_melt - 1) {
           ze_graupel = reflectivity_from_melting_graupel(P, rg[k], ng[k], ilamg[k], idx[k], rr[k]);
@@ -2939,8 +3005,8 @@ TEMPO_HDN inline void semilagrangian_sedimentation(const TempoParams& P, const T
   }
   zi[1] = 0.0f;
   for (k = 1; k <= nz; ++k) zi[k + 1] = zi[k] + dz1d[k];
-  fa1 = 9.0f / 16.0f;
-  fa2 = 1.0f / 16.0f;
+  fa1 = 9.0f / hex_divisor_41800000;
+  fa2 = 1.0f / hex_divisor_41800000;
   wi[1] = vt[1];
   wi[2] = 0.5f * (vt[2] + vt[1]);
   for (k = 3; k <= nz - 1; ++k) wi[k] = fa1 * (vt[k] + vt[k - 1]) - fa2 * (vt[k + 1] + vt[k - 2]);
@@ -4306,8 +4372,10 @@ def _compiled_warp(device: int, device_math_source: str, max_levels: int):
         sizes = cp.empty(3, dtype=cp.uint64)
         module.get_function("tempo_warp_sizes")((1,), (1,), (sizes,))
         kernel = module.get_function("tempo_warp_steps")
-        sms = runtime.deviceGetAttribute(runtime.cudaDevAttrMultiProcessorCount, device)
-        blocks = driver.occupancyMaxActiveBlocksPerMultiprocessor(kernel.ptr, WARP_BLOCK, 0)
+        from woof.hip_runtime import device_attribute
+        sms = device_attribute(cp, "MultiProcessorCount", device)
+        from woof.backend import active_blocks_per_multiprocessor
+        blocks = active_blocks_per_multiprocessor(kernel.ptr, WARP_BLOCK, 0)
         resident = max(1, sms * blocks) * (WARP_BLOCK // 32)
         return module, tuple(map(int, sizes.get())), resident
 
@@ -4413,6 +4481,16 @@ CONFIG_ARGUMENTS = ("config_tempo_aerosolaware","config_tempo_hailaware","config
 CONSTANT_ARGUMENTS = ("R_v","R_d","rvord","P0","rcv","gravity")
 
 _MPAS = r"""
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_447A0000_DEFINED
+#define HEX_DIVISOR_447A0000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_447a0000 = 1000.0f;
+#else
+static const float hex_divisor_447a0000 = 1000.0f;
+#endif
+#endif
+
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:439-454.
 extern "C" __global__ void tempo_emissions(float* nwfa,const float* surface,
                                          float dt,int columns) {
@@ -4544,8 +4622,8 @@ extern "C" __global__ void tempo_init_aerosols(float* nwfa,float* nifa,float* nw
  float cc=-1.0f*mpas_logf(PS(naccn1)/PS(naccn0))/h01;
  float in=-1.0f*mpas_logf(PS(nain1)/PS(nain0))/h01;
  for(int k=0;k<nz;++k){int j=k==0?1:k;float h=0.5f*(z[j*nc+c]+z[(j+1)*nc+c]);
- if(initw)nwfa[k*nc+c]=PS(naccn1)+PS(naccn0)*mpas_expf(-((h-h1)/1000.0f)*cc);
- if(initi)nifa[k*nc+c]=PS(nain1)+PS(nain0)*mpas_expf(-((h-h1)/1000.0f)*in);}
+ if(initw)nwfa[k*nc+c]=PS(naccn1)+PS(naccn0)*mpas_expf(-((h-h1)/hex_divisor_447a0000)*cc);
+ if(initi)nifa[k*nc+c]=PS(nain1)+PS(nain0)*mpas_expf(-((h-h1)/hex_divisor_447a0000)*in);}
  float dz=z[nc+c]-z[c];if(dz<9.0f)dz=9.0f;
  nwfa2d[c]=tmax(PS(nwfa_default),tmin(PS(aero_max),nwfa[c]))*0.000196f*(5.0f/dz)*(area[c]/9.e6f);nifa2d[c]=0.0f;
 }
@@ -4824,7 +4902,7 @@ def load_resources(packet, device):
 
 
 def _session_tables(native,flags,cp):
-    """The session's native-initialized TEMPO tables as the device binary64 blob.
+    """The session's native-initialized TEMPO tables in the launch's device kind.
 
     RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_params.F90:23-857;
     MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:42-182.
@@ -4838,7 +4916,9 @@ def _session_tables(native,flags,cp):
         raise ValueError("TEMPO session tables require the pinned fork native session")
     kinds=(np.dtype("float32"),np.dtype("float64"),np.dtype("int32"),np.dtype("int64"))
     total=sum(math.prod(shape) for _,shape in TABLE_LAYOUT)
-    tables=cp.zeros(total,dtype=cp.float64);offset=0
+    from ...device_memory_release import shared_card_memory
+    streamed = _fast() and shared_card_memory()
+    tables=cp.zeros(total,dtype=cp.float32 if streamed else cp.float64);offset=0
     for name,shape in TABLE_LAYOUT:
         count=math.prod(shape)
         item=native.get_table("module_mp_tempo_params."+name)
@@ -4850,7 +4930,18 @@ def _session_tables(native,flags,cp):
             value,_=item
             if value.dtype not in kinds or not value.flags.f_contiguous or value.shape+(1,)*(5-value.ndim)!=shape:
                 raise ValueError("native TEMPO table kind/extent differs: "+name)
-            tables[offset:offset+count]=cp.asarray(value.reshape(-1,order="F")).astype(cp.float64)
+            words = value.reshape(-1, order="F")
+            if streamed:
+                # The fast launch reads RN/FTZ binary32 table words. Convert
+                # bounded pieces through the same binary64 device kind as the
+                # original packer, rather than holding a complete binary64
+                # blob and multiple binary32 conversion temporaries at once.
+                for start in range(0, count, 1 << 20):
+                    stop = min(count, start + (1 << 20))
+                    tables[offset+start:offset+stop] = fast_tables(
+                        cp.asarray(words[start:stop]).astype(cp.float64))
+            else:
+                tables[offset:offset+count]=cp.asarray(words).astype(cp.float64)
         offset+=count
     cp.cuda.get_current_stream().synchronize()
     return tables
@@ -4977,7 +5068,21 @@ def _bind_native_views(provider,call):
     if provider.level!=2:raise ValueError("MPAS microphysics updates state time level 2")
     resource=provider.tempo_v303_resources;flags=tuple(bool(call.options[n]) for n in CONFIG_ARGUMENTS)
     if resource["tables"] is None:
-        resource["tables"]=_session_tables(provider.native,flags,provider.cp)
+        # One blob per card for the same-host ranks on it (threads share the array, rank processes its device
+        # memory): the blob is const in every TEMPO kernel and its bytes are fixed by the native build, the live
+        # flags and the numerics (woof.hex.device_share names the breakage: 8 identical copies on one card).  One
+        # rank per card builds its own, as before.  The fast conversion below is folded into the shared build, so
+        # no rank holds a private binary32 copy beside a shared binary64 one.
+        import json
+        from ...device_share import shared_readonly
+        cp=provider.cp;fast=_fast()
+        def build():
+            tables=_session_tables(provider.native,flags,cp)
+            if fast and tables.dtype!=cp.float32:
+                tables=fast_tables(tables);cp.cuda.get_current_stream().synchronize()
+            return tables
+        key=("tempo_v303.session_tables",flags,fast,json.dumps(provider.native.build,sort_keys=True,default=str))
+        resource["tables"]=shared_readonly(key,build,cp=cp)
         resource["flags"]=flags
     if tuple(map(bool,resource["flags"]))!=flags:
         raise ValueError("native initialized TEMPO parameters differ from the live flags")

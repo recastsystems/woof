@@ -1,9 +1,27 @@
+// Nondefault NSSL receiving-domain distributions. Defaults keep their literals.
+#ifdef NSSL2_ALPHA_G_WORD
+#define NSSL_EDGE_ALPHA_G (__uint_as_float((unsigned int)(NSSL2_ALPHA_G_WORD-1ULL)))
+#define NSSL_EDGE_ALPHA_H (__uint_as_float((unsigned int)(NSSL2_ALPHA_H_WORD-1ULL)))
+__device__ __forceinline__ float nssl_edge_zfactor(float a) {
+    return ((6.f+a)*(5.f+a)*(4.f+a))/((3.f+a)*(2.f+a)*(1.f+a));
+}
+#endif
 // GPUWM-specific Thompson MP8 -> NSSL-2 MP18 nest translation.
 //
 // This is not stock-WRF equivalence: WRF v4.6.1 normalizes every domain to
 // the innermost microphysics selector.  The diagnosed values reproduce the
 // admitted mass-only NSSL calcnfromq closure in nssl2.cu, but emit one field at
 // a time so nest forcing reuses the existing full-parent scratch allocation.
+
+// Preserve the established default entry points and constant arithmetic.
+// A nondefault target compiles a separate variant carrying its REAL CCN seed.
+#ifdef NSSL2_VARIABLE_CCCN
+#define NSSL_CCN_PARAMETER , float nssl_background_ccn
+#define NSSL_CCN_ARGUMENT , nssl_background_ccn
+#else
+#define NSSL_CCN_PARAMETER
+#define NSSL_CCN_ARGUMENT
+#endif
 
 struct NsslTransitionState {
     float qv, qc, qr, qi, qs, qg;
@@ -12,7 +30,8 @@ struct NsslTransitionState {
 
 static __device__ __forceinline__
 NsslTransitionState diagnose_mp8_mass_as_mp18(
-    float rho, float qv, float qc, float qr, float qi, float qs, float qg)
+    float rho, float qv, float qc, float qr, float qi, float qs, float qg
+    NSSL_CCN_PARAMETER)
 {
     NsslTransitionState result;
     const double density_inverse = 1.0 / (double)rho;
@@ -32,12 +51,15 @@ NsslTransitionState diagnose_mp8_mass_as_mp18(
     float ice_number = 0.0f;
     float snow_number = 0.0f;
     float graupel_number = 0.0f;
-    float ccn_number = (float)(
-        (double)408163264.0f * (double)rho);
+#ifdef NSSL2_VARIABLE_CCCN
+    const float qccn = nssl_background_ccn;
+#else
+    const float qccn = 408163264.0f;
+#endif
+    float ccn_number = (float)((double)qccn * (double)rho);
     float graupel_volume = 0.0f;
 
     if (cloud_number <= cxmin && cloud > qxmin_init) {
-        const float qccn = 408163264.0f;
         const float cwmas_inverse = 327479132160.0f;
         cloud_number = fminf(qccn, cloud * cwmas_inverse) * rho;
         ccn_number -= cloud_number;
@@ -92,7 +114,11 @@ NsslTransitionState diagnose_mp8_mass_as_mp18(
         const double lambda_inverse = pow(
             (double)rho * (double)graupel * (double)zhfac, 0.25);
         const double intercept_number =
-            lambda_inverse * (double)200000.0f;
+            lambda_inverse * (double)200000.0f
+#ifdef NSSL2_ALPHA_G_WORD
+            * (double)nssl_edge_zfactor(NSSL_EDGE_ALPHA_G) / (double)20.0f
+#endif
+            ;
         const double maximum_number =
             (double)rho * (double)graupel / (double)xgms;
         const double diagnosed = fmin(intercept_number, maximum_number);
@@ -163,7 +189,7 @@ void mp8_to_mp18_mass_diagnosed_field(
     const float* __restrict__ c1h,
     const float* __restrict__ c2h,
     float* __restrict__ out,
-    int field, int coupled, int nz, int ny, int nx)
+    int field, int coupled, int nz, int ny, int nx NSSL_CCN_PARAMETER)
 {
     const int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx >= nz * ny * nx) return;
@@ -172,7 +198,8 @@ void mp8_to_mp18_mass_diagnosed_field(
     const int j = rem / nx;
     const int i = rem - j * nx;
     const NsslTransitionState diagnosed = diagnose_mp8_mass_as_mp18(
-        1.0f / alt[idx], qv[idx], qc[idx], qr[idx], qi[idx], qs[idx], qg[idx]);
+        1.0f / alt[idx], qv[idx], qc[idx], qr[idx], qi[idx], qs[idx], qg[idx]
+        NSSL_CCN_ARGUMENT);
     float value = transition_field(diagnosed, field);
     if (coupled != 0) {
         const size_t q = (size_t)j * nx + i;
@@ -214,10 +241,10 @@ float edge_source_mass(
 static __device__ __forceinline__
 NsslTransitionState diagnose_edge_mass_as_mp18(
     float rho, float qv, float qc, float qr, float qi, float qs,
-    float qg, float qh)
+    float qg, float qh NSSL_CCN_PARAMETER)
 {
     NsslTransitionState result = diagnose_mp8_mass_as_mp18(
-        rho, qv, qc, qr, qi, qs, qg);
+        rho, qv, qc, qr, qi, qs, qg NSSL_CCN_ARGUMENT);
     const double density_inverse = 1.0 / (double)rho;
     const float cxmin = 1.0e-8f;
     const float qxmin_init = 1.0e-8f;
@@ -237,7 +264,13 @@ NsslTransitionState diagnose_edge_mass_as_mp18(
             (double)rho * (double)hail * (double)zhlfac, 0.25);
         const double n1 = lambda_inverse * (double)40000.0f;
         hail_number = (float)(
-            n1 * (double)8.75f / (double)20.0f);
+            n1 *
+#ifdef NSSL2_ALPHA_G_WORD
+            (double)nssl_edge_zfactor(NSSL_EDGE_ALPHA_H)
+#else
+            (double)8.75f
+#endif
+            / (double)20.0f);
     } else if (hail <= qxmin_rain
                || (hail_number <= cxmin && hail <= qxmin_init)) {
         vapor += hail;
@@ -625,7 +658,7 @@ void microphysics_edge_field(
     // edge seeds is the domain's own value and not a constant restated
     // here.  Every other target ignores it.
     float wdm6_ccn,
-    int coupled, int nz, int ny, int nx)
+    int coupled, int nz, int ny, int nx NSSL_CCN_PARAMETER)
 {
     const int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx >= nz * ny * nx) return;
@@ -686,7 +719,8 @@ void microphysics_edge_field(
     float value;
     if (target_mp == 18) {
         const NsslTransitionState diagnosed =
-            diagnose_edge_mass_as_mp18(rho, qv, qc, qr, qi, qs, qg, qh);
+            diagnose_edge_mass_as_mp18(rho, qv, qc, qr, qi, qs, qg, qh
+                                      NSSL_CCN_ARGUMENT);
         // MP18's local field order differs from the stable matrix codes.
         int nssl_field = field;
         if (field == 10) nssl_field = 6;
@@ -699,8 +733,13 @@ void microphysics_edge_field(
         // T = (thb + thp) * (p/p0)^(R/cp), the state's own Exner form.
         const float pr = target_pres[idx];
         const float thb = target_thb[thb_columnar != 0 ? k : idx];
+        float theta = __fadd_rn(thb, target_thp[idx]);
+#ifdef GPUWM_USE_THETA_M
+        theta = __fdiv_rn(theta, __fadd_rn(1.0f,
+            __fmul_rn(__fdiv_rn(461.6f, 287.0f), source_qv[idx])));
+#endif
         const float t = __fmul_rn(
-            __fadd_rn(thb, target_thp[idx]),
+            theta,
             powf(__fdiv_rn(pr, my2_p0), my2_rcp));
         value = my2_edge_field(
             field, t, pr, my2_ck, qv, qc, qr, qi, qs, qg, qh);

@@ -15,13 +15,13 @@ two-moment through its persistent production binding, and 28 is
 aerosol-aware Thompson (``woof.core.microphysics_aerosol`` and the eight
 ``kernels/thompson_aerosol_*.cu`` translation units; WRF
 Registry/Registry.EM_COMMON:3036).  mp=28 is a SIBLING of the mp=8 path,
-never a branch inside it: ``kernels/thompson.cu`` and
-``woof.core.thompson`` are byte-frozen and gain nothing from this port,
-which is what makes the mp=8 non-regression a statement about bytes.
+never a branch inside its scheme kernel. Both adapters select the same
+dry-physics / moist-prognostic conversion when ``use_theta_m = 1``.
 
 The scheme inputs follow WRF ``moist_physics_prep_em``
-(dyn_em/module_big_step_utilities_em.F) with ``use_theta_m = 0`` (woof's
-dry-theta prognostic): full potential temperature ``thb + thp``, DRY
+(dyn_em/module_big_step_utilities_em.F): full dry potential temperature
+``thb + thp`` at ``use_theta_m = 0``, or that sum divided by
+``1 + Rv/Rd * qv`` at ``use_theta_m = 1``; DRY
 density ``rho = 1/alt``, full-pressure Exner ``pii = (p/p0)^(Rd/cp)``, and
 half-level heights / layer depths from the full geopotential -- so
 ``apply`` must run with up-to-date EOS diagnostics (``dycore.step`` calls
@@ -88,11 +88,13 @@ import cupy as cp
 import numpy as np
 
 from woof.microphysics_schemes import scheme as _named_scheme
-from woof.config import RunConfig
+from woof.config import P3_MP_PHYSICS, RunConfig, is_p3
 from woof.core import constants as c
 from woof.core.kernels import get_kernel
+from woof.core.mp_column_schemes import (SIX_MASS_TABLE_SCHEMES,
+                                         TABLE_SCHEMES)
 from woof.core.state import DTYPE, DomainState
-from woof.core.wdm6_constants import WDM6_NUMBER_SPECIES
+from woof.core.wdm6_constants import WDM6_NUMBER_SPECIES, WDM_SCHEMES
 from woof.physics_compat import thompson_table_root as _thompson_table_root
 
 _TPB = 64          # threads per block (one thread per column)
@@ -431,7 +433,7 @@ def prepare_microphysics_exner(pressure, out):
 #: < 0, so neither is filled.  The breakage this prevents: without it, a
 #: dry level the advection took a few 1e-13 below zero stayed negative in
 #: ArWen while wrf.exe set it to ~1e-3 (the mean of its neighbours), and the
-#: strict 9 km pair parted at step 2 (9 words, then every field by 1 h).
+#: strict nested 9 km pair parted at step 2 (9 words, then every field by 1 h).
 _THOMPSON_VAPOUR_FILL_SOURCE = r"""
 extern "C" __global__ void thompson_negative_vapour_fill(
     float* __restrict__ qv, const int nz, const long long ncol)
@@ -518,17 +520,23 @@ def save_pre_mp_theta(state: DomainState) -> None:
     """WRF ``moist_physics_prep_em``: park the pre-microphysics FULL theta
     in the h_diabatic array (module_big_step_utilities_em.F:5503 "use
     h_diabatic to temporarily save pre-microphysics full theta",
-    :5523-5526; ``use_theta_m = 0`` conversion ``th_phy = t_new + t0`` at
-    :5513-5521).  :func:`moist_physics_finish` consumes and overwrites it.
+    :5523-5526). The moist branch first divides the prognostic theta_m
+    by its vapour factor and saves pre-call qv.
+    :func:`moist_physics_finish` consumes and overwrites the saved theta.
     """
     thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
-    cp.add(thb, state.thp, out=state.h_diabatic)
+    if getattr(state, "use_theta_m", 0):
+        from woof.core.theta_m_physics import save_vapour
+        state.h_diabatic[...] = state.total_theta()
+        save_vapour(state)
+    else:
+        cp.add(thb, state.thp, out=state.h_diabatic)
 
 
 def moist_physics_finish(state: DomainState, cfg: RunConfig, th_phy,
                          dt: float) -> None:
     """WRF ``moist_physics_finish_em`` (module_big_step_utilities_em.F:
-    5593-5784), ``use_theta_m = 0`` branch; float64 mirror
+    5593-5784), with either prognostic thermal variable; float64 mirror
     ``woof.verify.npref.np_moist_physics_finish``.
 
     ``th_phy`` is the scheme's post-microphysics full theta;
@@ -541,8 +549,16 @@ def moist_physics_finish(state: DomainState, cfg: RunConfig, th_phy,
     ``h_diabatic = mpten/dt`` (:5745) that the NEXT step's RK loop feeds
     to the theta tendency.  With ``no_mp_heating = 1`` theta is left
     untouched (:5775) and ``h_diabatic = 0`` (:5776) -- the scheme's
-    moisture updates stand either way.
+    moisture updates stand either way. At ``use_theta_m = 1`` the native
+    vapour increment and moist heat factor also enter theta_m and its
+    heating rate; the implementation is in ``theta_m_physics``.
     """
+    from woof.core.afwa_diagnostics import capture_microphysics_theta
+    capture_microphysics_theta(state,cfg,th_phy)
+    if getattr(state, "use_theta_m", 0):
+        from woof.core.theta_m_physics import finish_microphysics
+        finish_microphysics(state, cfg, th_phy, dt)
+        return
     if cfg.no_mp_heating == 0:
         # WRF multiplies the REAL mp_tend_lim by the REAL dt (:5706-5707),
         # one float32 rounding of two float32 operands, as classic
@@ -596,7 +612,8 @@ def _apply_kessler(state: DomainState, cfg: RunConfig, dt: float, *,
     dz8w = state.scratch((nz, ny, nx), "mp_dz8w")
     z8w = state.scratch((nz + 1, ny, nx), "mp_z8w")
 
-    th[...] = thb + state.thp
+    th[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
     rho[...] = 1.0 / state.alt                   # dry density 1/(al+alb)
     prepare_microphysics_exner(state.p, pii)
     z8w[...] = (phb + state.php) / DTYPE(c.G)
@@ -754,12 +771,17 @@ def _apply_thompson_default(
     # read before its mass or number is written, and the zero is a +0.0,
     # as WRF writes.
     micro_columns = state.scratch(surface_shape, "mp_thompson_micro_columns")
+    moist_theta = bool(getattr(state, "use_theta_m", 0))
+    if moist_theta:
+        from woof.core.theta_m_physics import save_vapour
+        save_vapour(state)
     launch_adapter_prepare(
         state.thb, state.thp, state.phb, state.php,
         th, pii, temperature, dz, state.h_diabatic,
         state.qc, state.qi, state.ni, state.qr, state.nr, state.qs,
         state.qg, frozen_reference_temperature, graupel_melt_marker,
-        graupelncv, micro_columns)
+        graupelncv, micro_columns,
+        **({"qv": state.qv} if moist_theta else {}))
     # On the rewritten entry state (launch_adapter_entry): the private
     # graupel number, and WRF's column exit (:1646, :1827-1990, :2020): a
     # column whose entry condensate is all at or below R1 and which is
@@ -901,7 +923,10 @@ def _apply_thompson_default(
     # Theta from temperature, moist_physics_finish and SR in one launch.
     launch_adapter_finish(
         temperature, pii, th, state.thp, state.h_diabatic,
-        rainncv, snowncv, graupelncv, sr, cfg, dt)
+        rainncv, snowncv, graupelncv, sr, cfg, dt,
+        **({"state": state} if moist_theta else {}))
+    from woof.core.afwa_diagnostics import capture_microphysics_theta
+    capture_microphysics_theta(state,cfg,th)
     return MicrophysicsDiagnostics(
         rainnc=rainnc, rainncv=rainncv, sr=sr,
         snownc=snownc, snowncv=snowncv,
@@ -1145,7 +1170,8 @@ def _apply_column_scheme(state: DomainState, cfg: RunConfig, dt: float,
     pii = state.scratch((nz, ny, nx), "mpcol_pii")
     dz = state.scratch((nz, ny, nx), "mpcol_dz")
     z8w = state.scratch((nz + 1, ny, nx), "mpcol_z8w")
-    theta[...] = thb + state.thp
+    theta[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
     rho[...] = 1.0 / state.alt
     pii[...] = cp.power(state.p / DTYPE(c.P0), DTYPE(c.RCP))
     z8w[...] = (phb + state.php) / DTYPE(c.G)
@@ -1172,22 +1198,152 @@ def _apply_column_scheme(state: DomainState, cfg: RunConfig, dt: float,
 def _wsm_family_selectors() -> frozenset[int]:
     from woof.core.wsm_family import family_selectors
     return family_selectors()
+def _column_kernel_selectors() -> tuple[int, ...]:
+    """Selectors the registry admits through the column-kernel door."""
+    from woof.core.column_microphysics import column_kernel_selectors
+    return column_kernel_selectors()
 
+
+def _apply_registered_column(state, cfg, dt: float, contract, *, refl_10cm_due,
+                             prepare=None):
+    """Run a native column using registry roles and the WRF preparation bracket."""
+    import importlib
+    from woof.core import constants as c
+    shape = state.p.shape
+    nz, ny, nx = shape
+    th = state.scratch(shape, "mp_th")
+    dz = state.scratch(shape, "mp_dz8w")
+    z = state.scratch((nz+1, ny, nx), "mp_z8w")
+    if prepare is None:
+        thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
+        phb = state.phb if state.phb.ndim == 3 else state.phb[:, None, None]
+        th[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+                   else thb + state.thp)
+        z[...] = (phb + state.php) / DTYPE(c.G)
+        dz[...] = z[1:] - z[:-1]
+    else:
+        prepare(th, z, dz)
+    fields = {role:getattr(state, name) for role,name in contract["fields"].items()}
+    fields.update(p=state.p, dz=dz, th=th)
+    diag = {role:state.scratch(shape, slot) for role,slot in contract["diagnostics"].items()}
+    scratch = {role:state.scratch(shape, slot) for role,slot in contract["scratch"].items()}
+    surf = {role:state.scratch((ny,nx), slot) for role,slot in contract["surfaces"].items()}
+    surf["sr"][...] = 0.0  # Driver placeholder; WRF ISHMAEL does not compute SR.
+    if prepare is None:
+        save_pre_mp_theta(state)
+    else:
+        cp.copyto(state.h_diabatic, th)
+        if getattr(state, "use_theta_m", 0):
+            from woof.core.theta_m_physics import save_vapour
+            save_vapour(state)
+    getattr(importlib.import_module(contract["module"]), contract["function"])(fields, diag, surf, scratch, dt=dt)
+    scale = DTYPE(1e6 if contract["radius_units"] == "metres" else 1)
+    state.effc[...] = diag["effc"] * scale
+    state.effi[...] = diag["effi"] * scale
+    if refl_10cm_due:
+        from woof.core.refl import stash_refl_10cm
+        stash_refl_10cm(state, diag["dbz"])
+    moist_physics_finish(state, cfg, th, dt)
+    return MicrophysicsDiagnostics(rainnc=surf["rainnc"],rainncv=surf["rainncv"],sr=surf["sr"],
+                                   snownc=surf["snownc"],snowncv=surf["snowncv"])
+
+
+def _apply_column_kernel(state, cfg, dt, binding, *, refl_10cm_due):
+    """WRF prep/finish around a registry-bound device column kernel."""
+    import importlib
+    module = importlib.import_module(binding['module'])
+    nz, ny, nx = state.p.shape
+    shape = (nz, ny, nx)
+    from woof.physics_vertical_contract import outside_vertical_bounds
+    bounds = tuple(binding['vertical_bounds'])
+    if outside_vertical_bounds(nz, bounds):
+        raise ValueError(f"mp_physics={cfg.mp_physics} needs nz within {bounds}; "
+                         "the column geometry and sedimentation need these levels")
+    if state.physics is None or 'xland' not in state.physics.fields:
+        raise ValueError(f"mp_physics={cfg.mp_physics} needs the surface XLAND "
+                         "mask to choose its cloud-droplet effective radius")
+    xland = state.physics.fields['xland']
+    thb = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
+    phb = state.phb if state.phb.ndim == 3 else state.phb[:, None, None]
+    theta = state.scratch(shape, 'mp_column_theta')
+    rho = state.scratch(shape, 'mp_column_rho')
+    pii = state.scratch(shape, 'mp_column_pii')
+    z8w = state.scratch((nz + 1, ny, nx), 'mp_column_z8w')
+    z = state.scratch(shape, 'mp_column_z')
+    dz = state.scratch(shape, 'mp_column_dz')
+    # Every intermediate has a priced scratch slot. Keep operation order
+    # while writing directly into it, including the broadcast base fields.
+    # Native column physics consumes dry theta. The prognostic sum is
+    # moist theta when selected; passing it through would apply the moist
+    # factor again in moist_physics_finish on every step.
+    if getattr(state, "use_theta_m", 0):
+        theta[...] = state.total_theta()
+    else:
+        cp.add(thb, state.thp, out=theta)
+    cp.divide(DTYPE(1.0), state.alt, out=rho)
+    cp.divide(state.p, DTYPE(c.P0), out=pii)
+    cp.power(pii, DTYPE(c.RCP), out=pii)
+    cp.add(phb, state.php, out=z8w)
+    cp.divide(z8w, DTYPE(c.G), out=z8w)
+    cp.add(z8w[:-1], z8w[1:], out=z)
+    cp.multiply(DTYPE(0.5), z, out=z)
+    cp.subtract(z8w[1:], z8w[:-1], out=dz)
+    surface = {name: state.scratch((ny, nx), slot)
+               for name, slot in binding['surface_slots'].items()}
+    arguments = {name: getattr(state, attr)
+                 for name, attr in binding['species'].items()}
+    arguments.update({name: [getattr(state, attr) for attr in attrs]
+                      for name, attrs in binding['groups'].items()})
+    arguments.update(surface)
+    arguments.update(th=theta, rho=rho, pii=pii, p=state.p, z=z,
+                     dz8w=dz, w=state.w, ht=state.ht, xland=xland,
+                     refl_10cm=state.scratch(shape, 'refl_10cm'),
+                     vt=state.scratch(shape, 'mp_column_vt'),
+                     err=state.scratch((1,), 'mp_column_error'),
+                     dt=dt, dx=cfg.dx,
+                     itimestep=int(state.physics.microphysics_updates) + 1,
+                     refl_due=refl_10cm_due)
+    save_pre_mp_theta(state)
+    getattr(module, binding['launcher'])(**arguments)
+    if refl_10cm_due:
+        from woof.core.refl import stash_refl_10cm
+        stash_refl_10cm(state, arguments['refl_10cm'])
+    for target, source in binding.get('radiation_radii', {}).items():
+        getattr(state, target)[...] = getattr(state, source)
+    for target, sources in binding.get('sum_outputs', {}).items():
+        value = getattr(state, target)
+        cp.copyto(value, getattr(state, sources[0]))
+        for source in sources[1:]:
+            cp.add(value, getattr(state, source), out=value)
+    moist_physics_finish(state, cfg, theta, dt)
+    return MicrophysicsDiagnostics(**surface)
 
 def _dispatch_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
                      refl_10cm_due: bool) -> MicrophysicsDiagnostics:
     """Scheme dispatch exactly as before the ring guard existed."""
+    from woof.physics_registry import column_microphysics_binding
+    binding = column_microphysics_binding(cfg.mp_physics)
+    if binding is not None:
+        return _apply_column_kernel(state, cfg, dt, binding,
+                                    refl_10cm_due=refl_10cm_due)
+    if cfg.mp_physics == 40:
+        from woof.core.morrison_aero import apply
+        return apply(state, cfg, dt, refl_10cm_due=refl_10cm_due)
     row = COLUMN_SCHEMES.get(int(cfg.mp_physics))
     if row is not None:
         return _apply_column_scheme(state, cfg, dt, row,
                                     refl_10cm_due=refl_10cm_due)
+    from woof.physics_registry import consumer_row_for_selector
+    contract = consumer_row_for_selector("microphysics", "native_column", cfg.mp_physics)
+    if contract:
+        return _apply_registered_column(state, cfg, dt, contract, refl_10cm_due=refl_10cm_due)
     if cfg.mp_physics == 1:
         return _apply_kessler(
             state, cfg, dt, refl_10cm_due=refl_10cm_due)
     elif cfg.mp_physics == 2:
         from woof.core import lin
         return lin.apply(state, cfg, dt, refl_10cm_due=refl_10cm_due)
-    elif cfg.mp_physics == 5:
+    elif cfg.mp_physics in (5, 15):
         # Ferrier-Aligo.  Lazy import for the Morrison reason: mp=5 compiles
         # its own CUDA translation unit and reads its own lookup table,
         # which no other scheme's run may pay for.
@@ -1216,9 +1372,8 @@ def _dispatch_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
         from woof.core.milbrandt2 import apply as apply_milbrandt2
         return apply_milbrandt2(
             state, cfg, dt, refl_10cm_due=refl_10cm_due)
-    elif cfg.mp_physics == 16:
-        # Lazy import for the Morrison reason: mp=16 compiles its own CUDA
-        # translation unit, which a WSM6 or Kessler run must never build.
+    elif cfg.mp_physics in WDM_SCHEMES:
+        # Lazy import: only the selected WDM translation unit is compiled.
         from woof.core.wdm6 import apply as apply_wdm6
         return apply_wdm6(
             state, cfg, dt, refl_10cm_due=refl_10cm_due)
@@ -1227,7 +1382,13 @@ def _dispatch_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
         from woof.core.morrison import apply as apply_morrison
         return apply_morrison(
             state, cfg, dt, refl_10cm_due=refl_10cm_due)
-    elif cfg.mp_physics == 28:
+    elif cfg.mp_physics == 27:
+        from woof.core.udm import apply as apply_udm
+        return apply_udm(state, cfg, dt, refl_10cm_due=refl_10cm_due)
+    elif cfg.mp_physics == 29:
+        from woof.core.rcon import apply as apply_rcon
+        return apply_rcon(state, cfg, dt, refl_10cm_due=refl_10cm_due)
+    elif cfg.mp_physics in THOMPSON_AEROSOL_FAMILY:
         # Thompson aerosol-aware.  A SIBLING adapter, not a branch inside
         # _apply_thompson: port-era isolation is recorded in
         # tests/test_mp8_frozen.py. Those historical receipts are not a
@@ -1238,9 +1399,26 @@ def _dispatch_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
         from woof.core.microphysics_aerosol import _apply_thompson_aerosol
         return _apply_thompson_aerosol(
             state, cfg, dt, refl_10cm_due=refl_10cm_due)
+    elif cfg.mp_physics == 56:
+        # NTU multi-moment.  Lazy import: only an mp=56 run compiles
+        # kernels/ntu.cu.
+        from woof.core.ntu import apply as apply_ntu
+        return apply_ntu(state, cfg, dt, refl_10cm_due=refl_10cm_due)
     elif cfg.mp_physics == 30:
         from woof.core.fast_sbm_runtime import apply as apply_fast_sbm
         return apply_fast_sbm(state,cfg,dt,refl_10cm_due=refl_10cm_due)
+    elif cfg.mp_physics in _column_kernel_selectors():
+        # A table-admitted column scheme: its registry ``column_kernel``
+        # row names the kernel, species, state fields and surface slots,
+        # and one launcher serves every such row (no adapter module).
+        from woof.core.column_microphysics import apply as apply_column
+        return apply_column(state, cfg, dt, refl_10cm_due=refl_10cm_due)
+    elif cfg.mp_physics == 95:
+        # Eta Ferrier.  Lazy import for the Morrison reason: mp=95 compiles
+        # its own translation unit (kernels/etanew.cu) and reads the
+        # ETAMPNEW table, which no other scheme's run should pay for.
+        from woof.core.etanew import apply as apply_etanew
+        return apply_etanew(state, cfg, dt, refl_10cm_due=refl_10cm_due)
     elif _named_scheme(cfg.mp_physics) is not None:
         # A NAMED scheme (woof.microphysics_schemes): its adapter module is
         # woof.core.<name>, imported lazily so no other run compiles it.
@@ -1254,16 +1432,26 @@ def _dispatch_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
         from woof.core.wsm_family import apply as apply_wsm_family
         return apply_wsm_family(
             state, cfg, dt, refl_10cm_due=refl_10cm_due)
-    elif cfg.mp_physics == 50:
-        # P3 one-category.  Lazy import for the reason the Morrison and
+    elif is_p3(cfg.mp_physics):
+        # P3 one-category, specified (50) or predicted (51) Nc.  Lazy import for the reason the Morrison and
         # aerosol arms use one, plus a P3-specific one: importing this
         # module does not read the 1.6 MiB lookup table, but the adapter's
         # first call does, and a Kessler or WSM6 run must never pay that.
         from woof.core.p3 import apply as apply_p3
         return apply_p3(state, cfg, dt, refl_10cm_due=refl_10cm_due)
+    elif cfg.mp_physics in TABLE_SCHEMES:
+        # Table-admitted column schemes (mp=97 Goddard GCE, ...): one arm
+        # for every row of woof.core.mp_column_schemes.MP_COLUMN_SCHEMES,
+        # which carries the unit, species, switches and tables per scheme.
+        from woof.core.mp_column_schemes import apply as apply_table
+        return apply_table(state, cfg, dt, refl_10cm_due=refl_10cm_due)
     else:
         # Branch-local imports avoid the microphysics -> nssl2_runtime ->
         # microphysics partial-initialization cycle.
+        from woof.core.nssl2_contract import resolve_nssl2_mode_for_config
+        if not resolve_nssl2_mode_for_config(cfg).two_moment:
+            from woof.core.nssl1 import apply as apply_nssl1
+            return apply_nssl1(state,cfg,dt,refl_10cm_due=refl_10cm_due)
         from woof.core.nssl2_default_hooks import NSSL2ProductionBinding
         from woof.core.nssl2_production_coordinator import (
             NSSL2ProductionConfigurationError,
@@ -1311,7 +1499,8 @@ def _dispatch_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
 #:   ``NSSL2_BACKGROUND_CCN_PER_KG``.
 #: * ``"always"`` is ``phys/module_mp_wdm6.F:219-227``: WDM6 overwrites its
 #:   whole CCN window with ``ccn0`` (the namelist ``ccn_conc``) at
-#:   ``itimestep == 1``, whatever the start held.
+#:   ``itimestep == 1``, whatever the start held. WDM5 (:216-224) and
+#:   WDM7 (:253-261) perform the same fill in their native modules.
 #:
 #: Allocation already seeds both values (``woof/core/state.py``), but the
 #: native WRF-file door then loads the file's QNCCN over them, and real.exe
@@ -1321,13 +1510,16 @@ def _dispatch_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
 #: matched run of 2026-10-07: QNCCN 0 against WRF's 4.08e8 on every word at
 #: step 0, and 0.95 K of missing latent heating after one 60 s step).
 _CCN_START_FILL = {
+    14: ("nn", "always"),
     16: ("nn", "always"),
+    26: ("nn", "always"),
+    27: ("nn", "always"),
     18: ("qnn", "if_unset"),
 }
 
 
 def _ccn_start_value(cfg: RunConfig) -> float:
-    if int(cfg.mp_physics) == 16:
+    if int(cfg.mp_physics) in WDM_SCHEMES or int(cfg.mp_physics) == 27:
         return float(cfg.wdm6_ccn_conc)
     from woof.core.microphysics_transition import NSSL2_BACKGROUND_CCN_PER_KG
     return float(NSSL2_BACKGROUND_CCN_PER_KG)
@@ -1400,20 +1592,36 @@ def microphysics_init(state: DomainState, cfg: RunConfig) -> dict[str, object]:
     """
     ccn = ccn_start_fill(state, cfg)
     receipt = {"ccn_start_fill": ccn} if ccn else {}
-    return {**receipt, **_scheme_init(state, cfg)}
+    from woof.core.madwrf_runtime import initialize as initialize_madwrf
+    return {**receipt, **initialize_madwrf(state, cfg), **_scheme_init(state, cfg)}
 
 
 def _scheme_init(state: DomainState, cfg: RunConfig) -> dict[str, object]:
     """The scheme-specific half of :func:`microphysics_init`."""
+    if cfg.mp_physics == 56:
+        # NTU_INIT (module_mp_ntu.F:255-314): AERO_CONST, then the
+        # scheme's own aerosol climatology.  WRF skips INIT_AEROSOL on a
+        # restart; woof's resume order is initialize_physics ->
+        # restore_restart, so the checkpointed aerosol overwrites this
+        # fill, and a nest is refilled exactly as WRF's phy_init does.
+        from woof.core.ntu import init_state
+        return init_state(state, cfg, restart=False)
+    if cfg.mp_physics == 95:
+        # WRF mp_init's CASE (ETAMPNEW) calls ETANEWinit
+        # (module_physics_init.F:4490-4498): the saturation tables, the
+        # growth-rate table and the restart vector, filled here once unless
+        # a restored checkpoint already carries them.
+        from woof.core.etanew import initialize_state
+        return initialize_state(state, cfg)
     named = _named_scheme(cfg.mp_physics)
-    if named is not None and named.aerosol_aware:
+    if named is not None and named.aerosol_species:
         # A named aerosol-aware scheme takes the same once-per-domain
         # synthetic CCN/IN profile mp=28 takes when the analysis carries no
         # aerosol (the named first-call init is inert when the host passes
         # aerosol arrays, so the host must seed them).
         from woof.core.microphysics_aerosol import aerosol_profile_fill
         return {"aerosol_profile": aerosol_profile_fill(state)}
-    if cfg.mp_physics != 28:
+    if cfg.mp_physics not in THOMPSON_AEROSOL_FAMILY:
         # Kessler/WSM6/Thompson/Morrison/NSSL have no domain-construction
         # step in woof: their tables are loaded lazily at first launch and
         # their state is initialized by woof/core/state.py.  Returning an
@@ -1421,7 +1629,14 @@ def _scheme_init(state: DomainState, cfg: RunConfig) -> dict[str, object]:
         # unconditional line in the init path.
         return {}
     from woof.core.microphysics_aerosol import thompson_aerosol_init_fill
-    return {"thompson_aerosol_profile": thompson_aerosol_init_fill(state, cfg)}
+    from woof.core.thompson_aerosol_launch import hail_aware_scope
+    hail = THOMPSON_AEROSOL_FAMILY[cfg.mp_physics].hail_aware
+    with hail_aware_scope(hail):
+        receipt = {"thompson_aerosol_profile": thompson_aerosol_init_fill(state, cfg)}
+        if hail:
+            from woof.core.thompson_aerosol_state import stash_hail_size
+            stash_hail_size(state)
+    return receipt
 
 
 def apply(state: DomainState, cfg: RunConfig, dt: float, *,
@@ -1467,6 +1682,18 @@ def apply(state: DomainState, cfg: RunConfig, dt: float, *,
     parm/conus/hrrr_wrfpre.nl:108-109), which WRF applies to the
     microphysics increment before the radar select (:5968-5969).
     """
+    if cfg.sf_surf_irr_scheme == 3:
+        if state.physics is None:
+            raise ValueError('sprinkler irrigation requires its static-field physics driver')
+        dz = state.scratch(state.thp.shape, 'irrigation_dz')
+        z8w = state.scratch(state.php.shape, 'irrigation_z8w')
+        phb = state.phb if state.phb.ndim == 3 else state.phb[:, None, None]
+        z8w[...] = (phb + state.php) / DTYPE(c.G)
+        dz[...] = z8w[1:] - z8w[:-1]
+        rho = state.scratch(state.thp.shape, 'irrigation_rho')
+        cp.divide(DTYPE(1.0), state.alt, out=rho)
+        state.physics.apply_irrigation(cfg, dt, rho=rho[0], dz=dz[0],
+                                       qr=state.qr[0], ring=_ring_guard_width(cfg))
     forcing = getattr(state, "radar_tten_forcing", None)
     if forcing is None:
         return _apply_scheme(state, cfg, dt, refl_10cm_due=refl_10cm_due)
@@ -1492,7 +1719,7 @@ def _ring_guard_width(cfg: RunConfig) -> int:
 #: does not supply: classic Thompson (8) and aerosol-aware Thompson (28).
 #: Morrison (10) seeds its own inside the scheme (woof.core.morrison's
 #: kernel, WRF module_mp_morr_two_moment.F:1332-1343), so it is not listed.
-CUMULUS_RAIN_NUMBER_SCHEMES = frozenset({8, 28})
+CUMULUS_RAIN_NUMBER_SCHEMES = frozenset({8, 28, 29})
 
 #: Cells per slab of :func:`seed_cumulus_rain_number`: its few float32
 #: temporaries stay near 8 MB each on any grid.
@@ -1559,7 +1786,10 @@ def seed_cumulus_rain_number(state: DomainState, cfg: RunConfig,
                else state.thb[k, None, None])
         p = state.p[k]
         temp = cp.power(p * DTYPE(1.0 / c.P0), DTYPE(c.RCP))
-        temp *= state.thp[k] + thb
+        thermal = state.thp[k] + thb
+        if getattr(state, "use_theta_m", 0):
+            thermal /= DTYPE(1.0) + DTYPE(c.RVOVRD) * state.qv[k]
+        temp *= thermal
         number = DTYPE(279.15) - temp
         cp.clip(number, DTYPE(6.0), DTYPE(8.0), out=number)
         number *= log_ten
@@ -1583,11 +1813,16 @@ def _apply_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
                   ) -> MicrophysicsDiagnostics | None:
     """:func:`apply` without the optional radar forcing: the validation,
     the specified-zone ring guard and the scheme dispatch."""
+    if cfg.mp_physics == 96:
+        if cfg.mp_zero_out:
+            microphysics_zero_out(state, cfg)
+        return None
     if cfg.mp_physics == 0:
         if refl_10cm_due:
             raise ValueError("REFL_10CM is due without active microphysics")
         return None
-    if (cfg.mp_physics not in (1, 2, 3, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106)
+    if (cfg.mp_physics not in (1, 2, 3, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 55, 56, 95, 97, 106)
+            and not is_p3(cfg.mp_physics)
             and _named_scheme(cfg.mp_physics) is None
             and int(cfg.mp_physics) not in COLUMN_SCHEMES):
         raise ValueError(f"unknown mp_physics={cfg.mp_physics} "
@@ -1595,8 +1830,8 @@ def _apply_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
                          "5 = Ferrier-Aligo, 6 = WSM6, "
                          "8 = Thompson, 9 = Milbrandt-Yau, "
                          "10 = Morrison, 16 = WDM6, "
-                         "18 = NSSL, 24 = WSM7, 28 = Thompson aerosol-aware, "
-                         "50 = P3 one-category, 106 = WSM6R)")
+                         "14 = WDM5, 26 = WDM7, 18 = NSSL, 24 = WSM7, 28 = Thompson aerosol-aware, "
+                         "50 = P3 one-category, 51 = P3 predicted Nc, 52 = P3 two-category, 53 = P3 three-moment ice, 97 = Goddard GCE, 95 = Eta Ferrier, 106 = WSM6R)")
     if state.qv is None:
         raise ValueError(f"mp_physics={cfg.mp_physics} requires "
                          "cfg.moist=True: the state "
@@ -1631,6 +1866,8 @@ def _apply_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
                                       refl_10cm_due=refl_10cm_due)
         finally:
             _restore_spec_zone_ring(state, slices, saved, captured_slots)
+            from woof.core.afwa_diagnostics import restore_theta_ring
+            restore_theta_ring(state,cfg,slices)
     if getattr(cfg, "mp_zero_out", 0):
         microphysics_zero_out(state, cfg)
     return result
@@ -1646,10 +1883,17 @@ def _apply_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
 #: entry.
 WRF_FIRST_SCALAR_SPECIES: dict[int, str] = {
     30: "ff1i01",
-    8: "ni", 10: "ni", 28: "ni", 50: "ni",   # qni
+    8: "ni", 10: "ni", 28: "ni", 29: "ni", 38: "ni", 50: "ni", 52: "ni",
+    51: "nc", 53: "nc",
+    55: "nr",  # WRF first scalar for ISHMAEL.
+    15: "qrimef",                            # Registry.EM_COMMON:3020
     9: "nc",                                 # qnc (milbrandt2mom)
+    14: "nn",                                # qnn (wdm5scheme)
     16: "nn",                                # qnn (wdm6scheme)
+    26: "nn",                                # qnn (wdm7scheme)
+    27: "nn",                                # qnn (UDM, WRF 4.7.1 :3040)
     18: "qndrop",                            # qndrop (v4.6.1 nssl2mconc)
+    95: "qt",                                # qt (etampnew, :3045)
 }
 
 _MP_ZERO_OUT_KERNELS: dict[str, object] = {}
@@ -1695,8 +1939,9 @@ def microphysics_zero_out(state: DomainState, cfg: RunConfig) -> None:
     (v4.6.1's 1). Active chemical rows declare their chem or tracer group
     in the species table. Each group starts at Registry index 2 after
     dummy index 1, and compares that index with P_QV = 2. Applied after the
-    fused moist_physics_finish, which reads theta only, so the order
-    against it does not change a prognostic value.
+    dry-theta fused moist_physics_finish, whose result is independent
+    of this ordering. The moist-theta finish also runs this operation
+    before forming its vapour increment; this final pass is idempotent.
     """
     mode = int(cfg.mp_zero_out)
     if mode == 0 or (state.qv is None and getattr(state, "qke_adv", None) is None):
@@ -1709,7 +1954,17 @@ def microphysics_zero_out(state: DomainState, cfg: RunConfig) -> None:
     if int(cfg.mp_zero_out_all):
         scalars = [name for name in names
                    if name not in WRF_MOIST_ARRAY_SPECIES]
-        if scalars:
+        from woof.core.moist import pbl_scalar_species
+        pbl_scalars = set(pbl_scalar_species(state))
+        if scalars and not set(scalars) - pbl_scalars:
+            # Only PBL-registered scalars (EEPS's PEK_ADV/PEP_ADV): WRF's
+            # Registry declares them after every microphysics scalar
+            # (Registry.EM_COMMON:1053 against :521-541), so with a scheme
+            # that registers none the first of them opens the scalar array
+            # and takes vapour's rule; WRF zeroes the whole scalar array
+            # (solve_em.F:4017-4023, :4058-4064).
+            arrays.append((scalars, scalars[0]))
+        elif scalars:
             first = WRF_FIRST_SCALAR_SPECIES.get(int(cfg.mp_physics))
             if scalars == ["qke_adv"]:
                 # MYNN may provide the only Registry scalar member when
@@ -1752,3 +2007,5 @@ def microphysics_zero_out(state: DomainState, cfg: RunConfig) -> None:
                     _mp_zero_out_kernel("floor_zero")(inner)
             else:
                 _mp_zero_out_kernel("zero_below")(thresh, inner)
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

@@ -761,7 +761,7 @@ class _Experiment:
     spec_bdy_width: int = 5
     devices: DeviceOptions = DEVICES_OFF
     simulated_radar: SimulatedRadarOptions = RADAR_OFF
-    # 18fb332a0, lane/recover-physics-params: the recovered optional set
+    # 18fb332a0, development branch: the recovered optional set
     # belongs to ExperimentConfig. No set stays absent from its document;
     # this stock-comparison fixture must carry the same default explicitly.
     physics_params: object | None = None
@@ -1598,16 +1598,10 @@ def test_raw_namelist_gate_allows_only_explicit_runtime_deltas(
 
 
 @pytest.mark.parametrize("native_theta, stock_theta", [
-    (0, 1), (1, 1), (1, 0)])
-def test_raw_namelist_gate_refuses_a_moist_theta_half(
+    (0, 1), (1, 0), (2, 2)])
+def test_raw_namelist_gate_refuses_mismatched_or_undefined_theta(
         tmp_path, native_theta, stock_theta):
-    """Both halves declare dry theta, and the refusal says what breaks.
-
-    The stock arm's files are the direct export, which holds dry theta
-    and says so in its header.  A stock namelist that says 1 (every pair
-    generated before the export wrote dry theta) stops wrf.exe at its
-    input gate, so the route names that before it prepares anything.
-    """
+    """The prognostic declaration must match on both files."""
 
     assert EXPORT_USE_THETA_M == 0
     native = tmp_path / "native.input"
@@ -1623,10 +1617,9 @@ def test_raw_namelist_gate_refuses_a_moist_theta_half(
     with pytest.raises(ValueError) as refusal:
         _require_raw_stock_delta(native, stock)
     text = str(refusal.value)
-    assert "use_theta_m = 0 (dry theta)" in text
+    assert "use_theta_m = 0 or 1" in text
     assert f"native [{native_theta}], stock [{stock_theta}]" in text
-    assert "use_theta_m values must be consistent" in text
-    assert "regenerate the pair" in text
+    assert "matching the exported prognostic variable" in text
 
 
 @pytest.mark.parametrize(

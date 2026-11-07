@@ -55,7 +55,11 @@ def main(argv=None) -> int:
         parser.error('invalid release version')
     dists, out = args.dists.resolve(), args.out.resolve()
     wheels = [dists / f'gpuwm-{args.version}-py3-none-manylinux_2_28_x86_64.whl',
-              dists / f'woof_data-{args.version}-py3-none-any.whl']
+              dists / f'woof_data-{args.version}-py3-none-any.whl',
+              dists / f'gpuwm_kernels-{args.version}-py3-none-any.whl',
+              # 141dbf24d07: woof requires the startup companion; without it
+              # pip refuses the install in the pinned image.
+              dists / f'gpuwm_kernels_startup-{args.version}-py3-none-any.whl']
     identities = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in wheels}
     python = out / 'venv/bin/python'
     if args.operation == 'install':
@@ -63,7 +67,7 @@ def main(argv=None) -> int:
             parser.error('smoke output exists: reusing an installed environment can hide missing wheel files')
         out.mkdir(parents=True)
         venv.EnvBuilder(with_pip=True).create(out / 'venv')
-        subprocess.run([str(python), '-m', 'pip', 'install', str(wheels[0]) + '[render]', str(wheels[1])], check=True)
+        subprocess.run([str(python), '-m', 'pip', 'install', str(wheels[0]) + '[render]', *map(str, wheels[1:])], check=True)
         (out / 'WHEELS.json').write_text(json.dumps(identities, indent=2) + '\n')
         return 0
     if json.loads((out / 'WHEELS.json').read_text()) != identities:

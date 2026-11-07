@@ -12,6 +12,7 @@
 
 pub use crate::lbc::{compare,sphere};
 pub mod emit;
+mod stream;
 use crate::rrfs_init::{scalars,projection,scatter_level,sample_points,zero_columns};
 
 use std::path::PathBuf;
@@ -68,6 +69,10 @@ pub struct LbcConfig {
     pub hydrometeors_gfs: bool,
     pub tempo_rap: bool,
     pub aerosolaware: bool,
+    /// Initialize absent aerosol numbers from climatology. False retains zeros
+    /// when no aerosol donor exists; field declaration remains aerosolaware.
+    #[serde(default = "climatology_default")]
+    pub aerosol_climatology: bool,
     pub smoke: bool,
     pub dust: bool,
     pub gocart_path: Option<PathBuf>,
@@ -110,6 +115,7 @@ pub struct LbcConfig {
     #[serde(default="absent_numbers_default",deserialize_with="absent_numbers")]
     pub absent_numbers: scalars::AbsentNumbers,
 }
+fn climatology_default() -> bool { true }
 fn absent_numbers_default()->scalars::AbsentNumbers {scalars::AbsentNumbers::FromMass}
 fn absent_numbers<'de,D:serde::Deserializer<'de>>(d:D)->Result<scalars::AbsentNumbers,D::Error> {
     let s:String=serde::Deserialize::deserialize(d)?;
@@ -221,7 +227,12 @@ fn epoch_seconds(stamp: &str) -> MpasResult<i64> {
 /// MPAS v8.4.2 mpas_init_atm_cases.F:320-369 (clock loop) and
 /// :5637-5660 (vertical grid validation).
 /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_cases.F:7759-8986 at 1d6e370e.
-pub fn build_lbc(cfg: &LbcConfig) -> MpasResult<LbcReceipt> {
+pub fn build_lbc(cfg:&LbcConfig)->MpasResult<LbcReceipt> {
+    let result=build_lbc_inner(cfg);
+    if let Err(ref error)=result {stream::failed(cfg,&error.to_string());}
+    result
+}
+fn build_lbc_inner(cfg: &LbcConfig) -> MpasResult<LbcReceipt> {
     let started = std::time::Instant::now();
 
     if cfg.intervals.is_empty() {
@@ -232,6 +243,7 @@ pub fn build_lbc(cfg: &LbcConfig) -> MpasResult<LbcReceipt> {
         ));
     }
 
+    stream::begin(cfg)?;
     let mesh = capsule::read_mesh_geometry(&cfg.grid_path)?;
     let metrics = capsule::read_vertical_metrics(&cfg.grid_path, mesh.n_cells, mesh.n_edges)?;
     let max_zgrid = metrics
@@ -250,6 +262,15 @@ pub fn build_lbc(cfg: &LbcConfig) -> MpasResult<LbcReceipt> {
     }
 
     let header = emit::HeaderSource::from_grid(&cfg.grid_path)?;
+    // The door can retire the carrier once the initial boundary pair is ready.
+    // Retain this last static donor now, while preserving the original refusal
+    // only for a time that actually needs the climate fallback.
+    let aerosol_landmask: Result<Vec<i32>, String> = if cfg.aerosolaware && cfg.aerosol_climatology {
+        netcrust::File::open(&cfg.grid_path)
+            .and_then(|file| file.read_array_f64("landmask"))
+            .map(|a| a.into_values().into_iter().map(|v| v as i32).collect())
+            .map_err(|error| error.to_string())
+    } else { Ok(Vec::new()) };
 
     let mut receipt = LbcReceipt {
         grid_path: cfg.grid_path.display().to_string(),
@@ -267,41 +288,79 @@ pub fn build_lbc(cfg: &LbcConfig) -> MpasResult<LbcReceipt> {
     receipt.setup_seconds = started.elapsed().as_secs_f64();
 
     let mut aerosol_cache=None;
-    // RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_cases.F:382-421,
-    // 8038-8040,8421-8441,8717-8727 at 1d6e370e. The clock loop reuses
-    // its first-guess pool; only the level lookup is allocated afresh. In
-    // particular, isobaric pressure filled at the first time remains in
-    // that pool and selects the model-level branch at subsequent times.
     let mut first_guess_cache=None;
-    // The SHA-256 of each written file (one core, about 13 GB an hour on
-    // conus3km) runs on its own thread beside the next boundary time instead
-    // of on the main thread between them. Same bytes, same digest.
-    // The file's fsync rides the same thread, before its digest, so the
-    // main thread never waits on the disk between hours; every file is
-    // synced before the run reports success.
-    let mut digests: Vec<std::thread::JoinHandle<MpasResult<String>>> = Vec::new();
-    for interval in &cfg.intervals {
-        let (one, file) = build_one_time(cfg, &mesh, &metrics, &header, interval,&mut aerosol_cache,&mut first_guess_cache)?;
-        let path = PathBuf::from(&one.out_path);
-        digests.push(std::thread::spawn(move || {
-            file.sync_all()?;
-            crate::sha256_file(&path)
-        }));
-        receipt.intervals.push(one);
+    let inventory_started=std::time::Instant::now();
+    let levels=stream::independent_levels(&cfg.intervals)?;
+    eprintln!("[case9] boundary inventory: {:.3} s (ends {:.1})",inventory_started.elapsed().as_secs_f64(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64());
+    let jobs=if levels.is_some() {stream::workers(cfg,mesh.n_cells,mesh.n_edges,metrics.n_vert_levels,levels.as_ref().unwrap().scalar_species)} else {1};
+    eprintln!("[case9] boundary workers={jobs}, shared interpolation threads={}, memory budget<=56 GB, independent={}",
+        rayon::current_num_threads(),levels.is_some());
+    // The first time establishes the native caller state and climatology.
+    let first=&cfg.intervals[0];
+    let (one,file)=build_one_time(cfg,&mesh,&metrics,&header,&aerosol_landmask,first,&mut aerosol_cache,&mut first_guess_cache,None)?;
+    let first_digest=std::thread::spawn(move ||publish(one,file));
+    if jobs>1 && cfg.intervals.len()>1 {
+        drop(first_guess_cache.take());
+        let next=std::sync::atomic::AtomicUsize::new(1);
+        let results=std::sync::Mutex::new(Vec::new());
+        let caches:Vec<_>=(0..jobs).map(|_|aerosol_cache.clone()).collect();
+        let levels=&levels.as_ref().unwrap().levels;
+        std::thread::scope(|scope| {
+            for mut cache in caches {
+                let next=&next;let results=&results;
+                let mesh=&mesh;let metrics=&metrics;let header=&header;let aerosol_landmask=&aerosol_landmask;
+                scope.spawn(move || {
+                    let mut pool=None;
+                    loop {
+                        let i=next.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
+                        if i>=cfg.intervals.len() {break;}
+                        // Native get_julgmt keeps leap February once observed.
+                        if let Some(ref c)=cache {c.seed_calendar(cfg.intervals[..i].iter().map(|v|v.valid_time.as_str()));}
+                        let result=build_one_time(cfg,mesh,metrics,header,aerosol_landmask,&cfg.intervals[i],&mut cache,&mut pool,Some(levels))
+                            .and_then(|(one,file)| {
+                                publish(one,file)
+                            });
+                        let failed=result.is_err();
+                        if let Err(ref error)=result {stream::failed(cfg,&error.to_string());}
+                        results.lock().unwrap().push((i,result));
+                        if failed {break;}
+                    }
+                });
+            }
+        });
+        let mut ordered=results.into_inner().unwrap();ordered.sort_by_key(|(i,_)|*i);
+        receipt.intervals.push(first_digest.join().map_err(|_|MpasError::Refusal("first boundary publication panicked".into()))??);
+        for (_,one) in ordered {receipt.intervals.push(one?);}
+    } else {
+        // Varying field/level inventories or pressure donors retain the
+        // original chronological pool, including missing-field carry state.
+        let mut digests=vec![first_digest];
+        for interval in &cfg.intervals[1..] {
+            let (one,file)=build_one_time(cfg,&mesh,&metrics,&header,&aerosol_landmask,interval,&mut aerosol_cache,&mut first_guess_cache,None)?;
+            digests.push(std::thread::spawn(move ||publish(one,file)));
+        }
+        let waited=std::time::Instant::now();
+        for digest in digests {
+            receipt.intervals.push(digest.join().map_err(|_|MpasError::Refusal("boundary publication panicked".into()))??);
+        }
+        receipt.digest_wait_seconds=waited.elapsed().as_secs_f64();
     }
-    let waited = std::time::Instant::now();
-    for (one, digest) in receipt.intervals.iter_mut().zip(digests) {
-        one.out_sha256 = digest.join().map_err(|_| MpasError::Refusal(format!(
-            "the digest thread for {} panicked", one.out_path)))??;
-    }
-    receipt.digest_wait_seconds = waited.elapsed().as_secs_f64();
-    // The first-guess pool and the grid arrays are freed off the main thread;
-    // the process ends right after the receipt is written.
-    let spent = (first_guess_cache, mesh, metrics, aerosol_cache);
-    std::thread::spawn(move || drop(spent));
+    let spent=(first_guess_cache,mesh,metrics,aerosol_cache);
+    std::thread::spawn(move ||drop(spent));
 
     receipt.seconds = started.elapsed().as_secs_f64();
     Ok(receipt)
+}
+
+fn publish(mut one:IntervalReceipt,file:std::fs::File)->MpasResult<IntervalReceipt> {
+    let started=std::time::Instant::now();
+    file.sync_all()?;
+    one.out_sha256=crate::sha256_file(std::path::Path::new(&one.out_path))?;
+    stream::ready(&one)?;
+    let seconds=started.elapsed().as_secs_f64();
+    one.stage_seconds.push(("durable publication".into(),seconds));
+    eprintln!("[case9] durable publication {}: {:.3} s",one.valid_time,seconds);
+    Ok(one)
 }
 
 /// MPAS v8.4.2 mpas_init_atm_cases.F:5869-6218: pressure dispatch,
@@ -312,9 +371,11 @@ fn build_one_time(
     mesh: &MeshGeometry,
     metrics: &VerticalMetrics,
     header: &emit::HeaderSource,
+    aerosol_landmask: &Result<Vec<i32>, String>,
     interval: &BoundaryInterval,
     aerosol_cache: &mut Option<crate::rrfs_init::aerosols::Climatology>,
     first_guess_cache: &mut Option<FgLbc>,
+    continuation_levels:Option<&[f32]>,
 ) -> MpasResult<(IntervalReceipt, std::fs::File)> {
     let started = std::time::Instant::now();
     let n_cells = mesh.n_cells;
@@ -333,6 +394,15 @@ fn build_one_time(
     let mut fg = horizontal_pass(&slabs, mesh, cfg, &mut receipt,first_guess_cache.take())?;
     clock.mark("horizontal interpolation");
     let nfg = fg.vert_level.len();
+    if let Some(levels)=continuation_levels {
+        if levels!=fg.vert_level {return Err(MpasError::Refusal("boundary level slots changed after independence check".into()));}
+        // The first native clock iteration leaves these pressure words in
+        // its pool, including the surface log sentinel. Seed exactly those
+        // words so later independent times take the same model-level branch.
+        fg.p.par_iter_mut().for_each(|column|for (k,&level) in levels.iter().enumerate() {
+            column[k]=if level==SURFACE_LEVEL_TAG {1.0} else {level};
+        });
+    }
     if nfg < 2 {
         return Err(MpasError::Refusal(format!(
             "{} delivered {nfg} first-guess level(s) among the fields the lbc case consumes; \
@@ -781,15 +851,32 @@ fn build_one_time(
     let out_path = cfg.out_dir.join(emit::lbc_file_name(&interval.valid_time));
     // RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_cases.F:8553-8721
     // at 1d6e370e. The resolved stream packages select the interpolated scalars.
+    // The final boundary arrays now own these words. Free all consumed
+    // columns before allocating the aerosol cache and encoding the file.
+    rayon::scope(|scope| {
+        scope.spawn(move |_| drop(t_col));
+        scope.spawn(move |_| drop(rh_col));
+        scope.spawn(move |_| drop(sh_col));
+        scope.spawn(move |_| drop(p_col));
+        scope.spawn(move |_| drop(u_edge));
+        scope.spawn(move |_| drop(qv));
+        scope.spawn(move |_| drop(states));
+        scope.spawn(move |_| drop(ru));
+        scope.spawn(move |_| drop(rw));
+        scope.spawn(move |_| drop(w));
+        scope.spawn(move |_| drop(initial_density));
+    });
+    crate::rrfs_init::release_free_pages();
+    clock.mark("release completed columns");
     let zeros = vec![0.0f32; n_cells * nz];
-    if cfg.aerosolaware && !scalars::use_rap_aerosols(cfg.tempo_rap,&scalar_state) {
-        let landmask=netcrust::File::open(&cfg.grid_path)?.read_array_f64("landmask")?.into_values().into_iter().map(|v|v as i32).collect::<Vec<_>>();
+    if cfg.aerosolaware && cfg.aerosol_climatology && !scalars::use_rap_aerosols(cfg.tempo_rap,&scalar_state) {
+        let landmask = aerosol_landmask.as_ref().map_err(|error| MpasError::Refusal(error.clone()))?;
         // The fallback interpolates against pressure_base, not the adjusted pressure.
         let mut ppb=vec![0.0f32;n_cells*nz];
         ppb.par_chunks_mut(nzc).enumerate().for_each(|(c,out)| {for k in 0..nz {let z=0.5*(zgrid[c][k+1]+zgrid[c][k]);out[k]=P0*(-GRAVITY*z/(RGAS*T0B)).exp();}});
         let default=PathBuf::from(crate::rrfs_init::aerosols::NATIVE_FILENAME);
-        if let Some(a)=crate::rrfs_init::aerosols::initialize_lbc(cfg.gocart_path.as_deref().unwrap_or(&default),
-            &interval.valid_time,&cfg.start_time,&mesh.lat_cell,&mesh.lon_cell,&landmask,cfg.gocart_levels,&ppb,nz,aerosol_cache)? {
+        if let Some(a)=crate::rrfs_init::aerosols::initialize_lbc_for_dates(cfg.gocart_path.as_deref().unwrap_or(&default),
+            &interval.valid_time,&cfg.start_time,&mesh.lat_cell,&mesh.lon_cell,&landmask,cfg.gocart_levels,&ppb,nz,aerosol_cache,&cfg.intervals.iter().map(|i|i.valid_time.as_str()).collect::<Vec<_>>())? {
             scalar_state[10]=a.nwfa;scalar_state[11]=a.nifa;
         }
     }
@@ -827,10 +914,9 @@ fn build_one_time(
         &fields,
     )?;
     clock.mark("write boundary file");
-    // This hour's column arrays are tens of millions of small heap blocks on
-    // conus3km; one thread frees them beside the next hour instead of the
-    // main thread freeing them between hours.
-    let spent = (t_col, rh_col, sh_col, p_col, u_edge, qv, states, ru, rw, w, scalar_state, slabs, initial_density);
+    // Column workspaces were released before encoding. Drop the remaining
+    // scalar output and source slabs beside the next hour.
+    let spent = (scalar_state, slabs);
     std::thread::spawn(move || drop(spent));
     receipt.out_path = out_path.display().to_string();
     receipt.stage_seconds = clock.marks;
@@ -854,7 +940,7 @@ fn horizontal_pass(
     let nfg_cap = cfg.n_fg_levels;
 
     let mut fg = previous.unwrap_or_else(|| FgLbc {
-        scalars:(0..scalars::COUNT).map(|_| zero_columns(n_cells, nfg_cap)).collect(),
+        scalars:(0..scalars::COUNT).map(|_| Vec::new()).collect(),
         vert_level: Vec::new(),
         t: zero_columns(n_cells, nfg_cap),
         rh: zero_columns(n_cells, nfg_cap),
@@ -955,7 +1041,9 @@ fn horizontal_pass(
                 scatter_level(&mut fg.p, level_index, &values);
             }
             "SOILHGT" => fg.soilz.copy_from_slice(&values),
-            other => {let i=scalars::input_index(other).expect("scalar passed field filter");scatter_level(&mut fg.scalars[i], level_index, &values);},
+            other => {let i=scalars::input_index(other).expect("scalar passed field filter");
+                if fg.scalars[i].is_empty() {fg.scalars[i]=zero_columns(n_cells,nfg_cap);}
+                scatter_level(&mut fg.scalars[i], level_index, &values);},
         }
     }
 
@@ -972,4 +1060,19 @@ fn horizontal_pass(
     receipt.oned_underflow_sites = underflow_hits.load(std::sync::atomic::Ordering::Relaxed);
     receipt.first_guess_levels_found = fg.vert_level.len();
     Ok(fg)
+}
+
+#[cfg(test)]
+mod aerosol_policy_tests {
+    #[derive(serde::Deserialize)]
+    struct Policy {
+        #[serde(default = "super::climatology_default")]
+        aerosol_climatology: bool,
+    }
+    #[test]
+    fn default_preserves_climatology_and_zero_is_explicit() {
+        assert!(serde_json::from_str::<Policy>("{}").unwrap().aerosol_climatology);
+        assert!(!serde_json::from_str::<Policy>(r#"{"aerosol_climatology":false}"#)
+            .unwrap().aerosol_climatology);
+    }
 }

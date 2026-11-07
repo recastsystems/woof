@@ -13,7 +13,7 @@ v4.6.1 SFCDIAGS's arithmetic (phys/module_sf_sfcdiags.F:45-72):
 * TH2's ``(1.E5/PSFC)**ROVCP`` is a REAL**REAL power, which WRF's build
   hands to the C library's powf; it is WOOF's own float32 powf here
   (``gfk_pow``, kernels/glibc_flt32.cuh), not CUDA's.  CUDA's powf was this
-  kernel's word until lane/verify-noah-lsm: graded on every float32 surface
+  kernel's word until development branch: graded on every float32 surface
   pressure from 20 to 110 kPa (tools/noah_wrf461_oracle/sfcdiags_sweep.py)
   it gave a different TH2 on 1,234,353 of 20,617,217 pressures, up to 2 ULP;
   gfk_pow gives WRF's word on all of them;
@@ -83,11 +83,13 @@ def _source() -> str:
 
 _THREADS = 256
 _KERNEL = None
+_NATIVE_Q2_KERNEL = None
 
 
-def _kernel():
-    global _KERNEL
-    if _KERNEL is None:
+def _kernel(native_q2=False):
+    global _KERNEL, _NATIVE_Q2_KERNEL
+    cached = _NATIVE_Q2_KERNEL if native_q2 else _KERNEL
+    if cached is None:
         import cupy as cp
         from woof.certify.kernel_manifest import record_module
         from woof.core.kernels import _compile_observed
@@ -96,22 +98,33 @@ def _kernel():
         # (tests/test_kernel_manifest.py SITE_FILES): a RawModule, the
         # compile a RawKernel of the same source and options makes.
         source = _source()
+        if native_q2:
+            # Strict moist-theta proofs retain WRF's diagnostic word even
+            # when its flux inversion gives a negative mixing ratio.
+            source = source.replace(
+                "q2[c] = (diagnosed > 0.0f) ? diagnosed : qv1[c];",
+                "q2[c] = diagnosed;")
         module = cp.RawModule(code=source, options=())
         _compile_observed(module, "woof.core.noah_sfcdiags")
         record_module("woof.core.noah_sfcdiags", source=source,
                       options=(), module=module)
-        _KERNEL = module.get_function("noah_sfcdiags")
-    return _KERNEL
+        cached = module.get_function("noah_sfcdiags")
+        if native_q2:
+            _NATIVE_Q2_KERNEL = cached
+        else:
+            _KERNEL = cached
+    return cached
 
 
-def refresh(fields, qv1, *, rd, cp_air, p0, rcp, active_floor) -> None:
+def refresh(fields, qv1, *, rd, cp_air, p0, rcp, active_floor,
+            native_q2=False) -> None:
     """Write ``q2``, ``t2`` and ``th2`` in ``fields`` in one launch.
 
     The constants are the float32 scalars the expressions use, passed in so
     this module holds no second copy of them.
     """
     ncol = int(fields["tsk"].size)
-    _kernel()(
+    _kernel(native_q2)(
         ((ncol + _THREADS - 1) // _THREADS,), (_THREADS,),
         (fields["psfc"], fields["tsk"], fields["cqs2"], fields["chs2"],
          fields["qsfc"], fields["qfx"], fields["hfx"], qv1,
@@ -120,7 +133,8 @@ def refresh(fields, qv1, *, rd, cp_air, p0, rcp, active_floor) -> None:
          np.float32(active_floor), np.int64(ncol)))
 
 
-def refresh_any(fields, qv1, *, rd, cp_air, p0, rcp, active_floor) -> None:
+def refresh_any(fields, qv1, *, rd, cp_air, p0, rcp, active_floor,
+                native_q2=False) -> None:
     """:func:`refresh` for any CuPy carrier of the grid's shape.
 
     Inputs are copied to C-contiguous float32 arrays, the one kernel runs on
@@ -138,6 +152,15 @@ def refresh_any(fields, qv1, *, rd, cp_air, p0, rcp, active_floor) -> None:
     level1 = cp.ascontiguousarray(cp.broadcast_to(
         cp.asarray(qv1, dtype=cp.float32), shape))
     refresh(work, level1, rd=rd, cp_air=cp_air, p0=p0, rcp=rcp,
-            active_floor=active_floor)
+            active_floor=active_floor, native_q2=native_q2)
     for name in ("q2", "t2", "th2"):
         fields[name][...] = work[name]
+def refresh_ua(fields,qv1,t1,*,rcp):
+    """WRF UA reads CHS and lowest-level temperature directly."""
+    from woof.core.kernels import get_kernel
+    n=int(fields["tsk"].size)
+    get_kernel("noah_ua_sfcdiags","noah_ua_sfcdiags")(
+        ((n+_THREADS-1)//_THREADS,),(_THREADS,),
+        (fields["psfc"],fields["tsk"],fields["chs"],fields["chs2"],
+         fields["cqs2"],fields["qsfc"],qv1,t1,
+         fields["q2"],fields["t2"],fields["th2"],np.float32(rcp),np.int64(n)))

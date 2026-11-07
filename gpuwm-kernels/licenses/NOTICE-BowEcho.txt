@@ -1,0 +1,22 @@
+BowEcho simulated-radar source retained by WOOF
+
+Copyright (c) 2026 Fahrenheit Research
+License: MIT OR Apache-2.0
+Repository: https://github.com/FahrenheitResearch/bowecho
+Reference commit: eea07fc0a032d4de439d0bfe2def9098afd8b5a8
+Extraction commit: 6b752c0a923d8fcef45d58f165b96a20886964d1
+
+This is a vendored subset with a reusable simulation-library extraction and
+the changes recorded in SOURCE.json. It is not the BowEcho application.
+The complete MIT and Apache-2.0 grants are retained in LICENSE-MIT and
+LICENSE-APACHE. The retained Py-ART notice is in PYART-LICENSE.txt.
+
+THIRD-PARTY-NOTICES.md retains the reference application's upstream notice
+collection verbatim. Its application UI, sounding, font, basemap and separate
+research-pack entries do not mean those components are included in this subset.
+Research scattering lookup tables are not bundled. Their existing download,
+hash, attribution and applicability checks remain in the source.
+
+The WOOF binary-form notice carries the applicable grants and the separate
+dependency inventory in rw-simradar/data/dependency-licenses.json. The extracted
+source files and the local packaging changes are identified in SOURCE.json.

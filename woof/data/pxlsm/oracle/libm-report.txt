@@ -1,0 +1,15 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# as-built (-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize) module_sf_pxlsm.o libm/libgcc symbols:
+U cosf
+U expf
+U logf
+U powf
+# -O0 module_sf_pxlsm.o libm/libgcc symbols:
+U __powisf2
+U cosf
+U expf
+U logf
+U powf
+# positive control:
+U _ZGVbN4v_expf

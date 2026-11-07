@@ -63,7 +63,7 @@ def main() -> int:
                         help="the --work directory nc_rewrite_render_parity.py used")
     parser.add_argument(
         "--dest",
-        default=str(pathlib.Path.cwd()
+        default=str(pathlib.Path.cwd() / "verification-results"
                     / "2026-08-16-rust-netcdf-writer"))
     args = parser.parse_args()
 

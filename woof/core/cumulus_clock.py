@@ -35,8 +35,12 @@ void cumulus_clock_advance(float* rainc,
                            float* surface_raincv,
                            float* nca,
                            const float* pratec,
+                           const float* raincv,
                            float* expiring,
                            const float dt, const int has_surface_raincv,
+                           const int has_native_raincv,
+
+                           const float expiry_steps,
                            const long long ncol)
 {
     const long long c = (long long)blockIdx.x * blockDim.x + threadIdx.x;
@@ -47,16 +51,22 @@ void cumulus_clock_advance(float* rainc,
     // cp.maximum(cu_pratec, 0) * dt, CuPy's float32 maximum routine.
     const float wet = (isnan(pr) | isnan(0.0f))
         ? __int_as_float(0x7fffffff) : fmaxf(pr, 0.0f);
-    const float increment = __fmul_rn(wet, dt);
+    // KSAS computes RAINCV separately from PRATEC. Keep that rounding.
+    const float increment = has_native_raincv
+        ? (isnan(raincv[c]) ? __int_as_float(0x7fffffff)
+                             : fmaxf(raincv[c], 0.0f))
+        : __fmul_rn(wet, dt);
     pending_rainbl[c] = __fadd_rn(pending_rainbl[c], increment);
     if (has_surface_raincv) {
         surface_raincv[c] = __fadd_rn(surface_raincv[c], increment);
     }
-    // active = nca > 0; expiring = active & (floor(nca / dt + 0.5) <= 1)
+    // active = nca > 0;
+    // expiring = active & (floor(nca / dt + 0.5) <= expiry_steps), the
+    // scheme's NINT(NCA/DT) bound: 1 for KF-eta, 0 for the previous KF.
     const float held = nca[c];
     const bool active = held > 0.0f;
     const bool expires = active
-        & (floorf(__fadd_rn(__fdiv_rn(held, dt), 0.5f)) <= 1.0f);
+        & (floorf(__fadd_rn(__fdiv_rn(held, dt), 0.5f)) <= expiry_steps);
     expiring[c] = expires ? 1.0f : 0.0f;
     // nca = where(active, nca - dt, nca)
     nca[c] = active ? __fsub_rn(held, dt) : held;
@@ -136,11 +146,13 @@ def device_arrays(*arrays) -> bool:
 
 
 def advance(*, rainc, pending_rainbl, surface_raincv, nca, pratec, expiring,
-            dt) -> None:
+            dt, raincv=None, expiry_steps: int = 1) -> None:
     """One launch for the rain accumulation and the NCA countdown.
 
     ``surface_raincv`` is ``None`` when no land model reads it.  Every array
     is (ny, nx) float32 and C-contiguous (see :func:`device_arrays`).
+    ``expiry_steps`` is the scheme's ``NINT(NCA/DT) .le.`` bound
+    (woof.core.kf.KF_NCA_CONTRACTS): 1, KF-eta's, unless told otherwise.
     """
     advance_kernel, _ = _kernels()
     ncol = int(nca.size)
@@ -148,8 +160,9 @@ def advance(*, rainc, pending_rainbl, surface_raincv, nca, pratec, expiring,
     advance_kernel(
         ((ncol + _THREADS - 1) // _THREADS,), (_THREADS,),
         (rainc, pending_rainbl, surface_raincv if has_surface else rainc,
-         nca, pratec, expiring, np.float32(dt), np.int32(has_surface),
-         np.int64(ncol)))
+         nca, pratec, pratec if raincv is None else raincv, expiring,
+         np.float32(dt), np.int32(has_surface), np.int32(raincv is not None),
+         np.float32(expiry_steps), np.int64(ncol)))
 
 
 def clear(expiring, volumes) -> None:

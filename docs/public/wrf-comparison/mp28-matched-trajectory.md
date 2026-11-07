@@ -284,7 +284,7 @@ Three distinct table sets from the same physics source. Each model used its
 own throughout; no table was moved between them. This is a real term in the
 comparison and it is the reason build B exists.
 
-**WOOF.** Branch `lane/mp28-matched-trajectory` at the design commit,
+**WOOF.** Branch `development branch` at the design commit,
 CUDA/CuPy 14.1.1, Python 3.12.13, NVIDIA GeForce RTX 5090 (sm_120, no ECC).
 
 **Cost.** Each 600-step forecast: WRF build A 425 s (mp=8) / 490 s (mp=28)

@@ -140,7 +140,7 @@ class SourceTrajectory:
             if grid is not None:
                 knots = (start + timedelta(seconds=offset)
                          for offset in range(0, elapsed + 1, int(cadence)))
-                if any(knot.hour not in grid.hours for knot in knots):
+                if any(knot.hour not in grid.analysis_valid_hours for knot in knots):
                     raise ValueError(
                         f"{self.source} does not declare the requested analysis valid-time knots")
             return first, last

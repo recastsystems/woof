@@ -1,0 +1,3137 @@
+{
+  "sources": {
+    "/work/wrf/src/WRF-4.6.1/phys/module_cu_kfeta.F": "e6376c2d85c45470f49d545b25d513b5ec111bf36b87beebc740bf42825c6e5f",
+    "/work/wrf/src/WRF-4.6.1/phys/module_cu_mskf.F": "4bca54b294def08ffc98ef69a30650c943e2c394f34802e75e50c7f1a2896fcb"
+  },
+  "routines": [
+    {
+      "mskf": "MSKF_MPHYI",
+      "mskf_lines": [
+        202,
+        386
+      ],
+      "kf": null,
+      "status": "new"
+    },
+    {
+      "mskf": "MSKF_MPHY",
+      "mskf_lines": [
+        390,
+        2360
+      ],
+      "kf": null,
+      "status": "new"
+    },
+    {
+      "mskf": "MSKF_ACTIVATE",
+      "mskf_lines": [
+        2788,
+        2985
+      ],
+      "kf": null,
+      "status": "new"
+    },
+    {
+      "mskf": "MSKF_MAXSAT",
+      "mskf_lines": [
+        2987,
+        3038
+      ],
+      "kf": null,
+      "status": "new"
+    },
+    {
+      "mskf": "MSKF_NUCLEATI",
+      "mskf_lines": [
+        3040,
+        3241
+      ],
+      "kf": null,
+      "status": "new"
+    },
+    {
+      "mskf": "MSKF_HETERO",
+      "mskf_lines": [
+        3243,
+        3275
+      ],
+      "kf": null,
+      "status": "new"
+    },
+    {
+      "mskf": "MSKF_HF",
+      "mskf_lines": [
+        3277,
+        3355
+      ],
+      "kf": null,
+      "status": "new"
+    },
+    {
+      "mskf": "MSKF_CPS",
+      "mskf_lines": [
+        3424,
+        3987
+      ],
+      "kf": "KF_ETA_CPS",
+      "kf_lines": [
+        29,
+        530
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "replace",
+          "kf_lines": [
+            29,
+            29
+          ],
+          "mskf_lines": [
+            3424,
+            3424
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            41,
+            41
+          ],
+          "mskf_lines": [
+            3436,
+            3435
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            48,
+            48
+          ],
+          "mskf_lines": [
+            3442,
+            3444
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            52,
+            53
+          ],
+          "mskf_lines": [
+            3448,
+            3452
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            57,
+            56
+          ],
+          "mskf_lines": [
+            3456,
+            3456
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            85,
+            84
+          ],
+          "mskf_lines": [
+            3485,
+            3490
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            103,
+            105
+          ],
+          "mskf_lines": [
+            3509,
+            3508
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            112,
+            112
+          ],
+          "mskf_lines": [
+            3515,
+            3514
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            116,
+            116
+          ],
+          "mskf_lines": [
+            3518,
+            3517
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            118,
+            118
+          ],
+          "mskf_lines": [
+            3519,
+            3518
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            126,
+            126
+          ],
+          "mskf_lines": [
+            3526,
+            3528
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            149,
+            148
+          ],
+          "mskf_lines": [
+            3551,
+            3566
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            162,
+            161
+          ],
+          "mskf_lines": [
+            3580,
+            3587
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            201,
+            201
+          ],
+          "mskf_lines": [
+            3627,
+            3626
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            205,
+            204
+          ],
+          "mskf_lines": [
+            3630,
+            3635
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            251,
+            250
+          ],
+          "mskf_lines": [
+            3682,
+            3683
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            421,
+            420
+          ],
+          "mskf_lines": [
+            3854,
+            3855
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            426,
+            425
+          ],
+          "mskf_lines": [
+            3861,
+            3872
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            427,
+            427
+          ],
+          "mskf_lines": [
+            3874,
+            3876
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            453,
+            452
+          ],
+          "mskf_lines": [
+            3902,
+            3902
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            461,
+            461
+          ],
+          "mskf_lines": [
+            3911,
+            3916
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            471,
+            471
+          ],
+          "mskf_lines": [
+            3926,
+            3926
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            477,
+            477
+          ],
+          "mskf_lines": [
+            3932,
+            3934
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            481,
+            482
+          ],
+          "mskf_lines": [
+            3938,
+            3942
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            484,
+            485
+          ],
+          "mskf_lines": [
+            3944,
+            3950
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            490,
+            490
+          ],
+          "mskf_lines": [
+            3955,
+            3954
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            492,
+            492
+          ],
+          "mskf_lines": [
+            3956,
+            3955
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            505,
+            505
+          ],
+          "mskf_lines": [
+            3968,
+            3967
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            509,
+            510
+          ],
+          "mskf_lines": [
+            3971,
+            3970
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            516,
+            516
+          ],
+          "mskf_lines": [
+            3976,
+            3975
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            518,
+            518
+          ],
+          "mskf_lines": [
+            3977,
+            3976
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            524,
+            524
+          ],
+          "mskf_lines": [
+            3982,
+            3981
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            526,
+            526
+          ],
+          "mskf_lines": [
+            3983,
+            3983
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            530,
+            530
+          ],
+          "mskf_lines": [
+            3987,
+            3987
+          ]
+        }
+      ],
+      "executable_text_identical": false,
+      "executable_diff": [
+        "--- ",
+        "+++ ",
+        "@@ -1,4 +1,4 @@",
+        "-subroutinekf_eta_cps(",
+        "+subroutinemskf_cps(",
+        " ids,ide,jds,jde,kds,kde",
+        " ,ims,ime,jms,jme,kms,kme",
+        " ,its,ite,jts,jte,kts,kte",
+        "@@ -10,16 +10,20 @@",
+        " ,ep2,svp1,svp2,svp3,svpt0",
+        " ,stepcu,cu_act_flag,warm_rain,cutop,cubot",
+        " ,qv",
+        "-,shall",
+        " ,f_qv,f_qc,f_qr,f_qi,f_qs",
+        " ,rthcuten,rqvcuten,rqccuten,rqrcuten",
+        " ,rqicuten,rqscuten,rqvften",
+        " ,cldfra_dp_kf,cldfra_sh_kf",
+        "-,qc_kf,qi_kf",
+        "+,qc_kf,qi_kf,qr_kf,qs_kf",
+        "+,nc_kf,ni_kf,nr_kf,ns_kf",
+        "+,ccn_kf,ainc_frac",
+        " ,udr_kf,ddr_kf",
+        " ,uer_kf,der_kf",
+        " ,timec_kf,kf_edrates",
+        "-)",
+        "+,zol,hfx,ust,pblh",
+        "+,aerocu,no_src_types_cu,aercu_fct,aercu_opt",
+        "+,efcs,efis,efss",
+        "+,rucuten,rvcuten,xland)",
+        " implicitnone",
+        " integer,intent(in)::",
+        " ids,ide,jds,jde,kds,kde,",
+        "@@ -44,6 +48,11 @@",
+        " pcps,",
+        " rho,",
+        " pi",
+        "+integer,intent(in)::no_src_types_cu",
+        "+integer,intent(in)::aercu_opt",
+        "+real,intent(in)::aercu_fct",
+        "+real,dimension(ims:ime,kms:kme,jms:jme,no_src_types_cu),optional,",
+        "+intent(inout)::aerocu",
+        " real,dimension(ims:ime,kms:kme,jms:jme),",
+        " intent(inout)::",
+        " w0avg",
+        "@@ -56,15 +65,12 @@",
+        " intent(inout)::pratec",
+        " real,dimension(ims:ime,jms:jme),",
+        " intent(inout)::nca",
+        "-real,dimension(ims:ime,jms:jme),optional,",
+        "-intent(inout)::shall",
+        " real,dimension(ims:ime,jms:jme),",
+        " intent(out)::cubot,",
+        " cutop",
+        " logical,dimension(ims:ime,jms:jme),",
+        " intent(inout)::cu_act_flag",
+        " real,dimension(ims:ime,kms:kme,jms:jme),",
+        "-optional,",
+        " intent(inout)::",
+        " rthcuten,",
+        " rqvcuten,",
+        "@@ -72,7 +78,9 @@",
+        " rqrcuten,",
+        " rqicuten,",
+        " rqscuten,",
+        "-rqvften",
+        "+rqvften,",
+        "+rucuten,",
+        "+rvcuten",
+        " logical,optional::",
+        " f_qv",
+        " ,f_qc",
+        "@@ -87,6 +95,20 @@",
+        " qi_kf",
+        " real,dimension(ims:ime,kms:kme,jms:jme),",
+        " intent(inout)::",
+        "+qr_kf,",
+        "+qs_kf,",
+        "+nc_kf,",
+        "+ni_kf,",
+        "+nr_kf,",
+        "+ns_kf,",
+        "+ccn_kf,",
+        "+efcs,",
+        "+efis,",
+        "+efss",
+        "+real,dimension(ims:ime,jms:jme),",
+        "+intent(inout)::ainc_frac",
+        "+real,dimension(ims:ime,kms:kme,jms:jme),",
+        "+intent(inout)::",
+        " udr_kf,",
+        " ddr_kf,",
+        " uer_kf,",
+        "@@ -95,6 +117,12 @@",
+        " intent(inout)::",
+        " timec_kf",
+        " integer,intent(in)::kf_edrates",
+        "+real,dimension(ims:ime,jms:jme),",
+        "+intent(in)::zol,",
+        "+hfx,",
+        "+ust,",
+        "+pblh,",
+        "+xland",
+        " logical::flag_qr,flag_qi,flag_qs",
+        " real,dimension(kts:kte)::",
+        " u1d,",
+        "@@ -126,9 +154,11 @@",
+        " integer::ibegh,iendh,jbegh,jendh",
+        " integer::istart,iend,jstart,jend",
+        " integer::i,j,k,ntst",
+        "-integer::ishall",
+        " real::lastdt=-1.0",
+        " real::w0avgfctr,w0fctr,w0den",
+        "+real,dimension(kts:kte)::dudt,dvdt",
+        "+logical::cmt_opt_flag",
+        "+cmt_opt_flag=.true.",
+        " dxsq=dx*dx",
+        " ntst=stepcu",
+        " tst=float(ntst*2)",
+        "@@ -306,11 +336,28 @@",
+        " dqrdt(k)=0.",
+        " dqsdt(k)=0.",
+        " dtdt(k)=0.",
+        "+dudt(k)=0.",
+        "+dvdt(k)=0.",
+        " cldfra_dp_kf(i,k,j)=0.",
+        " cldfra_sh_kf(i,k,j)=0.",
+        " qc_kf(i,k,j)=0.",
+        " qi_kf(i,k,j)=0.",
+        "-enddo",
+        "+if(aercu_opt.gt.0)then",
+        "+qr_kf(i,k,j)=0.",
+        "+qs_kf(i,k,j)=0.",
+        "+nc_kf(i,k,j)=0.",
+        "+ni_kf(i,k,j)=0.",
+        "+nr_kf(i,k,j)=0.",
+        "+ns_kf(i,k,j)=0.",
+        "+ccn_kf(i,k,j)=0.",
+        "+efss(i,k,j)=10.01",
+        "+efcs(i,k,j)=2.51",
+        "+efis(i,k,j)=5.01",
+        "+endif",
+        "+enddo",
+        "+if(aercu_opt.gt.0)then",
+        "+ainc_frac(i,j)=0.",
+        "+endif",
+        " if(kf_edrates==1)then",
+        " dok=kts,kte",
+        " udr_kf(i,k,j)=0.",
+        "@@ -341,7 +388,10 @@",
+        " tpart_v1d(k)=0.",
+        " endif",
+        " enddo",
+        "-callkf_eta_para(i,j,",
+        "+if(aercu_opt.gt.0)then",
+        "+callmskf_mphyi()",
+        "+endif",
+        "+callmskf_eta_para(i,j,",
+        " u1d,v1d,t1d,qv1d,p1d,dz1d,w0avg1d,",
+        " tpart_h1d,tpart_v1d,",
+        " trigger,",
+        "@@ -351,23 +401,31 @@",
+        " dqdt,dqidt,dqcdt,dqrdt,dqsdt,dtdt,",
+        " raincv,pratec,nca,",
+        " flag_qi,flag_qs,warm_rain,",
+        "-cutop,cubot,ishall,cudt,",
+        "+cutop,cubot,cudt,",
+        " ids,ide,jds,jde,kds,kde,",
+        " ims,ime,jms,jme,kms,kme,",
+        " its,ite,jts,jte,kts,kte,",
+        " cldfra_dp_kf,cldfra_sh_kf,",
+        "-qc_kf,qi_kf,",
+        "+qc_kf,qi_kf,qr_kf,qs_kf,",
+        "+nc_kf,ni_kf,nr_kf,ns_kf,ccn_kf,",
+        "+ainc_frac,",
+        " udr_kf,ddr_kf,",
+        " uer_kf,der_kf,",
+        "-timec_kf,kf_edrates)",
+        "-if(present(shall))shall(i,j)=ishall",
+        "-if(present(rthcuten).and.present(rqvcuten))then",
+        "+timec_kf,kf_edrates,",
+        "+zol,hfx,ust,pblh,",
+        "+aerocu,no_src_types_cu,aercu_fct,",
+        "+aercu_opt,efcs,efis,efss,",
+        "+dudt,dvdt,cmt_opt_flag,xland)",
+        "+if(cmt_opt_flag)then",
+        "+dok=kts,kte",
+        "+rucuten(i,k,j)=dudt(k)",
+        "+rvcuten(i,k,j)=dvdt(k)",
+        "+enddo",
+        "+endif",
+        " dok=kts,kte",
+        " rthcuten(i,k,j)=dtdt(k)/pi(i,k,j)",
+        " rqvcuten(i,k,j)=dqdt(k)",
+        " enddo",
+        "-endif",
+        "-if(present(rqrcuten).and.present(rqccuten))then",
+        " if(f_qr)then",
+        " dok=kts,kte",
+        " rqrcuten(i,k,j)=dqrdt(k)",
+        "@@ -379,22 +437,17 @@",
+        " rqccuten(i,k,j)=dqrdt(k)+dqcdt(k)",
+        " enddo",
+        " endif",
+        "-endif",
+        "-if(present(rqicuten))then",
+        " if(f_qi)then",
+        " dok=kts,kte",
+        " rqicuten(i,k,j)=dqidt(k)",
+        " enddo",
+        " endif",
+        "-endif",
+        "-if(present(rqscuten))then",
+        " if(f_qs)then",
+        " dok=kts,kte",
+        " rqscuten(i,k,j)=dqsdt(k)",
+        " enddo",
+        " endif",
+        " endif",
+        "-endif",
+        "-enddo",
+        "-enddo",
+        "-endsubroutinekf_eta_cps",
+        "+enddo",
+        "+enddo",
+        "+endsubroutinemskf_cps"
+      ]
+    },
+    {
+      "mskf": "MSKF_ETA_PARA",
+      "mskf_lines": [
+        3990,
+        6919
+      ],
+      "kf": "KF_ETA_PARA",
+      "kf_lines": [
+        533,
+        2692
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "replace",
+          "kf_lines": [
+            533,
+            533
+          ],
+          "mskf_lines": [
+            3990,
+            3990
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            543,
+            543
+          ],
+          "mskf_lines": [
+            4000,
+            4000
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            549,
+            549
+          ],
+          "mskf_lines": [
+            4006,
+            4008
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            553,
+            553
+          ],
+          "mskf_lines": [
+            4012,
+            4017
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            559,
+            558
+          ],
+          "mskf_lines": [
+            4023,
+            4023
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            589,
+            588
+          ],
+          "mskf_lines": [
+            4054,
+            4067
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            590,
+            590
+          ],
+          "mskf_lines": [
+            4069,
+            4068
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            602,
+            601
+          ],
+          "mskf_lines": [
+            4080,
+            4082
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            608,
+            607
+          ],
+          "mskf_lines": [
+            4089,
+            4101
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            639,
+            638
+          ],
+          "mskf_lines": [
+            4133,
+            4137
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            692,
+            692
+          ],
+          "mskf_lines": [
+            4191,
+            4265
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            706,
+            706
+          ],
+          "mskf_lines": [
+            4279,
+            4279
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            710,
+            709
+          ],
+          "mskf_lines": [
+            4283,
+            4300
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            719,
+            718
+          ],
+          "mskf_lines": [
+            4310,
+            4315
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            735,
+            734
+          ],
+          "mskf_lines": [
+            4332,
+            4338
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            838,
+            842
+          ],
+          "mskf_lines": [
+            4442,
+            4441
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            860,
+            860
+          ],
+          "mskf_lines": [
+            4459,
+            4459
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            866,
+            866
+          ],
+          "mskf_lines": [
+            4465,
+            4465
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            878,
+            881
+          ],
+          "mskf_lines": [
+            4477,
+            4476
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            948,
+            956
+          ],
+          "mskf_lines": [
+            4543,
+            4543
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            968,
+            977
+          ],
+          "mskf_lines": [
+            4555,
+            4574
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            983,
+            983
+          ],
+          "mskf_lines": [
+            4580,
+            4586
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            986,
+            986
+          ],
+          "mskf_lines": [
+            4589,
+            4589
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            990,
+            1017
+          ],
+          "mskf_lines": [
+            4593,
+            4593
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1021,
+            1022
+          ],
+          "mskf_lines": [
+            4597,
+            4598
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1024,
+            1024
+          ],
+          "mskf_lines": [
+            4600,
+            4601
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1054,
+            1061
+          ],
+          "mskf_lines": [
+            4631,
+            4641
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1076,
+            1075
+          ],
+          "mskf_lines": [
+            4656,
+            4656
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1095,
+            1094
+          ],
+          "mskf_lines": [
+            4676,
+            4687
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1122,
+            1121
+          ],
+          "mskf_lines": [
+            4715,
+            4740
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1129,
+            1128
+          ],
+          "mskf_lines": [
+            4748,
+            4753
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1132,
+            1132
+          ],
+          "mskf_lines": [
+            4757,
+            4779
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1136,
+            1136
+          ],
+          "mskf_lines": [
+            4783,
+            4783
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1150,
+            1149
+          ],
+          "mskf_lines": [
+            4797,
+            4812
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1163,
+            1162
+          ],
+          "mskf_lines": [
+            4826,
+            4832
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1176,
+            1175
+          ],
+          "mskf_lines": [
+            4846,
+            4856
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            1177,
+            1178
+          ],
+          "mskf_lines": [
+            4858,
+            4857
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1193,
+            1194
+          ],
+          "mskf_lines": [
+            4872,
+            4879
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1223,
+            1223
+          ],
+          "mskf_lines": [
+            4908,
+            4908
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1237,
+            1237
+          ],
+          "mskf_lines": [
+            4922,
+            4922
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1319,
+            1318
+          ],
+          "mskf_lines": [
+            5004,
+            5024
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1321,
+            1320
+          ],
+          "mskf_lines": [
+            5027,
+            5199
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1349,
+            1348
+          ],
+          "mskf_lines": [
+            5228,
+            5241
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1350,
+            1349
+          ],
+          "mskf_lines": [
+            5243,
+            5264
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1366,
+            1365
+          ],
+          "mskf_lines": [
+            5281,
+            5282
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1367,
+            1367
+          ],
+          "mskf_lines": [
+            5284,
+            5288
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1382,
+            1381
+          ],
+          "mskf_lines": [
+            5303,
+            5316
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1416,
+            1415
+          ],
+          "mskf_lines": [
+            5351,
+            5364
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1419,
+            1419
+          ],
+          "mskf_lines": [
+            5368,
+            5368
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1508,
+            1507
+          ],
+          "mskf_lines": [
+            5457,
+            5470
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            1551,
+            1550
+          ],
+          "mskf_lines": [
+            5514,
+            5527
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            1593,
+            1593
+          ],
+          "mskf_lines": [
+            5570,
+            5569
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1596,
+            1600
+          ],
+          "mskf_lines": [
+            5572,
+            5619
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1785,
+            1785
+          ],
+          "mskf_lines": [
+            5804,
+            5804
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            1844,
+            1844
+          ],
+          "mskf_lines": [
+            5863,
+            5864
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2156,
+            2155
+          ],
+          "mskf_lines": [
+            6176,
+            6185
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2186,
+            2186
+          ],
+          "mskf_lines": [
+            6216,
+            6217
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            2191,
+            2196
+          ],
+          "mskf_lines": [
+            6222,
+            6221
+          ]
+        },
+        {
+          "operation": "delete",
+          "kf_lines": [
+            2251,
+            2257
+          ],
+          "mskf_lines": [
+            6276,
+            6275
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2282,
+            2281
+          ],
+          "mskf_lines": [
+            6300,
+            6300
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2284,
+            2283
+          ],
+          "mskf_lines": [
+            6303,
+            6310
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2285,
+            2286
+          ],
+          "mskf_lines": [
+            6312,
+            6314
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2290,
+            2289
+          ],
+          "mskf_lines": [
+            6318,
+            6320
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2292,
+            2293
+          ],
+          "mskf_lines": [
+            6323,
+            6326
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2297,
+            2296
+          ],
+          "mskf_lines": [
+            6330,
+            6332
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2299,
+            2298
+          ],
+          "mskf_lines": [
+            6335,
+            6343
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2302,
+            2302
+          ],
+          "mskf_lines": [
+            6347,
+            6347
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2310,
+            2309
+          ],
+          "mskf_lines": [
+            6355,
+            6355
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2389,
+            2388
+          ],
+          "mskf_lines": [
+            6435,
+            6435
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2409,
+            2409
+          ],
+          "mskf_lines": [
+            6456,
+            6456
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2491,
+            2492
+          ],
+          "mskf_lines": [
+            6538,
+            6539
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2509,
+            2509
+          ],
+          "mskf_lines": [
+            6556,
+            6556
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2528,
+            2528
+          ],
+          "mskf_lines": [
+            6575,
+            6575
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2532,
+            2532
+          ],
+          "mskf_lines": [
+            6579,
+            6579
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2534,
+            2534
+          ],
+          "mskf_lines": [
+            6581,
+            6581
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2543,
+            2544
+          ],
+          "mskf_lines": [
+            6590,
+            6591
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2559,
+            2561
+          ],
+          "mskf_lines": [
+            6606,
+            6608
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2572,
+            2572
+          ],
+          "mskf_lines": [
+            6619,
+            6619
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2642,
+            2641
+          ],
+          "mskf_lines": [
+            6689,
+            6868
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2692,
+            2692
+          ],
+          "mskf_lines": [
+            6919,
+            6919
+          ]
+        }
+      ],
+      "executable_text_identical": false,
+      "executable_diff": [
+        "--- ",
+        "+++ ",
+        "@@ -1,4 +1,4 @@",
+        "-subroutinekf_eta_para(i,j,",
+        "+subroutinemskf_eta_para(i,j,",
+        " u0,v0,t0,qv0,p0,dzq,w0avg1d,",
+        " tpart_h0,tpart_v0,",
+        " trigger,",
+        "@@ -8,15 +8,21 @@",
+        " dqdt,dqidt,dqcdt,dqrdt,dqsdt,dtdt,",
+        " raincv,pratec,nca,",
+        " f_qi,f_qs,warm_rain,",
+        "-cutop,cubot,ishall,cudt,",
+        "+cutop,cubot,cudt,",
+        " ids,ide,jds,jde,kds,kde,",
+        " ims,ime,jms,jme,kms,kme,",
+        " its,ite,jts,jte,kts,kte,",
+        " cldfra_dp_kf,cldfra_sh_kf,",
+        "-qc_kf,qi_kf,",
+        "+qc_kf,qi_kf,qr_kf,qs_kf,",
+        "+nc_kf,ni_kf,nr_kf,ns_kf,ccn_kf,",
+        "+ainc_frac,",
+        " udr_kf,ddr_kf,",
+        " uer_kf,der_kf,",
+        "-timec_kf,kf_edrates)",
+        "+timec_kf,kf_edrates,",
+        "+zol,hfx,ust,pblh,",
+        "+aerocu,no_src_types_cu,aercu_fct,",
+        "+aercu_opt,efcs,efis,efss,",
+        "+dudt,dvdt,cmt_opt_flag,xland)",
+        " implicitnone",
+        " integer,intent(in)::ids,ide,jds,jde,kds,kde,",
+        " ims,ime,jms,jme,kms,kme,",
+        "@@ -39,7 +45,17 @@",
+        " real,intent(in)::dt,dx,dxsq",
+        " real,intent(in)::xlv0,xlv1,xls0,xls1,cp,r,g",
+        " real,intent(in)::ep2,svp1,svp2,svp3,svpt0",
+        "-integer,intent(inout)::ishall",
+        "+integer,intent(in)::no_src_types_cu",
+        "+real,intent(in)::aercu_fct",
+        "+integer,intent(in)::aercu_opt",
+        "+real,dimension(ims:ime,kms:kme,jms:jme,no_src_types_cu),optional,",
+        "+intent(inout)::aerocu",
+        "+real,dimension(ims:ime,jms:jme),",
+        "+intent(in)::zol,",
+        "+hfx,",
+        "+ust,",
+        "+pblh,",
+        "+xland",
+        " real,dimension(kts:kte),intent(inout)::",
+        " dqdt,",
+        " dqidt,",
+        "@@ -49,11 +65,24 @@",
+        " dtdt",
+        " real,dimension(ims:ime,jms:jme),",
+        " intent(inout)::nca",
+        "+real,dimension(ims:ime,jms:jme),",
+        "+intent(inout)::ainc_frac",
+        " real,dimension(ims:ime,kms:kme,jms:jme),",
+        " intent(inout)::cldfra_dp_kf,",
+        " cldfra_sh_kf,",
+        " qc_kf,",
+        " qi_kf",
+        "+real,dimension(ims:ime,kms:kme,jms:jme),",
+        "+intent(inout)::qr_kf,",
+        "+qs_kf,",
+        "+nc_kf,",
+        "+ni_kf,",
+        "+nr_kf,",
+        "+ns_kf,",
+        "+ccn_kf,",
+        "+efcs,",
+        "+efis,",
+        "+efss",
+        " real,dimension(ims:ime,kms:kme,jms:jme),",
+        " intent(inout)::udr_kf,",
+        " ddr_kf,",
+        "@@ -76,6 +105,8 @@",
+        " umf,uer,udr,dmf,der,ddr,umf2,uer2,",
+        " udr2,dmf2,der2,ddr2,dza,thta0,thetee,",
+        " thtau,theteu,thtad,theted,qliq,qice,",
+        "+qrain,qsnow,nliq,nice,nrain,nsnow,ccn,",
+        "+effch,effih,effsh,",
+        " qlqout,qicout,pptliq,pptice,detlq,detic,",
+        " detlq2,detic2,ratio,ratio2",
+        " real,dimension(kts:kte)::",
+        "@@ -120,7 +151,71 @@",
+        " integer::indlu,nu,nuchm,nnn,klfs",
+        " real::chmin,pm15,chmax,dtrh,rad,dppp",
+        " real::tvdiff,dttot,absomg,absomgtc,frdp",
+        "-real::xcldfra,umf_new",
+        "+real::xcldfra,umf_new,dmf_new,fxm_new",
+        "+real::sourceht,scale_fac,tokioka,rate_kay",
+        "+real::capedx,tempkay",
+        "+real::sclvel,zlcl_kay,zz_kay",
+        "+real::envesat,envqsat,envrh,envrhavg,densplume",
+        "+real::updil,drag,wst,thetav",
+        "+real,parameter::p1_hu10=7.6725",
+        "+real,parameter::p2_hu10=1.0118",
+        "+real,parameter::p3_hu10=0.1422",
+        "+real,parameter::p4_hu10=0.0106",
+        "+real,parameter::p5_hu10=3.39e-4",
+        "+real,parameter::p6_hu10=3.95e-6",
+        "+real::sf_hu10,tc_hu10",
+        "+real::a1kay",
+        "+logical::dccmp",
+        "+real::eps1u,alatent,qsu",
+        "+logical::onetime",
+        "+dataonetime/.true./",
+        "+integer,parameter::r8=8",
+        "+integer,parameter::naer_cu=10",
+        "+integer,parameter::pcols=1",
+        "+real(r8)muu(pcols,kts:kte)",
+        "+real(r8)su(pcols,kts:kte)",
+        "+real(r8)quu(pcols,kts:kte)",
+        "+real(r8)duu(pcols,kts:kte)",
+        "+real(r8)euu(pcols,kts:kte)",
+        "+real(r8)cmel(pcols,kts:kte)",
+        "+real(r8)cmei(pcols,kts:kte)",
+        "+real(r8)zfu(pcols,kts:kte+1)",
+        "+real(r8)zf_wrf(0:kte)",
+        "+real(r8)pru(pcols,kts:kte)",
+        "+real(r8)tee(pcols,kts:kte)",
+        "+real(r8)qee(pcols,kts:kte)",
+        "+real(r8)qsatzm(pcols,kts:kte)",
+        "+real(r8)gamhat(pcols,kts:kte)",
+        "+real(r8)aer_mmr(pcols,kts:kte,naer_cu)",
+        "+real(r8)aqnewic(kts:kte)",
+        "+real(r8)aqnewlq(kts:kte)",
+        "+real(r8)wu_mskf_act(kts:kte)",
+        "+real(r8)qc_mskf_act(kts:kte)",
+        "+real(r8)qi_mskf_act(kts:kte)",
+        "+real(r8)effc(pcols,kts:kte)",
+        "+real(r8)effi(pcols,kts:kte)",
+        "+real(r8)effs(pcols,kts:kte)",
+        "+real(r8)qsatu(kts:kte),oldqu(kts:kte),oldtu(kts:kte)",
+        "+real(r8)epsi0(pcols)",
+        "+real(r8)dlfmzmp(pcols,kts:kte),difmzmp(pcols,kts:kte)",
+        "+real(r8)oldpptliq(kts:kte)",
+        "+real(r8)oldpptice(kts:kte)",
+        "+real(r8)wump(pcols,kts:kte)",
+        "+real(r8)zmqliq(pcols,kts:kte)",
+        "+real(r8)zmqice(pcols,kts:kte)",
+        "+real(r8)zmqrain(pcols,kts:kte)",
+        "+real(r8)zmqsnow(pcols,kts:kte)",
+        "+real(r8)ncmp(pcols,kts:kte)",
+        "+real(r8)nimp(pcols,kts:kte)",
+        "+real(r8)nrmp(pcols,kts:kte)",
+        "+real(r8)nsmp(pcols,kts:kte)",
+        "+real(r8)zmccn(pcols,kts:kte)",
+        "+real(r8)rprd(pcols,kts:kte)",
+        "+real(r8)sprd(pcols,kts:kte)",
+        "+real(r8)frz(pcols,kts:kte)",
+        "+real(r8)grav,rdry,dtzmp,cpin,psh_fac",
+        "+integerkq,jk,jbb(1),jtt(1),jlcl(1),msg1,il2g,jzm,ka",
+        "+integernlevzm,nlevzmp1,kkay,miter,itest,kc",
+        " integer::kx,k,kl",
+        " integer::ncheck",
+        " integer,dimension(kts:kte)::kcheck",
+        "@@ -131,15 +226,35 @@",
+        " ltopm1,lvf,kstart,kmin,lfs,",
+        " nd,nic,ldb,ldt,nd1,ndk,",
+        " nm,lmax,ncount,noitr,",
+        "-nstep,ntc,nchm,nshall",
+        "+nstep,ntc,nchm,ishall,nshall",
+        " logical::iprnt",
+        " real::u00,qslcl,rhlcl,dqssdt",
+        " character*1024message",
+        "+real,dimension(kts:kte),intent(inout)::dudt,dvdt",
+        "+real,dimension(kts:kte)::tdn,tup",
+        "+real,dimension(kts:kte)::stat_energy",
+        "+real(r8),dimension(pcols,kts:kte)::dudtnew,dvdtnew,",
+        "+dpdx,dpdy,mc,",
+        "+derconvf,uerconvf,",
+        "+umfconvf,dmfconvf,",
+        "+dpconvf,u0f,v0f,",
+        "+z0f,suu,sdd,",
+        "+shat,qhat,qdn,qup",
+        "+logical::cmtprint",
+        "+datacmtprint/.false./",
+        "+integer::jdd(1),il1g,ilg",
+        "+real(r8)::dsubcld(1),vmflclconv(1),dtnew",
+        "+logical::cmt_opt_flag",
+        " datap00,t00/1.e5,273.16/",
+        " datarlf/3.339e5/",
+        " datarhic,rhbc/1.,0.90/",
+        " datapie,ttfrz,tbfrz,c5/3.141592654,268.16,248.16,1.0723e-3/",
+        " datarate/0.03/",
+        "+if(aercu_opt.gt.0)then",
+        "+dccmp=.true.",
+        "+else",
+        "+dccmp=.false.",
+        "+endif",
+        " iprnt=.false.",
+        " gdry=-g/cp",
+        " rocp=r/cp",
+        "@@ -150,6 +265,13 @@",
+        " bliq=svp2",
+        " cliq=svp2*svpt0",
+        " dliq=svp3",
+        "+if(dx.ge.24.999e3)then",
+        "+scale_fac=1.0",
+        "+capedx=0.1",
+        "+else",
+        "+scale_fac=1.0+(log(25.e3/dx))",
+        "+capedx=0.1*sqrt(scale_fac)",
+        "+endif",
+        " fbfrc=0.0",
+        " nchm=0",
+        " ishall=0",
+        "@@ -210,7 +332,6 @@",
+        " fbfrc=1.",
+        " cycleusl",
+        " else",
+        "-ishall=2",
+        " return",
+        " endif",
+        " endif",
+        "@@ -221,13 +342,13 @@",
+        " dpthmx=0.",
+        " nk=lc-1",
+        " if(nk+1.lt.kts)then",
+        "-write(message,*)'wouldgooffbottom:kf_eta_parai,j,nk',i,j,nk",
+        "+write(message,*)'wouldgooffbottom:mskf_parai,j,nk',i,j,nk",
+        " callwrf_message(trim(message))",
+        " else",
+        " do",
+        " nk=nk+1",
+        " if(nk.gt.kte)then",
+        "-write(message,*)'wouldgoofftop:kf_eta_parai,j,dpthmx,dpmin',i,j,dpthmx,dpmin",
+        "+write(message,*)'wouldgoofftop:mskf_parai,j,dpthmx,dpmin',i,j,dpthmx,dpmin",
+        " callwrf_message(trim(message))",
+        " exit",
+        " endif",
+        "@@ -239,7 +360,6 @@",
+        " enddo",
+        " endif",
+        " if(dpthmx.lt.dpmin)then",
+        "-ishall=2",
+        " return",
+        " endif",
+        " kpbl=lc+nlayrs-1",
+        "@@ -275,46 +395,40 @@",
+        " klcl=nk",
+        " if(zlcl.le.z0(nk))exit",
+        " enddo",
+        "-if(zlcl.gt.z0(kl))then",
+        "-ishall=2",
+        "-return",
+        "-endif",
+        "+if(zlcl.gt.z0(kl))return",
+        " k=klcl-1",
+        " dlp=(zlcl-z0(k))/(z0(klcl)-z0(k))",
+        " tenv=t0(k)+(t0(klcl)-t0(k))*dlp",
+        " qenv=q0(k)+(q0(klcl)-q0(k))*dlp",
+        " tven=tenv*(1.+0.608*qenv)",
+        "+dtrh=0.",
+        "+dtlcl=w0avg1d(klcl)/scale_fac",
+        "+if(dtlcl.lt.0.0)then",
+        "+tempkay=-1.0",
+        "+dtlcl=tempkay*dtlcl",
+        "+dtlcl=(dtlcl)**0.3333",
+        "+else",
+        "+tempkay=1.0",
+        "+dtlcl=tempkay*dtlcl",
+        "+dtlcl=(dtlcl)**0.3333",
+        "+endif",
+        "+dtlcl=6.0*tempkay*dtlcl",
+        " if(zlcl.lt.2.e3)then",
+        " wklcl=0.02*zlcl/2.e3",
+        " else",
+        " wklcl=0.02",
+        " endif",
+        "+if(dx.ge.25.e3)then",
+        " wkl=(w0avg1d(k)+(w0avg1d(klcl)-w0avg1d(k))*dlp)*dx/25.e3-wklcl",
+        "+else",
+        "+wkl=(w0avg1d(k)+(w0avg1d(klcl)-w0avg1d(k))*dlp)-wklcl",
+        "+endif",
+        " if(wkl.lt.0.0001)then",
+        " dtlcl=0.",
+        " else",
+        " dtlcl=4.64*wkl**0.33",
+        " endif",
+        "-if(trigger.eq.2)then",
+        "-dtlcl=amax1(tpart_h0(klcl)+tpart_v0(klcl),0.0)",
+        "-endif",
+        "-dtrh=0.",
+        "-if(trigger.eq.3)then",
+        "-u00=0.75",
+        "-if(u00.lt.1.)then",
+        "-qslcl=qes(k)+(qes(klcl)-qes(k))*dlp",
+        "-rhlcl=qenv/qslcl",
+        "-dqssdt=qmix*(cliq-bliq*dliq)/((tlcl-dliq)*(tlcl-dliq))",
+        "-if(rhlcl.ge.0.75.and.rhlcl.le.0.95)then",
+        "-dtrh=0.25*(rhlcl-0.75)*qmix/dqssdt",
+        "-elseif(rhlcl.gt.0.95)then",
+        "-dtrh=(1./rhlcl-1.)*qmix/dqssdt",
+        "-else",
+        "-dtrh=0.",
+        "-endif",
+        "-endif",
+        "-endif",
+        "-trigger2:if(tlcl+dtlcl+dtrh.lt.tenv)then",
+        "+if(tlcl+dtlcl.lt.tenv)then",
+        " cycleusl",
+        " else",
+        " callenvirtht(pmix,tmix,qmix,theteu(k),aliq,bliq,cliq,dliq)",
+        "@@ -332,13 +446,11 @@",
+        " rholcl=plcl/(r*tvlcl)",
+        " lcl=klcl",
+        " let=lcl",
+        "-if(wkl.lt.0.)then",
+        "-rad=1000.",
+        "-elseif(wkl.gt.0.1)then",
+        "-rad=2000.",
+        "-else",
+        "-rad=1000.+1000*wkl/0.1",
+        "-endif",
+        "+rad=zlcl",
+        "+sourceht=z0(kpbl)",
+        "+rad=amax1(sourceht,rad)",
+        "+rad=amin1(4000.,rad)",
+        "+rad=amax1(500.,rad)",
+        " wu(k)=wlcl",
+        " au0=0.01*dxsq",
+        " umf(k)=rholcl*au0",
+        "@@ -355,6 +467,18 @@",
+        " eqfrc(k)=1.",
+        " qliq(k)=0.",
+        " qice(k)=0.",
+        "+if(aercu_opt.gt.0)then",
+        "+qrain(k)=0.",
+        "+qsnow(k)=0.",
+        "+nliq(k)=0.",
+        "+nice(k)=0.",
+        "+nrain(k)=0.",
+        "+nsnow(k)=0.",
+        "+ccn(k)=0.",
+        "+effch(k)=2.5",
+        "+effih(k)=4.99",
+        "+effsh(k)=9.99",
+        "+endif",
+        " qlqout(k)=0.",
+        " qicout(k)=0.",
+        " detlq(k)=0.",
+        "@@ -367,6 +491,29 @@",
+        " ud1=0.",
+        " rei=0.",
+        " dilbe=0.",
+        "+if(aercu_opt.gt.0)then",
+        "+zf_wrf(0)=0.0",
+        "+dokq=kts,kte",
+        "+zf_wrf(kq)=zf_wrf(kq-1)+dzq(kq)",
+        "+aqnewlq(kq)=0.0",
+        "+aqnewic(kq)=0.0",
+        "+rprd(1,kq)=0.0",
+        "+wump(1,kq)=0.0",
+        "+ncmp(1,kq)=0.0",
+        "+nimp(1,kq)=0.0",
+        "+sprd(1,kq)=0.0",
+        "+frz(1,kq)=0.0",
+        "+jk=kq",
+        "+muu(1,jk)=0.0",
+        "+duu(1,jk)=0.0",
+        "+euu(1,jk)=0.0",
+        "+cmel(1,jk)=0.0",
+        "+cmei(1,jk)=0.0",
+        "+oldtu(kq)=t0(kq)",
+        "+oldqu(kq)=q0(kq)",
+        "+enddo",
+        "+miter=0",
+        "+endif",
+        " updraft:donk=k,kl-1",
+        " nk1=nk+1",
+        " ratio2(nk1)=ratio2(nk)",
+        "@@ -374,10 +521,14 @@",
+        " tu(nk1)=t0(nk1)",
+        " theteu(nk1)=theteu(nk)",
+        " qu(nk1)=qu(nk)",
+        "+if(aercu_opt.gt.0)then",
+        "+oldqu(nk)=qu(nk)",
+        "+oldtu(nk)=tu(nk)",
+        "+endif",
+        " qliq(nk1)=qliq(nk)",
+        " qice(nk1)=qice(nk)",
+        " calltpmix2(p0(nk1),theteu(nk1),tu(nk1),qu(nk1),qliq(nk1),",
+        "-qice(nk1),qnewlq,qnewic,xlv1,xlv0)",
+        "+qice(nk1),qnewlq,qnewic,xlv1,xlv0,qsu)",
+        " if(tu(nk1).le.ttfrz)then",
+        " if(tu(nk1).gt.tbfrz)then",
+        " if(ttemp.gt.ttfrz)ttemp=ttfrz",
+        "@@ -387,6 +538,17 @@",
+        " iflag=1",
+        " endif",
+        " ttemp=tu(nk1)",
+        "+if(aercu_opt.gt.0)then",
+        "+if(tu(nk1).gt.tbfrz)then",
+        "+tc_hu10=tu(nk1)-273.15",
+        "+sf_hu10=-1.0*(p1_hu10+(p2_hu10*tc_hu10)+(p3_hu10*(tc_hu10**2))+",
+        "+(p4_hu10*(tc_hu10**3))+(p5_hu10*(tc_hu10**4))+(p6_hu10*(tc_hu10**5)))",
+        "+frc1=1.0-(1.0/(1.0+exp(sf_hu10)))",
+        "+else",
+        "+frc1=1.",
+        "+iflag=1",
+        "+endif",
+        "+endif",
+        " qfrz=(qliq(nk1)+qnewlq)*frc1",
+        " qnewic=qnewic+qnewlq*frc1",
+        " qnewlq=qnewlq-qnewlq*frc1",
+        "@@ -396,6 +558,11 @@",
+        " qice(nk1),aliq,bliq,cliq,dliq)",
+        " endif",
+        " tvu(nk1)=tu(nk1)*(1.+0.608*qu(nk1))",
+        "+if(aercu_opt.gt.0)then",
+        "+qsatu(nk)=qsu/(1.+qsu)",
+        "+aqnewlq(nk)=qnewlq",
+        "+aqnewic(nk)=qnewic",
+        "+endif",
+        " if(nk.eq.k)then",
+        " be=(tvlcl+tvu(nk1))/(tven+tv0(nk1))-1.",
+        " boterm=2.*(z0(nk1)-zlcl)*g*be/1.5",
+        "@@ -406,15 +573,22 @@",
+        " dzz=dza(nk)",
+        " endif",
+        " enterm=2.*rei*wtw/upold",
+        "+if(dx.ge.24.999e3)then",
+        "+rate_kay=rate",
+        "+else",
+        "+rate_kay=rate/scale_fac",
+        "+endif",
+        " callcondload(qliq(nk1),qice(nk1),wtw,dzz,boterm,enterm,",
+        "-rate,qnewlq,qnewic,qlqout(nk1),qicout(nk1),g)",
+        "+rate_kay,qnewlq,qnewic,qlqout(nk1),qicout(nk1),g)",
+        " if(wtw.lt.1.e-3)then",
+        " exit",
+        " else",
+        " wu(nk1)=sqrt(wtw)",
+        " endif",
+        " callenvirtht(p0(nk1),t0(nk1),q0(nk1),thetee(nk1),aliq,bliq,cliq,dliq)",
+        "-rei=vmflcl*dp(nk1)*0.03/rad",
+        "+tokioka=0.03",
+        "+tokioka=tokioka*scale_fac",
+        "+rei=vmflcl*dp(nk1)*tokioka/rad",
+        " tvqu(nk1)=tu(nk1)*(1.+0.608*qu(nk1)-qliq(nk1)-qice(nk1))",
+        " if(nk.eq.k)then",
+        " dilbe=((tvlcl+tvqu(nk1))/(tven+tv0(nk1))-1.)*dzz",
+        "@@ -436,7 +610,7 @@",
+        " tmpliq=f2*qliq(nk1)",
+        " tmpice=f2*qice(nk1)",
+        " calltpmix2(p0(nk1),thttmp,ttmp,qtmp,tmpliq,tmpice,",
+        "-qnewlq,qnewic,xlv1,xlv0)",
+        "+qnewlq,qnewic,xlv1,xlv0,qsu)",
+        " tu95=ttmp*(1.+0.608*qtmp-tmpliq-tmpice)",
+        " if(tu95.gt.tv0(nk1))then",
+        " ee2=1.",
+        "@@ -450,7 +624,7 @@",
+        " tmpliq=f2*qliq(nk1)",
+        " tmpice=f2*qice(nk1)",
+        " calltpmix2(p0(nk1),thttmp,ttmp,qtmp,tmpliq,tmpice,",
+        "-qnewlq,qnewic,xlv1,xlv0)",
+        "+qnewlq,qnewic,xlv1,xlv0,qsu)",
+        " tu10=ttmp*(1.+0.608*qtmp-tmpliq-tmpice)",
+        " tvdiff=abs(tu10-tvqu(nk1))",
+        " if(tvdiff.lt.1.e-3)then",
+        "@@ -502,7 +676,146 @@",
+        " trppt=trppt+pptliq(nk1)+pptice(nk1)",
+        " if(nk1.le.kpbl)uer(nk1)=uer(nk1)+vmflcl*dp(nk1)/dpthmx",
+        " endif",
+        "+if(aercu_opt.gt.0)then",
+        "+eps1u=0.622",
+        "+alatent=2.54e6",
+        "+kq=nk",
+        "+jk=kte-kq+1",
+        "+muu(1,jk)=umf(kq)/vmflcl",
+        "+duu(1,jk)=udr(kq)/dzq(kq)/vmflcl",
+        "+euu(1,jk)=uer(kq)/dzq(kq)/vmflcl",
+        "+cmel(1,jk)=muu(1,jk)*aqnewlq(kq)/dzq(kq)",
+        "+cmei(1,jk)=muu(1,jk)*aqnewic(kq)/dzq(kq)",
+        "+gamhat(1,jk)=qsatu(kq)*(1.+qsatu(kq)/eps1u)",
+        "+*eps1u*alatent/(r*oldtu(kq)**2)*alatent/cp",
+        "+wu_mskf_act(jk)=wu(kq)",
+        "+qc_mskf_act(jk)=aqnewlq(kq)",
+        "+qi_mskf_act(jk)=aqnewic(kq)",
+        "+endif",
+        " enddoupdraft",
+        "+if(aercu_opt.gt.0)then",
+        "+zfu(1,kte+1)=0.0",
+        "+cpin=cp",
+        "+epsi0(1)=2.0e-4",
+        "+dokq=kts,kte",
+        "+jk=kte-kq+1",
+        "+zfu(1,jk)=zf_wrf(kq)",
+        "+su(1,jk)=oldtu(kq)*(1.0+0.622*qsatu(kq))+(g*zf_wrf(kq))/cp",
+        "+quu(1,jk)=oldqu(kq)/(1.+oldqu(kq))",
+        "+pru(1,jk)=p0(kq)/100.0",
+        "+tee(1,jk)=t0(kq)",
+        "+qee(1,jk)=q0(kq)/(1.+q0(kq))",
+        "+qee(1,jk)=oldqu(kq)/(1.+oldqu(kq))",
+        "+qsatzm(1,jk)=qsatu(kq)",
+        "+densplume=p0(kq)/(r*oldtu(kq))",
+        "+psh_fac=1.0e-09/densplume",
+        "+aer_mmr(1,jk,1)=aercu_fct*aerocu(i,kq,j,6)*psh_fac",
+        "+aer_mmr(1,jk,2)=aercu_fct*aerocu(i,kq,j,5)*psh_fac",
+        "+aer_mmr(1,jk,3)=aercu_fct*1.44*aerocu(i,kq,j,1)*psh_fac",
+        "+aer_mmr(1,jk,4)=aercu_fct*1.44*aerocu(i,kq,j,2)*psh_fac",
+        "+aer_mmr(1,jk,5)=aercu_fct*1.44*aerocu(i,kq,j,3)*psh_fac",
+        "+aer_mmr(1,jk,6)=aercu_fct*1.44*aerocu(i,kq,j,4)*psh_fac",
+        "+aer_mmr(1,jk,7)=aercu_fct*1.54*aerocu(i,kq,j,9)*psh_fac",
+        "+aer_mmr(1,jk,8)=aercu_fct*1.37*aerocu(i,kq,j,7)*psh_fac",
+        "+aer_mmr(1,jk,9)=aercu_fct*1.25*aerocu(i,kq,j,10)*psh_fac",
+        "+aer_mmr(1,jk,10)=aercu_fct*1.37*aerocu(i,kq,j,8)*psh_fac",
+        "+gamhat(1,jk)=qsatu(kq)*(1.+qsatu(kq)/eps1u)",
+        "+*eps1u*alatent/(r*oldtu(kq)**2)*alatent/cp",
+        "+enddo",
+        "+jtt(1)=kx-nk+1",
+        "+jbb(1)=kx-k+1",
+        "+if(jtt(1).gt.jbb(1))then",
+        "+jtt(1)=jbb(1)",
+        "+endif",
+        "+jlcl(1)=jbb(1)-1",
+        "+msg1=0",
+        "+il2g=1",
+        "+grav=g",
+        "+rdry=r",
+        "+dtzmp=dt",
+        "+nlevzm=kte-kts+1",
+        "+nlevzmp1=nlevzm+1",
+        "+if(jtt(1).eq.1)then",
+        "+print*,'cloudbottomisonground",
+        "+print*,'i',i,'j',j",
+        "+callwrf_error_fatal('mskfcloudbottomisontheground,diags')",
+        "+endif",
+        "+if(jbb(1).eq.kte)then",
+        "+print*,'cloudtopwentthroughtheroof",
+        "+print*,'jtt,jbb,jlcl=',jtt(1),jbb(1),jlcl(1)",
+        "+callwrf_error_fatal('mskfcloudtopwentovermodeltop,diags')",
+        "+endif",
+        "+if(dccmp)then",
+        "+callmskf_mphy(su,quu,muu,duu,cmel,cmei,zfu,pru,tee,qee,epsi0,",
+        "+jbb,jtt,jlcl,msg1,il2g,grav,cpin,rdry,zmqliq,zmqice,zmqrain,zmqsnow,",
+        "+rprd,wump,euu,ncmp,nimp,nrmp,nsmp,zmccn,sprd,frz,aer_mmr,dtzmp,",
+        "+nlevzm,nlevzmp1,gamhat,qsatzm,wu_mskf_act,qc_mskf_act,qi_mskf_act,effc,effi,effs)",
+        "+endif",
+        "+itest=0",
+        "+if(itest.eq.1)then",
+        "+write(121,*)'k,nk,kq,jk,su,quue3,muu,duu,cmel,zfu,pru,tee,",
+        "+qeee3,zmqliqe4,zmqicee4,rprd,wump,euu,ncmp,nimp,sprd,frz'",
+        "+dokq=k,nk",
+        "+jk=kte-kq+1",
+        "+write(121,2021)k,nk,kq,jk,su(1,jk),quu(1,jk)*1000,muu(1,jk),duu(1,jk),cmel(1,jk)",
+        "+write(121,2022)zfu(1,jk),pru(1,jk),tee(1,jk),qee(1,jk)*1000,zmqliq(1,jk)*1.e3,zmqice(1,jk)*1.e3",
+        "+write(121,2022)rprd(1,jk),wump(1,jk),euu(1,jk),ncmp(1,jk),nimp(1,jk),sprd(1,jk)",
+        "+write(121,2023)frz(1,jk)",
+        "+2021format(4i3,6(1x,e13.6))",
+        "+2022format(6(1x,e13.6))",
+        "+2023format(2(1x,e13.6))",
+        "+enddo",
+        "+endif",
+        "+if(dccmp)then",
+        "+dokq=kts,kte",
+        "+qliq(kq)=0.0",
+        "+qice(kq)=0.0",
+        "+qrain(kq)=0.0",
+        "+qsnow(kq)=0.0",
+        "+nliq(kq)=0.0",
+        "+nice(kq)=0.0",
+        "+nrain(kq)=0.0",
+        "+nsnow(kq)=0.0",
+        "+ccn(kq)=0.0",
+        "+effch(kq)=2.51",
+        "+effih(kq)=4.99",
+        "+effsh(kq)=9.99",
+        "+pptliq(kq)=0.0",
+        "+pptice(kq)=0.0",
+        "+qlqout(kq)=0.0",
+        "+qicout(kq)=0.0",
+        "+detlq(kq)=0.0",
+        "+detic(kq)=0.0",
+        "+enddo",
+        "+trppt=0.0",
+        "+dokq=kts,kte",
+        "+jk=kx-kq+1",
+        "+qliq(kq)=max(0._r8,zmqliq(1,jk))",
+        "+qice(kq)=max(0._r8,zmqice(1,jk))",
+        "+qrain(kq)=max(0._r8,zmqrain(1,jk))",
+        "+qsnow(kq)=max(0._r8,zmqsnow(1,jk))",
+        "+nliq(kq)=max(0._r8,ncmp(1,jk))",
+        "+nice(kq)=max(0._r8,nimp(1,jk))",
+        "+nrain(kq)=max(0._r8,nrmp(1,jk))",
+        "+nsnow(kq)=max(0._r8,nsmp(1,jk))",
+        "+ccn(kq)=max(0._r8,zmccn(1,jk))",
+        "+effch(kq)=max(2.49_r8,min(effc(1,jk),50._r8))",
+        "+effih(kq)=max(4.99_r8,min(effi(1,jk),125._r8))",
+        "+effsh(kq)=max(9.99_r8,min(effs(1,jk),999._r8))",
+        "+detlq(kq)=qliq(kq)*udr(kq)",
+        "+detic(kq)=qice(kq)*udr(kq)",
+        "+densplume=pptliq(kq)",
+        "+if(rprd(1,jk).lt.0.0)rprd(1,jk)=0.0",
+        "+if(sprd(1,jk).lt.0.0)sprd(1,jk)=0.0",
+        "+qlqout(kq)=rprd(1,jk)*dzq(kq)",
+        "+qicout(kq)=sprd(1,jk)*dzq(kq)",
+        "+pptliq(kq)=qlqout(kq)*vmflcl",
+        "+pptice(kq)=qicout(kq)*vmflcl",
+        "+trppt=trppt+pptliq(kq)+pptice(kq)",
+        "+enddo",
+        "+endif",
+        "+2999continue",
+        "+endif",
+        " ltop=nk",
+        " cldhgt(lc)=z0(ltop)-zlcl",
+        " if(tlcl.gt.293.)then",
+        "@@ -515,8 +828,39 @@",
+        " donk=k,ltop",
+        " qc_kf(i,nk,j)=qliq(nk)",
+        " qi_kf(i,nk,j)=qice(nk)",
+        "-enddo",
+        "-if(ltop.le.klcl.or.ltop.le.kpbl.or.let+1.le.kpbl)then",
+        "+if(aercu_opt.gt.0)then",
+        "+qr_kf(i,nk,j)=qrain(nk)",
+        "+qs_kf(i,nk,j)=qsnow(nk)",
+        "+nc_kf(i,nk,j)=nliq(nk)",
+        "+ni_kf(i,nk,j)=nice(nk)",
+        "+nr_kf(i,nk,j)=nrain(nk)",
+        "+ns_kf(i,nk,j)=nsnow(nk)",
+        "+ccn_kf(i,nk,j)=ccn(nk)",
+        "+efcs(i,nk,j)=max(2.49,min(effch(nk),50.))",
+        "+efis(i,nk,j)=max(4.99,min(effih(nk),120.))",
+        "+efss(i,nk,j)=max(9.99,min(effsh(nk),999.))",
+        "+endif",
+        "+enddo",
+        "+envrhavg=0.0",
+        "+donk=k-1,ltop+1",
+        "+if(t0(nk).le.273.16)then",
+        "+envesat=6.112*exp(21.87*(t0(nk)-273.16)/(t0(nk)-7.66))",
+        "+else",
+        "+envesat=6.112*exp(17.67*(t0(nk)-273.16)/(243.5+t0(nk)-273.16))",
+        "+endif",
+        "+envesat=envesat*100.0",
+        "+envqsat=0.622*envesat/(p0(nk)-envesat)",
+        "+envrh=q0(nk)/envqsat",
+        "+if(nk.gt.k.and.envrh.lt.0.99)then",
+        "+envrhavg=0.0",
+        "+goto2020",
+        "+endif",
+        "+envrhavg=envrhavg+envrh",
+        "+enddo",
+        "+envrhavg=envrhavg/float(ltop-k+1+2)",
+        "+2020continue",
+        "+if(ltop.le.klcl.or.ltop.le.kpbl.or.let+1.le.kpbl",
+        "+.or.envrhavg.ge.1.01)then",
+        " cldhgt(lc)=0.",
+        " donk=k,ltop",
+        " umf(nk)=0.",
+        "@@ -530,6 +874,18 @@",
+        " cldfra_sh_kf(i,nk,j)=0.",
+        " qc_kf(i,nk,j)=0.",
+        " qi_kf(i,nk,j)=0.",
+        "+if(aercu_opt.gt.0)then",
+        "+qr_kf(i,nk,j)=0.",
+        "+qs_kf(i,nk,j)=0.",
+        "+nc_kf(i,nk,j)=0.",
+        "+ni_kf(i,nk,j)=0.",
+        "+nr_kf(i,nk,j)=0.",
+        "+ns_kf(i,nk,j)=0.",
+        "+ccn_kf(i,nk,j)=0.",
+        "+efcs(i,nk,j)=2.51",
+        "+efis(i,nk,j)=5.01",
+        "+efss(i,nk,j)=10.01",
+        "+endif",
+        " enddo",
+        " elseif(cldhgt(lc).gt.chmin.and.abe.gt.1)then",
+        " ishall=0",
+        "@@ -557,10 +913,22 @@",
+        " cldfra_sh_kf(i,nk,j)=0.",
+        " qc_kf(i,nk,j)=0.",
+        " qi_kf(i,nk,j)=0.",
+        "-enddo",
+        "-endif",
+        "-endif",
+        "-endiftrigger2",
+        "+if(aercu_opt.gt.0)then",
+        "+qr_kf(i,nk,j)=0.",
+        "+qs_kf(i,nk,j)=0.",
+        "+nc_kf(i,nk,j)=0.",
+        "+ni_kf(i,nk,j)=0.",
+        "+nr_kf(i,nk,j)=0.",
+        "+ns_kf(i,nk,j)=0.",
+        "+ccn_kf(i,nk,j)=0.",
+        "+efcs(i,nk,j)=2.51",
+        "+efis(i,nk,j)=5.01",
+        "+efss(i,nk,j)=10.01",
+        "+endif",
+        "+enddo",
+        "+endif",
+        "+endif",
+        "+endif",
+        " enddousl",
+        " if(ishall.eq.1)then",
+        " kstart=max0(kpbl,klcl)",
+        "@@ -627,6 +995,18 @@",
+        " cldfra_sh_kf(i,nk,j)=0.",
+        " qc_kf(i,nk,j)=0.",
+        " qi_kf(i,nk,j)=0.",
+        "+if(aercu_opt.gt.0)then",
+        "+qr_kf(i,nk,j)=0.",
+        "+qs_kf(i,nk,j)=0.",
+        "+nc_kf(i,nk,j)=0.",
+        "+ni_kf(i,nk,j)=0.",
+        "+nr_kf(i,nk,j)=0.",
+        "+ns_kf(i,nk,j)=0.",
+        "+ccn_kf(i,nk,j)=0.",
+        "+efcs(i,nk,j)=2.51",
+        "+efis(i,nk,j)=5.01",
+        "+efss(i,nk,j)=10.01",
+        "+endif",
+        " endif",
+        " udr(nk)=0.",
+        " qdt(nk)=0.",
+        "@@ -665,6 +1045,18 @@",
+        " cldfra_sh_kf(i,nk,j)=0.",
+        " qc_kf(i,nk,j)=0.",
+        " qi_kf(i,nk,j)=0.",
+        "+if(aercu_opt.gt.0)then",
+        "+qr_kf(i,nk,j)=0.",
+        "+qs_kf(i,nk,j)=0.",
+        "+nc_kf(i,nk,j)=0.",
+        "+ni_kf(i,nk,j)=0.",
+        "+nr_kf(i,nk,j)=0.",
+        "+ns_kf(i,nk,j)=0.",
+        "+ccn_kf(i,nk,j)=0.",
+        "+efss(i,nk,j)=10.01",
+        "+efcs(i,nk,j)=2.51",
+        "+efis(i,nk,j)=5.01",
+        "+endif",
+        " endif",
+        " thta0(nk)=0.",
+        " thtau(nk)=0.",
+        "@@ -695,11 +1087,42 @@",
+        " vconv=.5*(wspd(klcl)+wspd(l5))",
+        " timec=dx/vconv",
+        " tadvec=timec",
+        "-timec=amax1(1800.,timec)",
+        "-timec=amin1(3600.,timec)",
+        "-if(ishall.eq.1)timec=2400.",
+        "+timec=amax1(chmin,cldhgt(lc))",
+        "+timec=timec*scale_fac",
+        "+densplume=p0(1)/r/t0(1)",
+        "+wst=hfx(i,j)/densplume/cp",
+        "+wst=amax1(0.,wst)",
+        "+wst=g*pblh(i,j)*wst",
+        "+thetav=(1.e5/p0(1))**(r/cp)",
+        "+thetav=t0(1)*thetav",
+        "+eps1u=0.622",
+        "+thetav=thetav*(1.+q0(1)*eps1u)",
+        "+wst=wst/thetav",
+        "+wst=wst**0.3333",
+        "+sclvel=wst**3",
+        "+zlcl_kay=amax1(zlcl,z0(kpbl))",
+        "+sclvel=sclvel/pblh(i,j)",
+        "+sclvel=sclvel*zlcl_kay",
+        "+sclvel=sclvel**0.333",
+        "+if(zol(i,j).le.0.0)then",
+        "+frc2=3.8*ust(i,j)*ust(i,j)",
+        "+frc2=frc2+0.22*sclvel*sclvel",
+        "+zz_kay=-1.0*zol(i,j)",
+        "+zlcl_kay=zz_kay**(2./3.)",
+        "+zlcl_kay=zlcl_kay*(1.9*ust(i,j)*ust(i,j))",
+        "+frc2=frc2+zlcl_kay",
+        "+else",
+        "+frc2=3.8*ust(i,j)*ust(i,j)",
+        "+endif",
+        "+frc2=sqrt(frc2)",
+        "+sclvel=frc2",
+        "+if(sclvel.lt.0.1)sclvel=0.1",
+        "+if(abe.le.0.0)abe=1.0",
+        "+timec=timec/((0.03*sclvel*abe)**0.3333)",
+        "+timec=amax1(tadvec,timec)",
+        " nic=nint(timec/dt)",
+        " timec=float(nic)*dt",
+        "+timec=min(timec,86400.)",
+        " if(wspd(ltop).gt.wspd(klcl))then",
+        " shsign=1.",
+        " else",
+        "@@ -1075,6 +1498,12 @@",
+        " abeg=0.",
+        " donk=k,ltopm1",
+        " nk1=nk+1",
+        "+if(aercu_opt.gt.0.0)then",
+        "+jk=kx-nk+1",
+        "+a1kay=frz(1,jk)*dza(nk)*3.337e5/cp",
+        "+a1kay=a1kay*((1.e5/p0(nk))**rocp)",
+        "+theteu(nk)=a1kay+theteu(nk)",
+        "+endif",
+        " theteu(nk1)=theteu(nk)",
+        " calltpmix2dd(p0(nk1),theteu(nk1),tgu(nk1),qgu(nk1),i,j)",
+        " tvqu(nk1)=tgu(nk1)*(1.+0.608*qgu(nk1)-qliq(nk1)-qice(nk1))",
+        "@@ -1092,10 +1521,9 @@",
+        " if(noitr.eq.1)then",
+        " exititer",
+        " endif",
+        "-dabe=amax1(abe-abeg,0.1*abe)",
+        "+dabe=amax1(abe-abeg,capedx*abe)",
+        " fabe=abeg/abe",
+        " if(fabe.gt.1..and.ishall.eq.0)then",
+        "-ishall=2",
+        " return",
+        " endif",
+        " if(ncount.ne.1)then",
+        "@@ -1135,7 +1563,6 @@",
+        " endif",
+        " ainc=amin1(aincmx,ainc)",
+        " if(ainc.lt.0.05)then",
+        "-ishall=2",
+        " return",
+        " endif",
+        " tder=tder2*ainc",
+        "@@ -1152,21 +1579,42 @@",
+        " enddo",
+        " endif",
+        " enddoiter",
+        "+updil=(100.-ainc)",
+        "+updil=updil/100.",
+        "+if(aercu_opt.gt.0)then",
+        "+ainc_frac(i,j)=1.0-updil",
+        "+endif",
+        "+updil=updil*dxsq",
+        "+drag=0.5",
+        " if(ishall.eq.1)then",
+        "-donk=klcl-1,ltop1",
+        "-umf_new=umf(nk)/dxsq",
+        "+donk=klcl,ltop",
+        "+umf_new=umf(nk)/updil",
+        "+densplume=p0(nk)/(r*tu(nk))",
+        " xcldfra=0.07*alog(1.+(500.*umf_new))",
+        " xcldfra=amax1(0.01,xcldfra)",
+        " cldfra_sh_kf(i,nk,j)=amin1(0.2,xcldfra)",
+        "-enddo",
+        "-else",
+        "-donk=klcl-1,ltop1",
+        "-umf_new=umf(nk)/dxsq",
+        "+dmf_new=dmf(nk)/updil",
+        "+fxm_new=fxm(nk)/dxsq",
+        "+enddo",
+        "+else",
+        "+donk=klcl,ltop",
+        "+umf_new=umf(nk)/updil",
+        "+densplume=p0(nk)/(r*tu(nk))",
+        " xcldfra=0.14*alog(1.+(500.*umf_new))",
+        " xcldfra=amax1(0.01,xcldfra)",
+        " cldfra_dp_kf(i,nk,j)=amin1(0.6,xcldfra)",
+        "-enddo",
+        "-endif",
+        "+dmf_new=dmf(nk)/updil",
+        "+fxm_new=fxm(nk)/dxsq",
+        "+enddo",
+        "+endif",
+        "+envrhavg=0.0",
+        "+donk=klcl-1,ltop1",
+        "+envesat=6.112*exp(17.67*(t0(nk)-273.16)/(243.5+t0(nk)-273.16))",
+        "+envesat=envesat*100.0",
+        "+envqsat=0.622*envesat/(p0(nk)-envesat)",
+        "+envrh=q0(nk)/envqsat",
+        "+envrhavg=envrhavg+envrh",
+        "+enddo",
+        " if(kf_edrates==1)then",
+        " donk=1,ltop",
+        " udr_kf(i,nk,j)=udr(nk)",
+        "@@ -1241,7 +1689,6 @@",
+        " callwrf_message(message)",
+        " endif",
+        " if(iprnt)then",
+        "-write(98,*)",
+        " write(message,*)'p(lc),dtp,wkl,wklcl=',p0(lc)/100.,",
+        " tlcl+dtlcl+dtrh-tenv,wkl,wklcl",
+        " callwrf_message(message)",
+        "@@ -1307,8 +1754,6 @@",
+        " enddo",
+        " do310nk=1,kl",
+        " k=kl-nk+1",
+        "-write(98,4455)p0(k)/100.,t0(k)-273.16,q0(k)*1000.,",
+        "-u0(k),v0(k),w0avg1d(k),dp(k),tke(k)",
+        " 310continue",
+        " if(istop.eq.1)then",
+        " callwrf_error_fatal('kain-fritsch,istop=1,diags')",
+        "@@ -1319,7 +1764,6 @@",
+        " pratec(i,j)=pptflx*(1.-fbfrc)/dxsq",
+        " raincv(i,j)=dt*pratec(i,j)",
+        " rnc=raincv(i,j)*nic",
+        "-if(ishall.eq.0.and.iprnt)write(98,909)i,j,rnc",
+        " qinit=0.",
+        " qfnl=0.",
+        " dpt=0.",
+        "@@ -1331,16 +1775,12 @@",
+        " 315continue",
+        " qfnl=qfnl+pptflx*timec*(1.-fbfrc)",
+        " err2=(qfnl-qinit)*100./qinit",
+        "-if(iprnt)write(98,1110)qinit,qfnl,err2",
+        " if(abs(err2).gt.0.05.and.istop.eq.0)then",
+        "-iprnt=.true.",
+        "+iprnt=.false.",
+        " istop=1",
+        "-write(98,4422)kl",
+        " 4422format(i6)",
+        " do311nk=1,kl",
+        " k=kl-nk+1",
+        "-write(98,4456)p0(k)/100.,t0(k)-273.16,q0(k)*1000.,",
+        "-u0(k),v0(k),w0avg1d(k),dp(k)/100.,tke(k)",
+        " 311continue",
+        " endif",
+        " 1115format(2x,f7.2,2x,f5.1,2x,f6.3,2(2x,f5.1),2x,f7.2,2x,f7.4)",
+        "@@ -1351,14 +1791,10 @@",
+        " relerr=0.",
+        " endif",
+        " if(iprnt)then",
+        "-write(98,1120)relerr",
+        "-write(98,*)'tder,cpr,trppt=',",
+        "-tder,cpr*ainc,trppt*ainc",
+        " endif",
+        " if(tadvec.lt.timec)nic=nint(tadvec/dt)",
+        " nca(i,j)=real(nic)*dt",
+        " if(ishall.eq.1)then",
+        "-timec=2400.",
+        " nca(i,j)=cudt*60.",
+        " nshall=nshall+1",
+        " endif",
+        "@@ -1396,6 +1832,154 @@",
+        " dtdt(k)=(tg(k)-t0(k))/timec",
+        " dqdt(k)=(qg(k)-q0(k))/timec",
+        " enddo",
+        "+if(cmt_opt_flag)then",
+        "+dokq=kts,kte",
+        "+jk=kte-kq+1",
+        "+dpconvf(1,jk)=0.0",
+        "+derconvf(1,jk)=0.0",
+        "+uerconvf(1,jk)=0.0",
+        "+mc(1,jk)=0.0",
+        "+umfconvf(1,jk)=0.0",
+        "+pru(1,jk)=0.0",
+        "+qdn(1,jk)=0.0",
+        "+qup(1,jk)=0.0",
+        "+qhat(1,jk)=0.0",
+        "+sdd(1,jk)=0.0",
+        "+suu(1,jk)=0.0",
+        "+shat(1,jk)=0.0",
+        "+tee(1,jk)=0.0",
+        "+u0f(1,jk)=0.0",
+        "+v0f(1,jk)=0.0",
+        "+z0f(1,jk)=0.0",
+        "+zfu(1,jk)=0.0",
+        "+enddo",
+        "+zf_wrf(0)=0.0",
+        "+grav=9.8",
+        "+cpin=cp",
+        "+rdry=r",
+        "+zfu(1,kte+1)=0.0",
+        "+dtnew=dt",
+        "+dsubcld(1)=zlcl",
+        "+vmflclconv(1)=((vmflcl/dxsq)*g)/100.",
+        "+il1g=1",
+        "+il2g=1",
+        "+ilg=1",
+        "+msg1=0",
+        "+jbb(1)=kte-klcl+1",
+        "+jdd(1)=kte-lfs+1",
+        "+jtt(1)=kte-ltop+1",
+        "+if(jdd(1).lt.jtt(1).or.jdd(1).gt.jbb(1))then",
+        "+jdd(1)=jbb(1)-1",
+        "+endif",
+        "+if(jtt(1).gt.jbb(1))then",
+        "+jtt(1)=jbb(1)",
+        "+endif",
+        "+dokq=kts,kte",
+        "+tdn(kq)=t0(kq)",
+        "+tup(kq)=t0(kq)",
+        "+enddo",
+        "+dokq=klcl,ltop",
+        "+if(tz(kq).ne.0.0)then",
+        "+tdn(kq)=tz(kq)",
+        "+endif",
+        "+if(tu(kq).ne.0.0)then",
+        "+tup(kq)=tu(kq)",
+        "+endif",
+        "+enddo",
+        "+dokq=kts,kte",
+        "+zf_wrf(kq)=zf_wrf(kq-1)+dzq(kq)",
+        "+stat_energy(kq)=cp*(t0(kq)*(1.0+0.622*q0(kq)))+g*zf_wrf(kq)",
+        "+enddo",
+        "+dokq=kts,kte",
+        "+jk=kte-kq+1",
+        "+dudtnew(1,jk)=0.0",
+        "+dvdtnew(1,jk)=0.0",
+        "+dpdx(1,jk)=0.0",
+        "+dpdy(1,jk)=0.0",
+        "+zf_wrf(kq)=zf_wrf(kq-1)+dzq(kq)",
+        "+zfu(1,jk)=zf_wrf(kq)",
+        "+if(kq.eq.kte)then",
+        "+qhat(1,jk)=q0(kq)",
+        "+shat(1,jk)=stat_energy(kq)",
+        "+else",
+        "+qhat(1,jk)=0.5*(q0(kq)/(1.+q0(kq))+q0(kq+1)/(1.+q0(kq+1)))",
+        "+shat(1,jk)=0.5*(stat_energy(kq)+stat_energy(kq+1))",
+        "+endif",
+        "+if(kq.lt.klcl.or.kq.gt.ltop)then",
+        "+qup(1,jk)=q0(kq)/(1.+q0(kq))",
+        "+qdn(1,jk)=q0(kq)/(1.+q0(kq))",
+        "+suu(1,jk)=cp*(t0(kq)*(1.0+0.622*q0(kq)))+g*zf_wrf(kq)",
+        "+sdd(1,jk)=cp*(t0(kq)*(1.0+0.622*q0(kq)))+g*zf_wrf(kq)",
+        "+else",
+        "+qup(1,jk)=qu(kq)/(1.+qu(kq))",
+        "+qdn(1,jk)=qd(kq)/(1.+qd(kq))",
+        "+suu(1,jk)=cp*(tup(kq)*(1.0+0.622*qup(1,jk)))+g*zf_wrf(kq)",
+        "+sdd(1,jk)=cp*(tdn(kq)*(1.0+0.622*qdn(1,jk)))+g*zf_wrf(kq)",
+        "+endif",
+        "+derconvf(1,jk)=(((der(kq)/dxsq)*g)/100.)/dzq(kq)",
+        "+uerconvf(1,jk)=(((uer(kq)/dxsq)*g)/100.)/dzq(kq)",
+        "+dmfconvf(1,jk)=((dmf(kq)/dxsq)*g)/100.",
+        "+umfconvf(1,jk)=((umf(kq)/dxsq)*g)/100.",
+        "+mc(1,jk)=dmfconvf(1,jk)+umfconvf(1,jk)",
+        "+dpconvf(1,jk)=dp(kq)/100.",
+        "+pru(1,jk)=p0(kq)/100.0",
+        "+u0f(1,jk)=u0(kq)",
+        "+v0f(1,jk)=v0(kq)",
+        "+z0f(1,jk)=z0(kq)",
+        "+tee(1,jk)=t0(kq)",
+        "+enddo",
+        "+if(cmtprint)then",
+        "+print*,'dp',minval(dpconvf),maxval(dpconvf)",
+        "+print*,'der',minval(derconvf),maxval(derconvf)",
+        "+print*,'uer',minval(uerconvf),maxval(uerconvf)",
+        "+print*,'mc',minval(mc),maxval(mc)",
+        "+print*,'dmf',minval(dmfconvf),maxval(dmfconvf)",
+        "+print*,'umf',minval(umfconvf),maxval(umfconvf)",
+        "+print*,'vmflcl',vmflclconv(ilg)",
+        "+print*,'pru',minval(pru),maxval(pru)",
+        "+print*,'qdd',maxval(qdn)",
+        "+print*,'quu',minval(qup),maxval(qup)",
+        "+print*,'qhat',minval(qhat),maxval(qhat)",
+        "+print*,'sdd',minval(sdd),maxval(sdd)",
+        "+print*,'suu',minval(suu),maxval(suu)",
+        "+print*,'shat',minval(shat),maxval(shat)",
+        "+print*,'tee',minval(tee),maxval(tee)",
+        "+print*,'u0f',minval(u0f),maxval(u0f)",
+        "+print*,'v0f',minval(v0f),maxval(v0f)",
+        "+print*,'z0f',minval(z0f),maxval(z0f)",
+        "+print*,'zfu',minval(zfu),maxval(zfu)",
+        "+print*,'dsubcld',dsubcld(ilg)",
+        "+print*,'jbb',jbb(ilg)",
+        "+print*,'jdd',jdd(ilg)",
+        "+print*,'jtt',jtt(ilg)",
+        "+print*,'msg1',msg1",
+        "+print*,'dt',dtnew",
+        "+print*,'grav',grav",
+        "+print*,'cpin',cpin",
+        "+print*,'rdry',rdry",
+        "+print*,'kte',kte",
+        "+print*,'il1g',il1g",
+        "+print*,'il2g',il2g",
+        "+print*,'ilg',ilg",
+        "+endif",
+        "+callmskf_cmt(dudtnew,dvdtnew,dpdx,dpdy,",
+        "+dpconvf,derconvf,uerconvf,",
+        "+mc,dmfconvf,",
+        "+umfconvf,vmflclconv,pru,",
+        "+qdn,qup,qhat,sdd,suu,shat,tee,u0f,",
+        "+v0f,z0f,zfu,dsubcld,jbb,",
+        "+jdd,jtt,msg1,dtnew,",
+        "+grav,cpin,rdry,kte,il1g,il2g,ilg)",
+        "+dokq=kts,kte",
+        "+jk=kte-kq+1",
+        "+dudt(kq)=dudtnew(1,jk)",
+        "+dvdt(kq)=dvdtnew(1,jk)",
+        "+enddo",
+        "+if(cmtprint)then",
+        "+print*,'max/mindudt=',maxval(dudt),minval(dudt)",
+        "+print*,'max/mindvdt=',maxval(dvdt),minval(dvdt)",
+        "+endif",
+        "+endif",
+        " pratec(i,j)=pptflx*(1.-fbfrc)/dxsq",
+        " raincv(i,j)=dt*pratec(i,j)",
+        " rnc=raincv(i,j)*nic",
+        "@@ -1427,4 +2011,4 @@",
+        " 1120format('','moistureerrorasfunctionoftotalppt=',f9.3,'%')",
+        " cutop(i,j)=real(ltop)",
+        " cubot(i,j)=real(lcl)",
+        "-endsubroutinekf_eta_para",
+        "+endsubroutinemskf_eta_para"
+      ]
+    },
+    {
+      "mskf": "TPMIX2",
+      "mskf_lines": [
+        6925,
+        7051
+      ],
+      "kf": "TPMIX2",
+      "kf_lines": [
+        2695,
+        2815
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2695,
+            2695
+          ],
+          "mskf_lines": [
+            6925,
+            6925
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2706,
+            2705
+          ],
+          "mskf_lines": [
+            6936,
+            6936
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2708,
+            2708
+          ],
+          "mskf_lines": [
+            6939,
+            6939
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            2741,
+            2741
+          ],
+          "mskf_lines": [
+            6972,
+            6972
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2762,
+            2761
+          ],
+          "mskf_lines": [
+            6993,
+            6997
+          ]
+        }
+      ],
+      "executable_text_identical": false,
+      "executable_diff": [
+        "--- ",
+        "+++ ",
+        "@@ -1,7 +1,7 @@",
+        "-subroutinetpmix2(p,thes,tu,qu,qliq,qice,qnewlq,qnewic,xlv1,xlv0)",
+        "+subroutinetpmix2(p,thes,tu,qu,qliq,qice,qnewlq,qnewic,xlv1,xlv0,qsu)",
+        " implicitnone",
+        " real,intent(in)::p,thes,xlv1,xlv0",
+        "-real,intent(out)::qnewlq,qnewic",
+        "+real,intent(out)::qnewlq,qnewic,qsu",
+        " real,intent(inout)::tu,qu,qliq,qice",
+        " real::tp,qq,bth,tth,pp,t00,t10,t01,t11,q00,q10,q01,q11,",
+        " temp,qs,qnew,dq,qtot,rll,cpp",
+        "@@ -14,7 +14,6 @@",
+        " pp=tth-aint(tth)",
+        " ithtb=int(tth)+1",
+        " if(iptb.ge.220.or.iptb.le.1.or.ithtb.ge.250.or.ithtb.le.1)then",
+        "-write(98,*)'****outofbounds*********'",
+        " endif",
+        " t00=ttab(ithtb,iptb)",
+        " t10=ttab(ithtb+1,iptb)",
+        "@@ -26,6 +25,7 @@",
+        " q11=qstab(ithtb+1,iptb+1)",
+        " temp=(t00+(t10-t00)*pp+(t01-t00)*qq+(t00-t10-t01+t11)*pp*qq)",
+        " qs=(q00+(q10-q00)*pp+(q01-q00)*qq+(q00-q10-q01+q11)*pp*qq)",
+        "+qsu=qs",
+        " dq=qs-qu",
+        " if(dq.le.0.)then",
+        " qnew=qu-qs"
+      ]
+    },
+    {
+      "mskf": "DTFRZNEW",
+      "mskf_lines": [
+        7053,
+        7097
+      ],
+      "kf": "DTFRZNEW",
+      "kf_lines": [
+        2817,
+        2860
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2820,
+            2819
+          ],
+          "mskf_lines": [
+            7056,
+            7056
+          ]
+        }
+      ],
+      "executable_text_identical": true,
+      "executable_diff": []
+    },
+    {
+      "mskf": "CONDLOAD",
+      "mskf_lines": [
+        7100,
+        7165
+      ],
+      "kf": "CONDLOAD",
+      "kf_lines": [
+        2863,
+        2927
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2868,
+            2867
+          ],
+          "mskf_lines": [
+            7105,
+            7105
+          ]
+        }
+      ],
+      "executable_text_identical": true,
+      "executable_diff": []
+    },
+    {
+      "mskf": "PROF5",
+      "mskf_lines": [
+        7168,
+        7213
+      ],
+      "kf": "PROF5",
+      "kf_lines": [
+        2930,
+        2974
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2947,
+            2946
+          ],
+          "mskf_lines": [
+            7185,
+            7185
+          ]
+        }
+      ],
+      "executable_text_identical": true,
+      "executable_diff": []
+    },
+    {
+      "mskf": "TPMIX2DD",
+      "mskf_lines": [
+        7216,
+        7281
+      ],
+      "kf": "TPMIX2DD",
+      "kf_lines": [
+        2977,
+        3041
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "insert",
+          "kf_lines": [
+            2988,
+            2987
+          ],
+          "mskf_lines": [
+            7227,
+            7227
+          ]
+        }
+      ],
+      "executable_text_identical": true,
+      "executable_diff": []
+    },
+    {
+      "mskf": "ENVIRTHT",
+      "mskf_lines": [
+        7284,
+        7322
+      ],
+      "kf": "ENVIRTHT",
+      "kf_lines": [
+        3044,
+        3081
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "insert",
+          "kf_lines": [
+            3048,
+            3047
+          ],
+          "mskf_lines": [
+            7288,
+            7288
+          ]
+        }
+      ],
+      "executable_text_identical": true,
+      "executable_diff": []
+    },
+    {
+      "mskf": "MSKF_INIT",
+      "mskf_lines": [
+        7325,
+        7420
+      ],
+      "kf": "KF_ETA_INIT",
+      "kf_lines": [
+        3084,
+        3170
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "replace",
+          "kf_lines": [
+            3084,
+            3084
+          ],
+          "mskf_lines": [
+            7325,
+            7325
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            3090,
+            3090
+          ],
+          "mskf_lines": [
+            7331,
+            7332
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            3093,
+            3092
+          ],
+          "mskf_lines": [
+            7335,
+            7335
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            3100,
+            3099
+          ],
+          "mskf_lines": [
+            7343,
+            7343
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            3106,
+            3106
+          ],
+          "mskf_lines": [
+            7350,
+            7352
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            3128,
+            3127
+          ],
+          "mskf_lines": [
+            7374,
+            7376
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            3168,
+            3168
+          ],
+          "mskf_lines": [
+            7417,
+            7417
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            3170,
+            3170
+          ],
+          "mskf_lines": [
+            7419,
+            7420
+          ]
+        }
+      ],
+      "executable_text_identical": false,
+      "executable_diff": [
+        "--- ",
+        "+++ ",
+        "@@ -1,10 +1,11 @@",
+        "-subroutinekf_eta_init(rthcuten,rqvcuten,rqccuten,rqrcuten,",
+        "+subroutinemskf_init(rthcuten,rqvcuten,rqccuten,rqrcuten,",
+        " rqicuten,rqscuten,nca,w0avg,p_qi,p_qs,",
+        " svp1,svp2,svp3,svpt0,",
+        " p_first_scalar,restart,allowed_to_read,",
+        " ids,ide,jds,jde,kds,kde,",
+        " ims,ime,jms,jme,kms,kme,",
+        "-its,ite,jts,jte,kts,kte)",
+        "+its,ite,jts,jte,kts,kte,",
+        "+rucuten,rvcuten)",
+        " implicitnone",
+        " logical,intent(in)::restart,allowed_to_read",
+        " integer,intent(in)::ids,ide,jds,jde,kds,kde,",
+        "@@ -17,7 +18,9 @@",
+        " rqccuten,",
+        " rqrcuten,",
+        " rqicuten,",
+        "-rqscuten",
+        "+rqscuten,",
+        "+rucuten,",
+        "+rvcuten",
+        " real,dimension(ims:ime,kms:kme,jms:jme),intent(out)::w0avg",
+        " real,dimension(ims:ime,jms:jme),intent(inout)::nca",
+        " integer::i,j,k,itf,jtf,ktf",
+        "@@ -33,6 +36,8 @@",
+        " rqvcuten(i,k,j)=0.",
+        " rqccuten(i,k,j)=0.",
+        " rqrcuten(i,k,j)=0.",
+        "+rucuten(i,k,j)=0.",
+        "+rvcuten(i,k,j)=0.",
+        " enddo",
+        " enddo",
+        " enddo",
+        "@@ -67,5 +72,5 @@",
+        " enddo",
+        " enddo",
+        " endif",
+        "-callkf_lutab(svp1,svp2,svp3,svpt0)",
+        "-endsubroutinekf_eta_init",
+        "+callmskf_lutab(svp1,svp2,svp3,svpt0)",
+        "+endsubroutinemskf_init"
+      ]
+    },
+    {
+      "mskf": "MSKF_LUTAB",
+      "mskf_lines": [
+        7424,
+        7552
+      ],
+      "kf": "KF_LUTAB",
+      "kf_lines": [
+        3174,
+        3301
+      ],
+      "status": "differs",
+      "edits": [
+        {
+          "operation": "replace",
+          "kf_lines": [
+            3174,
+            3174
+          ],
+          "mskf_lines": [
+            7424,
+            7424
+          ]
+        },
+        {
+          "operation": "insert",
+          "kf_lines": [
+            3182,
+            3181
+          ],
+          "mskf_lines": [
+            7432,
+            7432
+          ]
+        },
+        {
+          "operation": "replace",
+          "kf_lines": [
+            3301,
+            3301
+          ],
+          "mskf_lines": [
+            7552,
+            7552
+          ]
+        }
+      ],
+      "executable_text_identical": false,
+      "executable_diff": [
+        "--- ",
+        "+++ ",
+        "@@ -1,4 +1,4 @@",
+        "-subroutinekf_lutab(svp1,svp2,svp3,svpt0)",
+        "+subroutinemskf_lutab(svp1,svp2,svp3,svpt0)",
+        " implicitnone",
+        " integer::kp,it,itcnt,i",
+        " real::dth,tmin,toler,pbot,dpr,",
+        "@@ -73,4 +73,4 @@",
+        " a1=a1+ainc",
+        " alu(i)=alog(a1)",
+        " enddo",
+        "-endsubroutinekf_lutab",
+        "+endsubroutinemskf_lutab"
+      ]
+    },
+    {
+      "mskf": "MSKF_CMT",
+      "mskf_lines": [
+        7555,
+        8038
+      ],
+      "kf": null,
+      "status": "new"
+    }
+  ]
+}

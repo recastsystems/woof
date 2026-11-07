@@ -118,4 +118,37 @@ impl ClassicFile {
     pub fn numrecs(&self) -> u64 {
         self.numrecs
     }
+
+    /// Where `name`'s stored bytes lie in the file: the same offset and record stride the
+    /// readers in [`data`] use, for a caller that copies a variable's big-endian bytes whole.
+    pub fn extent(&self, name: &str) -> Result<ClassicExtent> {
+        let variable = self
+            .root_group
+            .variable(name)
+            .ok_or_else(|| crate::Error::VariableNotFound(name.to_string()))?;
+        let record_stride = if variable.is_record_var {
+            data::compute_record_stride(&self.root_group.variables)?
+        } else {
+            0
+        };
+        Ok(ClassicExtent {
+            offset: variable.data_offset,
+            record_stride,
+            is_record: variable.is_record_var,
+            numrecs: self.numrecs,
+        })
+    }
+}
+
+/// The stored position of one classic variable ([`ClassicFile::extent`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClassicExtent {
+    /// File offset of the first stored value (record 0 of a record variable).
+    pub offset: u64,
+    /// Bytes from record `r` to record `r + 1`; 0 for a fixed-size variable.
+    pub record_stride: u64,
+    /// Whether the variable is laid out along the unlimited dimension.
+    pub is_record: bool,
+    /// Records the file holds.
+    pub numrecs: u64,
 }

@@ -298,6 +298,8 @@ def apply(state: DomainState, cfg: RunConfig, dt: float, *,
     _prepare_fields(thb, phb, state.thp, state.php,
                     np.int32(ny * nx), np.int32(state.thb.ndim == 3),
                     np.int32(state.phb.ndim == 3), DTYPE(c.G), theta, dz)
+    if getattr(state, "use_theta_m", 0):
+        theta[...] = state.total_theta()
     launch_exner(state.p, pii)
 
     surface = (ny, nx)

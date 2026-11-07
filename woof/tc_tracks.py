@@ -372,7 +372,9 @@ def best_track(path, storm=None, *, start=None):
             text = Path(path).read_text()
     if text.lstrip().startswith('{'):
         saved = json.loads(text)
-        if saved.get('schema') == 'gpuwm.tc-tracks.v1':
+        # A scored result carries best_track; a tracker document (cyclone-tracks output, same schema) carries
+        # tracks and is read by load_tracks below (hex Milton waves run 2026-10-30: the acquired NHC best track was refused here).
+        if saved.get('schema') == 'gpuwm.tc-tracks.v1' and 'best_track' in saved:
             if not saved.get('best_track', {}).get('fixes'):
                 raise ValueError('saved tracks need gpuwm.tc-tracks.v1 and a nonempty best_track')
             result = dict(saved['best_track'])

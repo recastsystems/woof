@@ -31,7 +31,7 @@ def _initialization(bound):
 
 
 def test_the_read_ahead_is_taken_on_the_default_rrfs_row(monkeypatch, tmp_path):
-    # THE BREAKAGE (RRFS hrrrv5 on the 44c0849 default row, mv3km, V8X6000, 2026-10-29): the read-ahead resolved
+    # THE BREAKAGE (RRFS hrrrv5 on the 44c0849 default row, mv3km, eight-card system, 2026-10-29): the read-ahead resolved
     # the 1d6e370e fork's files, so it never matched; the 44c0849 files were read again on the main thread and the
     # unused read-ahead (~0.93 GB) stayed held for the whole run in every rank process.
     reads = _stub(monkeypatch, tmp_path)

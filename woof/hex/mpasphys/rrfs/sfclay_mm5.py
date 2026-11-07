@@ -4,6 +4,8 @@ MPAS-Model-rrfs 1d6e370e driver_sfclayer.F:606-615,899-972:
 strict partial-ice mask, ice-side land flag, and deferred FLHC/FLQC blend.
 The MMM a4baf7f scheme is identical to MPAS-A v8.4.2.
 """
+
+from woof.backend import compilation_target as _compilation_target
 from functools import lru_cache
 from .. import sfclay_mm5_v842 as shared
 from ... import numerics
@@ -31,7 +33,7 @@ def driver_module(device):
     with cp.cuda.Device(device):
         module = cp.cuda.function.Module()
         module.load(direct_image(cuda_source(), numerics.options(shared.COMPILE_OPTIONS),
-                    cp.cuda.Device(device).compute_capability, filename='rrfs_mm5.cu'))
+                    _compilation_target(device, xp=cp), filename='rrfs_mm5.cu'))
     return module
 
 

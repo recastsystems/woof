@@ -201,6 +201,11 @@ NOT_YET = {
     # option cannot run on the MPAS column state yet.  Owner: the satmedmf
     # port (serialize the held TKE tendency, then remove this row).
     "pbl.ccpp-tke-edmf": "CCPP TKE-EDMF requires bldt=0",
+    # NAMED GAP RCON-SPEED-01 (3.0.0): woof.config refuses mp_physics=29
+    # for every forecast, not only this seam, until a qualified speed
+    # handoff clears the measured 1.885x-MP28 microphysics stage.  Owner:
+    # the RCON speed lane; this row leaves with that guard.
+    "microphysics.rcon-mp29": "RCON-SPEED-01 speed refusal",
 }
 
 

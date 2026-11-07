@@ -3,7 +3,7 @@
 A three-domain ERA5 forecast was reported as printing this, in full::
 
     $ woof run configs/run60.toml --outdir out/run60
-    woof run: woof 2.6.0 -- installed wheel at .../site-packages/gpuwm
+    woof run: gpuwm 2.6.0 -- installed wheel at .../site-packages/gpuwm
     Terminated
 
 One word, from the shell, not from woof.  ``Terminated`` is bash reporting

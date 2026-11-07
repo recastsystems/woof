@@ -3,6 +3,8 @@
 def preparation_data_directory(args, payload, case):
     from pathlib import Path
     from woof.go_cli import managed_download_dir, config_fetch_request
+    if not payload.get('fetch'):
+        return Path(args.data_dir) if args.data_dir is not None else Path(case)/'source-inputs'
     return (Path(args.data_dir) if args.data_dir is not None else
             managed_download_dir(case, config_fetch_request(payload)))
 
@@ -49,14 +51,18 @@ def source_preparation(args, config, payload):
     This is the same owner used by the ensemble door. Sources without this
     hook keep their ordinary prepared chain; adding a source is table work.
     """
-    if not (payload.get('nudging') or payload.get('spectral_nudging') or
+    # Ranked local-input forecasts need the same portable prepared bundle.
+    # The legacy experiment runner cannot split its domain state into ranks.
+    ranked = payload.get('devices', {}).get('count', 1) > 1
+    if not (payload.get('nudging') or payload.get('spectral_nudging') or ranked or
             getattr(args,'nudging',None) == 'off'):
         return None
     from woof.go_cli import _prepared_launch
     if _prepared_launch(args):
         return None
     from woof.source_adapters import get_source_adapter
-    source = payload.get('fetch',{}).get('source')
+    from woof.core.preflight import recorded_forcing_source
+    source = recorded_forcing_source(payload, priced_only=False)
     if source is None:
         return None
     adapter = get_source_adapter(source)
@@ -111,5 +117,7 @@ def source_preparation(args, config, payload):
         return 0
     args.prepared_root = Path(result['prepared_root'])
     args.config = Path(result['experiment_config'])
+    if result.get('wps_namelist') is not None:
+        args.wps_namelist = Path(result['wps_namelist'])
     args.nudging = None
     return _registered_launch(args,config=args.config,payload=tomllib.loads(args.config.read_text()))

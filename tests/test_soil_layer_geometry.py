@@ -123,7 +123,7 @@ def test_soil_layer_count_refuses_a_scheme_with_no_declared_geometry():
     """``module_check_a_mundo.F:3573-3576``'s fail-closed default."""
     with pytest.raises(ValueError,
                        match="no associated number of soil levels"):
-        soil_layer_count(_cfg(7, 4))
+        soil_layer_count(_cfg(99, 4))
 
 
 def test_validate_run_config_and_the_resolver_cannot_disagree():

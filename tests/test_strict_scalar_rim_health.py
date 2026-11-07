@@ -122,7 +122,7 @@ def test_member_gate_uses_each_fields_logical_rim(members):
 @pytest.mark.parametrize("strict", [False, True])
 def test_strict_aerosol_numbers_keep_wrfs_interior_residual(monkeypatch,
                                                             name, strict):
-    """A two-domain strict mp=28 case (2026-10-28): stock WRF 4.6.1
+    """The two-domain strict nested-domain mp=28 case (2026-10-28): stock WRF 4.6.1
     writes QNIFA -3.70e-6 at an interior top-layer point at +1 h, and strict
     WOOF stopped at nifa(43, 94, 47) = -7.236842e-6, edge distance 5,
     under the rim-only floor.  Strict mode admits that word; the default

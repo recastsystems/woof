@@ -1,0 +1,26 @@
+{
+ "referee": "WRF v4.6.1 d66e442 phys/module_sf_pxsfclay.F and module_surface_driver.F pxsfclay_seaice_wrapper/get_local_ice_tsk, gfortran -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+ "configurations": [
+  "plain-dx12k",
+  "plain-dx3k-lsm",
+  "plain-restart",
+  "ice-002",
+  "ice-05-tice"
+ ],
+ "sha256": {
+  "cases-index.json": "c0b39fa8efdc161c055f5630ad6b0aac72592f022cab6aa78ab0029338ee2bac",
+  "extract-receipt.json": "c60a7f11815287d29d417002bc75d45096601e6a24bc57451b95648dbeec5098",
+  "ice-002.in.bin": "9883092b05f053a7d92341422ee6c13b0affd3e60d9439c5a7da84b38de53ff1",
+  "ice-002.out.bin": "e76c4a84a381bcb2aecf7a154112ac98260cfd8ad5981e305aa78f23210eb249",
+  "ice-05-tice.in.bin": "e93f4e0bb75b7ca34088fd5a26a8bdbf3914a47a3c85a7c228ecb228beab8e25",
+  "ice-05-tice.out.bin": "57f8940ef888e4753c0f4078b1a19d7d8c886b6c164fa40faf58979d72ff06d1",
+  "o0-control.json": "85653bddaf84aa8d3f4bc8fd2c16a1ac73adf4c042b60418822a3743366ae12a",
+  "plain-dx12k.in.bin": "1acf4c4902d63cce42be0bad5d7fc63a9504a81bcf34378a2e9d411e701fe115",
+  "plain-dx12k.out.bin": "eba45eb37ec285f1639239febb2608fe1183c8f288b1f01cc57fff91f94fd089",
+  "plain-dx3k-lsm.in.bin": "035c4a850267f2b74bf9566d1594c777529cbd12f497c01408b983d3f6d48eb0",
+  "plain-dx3k-lsm.out.bin": "8eee8fc864844791482d9ab96cf83f28e5aedd00a92cf9ef5496d1ccafc15441",
+  "plain-restart.in.bin": "c3f63658501bca25433643acf2ff52e799f1f1e5bc7e2b5edd6850bb0b30a86b",
+  "plain-restart.out.bin": "f2c1b6a3a3e709f241fba733fbee70c547745fed8531ffce6ff8e45532b03696",
+  "toolchain.txt": "6d8f65d785ae268c0d7c94e530e4fa71b5ef26430ce8ea17dd57f7ff64ee43a5"
+ }
+}

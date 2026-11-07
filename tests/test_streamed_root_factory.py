@@ -53,7 +53,7 @@ def _factory(monkeypatch, boundaries):
             if slot not in pool:
                 pool[slot] = np.zeros(shape, dtype=np.float32)
             return pool[slot]
-        return SimpleNamespace(_scratch=pool, scratch=scratch,
+        return SimpleNamespace(_scratch=pool, scratch=scratch, existing_scratch=pool.get,
                                _host_setup_state=True), None
 
     monkeypatch.setattr(streaming, 'domain_vertical_coord', lambda *args: object())
@@ -65,7 +65,7 @@ def _factory(monkeypatch, boundaries):
     # Actual make() and actual eager/lazy boundary attachment run on host
     # arrays. Only the physics buffer construction is replaced here.
     return streaming.prepared_tile_state_factory(
-        SimpleNamespace(physics=None), object(), tables0=boundaries)
+        SimpleNamespace(physics=None, existing_scratch=lambda *_: None), object(), tables0=boundaries)
 
 
 def _assert_interval_bytes(actual, expected):
@@ -136,7 +136,7 @@ def test_prepared_buffer_skips_the_land_surface_cold_start(monkeypatch):
     ``initialize_physics`` for no LSM cold start.
 
     On RUC that cold start is a host column loop over the whole rank; the
-    2-card HRRR profile (lane/pi-startup-idle) spent 84-92 s of idle cards
+    2-card HRRR profile (development branch) spent 84-92 s of idle cards
     in it, rank after rank, before step 1, every launch.
     """
     from woof.io import restart
@@ -147,7 +147,7 @@ def test_prepared_buffer_skips_the_land_surface_cold_start(monkeypatch):
     def make_state(cfg, seed, **kwargs):
         seen.update(kwargs)
         pool = {}
-        return SimpleNamespace(_scratch=pool, _host_setup_state=True,
+        return SimpleNamespace(_scratch=pool, existing_scratch=pool.get, _host_setup_state=True,
                                scratch=lambda shape, slot: pool.setdefault(
                                    slot, np.zeros(shape, dtype=np.float32))), None
 
@@ -157,7 +157,7 @@ def test_prepared_buffer_skips_the_land_surface_cold_start(monkeypatch):
     monkeypatch.setattr(restart, 'lifecycle_window_slots', lambda state: ())
     monkeypatch.setattr(harness, 'neutral_geography', lambda cfg: SimpleNamespace())
     monkeypatch.setattr(harness, 'make_physics_state', make_state)
-    factory = streaming.prepared_tile_state_factory(SimpleNamespace(physics=None),
+    factory = streaming.prepared_tile_state_factory(SimpleNamespace(physics=None, existing_scratch=lambda *_: None),
                                                     object(), tables0=None)
     factory(object())
     assert seen.get('lsm_cold_start') is False

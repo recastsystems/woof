@@ -901,14 +901,14 @@ def run_ensemble(args):
                 row["source"] += f"; recentered on {args.analysis} sha256={digest(args.analysis)}"
         samples = []
         def card_used(token):
-            result = subprocess.run(["nvidia-smi", "-i", token, "--query-gpu=memory.used",
+            result = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "-i", token, "--query-gpu=memory.used",
                                      "--format=csv,noheader,nounits"], capture_output=True, text=True, check=True)
             return int(result.stdout.strip())
         baselines = {token: card_used(token) for token in visible}
         stopped = threading.Event()
         def monitor():
             while not stopped.is_set():
-                result = subprocess.run(["nvidia-smi", "--query-gpu=uuid,memory.used,utilization.gpu",
+                result = subprocess.run([*__import__('woof.gpu_smi', fromlist=['command']).command(), "--query-gpu=uuid,memory.used,utilization.gpu",
                                          "--format=csv,noheader,nounits"], capture_output=True, text=True)
                 if result.returncode == 0:
                     samples.append({"wall_seconds": time.monotonic()-started,

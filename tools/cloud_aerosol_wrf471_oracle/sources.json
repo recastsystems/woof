@@ -1,0 +1,91 @@
+{
+  "authority": "https://github.com/wrf-model/WRF/tree/v4.7.1",
+  "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+  "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+  "determination": "WRF public-domain distribution statement. File headers checked. No additional restriction found in the listed source files or Besselian table. CESM external aerosol data not fetched or cleared.",
+  "files": [
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_radiation_driver.F",
+      "file": "module_radiation_driver.F",
+      "bytes": 250279,
+      "sha256": "779875651512709c47d50ef6c1e1216ad94726f1996c5e45a0db8eb800733ffa"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_ra_farms.F",
+      "file": "module_ra_farms.F",
+      "bytes": 20203,
+      "sha256": "1b9e060d71dd7218c39e5a5724a7886307507a7cb85d7db33cd3ed52c0034a60"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_ra_aerosol.F",
+      "file": "module_ra_aerosol.F",
+      "bytes": 73645,
+      "sha256": "57c7e7e50a2be0a6ab169fa376da077b2b4251bf9c20fa6a06446934379c8870",
+      "license": "WRF public-domain release statement; header inspected; no additional file restriction"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_mp_thompson.F",
+      "file": "module_mp_thompson.F",
+      "bytes": 240308,
+      "sha256": "fabf19e2a9073cff886e882b187080bfdf089d3fd40c0fce1d19bc93b1e5e802",
+      "license": "WRF public-domain release statement; header inspected; no additional file restriction"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_ra_eclipse.F",
+      "file": "module_ra_eclipse.F",
+      "bytes": 13571,
+      "sha256": "c18f6bebf1f8090f1dd36a95c3513824de4f522f3f35c83a96cc987eaf618381",
+      "license": "WRF public-domain release statement; header inspected; no additional file restriction"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/run/eclipse_besselian_elements.dat",
+      "file": "eclipse_besselian_elements.dat",
+      "bytes": 80040,
+      "sha256": "2a1367ae68a832c7b2bac26a8d28eeda6dbe860126e50dbb0714eec4c9d6eed7",
+      "license": "WRF public-domain release statement; header inspected; no additional file restriction"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_cu_g3.F",
+      "file": "module_cu_g3.F",
+      "bytes": 187000,
+      "sha256": "68089efd157753e8d050c19d4e65f711838147381639014f5f0be40576a337e9",
+      "license": "WRF public-domain release statement; header inspected; no additional file restriction"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_cumulus_driver.F",
+      "file": "module_cumulus_driver.F",
+      "bytes": 95371,
+      "sha256": "d73eb4b670599e0bbf98a3661b5dbf17413aed01139d18fa1a84161578dc31e3",
+      "license": "WRF public-domain release statement; header inspected; no additional file restriction"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "file": "Registry.EM_COMMON",
+      "bytes": 437707,
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+      "license": "WRF public-domain release statement; header inspected; no additional file restriction"
+    }
+  ],
+  "table_reused": "engine/gpuwm/data/wrf_radiation/eclipse_besselian_elements.dat",
+  "source_comparison": {
+    "module_radiation_driver.F": true,
+    "module_mp_thompson.F": true,
+    "module_ra_farms.F": true,
+    "module_ra_eclipse.F": true
+  },
+  "strict_libm": {
+    "url": "https://raw.githubusercontent.com/lntue/core-math/bc385c2/src/binary32/log10/log10f.c",
+    "bytes": 6313,
+    "sha256": "fde651f18512ccce1c0ec1541ac69e7561d98995cab5fbd378ecae46bb4bad7f",
+    "license": "MIT, permissive notice in source header; full notice already ships in licenses/LICENSE-CORE-MATH-MIT.txt",
+    "host": "test host A glibc 2.43",
+    "implementation": "Existing urban_bem.cuh CORE-MATH helper reused in a lane-local header to keep unrelated kernel assembly unchanged."
+  },
+  "strict_cu_aerosol_eclipse_referee": {
+    "release": "4.6.1",
+    "compiler": "gfortran 12",
+    "glibc": "2.43",
+    "flags": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+    "eclipse_track": "GCC native SIN(ATAN(x)) rewrite matched explicitly; optimized-tree receipt retained"
+  }
+}

@@ -58,6 +58,10 @@ name = "rw_hex_points"
 path = "src/bin/hex_points.rs"
 
 [[bin]]
+name = "rw_hex_wave_track"
+path = "src/bin/hex_wave_track.rs"
+
+[[bin]]
 name = "rw_compare"
 path = "src/launcher.rs"
 
@@ -153,3 +157,7 @@ path = "src/bin/refsnow.rs"
 [[bin]]
 name = "rw_tc_fields"
 path = "src/bin/tc_fields.rs"
+
+[[bin]]
+name = "rw_wave_coupling_evidence"
+path = "src/bin/wave_coupling_evidence.rs"

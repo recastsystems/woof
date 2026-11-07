@@ -72,7 +72,7 @@ def test_inconsistent_nssl_selectors_fail_closed():
         resolve_nssl2_mode(mp_physics=17)
     with pytest.raises(ValueError, match="hail volume"):
         resolve_nssl2_mode(nssl_hail_on=0, nssl_density_on=2)
-    with pytest.raises(ValueError, match="requires nssl_2moment_on=1"):
+    with pytest.raises(ValueError, match="unallocated hail-number"):
         resolve_nssl2_mode(nssl_2moment_on=0, nssl_3moment=1)
     with pytest.raises(TypeError, match="integer selector"):
         resolve_nssl2_mode(nssl_ccn_on=True)

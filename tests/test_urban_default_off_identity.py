@@ -15,7 +15,7 @@ Three proofs:
   values snapshotted and the solar geometry held.
 
 The byte-identity of the default kernel path against the base commit's
-kernel was measured separately on a development machine (all 216 output arrays of the four
+kernel was measured separately on test host 1 (all 216 output arrays of the four
 Noah oracle fixtures equal); ``tests/test_noah_wrf461_parity.py`` keeps
 holding the kernel's distance from WRF.
 """
@@ -319,5 +319,10 @@ def test_the_default_noah_launch_compiles_without_the_urban_handover():
             depth = before[opened:].count("{") - before[opened:].count("}")
             assert depth > 0, f"{token} at {match.start()} is outside if constexpr (URBAN)"
     source = inspect.getsource(noah.launch_noah)
-    assert 'get_kernel("noah", "noah_column")' in source
-    assert 'get_kernel("noah", "noah_column_urban")' in source
+    # The entry point is chosen by name since the FASDAS and irrigation
+    # variants (2e0e878fea): the default (urban is None) path takes
+    # noah_column, the urban hand-over noah_column_urban, through the one
+    # get_kernel(module, name) launch.
+    assert 'name = "noah_column" if urban is None else "noah_column_urban"' in source
+    assert 'module = "noah_ua" if ua_phys else "noah"' in source
+    assert "kern = get_kernel(module, name)" in source

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 MKL_NUM_THREADS=2 RAYON_NUM_THREADS=2
-export CUDA_PATH="$HOME/work/sol-sfire/venv/lib/python3.14/site-packages/nvidia/cu13"
+export CUDA_PATH="${WOOF_TOOL_ENV:?set WOOF_TOOL_ENV}/lib/python3.14/site-packages/nvidia/cu13"
 export LD_LIBRARY_PATH="$CUDA_PATH/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}" CUDA_VISIBLE_DEVICES=0 GPUWM_NO_LOCAL_GPU=0
-python="$HOME/work/sol-sfire/venv/bin/python"
+python="${WOOF_TOOL_ENV:?set WOOF_TOOL_ENV}/bin/python"
 receipt="tools/sfire_coupled_ideal/geographic_units/gpu.json"
 owner="$HOME/card-lease"
 rc=1

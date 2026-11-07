@@ -931,6 +931,7 @@ def prepare_idealized_domain(state, dc, grid, start_time):
 #: woof/runtime.py admitted it is exactly the failure this comment warns
 #: about -- the stage happens, the consume does not, and the raise lands at
 #: the next history frame.
+# Use the same metadata-owned consumer set as both forecast doors.
 from woof.core.physics_inventory import REFL_10CM_MICROPHYSICS
 
 

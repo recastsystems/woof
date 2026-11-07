@@ -1,0 +1,242 @@
+{
+  "identity": {
+    "name": "noahmp_gecros",
+    "pricing_key": "noahmp_gecros",
+    "parts": [
+      {
+        "file": "noahmp_vegeflux.cu",
+        "sha256": "d55c402a21caf3f52e5aed05a0dd727df76b747906a3e0d082446e6a7bcab014"
+      },
+      {
+        "file": "noahmp_vegeflux_options.cuh",
+        "sha256": "824020d9904b37a6252e17ad3b3ef0441cfdc72614ab3eb933045d464c6a52ea"
+      },
+      {
+        "file": "glibc_trig_flt32.cuh",
+        "sha256": "9d369725e354d9b35a1404a9548e3609f8eb1ad4a60067ccbf59584029ec3d40"
+      },
+      {
+        "file": "noahmp_gecros.cuh",
+        "sha256": "2a367825c70828262d1450d54539cff12427f6bfa0e58a1095cbf198f0d5b0c7"
+      },
+      {
+        "file": "noahmp_gecros_lifecycle.cuh",
+        "sha256": "729c62af34d07e608b4247d8d0b1516e8f119dd10427609e307827b2de124299"
+      },
+      {
+        "file": "noahmp_gecros_flux.cuh",
+        "sha256": "74b83000917fca0ba8ca5f62210ad8f5c3c10501361183a9a2bd65eec556a592"
+      }
+    ],
+    "preamble_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source_sha256": "f4a714699789a7d28786e612a2b7d4bc077f22fb85212bc9a1fa5c528bc9ef5d",
+    "backend": "nvrtc",
+    "options": [
+      "-std=c++17",
+      "--ftz=false"
+    ],
+    "name_expressions": null,
+    "exports": [
+      "k_esat",
+      "k_gecros_emerge",
+      "k_gecros_flux",
+      "k_gecros_harvest",
+      "k_gecros_init",
+      "k_gecros_replay",
+      "k_ragrb",
+      "k_sfcdif1",
+      "k_stomata",
+      "k_vegeflux",
+      "k_vegeflux_crs2",
+      "k_vegeflux_masked",
+      "k_vegeflux_masked_crs2",
+      "k_vegeflux_masked_sfc2",
+      "k_vegeflux_masked_stc2",
+      "k_vegeflux_masked_stc3",
+      "k_vegeflux_sfc2",
+      "k_vegeflux_stc2",
+      "k_vegeflux_stc3"
+    ],
+    "identity_sha256": "c60f43ecdaa87ef636b1b34634e74ea50fcd5638238450f7b2dbb4d53012fe52"
+  },
+  "attributes": {
+    "k_esat": {
+      "max_threads_per_block": 1024,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 16,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_gecros_emerge": {
+      "max_threads_per_block": 1024,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 21,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_gecros_flux": {
+      "max_threads_per_block": 256,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 223,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_gecros_harvest": {
+      "max_threads_per_block": 1024,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 28,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_gecros_init": {
+      "max_threads_per_block": 1024,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 21,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_gecros_replay": {
+      "max_threads_per_block": 256,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 183,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_ragrb": {
+      "max_threads_per_block": 1024,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 30,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_sfcdif1": {
+      "max_threads_per_block": 1024,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 35,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_stomata": {
+      "max_threads_per_block": 1024,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 40,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 115,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_crs2": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 108,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_masked": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 122,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_masked_crs2": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 112,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_masked_sfc2": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 120,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_masked_stc2": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 121,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_masked_stc3": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 123,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_sfc2": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 114,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_stc2": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 115,
+      "ptx_version": 120,
+      "binary_version": 120
+    },
+    "k_vegeflux_stc3": {
+      "max_threads_per_block": 512,
+      "shared_size_bytes": 0,
+      "const_size_bytes": 1136,
+      "local_size_bytes": 0,
+      "num_regs": 118,
+      "ptx_version": 120,
+      "binary_version": 120
+    }
+  },
+  "frame": 0,
+  "platform": [
+    "120",
+    "13.0.88"
+  ],
+  "package_nvrtc_version": "13.4.92",
+  "note": "Compile platform is the actual loaded library fingerprint, not the installed distribution version."
+}

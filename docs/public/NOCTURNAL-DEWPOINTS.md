@@ -73,7 +73,7 @@ woof version
 A normal install answers like this:
 
 ```
-woof 1.8.7 (installed wheel at /path/to/site-packages/gpuwm)
+gpuwm 1.8.7 (installed wheel at /path/to/site-packages/gpuwm)
   Installed as a wheel; upgrade with: '/usr/bin/python3' -m pip install --upgrade recast-woof
   PyPI latest is 1.8.7 -- this install is current.
 ```

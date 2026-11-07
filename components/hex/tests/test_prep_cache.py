@@ -485,7 +485,7 @@ def _whole_mesh(level):
 
 
 def test_a_rank_mesh_is_keyed_without_the_mesh_it_was_cut_from(cache_root):
-    # THE BREAKAGE (RRFS hrrrv5 limited area, mv3km 4 same-host ranks, V8X6000, 2026-10-29): the cached
+    # THE BREAKAGE (RRFS hrrrv5 limited area, mv3km 4 same-host ranks, eight-card system, 2026-10-29): the cached
     # advection coefficients and deformation weights of a rank's local mesh hashed the whole mesh it was cut
     # from (``partition_source_mesh``, a shared copy), so every rank process held all of it resident.
     local = graded_sphere_mesh(level=1)

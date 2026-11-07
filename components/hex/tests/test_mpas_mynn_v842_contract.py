@@ -175,6 +175,7 @@ def test_worker_scratch_is_released_without_repeating_device_queries():
         return 1 << 30, 2 << 30
     module = MynnCudaModule.__new__(MynnCudaModule)
     module.cp = SimpleNamespace(empty=np.empty, uint8=np.uint8, int32=np.int32,
+        get_default_memory_pool=lambda: SimpleNamespace(free_bytes=lambda:0),
         cuda=SimpleNamespace(get_current_stream=lambda: SimpleNamespace(ptr=0),
             runtime=SimpleNamespace(getDevice=lambda: 0, getDeviceProperties=properties,
                                     memGetInfo=memory)))

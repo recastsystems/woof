@@ -251,3 +251,22 @@ def test_interrupted_body_retries_without_publishing_partial_bytes(tmp_path):
     _run(plan, tmp_path, download)
     assert len(seen) == 2
     assert not list(tmp_path.rglob("*.part"))
+
+
+def test_shared_download_is_reused_by_a_second_member_without_a_record_profile(tmp_path):
+    """WOOF 2026-11-01 run_f6d6c7bb888f5f85: an ensemble member that waits for
+    another member's download of the same cycle asks request_cached of that
+    folder, which holds per-object recovery receipts.  A request without a
+    record profile raised KeyError: 'record_profile' there."""
+    plan = _plan(2)
+    assert plan.record_profile is None
+    _run(plan, tmp_path)
+    assert fetch_routes.request_cached(plan, tmp_path)
+    # Receipts alone (the manifest not yet published, as while the first
+    # member is still downloading other leads) still answer without raising.
+    (tmp_path / fetch_routes.MANIFEST_NAME).unlink()
+    assert fetch_routes.request_cached(plan, tmp_path)
+    assert fetch_routes.has_recovery_request(tmp_path)
+    # A request that names a profile is a different request for these files.
+    profiled = replace(plan, record_profile="rrfs-prslev-2dfld-state-grib2-v1")
+    assert not fetch_routes.request_cached(profiled, tmp_path)

@@ -2056,7 +2056,7 @@ def _host_entry_rain_distribution(qr_per_kg, nr_per_kg, rho):
     the device helper pins: every product/quotient separately rounded in
     float32, every power evaluated in double and rounded once.
 
-    Two forms here are WRF's since lane/mp28fix-warm-network, where this
+    Two forms here are WRF's since development branch, where this
     reference used to carry the helper's old ones: (3.0 + mu_r + 0.672) is
     the REAL sum, widened, over the DOUBLE lamr (not the DOUBLE literal
     3.672), and crg(2)*org3*rr*lamr**bm_r/am_r is ((REAL prefix) times the

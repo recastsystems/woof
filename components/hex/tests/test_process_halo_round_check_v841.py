@@ -2,7 +2,7 @@
 
 Breakage it removes: conus3km on 8 x RTX PRO 6000, one process per card, rank 0's host waited 48.9 s per forecast
 hour (about 272 ms of each 861 ms step) for its neighbours' per-round socket headers, which carried only the round
-check after each schema's first round (V8X6000 lease mcs2-tmr-8c, 2026-10-29, MULTICARD/SCALING-2.md section 4).
+check after each schema's first round (eight-card system lease mcs2-tmr-8c, 2026-10-29, MULTICARD/SCALING-2.md section 4).
 Breakage the check still prevents: two ranks that disagree on the halo schedule (tag or field schema, or how many
 rounds they run) mix halos or hang a card on a flag instead of stopping with the disagreement named.
 """
@@ -116,3 +116,78 @@ def test_headers_cross_only_in_a_schemas_first_round_and_when_an_fd_must():
 def test_mpas_route_rank0_aborts_its_halo_transport_when_a_child_fails():
     source = inspect.getsource(process_ranks_v842.run_process_ranks)
     assert "rank0.get('transport')" in source and "holder=rank0" in source
+
+
+def test_abort_releases_both_local_cuda_wait_flags_with_a_value_ahead_of_live_rounds():
+    import ctypes
+    import struct
+    from types import SimpleNamespace
+
+    page = bytearray(process_transport._FLAG_PAGE)
+    transport = process_transport.ProcessHaloTransport.__new__(process_transport.ProcessHaloTransport)
+    transport._error, transport._sockets = None, {}
+    transport._flags = {1: dict(share=SimpleNamespace(map=page), slots=dict(
+        ready_in=0, consumed_out=1, ready_out=2, consumed_in=3))}
+    transport.abort("rank-zero failure")
+    transport._release_neighbours()
+    flags = [struct.unpack_from('=I', page, process_transport._FLAG_SPACING * slot)[0]
+             for slot in range(4)]
+    for flag in flags:
+        for pending in (1, 4591, process_transport._RELEASED - 1):
+            assert ctypes.c_int32(flag - pending).value >= 0
+
+
+def test_round_counter_stops_before_the_reserved_cuda_release_value():
+    check = RoundCheck(0, {})
+    check.round = process_transport._RELEASED - 2
+    check._oldest = check.round
+    check.advance(process_transport._RELEASED - 1, _digest('last-safe-round'))
+    with pytest.raises(SameHostTransportError, match='CUDA wait range'):
+        check.advance(process_transport._RELEASED, _digest('reserved'))
+
+
+def test_mpas_rank0_runtime_error_stops_its_child_before_any_transport_abort(monkeypatch):
+    from contextlib import nullcontext
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+    from woof.hex import rank_processes
+    from woof.hex.mpasphys import runtime_v842
+
+    ranks = rank_processes.RankProcesses((0, 0), {0: [1], 1: [0]},
+                                         module='unused', timeout=60, job='unused')
+    child = subprocess.Popen([sys.executable, '-c', 'import signal; signal.pause()'])
+    ranks.processes[1] = child
+    original = MemoryError('rank-zero allocation failed')
+    released = []
+
+    def abort(reason):
+        assert child.poll() == -9, 'a peer could overwrite the released CUDA flags'
+        released.append(reason)
+
+    def fail(*args, **kwargs):
+        raise original
+
+    monkeypatch.setitem(sys.modules, 'cupy', SimpleNamespace(cuda=SimpleNamespace(
+        runtime=SimpleNamespace(is_hip=False),  # process_halo_transport reads it
+        Device=lambda device: nullcontext(), Stream=lambda **kwargs: nullcontext())))
+    monkeypatch.setattr(process_ranks_v842, 'ProcessRankExecution',
+                        lambda *args, **kwargs: SimpleNamespace(tables=[]))
+    monkeypatch.setattr(process_ranks_v842, '_rank_hooks', lambda *args: None)
+    monkeypatch.setattr(process_transport, 'ProcessHaloTransport',
+                        lambda *args, **kwargs: SimpleNamespace(abort=abort))
+    monkeypatch.setattr(runtime_v842, 'run_native_dynamics', fail)
+    request = dict.fromkeys(('partitions', 'field_indices', 'global_layout', 'analysis_receipt', 'arguments',
+                             'config', 'streams', 'start', 'stop', 'dt', 'out'))
+    request.update(devices=(0, 0), steps=1, timeout=60)
+    comm = SimpleNamespace(abort=abort)
+    try:
+        with pytest.raises(MemoryError) as caught:
+            process_ranks_v842._run_rank(0, request, (None, None, None), comm, comm, {},
+                                         (0, 0), holder={'group': ranks})
+        assert caught.value is original
+        assert released == ['rank 0: MemoryError: rank-zero allocation failed'] * 3
+        assert ranks.failure == released[0]
+    finally:
+        ranks.kill()
+        child.wait(5)

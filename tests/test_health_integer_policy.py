@@ -112,7 +112,7 @@ _NX, _NY, _NZ = 3, 2, 8
 #: refusals and zero admissions.  Scheme 11 is the first PBL addition
 #: since that actually lands in the admitted set.
 #:
-#: MYJ RE-MEASURE, 2026-08-09 (lane/port-myj).  This port routes TWO new
+#: MYJ RE-MEASURE, 2026-08-09 (development branch).  This port routes TWO new
 #: selectors at once -- sf_sfclay_physics=2 and bl_pbl_physics=2 -- so the
 #: product goes 4 x 4 x 5 = 80 to 5 x 4 x 6 = 120, and the admitted count
 #: is re-measured, not projected:
@@ -127,14 +127,17 @@ _NX, _NY, _NZ = 3, 2, 8
 #: sfclay=2 cells under the other PBLs are all refused by
 #: validate_myj_pairing, which is the reverse half of the same law.
 #:
-#: UW RE-MEASURE, 2026-09-30 (lane/europe-uw-pbl).  bl_pbl_physics=9 is
+#: UW RE-MEASURE, 2026-09-30 (development branch).  bl_pbl_physics=9 is
 #: routed, so the product goes 5 x 4 x 6 = 120 to 5 x 4 x 7 = 140, and
 #: the admitted count is re-measured: 57 = 45 + 12 (pbl 9), one per
 #: land-surface value at each of the three surface layers it admits (1,
 #: 5, 91).  Its sfclay=0 cells are refused by name (no UST/HFX/QFX) and
 #: its sfclay=2 cells by validate_myj_pairing (the TKE_MYJ scan).
 # Re-measured 2026-10-09: CCPP adds eight admitted inventories; int32 policy is unchanged.
-_ROUTED_COMBINATIONS = 65
+# Batch004 measured all admitted surface/PBL routes, including slab and new PBLs.
+# Batch007 full routed surface/PBL sweep: 247 accepted inventories.
+# Measured in the batch007 estimator-inventory receipt; seven integer names unchanged.
+_ROUTED_COMBINATIONS = 247
 
 #: Every int32 descriptor the routed cross-product actually produces.
 _INT32_DESCRIPTORS = frozenset({
@@ -166,6 +169,14 @@ _INT32_DESCRIPTORS = frozenset({
 #: Both bounds are now read off that source; see
 #: ``woof.core.health._GPU_RANGE_CHECKED_INT32``.
 _UNCLASSIFIED_AT_THIS_CHECKOUT: frozenset[str] = frozenset()
+
+
+@pytest.mark.parametrize("name", ["surface.cupflag", "surface.cu_act_flag"])
+def test_cup_logical_integer_policy(name):
+    from woof.core.health import field_from_array
+    assert gpu_integer_policy(name, np.int32) is not None
+    assert validate_fields_cpu([field_from_array(name, np.array([0, 1], np.int32))]).ok
+    assert not validate_fields_cpu([field_from_array(name, np.array([2], np.int32))]).ok
 
 
 def _config(**overrides):
@@ -289,13 +300,36 @@ def _host_inventory(monkeypatch, cfg):
     grid = np.zeros((cfg.ny, cfg.nx), dtype=np.float64)
     start = datetime(1974, 4, 3, 12, tzinfo=timezone.utc)
     state = state_mod.DomainState(cfg)
+    px_inputs = {}
+    if int(cfg.sf_surface_physics) == 7:
+        from woof.core import pxlsm_runtime, kernels
+        # This instrument counts fields, so compiling a step kernel is outside
+        # its scope. The production PX initializer still allocates every field.
+        monkeypatch.setattr(pxlsm_runtime, "prepare_pxlsm", lambda nlcat: None)
+        original_kernel = kernels.get_kernel
+        def compile_only(module, symbol, *args, **kwargs):
+            if (module, symbol) != ("pxlsm_driver", "pxlsm_post"):
+                return original_kernel(module, symbol, *args, **kwargs)
+            def refuse_launch(*args, **kwargs):
+                raise AssertionError("host inventory cannot launch a PX kernel")
+            return refuse_launch
+        monkeypatch.setattr(kernels, "get_kernel", compile_only)
+        landusef = np.zeros((24, cfg.ny, cfg.nx), np.float32)
+        soilcbot = np.zeros((16, cfg.ny, cfg.nx), np.float32)
+        landusef[9] = 1.0
+        soilcbot[5] = 1.0
+        px_inputs = dict(landusef=landusef, soilcbot=soilcbot)
     physics_mod.initialize_physics(
         state, cfg,
         # The bundle belongs to sf_surface_physics=2 only; initialize_physics
         # refuses it for any other LSM and loads its own for Noah.
         noah_params=object() if int(cfg.sf_surface_physics) == 2 else None,
         landmask=1.0, tsk=290.0, soil_temperature=285.0,
-        soil_moisture=0.30, ivgtyp=10, isltyp=6,
+        thermal_inertia=0.04 if int(cfg.sf_surface_physics) == 1 else None,
+        soil_moisture=0.30, ivgtyp=10, isltyp=6, **px_inputs,
+        # PX cold start only writes existing arrays; its device arithmetic
+        # is checked by the PX owner tests rather than this field census.
+        lsm_cold_start=int(cfg.sf_surface_physics) != 7,
         radiation=lambda **kwargs: None,
         cumulus=lambda **kwargs: None,
         radiation_start_time=start,
@@ -881,14 +915,10 @@ def test_the_real_noahmp_descriptor_build_reaches_the_device():
 
 
 def test_the_ebal_range_admits_every_case_the_noah_kernel_writes():
-    """surface.ebal's health bounds are exactly the codes noah.cu can store.
+    """Current SNOPAC codes and historical glacial code 4 remain admitted.
 
-    The SFLX_GLACIAL port (golden/ports-pbl) stores ebal = 4 on land-ice
-    columns.  With the rule still at [0, 3], a real met_em forecast whose
-    domain holds land ice died at its first post-d01-sync health check
-    (``surface.ebal(37, 22): value 4.0 exceeds upper bound 3.0``).  The
-    codes are read from the kernel source, so a new case cannot drift
-    past the gate again.
+    The full glacial subtree now reports its SNOPAC branch (0 through 3).
+    Older checkpoints can still carry the earlier glacial marker 4.
     """
     import re
     from pathlib import Path
@@ -901,6 +931,20 @@ def test_the_ebal_range_admits_every_case_the_noah_kernel_writes():
         r"\bebal_(?:case|a\[idx\])\s*=\s*(\d+)\s*;", source)}
     codes |= {int(v) for pair in re.findall(
         r"ebal_case\s*=\s*\w+\s*\?\s*(\d+)\s*:\s*(\d+)", source) for v in pair}
-    assert codes == {0, 1, 2, 3, 4}, codes
+    # The current glacial subtree reports its SNOPAC branch (1, 2 or 3).
+    # Retain health admission of historical glacial code 4 for old checkpoints.
+    assert codes == {0, 1, 2, 3}, codes
     rule = rule_for_field("surface.ebal")
-    assert (rule.lower, rule.upper) == (min(codes), max(codes))
+    assert (rule.lower, rule.upper) == (min(codes), max(codes | {4}))
+@pytest.mark.parametrize("name",["surface.ncfrst","surface.ncfrcv"])
+def test_gfdl_cloud_sample_counts_are_checked_and_cannot_be_negative(name):
+    from woof.core.health import _INT32_STORAGE,field_from_array
+    assert gpu_integer_policy(name,np.int32)==_INT32_STORAGE
+    assert validate_fields_cpu([field_from_array(name,np.array([0,1,2147483647],np.int32))]).ok
+    bad=validate_fields_cpu([field_from_array(name,np.array([0,-1],np.int32))])
+    assert not bad.ok and bad.first_bad_field==name and bad.first_bad_index==(1,)
+@pytest.mark.parametrize("name", ("surface.irnumsi", "surface.irnummi", "surface.irnumfi"))
+def test_noahmp_irrigation_counter_health_policy(name):
+    from woof.core.health import gpu_integer_policy, rule_for_field, FieldRule
+    assert gpu_integer_policy(name, np.int32) is not None
+    assert rule_for_field(name) == FieldRule("surface", 0.0)

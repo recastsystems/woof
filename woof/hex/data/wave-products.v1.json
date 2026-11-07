@@ -1,0 +1,8 @@
+[
+  {"names":["hs"],"standard_names":[],"product":"hs","title":"Significant wave height and peak travel direction","default_units":"m","display_units":"m","unit_factors":{"m":1},"scale":{"levels":[0,0.5,1,2,3,4,5,6,8,10,12,15,20],"colors":[[245,250,255],[214,235,250],[169,214,234],[109,184,214],[65,146,186],[40,111,157],[56,151,115],[142,181,65],[236,205,60],[238,143,43],[215,67,40],[132,33,51]]}},
+  {"names":["tp"],"standard_names":[],"product":"tp","title":"Peak wave period","default_units":"s","display_units":"s","unit_factors":{"s":1},"levels":[0,4,6,8,10,12,14,16,20,24]},
+  {"names":["ws_hs"],"standard_names":[],"product":"ws_hs","title":"Wind-sea significant height","default_units":"m","display_units":"m","unit_factors":{"m":1},"levels":[0,0.5,1,2,3,4,6,8,12,20]},
+  {"names":["sw1_hs"],"standard_names":[],"product":"sw1_hs","title":"Primary swell significant height","default_units":"m","display_units":"m","unit_factors":{"m":1},"levels":[0,0.5,1,2,3,4,6,8,12,20]},
+  {"names":["sw2_hs"],"standard_names":[],"product":"sw2_hs","title":"Secondary swell significant height","default_units":"m","display_units":"m","unit_factors":{"m":1},"levels":[0,0.25,0.5,1,1.5,2,3,4,6,10]},
+  {"names":["sw3_hs"],"standard_names":[],"product":"sw3_hs","title":"Third swell significant height","default_units":"m","display_units":"m","unit_factors":{"m":1},"levels":[0,0.25,0.5,1,1.5,2,3,4,6,10]}
+]

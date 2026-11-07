@@ -58,6 +58,7 @@ EXPECTED_PARTS = {
     "noahmp_vegeflux": ("noahmp_vegeflux",),
     "noahmp_vegprecip": ("noahmp_vegprecip",),
     "noahmp_water": ("noahmp_water",),
+    "noahmp_output": ("noahmp_output",),
 }
 
 SYNTHETIC_PLATFORM = ("99", "0.0.1")
@@ -275,7 +276,8 @@ def test_export_inventory_includes_inherited_globals():
     # 111 since 2.9.3: noahmp_vegeflux gained k_vegeflux_stc3 (300876fefd5,
     # the WRF-lineage STC=3 leg) and k_vegeflux_masked (b3dd58fc9f3, the
     # fixed-width masked dispatch), both kept by the speed2 merge de768fc2770.
-    assert sum(len(unit.exports) for unit in units) == 111
+    # Native output accumulation adds its own single exported grid kernel.
+    assert sum(len(unit.exports) for unit in units) == 112
     leaves = set(ks.runtime_unit("noahmp_leaves").exports)
     for name in ks.COMPOSED_UNITS:
         assert leaves <= set(ks.runtime_unit(name).exports)
@@ -771,12 +773,12 @@ def test_measure_live_reads_every_export_and_never_launches(fake_cupy):
                                      default_stack_limit_bytes=1024)
     assert reading["frames"] == synthetic_frames()
     assert reading["unit_identity"] == prov.unit_identities()
-    assert len(reading["functions"]) == 15
+    assert len(reading["functions"]) == 16
     # 111 exports since 2.9.3 (k_vegeflux_stc3 and k_vegeflux_masked; see
     # test_export_inventory_includes_inherited_globals).
-    assert sum(len(rows) for rows in reading["functions"].values()) == 111
-    assert len([e for e in events if e[0] == "attributes"]) == 111
-    assert [e[0] for e in events].count("RawModule") == 15
+    assert sum(len(rows) for rows in reading["functions"].values()) == 112
+    assert len([e for e in events if e[0] == "attributes"]) == 112
+    assert [e[0] for e in events].count("RawModule") == 16
     for name in EXPECTED_PARTS:
         unit = ks.runtime_unit(name)
         assert ("RawModule", unit.source, unit.options) in events
@@ -1171,8 +1173,9 @@ def test_the_live_card_is_read_once_per_process(monkeypatch):
 @pytest.mark.parametrize("mp", [0, 1, 6, 8, 9, 10, 16, 18, 28, 50])
 def test_existing_estimator_inventories_match_the_baseline(lsm, mp, monkeypatch):
     """40 domain inventories and 30 non-Noah-MP full estimates, hashed
-    against digests the BASELINE tree produced (fixture ``baseline_commit``),
-    not this one. New metadata absent from that baseline is asserted empty
+    against independently reviewed snapshots (fixture ``baseline_commit``).
+    The batch008 refresh receipt explains each allocation and frame change.
+    New metadata absent from the recorded estimate is asserted empty
     before projection: ``compile_platform`` and the uncoupled ``hydro_memory``
     roster. All allocation numbers and frame inventories remain compared.
     Coupled allocations are checked in test_hydro_memory_contract. Re-record each

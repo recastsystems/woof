@@ -1,3 +1,17 @@
+# Copyright 2026, NOAA, UCAR/NCAR CU/CIRES (NOAA GSL Unified Gravity Wave Physics, UGWP)
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this
+# file except in compliance with the License. You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software distributed under
+# the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
+# ANY KIND, either express or implied. See the License for the specific language
+# governing permissions and limitations under the License.
+#
+# Source: https://github.com/NOAA-GSL/UGWP, commit c1c893edcf171af5639af60e3a3a528816f6cc2b
+# (tag MPAS_20241223), bl_ugwpv1_ngw.F, cires_ugwpv1_*.F and cires_tauamf_data.F. Upstream LICENSE: https://github.com/NOAA-GSL/UGWP/blob/main/LICENSE
+# (added at 4108d491470c2576a7c1e97cc6a38bf454590193); copy in licenses/LICENSE-UGWP-Apache-2.0.txt.
+# Ported to CUDA for woof hex: the Fortran is rewritten as CUDA kernels with a Python
+# launcher; changes are this project's, under the same licence. NOTICE section 8.
 """MPAS-A v8.4.2 UGWP non-stationary gravity wave column boundary.
 
 Pinned authority: UGWP c1c893e, MPAS f34984b. The source below ports the
@@ -38,6 +52,72 @@ COMPILE_OPTIONS = ('--std=c++17', '--fmad=false', '--ftz=false',
                    '--prec-div=true', '--prec-sqrt=true')
 
 CUDA_SOURCE = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_3FF9999A_DEFINED
+#define HEX_DIVISOR_3FF9999A_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3ff9999a = 1.95f;
+#else
+static const float hex_divisor_3ff9999a = 1.95f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40000000_DEFINED
+#define HEX_DIVISOR_40000000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40000000 = 2.f;
+#else
+static const float hex_divisor_40000000 = 2.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40400000_DEFINED
+#define HEX_DIVISOR_40400000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40400000 = 3.f;
+#else
+static const float hex_divisor_40400000 = 3.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40490FDA_DEFINED
+#define HEX_DIVISOR_40490FDA_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40490fda = 3.1415926f;
+#else
+static const float hex_divisor_40490fda = 3.1415926f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41700000_DEFINED
+#define HEX_DIVISOR_41700000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41700000 = 15.f;
+#else
+static const float hex_divisor_41700000 = 15.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41F00000_DEFINED
+#define HEX_DIVISOR_41F00000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41f00000 = 30.f;
+#else
+static const float hex_divisor_41f00000 = 30.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_43960000_DEFINED
+#define HEX_DIVISOR_43960000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43960000 = 300.f;
+#else
+static const float hex_divisor_43960000 = 300.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_47A8C000_DEFINED
+#define HEX_DIVISOR_47A8C000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_47a8c000 = 86400.f;
+#else
+static const float hex_divisor_47a8c000 = 86400.f;
+#endif
+#endif
+
 
 
 #ifndef NGW_HOST
@@ -117,7 +197,7 @@ NGW_DEVICE void ngw_init_nazdir(int naz,float pi2,float *xaz,float *yaz) {
 // cires_ugwpv1_initialize.F:216-269,302-334,363-391, full default source spectra.
 NGW_DEVICE void ngw_init_sources(float pi2,float *out) {
   float ch[NW+1],spf[NW+1],xaz[NA+1],yaz[NA+1];
-  const float bns=.02f,bns2=bns*bns,bns4=bns2*bns2,mstar=6.28e-3f/2.f;
+  const float bns=.02f,bns2=bns*bns,bns4=bns2*bns2,mstar=6.28e-3f/hex_divisor_40000000;
   float dc=ngw_div(ngw_sub(95.f,5.f),float(NW-1));
   float snorm=0.f;
   for(int k=1;k<=NW;++k) {
@@ -177,7 +257,7 @@ const float mkzmin=ngw_div(pi2,80000.f), mkz2min=ngw_mul(mkzmin,mkzmin);
 const float mkzmax=ngw_div(pi2,500.f), ucrit=ngw_div(.02f,mkzmax);
 // cires_ugwpv1_module.F:29-76,115-154, fixed MPAS module controls.
 const float maxdudt=450.e-5f, max_eps=450.f*4.e-4f, maxdtdt=(450.f*4.e-4f)*1.e-3f;
-const float dked_min=.01f, dked_max=450.f, ipr_ktgw=1.f/3.f, pr_kdis=1.f/(1.f+1.f);
+const float dked_min=.01f, dked_max=450.f, ipr_ktgw=1.f/hex_divisor_40400000, pr_kdis=1.f/(1.f+1.f);
 const int knob_ugwp_doheat=1, knob_ugwp_dokdis=2;
 const float psrc=27500.f, nslope=1.f, lzstar=2000.f, lzmax=15750.f, lzmin=750.f, lhmet=200000.f;
 const float tau_min=.25e-3f, gw_eff=1.f, sc2=30.f*30.f;
@@ -195,7 +275,7 @@ int initial_k;
 for(initial_k=levs;initial_k>=1;--initial_k) if(pmb[initial_k]>psrc) break;
 ilaunch=ngw_max(initial_k-1,5);
 // cires_ugwpv1_initialize.F:103-178, init_global_gwdis, including super RF.
-const float vusurf=2.e-5f, musurf=2.e-5f/1.95f, alpha=1.f/86400.f/15.f, kdrag=1.f/86400.f/30.f;
+const float vusurf=2.e-5f, musurf=2.e-5f/hex_divisor_3ff9999a, alpha=1.f/hex_divisor_47a8c000/hex_divisor_41700000, kdrag=1.f/hex_divisor_47a8c000/hex_divisor_41f00000;
 float rtau_fv3=ngw_div(ngw_div(1.f,86400.f),10.f);
 float pih_dlog=ngw_div(pih,ngw_log(ngw_div(750.f,pmb[levs])));
 for(int k=1;k<=levs;++k) {
@@ -234,7 +314,7 @@ for(int w=1;w<=nwav;++w) {
   zdci[w]=ngw_mul(ngw_mul(ngw_mul(ngw_mul(zci[w],zci[w]),ngw_div(zx1,.25f)),ngw_exp(a)),zdx0);
 }
 // cires_ugwpv1_initialize.F:621-642, version is fixed to 1 by native module controls.
-const float bnfix=6.28f/300.f;
+const float bnfix=6.28f/hex_divisor_43960000;
 float dlzmet=ngw_div(ngw_sub(lzmax,lzmin),float(nwav-1));
 for(int w=1;w<=nwav;++w) {
   float lz=ngw_add(lzmin,ngw_mul(float(w-1),dlzmet));
@@ -262,7 +342,7 @@ if(index_state) {index_state[col]=j1;index_state[nc+col]=j2;}
 if(weight_state) {weight_state[col]=lat_w1;weight_state[nc+col]=lat_w2;}
 if(initialize_only) return;
 // mpas_atmphys_driver_gwdo.F:304,474-511, intentionally different rad2deg constant.
-float xlat_value=ngw_mul(lat_r[col],180.f/3.1415926f);
+float xlat_value=ngw_mul(lat_r[col],180.f/hex_divisor_40490fda);
 if(native_xlat) xlat_value=native_xlat[col];
 float local_xlat[1]={xlat_value};
 // cires_tauamf_data.F:60-110, tau_amf_interp; one time search per column.

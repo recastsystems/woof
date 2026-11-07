@@ -1,5 +1,7 @@
+use rayon::prelude::*;
 use std::error::Error;
 use std::mem::{size_of, size_of_val};
+use std::sync::Arc;
 
 #[cfg(test)]
 mod cache_tests;
@@ -19,7 +21,7 @@ use crate::request::{
 const DEFAULT_BASEMAP_GRATICULE: bool = false;
 
 /// Maximum retained coordinate and basemap storage shared by product renders.
-pub const PROJECTED_MAP_CACHE_BYTES: u64 = 64 * 1024 * 1024;
+pub const PROJECTED_MAP_CACHE_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectedMap {
@@ -429,19 +431,42 @@ pub fn build_projected_map_with_options(
 ) -> Result<ProjectedMap, Box<dyn Error>> {
     // Batch products build separate requests for the same mesh. Share only
     // geometry, never weather values, and bound retained memory across grids.
-    static CACHE: std::sync::Mutex<ProjectedMapCache> =
-        std::sync::Mutex::new(ProjectedMapCache { entries: Vec::new(), bytes: 0 });
-    CACHE.lock().unwrap_or_else(|error| error.into_inner()).get_or_build(
-        lat_deg, lon_deg, options, PROJECTED_MAP_CACHE_BYTES as usize,
-        || build_projected_map_uncached(lat_deg, lon_deg, options),
-    )
+    static CACHE: std::sync::Mutex<ProjectedMapCache> = std::sync::Mutex::new(ProjectedMapCache {
+        entries: Vec::new(),
+        bytes: 0,
+    });
+    let cached = CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(lat_deg, lon_deg, options);
+    if let Some(map) = cached {
+        return Ok((*map).clone());
+    }
+    // Neither projection nor the caller's full coordinate copy holds the
+    // cache mutex. Nested Rayon work must never wait for its own parent.
+    let map = Arc::new(build_projected_map_uncached(lat_deg, lon_deg, options)?);
+    let map = {
+        let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(cached) = cache.get(lat_deg, lon_deg, options) {
+            cached
+        } else {
+            cache.insert(
+                lat_deg,
+                lon_deg,
+                options,
+                PROJECTED_MAP_CACHE_BYTES as usize,
+                map,
+            )
+        }
+    };
+    Ok(Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()))
 }
 
 struct CachedMap {
     lat: Vec<f32>,
     lon: Vec<f32>,
     options: String,
-    map: ProjectedMap,
+    map: Arc<ProjectedMap>,
     bytes: usize,
 }
 
@@ -451,14 +476,12 @@ struct ProjectedMapCache {
 }
 
 impl ProjectedMapCache {
-    fn get_or_build(
+    fn get(
         &mut self,
         lat: &[f32],
         lon: &[f32],
         options: &ProjectedMapBuildOptions,
-        byte_limit: usize,
-        build: impl FnOnce() -> Result<ProjectedMap, Box<dyn Error>>,
-    ) -> Result<ProjectedMap, Box<dyn Error>> {
+    ) -> Option<Arc<ProjectedMap>> {
         // Debug's float spelling retains signed zero and every finite bit.
         // Comparing the entire request avoids reusing geometry across crops,
         // projections, aspect ratios, basemap styles or moving meshes.
@@ -472,11 +495,25 @@ impl ProjectedMapCache {
             let entry = self.entries.remove(index);
             let map = entry.map.clone();
             self.entries.push(entry);
-            return Ok(map);
+            return Some(map);
         }
-        let map = build()?;
-        let mut bytes = (lat.len() + lon.len()).saturating_mul(size_of::<f32>())
-            .saturating_add((map.projected_x.len() + map.projected_y.len()).saturating_mul(size_of::<f64>()))
+        None
+    }
+
+    fn insert(
+        &mut self,
+        lat: &[f32],
+        lon: &[f32],
+        options: &ProjectedMapBuildOptions,
+        byte_limit: usize,
+        map: Arc<ProjectedMap>,
+    ) -> Arc<ProjectedMap> {
+        let options = format!("{options:?}");
+        let mut bytes = (lat.len() + lon.len())
+            .saturating_mul(size_of::<f32>())
+            .saturating_add(
+                (map.projected_x.len() + map.projected_y.len()).saturating_mul(size_of::<f64>()),
+            )
             .saturating_add(options.len());
         for line in &map.lines {
             bytes = bytes.saturating_add(size_of_val(line))
@@ -501,7 +538,23 @@ impl ProjectedMapCache {
             });
             self.bytes += bytes;
         }
-        Ok(map)
+        map
+    }
+
+    #[cfg(test)]
+    fn get_or_build(
+        &mut self,
+        lat: &[f32],
+        lon: &[f32],
+        options: &ProjectedMapBuildOptions,
+        byte_limit: usize,
+        build: impl FnOnce() -> Result<ProjectedMap, Box<dyn Error>>,
+    ) -> Result<Arc<ProjectedMap>, Box<dyn Error>> {
+        if let Some(map) = self.get(lat, lon, options) {
+            return Ok(map);
+        }
+        let map = Arc::new(build()?);
+        Ok(self.insert(lat, lon, options, byte_limit, map))
     }
 }
 
@@ -673,17 +726,23 @@ fn project_domain(
     target_aspect_ratio: f64,
     fit_to_target_aspect: bool,
 ) -> Result<(Vec<f64>, Vec<f64>, ProjectedExtent), Box<dyn Error>> {
-    let mut projected_x = Vec::with_capacity(lat_deg.len());
-    let mut projected_y = Vec::with_capacity(lat_deg.len());
+    let (projected_x, projected_y): (Vec<_>, Vec<_>) = lat_deg
+        .par_iter()
+        .zip(lon_deg)
+        .map(|(&lat, &lon)| projector.project(lat as f64, lon as f64))
+        .unzip();
     let mut full_bounds = ProjectedBounds::default();
     let mut framed_bounds = ProjectedBounds::default();
 
-    for (&lat, &lon) in lat_deg.iter().zip(lon_deg.iter()) {
+    // Keep the bounds fold in input order, including signed-zero ties.
+    for (((&lat, &lon), &x), &y) in lat_deg
+        .iter()
+        .zip(lon_deg)
+        .zip(&projected_x)
+        .zip(&projected_y)
+    {
         let lat = lat as f64;
         let lon = lon as f64;
-        let (x, y) = projector.project(lat, lon);
-        projected_x.push(x);
-        projected_y.push(y);
         if !x.is_finite() || !y.is_finite() {
             continue;
         }
@@ -1320,10 +1379,7 @@ const SEAM_EDGE_EPSILON_DEG: f64 = 1.0e-9;
 /// Splits a densified lon/lat ring where it crosses the cut meridian
 /// `seam_deg`.  Returns `None` when it never does (the caller keeps the
 /// ring untouched), otherwise one closed-along-the-cut piece per side run.
-fn split_lonlat_ring_at_seam(
-    dense: &[(f64, f64)],
-    seam_deg: f64,
-) -> Option<Vec<Vec<(f64, f64)>>> {
+fn split_lonlat_ring_at_seam(dense: &[(f64, f64)], seam_deg: f64) -> Option<Vec<Vec<(f64, f64)>>> {
     if dense.len() < 2 || !seam_deg.is_finite() {
         return None;
     }
@@ -1339,9 +1395,17 @@ fn split_lonlat_ring_at_seam(
         let delta = wrapped_longitude_delta_deg(a.0, b.0);
         let reached = rel_a + delta;
         let (bound, exit_rel, enter_rel) = if reached > 180.0 {
-            (180.0, 180.0 - SEAM_EDGE_EPSILON_DEG, -180.0 + SEAM_EDGE_EPSILON_DEG)
+            (
+                180.0,
+                180.0 - SEAM_EDGE_EPSILON_DEG,
+                -180.0 + SEAM_EDGE_EPSILON_DEG,
+            )
         } else if reached <= -180.0 {
-            (-180.0, -180.0 + SEAM_EDGE_EPSILON_DEG, 180.0 - SEAM_EDGE_EPSILON_DEG)
+            (
+                -180.0,
+                -180.0 + SEAM_EDGE_EPSILON_DEG,
+                180.0 - SEAM_EDGE_EPSILON_DEG,
+            )
         } else {
             pieces.last_mut().expect("one piece is always open").push(b);
             continue;
@@ -1707,8 +1771,7 @@ mod tests {
             ProjectionSpec::Mercator {
                 latitude_of_true_scale_deg: 24.4,
                 central_meridian_deg: -89.3,
-            },
-        );
+            });
         // Input rings use (lat, lon), unlike the private basemap helper.
         let rings = vec![
             vec![(30.5, 90.2), (30.5, 91.0), (30.9, 91.0), (30.9, 90.2)],

@@ -4,7 +4,7 @@
 declared here.  A hand-maintained constant is a promise to update two
 files at every cut, and that promise was broken: the wheel shipped
 ``0.1.1`` for four releases, and 1.1.1's prepared-cache provenance
-refusal used it to tell a 1.1.1 user "this is woof 0.1.1" -- a sentence
+refusal used it to tell a 1.1.1 user "this is gpuwm 0.1.1" -- a sentence
 whose whole job is to name the release that is speaking.
 
 The metadata read is the one belonging to the distribution that installed

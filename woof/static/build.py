@@ -65,7 +65,7 @@ GCELL_RATIO = 4.0
 
 # ``default`` is the dataset inventory every configuration without a
 # ``geog_data_res`` selector builds from.  It carries only permissively
-# licensed sources (Project ruling, 2026-10-14: no default path into data whose
+# licensed sources (Owner, 2026-10-14: no default path into data whose
 # licence limits sale or use; 2026-10-21: the WPS_GEOG soil sources that
 # are not permissive are held out of the default geog set).  So soil
 # categories are the SoilGrids250m-derived NCAR tiles (CC BY 4.0) that

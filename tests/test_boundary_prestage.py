@@ -61,3 +61,29 @@ def test_producer_failure_reaches_waiter():
     with prestage_boundaries(fail, pin=False) as handle:
         with pytest.raises(ValueError, match="source decode failed"):
             handle.wait_ready(5)
+
+
+@pytest.mark.parametrize("hip", [False, True])
+def test_resident_table_registration_uses_native_hip_binding(monkeypatch, hip):
+    import sys
+    from woof import boundary_prestage, hip_runtime
+    calls = []
+    def stub(*args):
+        raise NotImplementedError("CuPy HIP host-registration stub")
+    runtime = SimpleNamespace(is_hip=hip,
+        hostRegister=stub if hip else lambda *a: calls.append(("cuda-register", a)),
+        hostUnregister=stub if hip else lambda *a: calls.append(("cuda-unregister", a)))
+    monkeypatch.setitem(sys.modules, "cupy", SimpleNamespace(cuda=SimpleNamespace(runtime=runtime)))
+    monkeypatch.setattr(hip_runtime, "host_register", lambda *a: calls.append(("hip-register", a)))
+    monkeypatch.setattr(hip_runtime, "host_unregister", lambda *a: calls.append(("hip-unregister", a)))
+    array = np.arange(128, dtype=np.float32)
+    monkeypatch.setattr(boundary_prestage, "_arrays", lambda intervals: iter((array, array)))
+    pins = boundary_prestage._PinnedTables((None,))
+    pins.add((None,))  # shared pages stay registered once
+    assert len(pins.regions) == 1
+    address, end = pins.regions[0]
+    pins.close()
+    prefix = "hip" if hip else "cuda"
+    assert calls == [(prefix + "-register", (address, end-address, 1)),
+                     (prefix + "-unregister", (address,))]
+    assert not pins.regions

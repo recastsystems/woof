@@ -30,7 +30,7 @@ Measured on 2026-10-20 at 36.5 N, 97.5 W, HRRR 2024-05-06 18Z, three hours:
 43,360 cells, 55 levels, 5 s timestep, 2,160 steps and four history frames.
 The forecast stage completed in 1,908.79 s on a shared RTX PRO 6000 Blackwell
 Server Edition with CUDA graphs disabled. The installed hex 0.4.1 native
-binaries and woof 2.9.3 dependencies were used with this branch's Python
+binaries and gpuwm 2.9.3 dependencies were used with this branch's Python
 overlay. Maps rendered: 70, with two expected hour-zero skips and no failures;
 the view is `refined-core`, with no global view.
 
@@ -39,7 +39,7 @@ Stage walls were mesh 1,246.24 s, intermediate 328.85 s, init 3.44 s,
 boundaries 9.11 s, contract 85.19 s and forecast 1,908.79 s. These are shared
 host timings. The original command hung in the engine's `rw_hex_points`
 bridge after the forecast passed. The engine fix on
-`lane/improve-32b-hex-points-hang` (for 2.9.4) masks missing surface wind
+`development branch` (for 2.9.4) masks missing surface wind
 values and bounds raster work to the image canvas. The exact retained bridge
 invocation then completed in 0.53 s. Products-only recovery on
 the retained forecast completed in 13.81 s with 70 maps and
@@ -224,7 +224,7 @@ geometry half is relaxed.
 ## Measured, 2026-09-13
 
 Point 41.95 N 94.79 W (central Iowa), HRRR cycle 2026-09-13 15Z, f00 to
-f03, an RTX 5090 (32,607 MiB, sm_120), woof 2.7.3 from PyPI with its
+f03, an RTX 5090 (32,607 MiB, sm_120), gpuwm 2.7.3 from PyPI with its
 2.7.3 bridge bundle, woof hex 0.3.0. Every number below is copied from a
 run receipt.
 
@@ -434,7 +434,7 @@ dt 5 s; grid `e4fb6704...`, init `4c6deb1c...`), same HRRR 15Z init and
 boundary files, an RTX 5090 (32,607 MiB, sm_120), one session, the
 card otherwise idle (no other GPU process during any step; load average 1.14
 at the first arm's launch, 3.91 at the second's, the first arm's own writer
-tail), woof 2.7.3 from PyPI with its 2.7.3 bridge bundle in both venvs. Every
+tail), gpuwm 2.7.3 from PyPI with its 2.7.3 bridge bundle in both venvs. Every
 number is from a run receipt.
 
 - Contract deck on the cull's own rings at the merged tree's kernel set
@@ -570,7 +570,7 @@ instrument fix and the local-timestep gather above. On an RTX 5090
 card time against the 35 min budget), no other GPU process at any step (the
 session waited 120 s for another process to finish and took the card
 empty), load average 0.83 at the start and 1.02 to 1.03 at every step after,
-woof 2.7.3 from PyPI, the venv cloned from the integrated tree's and
+gpuwm 2.7.3 from PyPI, the venv cloned from the integrated tree's and
 editable to a copy of this tree that hashes file for file to `0648789`:
 
 - NVRTC compile check of the eight units, 104 kernels resolved, 7 s.

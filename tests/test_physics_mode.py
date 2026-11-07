@@ -415,8 +415,12 @@ def test_moist_mix6_off_exempts_the_wrf_moist_array_and_nothing_else():
 
     exempt = diff6_exempt_slots(RunConfig(**base, moist_mix6_off=True))
     # Every WRF moist-array species woof can carry, and only those.
+    # qi2/qi3 are P3's second and third ice-category masses, declared in
+    # WRF's moist array like qi (woof.core.moist.WRF_MOIST_ARRAY_SPECIES,
+    # d765178a427).
     assert exempt == {"smag_rqv", "smag_rqc", "smag_rqr",
-                      "smag_rqi", "smag_rqs", "smag_rqg", "smag_rqh"}
+                      "smag_rqi", "smag_rqs", "smag_rqg", "smag_rqh",
+                      "smag_rqi2", "smag_rqi3"}
     # Theta, the three momentum rows and TKE keep their filter: theta has
     # no switch at all, and TKE has tke_mix6_off.
     assert not exempt & {"smag_rth", "smag_ru", "smag_rv", "smag_rw",

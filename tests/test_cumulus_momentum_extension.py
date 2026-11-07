@@ -228,10 +228,17 @@ def test_the_no_hold_branch_passes_momentum_to_the_coupling():
     marker = "if result.nca_seconds is None:"
     assert marker in src, "the no-hold branch has moved or been renamed"
     branch = src[src.index(marker):]
-    call = re.search(r"couple_column_tendencies\((.*?)\)", branch, re.S)
+    call = re.search(r"couple_column_tendencies\(", branch)
     assert call is not None, (
         "the no-hold branch no longer calls couple_column_tendencies")
-    args = call.group(1)
+    # The whole argument list, to its matching parenthesis: an argument may
+    # itself be parenthesised (rqc=(None if ... else rqc), b9ae790fe8), so
+    # the first ")" is not the end of the call.
+    depth, end = 1, call.end()
+    while depth:
+        depth += {"(": 1, ")": -1}.get(branch[end], 0)
+        end += 1
+    args = branch[call.end():end - 1]
     assert "ru=" in args and "rv=" in args, (
         "the no-hold branch calls couple_column_tendencies WITHOUT ru/rv "
         "again. New Tiedtke's convective momentum is computed, validated "
@@ -240,13 +247,14 @@ def test_the_no_hold_branch_passes_momentum_to_the_coupling():
 
 
 def test_the_held_branch_refuses_momentum_rather_than_dropping_it():
-    """Fail closed where storage does not exist.
+    """Fail closed where storage does not exist; persist it where it does.
 
-    The held (NCA) path rebuilds from ``self.cu_rates``, which has no
-    momentum slots, so a held scheme carrying momentum would lose it
-    exactly the way the no-hold branch did.  Kain-Fritsch is the only NCA
-    consumer today and produces none, so the path refuses rather than
-    pricing storage for a case that does not exist.
+    The held (NCA) path rebuilds from ``self.cu_rates``.  Since the MSKF
+    admission (854ee8c14d) a held scheme that carries momentum declares
+    ``rucuten``/``rvcuten`` storage there, and the held coupling passes
+    those slots as ``ru=``/``rv=``.  A held result carrying momentum
+    WITHOUT declared storage would lose it exactly the way the no-hold
+    branch once did, so that case still refuses.
 
     The negative control is that the refusal names the reason: a bare
     ``raise`` would send the next reader looking at the scheme rather than
@@ -257,8 +265,12 @@ def test_the_held_branch_refuses_momentum_rather_than_dropping_it():
     from woof.core.physics import PhysicsDriver
 
     src = inspect.getsource(PhysicsDriver._run_cumulus)
-    assert "cu_rates" in src and "has no momentum slots" in src, (
+    assert "held cumulus momentum needs declared persistent rate storage" in src, (
         "the held path no longer refuses momentum it cannot persist")
+    held = src[src.index("if result.pratec is None:"):]
+    assert 'ru=self.cu_rates.get("rucuten")' in held and \
+        'rv=self.cu_rates.get("rvcuten")' in held, (
+            "the held coupling no longer passes the persisted momentum slots")
 
 
 def test_momentum_reaches_the_state_not_merely_the_tendency_object():

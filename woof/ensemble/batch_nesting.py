@@ -258,7 +258,16 @@ def prepare_member_couple_nest_field(state, kind, *, out, window=None, frame_wid
         points = lateral_bc._perimeter_count(ny, nx, width)
         entry, count = "couple_nest_field_frame", nz * points
         args += (np.int32(width), np.int32(points))
-    return _bind("lbc_state", entry, members, count, args, pointers)
+    operation = _bind("lbc_state", entry, members, count, args, pointers)
+    from woof.wrf_exact import ENABLED
+    if ENABLED and frame_width is not None and kind in ("u", "v"):
+        from woof.core.nest_round_trip import couple_halo_faces
+        def launch():
+            operation()
+            couple_halo_faces(state, kind, out)
+        launch.binding_receipt = operation.binding_receipt
+        return launch
+    return operation
 
 
 def _base_theta(state):
@@ -267,6 +276,80 @@ def _base_theta(state):
     if len(spec.shape) == 1:
         return state.thb.reshape(rows, spec.shape[0], 1, 1)
     return state.thb.reshape(rows, *spec.shape)
+
+
+_ROUND_TRIP_SOURCE = r'''
+extern "C" __global__ void member_nest_round_trip(
+    float *field, const float *mub, const float *mu, const float *halo,
+    const float *c1, const float *c2, const float *msf,
+    int kind, int mapped, int nz, int ny, int nx, int mny, int mnx) {
+    int n = blockIdx.x * blockDim.x + threadIdx.x;
+    if (n >= nz * ny * nx) return;
+    int i = n % nx, j = (n / nx) % ny, k = n / (nx * ny);
+    int x = min(i, mnx - 1), y = min(j, mny - 1);
+    int q = y * mnx + x;
+    float a = c1[k] * mub[q] + c2[k];
+    float b = c1[k] * mu[q];
+    float mass = a + b;
+    float factor, inverse;
+    if (kind == 3 || kind == 4) {
+        int axis = kind == 3 ? i : j;
+        int end = kind == 3 ? mnx : mny;
+        if (axis < end) {
+            int p = kind == 3 ? y * mnx + max(i - 1, 0)
+                             : max(j - 1, 0) * mnx + x;
+            float ap = c1[k] * mub[p] + c2[k];
+            float bp = c1[k] * (axis ? mu[p] : halo[p]);
+            float sum = ((a + ap) + b) + bp;
+            float metric = mapped ? msf[j * nx + i] : 1.0f;
+            factor = (0.5f * sum) / metric;
+            inverse = (2.0f * metric) / sum;
+        } else {
+            float metric = mapped ? msf[j * nx + i] : 1.0f;
+            factor = mass / metric;
+            inverse = metric / mass;
+        }
+    } else if (kind == 2 && mapped) {
+        float metric = msf[q];
+        factor = mass / metric;
+        inverse = metric / mass;
+    } else {
+        factor = mass;
+        inverse = 1.0f / mass;
+    }
+    // Separate FP32 operations match the scalar CuPy round-trip launches.
+    float coupled = field[n] * factor;
+    field[n] = coupled * inverse;
+}
+'''
+
+
+def prepare_member_round_trip(state, fields):
+    """Bind WRF's in-place FORCE round trip without workspace or member loops."""
+    from woof.state_serialization_contract import carried_wrf_mu_halo
+    if not (state.cfg.specified or state.cfg.nested):
+        raise BatchStateUnsupported("strict nest FORCE round trip needs a specified or nested domain")
+    halo = carried_wrf_mu_halo(state)
+    halo_name = "scratch:wrf_exact_mu_halo" if halo is not None else "mup"
+    launches = []
+    for kind in fields:
+        if kind == "mu":
+            continue
+        full = kind in ("w", "ph")
+        metric = {"u": "msfu", "v": "msfv"}.get(kind, "msft")
+        names = (_ATTR.get(kind, kind), "mub2d", "mup", halo_name,
+                 "c1f" if full else "c1h", "c2f" if full else "c2h", metric)
+        arrays = tuple(state.storage.arrays[name] for name in names)
+        parameters = ("field", "mub", "mu", "halo", "c1", "c2", "msf")
+        pointers = tuple((parameter, array, state.storage.specs[name].ownership)
+                         for parameter, array, name in zip(parameters, arrays, names, strict=True))
+        shape = _shape(state, kind)
+        mode = {"ph": 1, "w": 2, "u": 3, "v": 4}.get(kind, 0)
+        args = (*arrays, *(np.int32(n) for n in
+                 (mode, state.has_msf, *shape, *state.storage.specs["mup"].shape)))
+        launches.append(_bind("nest", "member_nest_round_trip", state.members,
+                              prod(shape), args, pointers, source=_ROUND_TRIP_SOURCE))
+    return tuple(launches)
 
 
 def _scratch_name(endpoint, shape):
@@ -353,6 +436,8 @@ class PreparedMemberNestEdge:
         if array_module is None:
             import cupy as array_module
         self.xp = array_module
+        from woof.wrf_exact import ENABLED
+        self._wrf_exact = ENABLED
         self.plan = member_nest_memory_plan(parent, child, self.registrations, self.fields)
         self.storage = BatchStorage(self.plan, self.members, array_module=array_module, available_bytes=available_bytes)
         self.geometry = {}
@@ -364,6 +449,11 @@ class PreparedMemberNestEdge:
                 self.geometry[stagger][name] = target
         array_module.cuda.get_current_stream().synchronize()
         self.tables, self._forces, self._restrictions, self._smoothers = {}, [], {}, {}
+        from woof.wrf_exact import ENABLED as wrf_exact
+        self._round_trips = ()
+        if wrf_exact:
+            self._round_trips = (prepare_member_round_trip(child, self.fields)
+                                 + prepare_member_round_trip(parent, self.fields))
         self._parent_views, self._child_views = {}, {}
         width = bdy_width(child.cfg.spec_zone, child.cfg.relax_zone, child.cfg.spec_bdy_width)
         from woof.core.nest import NEST_FORCE_HALO_PARENT_CELLS
@@ -390,7 +480,8 @@ class PreparedMemberNestEdge:
                 spec_bdy_width=child.cfg.spec_bdy_width)
             self._forces.append((couple_parent, couple_child, interpolate))
             destination = getattr(parent, _ATTR.get(kind, kind))
-            source = cs if kind == "t" else getattr(child, _ATTR.get(kind, kind))
+            source = (cs if kind == "t" and not self._wrf_exact
+                      else getattr(child, _ATTR.get(kind, kind)))
             if kind == "mu":
                 destination = destination[:, None]
                 source = source[:, None]
@@ -544,6 +635,8 @@ class PreparedMemberNestEdge:
         for row in self._forces:
             for operation in row:
                 operation()
+        for operation in self._round_trips:
+            operation()
         for _, child in pairs:
             child.mark_force()
         self.force_count += 1
@@ -575,16 +668,18 @@ class PreparedMemberNestEdge:
         pairs, ticks = self._prepared_feedback
         if tuple((int(p.ticks), int(c.ticks)) for p, c in pairs) != ticks:
             raise RuntimeError("member feedback clocks changed after prepare")
+        from woof.wrf_exact import ENABLED as wrf_exact
         order = ("mu",) + tuple(kind for kind in self.fields if kind != "mu")
         for kind in order:
             reg = self.registrations[_STAGGER.get(kind, "m")]
-            if kind == "t":
+            if kind == "t" and not self._wrf_exact:
                 raw = self._child_views[kind]
                 self.xp.copyto(raw, self.child.thp)
-                raw += _base_theta(self.child)
-                raw -= np.float32(300)
+                if not wrf_exact:
+                    raw += _base_theta(self.child)
+                    raw -= np.float32(300)
             self._restrictions[kind]()
-            if kind == "t":
+            if kind == "t" and not self._wrf_exact:
                 ilo, ihi, jlo, jhi = feedback_parent_bounds(reg, spec_zone=self.child.cfg.spec_zone)
                 if ihi >= ilo and jhi >= jlo:
                     window = self.parent.thp[..., jlo:jhi + 1, ilo:ihi + 1]
@@ -612,7 +707,8 @@ class PreparedMemberNestEdge:
         if not self._feedback_committed:
             raise RuntimeError("member feedback must commit before final diagnostics")
         self._require_bindings()
-        self._diagnose()
+        if not self._wrf_exact:
+            self._diagnose()
         self._prepared_feedback = None
         self._feedback_committed = False
 
@@ -631,6 +727,7 @@ class PreparedMemberNestEdge:
             "edge_allocations": list(self.plan.inventory(self.members)),
             "nest_source_sha256": sha256(nesting_source().encode()).hexdigest(),
             "nest_compile_options": list(_NEST_OPTIONS),
+            "round_trip_source_sha256": sha256(_ROUND_TRIP_SOURCE.encode()).hexdigest(),
             "numerical_member_loops": 0, "forecast_graph_admission_changed": False}
 
 

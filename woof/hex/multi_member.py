@@ -685,16 +685,21 @@ def admit_suite_group(members, gate) -> dict | None:
     model = model_for_card(profile, "global", levels, rollback_armed=bool(getattr(first, "stop_on_refusal", False)))
     headroom = getattr(first, "headroom_mib", None)
     margin = None if headroom is None else int(round(float(headroom) * door.MIB))
-    from .device_admission import route_required_free_bytes
+    from .device_admission import mpas_member_increment_bytes, route_required_free_bytes
 
     solo = route_required_free_bytes(cells, model, margin, route="mpas")
+    # Members after the first cost the measured increment, not a whole solo price (both-routes RED 2).
+    increment = mpas_member_increment_bytes(cells, levels)
+    if increment is not None:
+        increment = min(increment, solo)
     additional = tuple(door.stochastic_array_bytes(cells, getattr(member, "stochastic", None), levels=levels)
                        for _, member in members)
     total = int(card["total"])
     return admit_co_tenancy(mesh_kind="point-cull" if getattr(first, "lbc_dir", None) else "global",
                             cells=cells, levels=levels, members=len(members), card_bytes=total,
                             free_bytes=total if gate is not None else int(card["free"]),
-                            solo_required_bytes=solo, member_additional_bytes=additional)
+                            solo_required_bytes=solo, member_additional_bytes=additional,
+                            member_increment_bytes=increment)
 
 
 def _suite_member_main(member, log_path) -> int:
@@ -757,7 +762,7 @@ def run_suite_members(arguments, door, root, scratch):
         for run_id, member in members:
             log = root / f"{run_id}.log"
             process = context.Process(target=_suite_member_process, args=(member, str(log),
-                                              "shared-card" if len(members) > 1 else "single"),
+                                              "shared-card" if len(members) > 1 else "compact"),
                                       name=f"hex-suite-member-{run_id}")
             process.start()
             processes.append((run_id, member, log, process))
@@ -816,6 +821,8 @@ def _run_members(arguments, door, root, scratch, admit_co_tenancy):
             solo_required_bytes=door.required_free_bytes(first.cells, model=first.model,
                                                           margin_bytes=first.headroom_bytes),
             member_additional_bytes=tuple(door.stochastic_array_bytes(request.cells, request.stochastic, levels=levels)
+                                          + (door.tc_workspace_bytes(request, levels=levels)
+                                             if getattr(request, "tc_climate", None) is not None else 0)
                                           for _, request in requests))
         architecture = door.admit_architecture()
         binding, driver = door._load_drivers(first.repo)

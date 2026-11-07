@@ -64,6 +64,7 @@
 //! Pack paths resolve relative to the manifest. Quantity and valid-time metadata
 //! select the observed panel, which uses the forecasts' own colour ladder.
 
+use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -87,7 +88,7 @@ use rw_wrfbatch::annotate::MapOverlays;
 use rw_wrfbatch::coverage::{self, CoverageDraw, NO_COVERAGE_LEGEND};
 use rw_wrfbatch::station_overlay::{StationDot, scalar_dots, append_error_key};
 use rw_wrfbatch::verification_io::{GridData, RadarSpec, load_radar, load_station_observations};
-use rw_wrfbatch::wrf_process::{WrfProcessMessage, WrfProcessOptions, spawn_process_paths};
+use rw_wrfbatch::wrf_process::{WrfProcessMessage, WrfProcessOptions, spawn_process_paths, store_name_for_selector};
 use sha2::{Digest, Sha256};
 
 /// Embed the build revision for release artifact verification.
@@ -228,6 +229,7 @@ enum RunPlane {
 /// Which of the reference's own messages make its plane.
 #[derive(Clone, Copy)]
 enum ReferencePlane {
+    ModelOnly,
     Selector(FieldSelector),
     /// Speed from the two published components.
     Speed(FieldSelector, FieldSelector),
@@ -364,6 +366,14 @@ fn comparison_qpf_1h_scale() -> rustwx_render::DiscreteColorScale {
     )
 }
 
+fn comparison_low_level_w_scale() -> rustwx_render::DiscreteColorScale {
+    rustwx_render::weather::palette_scale(
+        rustwx_render::WeatherPalette::Advection,
+        vec![-3.0, -2.0, -1.0, -0.5, -0.25, -0.1, 0.1, 0.25, 0.5, 1.0, 2.0, 3.0],
+        rustwx_render::ExtendMode::Both, None,
+    )
+}
+
 fn product_specs() -> Vec<ProductSpec> {
     let refc = FieldSelector::entire_atmosphere(CanonicalField::CompositeReflectivity);
     let t2m = FieldSelector::height_agl(CanonicalField::Temperature, 2);
@@ -374,6 +384,24 @@ fn product_specs() -> Vec<ProductSpec> {
     let smoke_sfc = FieldSelector::height_agl(CanonicalField::SmokeMassDensity, 8);
     let smoke_column = FieldSelector::entire_atmosphere(CanonicalField::ColumnIntegratedSmoke);
     vec![
+        ProductSpec {
+            name: "tke_lowest", slug: "tke_lowest", title: "TKE at lowest mass level",
+            station_quantity: None, observation_quantity: None,
+            run: RunPlane::Named { raw: "tke_lowest", variable: "tke_lowest" },
+            reference: ReferencePlane::ModelOnly,
+            reference_message: "TKE; model panels only", inventory_patterns: &[],
+            continuous: true, style_variable: None, ladder: None,
+            neutral_range: Some((0.0, 5.0)), sheet_scale: None,
+        },
+        ProductSpec {
+            name: "w1km", slug: "vertical_velocity_1km_agl", title: "Vertical velocity at 1 km AGL",
+            station_quantity: None, observation_quantity: None,
+            run: RunPlane::Selector(FieldSelector::height_agl(CanonicalField::GeometricVerticalVelocity, 1000)),
+            reference: ReferencePlane::ModelOnly,
+            reference_message: "W 1km; model panels only", inventory_patterns: &[],
+            continuous: true, style_variable: None, ladder: None,
+            neutral_range: Some((-3.0, 3.0)), sheet_scale: Some(comparison_low_level_w_scale),
+        },
         ProductSpec {
             name: "refc",
             station_quantity: None,
@@ -454,7 +482,7 @@ fn product_specs() -> Vec<ProductSpec> {
             reference_message: "ASNOW, surface", inventory_patterns: &["ASNOW:surface"],
             continuous: true, style_variable: None, ladder: None, neutral_range: None, sheet_scale: None },
         ProductSpec { name: "snow_depth", slug: "snow_depth_total", title: "Standing snow depth",
-            station_quantity: None, observation_quantity: Some("snow_depth"),
+            station_quantity: Some("snow_depth"), observation_quantity: Some("snow_depth"),
             run: RunPlane::Selector(FieldSelector::surface(CanonicalField::SnowDepth)),
             reference: ReferencePlane::Selector(FieldSelector::surface(CanonicalField::SnowDepth)),
             reference_message: "SNOD, surface", inventory_patterns: &["SNOD:surface"],
@@ -500,6 +528,17 @@ fn product_specs() -> Vec<ProductSpec> {
             }),
             neutral_range: None,
             sheet_scale: None,
+        },
+        ProductSpec {
+            name: "albedo", station_quantity: None, observation_quantity: None,
+            slug: "surface_albedo", title: "Surface broadband albedo",
+            run: RunPlane::Named { raw: "ALBEDO", variable: "wrf_albedo" },
+            reference: ReferencePlane::Raw(RawKey { discipline: 0, category: 19, number: 1,
+                level_type: 1, level_value: 0.0, second_type: 255, second_value: 0.0,
+                stat: None, units: "1", factor: 0.01, offset: 0.0 }),
+            reference_message: "ALBDO, surface", inventory_patterns: &["ALBDO:surface"],
+            continuous: true, style_variable: None, ladder: None,
+            neutral_range: Some((0.0, 1.0)), sheet_scale: None,
         },
         ProductSpec {
             name: "swdown",
@@ -1812,6 +1851,7 @@ fn reference_field(
         values: field.values,
     };
     match plane {
+        ReferencePlane::ModelOnly => Ok(Err("this quantity requires a model history panel".into())),
         ReferencePlane::Raw(key) => {
             return Ok(match raw_field(grib, &key, lead)? {
                 Some(field) => Ok(field),
@@ -3525,12 +3565,17 @@ fn run(mut args: Args) -> Result<(), String> {
         .parse()
         .map_err(|error| format!("store model slug {:?}: {error}", summary.model))?;
 
-    let mut rendered = 0usize;
-    let mut skipped = 0usize;
-    let mut failed = 0usize;
-    let mut grid_match: Option<(usize, usize, GridMatch)> = None;
-
-    for frame in frames.iter().filter(|frame| frame.compared) {
+    // Each frame owns its fields and matching cache. Workers share only the
+    // immutable import and product plan; PNG bytes do not depend on scheduling.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(rayon::current_num_threads().min(8))
+        .build().map_err(|error| format!("comparison workers: {error}"))?;
+    let counts: Result<Vec<(usize, usize, usize)>, String> = pool.install(||
+        frames.par_iter().filter(|frame| frame.compared).map(|frame| {
+        let mut rendered = 0usize;
+        let mut skipped = 0usize;
+        let mut failed = 0usize;
+        let mut grid_match: Option<(usize, usize, GridMatch)> = None;
         let frame_label = frame.file.display().to_string();
         let valid = utc(frame.valid_unix)?;
         // The cycle is the run's own start unless the caller names another
@@ -3564,7 +3609,7 @@ fn run(mut args: Args) -> Result<(), String> {
                 valid.to_rfc3339(),
                 cycle.to_rfc3339()
             );
-            continue;
+            return Ok((rendered, skipped, failed));
         }
         let lead = u16::try_from(if has_forecast {
             lead_seconds / 3_600
@@ -3603,7 +3648,7 @@ fn run(mut args: Args) -> Result<(), String> {
                  and this frame is its f{lead:02}. {offer}",
                 reference.label
             );
-            continue;
+            return Ok((rendered, skipped, failed));
         }
         let reference_file = if single_forecast {
             Some(
@@ -3614,7 +3659,7 @@ fn run(mut args: Args) -> Result<(), String> {
                     Err(message) => {
                         failed += specs.len();
                         eprintln!("FAILED\t*\t{frame_label}\t{message}");
-                        continue;
+                        return Ok((rendered, skipped, failed));
                     }
                 },
             )
@@ -3887,7 +3932,10 @@ fn run(mut args: Args) -> Result<(), String> {
                 }
             }
         }
-    }
+        Ok((rendered, skipped, failed))
+    }).collect());
+    let (rendered, skipped, failed) = counts?.into_iter()
+        .fold((0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
 
     println!("FINISHED rendered={rendered} skipped={skipped} failed={failed}");
     if rendered == 0 || failed > 0 {
@@ -3940,7 +3988,11 @@ fn import_options(specs: &[ProductSpec]) -> WrfProcessOptions {
         chart_selectors,
         named_products_only: false,
         snow_since: std::env::var("GPUWM_SNOW_SINCE").ok().filter(|s| !s.trim().is_empty()),
-        required_fields: None,
+        required_fields: Some(specs.iter().flat_map(|spec| match spec.run {
+            RunPlane::Selector(selector) | RunPlane::HourlyAccumulation(selector) => vec![store_name_for_selector(selector)],
+            RunPlane::SelectorSpeed(u, v) => vec![store_name_for_selector(u), store_name_for_selector(v)],
+            RunPlane::Named { variable, .. } => vec![variable.to_string()],
+        }).collect()),
     };
     if std::env::var_os("RW_COMPARE_FULL").is_some() {
         options.diagnostics = true;
@@ -4085,6 +4137,17 @@ mod tests {
             assert_eq!(style.display_units, "10^-5 s^-1");
             assert_eq!(product_difference_step(&spec, &style.display_units), Some(2.0), "{}", spec.name);
         }
+    }
+
+    #[test]
+    fn temperature_comparison_imports_only_its_plane_and_terrain() {
+        let specs: Vec<_> = product_specs().into_iter().filter(|spec| spec.name == "t2m").collect();
+        assert_eq!(specs.len(), 1);
+        let plan = import_options(&specs).planned_store_fields();
+        let RunPlane::Selector(selector) = specs[0].run else { panic!("temperature selector") };
+        assert_eq!(plan.len(), 2, "{plan:?}");
+        assert!(plan.contains(&store_name_for_selector(selector)));
+        assert!(plan.contains(&"orography".to_string()));
     }
 
     #[test]
@@ -4611,7 +4674,6 @@ mod tests {
         for spec in &specs {
             assert!(names.insert(spec.name), "{} twice", spec.name);
             assert!(slugs.insert(spec.slug), "{} twice", spec.slug);
-            assert!(!spec.inventory_patterns.is_empty(), "{}", spec.name);
             assert!(!spec.reference_message.is_empty(), "{}", spec.name);
             assert!(
                 spec.reference_message.len() <= 24,
@@ -4620,6 +4682,9 @@ mod tests {
                 spec.reference_message
             );
             let wanted = match spec.reference {
+                // Model-only diagnostics have no corresponding GRIB message.
+                // Their inventory must stay empty rather than claim a reference.
+                ReferencePlane::ModelOnly => 0,
                 ReferencePlane::Speed(..) | ReferencePlane::RawSpeed(..) => 2,
                 _ => 1,
             };

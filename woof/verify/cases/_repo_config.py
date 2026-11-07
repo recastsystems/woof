@@ -113,7 +113,7 @@ def missing_config_message(name: str, *, flag: str = "--config") -> str:
         lines += [
             "This case is the module half of a case whose other half is a "
             "TOML under the repository's top-level `configs/` directory.  "
-            "woof 2.5.0 and later ship that directory beside the package, "
+            "gpuwm 2.5.0 and later ship that directory beside the package, "
             "and this install has no copy of it -- so it is either older "
             "than 2.5.0, where `configs/` was in no wheel and no sdist at "
             "all, or it is incomplete.",

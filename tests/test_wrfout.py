@@ -1274,8 +1274,9 @@ def test_per_domain_writer_builds_static_metadata_once(
         # the soil axis is resolved from the SCHEME (config.soil_layer_count),
         # so a fake that declares a layer count without declaring whose it is
         # can no longer be asked for its geometry.
-        run=SimpleNamespace(nx=2, ny=2, nz=1, dx=1.0, dy=1.0,
-                            sf_surface_physics=0, num_soil_layers=4))
+        run=__import__("woof.config", fromlist=["RunConfig"]).RunConfig(
+            nx=2, ny=2, nz=1, dx=1.0, dy=1.0, ztop=10000.,
+            dt=30., run_seconds=0., sf_surface_physics=0, num_soil_layers=4))
     grid = object()
     static_fields = {"HGT_M": np.zeros((2, 2), dtype=np.float32)}
     case = SimpleNamespace(

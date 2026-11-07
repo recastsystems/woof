@@ -1,7 +1,7 @@
 // Shared command contracts, used by the implementation and its launcher.
 pub const ENSBATCH_STATIC: &str = "gpuwm-ensemble-diagnostic-reduce.v1\tf32-words\tf64-two-pass\tmember-order\tsha256\tmember-weights-v1";
 pub const COMPARE_STATIC: &str = "gpuwm.reference-input.v1";
-pub const ENSBATCH: &str = "gpuwm-rw-ensbatch-products-v1\tmean\tspread\tprob\tpmm\tpaintball\t\
+pub const ENSBATCH: &str = "gpuwm-rw-ensbatch-products-v1\tmean\tspread\tprob\tpmm\tpaintball\tmax\t\
 gpuwm-rw-ensbatch-fields-v1\tFIELD\tname\ttitle\tunits\tdefault_threshold\tunit_slug\t\
 gpuwm-rw-ensbatch-events-v1\tRENDERED\tSKIPPED\tFAILED\t\
 gpuwm-rw-ensbatch-vocabulary-v1\tMEMBERS\tCOVERAGE\tTIES";

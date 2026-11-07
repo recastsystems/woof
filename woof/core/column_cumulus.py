@@ -33,11 +33,16 @@ persistent rate so the shared driver advances precipitation on that clock.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from types import MappingProxyType
+from typing import Mapping
 
 import numpy as np
 
-from woof.core.state import DTYPE
+# numpy.float32, which cupy.float32 is; woof.core.state would import CuPy
+# into the CPU memory accounting (preflight.physics_array_shapes).
+DTYPE = np.float32
+from woof.core import column_cumulus_r8 as _r8
 
 #: Per-column float table, in the kernel's column order.
 SC_FIELDS = ("xland", "hpbl", "hfx", "qfx", "dx", "dt", "pgcon")
@@ -91,6 +96,7 @@ class ColumnCumulusScheme:
 
 
 COLUMN_CUMULUS_SCHEMES = MappingProxyType({
+    **_r8.COLUMN_CUMULUS_SCHEMES,
     96: ColumnCumulusScheme(
         cu_physics=96, name="New SAS (YSU) with NSCV shallow convection",
         kernel_module="nsas", entry="nsas_column", workspace_slots=50,
@@ -116,6 +122,8 @@ def workspace_bytes(cu_physics: int, nz: int, ncol: int,
                     multiprocessor_count: int) -> int:
     """Device bytes the launcher allocates for one call (preflight pricing)."""
     scheme = COLUMN_CUMULUS_SCHEMES[int(cu_physics)]
+    if isinstance(scheme, _r8.ColumnCumulusScheme):
+        return _r8.workspace_bytes(scheme, nz, ncol)
     tile = tile_columns(ncol, multiprocessor_count)
     return 4 * workspace_floats(scheme, nz, tile)
 
@@ -173,9 +181,20 @@ class ColumnCumulus:
     nothing but the driver back-reference.
     """
 
+    def __new__(cls, cu_physics):
+        if int(cu_physics) in _r8.COLUMN_CUMULUS_SCHEMES:
+            return _r8.ColumnCumulus(cu_physics)
+        return super().__new__(cls)
+
     def __init__(self, cu_physics: int):
         self.scheme = COLUMN_CUMULUS_SCHEMES[int(cu_physics)]
         self._driver = None
+        self.last_htop = None
+        self.last_hbot = None
+
+    @classmethod
+    def for_scheme(cls, cu_physics: int):
+        return RegistryColumnCumulus.for_scheme(cu_physics)
 
     def bind_driver(self, driver) -> None:
         """Optional driver hook: PBL height and the cumulus cadence."""
@@ -254,8 +273,474 @@ class ColumnCumulus:
             rthcuten=grid(out["rthcuten"]), rqvcuten=grid(out["rqvcuten"]),
             rqccuten=rqc, rqicuten=rqi,
             rucuten=grid(out["rucuten"]), rvcuten=grid(out["rvcuten"]),
-            pratec=cp.ascontiguousarray(pratec), persistent_pratec=True)
+            pratec=cp.ascontiguousarray(pratec), persistent_pratec=True,
+            # CU_NSAS assigns both native bounds (module_cu_nsas.F:263-264).
+            cloud_base=(sfc[SURFACE_OUTPUTS.index('hbot')].reshape(ny, nx)
+                        if 99 in (cfg.ra_lw_physics, cfg.ra_sw_physics) else None),
+            cloud_top=(sfc[SURFACE_OUTPUTS.index('htop')].reshape(ny, nx)
+                       if 99 in (cfg.ra_lw_physics, cfg.ra_sw_physics) else None))
+
+
+# Registry-described kernels have a distinct argument contract from NSAS.
+
+#: Threads per block for every column kernel on this route; the workspace
+#: is interleaved per tile column, so any block size is admissible and this
+#: one does not change the arithmetic.
+_DEFAULT_BLOCK = 128
+
+#: Blocks per SM a tile is sized for (the gf.cu tile idea: the workspace is
+#: charged per column IN FLIGHT, never per column on the grid).
+_TILE_BLOCKS_PER_SM = 8
+
+
+@dataclass(frozen=True)
+class ColumnKernelSpec:
+    """One ``consumers.column_kernel`` row, parsed and checked."""
+
+    cu_physics: int
+    module: str
+    entry: str
+    workspace_slots: int
+    block: int
+    tables: Mapping | None
+    level_inputs: tuple[tuple[str, str], ...]
+    interface_inputs: tuple[tuple[str, str], ...]
+    column_inputs: tuple[tuple[str, str], ...]
+    carried: tuple[tuple[str, float], ...]
+    level_outputs: tuple[str, ...]
+    column_outputs: tuple[str, ...]
+    int_column_outputs: tuple[str, ...]
+    result: Mapping[str, str]
+    vertical_minimum: int
+    identity: str
+    persist_outputs: tuple[str, ...]
+    feedback: Mapping | None
+
+    @classmethod
+    def from_row(cls, cu_physics: int, row: Mapping) -> "ColumnKernelSpec":
+        def pairs(key):
+            return tuple((str(a), str(b)) for a, b in row.get(key, ()))
+
+        tables = row.get("tables")
+        spec = cls(
+            cu_physics=int(cu_physics),
+            module=str(row["module"]),
+            entry=str(row["entry"]),
+            workspace_slots=int(row["workspace_slots"]),
+            block=int(row.get("block", _DEFAULT_BLOCK)),
+            tables=dict(tables) if tables else None,
+            level_inputs=pairs("level_inputs"),
+            interface_inputs=pairs("interface_inputs"),
+            column_inputs=pairs("column_inputs"),
+            carried=tuple((str(c["field"]), float(c["cold_start"]))
+                          for c in row.get("carried", ())),
+            level_outputs=tuple(row["level_outputs"]),
+            column_outputs=tuple(row["column_outputs"]),
+            int_column_outputs=tuple(row.get("int_column_outputs", ())),
+            result=dict(row["result"]),
+            vertical_minimum=int(row.get("vertical_minimum", 1)),
+            identity=str(row["identity"]),
+            persist_outputs=tuple(row.get("persist_outputs", ())),
+            feedback=dict(row["feedback"]) if row.get("feedback") else None,
+        )
+        outputs = set(spec.level_outputs) | set(spec.column_outputs)
+        missing = [name for name in spec.result.values() if name not in outputs]
+        if missing:
+            raise ValueError(
+                f"column_kernel row for cu_physics={cu_physics} maps result "
+                f"fields to outputs the kernel does not write: {missing}")
+        for required in ("rthcuten", "rqvcuten", "rainc"):
+            if required not in spec.result:
+                raise ValueError(
+                    f"column_kernel row for cu_physics={cu_physics} names no "
+                    f"{required!r} result: the driver couples rthcuten and "
+                    "rqvcuten and accumulates rainc on every due call")
+        return spec
+
+
+def column_kernel_spec(cu_physics: int) -> ColumnKernelSpec | None:
+    """The registry's column-kernel row for ``cu_physics``, or ``None``."""
+    from woof.physics_registry import consumer_rows_by_selector
+
+    row = consumer_rows_by_selector("cumulus", "column_kernel").get(int(cu_physics))
+    if not row:
+        return None
+    return ColumnKernelSpec.from_row(int(cu_physics), row)
+
+
+def column_kernel_selectors() -> frozenset[int]:
+    """Every ``cu_physics`` value the registry admits on this route."""
+    from woof.physics_registry import consumer_rows_by_selector
+
+    return frozenset(int(value) for value, row in
+                     consumer_rows_by_selector("cumulus", "column_kernel").items()
+                     if row)
+
+
+# ---------------------------------------------------------------- tables
+_TABLE_CACHE: dict[tuple[int, str], object] = {}
+
+
+#: share/module_model_constants.F values a table entry point may take, by
+#: their WRF names, as the float32 words WRF's PARAMETERs fold to
+#: (cp = 7.*r_d/2. is exact in float32).
+WRF_MODEL_CONSTANTS = {
+    "r_d": float(DTYPE(287.0)),
+    "cp": float(DTYPE(DTYPE(7.0) * DTYPE(287.0) / DTYPE(2.0))),
+}
+
+
+def _table_constant(name: str) -> float:
+    try:
+        return WRF_MODEL_CONSTANTS[name]
+    except KeyError:
+        raise ValueError(
+            f"column_kernel tables row names model constant {name!r}, which "
+            f"this route does not publish (known: {sorted(WRF_MODEL_CONSTANTS)})"
+        ) from None
+
+
+def table_words_sha256(words: np.ndarray) -> str:
+    return hashlib.sha256(
+        np.ascontiguousarray(words, dtype="<f4").tobytes()).hexdigest()
+
+
+def column_tables(spec: ColumnKernelSpec, *, verify: bool = True):
+    """Build (once per device) and return the scheme's lookup tables.
+
+    The table kernel is the transcribed table routine itself (for BMJ:
+    BMJINIT and SPLINE), run on the device that will read the tables, in
+    the same arithmetic as the column kernel.  The words are hashed against
+    the row's pin before any column reads them.  The breakage this refusal
+    prevents: a table off by one word moves the moist adiabat and the
+    saturation point of every convecting column, silently, at every call.
+    """
+    import cupy as cp
+    from woof.core.kernels import load_module
+
+    if not spec.tables:
+        return cp.zeros(1, dtype=DTYPE)
+    key = (cp.cuda.Device().id, spec.module)
+    cached = _TABLE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    t = spec.tables
+    words = int(t["floats"])
+    grid, block = int(t["grid"]), int(t["block"])
+    tab = cp.zeros(words, dtype=DTYPE)
+    scratch = cp.zeros(grid * block * int(t["scratch_floats_per_thread"]),
+                       dtype=DTYPE)
+    fn = load_module(spec.module).get_function(str(t["entry"]))
+    consts = tuple(DTYPE(_table_constant(name)) for name in t["constants"])
+    fn((grid,), (block,), (tab, scratch) + consts)
+    del scratch
+    if verify:
+        digest = table_words_sha256(cp.asnumpy(tab))
+        if digest != t["sha256"]:
+            raise RuntimeError(
+                f"{spec.module} lookup tables hash to {digest}, not the "
+                f"pinned {t['sha256']} (registry consumers.column_kernel."
+                "tables.sha256): every convecting column would read a "
+                "different moist adiabat than the one graded against WRF. "
+                "Refusing to run the scheme on them.")
+    _TABLE_CACHE[key] = tab
+    return tab
+
+
+# ---------------------------------------------------------------- launch
+def registry_tile_columns(fn, ncol: int, block: int) -> int:
+    import cupy as cp
+
+    dev = cp.cuda.Device()
+    sms = dev.attributes["MultiProcessorCount"]
+    per_sm = _TILE_BLOCKS_PER_SM
+    try:
+        from cupy_backends.cuda.api import driver
+
+        resident = driver.occupancyMaxActiveBlocksPerMultiprocessor(
+            fn.kernel.ptr, block, 0)
+        per_sm = max(1, min(per_sm, int(resident)))
+    except Exception:                              # noqa: BLE001
+        pass
+    return int(min(int(ncol), sms * per_sm * block))
+
+
+def run_columns(spec: ColumnKernelSpec, *, level, interface, column, carried,
+                dt: float, stepcu: int = 1, rad_feedback: bool = False,
+                tables=None, ws_tile: int | None = None):
+    """Launch the column kernel over level-major ``(nz, ncol)`` inputs.
+
+    ``carried`` arrays are updated IN PLACE (they are the scheme's state).
+    Returns ``{output name: array}``, level outputs ``(nz, ncol)``, column
+    outputs ``(ncol,)``.
+    """
+    import cupy as cp
+    from woof.core.kernels import load_module
+
+    first = level[spec.level_inputs[0][0]]
+    nz, ncol = (int(v) for v in first.shape)
+    if nz < spec.vertical_minimum:
+        raise ValueError(
+            f"{spec.module} needs at least {spec.vertical_minimum} levels, "
+            f"got {nz}")
+
+    def dev(a, shape, name):
+        arr = cp.ascontiguousarray(cp.asarray(a, dtype=DTYPE))
+        if arr.shape != shape:
+            raise ValueError(f"{spec.module} input {name}: shape {arr.shape}, "
+                             f"expected {shape}")
+        return arr
+
+    args = []
+    for name, _ in spec.level_inputs:
+        args.append(dev(level[name], (nz, ncol), name))
+    for name, _ in spec.interface_inputs:
+        args.append(dev(interface[name], (nz + 1, ncol), name))
+    for name, _ in spec.column_inputs:
+        args.append(dev(column[name], (ncol,), name))
+    for name, _ in spec.carried:
+        arr = carried[name]
+        if (not isinstance(arr, cp.ndarray) or arr.dtype != DTYPE
+                or arr.shape != (ncol,) or not arr.flags.c_contiguous):
+            raise ValueError(
+                f"{spec.module} carried field {name} must be a contiguous "
+                f"float32 device array of shape {(ncol,)} (updated in place)")
+        args.append(arr)
+    if tables is None:
+        tables = column_tables(spec)
+    out = {}
+    for name in spec.level_outputs:
+        out[name] = cp.empty((nz, ncol), dtype=DTYPE)
+    for name in spec.column_outputs:
+        out[name] = cp.empty((ncol,), dtype=DTYPE)
+    for name in spec.int_column_outputs:
+        out[name] = cp.empty((ncol,), dtype=cp.int32)
+    fn = load_module(spec.module).get_function(spec.entry)
+    block = spec.block
+    tile = ws_tile or registry_tile_columns(fn, ncol, block)
+    ws = cp.empty(spec.workspace_slots * nz * tile, dtype=DTYPE)
+    tail = ([out[n] for n in spec.level_outputs]
+            + [out[n] for n in spec.column_outputs]
+            + [out[n] for n in spec.int_column_outputs])
+    for col0 in range(0, ncol, tile):
+        width = min(tile, ncol - col0)
+        fn(((width + block - 1) // block,), (block,),
+           tuple(args) + (tables, ws) + tuple(tail)
+           + (DTYPE(dt), np.int32(stepcu), np.int32(1 if rad_feedback else 0),
+              np.int32(col0), np.int32(tile), np.int32(ncol), np.int32(nz)))
+    del ws
+    return out
+
+
+# ---------------------------------------------------------- engine callable
+class RegistryColumnCumulus:
+    """The engine callable for every ``consumers.column_kernel`` scheme.
+
+    Stateless apart from the bound driver: the carried per-column state
+    lives in the driver's ``fields`` (so the restart writer serialises it
+    with every other field), the tables in a per-device cache.
+    """
+
+    def __init__(self, spec: ColumnKernelSpec):
+        self.spec = spec
+        self._driver = None
+        # BMJINIT and its hash check belong to initialization. Forecast
+        # calls reuse device tables and do not copy them to the host.
+        column_tables(spec)
+
+    @classmethod
+    def for_scheme(cls, cu_physics: int) -> "RegistryColumnCumulus":
+        spec = column_kernel_spec(cu_physics)
+        if spec is None:
+            raise ValueError(
+                f"cu_physics={cu_physics} publishes no consumers.column_kernel "
+                "row in woof/physics_registry_v2.json")
+        return cls(spec)
+
+    def restart_identity(self):
+        return {"column_kernel": self.spec.identity,
+                "cu_physics": self.spec.cu_physics}
+
+    def bind_driver(self, driver) -> None:
+        self._driver = driver
+
+    def release(self) -> int:
+        self._driver = None
+        return 0
+
+    def __call__(self, *, atmosphere, fields, state, cfg, **_ignored):
+        import cupy as cp
+        from woof.core.kf import _model_clock_dt
+        from woof.core.physics import CumulusResult
+
+        spec = self.spec
+        nz, ny, nx = state.p.shape
+        ncol = ny * nx
+
+        def lev(key):
+            return cp.asarray(atmosphere[key], dtype=DTYPE).reshape(nz, ncol)
+
+        level = {name: lev(key) for name, key in spec.level_inputs}
+        interface = {name: cp.asarray(atmosphere[key], dtype=DTYPE)
+                     .reshape(nz + 1, ncol)
+                     for name, key in spec.interface_inputs}
+        column = {name: cp.asarray(fields[key], dtype=DTYPE).reshape(ncol)
+                  for name, key in spec.column_inputs}
+        carried = {}
+        for name, _cold in spec.carried:
+            arr = fields[name]
+            if arr.shape != (ny, nx) or not arr.flags.c_contiguous:
+                raise ValueError(f"fields[{name!r}] must be a contiguous "
+                                 f"[ny, nx]={ny, nx} array")
+            carried[name] = arr.reshape(ncol)          # a view: in place
+        stepcu = int(getattr(self._driver, "stepcu", 1) or 1)
+        dt = DTYPE(_model_clock_dt(cfg))
+        out = run_columns(
+            spec, level=level, interface=interface, column=column,
+            carried=carried, dt=float(dt), stepcu=stepcu,
+            rad_feedback=bool(spec.feedback and
+                              getattr(cfg, spec.feedback["parameter"], False)))
+        for name in spec.persist_outputs:
+            fields[name][...] = out[name].reshape(fields[name].shape)
+        # This buffer is accumulated by the existing advance_ppt clock on
+        # every step, including non-due steps. This route leaves the KF
+        # timer inactive, so its expiry mask never clears the held rates.
+        self._driver.cu_pratec[...] = out[spec.result["rainc"]].reshape(ny, nx)
+        self._driver.cu_raincv[...] = out["raincv"].reshape(ny, nx)
+
+        def grid3(name):
+            return cp.ascontiguousarray(out[name].reshape(nz, ny, nx))
+
+        return CumulusResult(
+            rthcuten=grid3(spec.result["rthcuten"]),
+            rqvcuten=grid3(spec.result["rqvcuten"]))
+
 
 
 __all__ = ["COLUMN_CUMULUS_SCHEMES", "ColumnCumulus", "ColumnCumulusScheme",
-           "launch_columns", "workspace_bytes", "wrf_sas_ncloud"]
+           "launch_columns", "workspace_bytes", "wrf_sas_ncloud",
+           "RegistryColumnCumulus", "ColumnKernelSpec", "column_kernel_spec",
+           "column_kernel_selectors", "column_tables", "run_columns",
+           "table_words_sha256"]
+
+
+def merge_column_cumulus_clouds(qc, qi, fraction, *, fields, cfg, columns):
+    """Merge carried convective clouds into temporary radiation copies."""
+    if int(getattr(cfg, 'shcu_physics', 0)) == 5:
+        import cupy as cp
+        qc = columns(fields['cw_rad']) + qc
+        if fraction is not None:
+            fraction = cp.maximum(columns(fields['cldfra_sh']), fraction)
+    spec = column_kernel_spec(int(getattr(cfg, "cu_physics", 0)))
+    row = None if spec is None else spec.feedback
+    if not row or not getattr(cfg, row["parameter"], False):
+        return qc, qi, fraction
+    import cupy as cp
+    from woof.core.kernels import load_module
+    arrays = [cp.ascontiguousarray(columns(fields[row[name]]), dtype=DTYPE)
+              for name in ("liquid", "ice", "fraction")]
+    if any(a.shape != qc.shape for a in arrays) or qi.shape != qc.shape:
+        raise ValueError("convective and radiation cloud fields must share shape")
+    qc, qi = cp.ascontiguousarray(qc).copy(), cp.ascontiguousarray(qi).copy()
+    if fraction is not None:
+        fraction = cp.ascontiguousarray(fraction).copy()
+        if fraction.shape != qc.shape:
+            raise ValueError("radiation cloud fraction must share condensate shape")
+    load_module(spec.module).get_function(row["entry"])(
+        ((qc.size + 127) // 128,), (128,),
+        (qc, qi, np.uint64(0) if fraction is None else fraction,
+         *arrays, np.int64(qc.size)))
+    return qc, qi, fraction
+
+
+def _phase_presence(state):
+    return tuple(getattr(state, name, None) is not None for name in ("qr", "qi", "qs"))
+
+
+class MskfColumnCumulus:
+    """MSKF registry contract, independent of the New SAS kernel ABI."""
+
+    def __init__(self, selector: int = 11, *, scheme: int | None = None,
+                 kf_edrates: bool = False):
+        # woof.core.physics builds every KF_FAMILY_CU_SCHEMES adapter (1, 11,
+        # 99) as factory(scheme=..., kf_edrates=...); without this signature
+        # cu_physics=11 died at physics init with a TypeError (0 steps).
+        # kf_edrates is read from the run config at each call (step below).
+        import importlib
+        from woof.physics_registry import physics_registry
+        if scheme is not None:
+            selector = int(scheme)
+        self.kf_edrates = bool(kf_edrates)
+        rows=physics_registry()['components']['cumulus']['options']
+        option=next(v for v in rows.values() if v['selectors']['cu_physics']==selector)
+        self.contract=option['extensions']['column_contract']
+        self.module=importlib.import_module(self.contract['module'])
+        self.w0avg=None
+        self._history_state=None
+        self._history_time=None
+
+    def ensure_trigger_history(self, state):
+        import cupy as cp
+        shape=(int(state.w.shape[0])-1,)+tuple(state.w.shape[1:])
+        if self.w0avg is None or self._history_state is not state or self.w0avg.shape!=shape:
+            self.w0avg=cp.zeros(shape,cp.float32)
+            for name in self.contract['outputs_3d']:
+                setattr(self,name,cp.zeros(shape,cp.float32))
+            for name in self.contract['outputs_2d']:
+                setattr(self,name,cp.zeros(shape[1:],cp.float32))
+            self.cu_act=cp.zeros(shape[1:],cp.int32)
+            self._history_state=state
+            self._history_time=None
+        return self.w0avg
+
+    def history_fields(self):
+        """Publish the actual module carriers without allocating copies."""
+        if self.w0avg is None:
+            return {}
+        from woof.io.wrf_output_schema import MSKF_OUTPUT_FIELDS
+        return {schema.netcdf_name: getattr(self, key)
+                for key, schema in MSKF_OUTPUT_FIELDS.items()}
+
+    @property
+    def radiation_feedback(self):
+        if self.w0avg is None:
+            return None
+        return {name:getattr(self,name) for name in self.contract['radiation_feedback']}
+
+    def update_trigger_history(self, *, state, cfg):
+        from woof.core.physics import _model_clock_dt
+        self.ensure_trigger_history(state)
+        dt=_model_clock_dt(cfg)
+        steps=max(int(np.floor(cfg.cudt_minutes*60.0/dt+0.5)),1)
+        self.module.update_w0avg(self.w0avg,state.w,dt=dt,cudt_minutes=cfg.cudt_minutes,
+                                stepcu=steps,adaptive=bool(cfg.use_adaptive_time_step))
+        self._history_time=float(state.elapsed_seconds)
+
+    def __call__(self, *, atmosphere, fields, state, cfg):
+        import cupy as cp
+        from woof.core.physics import CumulusResult, _model_clock_dt
+        if self._history_state is not state or self._history_time!=float(state.elapsed_seconds):
+            self.update_trigger_history(state=state,cfg=cfg)
+        inputs={key:cp.ascontiguousarray(atmosphere[source],dtype=cp.float32)
+                for key,source in self.contract['atmosphere_inputs'].items()}
+        inputs.update({key:fields[source] for key,source in self.contract['surface_inputs'].items()})
+        inputs['w0avg']=self.w0avg
+        outputs={name:getattr(self,name) for name in self.contract['outputs_3d']+self.contract['outputs_2d']}
+        outputs['cu_act']=self.cu_act
+        outputs['nca'][...]=state.physics.cu_nca
+        phase=getattr(self.module,self.contract['phase_factory'])(cfg.mp_physics in self.contract['warm_rain_selectors'],
+                                   *_phase_presence(state))
+        if cfg.aercu_opt>0:
+            from woof.core.cumulus_aerosol import update_monthly_aerosol
+            update_monthly_aerosol(state,cfg,inputs['p'])
+        aerosol=getattr(state,'aerocu',None) if cfg.aercu_opt>0 else None
+        self.module.raise_on_status(getattr(self.module,self.contract['launcher'])(
+            inputs,outputs,dx=cfg.dx,dt=_model_clock_dt(cfg),cudt_minutes=cfg.cudt_minutes,
+            phase=phase,aercu_opt=cfg.aercu_opt,aercu_fct=cfg.aercu_fct,
+            kf_edrates=cfg.kf_edrates,aerocu=aerosol))
+        mapping=self.contract['result_mapping']
+        values={name:outputs[source] for name,source in mapping.items()}
+        for result_name,species in self.contract['optional_tendencies'].items():
+            if getattr(state,species,None) is None:
+                values[result_name]=None
+        return CumulusResult(**values)

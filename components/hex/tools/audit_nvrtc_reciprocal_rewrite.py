@@ -18,8 +18,11 @@ architecture is required, because the rewrite happens in the compiler.
 from __future__ import annotations
 
 import argparse
+import ast
+from collections import Counter
 import datetime as _dt
 import hashlib
+from functools import lru_cache
 import json
 import re
 import struct
@@ -85,15 +88,34 @@ def _hex_from_f32(value: float) -> str:
 def compile_ptx(source: str, arch: str) -> str:
     """PTX for ``source`` at ``arch`` under the shipped option set."""
 
+    return _compile_ptx_cached(str(source), arch, tuple(getattr(source, "options", SHIPPED_OPTIONS)))
+
+
+@lru_cache(maxsize=1024)
+def _compile_ptx_cached(source, arch, options):
     from cupy.cuda import nvrtc
+    import cupy
+    include_dirs = [Path(cupy.__file__).parent / "_core/include"]
+    # CuPy's own bundled CCCL (cupy/_core/include/cupy/_cccl/{libcudacxx,thrust,cub}), which CuPy's compiler
+    # puts on the include path itself. THE BREAKAGE: on a pip-only CUDA install (no toolkit, so no
+    # cuda_path/include/cccl) every unit including cupy/complex.cuh failed with "cannot open source file
+    # thrust/detail/config/namespace.h" (hex 0.5.0 sealing pass, release box, seal-gpu-nvrtc-audit).
+    bundled = include_dirs[0] / "cupy/_cccl"
+    include_dirs.extend(bundled / name for name in ("libcudacxx", "thrust", "cub"))
+    cuda_path = cupy.cuda.get_cuda_path()
+    if cuda_path:
+        include_dirs.extend((Path(cuda_path) / "include", Path(cuda_path) / "include/cccl"))
+    options = (*options, *("-I" + str(path) for path in include_dirs if path.is_dir()))
 
     program = nvrtc.createProgram(source, "unit.cu", [], [])
     try:
         nvrtc.compileProgram(
             program,
-            [*SHIPPED_OPTIONS, f"--gpu-architecture=compute_{arch}"],
+            [*options, f"--gpu-architecture=compute_{arch}"],
         )
         image = nvrtc.getPTX(program)
+    except Exception as error:
+        raise RuntimeError(nvrtc.getProgramLog(program)) from error
     finally:
         nvrtc.destroyProgram(program)
     if isinstance(image, (bytes, bytearray)):
@@ -124,6 +146,25 @@ def rewrite_sites(source: str) -> dict[str, Any]:
             key = match.group(3).upper()
             divisors_below[key] = divisors_below.get(key, 0) + 1
 
+    def opcode_counts(lines, pattern):
+        counts = Counter()
+        entry = "<file scope>"
+        labels = []
+        for line in lines:
+            match = _FUNC.match(line)
+            if match:
+                entry = match.group(1)
+            labels.append(entry)
+            match = pattern.match(line)
+            if match:
+                counts[entry, match.group(3).upper()] += 1
+        return counts, labels
+    low_div, _ = opcode_counts(low_lines, _DIV_CONST)
+    high_div, labels = opcode_counts(high_lines, _DIV_CONST)
+    low_mul, _ = opcode_counts(low_lines, _MUL_CONST)
+    high_mul, _ = opcode_counts(high_lines, _MUL_CONST)
+    lost_divisions = low_div - high_div
+    added_multiplications = high_mul - low_mul
     sites: list[dict[str, Any]] = []
     for index, line in enumerate(high_lines):
         match = _MUL_CONST.match(line)
@@ -135,14 +176,17 @@ def rewrite_sites(source: str) -> dict[str, Any]:
             continue
         implied = np.float32(1.0) / np.float32(multiplier)
         implied_hex = _hex_from_f32(implied)
-        if implied_hex not in divisors_below:
+        entry = labels[index]
+        if not lost_divisions[entry, implied_hex] or not added_multiplications[entry, immediate]:
             continue
         # Only count it when the reciprocal round-trips: mul by 1/d where the
         # lower target divides by exactly d.
         if _hex_from_f32(np.float32(1.0) / implied) != immediate:
             continue
+        lost_divisions[entry, implied_hex] -= 1
+        added_multiplications[entry, immediate] -= 1
         sites.append({
-            "entry": _current_entry(high_lines, index),
+            "entry": entry,
             "divisor": float(implied),
             "divisor_bits": f"0x{implied_hex}",
             "reciprocal_bits": f"0x{immediate}",
@@ -172,7 +216,7 @@ def rewrite_sites(source: str) -> dict[str, Any]:
     }
 
 
-def translation_units() -> Iterator[tuple[str, str, str]]:
+def core_translation_units() -> Iterator[tuple[str, str, str]]:
     """Yield ``(module_key, python_anchor, source)`` for every unit."""
 
     import importlib
@@ -265,6 +309,132 @@ def translation_units() -> Iterator[tuple[str, str, str]]:
     )
 
 
+class CompilerSource(str):
+    """Source bytes with the production request's compiler options."""
+    def __new__(cls, source, options):
+        obj = str.__new__(cls, source)
+        obj.options = tuple(options)
+        return obj
+
+
+def translation_units() -> Iterator[tuple[str, str, str]]:
+    """Enumerate production declarations and the concrete compiler recipes.
+
+    Source contributors are authenticated by literal kernel entry definitions
+    in the assembled request. A contributor without a request remains uncovered.
+    """
+    import importlib
+    from woof.hex.cuda_backend.aot_build import inventory
+    from woof.hex.cuda_backend.aot import local_options
+    from woof.core import kernels
+    import cupy
+    header = Path(kernels.__file__).parent
+    units = list(core_translation_units())
+    for row in inventory(catalogs=True, compiler_family=13, numerics="strict"):
+        units.append((row["module_key"], "compiler-recipe::" + row["source_sha256"],
+                      CompilerSource(row["source"], (*local_options(row.get("options", ())), "-I" + str(header)))))
+    def module(name):
+        return importlib.import_module("hexcore." + name)
+    def add(name, source, options=("--std=c++17", "--fmad=false", "--ftz=false")):
+        units.append(("hexcore." + name, "src/hexcore/" + name.replace(".", "/") + ".py::production",
+                      CompilerSource(source, options)))
+    for name, attr in (("cuda_vertical_mixing_rrfs", "_SOURCE"),
+                       ("cuda_regional_rrfs", "_CUDA_SOURCE"), ("iau_v842", "_CUDA_SOURCE"),
+                       ("cuda_courant_fullstep_lts", "CUDA_COLUMN_TRANSPORT"),
+                       ("mpasdiag.cloud_v842", "CUDA_SOURCE"),
+                       ("mpasdiag.pv_v842", "CUDA_SOURCE"), ("mpasphys.precip_window_v842", "SOURCE"),
+                       ("mpasphys.rrfs.glue_plan", "_SOURCE")):
+        m = module(name);add(name, getattr(m, attr), getattr(m, "COMPILE_OPTIONS", getattr(m, "OPTIONS", SHIPPED_OPTIONS)))
+    for name, source in (("mixing_v842_les", module("mixing_v842_les")._cuda_source()),
+                         ("mpasphys.kain_fritsch_v842", module("mpasphys.kain_fritsch_v842").shared_math_source() + module("mpasphys.kain_fritsch_v842").CUDA_SOURCE),
+                         ("mpasphys.tiedtke_v842", module("mpasphys.tiedtke_v842").cuda_source()),
+                         ("mpasphys.oml_v842", (header / "glibc_trig_flt32.cuh").read_text() + module("mpasphys.oml_v842").CUDA_SOURCE),
+                         ("mpasphys.rrfs.myj", module("mpasphys.rrfs.myj").cuda_source(60)),
+                         ("mpasphys.rrfs.sf_mynn_rrfs", module("mpasphys.rrfs.sf_mynn_rrfs").cuda_source())):
+        add(name, source)
+    m = module("mpasdiag.soundings_v842");add("mpasdiag.soundings_v842", m.shared_device_math() + m.CUDA_SOURCE)
+    # Both compile through cp.RawKernel with no options of their own, so CuPy's route adds only
+    # its -ftz=true: the hourly-max UH layers (uh-layers fold) and the HIP admission probe (AMD
+    # fold), whose source is an inline literal in _require_hip and is read here from the file.
+    add("uh_layers", module("uh_layers")._SOURCE, ("-ftz=true",))
+    for source in inline_kernel_literals("woof/hex/cuda_backend/runtime.py"):
+        add("cuda_backend.runtime", source, ("-ftz=true",))
+    m = module("mpasphys.cam_rad_v842");add("mpasphys.cam_rad_v842", m.CUDA_SOURCE, (*m.COMPILE_OPTIONS, "-I" + str(header)))
+    m = module("mpasphys.wsm6_refl_start_v842");add("mpasphys.wsm6_refl_start_v842", m.source(m.device_math_header(), 60, numerics="strict"))
+    # Wave feedback (waves fold): wave_surface rewrites both MYNN surface-layer sources; each variant is the exact
+    # request its module compiles when a wave binding supplies the roughness.
+    numerics = importlib.import_module("woof.hex.numerics")
+    m = module("mpasphys.sf_mynn_v842");add("wave_surface", m._cuda_source(waves=True), numerics.options(m.CUDA_OPTIONS))
+    m = module("mpasphys.rrfs.sf_mynnsfc_v600");add("wave_surface", m.cuda_source(waves=True), numerics.options(
+        ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true")))
+    # These builders do no device work before constructing their compile request.
+    # Capture that request, then submit its exact source/options to NVRTC below.
+    from unittest.mock import patch
+    captured = []
+    class Request:
+        def __init__(self, code=None, name=None, *, options=(), **kwargs):
+            captured.append((code, options))
+        def get_function(self, name):
+            return self
+    builders = {
+        "cuda_backend.containers": [("_finite_word_kernel", (size,)) for size in (4, 8)],
+        "moving_balance_cuda": [("_kernel", (60,))],
+        "moving_vertical_cuda": [(name, ()) for name in ("_kernel", "_interface_kernel", "_layer_kernel", "_rate_kernels", "_profile_kernels")],
+        "moving_surface_cuda": [("_kernel", ())], "moving_math_cuda": [("kernels", ())],
+        "moving_advection_cuda": [("_kernel", (dtype, 8)) for dtype in ("float32", "float64")],
+        "moving_horizontal_cuda": [("_kernel", ())],
+        "moving_velocity_cuda": [("_kernel", (dtype,)) for dtype in ("float32", "float64")],
+        "moving_momentum_cuda": [("_kernels", ())],
+        "moving_saturation_cuda": [("_kernel", ()), ("_adjust_kernel", ())],
+        "moving_pool_projection_cuda": [("_kernel", ())],
+        "mpasphys.moving_rates_batch_v842": [("_pack_kernel", (size,)) for size in (4, 8)],
+        "mpasphys.ocean_pwp_v842": [("_kernel", ())],  # the PWP ocean mixed layer (PWP fold)
+    }
+    with patch("cupy.RawModule", Request), patch("cupy.RawKernel", Request):
+        for name, calls in builders.items():
+            for function, args in calls:
+                captured.clear()
+                build = getattr(module(name), function)
+                if hasattr(build, "cache_clear"):
+                    build.cache_clear()
+                build(*args)
+                for source, options in captured:
+                    add(name, source, options)
+    definitions = re.compile(r'extern\s+"C"\s+__global__\s+(?:__launch_bounds__\([^)]*\)\s*)?void\s+(\w+)')
+    contributors = {}
+    for relative in source_bearing_files():
+        names = set(definitions.findall((_REPO_SRC / relative).read_text()))
+        contributors[relative] = names
+    emitted = set()
+    for key, anchor, source in units:
+        digest = hashlib.sha256(source.encode()).hexdigest()
+        entries = set(definitions.findall(source))
+        for relative, names in contributors.items():
+            direct = anchor.split("::", 1)[0] == "src/" + relative
+            phased = (relative == "woof/hex/mpasphys/rrfs/nssl_phases.py" and
+                      "struct NsslPhaseState" in source and "nssl_phase_body<" in source)
+            if direct or phased or names & entries:
+                identity = (digest, relative)
+                if identity in emitted:
+                    continue
+                emitted.add(identity)
+                yield key, "src/" + relative + "::assembled", source
+
+
+def inline_kernel_literals(relative: str) -> list[str]:
+    """Kernel sources written as an inline string literal, with no module name to import.
+
+    Read from the file's syntax tree, so the module's own bytes stay as they are.
+    """
+    definition = re.compile(r'extern +"C" +__global__ +void +')
+    tree = ast.parse((_REPO_SRC / relative).read_text(encoding="utf-8"))
+    found = [node.value for node in ast.walk(tree)
+             if isinstance(node, ast.Constant) and isinstance(node.value, str)
+             and definition.search(node.value)]
+    assert found, f"{relative} carries no inline kernel literal"
+    return found
+
+
 def source_bearing_files() -> set[str]:
     """Every module under ``src`` that carries CUDA source text.
 
@@ -299,15 +469,23 @@ def main(argv: list[str] | None = None) -> int:
 
     from cupy.cuda import nvrtc, runtime
 
-    units: dict[str, Any] = {}
-    total = 0
+    from concurrent.futures import ThreadPoolExecutor
+    requests = {}
     covered: set[str] = set()
     for module_key, anchor, source in translation_units():
+        covered.add(anchor.split("::", 1)[0].removeprefix("src/"))
+        identity = (str(source), tuple(getattr(source, "options", SHIPPED_OPTIONS)))
+        requests.setdefault(identity, (module_key, anchor, source))
+    def measure(item):
+        key, anchor, source = item
         record = rewrite_sites(source)
         record["python_anchor"] = anchor
-        units[module_key] = record
-        total += record["count"]
-        covered.add(anchor.split("::", 1)[0].removeprefix("src/"))
+        record["options"] = list(getattr(source, "options", SHIPPED_OPTIONS))
+        return key + "::" + record["source_sha256"], record
+    # Compiler work stays on bounded CPU workers, including cold audits.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        units = dict(pool.map(measure, requests.values()))
+    total = sum(record["count"] for record in units.values())
 
     uncovered = sorted(source_bearing_files() - covered)
 

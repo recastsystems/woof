@@ -82,7 +82,7 @@ def test_thompson_aerosol_row_is_wrfs_eleven_in_engine_order():
     """The mp=28 refusal retired the way its own text said it would.
 
     From 2026-09-01 this row was declared and refused because the pinned
-    engine carried no ``thompson_aero`` row; woof 2.6.3 published one, the
+    engine carried no ``thompson_aero`` row; gpuwm 2.6.3 published one, the
     two-rows gate below failed, and the row took the engine's scheme name
     and the engine's number-block order.  What stays gated: six loading
     masses first, five number species after, none of them in qtot.
@@ -205,7 +205,7 @@ def test_rows_match_the_pinned_engine_species_table():
             continue
         if row.engine_scheme not in table and row.engine_scheme in _ENGINE_PORT_ROWS:
             # An engine before this scheme's port (TEMPO arrives with the
-            # RRFS composition, after woof 2.8.7).  The door refuses such a
+            # RRFS composition, after gpuwm 2.8.7).  The door refuses such a
             # backend by name before the card (forecast_door, "carries the
             # TEMPO port"); there is no engine row here to grade it against.
             continue
@@ -219,7 +219,7 @@ def test_rows_match_the_pinned_engine_species_table():
 _ENGINE_PORT_ROWS = frozenset({"tempo"})
 
 
-def test_the_engine_still_carries_only_three_rows():
+def test_the_engine_carries_only_the_reviewed_rows():
     """The named deferrals' own retirement condition, as a gate.
 
     When this fails, the engine has gained a scheme and one of the door's
@@ -230,7 +230,12 @@ def test_the_engine_still_carries_only_three_rows():
 
     table = getattr(_pinned_engine_column_batch(), "_SPECIES_BY_SCHEME")
     ported = sorted(_ENGINE_PORT_ROWS & set(table))
-    assert sorted(table) == sorted(["p3", "thompson_aero", "wsm6", *ported]), (
+    # The engine's predicted-number P3 row is not registered by this door.
+    # Keep its exact order reviewed without enabling another hex physics row.
+    engine_only = {"p3_nc": ("qv", "qc", "qr", "qi", "nc", "ni", "nr", "qir", "qib")}
+    for name, expected in engine_only.items():
+        assert tuple(table[name]) == expected
+    assert sorted(table) == sorted(["p3", "thompson_aero", "wsm6", *ported, *engine_only]), (
         "the PINNED engine has gained a microphysics row.  Re-check every "
         "declared row's species order against it, then retire that row's "
         "engine_absent_reason and give it an engine_scheme")

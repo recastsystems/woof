@@ -55,7 +55,7 @@ namelist with three unsupported options names all three at once.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import lru_cache, partial
 import hashlib
 from importlib import resources
 import json
@@ -298,6 +298,16 @@ def suite_row(name: str) -> Mapping[str, Any]:
     raise KeyError(name)
 
 
+def suite_selectors(name: str, mesh: str | None = None) -> Mapping[str, Any]:
+    """Resolve preparation metadata through the forecast's suite tables.
+
+    Native MPAS suite names live in ``mpas_suites``, whereas ``suite_row``
+    describes only column suites. Keep mesh overrides and native aliases on
+    the same resolver used by forecasts.
+    """
+    return MappingProxyType(_starting_point(name, mesh)[2])
+
+
 # ---------------------------------------------------------------------------
 # refusals
 # ---------------------------------------------------------------------------
@@ -319,6 +329,7 @@ class PhysicsSelectionRefusal(ConfigurationRefusal):
 
     def __init__(self, refusals: Iterable[OptionRefusal], *, context: str) -> None:
         self.refusals = tuple(refusals)
+        self._selection_context = context
         first = self.refusals[0]
         lines = "; ".join(item.line() for item in self.refusals)
         super().__init__(
@@ -328,6 +339,11 @@ class PhysicsSelectionRefusal(ConfigurationRefusal):
             "a selection every option of which the column seam carries "
             "(woof.hex.physics_suites; woof hex physics list)",
         )
+
+    def __reduce__(self):
+        # Worker exceptions must reconstruct from the options, rather than
+        # BaseException.args (the already formatted message).
+        return partial(type(self), context=self._selection_context), (self.refusals,)
 
 
 # ---------------------------------------------------------------------------

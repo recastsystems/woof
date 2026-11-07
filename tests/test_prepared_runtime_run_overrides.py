@@ -7,7 +7,7 @@ from test_prepared_single_domain_forecast import (
     _bind_synthetic_preflight_geometry, _prepared_fixture, _sha256)
 
 
-def _preflight(fixture, overrides=None, *, profile=runner.RUC_PHYSICS_PROFILE):
+def _preflight(fixture, overrides=None, history=None, *, profile=runner.RUC_PHYSICS_PROFILE):
     return runner.preflight_prepared_forecast(
         source=fixture.source, prepared_root=fixture.prepared,
         proof_sha256=_sha256(fixture.proof),
@@ -17,7 +17,7 @@ def _preflight(fixture, overrides=None, *, profile=runner.RUC_PHYSICS_PROFILE):
         physics_profile=profile,
         run_seconds=fixture.run_seconds,
         history_interval_seconds=load_experiment(fixture.experiment).root.history_interval_s,
-        runtime_run_overrides=overrides)
+        runtime_run_overrides=overrides, runtime_history_variables=history)
 
 
 def test_runtime_ruc_choices_preserve_original_files_and_prepared_identity(tmp_path, monkeypatch):
@@ -98,3 +98,28 @@ def test_turbine_runtime_selector_keeps_prepared_bytes(tmp_path, monkeypatch):
     changes = executed.execution_plan['physics_overrides']
     assert len(changes) == 2
     assert all(not row['prepared_state_changed'] for row in changes)
+def test_runtime_ocean_controls_preserve_prepared_identity(tmp_path, monkeypatch):
+    fixture = _prepared_fixture(tmp_path, "era5", physics_profile=runner.RUC_PHYSICS_PROFILE)
+    _bind_synthetic_preflight_geometry(monkeypatch, hierarchy=False)
+    original = _preflight(fixture)
+    on = _preflight(fixture, {"sf_ocean_physics": 2, "ocean_config": "waves.toml"})
+    off, changes = runner._apply_runtime_run_overrides(
+        on.experiment, {"sf_ocean_physics": 0, "ocean_config": ""})
+    assert on.cache_identity == original.cache_identity
+    assert on.file_sha256 == original.file_sha256
+    assert off.root.run.sf_ocean_physics == 0
+    assert {row["field"] for row in changes} == {
+        "domain_config.run.ocean_config", "domain_config.run.sf_ocean_physics"}
+    runner._verify_inputs_unchanged(on)
+
+
+def test_runtime_history_projection_preserves_authority(tmp_path, monkeypatch):
+    fixture = _prepared_fixture(tmp_path, "era5", physics_profile=runner.RUC_PHYSICS_PROFILE)
+    _bind_synthetic_preflight_geometry(monkeypatch, hierarchy=False)
+    original = _preflight(fixture)
+    selected = _preflight(fixture, history=("T2", "U10", "OCEAN_HS"))
+    assert selected.cache_identity == original.cache_identity
+    assert selected.file_sha256 == original.file_sha256
+    assert selected.experiment.output.history_vars == ("T2", "U10", "OCEAN_HS")
+    assert selected.experiment.root.output == selected.experiment.output
+    runner._verify_inputs_unchanged(selected)

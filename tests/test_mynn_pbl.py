@@ -623,16 +623,17 @@ def test_the_registry_publishes_the_mynn_snow_species_contract():
     # shipped runtime applies (mynn_pbl_runtime.MYNN_SNOW_MICROPHYSICS),
     # which is asserted directly below.
     # 900 (TEMPO, a named scheme) joins from its capability row, whose
-    # ice masses carry qs (woof/microphysics_schemes.py).
+    # ice masses carry qs (woof/microphysics_schemes.py).  27 (UDM) and
+    # 29 (RCON), the WRF 4.7.1 ports, both carry qs in their packages.
     assert species["flag_qs_true_microphysics_selectors"] == [
-        2, 4, 6, 8, 9, 10, 16, 18, 24, 28, 30, 106, 900]
+        2, 4, 6, 7, 8, 9, 10, 11, 13, 14, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 56, 95, 96, 97, 106, 900]
     # 50 (P3) is on the FALSE side substantively, not by omission: the
     # p3_1category package is moist:qv,qc,qr,qi with no qs at all
     # (Registry.EM_COMMON:3038), so WRF's F_QS is false and MYNN's sqs = 0
     # is P3's own answer rather than a field woof withheld -- the opposite
     # of the mp=28 case this list was corrected for.
     # Registry.EM_COMMON:3017 gives WSM3 combined qc/qr, no separate qs.
-    assert species['flag_qs_false_microphysics_selectors'] == [0, 1, 3, 5, 50]
+    assert species['flag_qs_false_microphysics_selectors'] == [0, 1, 3, 5, 15, 50, 51, 52, 53, 55]
 
     from woof.core.mynn_pbl_runtime import MYNN_SNOW_MICROPHYSICS
 

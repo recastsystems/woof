@@ -5,8 +5,8 @@ library's on an x86-64 host with FMA, which is the FMA build of the
 algorithm gfk_exp spells.  In that build the product InvLn2N*x feeds only
 the add that forms kd and the subtract that forms r, so both become fused
 multiply-adds and r keeps the product's rounding error.  gfk_exp rounded
-the product separately until lane/verify-noah-lsm, and over all 2^32 inputs
-that differed from the host's expf on exactly two (MEASURED on box W1, Xeon
+the product separately until development branch, and over all 2^32 inputs
+that differed from the host's expf on exactly two (MEASURED on test host, Xeon
 Platinum 8559C, glibc 2.39, by tools/noah_wrf461_oracle/libm_exhaustive.py
 and tools/noah_wrf461_oracle/expf_variant_probe.c):
 

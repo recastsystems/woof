@@ -95,6 +95,7 @@ def test_restart_construction_preserves_carried_atmospheric_surface_words(monkey
     from types import SimpleNamespace
     from woof.hex.ocean_mixed_layer import MixedLayerOcean
     monkeypatch.setitem(sys.modules,"cupy",np)
+    monkeypatch.setattr("woof.hex.ocean_mixed_layer._kernel_for_device", lambda: None)
     fields={"tsk":np.array([[250,281,298]],dtype="f4"),
             "xice":np.array([[.8,0,0]],dtype="f4"),"snow":np.array([[15,0,0]],dtype="f4")}
     before={k:v.copy() for k,v in fields.items()}

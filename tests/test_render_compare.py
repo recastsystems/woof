@@ -366,3 +366,101 @@ def test_the_finalize_render_stage_runs_the_comparison_on_every_success_exit():
     assert source.count("_reference_compare_stage(") == 2, (
         "both of the render stage's success exits (drawn now, and every frame "
         "already drawn while the forecast ran) must draw the comparison")
+
+
+def _frames(tmp_path, *domains, hours=6):
+    names = [f"wrfout_{domain}_2026-10-03_{hour:02d}_00_00"
+             for domain in domains for hour in range(hours)]
+    return sorted(_touch(tmp_path / "wrfout", *names))
+
+
+def test_frames_are_dealt_by_neighbouring_valid_times_every_nest_together(tmp_path):
+    # WOOF nyc-500m 2026-10-31: 98 frames drawn one sheet at a time on one
+    # core.  A valid time stays on one engine across the nests, so no two
+    # engines ask for one reference lead at once.
+    frames = _frames(tmp_path, "d01", "d02")
+    dealt = render_compare.deal_frames(frames, 3)
+    assert sorted(frame for members in dealt for frame in members) == frames
+    assert [len(members) for members in dealt] == [4, 4, 4]
+    seen = set()
+    for members in dealt:
+        valids = {render_compare.frame_identity(frame)[1] for frame in members}
+        assert not valids & seen
+        seen |= valids
+        assert {render_compare.frame_identity(frame)[0] for frame in members} == {"d01", "d02"}
+        hours = sorted(valid.hour for valid in valids)
+        assert hours == list(range(hours[0], hours[-1] + 1))
+
+
+def test_one_worker_and_a_single_time_keep_the_frames_whole(tmp_path):
+    frames = _frames(tmp_path, "d01", "d02")
+    assert render_compare.deal_frames(frames, 1) == [frames]
+    only = _frames(tmp_path / "one", "d01", "d02", hours=1)
+    assert render_compare.deal_frames(only, 8) == [only]
+    assert render_compare.deal_frames([], 8) == []
+
+
+def test_each_dealt_list_finds_the_hour_before_it_as_context(tmp_path):
+    frames = _frames(tmp_path, "d01")
+    first, second = render_compare.deal_frames(frames, 2)
+    (members, context), = render_compare.group_frames(second)
+    assert members == second
+    assert context == [first[-1]]
+
+
+def test_the_engine_count_follows_the_cores_and_the_host_memory(tmp_path):
+    frames = _frames(tmp_path, "d01", hours=20)
+    for frame in frames:
+        frame.write_bytes(b"x" * 1000)
+    plenty = 10 ** 12
+    assert render_compare.compare_workers(frames, cores=16, available_bytes=plenty) == 8
+    assert render_compare.compare_workers(frames, cores=192, available_bytes=plenty) == render_compare.COMPARE_WORKERS_MAX
+    assert render_compare.compare_workers(frames, cores=4, available_bytes=plenty) == 2
+    assert render_compare.compare_workers(frames, cores=1, available_bytes=plenty) == 1
+    assert render_compare.compare_workers(frames[:3], cores=16, available_bytes=plenty) == 3
+    # Eight bytes of host memory per byte of frame: 8,000 bytes an engine.
+    assert render_compare.compare_workers(frames, cores=16, available_bytes=24_000) == 3
+    assert render_compare.compare_workers(frames, cores=16, available_bytes=10) == 1
+
+
+def test_an_engine_threads_share_the_cores_only_when_several_run():
+    assert render_compare._engine_environment({"A": "1"}, 1, 16) == {"A": "1"}
+    assert render_compare._engine_environment({}, 8, 16)["RAYON_NUM_THREADS"] == "2"
+    assert render_compare._engine_environment({"RAYON_NUM_THREADS": "3"}, 8, 16)["RAYON_NUM_THREADS"] == "3"
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="shell-script engine stand-in")
+def test_every_frame_goes_to_exactly_one_engine_and_every_line_is_relayed(tmp_path, monkeypatch, capsys):
+    # The door's own run: several engines at once, each told its own frames
+    # and the hour before them as context, and every sheet said once.
+    log = tmp_path / "calls.txt"
+    engine = tmp_path / "rw_compare"
+    engine.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = --list-products ]; then\n"
+        "  printf 'REFERENCE\thrrr\tHRRR\n'; exit 0\n"
+        "fi\n"
+        f"echo \"$*\" >> {log}\n"
+        "for last; do :; done\n"
+        "printf 'RENDERED\tt2m\tx\t%s.png\n' \"$last\"\n")
+    engine.chmod(0o755)
+    monkeypatch.setattr(rustwx_lanes, "require_compare_bin", lambda: engine)
+    from woof import render
+    monkeypatch.setattr(render_compare, "compare_workers", lambda frames: 3)
+    monkeypatch.setattr(render, "_claim_run_dir", lambda args, frames: None)
+    monkeypatch.setattr(render, "_publish_run_dir", lambda args: None)
+    frames = _frames(tmp_path, "d01", "d02")
+    args = _args(wrfout=frames, out=tmp_path / "sheets", products="t2m")
+    assert render_compare.compare_main(args) == 0
+    calls = log.read_text().splitlines()
+    assert len(calls) == 6, "three engines' lists, one engine per nest"
+    drawn, contexts = [], []
+    for call in calls:
+        words = call.split()
+        for at, word in enumerate(words):
+            if "wrfout_" in word:
+                (contexts if words[at - 1] == "--context" else drawn).append(word)
+    assert sorted(drawn) == sorted(str(frame) for frame in frames)
+    assert len(contexts) == 4, "two later lists, two nests: the hour before each list's first frame"
+    said = capsys.readouterr().out
+    assert said.count("render: ") >= 6

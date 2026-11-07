@@ -94,7 +94,7 @@ def test_fft_admission_prices_padding_and_its_own_plan_shapes():
         fields=(perturb.FieldPerturbation(
             "theta", 0.5, 4.0, vertical_scale_levels=6.0),))
     # The default still prices at least everything the draw needs
-    # (reproduces a847c4701 on lane/da-fixed-base).
+    # (reproduces a847c4701 on development branch).
     assert perturb.device_working_bytes(
         replace(cfg, mass_balance="hydrostatic"), (24, 32, 32)) >= \
         perturb.device_working_bytes(cfg, (24, 32, 32))

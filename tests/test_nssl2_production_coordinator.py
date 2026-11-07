@@ -119,6 +119,8 @@ def test_production_order_keeps_one_concentration_workspace_until_scatter(monkey
             # The resolved variant reaches the gather, which owns WRF's
             # CCN load; the default lane predicts CCN.
             "predicted_ccn": True,
+            "nssl_cccn": 0.5e9,
+        "shapes": (0.0, 1.0),
         }
         return workspace
 
@@ -176,6 +178,7 @@ def test_production_order_keeps_one_concentration_workspace_until_scatter(monkey
         _assert_identity_sequence(args, expected)
         assert kwargs == {
             "output_due": True,
+            "shapes": (0.0, 1.0),
             "concentration_space": True,
             "validate_values": False,
         }

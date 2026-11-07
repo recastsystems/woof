@@ -54,6 +54,10 @@ def build(out_dir: Path, root: Path = SOURCE, cc: str | None = None) -> Path:
     if shutil.which(compiler[0]) is None:
         raise RuntimeError(f"no C compiler ({compiler[0]}) on PATH")
     includes = [f"-I{root / part}" for part in ("include", "GKlib", "libmetis", "programs")]
+    env = dict(os.environ)
+    # METIS prints __DATE__/__TIME__ in its banner. A fresh build must not
+    # acquire different binary bytes just because the wheel was built later.
+    env.setdefault("SOURCE_DATE_EPOCH", "0")
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="hex-gpmetis-") as scratch:
         objects = []
@@ -62,7 +66,7 @@ def build(out_dir: Path, root: Path = SOURCE, cc: str | None = None) -> Path:
             index, source = index_source
             target = Path(scratch) / f"{index:03d}-{source.parent.name}-{source.stem}.o"
             done = subprocess.run([*compiler, *CFLAGS, *includes, "-c", str(source), "-o", str(target)],
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, env=env)
             if done.returncode != 0:
                 raise RuntimeError(f"{source}: {done.stderr.strip()[-2000:]}")
             return target
@@ -71,7 +75,7 @@ def build(out_dir: Path, root: Path = SOURCE, cc: str | None = None) -> Path:
             objects = list(pool.map(compile_one, enumerate(sources(root))))
         binary = out_dir / NAME
         done = subprocess.run([*compiler, "-o", str(binary), *map(str, objects), "-lm"],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, env=env)
         if done.returncode != 0 or not binary.is_file():
             raise RuntimeError(f"linking {binary} failed: {done.stderr.strip()[-2000:]}")
     return binary

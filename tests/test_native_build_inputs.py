@@ -150,8 +150,11 @@ def test_the_table_covers_every_outside_input_the_sources_reach():
         for path in paths:
             other = _root_of(path)
             # The registry is an independent directory source, not a path
-            # dependency on rustwx's first-party workspace and its inputs.
-            if other is not None and path != "tools/rustwx/vendor/crates-io":
+            # dependency on rustwx's first-party workspace and its inputs; so is
+            # one of its crates named by path (2.9.12: hydro_world takes
+            # cudarc from tools/rustwx/vendor/crates-io/cudarc-0.19.8).
+            registry = "tools/rustwx/vendor/crates-io"
+            if other is not None and path != registry and not path.startswith(registry + "/"):
                 closure |= references[other]
         gaps = sorted(path for path in closure
                       if not _covered(path, bridge_assets.NATIVE_BUILD_INPUTS[root]))
@@ -366,3 +369,27 @@ def test_the_publication_workflow_is_read_as_the_preflight_reads_it():
             "        with:\n          persist-credentials: false\n"
             "      - run: python tools/promote_prepared_release.py smoke --repo x\n")
     assert verifier_jobs(text) == {"smoke": 1}
+
+
+def test_a_crate_that_vendors_through_cargo_config_declares_the_registry():
+    """A crate whose .cargo/config.toml replaces crates-io with the rustwx vendor tree
+    reads that tree at build time, so a change there must invalidate its reuse.
+
+    The outside-reference walk above follows Cargo.toml path dependencies and
+    include_*! literals, not .cargo/config.toml `directory =` sources, which is
+    how the 3.0.0 TC crates were vendored with rows that did not name the tree.
+    """
+    import tomllib
+
+    for artifact in bridge_assets.BUNDLED_ARTIFACTS:
+        config = REPO_ROOT / artifact.crate / ".cargo" / "config.toml"
+        if not config.is_file():
+            continue
+        sources = tomllib.loads(config.read_text(encoding="utf-8")).get("source", {})
+        for source in sources.values():
+            directory = source.get("directory")
+            if not directory:
+                continue
+            path = posixpath.normpath(posixpath.join(artifact.crate, directory))
+            assert _covered(path, bridge_assets.NATIVE_BUILD_INPUTS[artifact.crate]), (
+                artifact.crate, path)

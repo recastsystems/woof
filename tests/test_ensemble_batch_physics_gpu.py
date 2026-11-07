@@ -159,7 +159,8 @@ def test_noah_one_launch_matches_each_original_member(members, shared):
 
 @pytest.mark.parametrize("members", [1, 4, 10])
 @pytest.mark.parametrize("terrain", [False, True])
-def test_complete_thompson_column_chain_and_member_rings_match_stock(members, terrain):
+@pytest.mark.parametrize("use_theta_m", [0, 1])
+def test_complete_thompson_column_chain_and_member_rings_match_stock(members, terrain, use_theta_m):
     import cupy as cp
     from test_mp_spec_zone_ring import _square_moist_state
     from woof.core import microphysics
@@ -175,7 +176,15 @@ def test_complete_thompson_column_chain_and_member_rings_match_stock(members, te
             patch = np.arange(ny * nx, dtype=np.float32).reshape(ny, nx) * np.float32(0.5)
             state.phb = cp.asarray(cp.asnumpy(state.phb)[:, None, None] + patch[None] * np.float32(9.81))
             state.thb = cp.asarray(cp.asnumpy(state.thb)[:, None, None] + patch[None] * np.float32(0.001))
+        if use_theta_m:
+            from woof.core import constants as c
+            state.thp[...] = (state.total_theta()
+                              * (np.float32(1.0) + np.float32(c.RVOVRD) * state.qv)
+                              - (state.thb if state.thb.ndim == 3 else state.thb[:, None, None]))
+            state.use_theta_m = 1
         states.append(state)
+    from dataclasses import replace
+    cfg = replace(cfg, use_theta_m=use_theta_m)
     names = set(ring_guard_row(8)["state_fields"]) | {
         "p", "thp", "qv", "qc", "qr", "qi", "ni", "nr", "qs", "qg",
         "h_diabatic", "effc", "effi", "effs", "php", "w"}
@@ -185,11 +194,12 @@ def test_complete_thompson_column_chain_and_member_rings_match_stock(members, te
     arrays = {}
     for name in names:
         arrays[name] = staged.pack(name, cp.stack([getattr(state, name) for state in states]))
-    arrays.update(thb=states[0].thb, phb=states[0].phb)
+    arrays.update(thb=states[0].thb, phb=states[0].phb, use_theta_m=use_theta_m)
     # The production admission (batch_physics_init) passes the run's
     # correct-mode WB1 key; so does this fixture.
     scratch_fields = thompson_column_scratch_fields(
-        nz=nz, ny=ny, nx=nx, cloud_booking=cfg.thompson_cloud_surface_booking)
+        nz=nz, ny=ny, nx=nx, cloud_booking=cfg.thompson_cloud_surface_booking,
+        use_theta_m=use_theta_m)
     scratch = ColumnBuffers(scratch_fields, members=members, available_bytes=1 << 29)
     packed = PackedThompsonState(arrays, {field.name: scratch.packed(field.name) for field in scratch_fields})
     bound = prepare_thompson_column_batch(packed, cfg, members=members, ny=ny, nx=nx,

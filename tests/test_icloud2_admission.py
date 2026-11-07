@@ -20,9 +20,12 @@ def test_binary_cloud_fraction_namelist(tmp_path, pair, variant):
     text, _ = import_namelists(*_pair(tmp_path, inp=inp), name='binary_cloud', rrtmg_variant=variant)
     assert 'icloud = 2' in text
 
-def test_unported_cloud_fraction_names_breakage(tmp_path):
+def test_icloud3_without_cloud_species_names_breakage(tmp_path):
+    # cal_cldfra3 is ported (3.0); WRF's own check refuses it without QC/QI.
+    # Replaces test_unported_cloud_fraction_names_breakage, the pre-port
+    # refusal of every icloud=3 run.
     p = _write_toml(tmp_path, dynamics='icloud=3')
-    with pytest.raises(ValueError, match='cal_cldfra3'):
+    with pytest.raises(ValueError, match='icloud = 3 option, missing QC or QI'):
         load_config(p)
 
 def test_binary_fraction_does_not_enter_the_mynn_cloud_merge_guard(tmp_path):

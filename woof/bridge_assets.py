@@ -313,6 +313,21 @@ class BundledArtifact:
 #: the four binaries were produced by the cut, probed by nothing, and
 #: thrown away at the end of the job.
 BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
+    BundledArtifact('arwen_dfi', 'library', 'tools/dfi-runtime',
+                    'WOOF_DFI_BRIDGE', 'resident digital-filter initialization'),
+
+    BundledArtifact(
+        "rw_fddaobs", "executable", bridges.RUSTWX_CRATE_RELATIVE,
+        "GPUWM_RW_FDDAOBS", "WRF OBS_DOMAIN observation FDDA ingestion",
+        on_demand=True),
+    BundledArtifact("aerosol-grid", "executable", "tools/aerosol_grid",
+                    "WOOF_AEROSOL_GRID", "monthly public aerosol horizontal interpolation",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
+        on_demand=True),
+    BundledArtifact("public-aerosol-build", "executable", "tools/aerosol_grid",
+                    "GPUWM_PUBLIC_AEROSOL_BUILD", "NASA monthly aerosol climatology preparation",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
+        on_demand=True),
     BundledArtifact("rw-wind-table", "executable", "tools/wind-table",
                     "WOOF_RW_WIND_TABLE", "wind turbine inventories and WRF Fitch tables",
                     # 2.9.11 (PyPI per-file limit): see rw_simradar. Opt-in
@@ -347,9 +362,15 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "WOOF_NEXTGEN_OUTPUT_LIBRARY", "coupled hydro history and restart publication",
         on_demand=True),
     BundledArtifact(
+        "rw_cam_tables", "library", "tools/cam_tables",
+        "WOOF_CAM_TABLES_LIB", "WRF CAM radiation table and gas initialization"),
+    BundledArtifact(
         "arwen_nextgen_forcing", "library", "tools/nextgen_forcing",
         "WOOF_NEXTGEN_FORCING_BRIDGE",
-        "NextGen external forcing preparation and catchment area regridding"),
+        "NextGen external forcing preparation and catchment area regridding",
+        # WOOF 1.1.6 (PyPI per-file limit: the platform wheel built at 105.5 MB): opt-in or
+        # non-forecast door; fetched on first use.
+        on_demand=True),
     BundledArtifact(
         "rw_nextgen_verify", "executable", "tools/nextgen_verify",
         "WOOF_NEXTGEN_VERIFY", "NextGen streamflow observation verification",
@@ -382,6 +403,14 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
     BundledArtifact(
         "rw_ocean", "executable", "tools/ocean_prepare",
         "GPUWM_RW_OCEAN", "Ocean bathymetry and atmospheric forcing preparation",
+        on_demand=True),
+    BundledArtifact(
+        "rw_waves_data", "executable", "tools/waves_data",
+        "GPUWM_RW_WAVES_DATA", "Spectral wave preparation, verification and products",
+        on_demand=True),
+    BundledArtifact(
+        "rw_waves_coupled_prepare", "executable", "tools/waves_data",
+        "GPUWM_RW_WAVES_COUPLED_PREPARE", "Automatic wave preparation on the atmosphere grid",
         on_demand=True),
     BundledArtifact(
         "rw_bathy", "executable", "tools/rw-bathy",
@@ -472,11 +501,15 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         on_demand=True),
     BundledArtifact(
         "rw_nexrad", "executable", bridges.RUSTWX_CRATE_RELATIVE,
-        "WOOF_RW_NEXRAD", "radar observation ingest (the DA nowcast)"),
+        "WOOF_RW_NEXRAD", "radar observation ingest (the DA nowcast)",
+        # WOOF 1.1.6 (PyPI per-file limit: the platform wheel built at 105.5 MB): opt-in or
+        # non-forecast door; fetched on first use.
+        on_demand=True),
     BundledArtifact(
         "rw_odim", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_ODIM",
         "European polar volumes (woof obs radar)",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
         on_demand=True),
     BundledArtifact(
         "rw_mrms", "executable", bridges.RUSTWX_CRATE_RELATIVE,
@@ -575,6 +608,9 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "static_fields", "library", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_STATIC_BRIDGE",
         "static-field builds (the default geogrid-equivalent builder)"),
+    BundledArtifact(
+        "gpuwm_tslist", "library", "tools/tslist_bridge",
+        "WOOF_TSLIST_LIBRARY", "WRF tslist station series"),
     # The MAPPED DECODE ENGINE, and the plainest case on this list.
     # `woof.mapped_engine_bridge.DEFAULT_ENGINE` is `rust`, so every
     # mapped source -- the route almost every registered source reaches
@@ -650,7 +686,10 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "rw_superob", "library", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_SUPEROB_BRIDGE",
         "radar superob, merge and region-global dealias (the default "
-        "radar observation build)"),
+        "radar observation build)",
+        # WOOF 1.1.6 (PyPI per-file limit: the platform wheel built at 105.5 MB): opt-in or
+        # non-forecast door; fetched on first use.
+        on_demand=True),
     # The four MPAS binaries of the first wave (the fifth, the
     # lateral-boundary producer, is the last entry in this tuple and
     # carries its own note), and `rw_mpas_convert` is the artifact this
@@ -677,7 +716,9 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
     BundledArtifact(
         "rw_mpas_mesh", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_MPAS_MESH",
-        "MPAS mesh generation (woof mesh)"),
+        "MPAS mesh generation (woof mesh)",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
+        on_demand=True),
     # The other half of what `woof mesh` delivers, and it is not
     # optional: a grid file reaches no dycore on its own, because the
     # mesh registry pins BOTH the grid and a matching static by byte
@@ -686,7 +727,9 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
     BundledArtifact(
         "rw_mpas_static", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_MPAS_STATIC",
-        "the matching MPAS static (woof mesh)"),
+        "the matching MPAS static (woof mesh)",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
+        on_demand=True),
     BundledArtifact(
         "rw_mpas_init", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_MPAS_INIT",
@@ -695,6 +738,7 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "rw_mpas_geometry", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_MPAS_GEOMETRY",
         "MPAS reconstruction geometry",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
         on_demand=True),
     BundledArtifact(
         "rw_mpas_hostprep", "executable", bridges.RUSTWX_CRATE_RELATIVE,
@@ -704,6 +748,7 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "rw_mpas_convert", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_MPAS_CONVERT",
         "MPAS history onto the renderer's tape",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
         on_demand=True),
     # The lateral-boundary producer, and the plainest repeat of the
     # failure every paragraph above describes.  Its SOURCE has been in
@@ -727,6 +772,7 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "rw_mpas_lbc", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_MPAS_LBC",
         "MPAS lateral boundaries for a limited-area mesh",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
         on_demand=True),
     # The RRFS-MPAS init door's two engines (woof hex init --physics-suite
     # hrrrv5): the fork's init_atmosphere in Rust, and the GSL drag
@@ -783,14 +829,28 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "WOOF_TEMPO_BRIDGE",
         "TEMPO microphysics initialization tables (mp TEMPO, the "
         "rrfs-v2-hex-tempo preset)"),
+    BundledArtifact(
+        "rw_p3", "library", bridges.RUSTWX_CRATE_RELATIVE,
+        "WOOF_P3_BRIDGE", "P3 two- and three-moment initialization tables (mp50/51/52/53)"),
+    BundledArtifact(
+        "rw_cu99_launch", "library", bridges.RUSTWX_CRATE_RELATIVE,
+        "WOOF_CU99_LAUNCH_BRIDGE", "CU99 bounded column launch submissions"),
     # The native GRIB2 exporter (2.8.7, crate rw-grib2export): reads
     # history, computes every product with the clean-room post-processor
     # rw-post (GPU by default, CPU reference path) and packs GRIB2 in Rust.
     # An install without it cannot run `export-grib2`, `go --grib2` or
     # `render --grib2-out`.
     BundledArtifact(
+        "rw_history_grib2", "executable", bridges.RUSTWX_CRATE_RELATIVE,
+        "WOOF_RW_HISTORY_GRIB2", "lossless table-driven GRIB2 history export",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
+        on_demand=True),
+    BundledArtifact(
         "rw_grib2export", "executable", bridges.RUSTWX_CRATE_RELATIVE,
-        "WOOF_RW_GRIB2EXPORT", "native GRIB2 history export (woof export-grib2)"),
+        "WOOF_RW_GRIB2EXPORT", "native GRIB2 history export (woof export-grib2)",
+        # WOOF 1.1.6 (PyPI per-file limit: the platform wheel built at 105.5 MB): opt-in or
+        # non-forecast door; fetched on first use.
+        on_demand=True),
     # The nowcast frames converter (2.8.7, crate rw-wrfbatch): a 2D
     # reflectivity NetCDF nowcast written out as the
     # `gpuwm-obs.nowcast-frames.v1` contract, the only form the
@@ -827,6 +887,26 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "rw_tc_fields", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_TC_FIELDS", "completed-output cyclone field mapping (woof tc-tracks)",
         on_demand=True),
+    BundledArtifact(
+        "tc_frames_io", "library", "tools/tc_frames_io",
+        "WOOF_TC_FRAMES_LIB", "canonical TC initialization and field-derived storm products"),
+    BundledArtifact(
+        "rw_storm_merge", "executable", "tools/storm_merge",
+        "GPUWM_STORM_MERGE_BIN", "balanced donor storm-core initialization",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
+        on_demand=True),
+    BundledArtifact(
+        "rw_tc_vitals", "executable", "tools/tc_vitals",
+        "GPUWM_RW_TC_VITALS", "tropical cyclone vitals decoding",
+        # 3.0.0 (PyPI per-file limit, SIZE-01): opt-in or gpuwm-hex-side; fetched on first use.
+        on_demand=True),
+    BundledArtifact(
+        "rw_tc_rmw_score", "executable", "tools/tc_vitals",
+        "GPUWM_RW_TC_RMW_SCORE", "tropical cyclone radius-of-maximum-wind verification",
+        on_demand=True),
+    BundledArtifact(
+        "tc-verify", "executable", "tools/tc-verify",
+        "WOOF_TC_VERIFY", "MET-TC matched tropical cyclone verification", on_demand=True),
     # The sounding window renderer (the website sounding window drawn from
     # plain run output).  Environment variable spelled to match
     # woof.soundings.ENV; the doctor line resolves through that module.
@@ -840,7 +920,10 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         on_demand=True),
     BundledArtifact(
         "rw_zarr", "executable", "tools/zarr_bridge",
-        "WOOF_RW_ZARR", "regular-grid Zarr acquisition and forcing record decode"),
+        "WOOF_RW_ZARR", "regular-grid Zarr acquisition and forcing record decode",
+        # WOOF 1.1.6 (PyPI per-file limit): the ERA5 ARCO, hex Zarr-source and hydro state
+        # reader; the first such fetch stages it (5.7 MB) from this release's bundle.
+        on_demand=True),
     # 2.9.1.  The observation-stream doors of `woof obs streams` and the
     # local data assimilation (woof.obs.streams, woof.da.obs_conventional).
     # Until 2.9.1 they were in no wheel and no bundle, so `woof obs streams
@@ -919,6 +1002,10 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
 #: read, so a third library cannot be added to `BUNDLED_ARTIFACTS` and
 #: quietly inherit some other library's handshake.
 LIBRARY_ABI: dict[str, tuple[str, int]] = {
+    "tc_frames_io": ("tc_frames_abi_version", 4),
+    "rw_cam_tables": ("gpuwm_cam_tables_abi_version", 1),
+
+    'arwen_dfi': ('aw_dfi_runtime_abi', 1),
     "rw_nextgen_output": ("rw_nextgen_output_abi_version", 1),
     "nextgen_hydrofabric": ("arwen_hydrofabric_abi_version", 1),
     "arwen_nextgen_forcing": ("arwen_forcing_abi_version", 1),
@@ -928,6 +1015,7 @@ LIBRARY_ABI: dict[str, tuple[str, int]] = {
     "netcdf_writer": ("gpuwm_ncwrite_abi_version", 1),
     # Matches woof.static.rust_bridge.STATIC_ABI; a test binds them.
     "static_fields": ("gpuwm_static_abi_version", 1),
+    "gpuwm_tslist": ("gpuwm_tslist_abi_version", 1),
     # Matches woof.obs_regrid_bridge.OBSREGRID_ABI; a test
     # binds them.
     "obs_regrid": ("gpuwm_obsregrid_abi_version", 1),
@@ -936,6 +1024,8 @@ LIBRARY_ABI: dict[str, tuple[str, int]] = {
     "rw_isobaric": ("gpuwm_isobaric_abi_version", 1),
     # Matches woof.core.tempo_rust.ABI_VERSION.
     "rw_tempo": ("gpuwm_tempo_abi_version", 1),
+    "rw_p3": ("gpuwm_p3_abi_version", 1),
+    "rw_cu99_launch": ("gpuwm_cu99_launch_abi_version", 2),
     # Matches woof.obs.superob_bridge.SUPEROB_ABI; a test binds them.
     "rw_superob": ("gpuwm_superob_abi_version", 1),
     # Exported by crates/projected-intermediate/src/lib.rs.
@@ -1390,6 +1480,25 @@ def verify_source_revision(payload: bytes, *, expected: str,
 #: from the Cargo manifests and the Rust sources and refuses any it does
 #: not find covered here.
 NATIVE_BUILD_INPUTS: dict[str, tuple[str, ...]] = {
+    'tools/dfi-runtime': ('tools/dfi-runtime',),
+    "tools/aerosol_grid": ("tools/aerosol_grid",),
+    # 3.0.0 helpers (CAM tables, TC line, waves data, tslist).  Without a row
+    # the cut's native build cannot key them and stops before compiling
+    # anything (KeyError at tools/release/cut/native.py keys()), on both
+    # platforms.  The TC crates and waves_data build against the rustwx vendor
+    # tree (their .cargo/config.toml, since the stage1 fix batch), so a change
+    # there invalidates them; cam_tables also embeds the CAM3 layout JSON.
+    "tools/cam_tables": ("tools/cam_tables", "tools/rustwx/vendor/crates-io",
+                         "woof/data/cam3"),
+    "tools/storm_merge": ("tools/storm_merge", "tools/rustwx/vendor/crates-io"),
+    "tools/tc-verify": ("tools/tc-verify", "tools/rustwx/vendor/crates-io"),
+    "tools/tc_frames_io": ("tools/tc_frames_io", "tools/rustwx/vendor/crates-io"),
+    "tools/tc_vitals": ("tools/tc_vitals", "tools/rustwx/vendor/crates-io"),
+    "tools/tslist_bridge": ("tools/tslist_bridge",),
+    "tools/waves_data": ("tools/waves_data", "tools/grib1_bridge/vendor/grib-core",
+                         "tools/rustwx/vendor/netcrust",
+                         "tools/rustwx/crates/netcdf-writer",
+                         "woof/ocean/waves/data/public_sources.v1.json"),
     # Its crates.io closure resolves to the rustwx vendor tree (tools/wind-table/.cargo/config.toml).
     "tools/wind-table": ("tools/wind-table", "tools/rustwx/vendor/crates-io"),
     "tools/rw_icechunk": ("tools/rw_icechunk",),  # completed below, after tools/rustwx
@@ -1398,6 +1507,14 @@ NATIVE_BUILD_INPUTS: dict[str, tuple[str, ...]] = {
     "tools/grib1_bridge": ("tools/grib1_bridge", "tools/preparation_resources.rs",
                            "tools/rustwx/vendor/crates-io"),
     "tools/rustwx": ("tools/rustwx", "tools/grib1_bridge/vendor/grib-core",
+                     # rw-netcdf links rw_wps wrf-surface by path and embeds the
+                     # surface-analysis table (3.0.0 surface fields).
+                     "tools/rw_wps/crates/wrf-surface", "woof/data/surface_analyses.json",
+                     # ...and wrf-surface reaches rw_wps's HRRR mappings and the WPS
+                     # intermediate writer.
+                     "woof/authorities/rw-wps-hrrr-prs-grib2.mapping.json",
+                     "woof/authorities/rw-wps-hrrr-native-grib2.mapping.json",
+                     "tools/grib1_bridge/src/wps_intermediate.rs",
                      "tools/preparation_resources.rs",
                      # static-fields' SFIRE debug controls include the
                      # native oracle fixtures (sfire_debug.rs).
@@ -1416,7 +1533,7 @@ NATIVE_BUILD_INPUTS: dict[str, tuple[str, ...]] = {
                      # version bump must rebuild every crate that reaches it.
                      "pyproject.toml",
                      # 2.9.4 capabilities campaign include_str! tables:
-                     # lane/cap-hubwind's hub-height products, observations,
+                     # development branch's hub-height products, observations,
                      # TKE sources and turbine power curves (rw-wrfbatch,
                      # rustwx-calc), the WPS archive layouts (rustwx-models
                      # archives.rs) and the SFIRE input-field and Albers CRS
@@ -1432,6 +1549,9 @@ NATIVE_BUILD_INPUTS: dict[str, tuple[str, ...]] = {
     # tools/rustwx/vendor since the array-ceiling work; rw_wps and the Zarr
     # bridge build against it by path.
     "tools/rw_wps": ("tools/rw_wps", "tools/rustwx/vendor/crates-io",
+                     # wrf-surface writes through netcdf-writer by path.
+                     "tools/rustwx/crates/netcdf-writer",
+                     "woof/data/surface_analyses.json",
                      "tools/grib1_bridge/vendor/grib-core",
                      "tools/preparation_resources.rs",
                      # projected-intermediate compiles grib1_bridge's WPS
@@ -1457,6 +1577,7 @@ NATIVE_BUILD_INPUTS: dict[str, tuple[str, ...]] = {
     "tools/region_global_dealias": ("tools/region_global_dealias",),
     "tools/zarr_bridge": (
         "tools/zarr_bridge", "tools/rustwx/vendor/crates-io",
+        "woof/data/surface_analyses.json",
         "tools/rustwx/crates/netcdf-writer",
         "tools/rw_wps", "tools/grib1_bridge/vendor/grib-core",
         "tools/grib1_bridge/src/wps_intermediate.rs",
@@ -1494,7 +1615,8 @@ NATIVE_BUILD_INPUTS["tools/hydro_world"] = ("tools/hydro_world",)
 NATIVE_BUILD_INPUTS["tools/nextgen_output"] = (
     "tools/nextgen_output", *NATIVE_BUILD_INPUTS["tools/rustwx"])
 NATIVE_BUILD_INPUTS["tools/hydro_world_params"] = ("tools/hydro_world_params", "tools/hydro_world")
-NATIVE_BUILD_INPUTS["tools/nextgen_reservoir_prepare"] = ("tools/nextgen_reservoir_prepare",)
+NATIVE_BUILD_INPUTS["tools/nextgen_reservoir_prepare"] = ("tools/nextgen_reservoir_prepare",
+                                                         "tools/rustwx/vendor/crates-io")
 # The initial-state tool reads NetCDF through the shared reader, so it keeps the
 # renderer workspace's closure, as the forcing and gauge tools do.
 NATIVE_BUILD_INPUTS["tools/hydro_world_init"] = (
@@ -1509,7 +1631,7 @@ for _hydro_crate in ("tools/hydro_world", "tools/hydro_world_params",
     if "tools/rustwx/vendor/crates-io" not in NATIVE_BUILD_INPUTS[_hydro_crate]:
         NATIVE_BUILD_INPUTS[_hydro_crate] += ("tools/rustwx/vendor/crates-io",)
 
-# The 2.9.4 ocean preparation (lane/cap-slab-ocean, rw_ocean) and bathymetry
+# The 2.9.4 ocean preparation (development branch, rw_ocean) and bathymetry
 # (rw_bathy) tools build against the renderer workspace's shared NetCDF
 # reader, static-fields and the NetCDF writer by path, so they keep that
 # workspace's closure, as the hydro tools do.
@@ -1522,6 +1644,9 @@ NATIVE_BUILD_INPUTS["tools/rw-bathy"] = (
 # inputs too (tests/test_native_build_inputs.py closure rule, red for rw_icechunk at the EB4 tip 00c11b5330).
 NATIVE_BUILD_INPUTS["tools/rw_icechunk"] = (
     "tools/rw_icechunk", *NATIVE_BUILD_INPUTS["tools/rustwx"])
+# waves_data links netcdf-writer, a rustwx crate, so it reaches that workspace's inputs too.
+NATIVE_BUILD_INPUTS["tools/waves_data"] = tuple(dict.fromkeys(
+    NATIVE_BUILD_INPUTS["tools/waves_data"] + NATIVE_BUILD_INPUTS["tools/rustwx"]))
 
 
 #: Paths inside a crate root that its build never reads: packed into the

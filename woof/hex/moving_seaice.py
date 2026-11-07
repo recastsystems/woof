@@ -7,12 +7,13 @@ Unknown partial sets and missing stores over ice are refused, never cold seeded.
 """
 import numpy as np
 
-SEAICE_FIELDS = frozenset('fields/' + name for name in (
-    'ice_volume', 'ice_snow_mass', 'ice_skin', 'ice_ocean_mask',
-    'ice_rain', 'ice_snowfall', 'ice_growth', 'ice_melt', 'ice_energy',
-    'ice_energy_error', 'ice_ocean_exchange', 'ice_ocean_heat',
-    'ice_thickness_change', 'ice_concentration_change', 'ice_thickness',
-    'ice_snow_depth'))
+from woof.ocean.seaice import COLD_SEEDED
+
+# The engine's own list of the carriers it creates together, read rather than copied. THE BREAKAGE THIS FIXES: a copy here
+# went stale when woof's sea ice gained ice_ocean_owed and ice_ocean_coupled, so a member holding polar ice stopped at its
+# first move, "unknown lazy physics carrier: fields/ice_ocean_coupled" (run_84cabe12ce57b858), and with the flag dropped at
+# the move its next segment stopped with KeyError 'ice_ocean_coupled' (run_3218e3dc972bb517).
+SEAICE_FIELDS = frozenset('fields/' + name for name in COLD_SEEDED)
 
 
 def complete_source_ice(payload):
@@ -126,6 +127,9 @@ def remap_ocean_ice(payload, weights, target_mesh, target_landmask):
     mapped['fields/ice_skin'] = np.divide(carry(old['fields/ice_skin'] * old['fields/ice_volume']),
         skin_weight, out=np.full_like(skin_weight, 273.15), where=skin_weight > 0).astype(np.float32)
     mapped['fields/ice_ocean_mask'] = np.broadcast_to(target_wet, a.shape).astype(np.float32).copy()
+    # The ice step's 0/1 flag for the columns whose surface fluxes it set, not an inventory: an overlap average would leave
+    # fractions, and it stays 0 or 1. The next ice step rewrites it before the ocean reads it.
+    mapped['fields/ice_ocean_coupled'] = (mapped['fields/ice_ocean_coupled'] > 0).astype(np.float32)
     mapped['fields/ice_thickness'] = np.divide(volume, a, out=np.zeros_like(a), where=a > 0)
     mapped['fields/ice_snow_depth'] = np.divide(mapped['fields/ice_snow_mass'], 330 * a,
                                               out=np.zeros_like(a), where=a > 0)

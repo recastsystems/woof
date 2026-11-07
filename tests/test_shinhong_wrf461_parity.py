@@ -717,8 +717,8 @@ GPU_SURFACE_FIELD_MAP = {"hpbl": "hpbl", "wstar": "wstar", "delta": "delta"}
 #: NOT a silent pass and not an approximate match to the nearest row.
 #:
 #: **The table is keyed by the card as well.**  Measured 2026-09-18 on
-#: a development machine's RTX 4090 (compute capability 8.9, driver 610.57.04, cupy 14.2.0)
-#: at the lane/2.7.6-pin-gates tip 221f66f14, with the same kernel, fixture
+#: test host 1's RTX 4090 (compute capability 8.9, driver 610.57.04, cupy 14.2.0)
+#: at the the 2.7.6 verification change tip 221f66f14, with the same kernel, fixture
 #: and oracle: the 4090 reads ``el`` 13 where the 5090 reads 14, and every
 #: other field the same as the certification row.  That is the CARD and not
 #: the compiler, because the 4090 reads the identical table under NVRTC
@@ -738,7 +738,7 @@ GPU_SURFACE_FIELD_MAP = {"hpbl": "hpbl", "wstar": "wstar", "delta": "delta"}
 #: compilers and no field differs between cards (GPU_CARD_SENSITIVE_FIELDS).
 RTX_PRO_6000 = "NVIDIA RTX PRO 6000 Blackwell Server Edition"
 
-#: The kernel's distance from the pinned WRF words since lane/parity-pbl-libm
+#: The kernel's distance from the pinned WRF words since development branch
 #: (sweep row 20): every field is WRF's word on every lane except the 72
 #: flushed subnormal tendencies (GPU_SUBNORMAL_LANES), which are the only
 #: non-zero dqv/dqc/dqi maxima here.  The unit now takes glibc's powf and
@@ -772,8 +772,10 @@ _GPU_ROW_GLIBC = {
 }
 
 GPU_BASELINE_MAX_ULP_BY_NVRTC_BUILD = {
+    # Published 2.9.11 and candidate match; attributed receipt in pin-gates.
+    "13.4.59": {"NVIDIA GeForce RTX 5090": _GPU_ROW_GLIBC},
     "13.4.92": {RTX_PRO_6000: _GPU_ROW_GLIBC},
-    "12.9.86": {RTX_PRO_6000: _GPU_ROW_GLIBC},
+    "12.9.86": {RTX_PRO_6000: _GPU_ROW_GLIBC}, "13.2.51": {RTX_PRO_6000: _GPU_ROW_GLIBC},  # pin-gates/nvrtc-13.2.51-reading.json
 }
 
 #: The certification row.
@@ -848,7 +850,7 @@ GPU_NAN_LANES = {"dtheta": 240, "exch_h": 6, "tke": 234}
 
 #: Device partition curves against the oracle's direct d x h probe
 #: (shinhong-partition.csv), pinned in isolation from the column dynamics.
-#: All bitwise since lane/parity-pbl-libm (were pu 2, pq 2, pthl 1, ptke 2:
+#: All bitwise since development branch (were pu 2, pq 2, pthl 1, ptke 2:
 #: pq's 2 was pure --fmad=true contraction, the others CUDA powf).
 #: Measured on the RTX PRO 6000 under NVRTC 13.4.92 and 12.9.86.
 GPU_PARTITION_MAX_ULP = {"pu": 0, "pq": 0, "pthnl": 0, "pthl": 0, "ptke": 0}
@@ -963,7 +965,7 @@ def test_the_rows_only_differ_where_the_compiler_or_the_card_reaches():
         f" {sorted(card_moved ^ set(GPU_CARD_SENSITIVE_FIELDS))}.  If a new"
         " card really moves another field, record the reading in the same"
         " commit that widens GPU_CARD_SENSITIVE_FIELDS.")
-    # Since lane/parity-pbl-libm no field differs between compilers or
+    # Since development branch no field differs between compilers or
     # cards (GPU_COMPILER_SENSITIVE_FIELDS and GPU_CARD_SENSITIVE_FIELDS are
     # empty), and the equalities above hold every row to that.
 
@@ -1008,8 +1010,8 @@ def test_shinhong_cuda_column_holds_its_measured_distance_from_wrf():
     if wrf_exact.ENABLED:
         # The strict build (GPUWM_WRF_EXACT=1: no FMA, no FTZ, IEEE division
         # and square root) carries no flush lanes, so every field of every
-        # column is 0 ULP.  Measured 2026-10-07 on W1's RTX PRO 6000 under
-        # NVRTC 12.9.86 (lane/verify-shinhong).  The default build keeps its
+        # column is 0 ULP.  Measured 2026-10-07 on the test host's RTX PRO 6000 under
+        # NVRTC 12.9.86 (development branch).  The default build keeps its
         # per-compiler rows below.
         assert measured == {name: 0 for name in measured}, measured
         return

@@ -220,7 +220,7 @@ class TestProductCoverage:
 class TestCatalogListing:
     """The door reads the renderer's --list-products rows.
 
-    woof 2.8.0's rw_wrfbatch prints six tab-separated fields per row (a
+    gpuwm 2.8.0's rw_wrfbatch prints six tab-separated fields per row (a
     machine reason code after the detail). A parser that demanded exactly
     five dropped every row and refused every render, so both widths are
     read here, and a listing with no rows at all still refuses.
@@ -230,7 +230,7 @@ class TestCatalogListing:
     def _listing(monkeypatch, tmp_path, stdout):
         from woof.hex import render_door
 
-        def fake_run(command, *, log_prefix):
+        def fake_run(command, *, log_prefix, env=None):
             class Result:
                 returncode = 0
                 stderr = ""
@@ -316,7 +316,7 @@ class TestComposeArguments:
 
         seen: dict[str, list[str]] = {}
 
-        def fake_run(command, *, log_prefix):
+        def fake_run(command, *, log_prefix, env=None):
             seen["command"] = [str(part) for part in command]
             report = tmp_path / "scratch" / "convert-report.json"
             report.write_text('{"frames": []}', encoding="utf-8")
@@ -347,7 +347,7 @@ class TestComposeArguments:
     def test_base_only_rides_with_compose_and_not_alone(self, tmp_path):
         from woof.hex import render_door
 
-        def fake_run(command, *, log_prefix):
+        def fake_run(command, *, log_prefix, env=None):
             (tmp_path / "scratch").mkdir(parents=True, exist_ok=True)
             (tmp_path / "scratch" / "convert-report.json").write_text(
                 '{"frames": []}', encoding="utf-8")
@@ -1093,3 +1093,35 @@ def test_the_global_window_has_no_more_columns_than_its_picture(monkeypatch):
     assert render_door.global_picture_window(Path("g30.grid.nc"), 1800) is None
     spacing["m"] = None  # a mesh the decoder cannot read: the converter decides
     assert render_door.global_picture_window(Path("x.grid.nc"), 1800) is None
+
+
+@pytest.mark.parametrize("view", ["area1", "area2", "area3", "area4", "area5", "area6"])
+def test_sub_area_render_uses_its_persistent_frame_cache(tmp_path, monkeypatch, view):
+    from argparse import Namespace
+    from woof.hex import render_door as rd
+    mesh = tmp_path / "mesh.nc"
+    history = tmp_path / "history.2026-10-31_00.00.00.nc"
+    mesh.write_bytes(b"m")
+    history.write_bytes(b"h")
+    monkeypatch.setattr(rd, "resolve_convert_exe", lambda explicit=None: Path("convert"))
+    monkeypatch.setattr(rd, "resolve_renderer_exe", lambda explicit=None: Path("render"))
+    monkeypatch.setattr(rd, "engine_accepts", lambda *args: True)
+    monkeypatch.setattr(rd, "resolve_basemap_dir", lambda *args: tmp_path)
+    monkeypatch.setattr(rd, "renderer_environment", lambda *args: {})
+    captured = {}
+    class Converted(Exception):
+        pass
+    def capture(cache, *args, **kwargs):
+        captured.update(cache=cache, window=kwargs["window"])
+        raise Converted
+    monkeypatch.setattr(rd, "convert_frames_cached", capture)
+    args = Namespace(history=[str(history)], mesh=str(mesh), init=None, compose=None,
+        compose_base_only=False, out=str(tmp_path / "maps"), scratch=None,
+        products="composite_reflectivity", frames="all", window="mesh", field_set="full",
+        simulation_start=None, size="1400x1000", heavy=False, nc_format="cdf2",
+        keep_scratch=False, convert_exe=None, renderer_exe=None, view=None,
+        label="hex", model_label="hex", source_label=None, frame_cache=str(tmp_path / "cache"))
+    window = "latlon:30,31,-100,-99,0.1"
+    with pytest.raises(Converted):
+        rd._run_render(args, tile={"view": view, "window": window})
+    assert captured == {"cache": tmp_path / "cache" / view, "window": window}

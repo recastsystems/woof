@@ -8,7 +8,8 @@ import os
 import shutil
 import time
 from contextlib import nullcontext
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from threading import Lock
 from pathlib import Path
 from woof.ensemble.physical_fields import sha256_of_file as digest_file
 
@@ -40,10 +41,12 @@ class CheckpointProgress:
         checkpoint = event.get("last_checkpoint")
         if checkpoint is not None and str(checkpoint) != self.last_attempted_checkpoint:
             self.last_attempted_checkpoint = str(checkpoint)
+            if not callable(getattr(self.collector, "save_resume", None)):
+                raise ValueError("checkpointed ensemble requires a durable diagnostic collector")
+            # Member files are write-once. Do their first full reads before
+            # taking the shared manifest lock; a waiting seal may reuse them.
+            bind_checkpoint_member(self.root, checkpoint)
             with self.lock:
-                if not callable(getattr(self.collector, "save_resume", None)):
-                    raise ValueError("checkpointed ensemble requires a durable diagnostic collector")
-                bind_checkpoint_member(self.root, checkpoint)
                 try:
                     # The collector snapshot is taken inside seal, under the
                     # collector checkpoint hold, so members on other cards
@@ -78,15 +81,26 @@ def bind_checkpoint_member(root, checkpoint):
     """Stamp the original runner's member owner after its complete set commits."""
     from woof.io.restart import read_restart_header, tree_restart_members
     root, checkpoint = Path(root), Path(checkpoint)
+    from woof.supervisor import CheckpointValidationError
     owner = get_checkpoint_member(checkpoint)
     if owner is None:
         raise ValueError("member checkpoint has no bound ensemble identity")
     header = read_restart_header(checkpoint)
     paths = tree_restart_members(checkpoint) if header.get("domain_ids") else {1: checkpoint}
+    def inspect(path):
+        # Bind ownership as before; seal still applies its original refusal
+        # or candidate fallback if validation fails. Only passes are memoized.
+        try:
+            _validate_checkpoint(path)
+        except (ValueError, KeyError, OSError, CheckpointValidationError):
+            pass
+        return {"path": relative_file(root, path), "sha256": _seal_digest(path),
+                "bytes": path.stat().st_size}
+
+    inspected = _parallel_file_map(inspect, paths.values())
     record = {"schema": CONTRACT, "member_id": owner["memberId"], "identity_sha256": owner["memberIdentity"],
         **({"provenance": owner["provenance"]} if owner.get("provenance") else {}),
-        "files": [{"path": relative_file(root, path), "sha256": digest_file(path), "bytes": path.stat().st_size}
-            for path in paths.values()]}
+        "files": inspected}
     atomic_json(checkpoint.with_suffix(".member.json"), record)
     return record
 
@@ -165,11 +179,11 @@ def verify_roster(path, identities, *, root):
                     f"{item['snapshot']} is missing or changed). Copy the whole run directory, including "
                     ".ensemble-resume, or run the ensemble again into a new --outdir")
         elif not matches_file:
-            # A roster sealed before sealed copies existed (woof 2.9.0 and
+            # A roster sealed before sealed copies existed (gpuwm 2.9.0 and
             # earlier) names only live files that later frames rewrite.
             raise ValueError(
                 f"ensemble resume file is missing or hash-mismatched: {item['path']}. This roster keeps no "
-                "sealed copy of its files (sealed by woof 2.9.0 or earlier), and the run changed that file "
+                "sealed copy of its files (sealed by gpuwm 2.9.0 or earlier), and the run changed that file "
                 "after the seal; run the ensemble again into a new --outdir")
     for row, identity in zip(rows, identities["members"]):
         if row.get("provenance") != identity.get("provenance"):
@@ -224,6 +238,58 @@ def _source_revision(path):
     """
     status = path.stat()
     return [status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns]
+
+
+# Process-local proofs for write-once checkpoints and sealed copies only.
+# A Future shares an in-flight read without holding the cache lock over I/O.
+# Resume's _matches deliberately bypasses this memo and always re-hashes.
+_FILE_MEMO = {}
+_FILE_MEMO_LOCK = Lock()
+
+
+def _memo_file(path, operation, function):
+    path = Path(path)
+    revision = tuple(_source_revision(path))
+    key = (operation, revision)
+    with _FILE_MEMO_LOCK:
+        future = _FILE_MEMO.get(key)
+        owner = future is None
+        if owner:
+            future = _FILE_MEMO[key] = Future()
+    if owner:
+        try:
+            value = function(path)
+            if tuple(_source_revision(path)) != revision:
+                raise FileNotFoundError(f"ensemble memo source changed during read: {path}")
+        except BaseException as error:
+            future.set_exception(error)
+            with _FILE_MEMO_LOCK:
+                _FILE_MEMO.pop(key, None)
+            raise
+        else:
+            future.set_result(value)
+    value = future.result()
+    if tuple(_source_revision(path)) != revision:
+        raise FileNotFoundError(f"ensemble memo source changed during read: {path}")
+    return value
+
+
+def _seal_digest(path):
+    return _memo_file(path, "sha256", digest_file)
+
+
+def _validate_checkpoint(path):
+    from woof.supervisor import validate_manifest_checkpoint
+    _memo_file(path, "manifest", validate_manifest_checkpoint)
+
+
+def _checkpoint_proof(path):
+    revision = _source_revision(path)
+    _validate_checkpoint(path)
+    digest = _seal_digest(path)
+    if _source_revision(path) != revision:
+        raise FileNotFoundError("ensemble checkpoint changed during validation")
+    return path, digest
 
 
 #: The collector's private trees. The sealed snapshot names every file the
@@ -302,6 +368,31 @@ def get_checkpoint_member(path):
         "memberInputs": descriptors["members"]}
 
 
+def resume_recipe_request(request, identities):
+    """Restore derived recipe labels after checking the declared request.
+
+    Acquisition creates provenance and resolved family weights. The resume
+    door reuses sealed inputs instead of reacquiring them, so it must carry
+    that same metadata into production's full member identity validation.
+    """
+    from dataclasses import replace
+
+    declared, stored = dict(request.receipt()), dict(identities["request"])
+    for key in ("member_device_ids", "max_ordinary_members_per_device"):
+        declared.pop(key, None)
+        stored.pop(key, None)
+    provenance = stored.pop("provenance", ())
+    weights = stored.pop("family_weights", None)
+    supplied_provenance = declared.pop("provenance", ())
+    supplied_weights = declared.pop("family_weights", None)
+    canonical = lambda value: json.dumps(value, sort_keys=True, default=str)
+    if (canonical(declared) != canonical(stored)
+            or (supplied_provenance and canonical(supplied_provenance) != canonical(provenance))
+            or (supplied_weights is not None and canonical(supplied_weights) != canonical(weights))):
+        raise ValueError("ensemble restart roster has a different declared recipe request")
+    return replace(request, provenance=tuple(provenance), family_weights=weights)
+
+
 def resume_prepared_roster(args, request, *, observer=None):
     """Run the fetched member handoffs through the ordinary native front door."""
     from woof import stage_cli
@@ -317,6 +408,7 @@ def resume_prepared_roster(args, request, *, observer=None):
     prepared = {row["member_id"]: row for row in document["members"]}
     identities = json.loads((root / IDENTITIES).read_text(encoding="utf-8"))
     verify_roster(roster, identities, root=root)
+    request = resume_recipe_request(request, identities)
     first = identities["member_order"][0]
     bundle = stage_cli.resolve_bundle(Path(prepared[first]["prepared_root"]))
     # Resume must retain the recipe's sharing of immutable prepared banks.
@@ -373,7 +465,6 @@ def seal(root, output=None, *, collector_files=(), collector=None):
 
 def _seal_once(root, output, *, collector_files, collector):
     from woof.io.restart import read_restart_header, tree_restart_members
-    from woof.supervisor import validate_manifest_checkpoint
     from woof.resume import discover_checkpoint_sets
     root = Path(root).resolve()
     identities = json.loads((root / IDENTITIES).read_text(encoding="utf-8"))
@@ -385,8 +476,9 @@ def _seal_once(root, output, *, collector_files, collector):
     if (root / INPUTS).is_file():
         files.add(root / INPUTS)
     files.update(resolve_file(root, name) for name in collector_files)
-    rows, hashed = [], {}
-    for identity in identities["members"]:
+
+    def inspect_member(identity):
+        member_files, member_hashes = set(), {}
         member = identity["member_id"]
         row = {"member_id": member, **({"provenance": identity["provenance"]} if identity.get("provenance") else {}), "identity_sha256": identity["identity_sha256"], "status": "pending",
                "model_elapsed_seconds": 0.0}
@@ -405,26 +497,33 @@ def _seal_once(root, output, *, collector_files, collector):
                 try:
                     header = read_restart_header(candidate.handle)
                     members = (tree_restart_members(candidate.handle) if header.get("domain_ids") else candidate.members)
-                    for path in members.values():
-                        validate_manifest_checkpoint(path)
+                    proofs = _parallel_file_map(_checkpoint_proof, members.values())
                     elapsed = float(header["elapsed_seconds"])
                     binding_path = candidate.handle.with_suffix(".member.json")
                     binding = json.loads(binding_path.read_text(encoding="utf-8"))
                     if (binding.get("member_id") != member
                             or binding.get("identity_sha256") != identity["identity_sha256"]):
                         raise ValueError("checkpoint sidecar belongs to another ensemble member")
-                    known = {relative_file(root, path): digest_file(path) for path in members.values()}
+                    known = {relative_file(root, path): digest for path, digest in proofs}
                     if known != {row["path"]: row["sha256"] for row in binding["files"]}:
                         raise ValueError("member checkpoint files differ from their committed owner binding")
                 except (ValueError, KeyError, OSError):
                     continue
-                files.update(members.values())
-                files.add(binding_path)
-                hashed.update({path: known[relative_file(root, path)] for path in members.values()})
+                member_files.update(members.values())
+                member_files.add(binding_path)
+                member_hashes.update({path: known[relative_file(root, path)] for path in members.values()})
                 row.update(status="checkpoint", checkpoint=relative_file(root, candidate.handle),
                            model_elapsed_seconds=elapsed)
                 break
+        return row, member_files, member_hashes
+
+    # Discovery, headers, manifest validation and hashes all run on the
+    # allowed CPU pool. No serial full-file reader sits under the lock.
+    rows, hashed = [], {}
+    for row, member_files, member_hashes in _parallel_file_map(inspect_member, identities["members"]):
         rows.append(row)
+        files.update(member_files)
+        hashed.update(member_hashes)
     with checkpoint_hold(collector):
         if collector is not None:
             collector.save_resume()
@@ -456,7 +555,7 @@ def _seal_once(root, output, *, collector_files, collector):
                     # changes its ctime while another member's writer hashes
                     # it (four-member concurrent WoFS run, 2026-10-17).
                     copy = _place(retained, generation / name, link=True)
-                    digest = digest_file(copy)
+                    digest = _seal_digest(copy)
                     if digest != old["sha256"]:
                         raise ValueError(f"ensemble sealed copy changed: {name}")
                 elif path in hashed:
@@ -470,7 +569,7 @@ def _seal_once(root, output, *, collector_files, collector):
                     digest = hashed[path]
                 else:
                     copy = _place(path, generation / name, link=False)
-                    digest = digest_file(copy)
+                    digest = _seal_digest(copy)
                 if _source_revision(path) != revision:
                     raise FileNotFoundError(f"ensemble snapshot source changed during copy: {name}")
                 return {"path": name, "bytes": copy.stat().st_size,

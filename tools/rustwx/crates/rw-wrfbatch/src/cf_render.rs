@@ -64,13 +64,14 @@ fn parse(raw: impl Iterator<Item = String>) -> Result<Args, String> {
                 if b.len() != 4
                     || b.iter().any(|v| !v.is_finite())
                     || b[0] >= b[1]
-                    || b[0] < -180.
-                    || b[1] > 180.
+                    || b[1] - b[0] > 360.
+                    || b[0] < -360.
+                    || b[1] > 540.
                     || b[2] >= b[3]
                     || b[2] < -90.
                     || b[3] > 90.
                 {
-                    return Err("bounds require -180 <= W < E <= 180 and -90 <= S < N <= 90".into());
+                    return Err("bounds require W < E with span <= 360 degrees, -360 <= W, E <= 540 and -90 <= S < N <= 90".into());
                 }
                 args.bounds = Some((b[0], b[1], b[2], b[3]));
             }
@@ -394,7 +395,10 @@ fn render(
 fn run(mut args: Args) -> Result<(), String> {
     let whole = Instant::now();
     let rows = product_rows(args.table.as_deref())?;
-    let grid = CfGrid::open(&args.cf, args.valid)?;
+    let mut grid = CfGrid::open(&args.cf, args.valid)?;
+    if let Some((w,e,_,_)) = args.bounds {
+        if w < -180. || e > 180. { grid.recenter((w+e)*0.5); }
+    }
     let (values, row) = grid.field(&args.variable, &rows)?;
     let finite = values.par_iter().filter(|v| v.is_finite()).count();
     let range = values

@@ -663,3 +663,53 @@ def launch_wrf39_warm_snow_boost(entry_warm_mask, velocity_boost) -> None:
     grid, block = launch_grid(size)
     aerosol_kernel(SED_MODULE, "thompson_aa_wrf39_warm_snow_boost")(
         grid, block, (entry_warm_mask, velocity_boost, np.int32(size)))
+
+
+# ---------------------------------------------------------------------------
+# The hail-aware graupel fallout (mp_physics = 38).  thompson_aerosol_sed.cu
+# carries it under THOMPSON_AA_HAIL; see the comment above
+# thompson_aa_hail_graupel_sediment_impl.
+# ---------------------------------------------------------------------------
+
+def _require_hail(what: str) -> None:
+    from woof.core.thompson_aerosol_launch import active_hail_aware
+    if not active_hail_aware():
+        raise RuntimeError(
+            f"{what} is the hail-aware (mp_physics=38) kernel; the active "
+            "call is not hail aware")
+
+
+def launch_aa_hail_graupel_sedimentation(
+        qg1d, ng1d, qb1d, qgten, ngten, qbten, temperature, pressure, qv,
+        dz, rainnc, rainncv, graupelnc, graupelncv, dt: float, *,
+        reference_density, rain_active_columns, visco_temperature) -> None:
+    """WRF's hail-aware graupel fallout in tendency form.
+
+    :3266-3282 (the TAU+1 graupel mass, number and volume on the :3193
+    density ``reference_density``), :3373-3377, the density-dependent fall
+    speed of :3744-3781 and the substepped divergence of :3902-3939, with
+    WRF's volume-mixing-ratio flux and operation order.  ``qg1d``/``ng1d``/``qb1d`` are the entry state as the
+    entry kernel rewrote it, read-only; the fallout is added to
+    ``qgten``/``ngten``/``qbten``.  ``rain_active_columns`` is WRF's
+    ANY(L_qr) (rhof from the current density), ``visco_temperature`` the
+    temperature WRF's visco(k) was last formed from (:3201, or :3510 where
+    rain evaporated).  Surface graupel joins RAINNC/RAINNCV and
+    GRAUPELNC/GRAUPELNCV.
+    """
+    _require_hail("launch_aa_hail_graupel_sedimentation")
+    shape, _ = validate_fields({
+        "qg1d": qg1d, "ng1d": ng1d, "qb1d": qb1d, "qgten": qgten,
+        "ngten": ngten, "qbten": qbten, "temperature": temperature,
+        "pressure": pressure, "qv": qv, "dz": dz,
+        "reference_density": reference_density,
+        "visco_temperature": visco_temperature})
+    nz, ny, nx = shape
+    for name, value in (("rainnc", rainnc), ("rainncv", rainncv),
+                        ("graupelnc", graupelnc), ("graupelncv", graupelncv),
+                        ("rain_active_columns", rain_active_columns)):
+        _validate_surface_mask(name, value, (ny, nx))
+    _column_launch("thompson_aa_hail_graupel_sediment", nz, ny, nx, (
+        qg1d, ng1d, qb1d, qgten, ngten, qbten, temperature, pressure, qv,
+        reference_density, rain_active_columns, visco_temperature, dz,
+        rainnc, rainncv, graupelnc, graupelncv,
+        DTYPE(dt), np.int32(nz), np.int32(ny), np.int32(nx)))

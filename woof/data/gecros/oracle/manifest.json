@@ -1,0 +1,57 @@
+{
+  "native_commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "source_sha256": "ad2864562e95678a25276df82ef96395cca61c3a1bd0ab48ddfb8402902cf2f6",
+  "compiler": "GNU Fortran 15.2.0, glibc 2.43, test host A",
+  "flags": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize -ffree-form",
+  "build": "gfortran $FLAGS -c module_sf_gecros.F; gfortran $FLAGS -ffree-line-length-none tools/port_gecros/oracle.f90 module_sf_gecros.o -o oracle",
+  "command": "./oracle inputs.bin native.bin",
+  "layout": "inputs.bin: 128 rows of 18 forcing + 60 state float32; native.bin: 128 rows of 60 state + 6 radiation/resistance outputs float32; initial.bin: 60 float32",
+  "qualification": "Active GECROS equations only; native cold-start defect is deliberately not a bitwise target. Seed and established-crop states, latitude 30..55, DOY 60..300.8, T 283..308 K, SW 40..1000 W/m2.",
+  "gpu_commit": "196694750985eceaa298093a10a26f7a81043b42",
+  "differing_words": 0,
+  "total_words": 8448,
+  "files": {
+    "initial.bin": {
+      "bytes": 240,
+      "sha256": "2bf95add1476a48a3bfe08ae139abfd12b8bc013cabc8dc0ce2cf540f9c55c47"
+    },
+    "inputs.bin": {
+      "bytes": 39936,
+      "sha256": "472fc86c4f22fedd97e9371ac1f33ee2ee363888a37964bc04c1ddd34266f5f6"
+    },
+    "native.bin": {
+      "bytes": 33792,
+      "sha256": "11de5c51b87b1dfa077c5fafe1aca7d84ec0c2e1d9a4020ddb4d709b10e74997"
+    },
+    "harvest-inputs.bin": {
+      "bytes": 31744,
+      "sha256": "95348dcb6346b4a1fe03b2b8af3d47f49af6b3580cc70d701ff02b40d6e0d7ce"
+    },
+    "harvest-native.bin": {
+      "bytes": 30720,
+      "sha256": "545c64993e5c12d5d9ac8b391376ca0a434f3b0cf74f1f2f2b0a218e4f59fa17"
+    }
+  },
+  "harvest": {
+    "native_pin": "f52c197ed39d12e087d02c50f412d90d418f6186",
+    "compiler": "GNU Fortran 15.2.0, glibc 2.43, test host A",
+    "flags": "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize -ffree-form",
+    "routines": [
+      "gecros_reinit",
+      "checkIfHarvest"
+    ],
+    "driver_source": {
+      "native_pin": "f52c197ed39d12e087d02c50f412d90d418f6186",
+      "driver_sha256": "29f16622740d7388a17ff9ba6c2f4640487e44f3f26b8c4bdd47aad42e0a4572",
+      "routines": [
+        "gecros_reinit",
+        "checkIfHarvest"
+      ],
+      "gate": "module_sf_noahmpdrv.F:1414-1420",
+      "n": 128
+    },
+    "command": "gfortran -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize -ffree-form -ffree-line-length-none tools/port_gecros/harvest_oracle.f90 -o harvest-oracle; ./harvest-oracle harvest-inputs.bin harvest-native.bin",
+    "differing_words": 0,
+    "total_words": 7680
+  }
+}

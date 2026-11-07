@@ -42,6 +42,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from pathlib import Path
+from woof import data_assets
 
 import numpy as np
 
@@ -64,8 +65,7 @@ __all__ = [
 ]
 
 #: Where the packaged fixture lives.
-SHINHONG_ORACLE_DIR = (
-    Path(__file__).resolve().parents[1] / "data" / "shinhong" / "oracle")
+SHINHONG_ORACLE_DIR = data_assets.verify_oracle_path("shinhong/oracle")
 
 #: The two oracle arms: (ctopo, ctopo2).
 ARM_A = (np.float32(1.0), np.float32(1.0))
@@ -156,6 +156,7 @@ def load_shinhong_oracle(directory: Path | None = None) -> ShinhongOracleFixture
     (full float32 round-trip precision).
     """
     directory = Path(directory) if directory is not None else SHINHONG_ORACLE_DIR
+    data_assets.require_verify_oracle(directory)
     with (directory / "shinhong-levels.csv").open(
             newline="", encoding="ascii") as fh:
         level_rows = list(csv.DictReader(fh))

@@ -74,3 +74,13 @@ def test_routing_receipt_allows_category_changes_but_rejects_count_or_provenance
         runner.require_arwen_v2_surface_execution(dict(payload, noahmp_routing_census=wrong), executed=True, label="missing column")
     with pytest.raises(ValueError, match="census/provenance changed"):
         runner.require_arwen_v2_surface_execution(dict(payload, last_noahmp_census=wrong), executed=True, label="wrong execution")
+
+
+def test_a_suite_frame_after_a_move_is_judged_by_the_layout_noahmp_ran():
+    """run_dbe08aff17eae2c7: a Thompson roster member's snapshot has no routing census, so the frame was judged by the
+    new mesh's cold ice (3,349 sea-ice columns) against the carried ice Noah-MP really ran (3,492)."""
+    from woof.hex.drivers.samehost_forecast_v841 import _expected_noahmp_census
+    cold = dict(sflx_land_columns=1, open_water_columns=4, sea_ice_columns=2, glacier_columns=0)
+    ran = dict(land=1, water=3, sea_ice=3, glacier=0)
+    assert _expected_noahmp_census(None, SimpleNamespace(noahmp_routing_census=lambda: ran), cold) == ran
+    assert _expected_noahmp_census(None, SimpleNamespace(), cold) == dict(land=1, water=4, sea_ice=2, glacier=0)

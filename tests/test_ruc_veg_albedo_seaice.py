@@ -79,14 +79,13 @@ def test_opt_thcnd_keeps_its_noah_only_refusal():
         validate_run_config(_ruc_config(opt_thcnd=2))
 
 
-def test_fractional_seaice_is_zero_or_one_and_ruc_only():
+def test_fractional_seaice_is_zero_or_one_and_requires_a_supported_surface():
     validate_run_config(_ruc_config(fractional_seaice=1))
     with pytest.raises(ValueError, match="fractional_seaice=2"):
         validate_run_config(_ruc_config(fractional_seaice=2))
     noah = _ruc_config(sf_surface_physics=2, num_soil_layers=4,
                        fractional_seaice=1)
-    with pytest.raises(ValueError, match="RUC seam only"):
-        validate_run_config(noah)
+    validate_run_config(noah)
     assert RunConfig.__dataclass_fields__["fractional_seaice"].default == 0
 
 
@@ -477,5 +476,6 @@ def test_monthly_surface_template_selects_the_switches_without_overrides():
     templates = physics_registry()["templates"]
     for key, value in templates.items():
         if key not in (profile,
-                "thompson-mp8-mynn-mynn-ruc-monthly-solar-rrtmg-legacy-v1"):
+                "thompson-mp8-mynn-mynn-ruc-monthly-solar-rrtmg-legacy-v1",
+                "wsm6-ysu-mm5-ssib-rrtm-dudhia-v1"):
             assert "fractional_seaice" not in value.get("parameters", {})

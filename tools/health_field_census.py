@@ -109,6 +109,16 @@ class DeviceAlreadyImportedError(RuntimeError):
     """The real CuPy is loaded, so the host backend cannot be guaranteed."""
 
 
+
+class _CensusCumulus:
+    """Allocation-free stand-in for the callable and GD driver binding."""
+    def bind_driver(self, driver):
+        pass
+
+    def __call__(self, **kwargs):
+        return None
+
+
 def install_host_array_backend() -> None:
     """Bind ``cupy`` to NumPy for this interpreter, or refuse.
 
@@ -254,6 +264,8 @@ def _attach_driver(state, cfg, start_time: datetime, latitude_deg: float,
     them the census would understate a real run's steady state.
     """
     import woof.core.physics as physics_mod
+    from contextlib import ExitStack
+    from unittest.mock import patch
     from woof.config import radiation_enabled, radiation_scheme_ids
 
     grid = np.zeros((cfg.ny, cfg.nx), dtype=np.float64)
@@ -273,12 +285,33 @@ def _attach_driver(state, cfg, start_time: datetime, latitude_deg: float,
     # measured unchanged.
     lw_scheme, _sw_scheme = radiation_scheme_ids(cfg)
     census_glw = None if lw_scheme > 0 else physics_mod.DECLARED_CONSTANT_GLW_WM2
+    allocation_patches = ExitStack()
+    px_inputs = {}
+    if int(cfg.sf_surface_physics) == 7:
+        from woof.core import pxlsm_runtime, kernels
+        allocation_patches.enter_context(patch.object(pxlsm_runtime, "prepare_pxlsm", lambda nlcat: None))
+        original_kernel = kernels.get_kernel
+        def compile_only(module, symbol, *args, **kwargs):
+            if (module, symbol) != ("pxlsm_driver", "pxlsm_post"):
+                return original_kernel(module, symbol, *args, **kwargs)
+            def refuse_launch(*args, **kwargs):
+                raise AssertionError("health census cannot launch a PX kernel")
+            return refuse_launch
+        allocation_patches.enter_context(patch.object(kernels, "get_kernel", compile_only))
+        landusef = np.zeros((24, cfg.ny, cfg.nx), np.float32)
+        soilcbot = np.zeros((16, cfg.ny, cfg.nx), np.float32)
+        landusef[9] = 1.0
+        soilcbot[5] = 1.0
+        px_inputs = dict(landusef=landusef, soilcbot=soilcbot)
     try:
         driver = physics_mod.initialize_physics(
             state, cfg, landmask=1.0, tsk=290.0, soil_temperature=285.0,
-            soil_moisture=0.30, ivgtyp=10, isltyp=6, glw=census_glw,
+            soil_moisture=0.30, ivgtyp=10, isltyp=6, glw=census_glw, **px_inputs,
+            thermal_inertia=0.04 if int(cfg.sf_surface_physics) == 1 else None,
+            # PX cold start writes existing arrays and does not affect counts.
+            lsm_cold_start=int(cfg.sf_surface_physics) != 7,
             radiation=(lambda **kw: None) if radiation_enabled(cfg) else None,
-            cumulus=(lambda **kw: None) if cfg.cu_physics else None,
+            cumulus=_CensusCumulus() if cfg.cu_physics else None,
             radiation_start_time=start_time,
             radiation_latitude=grid + latitude_deg,
             radiation_longitude=grid + longitude_deg,
@@ -286,6 +319,7 @@ def _attach_driver(state, cfg, start_time: datetime, latitude_deg: float,
             noahmp_latitude=grid + latitude_deg,
             noahmp_longitude=grid + longitude_deg)
     finally:
+        allocation_patches.close()
         for name, function in cold_starts.items():
             setattr(physics_mod, name, function)
 
@@ -728,13 +762,14 @@ def _domain_clocks(experiment) -> dict:
     return resolve_clock(experiment).clocks()
 
 
-def _census_one_selection(item):
-    path, selection = item
+def _census_selection_batch(item):
+    path, selections = item
     install_host_array_backend()
-    return experiment_census(path, selections=[selection])
+    return experiment_census(path, selections=selections)
 
 
-def experiment_census(path: Path, selections=None, *, workers=1) -> dict:
+def experiment_census(path: Path, selections=None, *, workers=1,
+                      progress=None) -> dict:
     """Measure every selectable combination on every domain of ``path``.
 
     Combinations the production validators reject (an LSM without a surface
@@ -745,6 +780,9 @@ def experiment_census(path: Path, selections=None, *, workers=1) -> dict:
 
     Combinations that go OVER the ceiling are recorded in ``over_ceiling``,
     never in ``rejected``.
+
+    An optional ``progress(completed, total, batch_report)`` callback runs
+    in the parent after each parallel batch, without changing the report.
     """
     from woof.core.health import FSBM_HEALTH_FIELDS, MAX_HEALTH_FIELDS
     from woof.core.preflight import (DEFAULT_FORCING_INTERVAL_SECONDS,
@@ -762,10 +800,23 @@ def experiment_census(path: Path, selections=None, *, workers=1) -> dict:
     if workers > 1:
         from concurrent.futures import ProcessPoolExecutor
         selections = list(selections)
+        # The admitted matrix now has over 100,000 points. Re-loading the
+        # experiment and probing all scalar axes for EACH point repeated
+        # hundreds of config validations even for a refused selection.
+        # Share that report metadata within a bounded batch. Every domain
+        # still runs its own unchanged constructors and health walk.
+        batches = [selections[start:start + 64]
+                   for start in range(0, len(selections), 64)]
         with ProcessPoolExecutor(max_workers=workers) as pool:
-            parts = list(pool.map(_census_one_selection,
-                                  ((path, selection) for selection in selections),
-                                  chunksize=4))
+            parts = []
+            completed = 0
+            for batch, part in zip(batches, pool.map(
+                    _census_selection_batch,
+                    ((path, batch) for batch in batches), chunksize=1)):
+                parts.append(part)
+                completed += len(batch)
+                if progress is not None:
+                    progress(completed, len(selections), part)
         report = dict(parts[0])
         for key in ("rows", "rejected", "over_ceiling", "own_ceiling_rows"):
             report[key] = [row for part in parts for row in part[key]]

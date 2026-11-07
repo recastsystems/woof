@@ -267,7 +267,7 @@ def test_fit_keeps_a_domain_whose_preparation_fits_the_host(small_host, monkeypa
     # bound first at 896x718 at the first repair's 1.16 of the subtotal.
     from woof.ingest import preparation_workers
 
-    # 850d0957d, lane/28-c-a27, binds the historical peak to eight workers.
+    # 850d0957d, development branch, binds the historical peak to eight workers.
     # baecc2bcf later adds scratch for wider pools. Declare the measured
     # target's CPU budget here, retaining its card, RAM and 902x720 receipt.
     monkeypatch.setattr(preparation_workers, "cpu_budget", lambda: {

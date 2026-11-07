@@ -42,11 +42,10 @@ import numpy as np
 STATE_SHA_CONTRACT = "gpuwm-ensemble-state-sha.v1"
 
 
-def serialized_state_attrs() -> tuple[str, ...]:
+def serialized_state_attrs(state=None) -> tuple[str, ...]:
     """The restart layer's prognostic attribute list, in its own order."""
-    from woof.io import restart as restart_io
-
-    return tuple(restart_io.STATE_SERIALIZED_ATTRS)
+    from woof.state_serialization_contract import serialized_state_attrs as attrs
+    return tuple(attrs(state))
 
 
 def _host(value) -> np.ndarray:
@@ -107,7 +106,8 @@ def state_inventory(present) -> dict:
     provenance*, not merely as two different hex strings that both look
     fine.
     """
-    contract = serialized_state_attrs()
+    present = set(present)
+    contract = serialized_state_attrs() + (("thp0",) if "thp0" in present else ())
     have = [name for name in contract if name in set(present)]
     missing = [name for name in contract if name not in set(present)]
     return {
@@ -143,7 +143,7 @@ def live_state_sha256(state, *, require_complete: bool = False) -> str:
 def live_state_sha_receipt(state, *, require_complete: bool = False) -> dict:
     """:func:`live_state_sha256` plus the inventory it was taken over."""
     arrays = []
-    for name in serialized_state_attrs():
+    for name in serialized_state_attrs(state):
         value = getattr(state, name, None)
         if value is None:
             continue
@@ -219,8 +219,9 @@ def checkpoint_state_sha_receipt(path: str | Path, *,
     with np.load(target, allow_pickle=False) as data:
         stored = {key: data[key] for key in data.files
                   if key.startswith("state/")}
+    contract = serialized_state_attrs() + (("thp0",) if "state/thp0" in stored else ())
     arrays = [(name, stored[f"state/{name}"])
-              for name in serialized_state_attrs()
+              for name in contract
               if f"state/{name}" in stored]
     inventory = state_inventory([name for name, _ in arrays])
     if not arrays:

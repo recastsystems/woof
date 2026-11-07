@@ -72,6 +72,53 @@ def test_store_writer_preserves_tree_header_and_protects_base_keys(tmp_path, mon
     assert not (tmp_path/'collision.npz').exists()
 
 
+def test_streamed_feedback_checkpoint_preserves_original_identity_and_evolved_setup(tmp_path, monkeypatch):
+    from woof import wrf_exact
+    from woof.state_serialization_contract import (
+        FEEDBACK_BASE_ATTRS, FEEDBACK_GEOGRAPHY_ATTRS,
+        retain_feedback_setup, retain_feedback_geography)
+    monkeypatch.setattr(wrf_exact, 'ENABLED', True)
+    cfg = _cfg(moist=True, terrain_opt=1)
+    state, _ = _shim_driver_state(cfg, monkeypatch)
+    _fill_setup(state)
+    setup = restart_stream.capture_domain_setup(state)
+    # Snapshot before feedback, as the real canonical owner does.
+    setup.arrays = {key: value.copy() for key, value in setup.arrays.items()}
+    original = restart.setup_fingerprint(state)
+    store = {key: value.copy() for key, value in physics_inventory.carrier_manifest(state).items()}
+    retain_feedback_setup(state)
+    retain_feedback_geography(state)
+    for index, name in enumerate(FEEDBACK_BASE_ATTRS + FEEDBACK_GEOGRAPHY_ATTRS):
+        getattr(state, name)[...] += np.float32(index+1)
+    state._feedback_base_children = {'2': [4, 4]}
+    state.set_base_geopotential(state.phb)
+    info = restart_stream.write_streamed_restart(tmp_path/'feedback-stream.npz', store, cfg,
+        scalars=physics_inventory.carrier_scalars(state), setup=setup,
+        template_state=state, feedback_state=state, check_pinned=False)
+    assert info.header['setup_fingerprint'] == original
+    for target_streams in (False, True):
+        target, _ = _shim_driver_state(cfg, monkeypatch)
+        _fill_setup(target)
+        if target_streams:
+            target_store = {key: value.copy() for key, value in physics_inventory.carrier_manifest(target).items()}
+            staged = restart_stream.validate_streamed_restart(info.path, target_store, cfg,
+                setup=restart_stream.capture_domain_setup(target), template_state=target,
+                feedback_state=target)
+            assert not hasattr(target, '_setup_feedback_base')
+            staged.apply()
+        else:
+            restart.restore_restart(info.path, target, cfg)
+        assert restart.setup_fingerprint(target) == original
+        assert target._feedback_base_children == {'2': [4, 4]}
+        for name in FEEDBACK_BASE_ATTRS + FEEDBACK_GEOGRAPHY_ATTRS:
+            np.testing.assert_array_equal(getattr(target, name), getattr(state, name))
+    bad = _rewrite_restart_archive(info.path, tmp_path/'partial.npz',
+        lambda payload, header: payload.pop('feedback_base/pb'))
+    with pytest.raises(restart_stream.RestartRefused, match='complete strict feedback base'):
+        restart_stream.validate_streamed_restart(bad, target_store, cfg,
+            setup=setup, template_state=target, feedback_state=target)
+
+
 def test_actual_tree_door_uses_both_stores_and_reseeds_after_validation(tmp_path, monkeypatch):
     from datetime import timedelta
     from types import SimpleNamespace
@@ -83,6 +130,8 @@ def test_actual_tree_door_uses_both_stores_and_reseeds_after_validation(tmp_path
         validate_restart = StreamedDomain.validate_restart
         apply_restart = StreamedDomain.apply_restart
         impose_clock = StreamedDomain.impose_clock
+        _nest_archive_state = StreamedDomain._nest_archive_state
+        _template = None
 
     def attach(node, *, clear):
         endpoint = Endpoint()

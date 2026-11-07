@@ -1366,6 +1366,108 @@ extern "C" __global__ void thompson_aa_wrf39_start_emission(
 #endif  // THOMPSON_AA_WRF39
 
 
+#if defined(THOMPSON_AA_HAIL)
+// ---------------------------------------------------------------------------
+// THE HAIL-AWARE GRAUPEL STATE (mp_physics=38): entry rewrite and terminal
+// apply.  QNGRAUPEL (ng, # per kg) and QVGRAUPEL (qb, m3 per kg) are
+// prognostic state here, read at mp_gt_driver:1260-1264 and written back at
+// :1342-1347.
+// ---------------------------------------------------------------------------
+
+// :1915-1949's state side, before any process runs.  Where the graupel
+// mixing ratio is at or below R1 WRF zeroes qg1d, ng1d and qb1d (:1941-1943,
+// copied back into the state whether or not the column has microphysics);
+// elsewhere it clamps the volume so the bulk density qg/qb lies in
+// [rho_g(1), rho_g(NRHG)] = [50, 800] kg m-3 and writes the clamped volume
+// back into qb1d (:1920-1922).  ng1d itself is not touched: the :1924-1939
+// seed and size clamps act on the local ng(k) only.
+extern "C" __global__ void thompson_aa_hail_graupel_entry(
+    float* __restrict__ qg,
+    float* __restrict__ ng,
+    float* __restrict__ qb,
+    int n)
+{
+    const int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= n) return;
+    const float qg1d = qg[idx];
+    if (qg1d > THOMPSON_AA_R1) {
+        float rb = fmaxf(thompson_aa_div(qg1d, THOMPSON_AA_HAIL_RHO_G[9]),
+                         qb[idx]);
+        rb = fminf(thompson_aa_div(qg1d, THOMPSON_AA_HAIL_RHO_G[1]), rb);
+        qb[idx] = rb;
+    } else {
+        qg[idx] = 0.0f;
+        ng[idx] = 0.0f;
+        qb[idx] = 0.0f;
+    }
+}
+
+// :4058-4078, the terminal apply of the graupel mass, number and volume on
+// the terminal density rho(k) (`rho`), in a column WRF ran mp_thompson for
+// (the :2020 early exit leaves the entry-rewritten state, which is all
+// zeros there because every qg1d was at or below R1).
+extern "C" __global__ void thompson_aa_hail_graupel_terminal(
+    float* __restrict__ qg,
+    float* __restrict__ ng,
+    float* __restrict__ qb,
+    const float* __restrict__ qgten,
+    const float* __restrict__ ngten,
+    const float* __restrict__ qbten,
+    const float* __restrict__ rho,
+    const float* __restrict__ micro_columns,
+    float dt, int ncol, int n)
+{
+    const int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= n) return;
+    if (micro_columns[idx % ncol] == 0.0f) return;
+#if defined(GPUWM_HAIL_ORACLE_MUTATION)
+    // Test-only one-bit change of the prognostic graupel-number tendency.
+    const_cast<float*>(ngten)[idx] = __uint_as_float(__float_as_uint(ngten[idx]) ^ 1u);
+#endif
+    const float qg_new = thompson_aa_add(qg[idx],
+                                         thompson_aa_mul(qgten[idx], dt));
+    float ng_new = fmaxf(thompson_aa_div(THOMPSON_AA_R2, rho[idx]),
+        thompson_aa_add(ng[idx], thompson_aa_mul(ngten[idx], dt)));
+    if (qg_new <= THOMPSON_AA_R1) {
+        qg[idx] = 0.0f;
+        ng[idx] = 0.0f;
+        qb[idx] = 0.0f;
+        return;
+    }
+    float qb_new = fmaxf(thompson_aa_div(qg_new, THOMPSON_AA_HAIL_RHO_G[9]),
+        thompson_aa_add(qb[idx], thompson_aa_mul(qbten[idx], dt)));
+    qb_new = fminf(thompson_aa_div(qg_new, THOMPSON_AA_HAIL_RHO_G[1]),
+                   qb_new);
+    const int idx_bg = thompson_aa_hail_density_bin(
+        thompson_aa_mul(thompson_aa_div(qg_new, qb_new), 0.01f));
+    double lamg = thompson_aa_hail_lambda(ng_new, qg_new, idx_bg);
+    float mvd_g = (float)((double)THOMPSON_AA_HAIL_MVD_NUM / lamg);
+    if (mvd_g > 25.4e-3f) {
+        mvd_g = 25.4e-3f;
+    } else if (mvd_g < THOMPSON_AA_D0R) {
+        mvd_g = THOMPSON_AA_D0R;
+    }
+    // :4076, unconditional: the slope is re-formed from the bounded MVD.
+    lamg = (double)thompson_aa_div(THOMPSON_AA_HAIL_MVD_NUM, mvd_g);
+    ng_new = thompson_aa_hail_number_from_lambda(qg_new, lamg, idx_bg);
+    qg[idx] = qg_new;
+    ng[idx] = ng_new;
+    qb[idx] = qb_new;
+}
+#endif  // THOMPSON_AA_HAIL
+
+#if defined(THOMPSON_AA_HAIL)
+// mp_gt_driver:1225 forms Exner with WRF's REAL constants.
+extern "C" __global__ void thompson_aa_hail_exner(
+    const float* pressure, const float* theta, float* pii, float* temperature, int n)
+{
+    const int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= n) return;
+    pii[idx] = gfk_pow(__fdiv_rn(pressure[idx], 100000.0f), __fdiv_rn(2.0f, 7.0f));
+    temperature[idx] = __fmul_rn(theta[idx], pii[idx]);
+}
+#endif
+
 // ===========================================================================
 // THE CLASSIC GRAUPEL NUMBER AND THE 10 cm REFLECTIVITY, WRF v4.6.1.
 // ===========================================================================
@@ -1779,7 +1881,7 @@ __device__ __forceinline__ double thompson_aa_rayleigh_soak_wetsnow(
 // thompson_aa_graupel_number_finalize; tables is gpuwm.core.refl's device
 // table (xxDs, xdts and the Simpson weights at offsets 0, 50 and 200).
 __device__ __forceinline__ void thompson_aa_refl_level(
-    float qv, float qr, float nr, float qs, float qg, float ng,
+    float qv, float qr, float nr, float qs, float qg, float ng, float qb,
     float t, float p, float* rs, float* smob, float* smoc, float* ze_rain,
     float* ze_snow, float* ze_graupel, bool* l_qr, bool* l_qs, bool* l_qg)
 {
@@ -1831,11 +1933,20 @@ __device__ __forceinline__ void thompson_aa_refl_level(
     }
     if (*l_qg) {
         // :5787-5794 and :5847-5852 (idx_bg1).
+#if defined(THOMPSON_AA_HAIL)
+        float rb = fmaxf(thompson_aa_div(qg, THOMPSON_AA_HAIL_RHO_G[9]), qb);
+        rb = fminf(thompson_aa_div(qg, THOMPSON_AA_HAIL_RHO_G[1]), rb);
+        const int bin = thompson_aa_hail_density_bin(
+            thompson_aa_mul(thompson_aa_div(qg, rb), 0.01f));
+        const float am_g = THOMPSON_AA_HAIL_AM_G[bin];
+#else
+        const float am_g = THOMPSON_AA_AM_G5;
+#endif
         const float rg = thompson_aa_mul(qg, rho);
         const float ng_m3 = fmaxf(THOMPSON_AA_R2, thompson_aa_mul(ng, rho));
         const double lamg = (double)thompson_aa_powf(thompson_aa_div(
             thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
-                THOMPSON_AA_AM_G5, THOMPSON_AA_CGG3), THOMPSON_AA_OGG2),
+                am_g, THOMPSON_AA_CGG3), THOMPSON_AA_OGG2),
                 ng_m3), rg), THOMPSON_AA_OBMG);
         const double ilamg = __ddiv_rn(1.0, lamg);
         const double n0_g = __dmul_rn(
@@ -1843,7 +1954,7 @@ __device__ __forceinline__ void thompson_aa_refl_level(
             thompson_aa_pow(lamg, (double)THOMPSON_AA_CGE2));
         // :5858-5860: the REAL(4) prefix (constants folded, then the two
         // am_g/900 factors), then DOUBLE PRECISION with N0_g.
-        const float am_g_900 = thompson_aa_div(THOMPSON_AA_AM_G5, 900.0f);
+        const float am_g_900 = thompson_aa_div(am_g, 900.0f);
         const float prefix = thompson_aa_mul(thompson_aa_mul(thompson_aa_mul(
             thompson_aa_mul(thompson_aa_div(0.176f, 0.93f),
                 thompson_aa_div(6.0f, THOMPSON_AA_PI)),
@@ -1861,6 +1972,7 @@ extern "C" __global__ void thompson_aa_refl10cm(
     const float* __restrict__ qs,
     const float* __restrict__ qg,
     const float* __restrict__ ng,
+    const float* __restrict__ qb,
     const float* __restrict__ temperature,
     const float* __restrict__ pressure,
     const double* __restrict__ tables,
@@ -1896,7 +2008,7 @@ extern "C" __global__ void thompson_aa_refl10cm(
         bool lr, lg;
         const size_t idx = IDX3(k_0, j, i);
         thompson_aa_refl_level(qv[idx], qr[idx], nr[idx], qs[idx], qg[idx],
-            ng[idx], temperature[idx], pressure[idx], &rs_k0, &smob, &smoc,
+            ng[idx], qb == nullptr ? 0.0f : qb[idx], temperature[idx], pressure[idx], &rs_k0, &smob, &smoc,
             &zr, &zs, &zg, &lr, &l_qs_k0, &lg);
     }
 
@@ -1905,7 +2017,7 @@ extern "C" __global__ void thompson_aa_refl10cm(
         float rs, smob, smoc, ze_rain, ze_snow, ze_graupel;
         bool l_qr, l_qs, l_qg;
         thompson_aa_refl_level(qv[idx], qr[idx], nr[idx], qs[idx], qg[idx],
-            ng[idx], temperature[idx], pressure[idx], &rs, &smob, &smoc,
+            ng[idx], qb == nullptr ? 0.0f : qb[idx], temperature[idx], pressure[idx], &rs, &smob, &smoc,
             &ze_rain, &ze_snow, &ze_graupel, &l_qr, &l_qs, &l_qg);
         // :5873-5952, melting snow below k_0 (the graupel block is
         // commented out in v4.6.1).  k_0 >= 2 in Fortran's 1-based index.
@@ -1950,3 +2062,40 @@ extern "C" __global__ void thompson_aa_refl10cm(
         refl[idx] = fmaxf(-35.0f, dbz);
     }
 }
+
+#if defined(THOMPSON_AA_HAIL)
+// WRF :4065-4070 density bin and distribution slope, output-only.
+extern "C" __global__ void thompson_aa_hail_size(
+    const float* qg, const float* ng, const float* qb,
+    float* density, float* mvd_mm, int n)
+{
+    const int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= n) return;
+    if (qg[idx] <= THOMPSON_AA_R1) {
+        density[idx] = 0.0f;
+        mvd_mm[idx] = 0.0f;
+        return;
+    }
+    const float rb = fminf(__fdiv_rn(qg[idx], 50.0f),
+                          fmaxf(__fdiv_rn(qg[idx], 800.0f), qb[idx]));
+    density[idx] = __fdiv_rn(qg[idx], rb);
+    const int bin = thompson_aa_hail_density_bin(__fmul_rn(density[idx], 0.01f));
+    const double lamg = thompson_aa_hail_lambda(ng[idx], qg[idx], bin);
+    mvd_mm[idx] = __fmul_rn((float)__ddiv_rn((double)THOMPSON_AA_HAIL_MVD_NUM, lamg), 1000.0f);
+}
+#endif
+#if defined(THOMPSON_AA_HAIL)
+extern "C" __global__ void thompson_aa_hail_size_maximum(
+    const float* mvd_mm, float* column_maximum, int nz, int ncol)
+{
+    const int column = blockDim.x * blockIdx.x + threadIdx.x;
+    if (column >= ncol) return;
+    float maximum = 0.0f;
+    for (int k = 0; k < nz; ++k) {
+        const float value = mvd_mm[k*ncol + column];
+        if (!isfinite(value)) { column_maximum[column] = value; return; }
+        maximum = fmaxf(maximum, value);
+    }
+    column_maximum[column] = maximum;
+}
+#endif

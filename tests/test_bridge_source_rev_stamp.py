@@ -300,6 +300,21 @@ def test_pin_accepts_a_bundle_stamped_with_the_released_revision(tmp_path):
 #: entry whose file stops referencing the stamp -- fails below, so a new
 #: bridge cannot ship un-provable.
 _STAMP_SOURCES = {
+    # 3.0 TC fold: the storm-merge, vitals, RMW-score, frames and MET-TC
+    # verification bridges each stamp their entry point.
+    "tc_frames_io": ("src/lib.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "rw_storm_merge": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "rw_tc_vitals": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "rw_tc_rmw_score": ("src/rmw_score.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "tc-verify": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "rw_waves_data": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "rw_waves_coupled_prepare": ("src/coupled.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "arwen_dfi": "src/lib.rs",
+    "gpuwm_tslist": "src/lib.rs",
+    "rw_cu99_launch": "crates/rw-cu99-launch/src/lib.rs",
+    "rw_fddaobs": "crates/rw-obs/src/bin/fddaobs.rs",
+    "aerosol-grid": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "public-aerosol-build": ("src/public_climatology.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
     # The wind-turbine table decoder (labs/windfarm, 2.9.11): its build.rs
     # injects GPUWM_BRIDGE_SOURCE_REV and main.rs prints it with the ABI.
     "rw-wind-table": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
@@ -347,6 +362,7 @@ _STAMP_SOURCES = {
     # build.rs; the stamp is exported from the ctypes seam).
     "rw_hex_points": "crates/rw-wrfbatch/src/bin/hex_points.rs",
     "rw_tempo": "crates/rw-tempo/src/capi.rs",
+    "rw_p3": "crates/rw-p3/src/lib.rs",
     # The ML dataset exporter: its own crate, its own build.rs.
     "rw_mlexport": "crates/rw-mlexport/src/bin/rw_mlexport.rs",
     # The simulated radar: its own crate, whose build.rs injects the
@@ -354,6 +370,7 @@ _STAMP_SOURCES = {
     # joined BUNDLED_ARTIFACTS without a stamp, so the cut would have
     # refused the bundle that carried it.
     "rw_simradar": "crates/rw-simradar/src/main.rs",
+    "rw_history_grib2": "crates/rw-history-grib2/src/main.rs",
     "rw_grib2export": "crates/rw-grib2export/src/bin/rw_grib2export.rs",
     # The nowcast frames converter: a bin of rw-wrfbatch, stamped by that
     # crate's build.rs with rw_compare and rw_verify.
@@ -416,6 +433,7 @@ _STAMP_SOURCES = {
     # workspace and build.rs) and the freezing-rain, hail and ocean SST
     # verifiers (cap-fzra, cap-hail, cap-slab-ocean: bins of rw-obs, stamped
     # by that crate's build.rs).
+    "rw_cam_tables": ("src/lib.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
     "rw_ocean": "src/main.rs",
     # cap-surge: the bathymetry tool, its own tools/rw-bathy workspace and build.rs.
     "rw_bathy": "src/main.rs",
@@ -427,6 +445,15 @@ _STAMP_SOURCES = {
 
 #: The build script that injects the revision for each artifact.
 _STAMP_BUILDS = {
+    "tools/storm_merge": ("build.rs",),
+    "tools/tc_vitals": ("build.rs",),
+    "tools/tc_frames_io": ("build.rs",),
+    "tools/tc-verify": ("build.rs",),
+    "tools/waves_data": ("build.rs",),
+    "tools/dfi-runtime": ("build.rs",),
+    "tools/tslist_bridge": ("build.rs",),
+    "tools/cam_tables": ("build.rs",),
+    "tools/aerosol_grid": ("build.rs",),
     "tools/rw_icechunk": ("build.rs",),
     "tools/nextgen_hydrofabric": (("build.rs", "GPUWM_HYDROFABRIC_REV"),),
     "tools/nextgen_forcing": ("build.rs",),
@@ -443,6 +470,7 @@ _STAMP_BUILDS = {
     "tools/arwen-tui": ("build.rs",),
     bridges.CRATE_RELATIVE: ("build.rs",),
     bridges.RUSTWX_CRATE_RELATIVE: ("crates/rw-fetch/build.rs",
+                                    "crates/rw-grib2export/build.rs",
                                     "crates/rw-soundings/build.rs",
                                     "crates/rw-wrfbatch/build.rs",
                                     "crates/rw-mpas/build.rs",
@@ -458,6 +486,8 @@ _STAMP_BUILDS = {
                                     "crates/rw-netcdf/build.rs",
                                     "crates/netcdf-writer/build.rs",
                                     "crates/static-fields/build.rs",
+                                    "crates/rw-p3/build.rs",
+                                    "crates/rw-cu99-launch/build.rs",
                                     "crates/obs-regrid/build.rs",
                                     "crates/obs-score/build.rs",
                                     "crates/rw-isobaric/build.rs",

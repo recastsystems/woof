@@ -479,12 +479,18 @@ def _mcica_gpu_module():
                             "kernels", "rrtmg_mcica_wrf.cu")
         with open(path, encoding="utf-8") as fh:
             source = fh.read()
+        from woof.physics_params import edit_kernel_source, note_compiled
+        source = edit_kernel_source("rrtmg_mcica_wrf", source)
         ptx, _mapping = _cc.compile_using_nvrtc(
             source,
             ("-std=c++17", "--ftz=false"),
             None, "rrtmg_mcica_wrf.cu")
         mod = cp.cuda.function.Module()
         mod.load(ptx.encode() if isinstance(ptx, str) else ptx)
+        note_compiled("rrtmg_mcica_wrf", mod)
+        from woof.certify.kernel_manifest import record_module
+        record_module("woof.core.rrtmg_mcica:wrf", source=source,
+                      options=("-std=c++17", "--ftz=false"), module=None)
         _MCICA_GPU_MODULE[device] = mod
     return _MCICA_GPU_MODULE[device]
 
@@ -593,6 +599,51 @@ def _mcica_dev_f32(cp, arr, shape, name):
     return out
 
 
+_GRAPH_BAND_TABLES = {}
+_GRAPH_DESCRIPTOR_KERNELS = {}
+
+
+def prepare_graph_tables():
+    """Prepare immutable McICA metadata before capturing an actual solve."""
+    import cupy as cp
+    device = cp.cuda.runtime.getDevice()
+    for offsets in (_LW_NGB - 1, _SW_NGB - _SW_NGB[0]):
+        key = (device, tuple(int(x) for x in offsets))
+        if key not in _GRAPH_BAND_TABLES:
+            _GRAPH_BAND_TABLES[key] = cp.asarray(np.asarray(offsets, np.int32))
+    for count in (5, 8):
+        _graph_descriptor_kernel(cp, count).compile()
+
+
+def _graph_descriptor_kernel(cp, count):
+    key = (cp.cuda.runtime.getDevice(), count)
+    kernel = _GRAPH_DESCRIPTOR_KERNELS.get(key)
+    if kernel is None:
+        parameters = []
+        writes = []
+        for i in range(count):
+            parameters.extend((f"unsigned long long o{i}",
+                               f"unsigned long long s{i}",
+                               f"int k{i}", f"float c{i}"))
+            writes.append(f"if (i=={i}) {{op[i]=o{i};sp[i]=s{i};"
+                          f"kp[i]=k{i};cp[i]=c{i};}}")
+        source = ("extern \"C\" __global__ void descriptors(unsigned char *p, "
+                  "const int *bands, int ngpt, " + ",".join(parameters) + ") {"
+                  "int i=blockIdx.x*blockDim.x+threadIdx.x;"
+                  "auto op=(unsigned long long*)p;"
+                  f"auto sp=(unsigned long long*)(p+{8*count});"
+                  f"auto kp=(int*)(p+{16*count});"
+                  f"auto cp=(float*)(p+{20*count});"
+                  f"auto bp=(int*)(p+{24*count});"
+                  + "".join(writes) + "if(i<ngpt) bp[i]=bands[i];}")
+        kernel = cp.RawKernel(source, "descriptors")
+        from woof.certify.kernel_manifest import record_module
+        record_module(f"woof.core.rrtmg_mcica:descriptors[{count}]",
+                      source=source, options=(), module=None)
+        _GRAPH_DESCRIPTOR_KERNELS[key] = kernel
+    return kernel
+
+
 def _window_tables(cp, optrs, sptrs, kinds, clears, band_offsets):
     """The five small kernel tables of one McICA window, in ONE upload.
 
@@ -608,6 +659,23 @@ def _window_tables(cp, optrs, sptrs, kinds, clears, band_offsets):
     """
     nout = len(optrs)
     ngpt = len(band_offsets)
+    if cp.cuda.get_current_stream().is_capturing():
+        key = (cp.cuda.runtime.getDevice(), tuple(int(x) for x in band_offsets))
+        if key not in _GRAPH_BAND_TABLES:
+            raise RuntimeError("McICA graph band tables were not prepared before capture")
+        dev = cp.empty(24 * nout + 4 * ngpt, dtype=cp.uint8)
+        arguments = []
+        for values in zip(optrs, sptrs, kinds, clears):
+            arguments.extend((np.uint64(values[0]), np.uint64(values[1]),
+                              np.int32(values[2]), np.float32(values[3])))
+        _graph_descriptor_kernel(cp, nout)(
+            ((max(nout, ngpt) + 127)//128,), (128,),
+            (dev, _GRAPH_BAND_TABLES[key], np.int32(ngpt), *arguments))
+        return (dev[0:8*nout].view(cp.uint64),
+                dev[8*nout:16*nout].view(cp.uint64),
+                dev[16*nout:20*nout].view(cp.int32),
+                dev[20*nout:24*nout].view(cp.float32),
+                dev[24*nout:].view(cp.int32))
     host = np.empty(24 * nout + 4 * ngpt, dtype=np.uint8)
     host[0:8 * nout].view(np.uint64)[...] = np.asarray(optrs, dtype=np.uint64)
     host[8 * nout:16 * nout].view(np.uint64)[...] = np.asarray(sptrs, dtype=np.uint64)

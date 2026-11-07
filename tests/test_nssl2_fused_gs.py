@@ -38,15 +38,15 @@ def test_launcher_passes_one_workspace_and_exact_environment(monkeypatch, strict
         def __call__(self, grid, block, args):
             calls.append((grid, block, args))
 
-    def get_kernel(module, symbol):
+    def get_kernel(module, symbol, shapes=(0.,1.)):
         assert module == "nssl2_fused_gs"
         assert symbol in ("nssl2_prepare_fused_gs", "nssl2_fused_gs")
         return Kernel()
 
-    monkeypatch.setattr(fused, "get_kernel", get_kernel)
+    monkeypatch.setattr(fused, "shape_kernel", get_kernel)
     # The once-per-device init-table build needs a card; this gate is the
     # launch contract, so it is stubbed here.
-    monkeypatch.setattr(fused, "_ensure_init_tables", lambda: None)
+    monkeypatch.setattr(fused, "_ensure_init_tables", lambda shapes=(0.,1.): None)
     fused.launch_fused_gs(workspace, *environment, 12.5)
 
     assert len(calls) == 2
@@ -114,7 +114,7 @@ def test_callback_adapter_preserves_the_narrow_hook(monkeypatch):
     assert calls == [((
         workspace, theta, rho, pressure, exner, w,
         temperature, target, dz, 30.0,
-    ), {"hail_on": True, "loaded_vapor": loaded})]
+    ), {"hail_on": True, "loaded_vapor": loaded, "shapes": (0.,1.)})]
 
     # The variant's hail switch is carried by the adapter, not smuggled in
     # from module state: an adapter built hail-off must forward hail-off.
@@ -351,3 +351,32 @@ def test_official_wrf_oracle_rows_reach_qiint_with_a_shifted_w_center():
     assert float(worst[2]["w_center_m_s"]) == 4.25
     assert 0.5 * (float(worst[3]["w_center_m_s"])
                   + float(worst[2]["w_center_m_s"])) == 8.75
+
+
+def test_table_initialization_orders_independent_member_streams(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from woof.core import nssl2_fused_gs as fused
+
+    events = []
+    class Stream:
+        def is_capturing(self): return False
+        def wait_event(self, event): events.append(('wait', self, event))
+    class Event:
+        def __init__(self, **kw): assert kw == {'disable_timing': True}
+        def record(self, stream): events.append(('record', stream, self))
+    first, second = Stream(), Stream()
+    active = [first]
+    cp = SimpleNamespace(cuda=SimpleNamespace(
+        runtime=SimpleNamespace(getDevice=lambda: 0), Event=Event,
+        get_current_stream=lambda: active[0]))
+    monkeypatch.setitem(sys.modules, 'cupy', cp)
+    monkeypatch.setattr(fused, '_TABLES_READY', {})
+    monkeypatch.setattr(fused, 'shape_kernel',
+        lambda *args: lambda *launch: events.append(('initialize', active[0])))
+    fused._ensure_init_tables((0., 1., 7, 2))
+    active[0] = second
+    fused._ensure_init_tables((0., 1., 7, 2))
+    assert [e[0] for e in events] == ['initialize', 'record', 'wait', 'wait']
+    assert events[2][2] is events[3][2]
+    assert events[3][1] is second

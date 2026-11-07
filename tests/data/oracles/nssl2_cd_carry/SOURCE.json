@@ -1,0 +1,36 @@
+{
+  "source_pin": "tools/nssl2_wrf461_variant_oracle/SOURCE_PIN.json",
+  "licence": "WRF public domain; these are native numerical outputs, no external tables",
+  "native_source": "WRF v4.6.1 public module plus the four repository default referee fixes in wrf_bugfix.py",
+  "real_case": "2024-05-25 18 UTC real.exe initialization, native timestep 112, complete 74-column X row at Y=2, 49 levels, dt=12, four MPI ranks",
+  "real_compiler": "GNU Fortran 12.5.0 strict O2, -fno-tree-vectorize -fno-fast-math -ffp-contract=off; glibc 2.43 module",
+  "mixed_case": "variant_column.F90 six independent mixed-phase columns, 40 levels, dt=6, timestep=2; GNU Fortran 15.2.1 strict O2; glibc 2.43",
+  "recurrence_cases": {
+    "g7-h2-hail1": "number CD inherits preceding mass CD for both species",
+    "g2-h2-hail1": "hail number inherits preceding graupel number CD",
+    "g7-h4-hail1": "graupel number inherits hail mass CD",
+    "g7-h6-hail0": "graupel mass CD without hail"
+  },
+  "files": {
+    "complete-row-native-capture.bin": {
+      "bytes": 847236,
+      "sha256": "5d679d1571d1bd93d6b4c68a4ada35386fd54b50929cff116a839c445e027d36"
+    },
+    "g2-h2-hail1.npz": {
+      "bytes": 86902,
+      "sha256": "c795a1c672a37e398b1d45260b08416fbd8296b49ec1cbd3882905a0713f7ee4"
+    },
+    "g7-h2-hail1.npz": {
+      "bytes": 86902,
+      "sha256": "5af9615cfbd1804f844f7c2163a5d497e116186caeb3378222e19f989c955e43"
+    },
+    "g7-h4-hail1.npz": {
+      "bytes": 86902,
+      "sha256": "b2f7cd57637d127c7572edfb19074191659c536658d56ff9db4df3c2468f5d63"
+    },
+    "g7-h6-hail0.npz": {
+      "bytes": 86902,
+      "sha256": "f8c2e44665de2804527f05d8a31e8b650f0821e781e6c24f1a731b7389de5983"
+    }
+  }
+}

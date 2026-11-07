@@ -1,7 +1,7 @@
 {
   "composition": {
     "name": "rw-wps-gem-gdps-grib2.composition.json",
-    "sha256": "13d7e4ca06f8012cfd252c03d70d9fae69d2e18b9b51975445d70a506e1d90ed"
+    "sha256": "2f1c6e6b9690a76fab1cd26b2d79d92eb16d5b83613f41a0816bdf92963c2dbf"
   },
   "mapping": {
     "name": "rw-wps-gem-gdps-grib2.mapping.json",

@@ -415,6 +415,30 @@ def test_head_and_tree_are_provenance_not_gates() -> None:
     assert "6b896c3dd5ef2fb94507210af49766f78f831d57" not in source
 
 
+@pytest.mark.parametrize("parent_has_head", [False, True])
+def test_installed_engine_does_not_inherit_a_parent_repository(
+    tmp_path, monkeypatch, parent_has_head
+):
+    runner = _load_runner()
+    parent = tmp_path / "foreign"
+    parent.mkdir()
+    subprocess.run(["git", "init", "-q", str(parent)], check=True)
+    if parent_has_head:
+        subprocess.run(["git", "-C", str(parent), "-c", "user.name=Fixture",
+                        "-c", "user.email=fixture@localhost", "commit", "-q",
+                        "--allow-empty", "-m", "Foreign repository"], check=True)
+    installed = parent / "site-packages"
+    installed.mkdir()
+    identity = {"name": "woof", "version": "2.9.12", "record_sha256": "a" * 64}
+    monkeypatch.setattr(runner, "installed_engine_provenance",
+                        lambda root: identity if root == installed else None)
+    monkeypatch.setattr(runner, "checkout_manifest_for", lambda root: {})
+    record = runner.verify_arwen_checkout_git(installed)
+    assert record["kind"] == "installed"
+    assert record["head"] is None and record["tree"] is None
+    assert record["installed_distribution"] == identity
+
+
 # --- leg 2: masked-content authority digests -------------------------------
 
 

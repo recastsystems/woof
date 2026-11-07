@@ -1,4 +1,4 @@
-"""WRF v4.6.1 WDM6 coefficient initialization.
+"""WRF v4.6.1 WDM6 coefficient initialization, and the WDM family table.
 
 The values and operation order follow ``wdm6init`` in
 ``phys/module_mp_wdm6.F`` (:2085-2211 of the byte-frozen reference bundle).
@@ -82,6 +82,79 @@ def wdm6_level_tier(nz: int) -> int:
         raise ValueError(
             f"WDM6 requires {minimum} <= nz <= {maximum}, got {nz}")
     return next(tier for tier in WDM6_KERNEL_LEVEL_TIERS if nz <= tier)
+
+
+#: ``kernels/wdm5.cu``'s ``WDM5_KMAX`` ladder, on WDM6's shape for WDM6's
+#: reason (one thread per column, ~25 per-thread level arrays, the driver's
+#: local-memory backing store sized by the deepest frame).  64 is the
+#: source's ``#ifndef`` default.
+WDM5_SHALLOW_KMAX = 64
+WDM5_DEEP_KMAX = 80
+WDM5_KERNEL_LEVEL_TIERS = (WDM5_SHALLOW_KMAX, WDM5_DEEP_KMAX)
+#: ``(minimum, maximum)`` levels WDM5 admits: 2 (a layer above and below to
+#: sediment between) up to the deepest compiled tier.
+WDM5_VERTICAL_LEVEL_BOUNDS = (2, WDM5_DEEP_KMAX)
+
+
+def wdm5_level_tier(nz: int) -> int:
+    """Return the ``WDM5_KMAX`` tier ``wdm5.cu`` compiles for ``nz``."""
+    nz = int(nz)
+    minimum, maximum = WDM5_VERTICAL_LEVEL_BOUNDS
+    if not minimum <= nz <= maximum:
+        raise ValueError(
+            f"WDM5 requires {minimum} <= nz <= {maximum}, got {nz}")
+    return next(tier for tier in WDM5_KERNEL_LEVEL_TIERS if nz <= tier)
+
+
+@dataclass(frozen=True)
+class WdmScheme:
+    """One WRF WDM option, as the WDM family adapter runs it.
+
+    The family is WRF's double-moment warm rain (cloud droplet number, rain
+    number and a prognostic CCN reservoir) beside a WSM ice half.  A sibling
+    is admitted by a row here and its physics-registry row
+    (tools/build_registry.py), never by an adapter of its own:
+    :func:`woof.core.wdm6.apply` reads everything scheme-specific from the
+    row.
+    """
+    mp_physics: int
+    name: str
+    #: CUDA translation unit under woof/core/kernels.
+    kernel_unit: str
+    #: WRF's ``moist`` package for the option (Registry.EM_COMMON).
+    mass_species: tuple
+    #: WRF's ``scalar`` package: CCN, cloud and rain number (qnn,qnc,qnr).
+    number_species: tuple
+    #: True when the ice half carries a graupel category (and fallout).
+    graupel: bool
+    #: True when process rates read the XLAND land/sea mask.
+    land_sea_mask: bool
+    vertical_level_bounds: tuple
+    hail: bool = False
+
+
+#: Registry.EM_COMMON:3030-3031 (wdm5scheme, wdm6scheme).
+WDM_SCHEMES = {
+    14: WdmScheme(14, "WDM5", "wdm5", ("qv", "qc", "qr", "qi", "qs"),
+                  WDM6_NUMBER_SPECIES, graupel=False, land_sea_mask=False,
+                  vertical_level_bounds=WDM5_VERTICAL_LEVEL_BOUNDS),
+    16: WdmScheme(16, "WDM6", "wdm6", ("qv", "qc", "qr", "qi", "qs", "qg"),
+                  WDM6_NUMBER_SPECIES, graupel=True, land_sea_mask=True,
+                  vertical_level_bounds=WDM6_VERTICAL_LEVEL_BOUNDS),
+    26: WdmScheme(26, "WDM7", "wdm7", ("qv", "qc", "qr", "qi", "qs", "qg", "qh"),
+                  WDM6_NUMBER_SPECIES, graupel=True, land_sea_mask=True,
+                  vertical_level_bounds=WDM6_VERTICAL_LEVEL_BOUNDS, hail=True),
+
+}
+
+WDM_SCHEME_NAMES = {selector: row.name for selector, row in WDM_SCHEMES.items()}
+WDM_HAIL_SCHEMES = frozenset(selector for selector, row in WDM_SCHEMES.items() if row.hail)
+WDM7_HAIL_SPECIES = ("qh",)
+
+
+def wdm_scheme(mp_physics: int) -> WdmScheme | None:
+    """The WDM family row for ``mp_physics``, or None for any other scheme."""
+    return WDM_SCHEMES.get(int(mp_physics))
 
 
 @dataclass(frozen=True)
@@ -241,14 +314,35 @@ WDM6_WRF_RIMED_WORDS: dict[int, dict[str, int]] = {
 }
 
 
+#: The hail words WRF v4.6.1's own ``wdm7init`` leaves in its saved
+#: variables (module_mp_wdm7.F:2457-2488; n0h = 4e4, avth = 285, bvth = 0.8,
+#: denh = 912, lamdahmax = 2e4), read back from the Fortran by
+#: tools/wdm7_wrf461_oracle (gfortran 13.3 -O0, glibc 2.39).  Every other
+#: wdm7init word equals a WDM6 word in :data:`WDM6_WRF_WORDS` or the
+#: ``hail_opt = 0`` row of :data:`WDM6_WRF_RIMED_WORDS` (the oracle's
+#: constants dump shows it); all but ``pidn0h`` here also equal the
+#: ``hail_opt = 1`` graupel words, which share n0/avt/bvt/lambda-max with
+#: WDM7's hail and differ only in density. ``kernels/wdm7.cu`` bakes these
+#: words; tests/test_wdm7_wrf461_oracle.py pins them.
+WDM7_WRF_HAIL_WORDS: dict[str, int] = {
+    "pvth": 0x44539495, "pacrh": 0x4C2036D0, "prech1": 0x483F70D8,
+    "prech2": 0x4A12A338, "pidn0h": 0x4CDA979F,
+    "rslopehmax": 0x3851B717, "rslopehbmax": 0x39BDFF22,
+    "rslopeh2max": 0x312BCC76, "rslopeh3max": 0x2A0CBCCB,
+}
+
+
 def wrf_word(bits: int) -> float:
     """The float32 value of one WRF word (returned as a Python float)."""
     import struct
     return struct.unpack("<f", struct.pack("<I", bits))[0]
 
 
-__all__ = ["WDM6Coefficients", "WDM6_DEEP_KMAX", "WDM6_KERNEL_LEVEL_TIERS",
-           "WDM6_NUMBER_SPECIES", "WDM6_SHALLOW_KMAX",
-           "WDM6_VERTICAL_LEVEL_BOUNDS", "WDM6_WRF_RIMED_WORDS",
-           "WDM6_WRF_WORDS", "coefficients", "rimed_ice_constants",
-           "wdm6_level_tier", "wrf_word"]
+__all__ = ["WDM5_DEEP_KMAX", "WDM5_KERNEL_LEVEL_TIERS", "WDM5_SHALLOW_KMAX",
+           "WDM5_VERTICAL_LEVEL_BOUNDS", "WDM6Coefficients", "WDM6_DEEP_KMAX",
+           "WDM6_KERNEL_LEVEL_TIERS", "WDM6_NUMBER_SPECIES",
+           "WDM6_SHALLOW_KMAX", "WDM6_VERTICAL_LEVEL_BOUNDS", "WDM_SCHEMES",
+           "WdmScheme", "coefficients", "rimed_ice_constants",
+           "wdm5_level_tier", "wdm6_level_tier", "wdm_scheme", "wrf_word",
+           "WDM6_WRF_WORDS", "WDM6_WRF_RIMED_WORDS", "WDM7_WRF_HAIL_WORDS",
+           "WDM7_HAIL_SPECIES", "WDM_HAIL_SCHEMES", "WDM_SCHEME_NAMES"]

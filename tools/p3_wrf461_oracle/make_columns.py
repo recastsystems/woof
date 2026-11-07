@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Column fixtures for the P3 (mp_physics=50) oracle against WRF 4.6.1.
+"""Column fixtures for the P3 (mp_physics=50 and 53) oracle against WRF 4.6.1.
 
 Writes the byte format of evidence/p3-fortran-oracle-20260828/FORMAT.md
 (raw little-endian binary32, Fortran element order, fifteen (ncol, nk)
@@ -33,6 +33,16 @@ Fixtures written:
                       into NaN; WOOF's rescue recomputes only that product.
                       Also outside the claim; it DOCUMENTS the second
                       divergence against the real Fortran.
+
+``--variant 53`` writes the same soundings for the mp_physics=53 call shape
+(prognostic droplet number, three-moment ice): every fixture gains ``nc``
+and ``qzi`` (the ADVECTED ice moment, (N*Z)**0.5) after the fifteen mp=50
+inputs and the dumps gain the same two fields after the seventeen mp=50
+outputs (tools/p3_wrf461_oracle/p3_ref_driver_3mom.f90).  The two fields
+are drawn from their OWN generator, so the mp=50 bytes of every fixture are
+unchanged, and the edge set gains the three-moment edges (qzi with no ice,
+ice with no qzi, mu_i pinned at both bounds, droplets with zero number,
+activation in clear supersaturated air).
 """
 from __future__ import annotations
 
@@ -53,6 +63,8 @@ IN2D = ["rainnc", "rainncv", "sr", "snownc", "snowncv"]
 OUT3D = ["th", "qv", "qc", "qr", "nr", "qi", "ni", "qir", "qib",
          "th_old", "qv_old", "zdbz", "effc", "effi", "vmi", "di", "rhopo"]
 OUT2D = ["rainnc", "rainncv", "sr", "snownc", "snowncv"]
+#: Fields a variant adds after the fifteen inputs and the seventeen outputs.
+VARIANT_EXTRA = {50: (), 53: ("nc", "qzi")}
 
 
 # Independent saturation formulas (Bolton; Murphy-Koop), used only to target
@@ -458,11 +470,113 @@ def regime_columns():
 SUBSET = (0, 5, 9, 28, 38, 46, 48, 51, 54, 60)
 
 
-def pack(cols):
+def g_of_mu(mu):
+    """G(mu) = (6+mu)(5+mu)(4+mu)/((3+mu)(2+mu)(1+mu)), the gamma-PSD ratio
+    M0*M6/M3**2, written from its definition (not from P3's G_of_mu)."""
+    return ((6 + mu) * (5 + mu) * (4 + mu)) / ((3 + mu) * (2 + mu) * (1 + mu))
+
+
+def add_three_moment_fields(cols, seed=53):
+    """Give every column a droplet number and an advected ice moment.
+
+    nc: the cloud water spread over droplets of one mean volume diameter
+    drawn per column (6-30 um).  qzi: for a gamma PSD of shape mu and bulk
+    density rho_b, M3 = 6 qi/(pi rho_b) and Z = G(mu) M3**2/N, so the
+    advected (N*Z)**0.5 is G(mu)**0.5 * M3; mu and rho_b are drawn per
+    column (0-14 and 80-800 kg m-3).  Columns that already carry ``nc`` or
+    ``qzi`` (the named three-moment edges) keep theirs.
+    """
+    rng = np.random.default_rng(seed)
+    for c in cols:
+        dd = rng.uniform(6.0e-6, 30.0e-6)
+        mu = rng.uniform(0.0, 14.0)
+        rhob = rng.uniform(80.0, 800.0)
+        if "nc" not in c.h:
+            m = np.pi / 6.0 * 1000.0 * dd ** 3
+            c.h["nc"] = np.where(c.h["qc"] > 0, c.h["qc"] / m, 0.0)
+        if "qzi" not in c.h:
+            m3 = 6.0 * np.maximum(c.h["qi"], 0.0) / (np.pi * rhob)
+            c.h["qzi"] = np.sqrt(g_of_mu(mu)) * m3
+
+
+def three_moment_edges(rng):
+    """Edges aimed at the mp=53 branches the mp=50 set cannot reach."""
+    out = []
+
+    def base(label, **kw):
+        args = dict(psfc=100000.0, tsfc=265.0, lapse=6.5e-3)
+        args.update(kw)
+        c = Column(label, "edge-3mom", **args)
+        c.rh_mixed(np.full(NK, 0.9))
+        c.tendency(rng, dth=0.05)
+        return c
+
+    c = base("edge3-qzi-without-ice")       # zitot zeroed where qitot < qsmall
+    c.h["qi"][0:10] = 0.5e-14
+    c.h["ni"][0:10] = 1.0e3
+    c.h["qzi"] = np.zeros(NK)
+    c.h["qzi"][0:20] = 1.0e-6
+    out.append(c)
+
+    c = base("edge3-ice-without-qzi")       # zsmall floor, then mu bounds
+    c.add_ice(4.0e-4, 0, 6000, mmean=1e-9, rimefrac=0.3, rhorime=400.0)
+    c.h["qzi"] = np.zeros(NK)
+    out.append(c)
+
+    c = base("edge3-mu-at-zero-bound")      # G >= 20: mu = 0, Z clamped
+    c.add_ice(6.0e-4, 0, 7000, mmean=1e-8, rimefrac=0.1, rhorime=200.0)
+    c.h["qzi"] = 1.0e3 * 6.0 * c.h["qi"] / (np.pi * 100.0)
+    out.append(c)
+
+    c = base("edge3-mu-at-max-bound")       # G < 1.23: mu = mu_i_max
+    c.add_ice(6.0e-4, 0, 7000, mmean=1e-8, rimefrac=0.6, rhorime=700.0)
+    c.h["qzi"] = 1.0e-3 * 6.0 * c.h["qi"] / (np.pi * 500.0)
+    out.append(c)
+
+    c = base("edge3-ni-below-qsmall")       # wrapper sets Z = 0 when Ni < qsmall
+    c.add_ice(2.0e-4, 0, 5000, mmean=1e-9)
+    c.h["ni"][0:15] = 0.5e-14
+    out.append(c)
+
+    c = base("edge3-cloud-zero-number", tsfc=285.0)
+    c.rh_liq(np.full(NK, 1.005))
+    c.add_cloud(5.0e-4, 300, 3000)
+    c.h["nc"] = np.zeros(NK)
+    out.append(c)
+
+    c = base("edge3-cloud-huge-number", tsfc=280.0)
+    c.rh_liq(np.full(NK, 1.002))
+    c.add_cloud(3.0e-4, 0, 2500)
+    c.h["nc"] = np.where(c.h["qc"] > 0, 5.0e9, 0.0)
+    out.append(c)
+
+    c = base("edge3-activation-clear-supersat", tsfc=290.0)
+    c.rh_liq(np.where(c.z < 2500, 1.01, 0.6))
+    c.h["nc"] = np.zeros(NK)
+    out.append(c)
+
+    c = base("edge3-freezing-all-paths", tsfc=300.0, lapse=7.8e-3,
+             ztrop=15000.0)
+    c.rh_mixed(np.full(NK, 1.02))
+    c.add_cloud(1.0e-3, 2000, 12500)
+    c.add_rain(1.0e-3, 2000, 12500, dmean=1.0e-3)
+    c.add_ice(5.0e-4, 6000, 13000, mmean=1e-10, rimefrac=0.2)
+    out.append(c)
+
+    c = base("edge3-hail-dense", tsfc=302.0, lapse=8.0e-3, ztrop=14000.0)
+    c.rh_mixed(np.where(c.z < 1500, 0.6, 1.02))
+    c.add_cloud(3.0e-3, 1500, 9000)
+    c.add_rain(5.0e-3, 0, 5000, dmean=3.0e-3)
+    c.add_ice(8.0e-3, 3000, 11000, mmean=1e-5, rimefrac=0.97, rhorime=900)
+    out.append(c)
+    return out
+
+
+def pack(cols, variant=50):
     ncol = len(cols)
     fs = [c.fields() for c in cols]
     blob = b""
-    for name in IN3D:
+    for name in IN3D + list(VARIANT_EXTRA[variant]):
         a = np.stack([f[name] for f in fs])          # (ncol, nk)
         blob += np.asarray(a, dtype=np.float64).astype("<f4").tobytes(
             order="F")
@@ -476,7 +590,7 @@ OVERFLOW_COLUMN = os.path.join(
     "p3_cold_cloud_overflow_column.npz")
 
 
-def overflow_fixture(outdir, nsteps=2):
+def overflow_fixture(outdir, nsteps=2, variant=50):
     """X02: the real-forecast column whose immersion freezing overflows.
 
     Its state is the model's own float32 numbers at the failing call (it
@@ -498,8 +612,17 @@ def overflow_fixture(outdir, nsteps=2):
         ("dz", "dz"))}
     f["pii"] = ((f["p"].astype(np.float64) / P0) ** RCP).astype(np.float32)
     f["w"] = np.zeros(nk, dtype=np.float32)
+    if variant == 53:
+        # The stored column is an mp=50 state: give it a droplet number and
+        # an advected ice moment the way add_three_moment_fields does.
+        qc = f["qc"].astype(np.float64)
+        f["nc"] = np.where(qc > 0, qc / (np.pi / 6.0 * 1000.0 * 12e-6 ** 3),
+                           0.0)
+        f["qzi"] = (np.sqrt(g_of_mu(4.0)) * 6.0
+                    * np.maximum(f["qi"].astype(np.float64), 0.0)
+                    / (np.pi * 300.0))
     blob = b""
-    for name in IN3D:
+    for name in IN3D + list(VARIANT_EXTRA[variant]):
         blob += np.asarray(f[name], dtype="<f4").tobytes()
     for name in IN2D:
         blob += np.zeros(1, dtype="<f4").tobytes()
@@ -520,10 +643,14 @@ def overflow_fixture(outdir, nsteps=2):
                               tsfc=None, tmin=None)])
 
 
-def main(outdir):
+def main(outdir, variant=50):
     os.makedirs(outdir, exist_ok=True)
     regimes = regime_columns()
     edges = edge_cases(np.random.default_rng(7))
+    if variant == 53:
+        edges = edges + three_moment_edges(np.random.default_rng(530))
+        add_three_moment_fields(regimes)
+        add_three_moment_fields(edges, seed=531)
     fixtures = [
         ("R01-regimes-1step", regimes, 20.0, 1, False),
         ("R30-regimes-30step", regimes, 20.0, 30, False),
@@ -537,7 +664,7 @@ def main(outdir):
     ]
     index = []
     for name, cols, dt, nsteps, cold in fixtures:
-        blob = pack(cols)
+        blob = pack(cols, variant)
         if cold:
             ncol = len(cols)
             buf = np.frombuffer(blob, dtype="<f4").copy()
@@ -561,10 +688,12 @@ def main(outdir):
                           tsfc=round(float(c.T[0]), 2),
                           tmin=round(float(c.T.min()), 2))
                      for c in cols]))
-    index.append(overflow_fixture(outdir))
+    index.append(overflow_fixture(outdir, variant=variant))
+    extra = list(VARIANT_EXTRA[variant])
     with open(os.path.join(outdir, "index.json"), "w", newline="\n") as fh:
-        json.dump(dict(in3d=IN3D, in2d=IN2D, out3d=OUT3D, out2d=OUT2D,
-                       cases=index), fh, indent=1)
+        json.dump(dict(variant=variant, in3d=IN3D + extra, in2d=IN2D,
+                       out3d=OUT3D + extra, out2d=OUT2D, cases=index),
+                  fh, indent=1)
     for row in index:
         print("%-20s ncol=%3d nk=%d nsteps=%2d dt=%4.0f %s"
               % (row["name"], row["ncol"], row["nk"], row["nsteps"],
@@ -576,4 +705,11 @@ def main(outdir):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "fixtures")
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("outdir", nargs="?", default="fixtures")
+    ap.add_argument("--variant", type=int, default=50,
+                    choices=sorted(VARIANT_EXTRA))
+    a = ap.parse_args()
+    main(a.outdir, a.variant)

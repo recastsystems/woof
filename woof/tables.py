@@ -72,7 +72,9 @@ def _families(cfg):
         selected.append("thompson44" if _get(cfg, "thompson_version", "wrf_461") == "wrf_44"
                         else "thompson-fork" if _get(cfg, "thompson_version", "wrf_461") == "wrf_39_noaa"
                         else "thompson28" if mp == 28 else "thompson")
-    selected += {5: ["ferrier"], 30: ["fast-sbm"], 50: ["p3"], 900: ["tempo"]}.get(mp, [])
+    selected += {5: ["ferrier"], 29: ["rcon"], 30: ["fast-sbm"], 50: ["p3"], 900: ["tempo"]}.get(mp, [])
+    if mp == 53:
+        selected.append("p3-3mom")
     surface = int(_get(cfg, "sf_surface_physics"))
     selected += {2: ["noah"], 3: ["ruc"], 4: ["noahmp"]}.get(surface, [])
     legacy = _get(cfg, "ra_physics")
@@ -88,6 +90,8 @@ def _families(cfg):
             selected.append(("rrtmg-" if variant == "rrtmg_legacy" else "rrtmgp-") + stream)
     if variant == "rrtmg_legacy" and (lw == 4 or sw == 4):
         selected.append("ozone")
+    if lw == 99 or sw == 99:
+        selected.append("gfdleta")
     if lw == 5 or sw == 5:
         selected.append("goddard")
     if _get(cfg, "aer_opt") == 1 and sw == 4:
@@ -156,6 +160,40 @@ def _resolved_path(relative, original=None):
 
 
 def _files(family, cfg):
+    if family == "rcon":
+        from woof.core.rcon import table_root, TABLE_FILENAME, TABLE_BYTES, TABLE_SHA256
+        return [TableFile(family, table_root()/TABLE_FILENAME, TABLE_BYTES, TABLE_SHA256)]
+    if family == "p3-3mom":
+        from woof.core.p3_tables import (
+            TABLE_1_3MOM_ASSET, TABLE_1_3MOM_PACKAGED_SIZE,
+            TABLE_1_3MOM_PACKAGED_SHA256, p3_table_root,
+        )
+        asset = TABLE_1_3MOM_ASSET
+        root = Path(p3_table_root())
+        packed = root / asset.packaged_filename
+        raw = root / asset.filename
+        # Follow rw-p3's precedence exactly. An installed xz stream is
+        # authoritative even if a stale text copy is beside it. Empty
+        # roots request the packaged asset so offline repair can stage it.
+        if packed.is_file() or not raw.is_file():
+            return [TableFile(family, packed, TABLE_1_3MOM_PACKAGED_SIZE,
+                              TABLE_1_3MOM_PACKAGED_SHA256,
+                              "p3/tables/" + asset.packaged_filename)]
+        return [TableFile(family, raw, asset.size, asset.sha256,
+                          "p3/tables/" + asset.filename)]
+    if family == "gfdleta":
+        # Resolve from the package pin, so an override cannot redefine identity.
+        pin = json.loads((Path(__file__).parent / "data/gfdleta/MANIFEST.json").read_text())
+        return [TableFile(family, _resolved_path("gfdleta/" + name),
+                          row["bytes"], row["sha256"], "gfdleta/" + name)
+                for name, row in pin["assets"].items()]
+    if family == "thompson38":
+        # mp_physics = 38: WRF v4.6.1's nine-slab hail table beside the three
+        # caches it shares with mp=8/28, one verifiable root.
+        from woof.physics_compat import thompson_hail_table_root
+        from woof.core.thompson_contract import HAIL_TABLE_ASSETS
+        root = Path(thompson_hail_table_root())
+        return [TableFile(family, root / a.filename, a.bytes, a.sha256) for a in HAIL_TABLE_ASSETS]
     if family == "thompson44":
         from woof.core.thompson_column import GENERATION_ASSETS, AUXILIARY_ASSET, auxiliary_path, table_root
         root = table_root(cfg)
@@ -181,10 +219,14 @@ def _files(family, cfg):
             from woof.tempo_assets import TEMPO_TABLE_ASSETS, tempo_table_root
             return [TableFile(family, tempo_table_root() / a.filename, a.bytes, a.sha256)
                     for a in TEMPO_TABLE_ASSETS]
-        from woof.core.p3_tables import TABLE_1_2MOM_ASSET, p3_table_root
-        a = TABLE_1_2MOM_ASSET
+        from woof.core.p3_tables import TABLE_1_2MOM_ASSET, TABLE_2_ASSET, p3_table_root
+        assets = (TABLE_1_2MOM_ASSET,)
+        # A family-only fetch repairs every P3 asset. A configured MP50
+        # run still requires exactly its original one-table inventory.
+        if _get(cfg, "mp_physics", None) in (None, 52):
+            assets += (TABLE_2_ASSET,)
         return [TableFile(family, Path(p3_table_root()) / a.filename, a.size, a.sha256,
-                          "p3/tables/" + a.filename)]
+                          "p3/tables/" + a.filename) for a in assets]
     rows = [row for row in _manifest() if row["family"] == family]
     if not rows:
         raise ValueError(f"unknown table family {family!r}")
@@ -373,6 +415,9 @@ def _ensure(config_or_schemes, *, fetch=True, for_load=False):
             elif family == "thompson-fork":
                 from woof.thompson_fork_assets import stage_thompson_fork_tables
                 stage_thompson_fork_tables(raise_errors=True)
+            elif family == "thompson38":
+                from woof.thompson_density_tables import ensure_thompson_hail_tables
+                ensure_thompson_hail_tables()
             elif family == "satmedmf" and all(
                     item.path.name == "fpvs-f64.bin" for item in report.missing if item.scheme == family):
                 # Preserve its existing GPU generator, which verifies the exact

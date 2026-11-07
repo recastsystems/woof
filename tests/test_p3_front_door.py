@@ -266,8 +266,10 @@ def test_p3_cloud_fraction_takes_wrfs_own_p3_arm():
     assert float(p3[frozen].max()) == 0.0
     assert float(p3.max()) > 0.0
 
-    # The Ferrier moisture set stays unported and says so.
-    with pytest.raises(NotImplementedError, match="Ferrier"):
+    # The Ferrier moisture set (f_qs without f_qi) is ported since the Eta
+    # Ferrier mp95 recovery (74abec86b8) and reads WRF's carried F_ICE_PHY;
+    # without that carrier it refuses by name rather than guess the phase.
+    with pytest.raises(ValueError, match="requires carried F_ICE_PHY"):
         cal_cldfra1(dev(qv), dev(qc), dev(qi), dev(qs), dev(tlay), dev(play),
                     f_qc=True, f_qi=False, f_qs=True)
 
@@ -551,7 +553,8 @@ def test_no_existing_profile_changed_its_microphysics():
             == set(before) | {P3_LEGACY_RRTMG_PROFILE_ID}
             | set(COMPOSITION_SUITE_PROFILE_IDS) | set(aggregate_kf)
             | thompson_mynn_ruc | set(thompson_mynn_ruc_siblings)
-            | {"lin-mp2-ysu-mm5-noah-rrtmg-legacy-implemented-unverified-v1"})
+            | {"lin-mp2-ysu-mm5-noah-rrtmg-legacy-implemented-unverified-v1",
+                   "morrison-mp10-ysu-mm5-slab-kf-rte-rrtmgp-v1"})
     # ...and none of those six moved an EXISTING profile's microphysics,
     # which is what this test is named for: each is its own row.
     assert not set(COMPOSITION_SUITE_PROFILE_IDS) & set(before)
@@ -958,10 +961,10 @@ def test_the_cold_cloud_column_still_overflows_wrfs_own_expression():
     """
     import numpy as np
 
-    from woof.core.p3 import AIMM, CONS6, _gammaf, f32, get_cloud_dsd2
+    from woof.core.p3 import AIMM, CONS6, NCCNST, _gammaf, f32, get_cloud_dsd2
 
     column = _cold_cloud_column()
-    k = 45
+    k = 46  # The overflowing layer of the captured forecast column.
     pressure = f32(column["pres"][k])
     theta = f32(column["th"][k])
     exner = f32((pressure / f32(1.0e5)) ** f32(287.0 / 1004.5))
@@ -969,8 +972,8 @@ def test_the_cold_cloud_column_still_overflows_wrfs_own_expression():
     rho = f32(pressure / (f32(287.0) * temperature
                           * (f32(1.0) + f32(0.608) * column["qv"][k])))
     assert 195.0 < float(temperature) < 205.0
-    lamc, mu_c, _nc, cdist1, *_rest = get_cloud_dsd2(
-        f32(column["qc"][k]), f32(0.0), rho, f32(1.0))
+    _nc, mu_c, _nu, lamc, _cdist, cdist1 = get_cloud_dsd2(
+        f32(column["qc"][k]), NCCNST / rho, rho, f32(1.0))
 
     with np.errstate(over="ignore"):
         dum = f32((f32(1.0) / lamc) ** f32(3.0))
@@ -986,7 +989,7 @@ def test_the_cold_cloud_column_still_overflows_wrfs_own_expression():
                                      - np.float64(temperature))) \
         * np.float64(dum) ** 2
     assert np.isfinite(np.float32(exact))
-    assert 1.0e18 < float(exact) < 1.0e21
+    assert 1.0e-3 < float(exact) < 1.0e-2
 
 
 def test_p3_returns_a_finite_column_where_the_forecast_went_nan():
@@ -1052,7 +1055,7 @@ def test_the_cuda_arm_is_finite_where_the_forecast_died():
     the ICE family (device ``qir`` = 0 where the CPU arm carried
     5e-10..2.3e-6, ``qi`` up to 2.5 %).  That was the device's subnormal
     flush (cupy.RawModule's appended ``-ftz=true``), fixed 2026-10-07 on
-    lane/verify-p3-mp50: re-measured on box W1, theta is now bit-identical
+    development branch: re-measured on test host, theta is now bit-identical
     between the arms and the ice family differs by at most 9e-11 kg/kg
     (``ni`` by 292 /kg) in a few cells.  That remainder is the CPU arm's
     own distance from WRF (its NumPy float32 libm calls); the device arm

@@ -106,14 +106,21 @@ def library_candidates() -> tuple[Path, ...]:
 def resolve_superob_bridge() -> Path:
     """First existing candidate, or a refusal naming every path searched."""
     override = os.environ.get(SUPEROB_BRIDGE_ENV)
-    for candidate in library_candidates():
-        if candidate.is_file():
-            from woof.bridges import accept_resolved
+    for attempt in (0, 1):
+        for candidate in library_candidates():
+            if candidate.is_file():
+                from woof.bridges import accept_resolved
 
-            return accept_resolved(candidate.resolve(), executable=False)
-        if override and candidate == Path(override):
-            raise SuperobBridgeMissing(
-                f"{SUPEROB_BRIDGE_ENV} names a missing file: {candidate}")
+                return accept_resolved(candidate.resolve(), executable=False)
+            if override and candidate == Path(override):
+                raise SuperobBridgeMissing(
+                    f"{SUPEROB_BRIDGE_ENV} names a missing file: {candidate}")
+        # On demand since WOOF 1.1.6 (PyPI per-file limit): staged by the first
+        # radar observation build from this release's bundle (never inside
+        # bridges.inspection_only(), so doctor only reports).
+        from woof.bridges import fetch_on_demand
+        if attempt or override or not fetch_on_demand("rw_superob"):
+            break
     rendered = "\n  ".join(str(c) for c in library_candidates())
     from woof import bridges
 

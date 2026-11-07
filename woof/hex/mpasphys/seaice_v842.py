@@ -5,6 +5,8 @@ The source is MPAS's complete Noah sea-ice module, including its thermal
 solver dependency. WOOF's physics and default suite are unchanged.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from dataclasses import dataclass
@@ -46,6 +48,24 @@ class SeaiceOptions:
 
 
 _CORE_SOURCE = r"""
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_43889333_DEFINED
+#define HEX_DIVISOR_43889333_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43889333 = 273.15f;
+#else
+static const float hex_divisor_43889333 = 273.15f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_447B2000_DEFINED
+#define HEX_DIVISOR_447B2000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_447b2000 = 1004.5f;
+#else
+static const float hex_divisor_447b2000 = 1004.5f;
+#endif
+#endif
+
 // MPAS module_sf_noah_seaice.F:222-1292 and wrapper .F:189-511:
 // GNU scalar SSE keeps NaN operand payload/sign; CUDA arithmetic canonicalizes.
 // Keep rounded device arithmetic for finite results, and reproduce the
@@ -704,7 +724,7 @@ extern "C" __global__ void seaice_noah(float** a, int n, int nsoil,
   float solnet=si_mul(F(swdown),si_sub(1.0f,F(albedo)));
   float sfcprs=si_mul(si_add(a[P_p8w3d][n+i],F(p8w3d)),0.5f);
   float psfc=F(p8w3d), q2=si_div(F(qv3d),si_add(1.0f,F(qv3d)));
-  const float capa=287.0f/1004.5f;
+  const float capa=287.0f/hex_divisor_447b2000;
   const float a23m4=17.67f*(273.15f-29.65f);
   float apes=si_nan_result(mynn_glibc_powf(si_div(1.0e5f,psfc),capa), si_div(1.0e5f,psfc), capa);
   float apelm=si_nan_result(mynn_glibc_powf(si_div(1.0e5f,sfcprs),capa), si_div(1.0e5f,sfcprs), capa);
@@ -721,7 +741,7 @@ extern "C" __global__ void seaice_noah(float** a, int n, int nsoil,
   } else if (snowdepth_opt != 0) { errors[i]=5; return; }
   if (F(snow) > 0.0f) {
     float sfctsno=sfctmp;
-    float e2sat=si_mul(611.2f,si_nan_result(mynn_glibc_expf(si_mul(6174.0f,si_sub(1.0f/273.15f,si_div(1.0f,sfctsno)))), si_mul(6174.0f,si_sub(1.0f/273.15f,si_div(1.0f,sfctsno))), si_mul(6174.0f,si_sub(1.0f/273.15f,si_div(1.0f,sfctsno)))));
+    float e2sat=si_mul(611.2f,si_nan_result(mynn_glibc_expf(si_mul(6174.0f,si_sub(1.0f/hex_divisor_43889333,si_div(1.0f,sfctsno)))), si_mul(6174.0f,si_sub(1.0f/hex_divisor_43889333,si_div(1.0f,sfctsno))), si_mul(6174.0f,si_sub(1.0f/hex_divisor_43889333,si_div(1.0f,sfctsno)))));
     float q2sati=si_div(si_mul(0.622f,e2sat),si_sub(sfcprs,e2sat));
     q2sati=si_div(q2sati,si_add(1.0f,q2sati));
     if (t1 > 273.14f) {
@@ -856,7 +876,7 @@ def _module_on(device: int, nsoil: int):
     binary = direct_image(source,
         options=_hex_numerics.options(("--std=c++11", "--fmad=false", "--ftz=false",
                  "--prec-div=true", "--prec-sqrt=true"), keep_ftz=True),
-        arch=cp.cuda.Device(device).compute_capability)
+        arch=_compilation_target(device, xp=cp))
     with cp.cuda.Device(device):
         module = cp.cuda.function.Module()
         module.load(binary)

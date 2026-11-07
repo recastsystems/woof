@@ -55,7 +55,7 @@
       "first_line": 10026,
       "last_line": 10664,
       "window_sha256": "b6d4a79e630e43c4325db020981caf044e7acc5c4906c4c6c52ff1ae776df21f",
-      "occurrences": 3
+      "occurrences": 4
     },
     {
       "citation": "module_ra_rrtmg_sw.F:10197-10550",
@@ -87,7 +87,7 @@
       "first_line": 1403,
       "last_line": 2012,
       "window_sha256": "9dfedc871c401f66083aab3815b8eb739ee0cd97515fe0f07ae74906e686be1b",
-      "occurrences": 2
+      "occurrences": 6
     },
     {
       "citation": "module_ra_rrtmg_sw.F:1740-1749",
@@ -103,6 +103,14 @@
       "first_line": 1742,
       "last_line": 1744,
       "window_sha256": "c476efdca3ffea9b1ce4cb2648fee90375326ed64eef9ecba795fa7122c730ab",
+      "occurrences": 1
+    },
+    {
+      "citation": "module_ra_rrtmg_sw.F:1745-1748",
+      "source_path": "src/core_atmosphere/physics/physics_wrf/module_ra_rrtmg_sw.F",
+      "first_line": 1745,
+      "last_line": 1748,
+      "window_sha256": "41ec048e3c398aff447e56b1b8fffc53481dffe86484ed512d886d8289b76f72",
       "occurrences": 1
     },
     {
@@ -143,7 +151,7 @@
       "first_line": 2016,
       "last_line": 2048,
       "window_sha256": "0125da40772a0869d1381ad70b2b8103a8593b27611580d560e14bc6d1509e38",
-      "occurrences": 1
+      "occurrences": 2
     },
     {
       "citation": "module_ra_rrtmg_sw.F:2088-2509",
@@ -399,7 +407,7 @@
       "first_line": 70,
       "last_line": 451,
       "window_sha256": "7f6a52f2c48800e08ec6bfb31a924a279c8496f249def01623c4ed339c7187a1",
-      "occurrences": 1
+      "occurrences": 2
     },
     {
       "citation": "module_ra_rrtmg_sw_aerosols.F:70-921",

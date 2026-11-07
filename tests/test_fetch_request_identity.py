@@ -976,7 +976,7 @@ def test_an_hrrr_host_that_does_not_serve_a_product_is_refused_in_words(
     assert "s3 answered HTTP 404" in err
     # Both hours 404 on s3 here and the pool fetches f00 and f01 at once,
     # so the sentence names whichever failed first: f00 alone, f01 under
-    # load (seen on a development machine's full CPU leg).  Either names this cycle.
+    # load (seen on test host 4's full CPU leg).  Either names this cycle.
     assert re.search(r"HRRR cycle 2026-02-01T06Z f0[01] ", err), err
 
 

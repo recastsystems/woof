@@ -23,6 +23,9 @@ pub struct ExtraFieldSpec {
     pub output_name: String,
     pub dataset_path: PathBuf,
     pub interp_options: Vec<String>,
+    /// Optional WPS average_gcell ratio; absent rows keep their existing sampler.
+    #[serde(default)]
+    pub average_gcell: Option<f32>,
     pub fill_missing: f64,
     pub planes: usize,
     #[serde(default)]
@@ -36,6 +39,7 @@ fn interpolation(names: &[String]) -> Result<Vec<InterpOp>> {
         return Err(StaticError::Invalid("interp_options must not be empty".into()));
     }
     names.iter().map(|name| Ok(match name.as_str() {
+        "nearest_neighbor" => InterpOp::NearestNeighbor,
         "four_pt" => InterpOp::FourPt,
         "average_4pt" => InterpOp::Average4Pt,
         "average_16pt" => InterpOp::Average16Pt,
@@ -46,8 +50,8 @@ fn interpolation(names: &[String]) -> Result<Vec<InterpOp>> {
 }
 
 /// Build a JSON list of continuous rows through the native sampler.
-/// No average_gcell is implied: it is absent from these rows and not
-/// an InterpOp. Unknown options are refused rather than approximated.
+/// average_gcell is declared separately from the interpolation fallback list.
+/// Unknown options are refused rather than approximated.
 pub fn build_extra_fields(grid: &ProjectedGrid, specs: &[ExtraFieldSpec], halo: usize) -> Result<FieldSet> {
     let dom = DomainSampler::new(grid, halo)?;
     let mut set = FieldSet::default();
@@ -59,6 +63,9 @@ pub fn build_extra_fields(grid: &ProjectedGrid, specs: &[ExtraFieldSpec], halo: 
         }
         if spec.planes == 0 || !spec.fill_missing.is_finite() {
             return Err(StaticError::Invalid("planes must be positive and fill_missing finite".into()));
+        }
+        if spec.average_gcell.is_some_and(|r| !r.is_finite() || r <= 0.0) {
+            return Err(StaticError::Invalid("average_gcell must be positive and finite".into()));
         }
         let seq = interpolation(&spec.interp_options)?;
         let ds = GeogDataset::open(&spec.dataset_path, None)?;
@@ -86,7 +93,13 @@ pub fn build_extra_fields(grid: &ProjectedGrid, specs: &[ExtraFieldSpec], halo: 
                 let receipt = dom.require_source_coverage(&ds, &win, &spec.output_name)?;
                 set.coverage_reports.insert(spec.output_name.clone(), receipt);
             }
-            let mut plane = dom.continuous(&ds, &win, z, &seq, spec.fill_missing, false, active.as_deref())?;
+            let mut plane = if let Some(ratio) = spec.average_gcell {
+                dom.continuous_wps(&ds, &win, z, &seq, spec.fill_missing, true, active.as_deref(), ratio)?
+            } else if seq.contains(&InterpOp::NearestNeighbor) {
+                dom.continuous_wps(&ds, &win, z, &seq, spec.fill_missing, false, active.as_deref(), 4.0)?
+            } else {
+                dom.continuous(&ds, &win, z, &seq, spec.fill_missing, false, active.as_deref())?
+            };
             if let (Some(mask), Some(rule)) = (&active, &spec.water_mask) {
                 for (v, &keep) in plane.data.iter_mut().zip(mask) {
                     if !keep { *v = rule.fill_missing; }
@@ -147,7 +160,7 @@ mod tests {
         }
         let mut row = ExtraFieldSpec {
             output_name: "UNRELATED".into(), dataset_path: dsdir,
-            interp_options: vec!["four_pt".into()], fill_missing: 0.75,
+            average_gcell: None, interp_options: vec!["four_pt".into()], fill_missing: 0.75,
             planes: 3, z_dim_name: Some("arbitrary_axis".into()), water_mask: None,
         };
         let grid = grid();

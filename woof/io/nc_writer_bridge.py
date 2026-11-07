@@ -679,6 +679,23 @@ class ClassicSchema:
         return ClassicWriter(self._library, writer, dict(self._var_types),
                              Path(str(path)))
 
+    def resume(self, path, records: int) -> ClassicWriter:
+        """Append only after Rust validates the complete schema and prefix."""
+        try:
+            function = self._library.gpuwm_ncwrite_resume
+        except AttributeError:
+            raise NcWriteError('trajectory checkpoint continuation requires gpuwm_ncwrite_resume; rebuild tools/rustwx netcdf-writer') from None
+        function.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
+                            ctypes.c_uint64]
+        function.restype = ctypes.c_void_p
+        raw = str(path).encode("utf-8")
+        handle = self._live()
+        self._handle = None
+        writer = function(handle, raw, len(raw), records)
+        if not writer:
+            raise NcWriteError(_last_error(self._library))
+        return ClassicWriter(self._library, writer, dict(self._var_types), Path(str(path)))
+
     def create_netcdf4(self, path, *, deflate: int = 4, shuffle: bool = True,
                        threads: int = 0) -> Netcdf4Writer:
         """Create a compressed NetCDF-4 frame (lossless) from this schema.

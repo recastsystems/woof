@@ -99,7 +99,7 @@ def test_an_old_node_refusal_names_its_version_and_the_missing_capability(tmp_pa
 
     parser = ArgumentParser()
     rc.register_cli(parser.add_subparsers())
-    args = parser.parse_args(["remote", "review-plan", "--host", "host-1", "--python", "/node/python",
+    args = parser.parse_args(["remote", "review-plan", "--host", "test-host-1", "--python", "/node/python",
         "--workspace", "/node/work", "--plan", str(plan), "--outdir", "/node/work/new",
         "--expected-plan-sha256", hashlib.sha256(plan.read_bytes()).hexdigest(),
         "--expected-config-sha256", hashlib.sha256(config.read_bytes()).hexdigest(), "--json"])
@@ -151,7 +151,7 @@ def test_a_node_too_old_for_the_keepalive_or_the_named_attempt_is_named_with_the
 
     parser = ArgumentParser()
     rc.register_cli(parser.add_subparsers())
-    common = ["--host", "host-1", "--python", "/node/python", "--workspace", "/node/work", "--json"]
+    common = ["--host", "test-host-1", "--python", "/node/python", "--workspace", "/node/work", "--json"]
     if action == "review-plan":
         from datetime import datetime
         from woof import domain_wizard as dw

@@ -428,6 +428,6 @@ def test_claim_refuses_a_scheme_it_cannot_name(binding_module: object) -> None:
     # A name no selection can resolve.  It was cu_kain_fritsch, which passes
     # only until another test in the same process resolves a Kain-Fritsch
     # selection (physics_suites registers its label): order-dependent
-    # (verify-hex-r2 M4).
+    # (release review M4).
     with pytest.raises(ValueError, match="no claim label"):
         binding_module.claim_for_convection(_GF_CLAIM, "cu_never_resolved_by_any_selection")

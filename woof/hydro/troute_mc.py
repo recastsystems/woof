@@ -400,6 +400,11 @@ class MuskingumCunge:
         order and bound pointers; changing hooks invalidates this graph.
         """
         import cupy as cp
+        from woof.hip_backend import supports_graphs
+        if not supports_graphs():
+            self._graph = None
+            self.restart_identity["submission"] = "HIP ordered stream launches"
+            return
         if self._sequence:
             stream = cp.cuda.Stream(non_blocking=True)
             with stream:

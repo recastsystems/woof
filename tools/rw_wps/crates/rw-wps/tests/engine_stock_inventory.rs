@@ -19,7 +19,7 @@ use rw_wps::namelist::STOCK_WRF_INVENTORIED_MP_PHYSICS;
 
 /// Inventoried ids this frontend still refuses, each with its reason.
 ///
-/// EMPTY.  Its two rows were mp=18 and mp=28, and audit R-054 retired both:
+/// The earlier mp=18 and mp=28 rows were retired by audit R-054:
 /// mp=18 had no obstacle at all, and mp=28's -- the field-shape check
 /// admitting only the 4-D dimension tuple, while its package carries two 2-D
 /// wrfinput members -- was fixed rather than worked around, so the check now

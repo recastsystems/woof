@@ -85,7 +85,8 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False) -> Microphysics
     dz = state.scratch((nz, ny, nx), "mp_dz8w")
     z8w = state.scratch((nz + 1, ny, nx), "mp_z8w")
     w_mass = state.scratch((nz, ny, nx), "mp_tempo_w")
-    th[...] = thb + state.thp
+    th[...] = (state.total_theta() if getattr(state, "use_theta_m", 0)
+               else thb + state.thp)
     rt.exner(state.p, pii)
     z8w[...] = (phb + state.php) / DTYPE(c.G)
     dz[...] = z8w[1:] - z8w[:-1]

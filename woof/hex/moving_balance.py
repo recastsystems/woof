@@ -77,8 +77,10 @@ def _evaporation(rho, heat, zz, vapor, cloud):
     heat = np.asarray(heat, dtype=np.float64)
     vapor = np.asarray(vapor, dtype=np.float64)
     cloud = np.maximum(np.asarray(cloud, dtype=np.float64), 0.0)
-    exner = (np.asarray(zz, dtype=np.float64) * (DRY_RGAS / 1.0e5) * heat) ** (DRY_RGAS / (DRY_CP - DRY_RGAS))
-    pressure = 1.0e5 * exner ** (DRY_CP / DRY_RGAS)
+    # np.float_power is the platform libm pow on every CPU, as the device glibc port; `**` takes
+    # numpy's AVX-512 SIMD pow where present and differs in the last place (woof.hex.libm_identity).
+    exner = np.float_power(np.asarray(zz, dtype=np.float64) * (DRY_RGAS / 1.0e5) * heat, DRY_RGAS / (DRY_CP - DRY_RGAS))
+    pressure = 1.0e5 * np.float_power(exner, DRY_CP / DRY_RGAS)
     temperature = heat / rho / (1.0 + VAPOR_RGAS / DRY_RGAS * vapor) * exner
     x = np.zeros_like(cloud)
     for _ in range(4):
@@ -216,7 +218,7 @@ def project_columns(rho, heat, tracer, acceleration, v, ref, *, backend='cpu'):
     target_r = dz @ rho
     target_h = dz @ heat
     for it in range(8):
-        p = 1e5 * (287 * zz * h / 1e5) ** 1.4
+        p = 1e5 * np.float_power(287 * zz * h / 1e5, 1.4)
         pp = p - pb
         load = r + tracer - rb
         f = (

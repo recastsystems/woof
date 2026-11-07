@@ -1,0 +1,59 @@
+{
+  "schema": "gpuwm-wrf-ideal-catalog-v1",
+  "wrf_version": "4.6.1",
+  "wrf_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "selector_evidence": "Registry/Registry.EM_COMMON:3388",
+  "cases": [
+    {
+      "name": "em_heldsuarez",
+      "selector": null,
+      "kind": "global_relaxation",
+      "grid": {
+        "kind": "global_latlon_eta",
+        "source": "dyn_em/module_initialize_heldsuarez.F:145"
+      },
+      "sounding": {
+        "format": "analytic_isothermal",
+        "input_file": null
+      },
+      "base_state": {
+        "kind": "isothermal_analytic",
+        "source": "dyn_em/module_initialize_heldsuarez.F:274"
+      },
+      "perturbation": {
+        "kind": "random_isothermal_theta",
+        "factor": "1+0.004*(random_number()-0.5)",
+        "source": "dyn_em/module_initialize_heldsuarez.F:441"
+      },
+      "terrain": {
+        "kind": "flat",
+        "height_m": 0
+      },
+      "surface": {
+        "kind": "ideal_global"
+      },
+      "coriolis": {
+        "kind": "latitude_dependent",
+        "nontraditional": true
+      },
+      "boundary_topology": "Read every side and domain from &bdy_control; do not infer from case kind.",
+      "required_files": [],
+      "evidence": [
+        "dyn_em/module_initialize_heldsuarez.F:145",
+        "dyn_em/module_initialize_heldsuarez.F:274",
+        "dyn_em/module_initialize_heldsuarez.F:441"
+      ],
+      "engine_evidence": "gpuwm/core/global_ideal_init.py; gpuwm/core/global_state.py; gpuwm/core/global_step.py; gpuwm/go_wrfinput.py",
+      "missing_binding": "Dry spherical hydrostatic RK3 is bound. Nonzero diffusion, other global physics, and parent/child global exchange require their own global operators; admission names each unbound setting.",
+      "runtime_binding": "gpuwm.global_forecast"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "dyn_em/module_initialize_heldsuarez.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/dyn_em/module_initialize_heldsuarez.F",
+      "sha256": "f93af2b6e3303af3efb92dc119decd8cf3bd60489d5a12845a00041f45167c33",
+      "bytes": 19203
+    }
+  ]
+}

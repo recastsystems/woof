@@ -549,6 +549,13 @@ class PackedThompsonState:
         self.__dict__.update(arrays)
         self._scratch = dict(scratch)
         self.physics = physics
+        if getattr(self, "use_theta_m", 0):
+            base = self._scratch["mp_theta_m_base"]
+            if self.thb.ndim == 1:
+                base[...] = self.thb[:, None, None]
+            else:
+                nz, ny, nx = self.thb.shape
+                base.reshape(nz, -1, ny, nx)[...] = self.thb[:, None]
 
     def scratch(self, shape, slot, dtype=None):
         try:
@@ -561,6 +568,22 @@ class PackedThompsonState:
 
     def existing_scratch(self, slot):
         return self._scratch.get(slot)
+
+    def thermal_base(self):
+        """Prepared base words in the same column layout as each member."""
+        if getattr(self, "use_theta_m", 0):
+            return self._scratch["mp_theta_m_base"]
+        return self.thb if self.thb.ndim == 3 else self.thb[:, None, None]
+
+    def prognostic_theta(self):
+        return self.thermal_base() + self.thp
+
+    def total_theta(self):
+        from woof.core import constants as c
+        theta = self.prognostic_theta()
+        if getattr(self, "use_theta_m", 0):
+            theta = theta / (np.float32(1.0) + np.float32(c.RVOVRD) * self.qv)
+        return theta
 
     @contextmanager
     def analysis_diagnostic_view(self):
@@ -615,7 +638,7 @@ THOMPSON_CLOUD_BOOKING_SLOTS = ("mp_cloudnc", "mp_cloudncv")
 
 
 def thompson_column_scratch_fields(*, nz, ny, nx, reflectivity=False,
-                                   cloud_booking=False):
+                                   cloud_booking=False, use_theta_m=0):
     """The stock classic adapter's named column scratch inventory.
 
     Its interface buffer mp_z8w remains present although the stock adapter
@@ -625,6 +648,9 @@ def thompson_column_scratch_fields(*, nz, ny, nx, reflectivity=False,
     """
     nz, ny, nx = _positive(nz, "nz"), _positive(ny, "ny"), _positive(nx, "nx")
     fields = [ColumnField(name, (nz, ny, nx)) for name in THOMPSON_VOLUME_SLOTS]
+    if use_theta_m:
+        fields += [ColumnField(name, (nz, ny, nx)) for name in
+                   ("mp_theta_m_qv_before", "mp_theta_m_base")]
     fields += [ColumnField(name, (ny, nx)) for name in THOMPSON_SURFACE_SLOTS]
     fields.append(ColumnField("mp_z8w", (nz + 1, ny, nx)))
     if reflectivity:
@@ -646,6 +672,89 @@ def _thompson_base_source(source, *, member_columns):
             raise ValueError("Thompson base-load indexing changed; shared terrain adapter needs a new source audit")
         source = source.replace(before, after)
     return f"#define __ensemble_member_columns {int(member_columns)}\n" + source
+
+
+def registered_column_scratch_fields(cfg, *, nz, ny, nx, reflectivity=False):
+    """The registry column adapter's complete preallocated workspace."""
+    from woof.physics_registry import consumer_row_for_selector
+    row = consumer_row_for_selector("microphysics", "native_column", cfg.mp_physics)
+    if not row:
+        raise ValueError("registered column workspace needs a native_column contract")
+    volumes = ("mp_th", "mp_dz8w", *row["diagnostics"].values(), *row["scratch"].values())
+    fields = [ColumnField(name, (nz, ny, nx)) for name in volumes]
+    fields += [ColumnField(name, (ny, nx)) for name in row["surfaces"].values()]
+    fields.append(ColumnField("mp_z8w", (nz + 1, ny, nx)))
+    if reflectivity:
+        fields.append(ColumnField("refl_10cm", (nz, ny, nx)))
+    return tuple(fields)
+
+
+def prepare_registered_column_batch(state, cfg, *, members, ny, nx, dt,
+                                    available_bytes, array_module=None):
+    """Run all native columns together, sharing only immutable base words."""
+    if array_module is None:
+        import cupy as array_module
+    from woof.physics_registry import consumer_row_for_selector
+    from woof.core.physics_inventory import ring_guard_row
+    from woof.core import microphysics, constants as c
+    members, ny, nx = _positive(members, "members"), _positive(ny, "ny"), _positive(nx, "nx")
+    if cfg.mp_physics != 55 or not cfg.moist or not np.isfinite(dt) or dt <= 0:
+        raise ValueError("this native column binding requires moist mp_physics=55 and positive finite dt")
+    row = consumer_row_for_selector("microphysics", "native_column", cfg.mp_physics)
+    nz = state.p.shape[0]
+    device = int(array_module.cuda.runtime.getDevice())
+    shape = (nz, members * ny, nx)
+    for name in ("p", "thp", "h_diabatic", "effc", "effi", *row["transport"]):
+        a = getattr(state, name)
+        if (a.shape != shape or a.dtype != np.dtype("float32") or not a.flags.c_contiguous
+                or int(a.device.id) != device):
+            raise ValueError(f"registered column {name} differs from the admitted member layout")
+    for field in registered_column_scratch_fields(cfg, nz=nz, ny=ny, nx=nx, reflectivity=True):
+        state.scratch((field.shape[0], members * ny, nx) if len(field.shape) == 3 else
+                      (members * ny, nx), field.name)
+    base = {}
+    for name, levels in (("thb", nz), ("phb", nz + 1)):
+        a = getattr(state, name)
+        if a.shape == (levels,):
+            base[name] = a[:, None, None, None]
+        elif a.shape == (levels, ny, nx):
+            base[name] = a[:, None]
+        else:
+            raise ValueError(f"registered column {name} needs a shared profile or terrain slab")
+    def volume(a):
+        return a.reshape(a.shape[0], members, ny, nx)
+    def prepare(th, z, dz):
+        array_module.add(base["thb"], volume(state.thp), out=volume(th))
+        if getattr(state, "use_theta_m", 0):
+            array_module.divide(th, np.float32(1.0) + np.float32(c.RVOVRD) * state.qv, out=th)
+        array_module.add(base["phb"], volume(state.php), out=volume(z))
+        array_module.divide(z, np.float32(c.G), out=z)
+        array_module.subtract(z[1:], z[:-1], out=dz)
+    ring = None
+    if (cfg.specified or cfg.nested) and cfg.spec_zone:
+        guard = ring_guard_row(cfg.mp_physics)
+        fields = {name: getattr(state, name) for name in guard["state_fields"]}
+        fields.update({slot: state.existing_scratch(slot) for slot in guard["surface_slots"]})
+        fields.update(h_diabatic=state.h_diabatic, refl_10cm=state.existing_scratch("refl_10cm"))
+        ring = PreparedPhysicsRing(fields, members=members, ny=ny, nx=nx,
+                                   width=cfg.spec_zone, available_bytes=available_bytes,
+                                   zero_fields=("h_diabatic",), array_module=array_module)
+    def launch(*, refl_10cm_due=False):
+        if int(array_module.cuda.runtime.getDevice()) != device:
+            raise RuntimeError("registered column launch uses a different current device")
+        if ring is not None:
+            ring.capture()
+        try:
+            return microphysics._apply_registered_column(state, cfg, dt, row,
+                refl_10cm_due=refl_10cm_due, prepare=prepare)
+        finally:
+            if ring is not None:
+                ring.restore()
+    launch.state, launch.ring = state, ring
+    launch.receipt = {"members": members, "layout": "level-member-y-x", "suite": "ishmael-55",
+                      "source_policy": "unchanged native column kernel; broadcast shared base words",
+                      "ring_required_bytes": 0 if ring is None else ring.storage.plan.required_bytes(members)}
+    return launch
 
 
 def _clone_thompson_column_adapter(prepare):
@@ -698,6 +807,41 @@ def _clone_thompson_column_adapter(prepare):
     return namespace["_apply_thompson_default"], sha256(source.encode()).hexdigest()
 
 
+def _cu99_rain_number_seed(*, members, ny, nx):
+    """Bind the stock seed to shared THB without copying static member slabs."""
+    from woof.core import microphysics
+    source = textwrap.dedent(inspect.getsource(microphysics.seed_cumulus_rain_number))
+    tree = ast.parse(source)
+    original = ast.dump(ast.parse("thermal = state.thp[k] + thb").body[0], include_attributes=False)
+    count = 0
+
+    class Temperature(ast.NodeTransformer):
+        def visit_Assign(self, node):
+            nonlocal count
+            if ast.dump(node, include_attributes=False) == original:
+                count += 1
+                return ast.parse("thermal = __ensemble_seed_thermal(state.thp[k], thb)").body[0]
+            return self.generic_visit(node)
+
+    tree = Temperature().visit(tree)
+    if count != 1:
+        raise ValueError("cumulus rain-number temperature changed; shared-base binding needs a new audit")
+    ast.fix_missing_locations(tree)
+
+    def thermal(theta, thb):
+        if thb.shape[-2:] == (ny, nx):
+            shape = (theta.shape[0], members, ny, nx)
+            # Preserve the stock addition and subsequent dry/moist thermal
+            # conversion. Only the immutable base's member axis broadcasts.
+            return (theta.reshape(shape) + thb[:, None]).reshape(theta.shape)
+        return theta + thb
+
+    namespace = dict(microphysics.seed_cumulus_rain_number.__globals__)
+    namespace["__ensemble_seed_thermal"] = thermal
+    exec(compile(tree, "<admitted-cu99-rain-number-seed>", "exec"), namespace)
+    return namespace["seed_cumulus_rain_number"], sha256(source.encode()).hexdigest()
+
+
 def prepare_thompson_column_batch(state, cfg, *, members, ny, nx, dt,
                                  available_bytes, array_module=None):
     """One all-member invocation of each stock classic Thompson family.
@@ -738,9 +882,15 @@ def prepare_thompson_column_batch(state, cfg, *, members, ny, nx, dt,
     # Check the complete scratch contract before a prognostic word moves.
     for field in thompson_column_scratch_fields(
             nz=nz, ny=ny, nx=nx,
-            cloud_booking=getattr(cfg, "thompson_cloud_surface_booking", False) is True):
+            cloud_booking=getattr(cfg, "thompson_cloud_surface_booking", False) is True,
+            use_theta_m=getattr(cfg, "use_theta_m", 0)):
         packed_shape = ((field.shape[0], members * ny, nx) if len(field.shape) == 3 else (members * ny, nx))
         state.scratch(packed_shape, field.name)
+    state.use_theta_m = int(getattr(cfg, "use_theta_m", 0))
+    if state.use_theta_m:
+        base = state.scratch((nz, members * ny, nx), "mp_theta_m_base")
+        source = state.thb[:, None, None, None] if state.thb.ndim == 1 else state.thb[:, None]
+        array_module.copyto(base.reshape(nz, members, ny, nx), source)
     if members == 1:
         prepare = None
         adapter = microphysics._apply_thompson
@@ -749,6 +899,8 @@ def prepare_thompson_column_batch(state, cfg, *, members, ny, nx, dt,
     else:
         original = kernels.module_source("thompson")
         source = _thompson_base_source(original, member_columns=ny * nx)
+        if state.use_theta_m:
+            source = "#define GPUWM_USE_THETA_M 1\n" + source
         options = wrf_exact.effective_options(("-std=c++17",)) if wrf_exact.ENABLED else ("-std=c++17",)
         module = array_module.RawModule(code=source, options=options)
         key = f"woof.ensemble.batch_physics:thompson:shared-base-loads[columns={ny * nx}]"
@@ -756,12 +908,13 @@ def prepare_thompson_column_batch(state, cfg, *, members, ny, nx, dt,
         record_module(key, source=source, options=options, module=module)
         kernel = module.get_function("thompson_adapter_prepare")
 
-        def prepare(*args):
+        def prepare(*args, qv=None):
             # Exact stock argument order; only full shared base-state indexing
             # differs. Field strides remain native (level,all columns).
             size = nz * members * ny * nx
             kernel(((size + 255) // 256,), (256,), args + (np.float32(c.G), np.int32(size),
-                   np.int32(members * ny * nx), np.int32(state.thb.ndim == 3), np.int32(state.phb.ndim == 3)))
+                   np.int32(members * ny * nx), np.int32(state.thb.ndim == 3), np.int32(state.phb.ndim == 3))
+                   + ((qv,) if state.use_theta_m else ()))
 
         adapter, scalar_hash = _clone_thompson_column_adapter(prepare)
         source_receipt = {"source_policy": "integer-only shared base-state indexing",
@@ -786,6 +939,9 @@ def prepare_thompson_column_batch(state, cfg, *, members, ny, nx, dt,
         ring = PreparedPhysicsRing(ring_fields, members=members, ny=ny, nx=nx,
                                    width=cfg.spec_zone, available_bytes=available_bytes,
                                    zero_fields=("h_diabatic",), array_module=array_module)
+    seed, seed_hash = (None, None)
+    if cfg.cu_physics == 99:
+        seed, seed_hash = _cu99_rain_number_seed(members=members, ny=ny, nx=nx)
 
     def launch(*, refl_10cm_due=False):
         if int(array_module.cuda.runtime.getDevice()) != device:
@@ -793,6 +949,10 @@ def prepare_thompson_column_batch(state, cfg, *, members, ny, nx, dt,
         if ring is not None:
             ring.capture()
         try:
+            if seed is not None:
+                # apply() runs this before dispatch inside its ring guard.
+                # Retain that correction on the packed CU99 path as well.
+                seed(state, cfg, dt)
             return adapter(state, cfg, dt, refl_10cm_due=refl_10cm_due)
         finally:
             if ring is not None:
@@ -803,6 +963,8 @@ def prepare_thompson_column_batch(state, cfg, *, members, ny, nx, dt,
                       "adapter_source_sha256": scalar_hash,
                       "ring_required_bytes": 0 if ring is None else ring.storage.plan.required_bytes(members),
                       **source_receipt}
+    if seed is not None:
+        launch.receipt["cu99_rain_number_seed_source_sha256"] = seed_hash
     return launch
 
 
@@ -991,8 +1153,9 @@ class PreparedPhysicsCoupling:
         return self.couple(cfg=cfg, rates=rates, du=du, dv=dv)
 
 
-def bind_column_driver_coupling(driver, *, pbl_coupling, radiation_coupling):
-    """Bind an owned PhysicsDriver's two coupling seams privately.
+def bind_column_driver_coupling(driver, *, pbl_coupling, radiation_coupling,
+                                cumulus_coupling=None):
+    """Bind an owned PhysicsDriver's persistent coupling seams privately.
 
     The stock method bytecode, due-call order and carrier bookkeeping remain
     intact. Each method gets its own global lookup dictionary pointing at
@@ -1015,10 +1178,21 @@ def bind_column_driver_coupling(driver, *, pbl_coupling, radiation_coupling):
     if (pbl_coupling.members, pbl_coupling.nz, pbl_coupling.ny, pbl_coupling.nx) != (
             radiation_coupling.members, radiation_coupling.nz, radiation_coupling.ny, radiation_coupling.nx):
         raise ValueError("persistent physics coupling providers have different rosters/grids")
-    for name, replacement, provider in (
+    bindings = [
         ("_couple_pbl_slot", "couple_ysu_tendencies", pbl_coupling.couple_ysu_tendencies),
         ("_run_radiation", "couple_column_tendencies", radiation_coupling.couple_column_tendencies),
-    ):
+    ]
+    if cumulus_coupling is not None:
+        if (not isinstance(cumulus_coupling, PreparedPhysicsCoupling)
+                or cumulus_coupling in (pbl_coupling, radiation_coupling)
+                or (cumulus_coupling.members, cumulus_coupling.nz,
+                    cumulus_coupling.ny, cumulus_coupling.nx) !=
+                   (pbl_coupling.members, pbl_coupling.nz,
+                    pbl_coupling.ny, pbl_coupling.nx)):
+            raise ValueError("cumulus needs its own matching persistent coupling owner")
+        bindings += [(name, "couple_column_tendencies", cumulus_coupling.couple_column_tendencies)
+                     for name in ("_run_cumulus", "recouple_cumulus_tendencies")]
+    for name, replacement, provider in bindings:
         original = getattr(PhysicsDriver, name)
         if replacement not in original.__code__.co_names:
             raise ValueError(f"stock physics method {name} changed its coupling seam; a new binding audit is required")
@@ -1029,7 +1203,8 @@ def bind_column_driver_coupling(driver, *, pbl_coupling, radiation_coupling):
         function.__kwdefaults__ = original.__kwdefaults__
         function.__annotations__ = original.__annotations__
         setattr(driver, name, MethodType(function, driver))
-    driver._ensemble_persistent_couplers = (pbl_coupling, radiation_coupling)
+    driver._ensemble_persistent_couplers = (pbl_coupling, radiation_coupling) + (
+        (cumulus_coupling,) if cumulus_coupling is not None else ())
     return driver
 
 
@@ -1075,7 +1250,7 @@ class PreparedPackedPhysicsAtmosphere:
                     "u": (self.nz, members * ny, nx + 1),
                     "v": (self.nz, members * (ny + 1), nx),
                     "php": (self.nz + 1, members * ny, nx)}
-        for name in ("qv", "qc", "qr", "qi", "qs", "qg", "qh"):
+        for name in ("qv", "qc", "qr", "qi", "qs", "qg", "qh", "qi2", "qi3"):
             if getattr(state, name, None) is not None:
                 required[name] = shape
         for name, wanted in required.items():
@@ -1124,6 +1299,8 @@ class PreparedPackedPhysicsAtmosphere:
         from woof.core import constants as c
         xp, state, out = self._xp, self.state, self._out
         xp.add(self._thb, self._volume(state.thp), out=out("theta"))
+        if int(getattr(state, "use_theta_m", getattr(getattr(state, "cfg", None), "use_theta_m", 0))):
+            xp.divide(out("theta"), np.float32(1.0) + np.float32(c.RVOVRD) * self._volume(state.qv), out=out("theta"))
         from woof.core.physics import _physics_exner
         _physics_exner(self._volume(state.p), out=out("exner"))
         xp.multiply(out("theta"), out("exner"), out=out("temperature"))
@@ -1137,7 +1314,7 @@ class PreparedPackedPhysicsAtmosphere:
         xp.divide(out("z_interface"), np.float32(c.G), out=out("z_interface"))
         xp.subtract(out("z_interface")[1:], out("z_interface")[:-1], out=out("dz"))
         out("qtot").fill(0)
-        for name in ("qv", "qc", "qr", "qi", "qs", "qg", "qh"):
+        for name in ("qv", "qc", "qr", "qi", "qs", "qg", "qh", "qi2", "qi3"):
             value = getattr(state, name, None)
             if value is not None:
                 xp.add(out("qtot"), self._volume(value), out=out("qtot"))
@@ -1156,6 +1333,9 @@ class PreparedPackedPhysicsAtmosphere:
         for name in ("qv", "qc", "qi", "qs"):
             value = getattr(state, name, None)
             moist[name] = value if value is not None else self.columns.packed(f"dry_{name}")
+        # PBL receives WRF's QI (the first habit). Radiation's own driver
+        # combines QI/QI2/QI3; changing this shared PBL input mixes their
+        # tendencies into the wrong prognostic carrier.
         xp.add(np.float32(1), self._volume(moist["qv"]), out=out("rho"))
         xp.divide(out("rho"), self._volume(state.alt), out=out("rho"))
         result = {name: self.columns.packed(name) for name in ("theta", "temperature", "pressure", "p_interface",
@@ -1166,7 +1346,8 @@ class PreparedPackedPhysicsAtmosphere:
 
 def bind_owned_default_column_driver(driver, cfg, atmosphere, *, members, ny, nx,
                                      pbl_coupling, radiation_coupling,
-                                     available_bytes, array_module=None):
+                                     available_bytes, array_module=None,
+                                     cumulus_coupling=None):
     """Route an initialized default-suite driver through all-member leaves.
 
     Initialization remains the prepared-input factory's responsibility. Its
@@ -1188,16 +1369,21 @@ def bind_owned_default_column_driver(driver, cfg, atmosphere, *, members, ny, nx
     from woof.ingest.soil import NOAH_LAYER_THICKNESS_M
     if not isinstance(driver, PhysicsDriver) or not isinstance(atmosphere, PreparedPackedPhysicsAtmosphere):
         raise TypeError("default column binding requires an owned PhysicsDriver and admitted packed atmosphere")
-    if (cfg.mp_physics, cfg.sf_surface_physics, cfg.bl_pbl_physics) != (8, 2, 1) or cfg.sf_sfclay_physics not in (1, 91):
-        raise ValueError("this native binding implements Thompson/Noah/YSU/MM5; the configured suite needs its own qualified binding")
-    if cfg.cu_physics or cfg.sf_urban_physics or getattr(cfg, "sf_surface_mosaic", 0) or driver.terrain_drag is not None:
-        raise ValueError("this default column binding has no cumulus, urban, mosaic or terrain-drag producer binding")
+    if (cfg.mp_physics not in (8, 55) or (cfg.sf_surface_physics, cfg.bl_pbl_physics) != (2, 1)
+            or cfg.sf_sfclay_physics not in (1, 91)):
+        raise ValueError("this native binding implements Thompson or ISHMAEL with Noah/YSU/MM5; the configured suite needs its own qualified binding")
+    if cfg.cu_physics not in (0, 99) or cfg.sf_urban_physics or getattr(cfg, "sf_surface_mosaic", 0) or driver.terrain_drag is not None:
+        raise ValueError("this default column binding supports CU0/99 and has no urban, mosaic or terrain-drag producer binding")
+    if cfg.cu_physics == 99 and cfg.mp_physics != 8:
+        raise ValueError("the qualified packed CU99 binding requires mp_physics=8")
+    if bool(cfg.cu_physics) != (cumulus_coupling is not None):
+        raise ValueError("CU99 requires a separate retained cumulus coupling owner")
     if getattr(driver, "swint", None) is not None:
         raise ValueError("this default column binding has no swint_opt = 1 binding: the surface shortwave carrier "
                          "holds one member's fields, and banked members would be interpolated with a shape it refuses")
     if driver.state is not atmosphere.state:
         raise ValueError("the initialized physics driver and atmosphere preparer own different states")
-    if driver.tendencies is not driver.pbl_tendencies:
+    if not cfg.cu_physics and driver.tendencies is not driver.pbl_tendencies:
         raise ValueError("positive PBL cadence needs a separate admitted composition target before native column binding")
     if getattr(cfg, "use_adaptive_time_step", False):
         raise ValueError("member adaptive clocks can diverge; this identity-qualified column binding requires the same fixed step")
@@ -1305,7 +1491,9 @@ def bind_owned_default_column_driver(driver, cfg, atmosphere, *, members, ny, nx
         array_module.add(owned.rthratenlw, owned.rthratensw, out=heating)
         return heating
 
-    bind_column_driver_coupling(driver, pbl_coupling=pbl_coupling, radiation_coupling=radiation_coupling)
+    bind_column_driver_coupling(driver, pbl_coupling=pbl_coupling,
+                               radiation_coupling=radiation_coupling,
+                               cumulus_coupling=cumulus_coupling)
     for method, global_name, entry in (("_run_sfclay", "launch_sfclay", native_sfclay),
                                       ("_run_noah", "launch_noah", native_noah)):
         original = getattr(PhysicsDriver, method)
@@ -1354,15 +1542,21 @@ def bind_owned_default_column_driver(driver, cfg, atmosphere, *, members, ny, nx
     driver.pbl_tendencies = held_zero(old_pbl, pbl_coupling)
     driver.radiation_tendencies = held_zero(driver.radiation_tendencies, radiation_coupling)
     arrays = extras.arrays
-    driver.cumulus_tendencies = PhysicsTendencies(
-        arrays["physics:driver:zero_ru"].reshape(nz, members * ny, nx + 1),
-        arrays["physics:driver:zero_rv"].reshape(nz, members * (ny + 1), nx),
-        *(arrays[f"physics:driver:zero_{name}"].reshape(nz, members * ny, nx) for name in ("rtheta", "rqv", "rqc")))
-    assert shared_target
-    driver.tendencies = driver.pbl_tendencies
+    if cfg.cu_physics:
+        # Keep the separately banked composition target. Rebuild from each
+        # column's raw held rates, preserving native restart/expiry semantics.
+        driver.recouple_cumulus_tendencies(driver.state, cfg)
+    else:
+        driver.cumulus_tendencies = PhysicsTendencies(
+            arrays["physics:driver:zero_ru"].reshape(nz, members * ny, nx + 1),
+            arrays["physics:driver:zero_rv"].reshape(nz, members * (ny + 1), nx),
+            *(arrays[f"physics:driver:zero_{name}"].reshape(nz, members * ny, nx) for name in ("rtheta", "rqv", "rqc")))
+        assert shared_target
+        driver.tendencies = driver.pbl_tendencies
     driver.state.prepared_physics_atmosphere = atmosphere
     driver._ensemble_native_column_owners = (ysu, sfclay, noah, extras, atmosphere)
-    driver._ensemble_native_column_receipt = {"members": members, "suite": "thompson-noah-ysu-mm5",
+    driver._ensemble_native_column_receipt = {"members": members, "suite": "ishmael-noah-ysu-mm5" if cfg.mp_physics == 55 else "thompson-noah-ysu-mm5",
+        "cu_physics": cfg.cu_physics,
         "shared_surface_fields": sorted(shared_surfaces),
         "required_binding_bytes": required, "ysu": ysu.receipt, "sfclay": sfclay.receipt, "noah": noah.receipt,
         "extra_allocations": list(extras_plan.inventory(members))}

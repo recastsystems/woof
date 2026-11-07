@@ -308,9 +308,7 @@ impl File {
         let shape = nc_variable_shape(&variable, &self.dimension_overrides)?;
         checked_array_elements(name, &shape)?;
         if nc_variable_uses_overrides(&variable, &self.dimension_overrides) {
-            return Err(Error::Hdf5(format!(
-                "typed read requires resolved stored dimensions for {name}"
-            )));
+            return self.read_array_slice::<T>(name, &full_selection(shape.len()));
         }
         read_in_slabs(name, &shape, &full_selection(shape.len()), |selection| {
             Ok(self.inner.read_variable_slice::<T>(name, selection)?)
@@ -327,9 +325,16 @@ impl File {
         let shape = nc_variable_shape(&variable, &self.dimension_overrides)?;
         checked_selection_elements(name, &shape, selection)?;
         if nc_variable_uses_overrides(&variable, &self.dimension_overrides) {
-            return Err(Error::Hdf5(format!(
-                "typed read requires resolved stored dimensions for {name}"
-            )));
+            // WRF may leave the unlimited dimension scale at extent zero
+            // while its variable datasets already contain records. Validate
+            // against that independent stored extent, then read typed HDF5
+            // words directly, preserving NaNs, signed zeros and integer bits.
+            let hdf5 = self.hdf5.as_ref().ok_or_else(||
+                Error::Hdf5(format!("no stored extent for {name}")))?;
+            let dataset = hdf5.dataset(name).map_err(|e| Error::Hdf5(e.to_string()))?;
+            checked_selection_elements(name, dataset.shape(), selection)?;
+            return dataset.read_slice_parallel::<T>(&hdf5_selection(selection))
+                .map_err(|e| Error::Hdf5(e.to_string()));
         }
         read_in_slabs(name, &shape, selection, |selection| {
             Ok(self.inner.read_variable_slice::<T>(name, selection)?)

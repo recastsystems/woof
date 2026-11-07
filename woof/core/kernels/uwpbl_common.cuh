@@ -44,10 +44,18 @@ struct R8 {
     __device__ __forceinline__ R8(double x) : v(x) {}
 };
 
+// CAM columns alone opt into native arithmetic in the default policy.
+#if defined(GPUWM_CAM_FAST) && GPUWM_CAM_FAST
+__device__ __forceinline__ R8 operator+(R8 a, R8 b) { return R8(a.v + b.v); }
+__device__ __forceinline__ R8 operator-(R8 a, R8 b) { return R8(a.v - b.v); }
+__device__ __forceinline__ R8 operator*(R8 a, R8 b) { return R8(a.v * b.v); }
+__device__ __forceinline__ R8 operator/(R8 a, R8 b) { return R8(a.v / b.v); }
+#else
 __device__ __forceinline__ R8 operator+(R8 a, R8 b) { return R8(__dadd_rn(a.v, b.v)); }
 __device__ __forceinline__ R8 operator-(R8 a, R8 b) { return R8(__dsub_rn(a.v, b.v)); }
 __device__ __forceinline__ R8 operator*(R8 a, R8 b) { return R8(__dmul_rn(a.v, b.v)); }
 __device__ __forceinline__ R8 operator/(R8 a, R8 b) { return R8(__ddiv_rn(a.v, b.v)); }
+#endif
 __device__ __forceinline__ R8 operator-(R8 a) { return R8(-a.v); }
 __device__ __forceinline__ R8& operator+=(R8& a, R8 b) { a = a + b; return a; }
 __device__ __forceinline__ R8& operator-=(R8& a, R8 b) { a = a - b; return a; }
@@ -70,7 +78,11 @@ __device__ __forceinline__ R8 uw_min(R8 a, R8 b, R8 c) { return uw_min(uw_min(a,
 __device__ __forceinline__ int uw_imax(int a, int b) { return a > b ? a : b; }
 __device__ __forceinline__ int uw_imin(int a, int b) { return a < b ? a : b; }
 __device__ __forceinline__ R8 uw_abs(R8 a) { return R8(fabs(a.v)); }
+#if defined(GPUWM_CAM_FAST) && GPUWM_CAM_FAST
+__device__ __forceinline__ R8 uw_sqrt(R8 a) { return R8(sqrt(a.v)); }
+#else
 __device__ __forceinline__ R8 uw_sqrt(R8 a) { return R8(__dsqrt_rn(a.v)); }
+#endif
 // Fortran SIGN(a,b): |a| with the sign bit of b (gfortran copysign).
 __device__ __forceinline__ R8 uw_sign(R8 a, R8 b) { return R8(copysign(a.v, b.v)); }
 // INT(x): truncation toward zero; AINT(x): the same, kept in binary64.
@@ -96,9 +108,15 @@ __device__ __forceinline__ R8 uw_sq(R8 x) { return x * x; }   // x**2 (integer 2
 
 // Transcendentals.  glibc_exp/glibc_log/glibc_pow/uw_cos/uw_acos come from
 // glibc_flt64.cuh, which the kernel loader places before this header.
+#if defined(GPUWM_CAM_FAST) && GPUWM_CAM_FAST
+__device__ __forceinline__ R8 uw_exp(R8 x) { return R8(exp(x.v)); }
+__device__ __forceinline__ R8 uw_log(R8 x) { return R8(log(x.v)); }
+__device__ __forceinline__ R8 uw_pow(R8 x, R8 y) { return R8(pow(x.v, y.v)); }
+#else
 __device__ __forceinline__ R8 uw_exp(R8 x) { return R8(glibc_exp(x.v)); }
 __device__ __forceinline__ R8 uw_log(R8 x) { return R8(glibc_log(x.v)); }
 __device__ __forceinline__ R8 uw_pow(R8 x, R8 y) { return R8(glibc_pow(x.v, y.v)); }
+#endif
 __device__ __forceinline__ R8 uw_cos(R8 x) { return R8(uw_cos(x.v)); }
 __device__ __forceinline__ R8 uw_acos(R8 x) { return R8(uw_acos(x.v)); }
 

@@ -1,0 +1,6 @@
+{
+  "wrf_source_sha256": "b4e4332c1e39c5ab77bc669ae977c8d183b0015aefaab5709a2f4ebe32e0963e",
+  "columns": 64,
+  "fixture_sha256": "83e263976dfe9bf67cc1f82f0502e3c9952d3825a0ed8fb5ae377057817fbbf4",
+  "toy_sha256": "321e17743fd7dbea82f70740adf6a34af3549f90f233cb82e48bdd703b20f631"
+}

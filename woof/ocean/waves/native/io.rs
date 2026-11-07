@@ -1,5 +1,6 @@
 //! Original Rust NetCDF boundary. Only the netCDF-C container ABI is linked.
 //! Numeric transforms use scoped worker threads. Python receives device-ready bytes.
+mod spectral_io;
 use std::{
     ffi::{c_char, c_int, CStr, CString},
     fs,

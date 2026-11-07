@@ -10,7 +10,7 @@ stress is NaN.  On the card that NaN reached every tendency of the column
 qpert2d), and PhysicsDriver._run_uwpbl refused the step with
 FloatingPointError: one exactly calm level-1 point ended the run.  WRF
 v4.6.1 itself writes NaN TAURESX2D/TAURESY2D on that step and NaN
-tendencies on the next (refute check of lane/verify-uw-pbl, 2026-10-07,
+tendencies on the next (refute check of development branch, 2026-10-07,
 tools/uwpbl_wrf461_verify/refute).  That is a WRF defect and is not
 copied: a calm wind has no stress direction, so the kernel gives it zero
 stress.  Every column whose level-1 speed is not zero keeps WRF's words,

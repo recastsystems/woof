@@ -80,7 +80,7 @@ def test_the_pins_name_both_bridges_their_source_and_where_the_release_fetches_t
         assert re.fullmatch(r"[0-9a-f]{64}", row["sha256"]), name
         assert re.fullmatch(r"[0-9a-f]{64}", row["source_sha256"]), name
         # rw_igra2 is crate rw-obs (its bin file is igra2.rs); every other bridge is an rw-mpas bin, a file or
-        # (rw_mpas_static since woof 2.9.7) a bin directory whose entry point is main.rs.
+        # (rw_mpas_static since gpuwm 2.9.7) a bin directory whose entry point is main.rs.
         assert row["source"] in (("tools/rustwx/crates/rw-obs/src/bin/igra2.rs",) if name == "rw_igra2"
                                  else (f"tools/rustwx/crates/rw-mpas/src/bin/{name}.rs",
                                        f"tools/rustwx/crates/rw-mpas/src/bin/{name}/main.rs")), name
@@ -122,20 +122,26 @@ def test_prebuilt_bridges_are_bundled_only_with_their_pinned_bytes(hexsetup, tmp
 
 
 
-def test_hash_matched_old_stream_writer_cannot_satisfy_ordered_metadata(hexsetup, tmp_path, monkeypatch):
-    # A stale release asset matched its own old hash but failed every forecast
-    # when restart_v842 requested native dimension/attribute ordering.
-    data = b"\x7fELF stream without the required response field"
-    root = _pinned_root(tmp_path, {"rw_mpas_stream": data})
+@pytest.mark.parametrize("name,marker", [
+    ("rw_mpas_stream", "ordered_metadata"),
+    ("rw_mpas_static", "--preserve-lake-mask"),
+])
+def test_hash_matched_old_bridge_cannot_satisfy_required_capability(hexsetup, tmp_path, monkeypatch, name, marker):
+    # Old release assets matched their own hashes but stopped forecasts on
+    # ordered metadata or stopped TC member preparation on the lake mask.
+    data = b"\x7fELF bridge without the required capability"
+    root = _pinned_root(tmp_path, {name: data})
     pins_path = root / "src/hexcore/data/engine-bridges.json"
     pins = json.loads(pins_path.read_text())
-    pins["bridges"]["rw_mpas_stream"]["required_markers"] = ["ordered_metadata"]
+    required = json.loads(PINS.read_text())["bridges"][name]["required_markers"]
+    assert marker in required
+    pins["bridges"][name]["required_markers"] = required
     pins_path.write_text(json.dumps(pins))
     prebuilt = tmp_path / "prebuilt"
     prebuilt.mkdir()
-    (prebuilt / "rw_mpas_stream").write_bytes(data)
+    (prebuilt / name).write_bytes(data)
     monkeypatch.setenv("WOOF_HEX_ENGINE_BRIDGES", str(prebuilt))
-    with pytest.raises(SystemExit, match="missing required bridge capability ordered_metadata"):
+    with pytest.raises(SystemExit, match=f"missing required bridge capability {re.escape(marker)}"):
         hexsetup.engine_bridges(root)
 
 

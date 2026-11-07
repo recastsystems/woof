@@ -3,7 +3,7 @@
 The forecast door emits by default through `woof.timeline.ledger.emit`.
 Early and retained step clocks use `Ledger.emit` to relay their original time.
 The ledger lives in the engine (`woof.timeline`); hex provides no schema or
-calculator of its own. An engine without that package (woof 2.8.7 and
+calculator of its own. An engine without that package (gpuwm 2.8.7 and
 earlier) records nothing and prints nothing; an emitter that fails on an
 engine that has it warns once per file without stopping the forecast. Use
 `woof timeline` to calculate fractions on an engine that ships it.

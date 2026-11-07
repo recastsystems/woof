@@ -126,8 +126,8 @@ class ResidentOutputDiagnostics:
         if key not in self.buffers:
             # Initial allocation/default/dummy words are read once. All later
             # changes come from resident views or the diagnostic CUDA kernels.
-            self.buffers[key] = self.cp.ascontiguousarray(self.cp.asarray(
-                self.session.native.get_field(pool, name, level=1)))
+            host = self.session.native.get_field(pool, name, level=1)
+            self.buffers[key] = self.cp.asarray(host, order='C').reshape(host.shape or (1,))
         return self.buffers[key]
 
     def authority(self, pool, name):
@@ -344,9 +344,14 @@ class ResidentOutputDiagnostics:
         # These padded inputs are read only by output-time diagnostics. Maxima
         # retain their own fields and inputs. Rebuild owned words from current()
         # at the next output; the native allocation supplies unchanged padding.
-        for key in (('state', 'scalars'), ('state', 'theta_m'),
+        for key in (('state', 'scalars'), ('state', 'scalars:index_qv'), ('state', 'theta_m'),
                     ('diag', 'exner'), ('diag', 'pressure_base'), ('diag', 'pressure_p')):
             self.buffers.pop(key, None)
+        # These products are computed afresh for every due frame. Neither the
+        # running maxima nor initialized-only diagnostics use their previous
+        # values. The host Registry allocation preserves the padding words.
+        for name in PRIMARY | frozenset(ISOBARIC) | ACOUSTIC:
+            self.buffers.pop(('diag', name), None)
 
     def field(self, pool, name):
         # atm_recover_large_step_variables_work F:4418,4476 writes rw/ru.

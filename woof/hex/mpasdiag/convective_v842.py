@@ -55,6 +55,8 @@ are implemented here. MPAS's compile-time source=2 and adiabat=1 are retained;
 the inactive source/adiabat branches are eliminated just as in the GNU build.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex.device_memory_release import shared_card_memory
 from woof.hex import numerics as _hex_numerics
 
@@ -79,6 +81,48 @@ MAXIMA = FIELDS[14:]
 # engine libm owns all elementary functions. The source is also compiled on
 # the host by replay tests, with this same arithmetic and the live libm.
 CUDA_SOURCE = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_411CF5C3_DEFINED
+#define HEX_DIVISOR_411CF5C3_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_411cf5c3 = 9.81f;
+#else
+static const float hex_divisor_411cf5c3 = 9.81f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_438F851F_DEFINED
+#define HEX_DIVISOR_438F851F_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_438f851f = 287.04f;
+#else
+static const float hex_divisor_438f851f = 287.04f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_43E6C000_DEFINED
+#define HEX_DIVISOR_43E6C000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43e6c000 = 461.5f;
+#else
+static const float hex_divisor_43e6c000 = 461.5f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_447B6CCD_DEFINED
+#define HEX_DIVISOR_447B6CCD_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_447b6ccd = 1005.7f;
+#else
+static const float hex_divisor_447b6ccd = 1005.7f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_47C35000_DEFINED
+#define HEX_DIVISOR_47C35000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_47c35000 = 100000.0f;
+#else
+static const float hex_divisor_47c35000 = 100000.0f;
+#endif
+#endif
+
 struct R {
     float v;
     __device__ R() {}
@@ -134,13 +178,13 @@ __device__ R integral_zpoint(const float* x,const float* z,R bot,R top,int n) {
 }
 // mpas_convective_diagnostics.F:1043-1054
 __device__ R getqvs(R p,R t) {
-    const R eps=287.04f/461.5f;
+    const R eps=287.04f/hex_divisor_43e6c000;
     R es=R(611.2f)*rexp(R(17.67f)*(t-R(273.15f))/(t-R(29.65f)));
     return eps*es/(p-es);
 }
 // mpas_convective_diagnostics.F:1060-1071
 __device__ R getqvi(R p,R t) {
-    const R eps=287.04f/461.5f;
+    const R eps=287.04f/hex_divisor_43e6c000;
     R es=R(611.2f)*rexp(R(21.8745584f)*(t-R(273.15f))/(t-R(7.66f)));
     return eps*es/(p-es);
 }
@@ -158,7 +202,7 @@ __device__ void getcape(int nk,const float* pin,const float* tin,const float* td
                        float* ws,float& cape_out,float& cin_out) {
     float *p=ws,*t=p+nk,*td=t+nk,*pi=td+nk,*q=pi+nk,*th=q+nk,*thv=th+nk;
     const R rd=287.04f,rv=461.5f,cp=1005.7f,g=9.81f,cpv=1875.0f,cpl=4190.0f,cpi=2118.636f;
-    const R rp00=1.0f/100000.0f,reps=461.5f/287.04f,rddcp=287.04f/1005.7f,cpdg=1005.7f/9.81f;
+    const R rp00=1.0f/hex_divisor_47c35000,reps=461.5f/hex_divisor_438f851f,rddcp=287.04f/hex_divisor_447b6ccd,cpdg=1005.7f/hex_divisor_411cf5c3;
     const R lv1=2501000.0f+(4190.0f-1875.0f)*273.15f,lv2=4190.0f-1875.0f;
     const R ls1=2836017.0f+(2118.636f-1875.0f)*273.15f,ls2=2118.636f-1875.0f;
     for(int k=0;k<nk;k++) {
@@ -386,7 +430,7 @@ def _module(device_id, artifact=None):
     with cp.cuda.Device(device_id):
         options = _hex_numerics.options(('--std=c++17', '--fmad=false', '--ftz=false',
                    '--prec-div=true', '--prec-sqrt=true'))
-        arch = cp.cuda.Device(device_id).compute_capability
+        arch = _compilation_target(device_id, xp=cp)
         source = device_source()
         if artifact:
             # A CPU-only NVRTC image built through the build queue avoids

@@ -550,11 +550,15 @@ def test_two_terrain_sources_on_one_domain_write_two_receipts(tmp_path):
     written = {}
     for source in ("usgs-3dep-13as", "srtm-gl1"):
         config = HighresStaticConfig(
-            enabled=True, cache_root=tmp_path, on_refuse="fallback-30s",
+            enabled=True, cache_root=tmp_path, on_refuse="error",
             terrain_source=source, fields="terrain")
-        _, receipt = apply_highres_statics(
-            baseline, grid, config=config, domain_id=1,
-            case_date=date(2024, 6, 1), landuse_attrs=MODIS21_ATTRS)
+        with pytest.raises(HighresRefusal):
+            apply_highres_statics(
+                baseline, grid, config=config, domain_id=1,
+                case_date=date(2024, 6, 1), landuse_attrs=MODIS21_ATTRS)
+        receipt_path = next((tmp_path/"receipts").glob(f"*{source}*.json"))
+        receipt = json.loads(receipt_path.read_text())
+        receipt['receipt_path'] = str(receipt_path)
         assert receipt["status"] == "REFUSED"
         written[source] = Path(receipt["receipt_path"])
 

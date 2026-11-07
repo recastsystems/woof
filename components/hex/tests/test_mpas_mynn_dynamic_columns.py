@@ -39,6 +39,7 @@ def test_schedule_follows_numerics(monkeypatch, mode, dynamic):
 
 
 def test_scratch_is_kept_between_calls(monkeypatch):
+    monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', 'single')
     cp = pytest.importorskip("cupy")
     try:
         cp.cuda.runtime.getDeviceCount()

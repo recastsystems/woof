@@ -21,6 +21,8 @@ from typing import Any, Iterator, Mapping
 import numpy as np
 
 from .streams_rrfs import Stream, field_definition, registry_stream
+# The RRFS fork keeps the init's initial_time exactly as v8.4.2 does (MPAS-Model-rrfs mpas_atm_core.F:283-295).
+from .restart_v842 import initial_time_or_blank, time_units
 from .engines import EngineSpec, resolve
 from . import history_compression
 
@@ -139,7 +141,7 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
     mesh_dims = getattr(mesh,'variable_dimensions',{})
     sizes = {k:int(v) for k,v in getattr(mesh,'dimensions',{}).items() if k != 'Time'}
     sizes.update(Time=1,StrLen=64)
-    initial, valid = _date(initial_time), _date(valid_time)
+    initial, valid = initial_time_or_blank(initial_time), _date(valid_time)
     converted = set(getattr(mesh,'converted_connectivity',()))
     precision = stream.options.get('precision','native')
     missing = [n for n in names if n not in ('Time','xtime','initial_time') and n not in fields and n not in arrays]
@@ -160,11 +162,14 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
             variable={'name':name,'dtype':dtype,'dimensions':disk_dims,'attrs':_json_attrs(attrs)}
             if name in ('xtime','initial_time'):
                 value=valid if name=='xtime' else initial
-                variable['text']=[value.strftime('%Y-%m-%d_%H:%M:%S')]
+                variable['text']=['' if value is None else value.strftime('%Y-%m-%d_%H:%M:%S')]
             else:
                 if name=='Time':
-                    raw=fields.get(name, HistoryField(np.asarray([(valid-initial).total_seconds()],dtype=np.float32),('Time',)))
-                    variable['attrs']['units']=f'seconds since {initial:%Y-%m-%d %H:%M:%S}'
+                    if name not in fields and initial is None:
+                        raise ValueError(f'{stream.name}: Time needs its pool value when initial_time is blank')
+                    raw=(fields[name] if name in fields else
+                         HistoryField(np.asarray([(valid-initial).total_seconds()],dtype=np.float32),('Time',)))
+                    variable['attrs']['units']=time_units(initial)
                 else: raw=fields[name] if name in fields else arrays[name]
                 if isinstance(raw,HistoryField):
                     array=np.asarray(raw.values); dims=raw.dimensions
@@ -232,12 +237,21 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
         append=exists and mode in ('append','overwrite')
         if append:
             # Validate timestamps before selecting a write position.
-            with read_stream(path, scratch=stage, select=('xtime',)) as current:
-                stamps=current.variables['xtime'].text
-                if record_index > len(stamps): raise ValueError('record_index would leave a gap in the native file')
-                if mode=='append' and record_index!=len(stamps): raise ValueError('append refuses an existing record')
-                if mode=='overwrite' and record_index<len(stamps) and stamps[record_index]!=valid.strftime('%Y-%m-%d_%H:%M:%S'):
-                    raise ValueError('overwrite record timestamp differs from the native file')
+            if 'xtime' in names:
+                with read_stream(path, scratch=stage, select=('xtime',)) as current:
+                    stamps=current.variables['xtime'].text
+                records=len(stamps)
+            else:
+                # An xtime-less deck stream: the record count is the file's Time axis
+                # (restart_v842.write_stream says what broke).
+                stamps=None
+                with tempfile.TemporaryDirectory(prefix='.mpas-header-',dir=stage) as header:
+                    records=int(_call({'operation':'inspect','path':str(path)},Path(header))['dimensions'].get('Time',0))
+            if record_index > records: raise ValueError('record_index would leave a gap in the native file')
+            if mode=='append' and record_index!=records: raise ValueError('append refuses an existing record')
+            if (mode=='overwrite' and stamps is not None and record_index<records
+                    and stamps[record_index]!=valid.strftime('%Y-%m-%d_%H:%M:%S')):
+                raise ValueError('overwrite record timestamp differs from the native file')
             shutil.copyfile(path,staged)
         attribute_precision = 'f8' if precision == 'double' else 'f4'
         attrs=_json_attrs(getattr(mesh,'attrs',{}),real_precision=attribute_precision)

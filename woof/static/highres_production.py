@@ -50,8 +50,8 @@ never inferred by the reader:
   source whose envelope the footprint lies wholly outside is refused,
   naming which dataset does not reach where; one it partly leaves is
   built, the rest taking the baseline.
-- ``on_refuse`` selects between a hard error (default) and an explicit,
-  receipted fallback to the unchanged 30s baseline.
+- An enabled overlay refuses unavailable required coverage. An all-water
+  footprint is admitted without a baseline-terrain workaround.
 - TMN is recomputed in both modes; monthly climatologies stay 30s with
   counted donor fill in the full mode and untouched in terrain-only.
 - An enabled block that ends up replacing zero cells is itself a refusal:
@@ -143,7 +143,7 @@ _MODIS21_ISLAKE = MODIS21_ISLAKE
 _REPLACED_FIELDS = ("HGT_M", "LANDUSEF", "LANDMASK", "LU_INDEX",
                     "SOILCTOP", "SCT_DOM", "SOILCBOT", "SCB_DOM")
 
-_ON_REFUSE_CHOICES = ("error", "fallback-30s")
+_ON_REFUSE_CHOICES = ("error",)
 
 
 # Re-exported, not redefined: the class lives in a leaf module so the CLI
@@ -176,13 +176,8 @@ def require_geography_stack() -> None:
     under the old spelling: that one refused a perfectly good wheel
     install for missing a library nothing on the default path reads.
 
-    Raised OUTSIDE the ``on_refuse`` handler on purpose.  ``on_refuse =
-    "fallback-30s"`` is a statement about *source coverage* -- "this
-    domain reaches past the published data, carry on at 30 arc-seconds"
-    -- and quietly applying it to a broken install would hand back
-    baseline terrain because a library was missing, which is the exact
-    silent degradation the rest of this module refuses.  An incomplete
-    environment is fixable in one command, so it is always reported.
+    A missing library is an installation error, not source coverage.
+    An enabled overlay never silently substitutes baseline terrain.
     """
     from .geog_stack import missing_highres_engine
 
@@ -538,8 +533,9 @@ def parse_static_table(raw, *, source: str, base_dir
         raise ValueError(
             f"on_refuse in [static.highres] of {source} must be one of "
             f"{list(_ON_REFUSE_CHOICES)}, got {on_refuse!r}.  'error' "
-            "stops the case at a refusal; 'fallback-30s' proceeds on the "
-            "unchanged 30-arc-second baseline and says so in the receipt.")
+            "stops the case if the declared overlay cannot be built. "
+            "The old fallback-30s workaround is retired: an all-water "
+            "footprint is now a valid high-resolution result.")
 
     terrain_source = table.get("terrain_source", "auto")
     if terrain_source not in _TERRAIN_SOURCE_CHOICES:
@@ -1076,38 +1072,10 @@ def _write_receipt(config: HighresStaticConfig, receipt: dict) -> Path:
 
 
 def _refusal_remedy(config) -> str:
-    """What the user writes to get past a refusal under ``on_refuse = "error"``.
-
-    A declared block only needs its ``on_refuse`` changed.  The
-    grid-spacing default is a block the user never wrote, so telling them
-    to edit it names nothing they have: they get the default spelled out
-    as a complete block, once with the fallback and once switched off.
-    """
-    row = default_row_of(config)
-    if row is None:
-        return ("  (on_refuse = \"error\"; set on_refuse = \"fallback-30s\" "
-                "in [static.highres] to proceed on the unchanged "
-                "30-arc-second baseline)")
-    # A TOML basic string, which JSON's string escapes spell exactly.
-    cache_root = json.dumps(str(config.cache_root))
-    return (
-        f"  The configuration declares no [static.highres] block, so this "
-        f"domain took the default for grid spacings at or below "
-        f"{row.max_dx_m:g} m: {row.terrain_source} terrain, stopping when it "
-        "cannot be built.  To keep that default and proceed on the unchanged "
-        "30-arc-second baseline when it refuses, add this block to the "
-        "experiment configuration:\n"
-        "[static.highres]\n"
-        "enabled = true\n"
-        f"cache_root = {cache_root}\n"
-        f"fields = \"{row.fields}\"\n"
-        f"terrain_source = \"{row.terrain_source}\"\n"
-        f"max_dx_m = {row.max_dx_m:.1f}\n"
-        "on_refuse = \"fallback-30s\"\n"
-        "or, to keep the 30-arc-second terrain on every domain:\n"
-        "[static.highres]\n"
-        "enabled = false\n"
-        f"cache_root = {cache_root}")
+    """Name the selected data source without proposing a retired workaround."""
+    return (f"  Check the declared terrain source {config.terrain_source!r} "
+            f"and its coverage (cache {config.cache_root}). An all-water "
+            "footprint is accepted; missing required land coverage still refuses.")
 
 
 def apply_highres_statics(baseline, grid, *, config, domain_id: int,
@@ -1116,10 +1084,8 @@ def apply_highres_statics(baseline, grid, *, config, domain_id: int,
 
     Returns ``(fields, receipt)``.  ``config`` absent or disabled is the
     identity: the exact ``baseline`` object comes back with ``None`` and
-    nothing is fetched, printed, or written.  Refusals follow
-    ``config.on_refuse``: ``"error"`` raises :class:`HighresRefusal`,
-    ``"fallback-30s"`` returns the unchanged baseline beneath a receipt
-    that names the refusal.
+    nothing is fetched, printed, or written. An enabled overlay raises
+    :class:`HighresRefusal` if its required land coverage is unavailable.
     """
     if config is None or not getattr(config, "enabled", False):
         return baseline, None
@@ -1128,8 +1094,7 @@ def apply_highres_statics(baseline, grid, *, config, domain_id: int,
 
     # Before the footprint, before the plan, before the first byte is
     # requested.  See require_geography_stack: this is deliberately not
-    # inside the try below, so `on_refuse = "fallback-30s"` cannot turn a
-    # broken install into a silent 30-arc-second run.
+    # inside the try below: a broken install is diagnosed before acquisition.
     urban = int(getattr(config, "sf_urban_physics", 0) or 0)
     if urban > 0 and config.fields != "terrain":
         from .highres import landcover_legend
@@ -1203,16 +1168,10 @@ def apply_highres_statics(baseline, grid, *, config, domain_id: int,
         receipt["status"] = "REFUSED"
         receipt["refusal"] = {"reason": refusal.reason,
                               "detail": refusal.detail}
-        if config.on_refuse != "fallback-30s":
-            raise HighresRefusal(
-                refusal.reason,
-                refusal.detail + _refusal_remedy(config)) from refusal
-        receipt["fallback"] = "unchanged 30-arc-second baseline statics"
-        path = _write_receipt(config, receipt)
-        print(f"[static.highres] d{int(domain_id):02d}: REFUSED "
-              f"({refusal.reason}) -- proceeding on the 30s baseline per "
-              f"on_refuse = \"fallback-30s\" (receipt {path})")
-        return baseline, receipt
+        _write_receipt(config, receipt)
+        raise HighresRefusal(
+            refusal.reason,
+            refusal.detail + _refusal_remedy(config)) from refusal
 
 
 
@@ -1830,8 +1789,6 @@ def require_prepared_highres(receipt, grid, *, config, domain_id, case_date):
         return
     overlay = receipt.get("highres") if isinstance(receipt, dict) else None
     allowed = {"APPLIED"}
-    if config.on_refuse == "fallback-30s":
-        allowed.add("REFUSED")
     if (not isinstance(overlay, dict) or overlay.get("status") not in allowed
             or not prepared_highres_settings_match(overlay.get("config"), config)
             or overlay.get("case_date") != case_date.isoformat()

@@ -53,6 +53,13 @@ def test_one_mode_per_process(fresh):
     assert fresh.set_mode("fast") == "fast"
 
 
+def test_fast_preparation_identity_retains_unfused_arithmetic(fresh):
+    flags = fresh.options((*fresh.kernel_base(), "-DGPUWM_PREPARATION_IDENTITY=1", "--fmad=false"))
+    assert "--fmad=false" in flags and "--fmad=true" not in flags
+    assert "-DHEX_NUMERICS_FAST=1" in flags
+    assert "--fmad=true" in fresh.options(fresh.kernel_base())
+
+
 def test_resolve_cli_namelist_env(fresh, monkeypatch):
     namelist = "&nhyd_model\n    config_dt = 600.0\n    config_numerics = 'strict'\n/\n"
     assert fresh.resolve(None, namelist) == ("strict", "namelist config_numerics")

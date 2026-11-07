@@ -50,8 +50,11 @@ constexpr int NQSAT = 1000001;
 constexpr float CXMIN = 1.e-8f;
 constexpr float AR = 841.99666f;
 constexpr float BR = 0.8f;
+#ifdef NSSL2_VARIABLE_CCCN
+#else
 constexpr float CWCCN = 5.0e8f;
 constexpr float QCCN = 408163264.0f;               // 0x4DC2A09E
+#endif
 constexpr float CCK = 0.6f;
 constexpr float MAXLOWTEMPSS = 1.08f;
 constexpr float MAXSUPERSAT = 1.9f;
@@ -180,9 +183,17 @@ __device__ float qvexcess(float qwvp0, float qv0, float qcw1, float pres,
 
 // Restoration of evaporated droplets to CCN (:10536-10546, irenuc <= 2,
 // lccna = 0, invertccn false).
+#ifdef NSSL2_VARIABLE_CCCN
+__device__ __forceinline__ float restore_ccn(float ccnc, float rho0, float add, float background_ccn_per_kg)
+#else
 __device__ __forceinline__ float restore_ccn(float ccnc, float rho0, float add)
+#endif
 {
+#ifdef NSSL2_VARIABLE_CCCN
+    return nssl2_max(ccnc, nssl2_min(background_ccn_per_kg * rho0, ccnc + RESTORECCNFRAC * add));
+#else
     return nssl2_max(ccnc, nssl2_min(QCCN * rho0, ccnc + RESTORECCNFRAC * add));
+#endif
 }
 
 }  // namespace
@@ -237,7 +248,13 @@ extern "C" __global__ void nssl2_nucond_default(
     int n,
     int nz,
     int horizontal_size,
+#ifdef NSSL2_VARIABLE_CCCN
+    int predicted_ccn,
+    float background_ccn_per_kg,
+    float nssl_cccn)
+#else
     int predicted_ccn)
+#endif
 {
     const int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx >= n) return;
@@ -313,7 +330,11 @@ extern "C" __global__ void nssl2_nucond_default(
 
             // numbers (:10065-10110); lccn > 1, lccna = lccnuf = 0.
             float cx_lc = nssl2_max(an_lnc, 0.0f);
+#ifdef NSSL2_VARIABLE_CCCN
+            const float cwnccn = __fdiv_rn(nssl_cccn * rho0, RHO00);
+#else
             const float cwnccn = __fdiv_rn(CWCCN * rho0, RHO00);
+#endif
             float ccnc = an_lccn;
             float ccna = cwnccn - ccnc;
             float cx_lr = nssl2_max(an_lnr, 0.0f);
@@ -550,7 +571,11 @@ extern "C" __global__ void nssl2_nucond_default(
                             cn = ccne0() * gfk_pow(cnuctmp, __fdiv_rn(2.0f, 2.0f + CCK))
                                 * gfk_pow(wvel, cnexp());
                             // iccwflg = 1
+#ifdef NSSL2_VARIABLE_CCCN
+                            cn = nssl2_min(__fdiv_rn(nssl_cccn * rho0, RHO00),
+#else
                             cn = nssl2_min(__fdiv_rn(CWCCN * rho0, RHO00),
+#endif
                                            nssl2_max(cn, __fdiv_rn(rho0 * qc,
                                                XDN_C * four_pi_third() * four_micron_cube())));
                         } else {
@@ -580,18 +605,30 @@ extern "C" __global__ void nssl2_nucond_default(
                         qwvp = qwvp + qc;
                         thetap = thetap - __fdiv_rn(felvcp * qc, pi0);
                         qc = 0.0f;
+#ifdef NSSL2_VARIABLE_CCCN
+                        ccnc = restore_ccn(ccnc, rho0, cx_lc, background_ccn_per_kg);
+#else
                         ccnc = restore_ccn(ccnc, rho0, cx_lc);
+#endif
                         cx_lc = 0.0f;
                     } else {
                         const float qctmp = qc;
                         qwvp = qwvp + qevap;
                         qc = qc - qevap;
                         if (qc <= 0.0f) {
+#ifdef NSSL2_VARIABLE_CCCN
+                            ccnc = restore_ccn(ccnc, rho0, cx_lc, background_ccn_per_kg);
+#else
                             ccnc = restore_ccn(ccnc, rho0, cx_lc);
+#endif
                             cx_lc = 0.0f;
                         } else {
                             const float tmp = __fdiv_rn(0.9f * qevap * cx_lc, qctmp);
+#ifdef NSSL2_VARIABLE_CCCN
+                            ccnc = restore_ccn(ccnc, rho0, tmp, background_ccn_per_kg);
+#else
                             ccnc = restore_ccn(ccnc, rho0, tmp);
+#endif
                             cx_lc = cx_lc - tmp;
                         }
                         thetap = thetap - __fdiv_rn(felvcp * qevap, pi0);
@@ -765,7 +802,11 @@ extern "C" __global__ void nssl2_nucond_default(
         an_lccn = nssl2_max(an_lccn, 0.0f);
         const float tmp = an_li + an_ls;
         if (an_lccn > 1.0f && tmp < QXMIN_I) {
+#ifdef NSSL2_VARIABLE_CCCN
+            an_lccn = dn * background_ccn_per_kg - nssl2_max(dn * background_ccn_per_kg - an_lccn, 0.0f)
+#else
             an_lccn = dn * QCCN - nssl2_max(dn * QCCN - an_lccn, 0.0f)
+#endif
                 * gfk_exp(-__fdiv_rn(dtp, CCNTIMECONST));
         }
     }

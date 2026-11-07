@@ -100,6 +100,20 @@ class ArwenSurfaceUpdate:
 
     def _read_initial(self, name, levels=1, axis=None, dtype=np.float32):
         import cupy as cp
+        # Mesh coordinates are native doubles in generated MPAS init files.
+        # The surface replay ABI deliberately accepts only exact int32/float32
+        # fields. Use the typed Rust NetCDF bridge for coordinates, preserving
+        # that ABI's strict checks for every prognostic surface field.
+        if name in ("latCell", "lonCell"):
+            from woof.netcdf_bridge import open_dataset
+            if levels != 1 or axis is not None:
+                raise ValueError("mesh coordinates must be scalar per cell")
+            with open_dataset(self.init_path) as dataset:
+                host = np.asarray(dataset.variables[name][...])
+            if host.shape != (self.reader.n_cells,) or host.dtype.kind != "f":
+                raise ValueError(f"invalid initial mesh coordinate {name}: {host.shape}, {host.dtype}")
+            device = cp.asarray(host, dtype=dtype)
+            return device if self.order is None else cp.asfortranarray(device[self.order])
         shape = (levels, self.reader.n_cells) if axis else (self.reader.n_cells,)
         host = np.empty(shape, dtype=dtype, order="F")
         status = self.reader.read_field(os.fsencode(self.init_path), name.encode(),
@@ -229,16 +243,20 @@ class ArwenSurfaceUpdate:
             raise ValueError("surface update restart stream clock or cell extent differs")
         if set(state["arrays"]) != set(self.owned):
             raise ValueError("surface update restart inventory differs")
+        # Reject incompatible columns before replacing any live words. A late
+        # layout error or ocean-option mismatch used to leave a partial restore.
         for key, value in state["arrays"].items():
             if value.shape != self.owned[key].shape or value.dtype != self.owned[key].dtype:
                 raise ValueError(f"surface update restart {key} layout differs")
-            self.owned[key][...] = cp.asarray(value)
         saved_ocean = state.get("ocean")
         if (saved_ocean is None) != (self.ocean is None):
             raise ValueError("surface restart ocean mode differs")
         if self.ocean is not None:
             if saved_ocean["options"] != self.ocean.options:
                 raise ValueError("surface restart ocean parameters differ")
+        for key, value in state["arrays"].items():
+            self.owned[key][...] = cp.asarray(value)
+        if self.ocean is not None:
             self.ocean.steps = saved_ocean["steps"]
         self.alarms = SurfaceAlarms(**{k: (None if v is None else
             datetime.fromisoformat(v) if k.startswith("next_") else timedelta(seconds=v))
@@ -250,7 +268,8 @@ class ArwenSurfaceUpdate:
         self.refresh_classification()
 
     def receipt(self):
-        return dict(ocean=None if self.ocean is None else self.ocean.receipt(), enabled=True, path=os.fsdecode(self.reader.path),
+        return dict(ocean=None if self.ocean is None else self.ocean.receipt(),
+                    enabled=True, path=os.fsdecode(self.reader.path),
                     backend="hex-cuda", operations=dict(self.counts),
                     albedo_initialization="fractional-ice-v1",
                     classification=dict(self.classification),
@@ -264,7 +283,7 @@ class ArwenSurfaceUpdate:
 def attach(backend, *, work_dir, init_path, start, end, cell_order=None, n_global_cells=None):
     from .surface_series_reader import covering_reader, discover
     from .ocean_mixed_layer import mode, MixedLayerOcean
-    prognostic = mode() == "prognostic"
+    prognostic = mode() in ("prognostic", "pwp")
     path = None if prognostic else discover(work_dir)
     backend._surface_updates_receipt = dict(enabled=False, reason="no surface series in run work dir")
     if path is None and not prognostic:
@@ -284,7 +303,11 @@ def attach(backend, *, work_dir, init_path, start, end, cell_order=None, n_globa
     backend._surface_updates = service
     saved = getattr(backend, "_surface_restart", None)
     if prognostic:
-        service.ocean = MixedLayerOcean(service, restoring=saved is not None)
+        ocean_class = MixedLayerOcean
+        if mode() == "pwp":
+            from .ocean_pwp import PWPOcean
+            ocean_class = PWPOcean
+        service.ocean = ocean_class(service, restoring=saved is not None)
         if saved is None:
             service.convert_surface()
             service.ocean.publish(convert=False)
@@ -302,7 +325,7 @@ def attach(backend, *, work_dir, init_path, start, end, cell_order=None, n_globa
     return service.receipt()
 
 
-def attach_host(backend, host, schedule, work_dir, *, dt, layout=None):
+def attach_host(backend, host, schedule, work_dir, *, dt, layout=None, wave_ranks=None):
     """Bind original file indices to one whole mesh, rank or LTS class."""
     from datetime import datetime
     from .cuda_arwen_physics_v841 import PersistentTwoPhaseCudaPhysicsBackendV841
@@ -327,6 +350,11 @@ def attach_host(backend, host, schedule, work_dir, *, dt, layout=None):
             raise ValueError("surface partition lacks its regional garbage donor")
         order = np.append(order, order[position[0]])
     start = datetime.fromisoformat(schedule["start_time"].replace("_", "T"))
-    return attach(backend, work_dir=work_dir, init_path=host["surface_init_path"],
+    result = attach(backend, work_dir=work_dir, init_path=host["surface_init_path"],
         start=start, end=start+timedelta(seconds=float(schedule["steps"])*dt),
         cell_order=order, n_global_cells=cells)
+    from .waves import attach_arwen
+    waves = attach_arwen(backend, host, schedule, work_dir, dt=dt, layout=layout, ranks=wave_ranks)
+    if waves is not None:
+        result = dict(result, waves=waves)
+    return result

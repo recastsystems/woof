@@ -53,14 +53,22 @@ def test_a_refused_registry_package_is_refused_as_a_wrf_package(mp):
 def test_55_and_56_carry_wrfs_own_names():
     rows = _registry_mp_packages()
     assert rows[55] == "jensen_ishmael" and rows[56] == "ntu"
-    assert "ISHMAEL" in wrfinput.UNSUPPORTED_MICROPHYSICS[55]
+    assert "ISHMAEL" in wrfinput.SUPPORTED_MICROPHYSICS[55]
     assert "NTU" in wrfinput.UNSUPPORTED_MICROPHYSICS[56]
-    for mp in (55, 56):
-        assert "P3" not in wrfinput.UNSUPPORTED_MICROPHYSICS[mp]
+    assert "P3" not in wrfinput.SUPPORTED_MICROPHYSICS[55]
+    assert "P3" not in wrfinput.UNSUPPORTED_MICROPHYSICS[56]
 
 
-def test_the_ferrier_family_is_refused_by_name_at_the_door():
-    for mp in (15, 95):
-        with pytest.raises(ValueError, match=rf"mp_physics={mp} \(Ferrier"):
-            wrfinput.check_supported_schemes(
-                {"MP_PHYSICS": mp, "SF_SURFACE_PHYSICS": 2}, source="test")
+def test_the_ferrier_family_is_admitted_at_the_door():
+    # The old Eta Ferrier scheme (mp=95) was refused here until its 3.0 port.
+    # With test_ferrier_hires_and_advect_are_admitted_by_the_wrfinput_door
+    # (mp=15) this replaces test_the_ferrier_family_is_refused_by_name_at_the_door.
+    for mp in (95,):
+        wrfinput.check_supported_schemes(
+            {"MP_PHYSICS": mp, "SF_SURFACE_PHYSICS": 2}, source="test")
+
+
+def test_ferrier_hires_and_advect_are_admitted_by_the_wrfinput_door():
+    for mp in (5, 15):
+        wrfinput.check_supported_schemes(
+            {"MP_PHYSICS": mp, "SF_SURFACE_PHYSICS": 2}, source="test")

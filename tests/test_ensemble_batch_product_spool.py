@@ -295,7 +295,7 @@ def test_private_worker_coordinates_leave_the_tree_and_published_ones_stay(tmp_p
 
 
 def test_moving_rain_rebases_comparisons_records_moves_and_keeps_forecast_total(tmp_path):
-    """V55 reset: shifted rain and a return visit are different index spaces."""
+    """test host reset: shifted rain and a return visit are different index spaces."""
     from datetime import datetime
     import hashlib
     start = datetime(2024, 9, 24, 12)

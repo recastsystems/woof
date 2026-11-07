@@ -1,0 +1,492 @@
+{
+  "readiness": "FOLD-READY: cu_physics=11, aercu_opt=0; declared physics-cost exception",
+  "scheme": {
+    "cu_physics": 11,
+    "aercu_opt": 0,
+    "kf_edrates": 1
+  },
+  "numerical_forecast_commit": "3efc7f5d4241462d6ca81401a5b7b74bd10d46ca",
+  "native_module": "WRF v4.7.1 module_cu_mskf.F, byte identical to v4.6.1",
+  "native_executable_sha256": "92b63e0607b26073272431fcc5562578ff27b9b30636a42283cc643e3b47e8e3",
+  "native_source_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "synthetic_default": {
+    "words": 167552,
+    "differing": 0,
+    "max_ulp": 0,
+    "passed": true
+  },
+  "forecast": {
+    "start_utc": "2026-10-16T09:00:00Z",
+    "end_utc": "2026-10-16T12:00:00Z",
+    "nx": 300,
+    "ny": 300,
+    "nz": 49,
+    "dx_m": 3000,
+    "dt_s": 15,
+    "steps": 720,
+    "mp_physics": 6,
+    "radiation": [
+      4,
+      4
+    ],
+    "surface_layer": 91,
+    "land_surface": 2,
+    "pbl": 1,
+    "native_exit_code": 0,
+    "gpu_exit_code": 0,
+    "integration_wall_s": 144.1,
+    "separate_kernel_compile_s": 37.89852,
+    "continuation": false,
+    "command": "bash third-pass/run-go.sh",
+    "log": "third-pass/remote/go.log",
+    "native_reference": "Retained full strict 09-12 UTC WRF reference; fresh strict capture run separately completed 09-10:00:15 UTC."
+  },
+  "station_scores": [
+    {
+      "hour_utc": 9,
+      "native": {
+        "stations": 23,
+        "bias_c": -0.07852105034719939,
+        "mae_c": 0.8475220905985862,
+        "rmse_c": 1.078386227165627
+      },
+      "gpu": {
+        "stations": 23,
+        "bias_c": -0.07852105034719939,
+        "mae_c": 0.8475220905985862,
+        "rmse_c": 1.078386227165627
+      }
+    },
+    {
+      "hour_utc": 10,
+      "native": {
+        "stations": 23,
+        "bias_c": -0.0027687551894399172,
+        "mae_c": 0.7497194741659128,
+        "rmse_c": 0.9035884219040731
+      },
+      "gpu": {
+        "stations": 23,
+        "bias_c": -0.0029996273022116567,
+        "mae_c": 0.7483236266794997,
+        "rmse_c": 0.9017610884472747
+      }
+    },
+    {
+      "hour_utc": 11,
+      "native": {
+        "stations": 23,
+        "bias_c": 0.02961629231773089,
+        "mae_c": 0.9205944116564756,
+        "rmse_c": 1.06858689744079
+      },
+      "gpu": {
+        "stations": 23,
+        "bias_c": 0.025921011662160237,
+        "mae_c": 0.9117695241734592,
+        "rmse_c": 1.0626467226055383
+      }
+    },
+    {
+      "hour_utc": 12,
+      "native": {
+        "stations": 23,
+        "bias_c": -0.3109096066387155,
+        "mae_c": 0.7577364861677205,
+        "rmse_c": 0.9603314181173906
+      },
+      "gpu": {
+        "stations": 23,
+        "bias_c": -0.30991844877526437,
+        "mae_c": 0.7572017651249215,
+        "rmse_c": 0.9588516840191945
+      }
+    }
+  ],
+  "speed_exception": "7.4347x CU1 on this active real input after a 16.7154% reduction in MSKF stage time. MSKF adds ten binary64 harmonic pressure/tridiagonal solves and convective momentum transport absent from CU1. No claim of optimal throughput or CPU/GPU whole-forecast speedup.",
+  "option_off": {
+    "history": {
+      "words": 107043588,
+      "differing_words": 0
+    },
+    "checkpoint": {
+      "words": 262827600,
+      "different_arrays": 0
+    },
+    "current_real_control": {
+      "base": "4123f1916e3c95984862cd9b21f2fc1e8dd5f850",
+      "cu_physics": 1,
+      "steps": 4,
+      "history_file_sha256": "23791ef536514117f4c18909f3fe40a7eb277333fc495cc4b0518f47a5adc39b",
+      "history_file_identical": true,
+      "history_words": 107043588,
+      "numeric_checkpoint_arrays": 216,
+      "numeric_checkpoint_words": 262827600,
+      "differing_arrays": 0,
+      "header_excluded": "JSON provenance and run metadata"
+    }
+  },
+  "data_hold": "External CESM monthly aerosol climatology licence unresolved; no data bundled and no positive-aerosol real forecast.",
+  "limits": [
+    "One three-hour forecast does not establish general skill.",
+    "No real deep-precipitating or positive-aerosol module replay.",
+    "Nest and ensemble checks cover production GPU lifecycle, not full real forecasts.",
+    "No observed radar score; ASOS temperature observations only.",
+    "Exact earlier 289 failure logs were unavailable.",
+    "Asynchronous fatal delivery can follow extra internal nest work; publication and successful return are gated. Periodic state checks still synchronize at their existing cadence."
+  ],
+  "native_full_forecast_executable_sha256": "3b696121fc755f1091784088b8349d998a5551affe03be3f0e07a3a35cabbf92",
+  "prior_real_replay": {
+    "unique_native_words": 80640,
+    "unique_total_words": 127776,
+    "unique_zero_extension_words": 47136,
+    "unique_columns": 96,
+    "differing_words": 0,
+    "executions": [
+      {
+        "step": 241,
+        "mode": "strict",
+        "receipt": "real-replay-000241-strict.json",
+        "words": 63888,
+        "native_words": 40320,
+        "differing_words": 0,
+        "columns": 48,
+        "precipitating_columns": 0
+      },
+      {
+        "step": 241,
+        "mode": "graph",
+        "receipt": "real-replay-000241-graph.json",
+        "words": 63888,
+        "native_words": 40320,
+        "differing_words": 0,
+        "columns": 48,
+        "precipitating_columns": 0
+      },
+      {
+        "step": 481,
+        "mode": "strict",
+        "receipt": "real-replay-000481-strict.json",
+        "words": 63888,
+        "native_words": 40320,
+        "differing_words": 0,
+        "columns": 48,
+        "precipitating_columns": 0
+      },
+      {
+        "step": 481,
+        "mode": "graph",
+        "receipt": "real-replay-000481-graph.json",
+        "words": 63888,
+        "native_words": 40320,
+        "differing_words": 0,
+        "columns": 48,
+        "precipitating_columns": 0
+      }
+    ],
+    "default_10utc_differing_words": 0,
+    "scope": "Real native columns, nonprecipitating; 10 UTC captures include nonzero thermal tendency. Eleven inactive aerosol slots are zero extensions."
+  },
+  "real_replay": {
+    "unique_native_words": 107520,
+    "unique_total_words": 170368,
+    "unique_zero_extension_words": 62848,
+    "unique_columns": 128,
+    "differing_words": 0,
+    "step": 241,
+    "modes": [
+      "strict",
+      "strict CUDA graph",
+      "default fast"
+    ],
+    "receipts": [
+      "third-pass/remote/replay-strict.json",
+      "third-pass/remote/replay-graph.json",
+      "third-pass/remote/replay-default.json"
+    ],
+    "scope": "Fresh native WRF run, eight MPI tile captures, 49 levels. 192 nonzero thermal-tendency words; no precipitating columns. Eleven inactive aerosol slots are explicit zero extensions. Modes repeat the same unique words."
+  },
+  "model_temperature_comparison_prior_forecast": [
+    {
+      "hour_utc": 9,
+      "cells": 90000,
+      "gpu_minus_native_bias_c": 0.0,
+      "mae_c": 0.0,
+      "rms_c": 0.0,
+      "max_abs_c": 0.0
+    },
+    {
+      "hour_utc": 10,
+      "cells": 90000,
+      "gpu_minus_native_bias_c": -0.00028714735243055557,
+      "mae_c": 0.013425649685329862,
+      "rms_c": 0.03151652788966521,
+      "max_abs_c": 0.861602783203125
+    },
+    {
+      "hour_utc": 11,
+      "cells": 90000,
+      "gpu_minus_native_bias_c": -0.0008803449842664931,
+      "mae_c": 0.015560914781358508,
+      "rms_c": 0.035129607065486824,
+      "max_abs_c": 0.916351318359375
+    },
+    {
+      "hour_utc": 12,
+      "cells": 90000,
+      "gpu_minus_native_bias_c": -0.0005331553141276041,
+      "mae_c": 0.016576824612087673,
+      "rms_c": 0.03383728571346963,
+      "max_abs_c": 1.240264892578125
+    }
+  ],
+  "current_forecast_station_identity": "All 23 per-station model values at each of four hours exactly match the retained earlier GPU forecast; this does not assert whole-field identity.",
+  "prior_stage_speed": {
+    "numerics": "fast",
+    "columns": 8192,
+    "nz": 49,
+    "capture": "mskf-000241-0001-0001.bin",
+    "capture_columns": 16,
+    "capture_precipitating_columns": 0,
+    "nca_forced_active": true,
+    "w0avg_updated": false,
+    "timings": {
+      "mskf": {
+        "samples_ms": [
+          14.67801570892334,
+          14.776320457458496,
+          14.629887580871582,
+          14.535679817199707,
+          14.700544357299805
+        ],
+        "median_ms": 14.67801570892334
+      },
+      "kf": {
+        "samples_ms": [
+          0.44646400213241577,
+          0.6420480012893677,
+          0.5980160236358643,
+          0.5753600001335144,
+          0.5652480125427246
+        ],
+        "median_ms": 0.5753600001335144
+      }
+    },
+    "mskf_over_kf": 25.511011723994113,
+    "gpu": "NVIDIA GeForce RTX 4090"
+  },
+  "stage_speed": {
+    "numerics": "fast",
+    "columns": 8192,
+    "nz": 49,
+    "capture": "mskf-000241-0001-0001.bin",
+    "capture_columns": 16,
+    "capture_precipitating_columns": 0,
+    "nca_forced_active": true,
+    "w0avg_updated": false,
+    "timings": {
+      "mskf": {
+        "samples_ms": [
+          7.319295883178711,
+          7.295231819152832,
+          7.2478718757629395,
+          7.285759925842285,
+          7.267327785491943
+        ],
+        "median_ms": 7.285759925842285
+      },
+      "kf": {
+        "samples_ms": [
+          0.9492480158805847,
+          0.9748479723930359,
+          0.9943040013313293,
+          0.9799680113792419,
+          0.9891840219497681
+        ],
+        "median_ms": 0.9799680113792419
+      }
+    },
+    "mskf_over_kf": 7.4346915830324365,
+    "gpu": "NVIDIA GeForce RTX 4090"
+  },
+  "paired_optimization": {
+    "old_source_sha256": "8a034d6776c5c5a48b77f979ff8a9c0c9b9047a0cc5d2937e701aa7ad13615ab",
+    "capture_sha256": "3439b907f93bd1eea24245042d4d4d8a5a22e5500afdbd653f2a141201ba1fc7",
+    "paired": {
+      "original": {
+        "numerics": "fast",
+        "columns": 8192,
+        "nz": 49,
+        "capture": "mskf-000241-0001-0001.bin",
+        "capture_columns": 16,
+        "capture_precipitating_columns": 0,
+        "nca_forced_active": true,
+        "w0avg_updated": false,
+        "timings": {
+          "mskf": {
+            "samples_ms": [
+              8.80844783782959,
+              8.744959831237793,
+              8.748031616210938,
+              8.755200386047363,
+              8.736767768859863
+            ],
+            "median_ms": 8.748031616210938
+          },
+          "kf": {
+            "samples_ms": [
+              1.0618879795074463,
+              1.0004479885101318,
+              0.9912319779396057,
+              0.9963520169258118,
+              0.9787840247154236
+            ],
+            "median_ms": 0.9963520169258118
+          }
+        },
+        "mskf_over_kf": 8.780061130605725,
+        "gpu": "NVIDIA GeForce RTX 4090"
+      },
+      "optimized": {
+        "numerics": "fast",
+        "columns": 8192,
+        "nz": 49,
+        "capture": "mskf-000241-0001-0001.bin",
+        "capture_columns": 16,
+        "capture_precipitating_columns": 0,
+        "nca_forced_active": true,
+        "w0avg_updated": false,
+        "timings": {
+          "mskf": {
+            "samples_ms": [
+              7.319295883178711,
+              7.295231819152832,
+              7.2478718757629395,
+              7.285759925842285,
+              7.267327785491943
+            ],
+            "median_ms": 7.285759925842285
+          },
+          "kf": {
+            "samples_ms": [
+              0.9492480158805847,
+              0.9748479723930359,
+              0.9943040013313293,
+              0.9799680113792419,
+              0.9891840219497681
+            ],
+            "median_ms": 0.9799680113792419
+          }
+        },
+        "mskf_over_kf": 7.4346915830324365,
+        "gpu": "NVIDIA GeForce RTX 4090"
+      }
+    },
+    "improvement_fraction": 0.16715436735035605,
+    "resources": {
+      "original": {
+        "registers": 255,
+        "local_bytes": 1696
+      },
+      "optimized": {
+        "registers": 255,
+        "local_bytes": 640
+      }
+    }
+  },
+  "precipitating_fixture_optimization": {
+    "fixture_case": 1,
+    "columns": 8192,
+    "nz": 40,
+    "samples": {
+      "original": {
+        "ms": [
+          5.418943881988525,
+          5.408703804016113,
+          5.38812780380249,
+          5.383264064788818,
+          5.397984027862549
+        ],
+        "median_ms": 5.397984027862549
+      },
+      "specialized": {
+        "ms": [
+          4.09881591796875,
+          4.077727794647217,
+          4.046847820281982,
+          4.063168048858643,
+          4.042751789093018
+        ],
+        "median_ms": 4.063168048858643
+      },
+      "kf": {
+        "ms": [
+          2.446687936782837,
+          2.4488959312438965,
+          2.4583680629730225,
+          2.4494400024414062,
+          2.4411840438842773
+        ],
+        "median_ms": 2.4488959312438965
+      }
+    },
+    "resources": {
+      "original": {
+        "registers": 255,
+        "local_bytes": 1424
+      },
+      "specialized": {
+        "registers": 168,
+        "local_bytes": 528
+      }
+    },
+    "original_source_sha256": "8a034d6776c5c5a48b77f979ff8a9c0c9b9047a0cc5d2937e701aa7ad13615ab",
+    "compared_words": 8585216,
+    "different_words": 0,
+    "gpu": "NVIDIA GeForce RTX 5090"
+  },
+  "health_policy": {
+    "resident_steps": "Device reductions and OR accumulation; bounded pinned asynchronous snapshot and CUDA event query, no blocking status read per step.",
+    "publication": "Drain every domain ledger before history, checkpoint, and final return, including exception paths.",
+    "debug": "Immediate attribution retained.",
+    "scope": "Internal nest work can advance before a failure is reported. Periodic whole-state validation and IO seam checks remain. Streamed store health is unchanged.",
+    "tests": "third-pass/final-tests-fixed.log; tests/test_async_health_ledger.py"
+  },
+  "tests": {
+    "focused_passed": 149,
+    "focused_skipped_rust_provider": 4,
+    "rust_provider_rerun_passed": 4,
+    "synthetic_default_words": 167552,
+    "synthetic_strict_words": 167552,
+    "synthetic_differing_words": 0,
+    "lifecycle": "third-pass/lifecycle-runtime.json",
+    "off_scheduling": "third-pass/check-off-scheduling.json"
+  },
+  "receipt_hashes_prior": {
+    "real-replay-000241-strict.json": "287c077195896a00a6cd5ebb6bab486e635cfdcde4a39827c504fde19b6ed37a",
+    "real-replay-000241-graph.json": "811935db588724807af108a05463418a40f20b2122057e0d051c272256e2809a",
+    "real-replay-000481-strict.json": "b0ccd7aa7f28310621187c6517b99a8a78867ee1f6705ab9de09556464ca1975",
+    "real-replay-000481-graph.json": "0e2037c0e0e1da2cb05878574b39863ee9d7c9be35fbbbe8ac66c33f847e6a7a",
+    "real-replay-000241-default.json": "c4065a2654164de0d08ad8abd6750929e572bbb23f2e2dccfc7147d7ccb8434e",
+    "stage-time-000241.json": "8f1548a514eda6681e109f5fe2ca6d774a8bfec7e85fce09efab324359a6ca32",
+    "instrumentation-package-safe.json": "cc97014d107459fc4cdfce76b033dcbfcaf50f10c1ecbbbce1ae0cf2f99c7f77",
+    "native-reference-continuation.json": "0f9b97ff5969ff4ee1e1b01b46405dc4a64fec9021ea7ac9a2a2207cfc1c7640",
+    "native-final-build-receipt.json": "01792b7a951ad3224da3346b63de1df224eb5efd76aa1aeeeee6441daf280b33",
+    "native-source-audit.json": "e560345297b27ce4f5bd3929a6f94de6f84e5fbb50e35d0ac30e99dae0376705",
+    "native-reference-exit.json": "dd4e269579ca309b12be738c7080499709e5458d7d2bc0bd778516cd1cb58016",
+    "default-source-identity.json": "33fcadeb5cc6b770e0e4013a8c723d77c4e45588e4a8f6a4dd7fdcdf5b07e3a4"
+  },
+  "receipt_hashes": {
+    "third-pass/remote/native-exit.json": "45c842bf002a97e0f843880da7d85ed757c1009019b80df872449511b68f501f",
+    "third-pass/remote/replay-strict.json": "d22a024871b6e2b4ef9276ebd03878e8cd26eb523b799b15f53b513549236809",
+    "third-pass/remote/replay-graph.json": "788bbf1bc67414d9319c6696b48c3317bfec2e5af6352b6e369e91baf068192e",
+    "third-pass/remote/replay-default.json": "7c41479cfd51334a83b5a972db1d3361c53c924a230b4abda2c5b1dfa21e625e",
+    "third-pass/remote/stage-paired.json": "aeef07de87dbe888d949173df11dafbbfc0e49045d036e264f1d5a2be05e42fb",
+    "third-pass/forecast-review.json": "1b1c2e3a53fdb8ae76ad77dcc9531bc4f3b88b18085ba026f5fbe488d29a5083",
+    "third-pass/lifecycle-runtime.json": "b05d7fae4f2e000c1ef0f205163a667b0695d8ae8f1a06742f65f995f938be4c",
+    "third-pass/check-off-scheduling.json": "83fef0a4786296cdd1a9a6adc2df0f39bc8b3e618eec82a0708071a716e36663",
+    "third-pass/default-column-regression.json": "ad4931e05e5c45bee4c4d1b17a281a3094eb37955d0c34601797a56aaca520f2",
+    "third-pass/strict-column-regression.json": "5d43a20e903b05b7905ae6cb384523a4a396e85920b55a3c2865797ace0c1e7e",
+    "third-pass/remote/off-current-identity.json": "f9ba68a7b4d542808a8ac103ce5dfc498e3f2a909ec8d7dc61597dfdcae8bb67"
+  }
+}

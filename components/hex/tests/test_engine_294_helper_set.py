@@ -1,4 +1,4 @@
-"""woof 2.9.4 radiation helpers are an admitted set (0.4.2 floor), without relaxing mixed-set refusal."""
+"""gpuwm 2.9.4 radiation helpers are an admitted set (0.4.2 floor), without relaxing mixed-set refusal."""
 import json
 from pathlib import Path
 
@@ -23,17 +23,18 @@ def test_294_source_set_is_admitted_on_the_ordinary_route():
                        "woof/core/rrtmg_legacy_prep.py", "woof/ingest/wrf_ozone.py"}
 
 
-#: The admitted helper set each installation floor runs on. woof 2.9.10's six helper sources
+#: The admitted helper set each installation floor runs on. gpuwm 2.9.10's six helper sources
 #: (rrtmg_sw.cu, rrtmg_legacy_prep.py, rrtmg_lw.py, rrtmg_mcica.py, rrtmg_sw.py, wrf_ozone.py) hash
 #: to the engine-2.9.7-source row byte for byte (measured on the 2.9.10 candidate, 2026-10-29), so
-#: the 2.9.10 floor needs no new row. woof 2.9.11 moved rrtmg_sw.py and wrf_ozone.py (the
+#: the 2.9.10 floor needs no new row. gpuwm 2.9.11 moved rrtmg_sw.py and wrf_ozone.py (the
 #: downstream table checks and the wind-farm row), so the 0.4.11 floor runs on engine-2.9.11-source,
 #: measured at the 2.9.11 public commit 82e16d580a.
-FLOOR_HELPER_SET = {"2.9.10": "engine-2.9.7-source", "2.9.11": "engine-2.9.11-source"}
+FLOOR_HELPER_SET = {"2.9.10": "engine-2.9.7-source", "2.9.11": "engine-2.9.11-source", "2.9.12": "engine-2.9.12-source"}
 
 
 def test_the_floor_engine_has_an_admitted_helper_set():
     floor = engine_pin.gpuwm_floor()
-    assert floor == "2.9.11"
+    # The patch candidate advances the declared engine floor.
+    assert floor == "2.9.12"
     assert FLOOR_HELPER_SET[floor] in scope.ADMITTED_SOURCE_SETS
     assert FLOOR_HELPER_SET[floor] in scope.PUBLISHED_MODES

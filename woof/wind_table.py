@@ -12,7 +12,7 @@ import json
 import math
 from pathlib import Path
 
-SCHEMES = ("off", "auto", "fitch", "ewp", "jensen", "gad")
+SCHEMES = ("off", "auto", "fitch", "mav", "ewp", "jensen", "gad")
 
 
 def _number(value, label, *, positive=False, nonnegative=False):
@@ -23,9 +23,9 @@ def _number(value, label, *, positive=False, nonnegative=False):
     return float(value)
 
 
-def read_table(path, scheme="fitch"):
+def read_table(path, scheme="fitch", *, windfarm_ij=0):
     from woof.wind_inputs import table_bytes
-    raw = table_bytes(path)
+    raw = table_bytes(path, windfarm_ij=windfarm_ij, scheme=scheme)
     data = json.loads(raw)
     if data.get("schema") != "gpuwm-wind-farm.v1":
         raise ValueError("wind table requires schema gpuwm-wind-farm.v1")
@@ -122,30 +122,70 @@ def read_table(path, scheme="fitch"):
 
 def validate_config(cfg):
     scheme = cfg.wind_farm_scheme
-    if scheme not in ("off", "fitch"):
-        raise ValueError("wind_farm_scheme supports off or fitch; other schemes lack a qualified coupled run")
+    if scheme not in ("off", "fitch", "mav", "fitch_legacy"):
+        raise ValueError("wind_farm_scheme supports off, fitch, mav or fitch_legacy; other schemes lack a qualified coupled run")
     if scheme == "off":
         return
+    if scheme == "fitch_legacy":
+        from woof.wind_legacy import validate_config as validate_legacy
+        validate_legacy(cfg)
+        return
+    if type(cfg.windfarm_induction) is not int or cfg.windfarm_induction not in (0,1):
+        raise ValueError("windfarm_induction must be 0 or 1, as native WRF defines")
+    if scheme == "mav":
+        if cfg.windfarm_ij not in (1, 2):
+            raise ValueError("MAV requires windfarm_ij=1 (xy) or 2 (latitude/longitude), as native WRF does")
+        if type(cfg.windfarm_wake_model) is not int or cfg.windfarm_wake_model not in range(1, 8):
+            raise ValueError("MAV windfarm_wake_model must be 1..7")
+        if type(cfg.windfarm_overlap_method) is not int or cfg.windfarm_overlap_method not in range(1, 5):
+            raise ValueError("MAV windfarm_overlap_method must be 1..4")
+        _number(cfg.windfarm_deg, "windfarm_deg")
+        if cfg.windfarm_ij == 2 and cfg.map_proj not in (1,2,3):
+            raise ValueError("Native MAV geographic input requires Lambert, polar stereographic or Mercator projection")
     if scheme == "auto":
         _number(cfg.wind_farm_max_dx_m, "wind_farm_max_dx_m", positive=True)
         if not cfg.wind_farm_table:
             raise ValueError("auto requires a prepared public turbine inventory")
-        read_table(cfg.wind_farm_table, scheme)
+        read_table(cfg.wind_farm_table, scheme, windfarm_ij=cfg.windfarm_ij)
         return
     if not cfg.wind_farm_table:
         raise ValueError("wind_farm_table is required when farm physics is enabled")
     if cfg.bldt != 0:
-        raise ValueError("Fitch requires bldt=0: a held PBL tendency would repeat turbine momentum drag without its TKE source")
+        raise ValueError("Wind farms require bldt=0: a held PBL tendency would repeat turbine momentum drag without its TKE source")
     _number(getattr(cfg, "windfarm_tke_factor", .25), "windfarm_tke_factor", nonnegative=True)
     if cfg.bl_pbl_physics != 5:
-        raise ValueError("Fitch requires MYNN (bl_pbl_physics=5): other PBL carriers do not receive the turbine TKE source")
+        raise ValueError("Wind farms require MYNN (bl_pbl_physics=5): other PBL carriers do not receive the turbine TKE source")
     if scheme == "gad" and (cfg.bl_pbl_physics != 0 or max(cfg.dx, cfg.dy) > 100 or cfg.diff_opt != 2 or cfg.km_opt not in (2, 3)):
         raise ValueError("GAD requires an LES domain: bl_pbl_physics=0, diff_opt=2, km_opt=2/3 and horizontal spacing <=100 m")
-    read_table(cfg.wind_farm_table, scheme)
+    read_table(cfg.wind_farm_table, scheme, windfarm_ij=cfg.windfarm_ij)
+
+
+def domain_index_turbines(data, nx, ny):
+    """WRF index rows belong independently to each enabled domain's grid.
+
+    Native module_wind_fitch.F checks its mass-grid tile bounds on every
+    call. Shapes are fixed here, so select once before allocating CUDA state.
+    Preserve file order, duplicate locations and ids for the retained rows.
+    """
+    return dict(data, turbines=[row for row in data["turbines"]
+                               if 0 <= row["grid_x"] < nx and 0 <= row["grid_y"] < ny])
 
 
 def drop_inert_config(values):
     """Preserve old checkpoint headers and identities when turbines are off."""
-    if values.get("wind_farm_scheme", "off") == "off":
-        for key in ("wind_farm_scheme", "wind_farm_table", "wind_farm_max_dx_m", "wind_farms", "windfarm_tke_factor"):
+    if values.get("wind_farm_scheme") != "fitch_legacy":
+        for key in ("windturbines_spec", "td_turbgridid", "td_hubheight", "td_diameter", "td_stdthrcoef",
+                    "td_cutinspeed", "td_cutoutspeed", "td_power", "td_turbpercell", "td_ewfx", "td_ewfy", "td_pwfx", "td_pwfy"):
             values.pop(key, None)
+    if values.get("wind_farm_scheme", "off") == "off":
+        for key in ("wind_farm_scheme", "wind_farm_table", "wind_farm_max_dx_m", "wind_farms", "windfarm_tke_factor", "windfarm_ij", "windfarm_wake_model", "windfarm_overlap_method", "windfarm_deg", "windfarm_induction"):
+            values.pop(key, None)
+    else:
+        if values.get("windfarm_ij", 0) == 0:
+            values.pop("windfarm_ij", None)
+        if values.get("wind_farm_scheme") != "mav":
+            for key in ("windfarm_wake_model", "windfarm_overlap_method", "windfarm_deg"):
+                values.pop(key, None)
+
+    if values.get("wind_farm_scheme") != "fitch" or values.get("windfarm_induction", 0) == 0:
+        values.pop("windfarm_induction", None)

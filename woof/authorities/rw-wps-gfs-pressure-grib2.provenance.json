@@ -1,0 +1,20 @@
+{
+  "schema": "gpuwm-source-in-band-terrain-provenance-v1",
+  "source": "NOAA GFS pgrb2.0p25 operational forecast",
+  "field": "terrain_height",
+  "selector": {
+    "format": "grib2",
+    "discipline": 0,
+    "category": 3,
+    "parameter": 5,
+    "level_type": 1,
+    "level_value": 0
+  },
+  "unit_note": "the surface record is geopotential height in gpm; the mapping declares the explicit same-unit scale 1.0 to metres",
+  "time_policy": "decoded at every valid time and required invariant",
+  "member_policy": "Deterministic forecast, no member dimension",
+  "field_set_parity": "record-for-record byte-identical catalogue to GFS pgrb2.0p25 in the same order (696/696 at f000, 743/743 at f003, MEASURED 2026-08-17 06Z); nothing in the GRIB metadata distinguishes a GDAS file from a GFS file -- only the acquisition path says which it is",
+  "input_identity": "dynamic file paths and SHA-256 values are owned by gpuwm-mapped-composition-inputs-v1",
+  "licence": "NOAA US government data, public domain; https://registry.opendata.aws/noaa-gfs-bdp-pds/",
+  "surface_policy": "Published PRMSL, sea ice fraction and water-equivalent snow. Water SST is skin temperature. Snow depth is explicitly zero, independently of snow water equivalent."
+}

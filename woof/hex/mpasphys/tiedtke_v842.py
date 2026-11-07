@@ -6,6 +6,8 @@ The generated routines preserve source order and MPAS per-cell sigma levels.
 The existing WOOF cu6 adapter and its WRF constants are not used.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 import math
@@ -3286,7 +3288,7 @@ def compile_module(source):
     import cupy as cp
     from cupy.cuda import compiler, function
     binary, _ = compiler.compile_using_nvrtc(
-        source, options=_hex_numerics.options(COMPILE_OPTIONS), arch=cp.cuda.Device().compute_capability,
+        source, options=_hex_numerics.options(COMPILE_OPTIONS), arch=_compilation_target(xp=cp),
         cache_in_memory=True)
     module = function.Module()
     module.load(binary)

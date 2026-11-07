@@ -7,7 +7,7 @@ renderer's own maps (weather fields) or plots of measured numbers (marked as
 charts). Full-size originals and their source hashes are kept with the release
 evidence.
 
-0.4 needs the woof 2.9 engine (0.4.2: `woof>=2.9.4,<2.10`; pip installs it): it
+0.4 needs the gpuwm 2.9 engine (0.4.2: `gpuwm>=2.9.4,<2.10`; pip installs it): it
 calls the engine's generic MPAS column physics entry and its new renderer
 pieces, which earlier engines do not have.
 
@@ -190,11 +190,9 @@ those defects:
   command; rows at 120, 60, 30 and 15 km.
 - **Proven:** the 120 km row, 24 hours on a 16 GB card, in 7.5 minutes for the
   whole command. On that case its 500 hPa height error against the GFS
-  analysis was 10.0 m, against 14.9 and 13.5 m for woof global's T127 and
-  T255 runs. One case is not a skill claim.
-- **Hex global is the main global model; woof global remains available as a
-  second (spectral) global model.** woof global's public LETKF stays in
-  woof global. Hex global starts from an analysis you supply
+  analysis was 10.0 m, against 14.9 and 13.5 m for T127 and T255 runs of a
+  spectral global model. One case is not a skill claim.
+- Hex global starts from an analysis you supply
   (`woof hex forecast --analysis`).
 - Guide: [Hex global](../global-door.md).
 
@@ -281,7 +279,7 @@ CUDA ports ship in 0.4, as US Government code (`NOTICE` sections 8 and 9).
 - **Proven:** the 30 km global 0-48 h set (426 maps, 54 soundings, 6
   meteograms) in 3 min 53 s; a 48-3 km patch run's 803 maps in 3 min 15 s; the
   history files' hashes are unchanged after drawing.
-- **Soundings and meteograms** need `rw_hex_points`, which the woof 2.9.0
+- **Soundings and meteograms** need `rw_hex_points`, which the gpuwm 2.9.0
   wheel carries. An engine without it still gets the maps: the forecast's
   automatic stage draws them and prints what it skipped and how to get the
   tool; `woof hex products` run by hand refuses by name, and `--no-points`
@@ -418,7 +416,7 @@ stayed stable in that case, so the need for it at four is not shown.
 **Physics fixes that reach every selection.** Kain-Fritsch accumulated
 convective rain can no longer step backwards; RRTMGP no longer produces
 non-finite longwave heating when a column top sits below its pressure ladder
-(both in the woof 2.9.0 engine); a step the physics refuses rolls back with
+(both in the gpuwm 2.9.0 engine); a step the physics refuses rolls back with
 its refusal kept; a setting only WRF's ARW dycore reads
 (such as `km_opt`) is refused by name instead of silently recorded; and each
 run's receipt names the schemes it actually ran, including the Grell-Freitas
@@ -429,10 +427,10 @@ default no longer runs out of host memory.
 
 ## RRFS v2 preset (WOOF physics, RRFS-shaped)
 
-`woof preset run rrfs-v2-hex-tempo` (in woof 2.9.0) now finds its runner in
+`woof preset run rrfs-v2-hex-tempo` (in gpuwm 2.9.0) now finds its runner in
 the installed woof hex, so it no longer needs a source checkout. It runs
 WOOF physics shaped after RRFS v2 and is labelled RRFS-shaped, not
-RRFS-matched (RRFS-MPAS itself is above). With woof 2.9.0, whose
+RRFS-matched (RRFS-MPAS itself is above). With gpuwm 2.9.0, whose
 `rw_mpas_init` writes the suite soil geometry (RUC's nine soil levels) and the
 TEMPO aerosols, `woof preset prepare rrfs-v2-hex-tempo` builds the preset's
 initial state from public GFS and `woof preset run rrfs-v2-hex-tempo` runs
@@ -454,7 +452,7 @@ soil geometry is refused by name at preparation.
   forecast) run on the native library.
 - RRFS initial conditions from hex's init door: not in this release; the
   RRFS stage reads `init.nc` from the fork's own `init_atmosphere`.
-- YSU and New Tiedtke single hot layers at long steps on woof 2.9.0:
+- YSU and New Tiedtke single hot layers at long steps on gpuwm 2.9.0:
   WOOF-physics runs with YSU at a step above about 300 s (meshes coarser
   than about 50 km at MPAS's 6 s per km) can show the single hot layers the
   global door caps away. The cause is YSU's explicit boundary-layer-top
@@ -470,7 +468,7 @@ soil geometry is refused by name at preparation.
   yet run (it needs a card with about 64 GB or more).
 - An ensemble analysis inside hex global: not part of this package. Hex
   global starts from an analysis you supply (`woof hex forecast
-  --analysis`); woof global keeps its LETKF.
+  --analysis`).
 - Graph replay for local time stepping: the class executor launches
   eagerly, so one-card LTS is slower than the fixed step. Several cards are
   an explicit opt-in (every rate class is now cut across the cards; two

@@ -1,0 +1,1233 @@
+{
+ "schema": "woof.grib2-parameters/v1",
+ "about": "WOOF forecast-file variables as GRIB2 (RunOutput.fileFormat grib2/both): read by workers/gpu/rw_history_grib2 on the box and by the site (which variables of a pick GRIB2 carries). Each parameter row is a standard WMO GRIB2 parameter (code table 4.2) or, marked local, an NCEP local-use entry (centre 7, local table 1). Values are written as their own 32 bits (template 5.4) or exact integer packing, never converted or rounded, so a row exists only where the file's units are the parameter's. level: surface (1), height:H (103), top (8, nominal top of the atmosphere), column (10, entire atmosphere), agl-layer:TOP:BOTTOM (103-103), model:1 (hybrid level 1), model (the file's own levels: hybrid level 105 = model level k from the ground, soil level 151 = soil level k, isobaric 100 = P_PL in Pa). stat with window run = since the forecast's start (template 4.8), window output = since the previous output time. wind: grid-relative components on a Lambert grid (flag table 3.3 bit 5). Built by tools/output-files/build_grib2_table.py.",
+ "message": {
+  "centre": 7,
+  "subcentre": 0,
+  "masterTables": 35,
+  "localTables": 1,
+  "generatingProcessId": 254,
+  "earthRadiusMetres": 6370000
+ },
+ "coordinates": [
+  "Times",
+  "XTIME",
+  "XLAT",
+  "XLONG",
+  "lat",
+  "lon",
+  "Time",
+  "bottom_top",
+  "bottom_top_stag",
+  "soil_layers_stag",
+  "P_PL",
+  "ZNU",
+  "ZNW",
+  "P_TOP",
+  "ZS",
+  "DZS",
+  "ITIMESTEP",
+  "XLAT_U",
+  "XLONG_U",
+  "XLAT_V",
+  "XLONG_V"
+ ],
+ "parameters": [
+  {
+   "var": "T2",
+   "param": [
+    0,
+    0,
+    0
+   ],
+   "level": "height:2"
+  },
+  {
+   "var": "TH2",
+   "param": [
+    0,
+    0,
+    2
+   ],
+   "level": "height:2"
+  },
+  {
+   "var": "Q2",
+   "param": [
+    0,
+    1,
+    2
+   ],
+   "level": "height:2"
+  },
+  {
+   "var": "U10",
+   "param": [
+    0,
+    2,
+    2
+   ],
+   "level": "height:10",
+   "wind": true
+  },
+  {
+   "var": "V10",
+   "param": [
+    0,
+    2,
+    3
+   ],
+   "level": "height:10",
+   "wind": true
+  },
+  {
+   "var": "PSFC",
+   "param": [
+    0,
+    3,
+    0
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "TSK",
+   "param": [
+    0,
+    0,
+    17
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SST",
+   "param": [
+    10,
+    3,
+    0
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "HGT",
+   "param": [
+    0,
+    3,
+    5
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "LANDMASK",
+   "param": [
+    2,
+    0,
+    0
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SEAICE",
+   "param": [
+    10,
+    2,
+    0
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "PBLH",
+   "param": [
+    0,
+    3,
+    18
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "HFX",
+   "param": [
+    0,
+    0,
+    11
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "LH",
+   "param": [
+    0,
+    0,
+    10
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "QFX",
+   "param": [
+    0,
+    1,
+    79
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "UST",
+   "param": [
+    0,
+    2,
+    30
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "GRDFLX",
+   "param": [
+    2,
+    0,
+    10
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "RMOL",
+   "param": [
+    0,
+    7,
+    22
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "CANWAT",
+   "param": [
+    2,
+    0,
+    13
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "LAI",
+   "param": [
+    2,
+    0,
+    28
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "EMISS",
+   "param": [
+    2,
+    0,
+    62
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "TMN",
+   "param": [
+    2,
+    3,
+    4
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "TAH",
+   "param": [
+    2,
+    0,
+    63
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SNOW",
+   "param": [
+    0,
+    1,
+    13
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SNOWH",
+   "param": [
+    0,
+    1,
+    11
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SNOWC",
+   "param": [
+    0,
+    1,
+    121
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "RUNSF",
+   "param": [
+    2,
+    0,
+    51
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "RUNSB",
+   "param": [
+    2,
+    0,
+    52
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SWDOWN",
+   "param": [
+    0,
+    4,
+    7
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "GLW",
+   "param": [
+    0,
+    5,
+    3
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SWDNB",
+   "param": [
+    0,
+    4,
+    7
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SWUPB",
+   "param": [
+    0,
+    4,
+    8
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SWDNBC",
+   "param": [
+    0,
+    4,
+    52
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SWUPBC",
+   "param": [
+    0,
+    4,
+    53
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "LWDNB",
+   "param": [
+    0,
+    5,
+    3
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "LWUPB",
+   "param": [
+    0,
+    5,
+    4
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "LWDNBC",
+   "param": [
+    0,
+    5,
+    8
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "LWUPBC",
+   "param": [
+    0,
+    5,
+    195
+   ],
+   "level": "surface",
+   "local": true
+  },
+  {
+   "var": "SWDDIR",
+   "param": [
+    0,
+    4,
+    13
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SWDDIF",
+   "param": [
+    0,
+    4,
+    14
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "SWDDNI",
+   "param": [
+    0,
+    4,
+    54
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "FSA",
+   "param": [
+    0,
+    4,
+    0
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "OLR",
+   "param": [
+    0,
+    5,
+    193
+   ],
+   "level": "top",
+   "local": true
+  },
+  {
+   "var": "LWUPT",
+   "param": [
+    0,
+    5,
+    193
+   ],
+   "level": "top",
+   "local": true
+  },
+  {
+   "var": "LWUPTC",
+   "param": [
+    0,
+    5,
+    195
+   ],
+   "level": "top",
+   "local": true
+  },
+  {
+   "var": "LWDNT",
+   "param": [
+    0,
+    5,
+    192
+   ],
+   "level": "top",
+   "local": true
+  },
+  {
+   "var": "LWDNTC",
+   "param": [
+    0,
+    5,
+    196
+   ],
+   "level": "top",
+   "local": true
+  },
+  {
+   "var": "SWDNT",
+   "param": [
+    0,
+    4,
+    7
+   ],
+   "level": "top"
+  },
+  {
+   "var": "SWDNTC",
+   "param": [
+    0,
+    4,
+    196
+   ],
+   "level": "top",
+   "local": true
+  },
+  {
+   "var": "SWUPT",
+   "param": [
+    0,
+    4,
+    193
+   ],
+   "level": "top",
+   "local": true
+  },
+  {
+   "var": "SWUPTC",
+   "param": [
+    0,
+    4,
+    198
+   ],
+   "level": "top",
+   "local": true
+  },
+  {
+   "var": "ACSWDNB",
+   "param": [
+    0,
+    4,
+    7
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACSWUPB",
+   "param": [
+    0,
+    4,
+    8
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACSWDNBC",
+   "param": [
+    0,
+    4,
+    52
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACSWUPBC",
+   "param": [
+    0,
+    4,
+    53
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACLWDNB",
+   "param": [
+    0,
+    5,
+    3
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACLWUPB",
+   "param": [
+    0,
+    5,
+    4
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACLWDNBC",
+   "param": [
+    0,
+    5,
+    8
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACLWUPBC",
+   "param": [
+    0,
+    5,
+    195
+   ],
+   "level": "surface",
+   "stat": "accum",
+   "local": true
+  },
+  {
+   "var": "ACSWDNT",
+   "param": [
+    0,
+    4,
+    7
+   ],
+   "level": "top",
+   "stat": "accum"
+  },
+  {
+   "var": "ACSWDNTC",
+   "param": [
+    0,
+    4,
+    196
+   ],
+   "level": "top",
+   "stat": "accum",
+   "local": true
+  },
+  {
+   "var": "ACSWUPT",
+   "param": [
+    0,
+    4,
+    193
+   ],
+   "level": "top",
+   "stat": "accum",
+   "local": true
+  },
+  {
+   "var": "ACSWUPTC",
+   "param": [
+    0,
+    4,
+    198
+   ],
+   "level": "top",
+   "stat": "accum",
+   "local": true
+  },
+  {
+   "var": "ACLWDNT",
+   "param": [
+    0,
+    5,
+    192
+   ],
+   "level": "top",
+   "stat": "accum",
+   "local": true
+  },
+  {
+   "var": "ACLWDNTC",
+   "param": [
+    0,
+    5,
+    196
+   ],
+   "level": "top",
+   "stat": "accum",
+   "local": true
+  },
+  {
+   "var": "ACLWUPT",
+   "param": [
+    0,
+    5,
+    193
+   ],
+   "level": "top",
+   "stat": "accum",
+   "local": true
+  },
+  {
+   "var": "ACLWUPTC",
+   "param": [
+    0,
+    5,
+    195
+   ],
+   "level": "top",
+   "stat": "accum",
+   "local": true
+  },
+  {
+   "var": "ACHFX",
+   "param": [
+    0,
+    0,
+    11
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACLHF",
+   "param": [
+    0,
+    0,
+    10
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACGRDFLX",
+   "param": [
+    2,
+    0,
+    10
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "RAINNC",
+   "param": [
+    0,
+    1,
+    9
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "RAINC",
+   "param": [
+    0,
+    1,
+    10
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "SNOWNC",
+   "param": [
+    0,
+    1,
+    15
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACSNOM",
+   "param": [
+    2,
+    0,
+    41
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "SFCEVP",
+   "param": [
+    0,
+    1,
+    79
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "ACRUNOFF",
+   "param": [
+    2,
+    0,
+    5
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "SFROFF",
+   "param": [
+    1,
+    0,
+    6
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "UDROFF",
+   "param": [
+    1,
+    0,
+    5
+   ],
+   "level": "surface",
+   "stat": "accum"
+  },
+  {
+   "var": "CUPREC",
+   "param": [
+    0,
+    1,
+    37
+   ],
+   "level": "surface"
+  },
+  {
+   "var": "REFC",
+   "param": [
+    0,
+    16,
+    196
+   ],
+   "level": "column",
+   "local": true
+  },
+  {
+   "var": "UP_HELI_MAX",
+   "param": [
+    0,
+    7,
+    197
+   ],
+   "level": "agl-layer:5000:2000",
+   "stat": "max",
+   "window": "output",
+   "local": true
+  },
+  {
+   "var": "HAIL_MAX2D",
+   "param": [
+    0,
+    1,
+    31
+   ],
+   "level": "column",
+   "stat": "max",
+   "window": "output"
+  },
+  {
+   "var": "HAIL_MAXK1",
+   "param": [
+    0,
+    1,
+    31
+   ],
+   "level": "model:1",
+   "stat": "max",
+   "window": "output"
+  },
+  {
+   "var": "U",
+   "param": [
+    0,
+    2,
+    2
+   ],
+   "level": "model",
+   "wind": true
+  },
+  {
+   "var": "V",
+   "param": [
+    0,
+    2,
+    3
+   ],
+   "level": "model",
+   "wind": true
+  },
+  {
+   "var": "W",
+   "param": [
+    0,
+    2,
+    9
+   ],
+   "level": "model"
+  },
+  {
+   "var": "QVAPOR",
+   "param": [
+    0,
+    1,
+    2
+   ],
+   "level": "model"
+  },
+  {
+   "var": "QCLOUD",
+   "param": [
+    0,
+    1,
+    22
+   ],
+   "level": "model"
+  },
+  {
+   "var": "QICE",
+   "param": [
+    0,
+    1,
+    23
+   ],
+   "level": "model"
+  },
+  {
+   "var": "QRAIN",
+   "param": [
+    0,
+    1,
+    24
+   ],
+   "level": "model"
+  },
+  {
+   "var": "QSNOW",
+   "param": [
+    0,
+    1,
+    25
+   ],
+   "level": "model"
+  },
+  {
+   "var": "QGRAUP",
+   "param": [
+    0,
+    1,
+    32
+   ],
+   "level": "model"
+  },
+  {
+   "var": "QNICE",
+   "param": [
+    0,
+    1,
+    207
+   ],
+   "level": "model",
+   "local": true
+  },
+  {
+   "var": "CLDFRA",
+   "param": [
+    0,
+    6,
+    32
+   ],
+   "level": "model"
+  },
+  {
+   "var": "REFL_10CM",
+   "param": [
+    0,
+    16,
+    4
+   ],
+   "level": "model"
+  },
+  {
+   "var": "TKE_PBL",
+   "param": [
+    0,
+    19,
+    11
+   ],
+   "level": "model"
+  },
+  {
+   "var": "EXCH_H",
+   "param": [
+    0,
+    0,
+    20
+   ],
+   "level": "model"
+  },
+  {
+   "var": "TSLB",
+   "param": [
+    2,
+    3,
+    18
+   ],
+   "level": "model"
+  },
+  {
+   "var": "SMOIS",
+   "param": [
+    2,
+    0,
+    25
+   ],
+   "level": "model"
+  },
+  {
+   "var": "SH2O",
+   "param": [
+    2,
+    3,
+    10
+   ],
+   "level": "model"
+  },
+  {
+   "var": "SMFR3D",
+   "param": [
+    2,
+    0,
+    38
+   ],
+   "level": "model"
+  },
+  {
+   "var": "GHT_PL",
+   "param": [
+    0,
+    3,
+    5
+   ],
+   "level": "model"
+  },
+  {
+   "var": "T_PL",
+   "param": [
+    0,
+    0,
+    0
+   ],
+   "level": "model"
+  },
+  {
+   "var": "TD_PL",
+   "param": [
+    0,
+    0,
+    6
+   ],
+   "level": "model"
+  },
+  {
+   "var": "RH_PL",
+   "param": [
+    0,
+    1,
+    1
+   ],
+   "level": "model"
+  },
+  {
+   "var": "Q_PL",
+   "param": [
+    0,
+    1,
+    2
+   ],
+   "level": "model"
+  },
+  {
+   "var": "U_PL",
+   "param": [
+    0,
+    2,
+    2
+   ],
+   "level": "model",
+   "wind": true
+  },
+  {
+   "var": "V_PL",
+   "param": [
+    0,
+    2,
+    3
+   ],
+   "level": "model",
+   "wind": true
+  }
+ ],
+ "netcdfOnly": {
+  "HAIL_MAXK1_RUN": "the same GRIB2 parameter as HAIL_MAXK1 with only a longer time range, and cfgrib would keep one and lose the other, so it stays NetCDF-only (HAIL_MAXK1, the largest since the last output, is in GRIB2)",
+  "HAIL_MAX2D_RUN": "the same GRIB2 parameter as HAIL_MAX2D with only a longer time range, and cfgrib would keep one and lose the other, so it stays NetCDF-only (HAIL_MAX2D, the largest since the last output, is in GRIB2)",
+  "HAILCAST_DIAM_MAX": "HAILCAST diameters are in mm, and GRIB2's hail diameter is in metres; values are never converted (HAIL_MAX2D is in GRIB2)",
+  "HAILCAST_DIAM_MEAN": "HAILCAST diameters are in mm, and GRIB2's hail diameter is in metres; values are never converted",
+  "HAILCAST_DIAM_STD": "a standard deviation of HAILCAST diameters has no GRIB2 parameter",
+  "HAILCAST_RUNMAX": "HAILCAST diameters are in mm, and GRIB2's hail diameter is in metres; values are never converted",
+  "HAILCAST_DHAIL1": "one HAILCAST embryo's diameter has no GRIB2 parameter",
+  "HAILCAST_DHAIL2": "one HAILCAST embryo's diameter has no GRIB2 parameter",
+  "HAILCAST_DHAIL3": "one HAILCAST embryo's diameter has no GRIB2 parameter",
+  "HAILCAST_DHAIL4": "one HAILCAST embryo's diameter has no GRIB2 parameter",
+  "HAILCAST_DHAIL5": "one HAILCAST embryo's diameter has no GRIB2 parameter",
+  "HAILNC": "accumulated hail at the ground has no GRIB2 parameter",
+  "CLOUDNC": "cloud water settled to the ground has no GRIB2 parameter",
+  "CLOUDNCV": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "GRAUPELNC": "accumulated graupel at the ground has no GRIB2 parameter",
+  "SOILT1": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RHOSNF": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SNOWFALLAC": "snowfall depth in mm, and GRIB2's total snowfall is in metres; values are never converted",
+  "PRECIPFR": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "TSNAV": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RAINSH": "shallow-cumulus precipitation has no GRIB2 parameter",
+  "SR": "a fraction (0-1), and GRIB2's frozen precipitation parameter is a percentage; values are never converted",
+  "SNEQVO": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QSNOWXY": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QRAINXY": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "ISNOW": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "TSNO": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SNICE": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SNLIQ": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "ZSNSO": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "FPICE": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QSNBOT": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QMELT": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "PONDING": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SNOWENERGY": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "COSZEN": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "ALBEDO": "a fraction (0-1), and GRIB2's albedo is a percentage; values are never converted",
+  "ALBBCK": "a fraction (0-1), and GRIB2's snow-free albedo is a percentage; values are never converted",
+  "SNOALB": "a fraction (0-1), and GRIB2's maximum snow albedo is a percentage; values are never converted",
+  "RTHRATEN": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RTHRATLW": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RTHRATSW": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SWNORM": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "ALBOLD": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "TRAD": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "FIRA": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "MAXWIDTH": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "MAXMF": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "ZTOP_PLUME": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "KTOP_PLUME": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "KPBL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SFCEXC": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QVG": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QCG": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QSG": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "DEW": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "PSIM": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "PSIH": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SSTSK": "has no GRIB2 parameter apart from SST (water temperature at the surface)",
+  "TV": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "TG": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "CANICE": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "CANLIQ": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "EAH": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "CM": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "CH": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "FWET": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "WA": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "XSAI": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "TAUSS": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "PGS": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "T2V": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "T2B": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "Q2V": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "Q2B": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "ECAN": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "EDIR": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "ETRAN": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "FVEG": "GRIB2's vegetation parameter is a percentage; values are never converted",
+  "RSSUN": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RSSHA": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "CHV": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "CHB": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "CANHS": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "EFLXBXY": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RS": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNRAIN": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QC_BL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QI_BL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "CLDFRA_BL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNCLOUD": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNSNOW": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNGRAUPEL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QHAIL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNDROP": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNHAIL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNCCN": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QVGRAUPEL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QVHAIL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QIR": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QIB": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNWFA": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNIFA": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNWFA2D": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QNIFA2D": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QKE": "twice the TKE; GRIB2's TKE parameter is TKE_PBL",
+  "TSQ": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "QSQ": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "COV": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "EL_PBL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SH3D": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SM3D": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "EXCH_M": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "TKE_SASE": "an alternative TKE diagnostic; GRIB2 has one TKE parameter, which TKE_PBL carries",
+  "TKE_SHINHONG": "an alternative TKE diagnostic; GRIB2 has one TKE parameter, which TKE_PBL carries",
+  "SASE_FQV_VENT": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SASE_FQV_DIFF": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SASE_FTH_VENT": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SASE_FTH_DIFF": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "XKMH": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "XKHH": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SASE_KMH": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SASE_KHH": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "T": "WRF's perturbation potential temperature (theta minus 300 K) has no GRIB2 parameter; T_PL (pressure levels) and T2 are in GRIB2",
+  "PH": "WRF's perturbation geopotential has no GRIB2 parameter; GHT_PL (pressure levels) is in GRIB2",
+  "MU": "WRF's perturbation dry air mass has no GRIB2 parameter",
+  "PHB": "WRF's base-state geopotential has no GRIB2 parameter",
+  "MUB": "WRF's base-state dry air mass has no GRIB2 parameter",
+  "THM": "a perturbation dry potential temperature has no GRIB2 parameter",
+  "P": "WRF's perturbation pressure (pressure minus its base state) has no GRIB2 parameter",
+  "PB": "WRF's base-state pressure is not the pressure; GRIB2 has no parameter for it",
+  "P_HYD": "hydrostatic pressure is not the model pressure; GRIB2 has no parameter for it",
+  "KEEPFR3DFLAG": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RUC_INFILTR": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RUC_SMELT": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RUC_RUNOFF1": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "RUC_RUNOFF2": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "NOAHRES": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "ISLTYP": "WRF's soil categories are not GRIB2's soil type code table (4.213)",
+  "IVGTYP": "WRF's land-use categories are not GRIB2's land use code table (4.212)",
+  "VEGFRA": "WRF's vegetation fraction and GRIB2's vegetation parameter (%) are not the same scale; values are never converted",
+  "XICEM": "the previous step's sea ice flag has no GRIB2 parameter apart from SEAICE",
+  "XLAND": "LANDMASK carries the land-sea mask in GRIB2",
+  "LAKEMASK": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "LU_INDEX": "WRF's land-use categories are not GRIB2's land use code table (4.212)",
+  "SMCREL": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "WSLAKE": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "SOILENERGY": "has no GRIB2 parameter in the WMO or NCEP tables with the same meaning and units",
+  "P_TOP": "a vertical coordinate or a counter, not a horizontal grid field",
+  "ZNU": "a vertical coordinate or a counter, not a horizontal grid field",
+  "ZNW": "a vertical coordinate or a counter, not a horizontal grid field",
+  "XLAT_U": "grid positions; GRIB2 carries them in each message's grid definition",
+  "XLONG_U": "grid positions; GRIB2 carries them in each message's grid definition",
+  "XLAT_V": "grid positions; GRIB2 carries them in each message's grid definition",
+  "XLONG_V": "grid positions; GRIB2 carries them in each message's grid definition",
+  "MAPFAC_M": "map factors follow from the grid definition",
+  "MAPFAC_U": "map factors follow from the grid definition",
+  "MAPFAC_V": "map factors follow from the grid definition",
+  "F": "the Coriolis term follows from latitude",
+  "E": "the Coriolis term follows from latitude",
+  "SINALPHA": "map rotation; a GRIB2 reader takes it from the Lambert grid definition",
+  "COSALPHA": "map rotation; a GRIB2 reader takes it from the Lambert grid definition",
+  "ITIMESTEP": "a vertical coordinate or a counter, not a horizontal grid field"
+ }
+}

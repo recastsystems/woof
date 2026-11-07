@@ -85,7 +85,7 @@ def test_an_absent_table_is_refused_and_names_the_scheme_that_cannot_run(
     with pytest.raises(FileNotFoundError) as caught:
         load_lookup_table_1(str(tmp_path))
     message = str(caught.value)
-    assert "mp_physics=50 cannot run" in message
+    assert "mp_physics=50/51/52 cannot run" in message
     assert TABLE_1_2MOM_ASSET.filename in message
     # It must say where the canonical copy is, or the operator is stuck.
     assert "ships inside the woof package" in message

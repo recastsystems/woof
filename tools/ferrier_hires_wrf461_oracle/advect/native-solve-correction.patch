@@ -1,0 +1,12 @@
+diff --git a/dyn_em/solve_em.F b/dyn_em/solve_em.F
+index 0761df0..51fd950 100644
+--- a/dyn_em/solve_em.F
++++ b/dyn_em/solve_em.F
+@@ -3832,6 +3832,7 @@ BENCH_START(micro_driver_tim)
+       &        , QIP_CURR=moist(ims,kms,jms,P_QIP), F_QIP=F_QIP               &
+       &        , QID_CURR=moist(ims,kms,jms,P_QID), F_QID=F_QID               &
+       &        , QNDROP_CURR=scalar(ims,kms,jms,P_QNDROP), F_QNDROP=F_QNDROP &
++      &        , QRIMEF_CURR=scalar(ims,kms,jms,P_QRIMEF), F_QRIMEF=F_QRIMEF &
+ #if (WRF_CHEM == 1)
+       &        , RAINPROD=wetscav_frcing(ims,kms,jms,p_rainprod)          &
+       &        , EVAPPROD=wetscav_frcing(ims,kms,jms,p_evapprod)          &

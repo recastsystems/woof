@@ -26,7 +26,7 @@ import woof.core.storm_track_writer as tw
 from woof.core.storm_track_writer import TrackConfig, TrackWriter
 from woof.core.storm_tracking import FollowConfig, all_levels_of
 
-from test_storm_track_writer import _Grid
+from test_storm_track_writer import _Grid, _native_surface_contract
 
 INIT = tw.dt.datetime(2025, 10, 24, 12, 0, 0)
 STEERING = (850.0, 700.0, 500.0)

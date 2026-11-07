@@ -128,11 +128,15 @@ def test_two_landcover_sources_on_one_domain_write_two_receipts(tmp_path):
     grid = _grid(*NORTH_OF_78)
     written = {}
     for source_id in LANDCOVER_SOURCES:
-        config = _config(tmp_path, fields="all", on_refuse="fallback-30s",
+        config = _config(tmp_path, fields="all", on_refuse="error",
                          landcover_source=source_id)
-        _, receipt = apply_highres_statics(
-            {"HGT_M": np.zeros((40, 40))}, grid, config=config, domain_id=1,
-            case_date=date(2024, 6, 1), landuse_attrs=MODIS21_ATTRS)
+        with pytest.raises(HighresRefusal):
+            apply_highres_statics(
+                {"HGT_M": np.zeros((40, 40))}, grid, config=config, domain_id=1,
+                case_date=date(2024, 6, 1), landuse_attrs=MODIS21_ATTRS)
+        receipt_path = next((tmp_path/"receipts").glob(f"*{source_id}*.json"))
+        receipt = json.loads(receipt_path.read_text())
+        receipt['receipt_path'] = str(receipt_path)
         assert receipt["status"] == "REFUSED"
         assert receipt["refusal"]["reason"] == "landcover-source-missing"
         written[source_id] = Path(receipt["receipt_path"])

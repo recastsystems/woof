@@ -1,7 +1,7 @@
 """RUC's float32 libm words against the C library WRF's Fortran links.
 
 ``tests/data/oracles/ruc_lsm/libm-words.json`` holds words the C library
-(glibc 2.39, the toolchain of every RUC WRF oracle) returned on box W1, for
+(glibc 2.39, the toolchain of every RUC WRF oracle) returned on test host, for
 arguments where its float32 word is NOT the float64 value rounded once --
 exactly the arguments the RUC port used to get wrong when it rounded float64
 evaluations (and, on the device, called CUDA's cosf/logf).  Written by

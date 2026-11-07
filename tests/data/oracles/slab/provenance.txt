@@ -1,0 +1,6 @@
+module_sf_slab.F sha256 c44f26777b163234da249373b09a02fa92cb953209bd35a6fe3c30c2158200cb
+module_model_constants.F sha256 5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062
+GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+slab-input.bin sha256 7c052f5ac7f11cd5ed1b36b0016b37f84174775ab815153c58c9dd324ed1fe2a
+slab-output.bin sha256 cdf92dc3e915cc64e9a421169caf8d8ff64991988bba301a0b735bed8626d337

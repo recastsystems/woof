@@ -75,7 +75,10 @@ def _without_gsd41(source):
 
 def test_default_source_pin_unchanged():
     source = _export_arm(_read("mynn_pbl.cu"), False)
-    assert hashlib.sha256(source.encode()).hexdigest() == "176d00a656786395753cd254921fe74968448c8daafc7c7f254b97c484338cda"
+    # RE-PINNED for 3.0.0: 6d79b6e9c5d added MYNN_GSD41-only DMP cloud-base
+    # outputs inside #if defined(MYNN_GSD41); the default arm compiles the
+    # same program (test_spp_consumers records the same re-pin). Was 176d00a6.
+    assert hashlib.sha256(source.encode()).hexdigest() == "a22ef22ada5cd82facb1ef7651935ef49f4a06f820cb48d2d5fdfd9d391b61f6"
 
 
 def test_export_arm_is_the_frozen_sibling_dmp_entry():

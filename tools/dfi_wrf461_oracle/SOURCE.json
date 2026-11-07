@@ -1,0 +1,25 @@
+{
+  "version": "WRF v4.6.1",
+  "license": "WRF release public-domain statement",
+  "license_url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+  "files": {
+    "share/dfi.F": "c7b94989ccdf637ebe756b9dcdff26d5b9ba798852ec74c3415a853a32a4ae0f",
+    "main/module_wrf_top.F": "3a6645ae7e4c64b8757987924c9fe661344c307c6de447cdc6fd063d09b1683c",
+    "share/set_timekeeping.F": "89089f2b2c0f3e8b7ee58a4bdf702fbce498b62507a4ba056770cfbe1aa5e26f",
+    "share/mediation_integrate.F": "f597ee9186cd0cea7697b94e44de7ea15988ca1de8aece64aae4d7f6973f64b9",
+    "Registry/Registry.EM_COMMON": "28cf7a2d369e898217d7231f4ed19310af7f0bec920f3cb57831e3dc4c80beec",
+    "share/module_check_a_mundo.F": "2d6d4eb1f9183b4a4157f32de2ba34753bc4c0c10c380ad2ba4cfb524885b038",
+    "frame/module_integrate.F": "10cb942dc9f98a7683a5ce52821bf1b95d0f9222ff57f5145fe9b8e848bb131c",
+    "frame/module_driver_constants.F": "a950c628a4d0e54471758614b33f935345433e0118780f10363a371ce7f097f2",
+    "phys/module_mp_thompson.F": "fabf19e2a9073cff886e882b187080bfdf089d3fd40c0fce1d19bc93b1e5e802",
+    "share/module_model_constants.F": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+    "dyn_em/module_small_step_em.F": "cabf1a177d50fb0096db79644af20cfe6d75217dbe63ab406a7e29bb54c17634",
+    "dyn_em/module_big_step_utilities_em.F": "8f0649b458fceabd5c31c87ec9f266840fb164e2629322904a3f6ee04c72331a",
+    "dyn_em/start_em.F": "ff3a590a5e5228d3def988b9e50aa60fe1544c0bcf9fabce2c10a3cd9b6d33b0",
+    "dyn_em/solve_em.F": "e42df5d7db4b6ec4a3b8e2f228a8ec8f9a4c426656093bfcebe58a8de6c3e8f4",
+    "dyn_em/module_em.F": "7695bfb05a7f99763334a6e69523bbcc1de0f2c659177a18c10a6e1cf530a0c7"
+  },
+  "license_sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+  "upstream": "https://github.com/wrf-model/WRF/tree/v4.6.1",
+  "source_url_pattern": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/{path}"
+}

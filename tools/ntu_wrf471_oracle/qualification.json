@@ -1,0 +1,197 @@
+{
+  "schema": "gpuwm-ntu-real-input-qualification-v1",
+  "row": "mp_physics=56",
+  "runtime_commit": "71a30a92cb42f25f893e27292aef7b72be761fcb",
+  "evidence_directory": "WRF-PORTS-2026-11-01/evidence/port-mp56-ntu",
+  "source_pin": "source.json",
+  "native_reference": "Strict WRF 4.6.1 with the unchanged public WRF 4.7.1 NTU module plus observation-only capture hooks; not a whole WRF 4.7.1 comparison.",
+  "strict_replay": {
+    "metadata": {
+      "nx": 71,
+      "ny": 29,
+      "nz": 34,
+      "step": 1,
+      "its": 2,
+      "jts": 2,
+      "ccnty": 2,
+      "dt": 60.0
+    },
+    "input_sha256": "2bc7f68616ea9252773e5d66d156e09e465a35c0da46770951bc165aa7fc9be2",
+    "native_output_sha256": "1141ffb1559493d9b16b7fa85fd2abe6878b0818560bc661e141dc3a42e4e7bc",
+    "generated_sha256": "cff4807966d0ee63217616278536bedb58a0fa60446238f0327af95cd29c1e0b",
+    "assembled_source_sha256": "92b281b3cd313e4840f40d7be2036ec1bfdca0e9f5a56aece2e71ab2592c469d",
+    "compile_options": [
+      "-std=c++17",
+      "--ftz=false",
+      "--fmad=false",
+      "--prec-div=true",
+      "--prec-sqrt=true"
+    ],
+    "words": 2048705,
+    "different_words": 0,
+    "passed": true
+  },
+  "forecast": {
+    "case": "2000-01-24 12:00:00 to 15:00:00 UTC, NCAR public real-data case",
+    "mass_grid": [
+      73,
+      60,
+      34
+    ],
+    "dx_m": 30000,
+    "dt_s": 60,
+    "steps": 180,
+    "history_frames": 4,
+    "checkpoints": 3,
+    "numerics": "fast",
+    "installed_private_whole_wheel": true,
+    "status": "PASS",
+    "primary_timing": {
+      "name": "primary",
+      "status": "PASS",
+      "run_receipt_seconds": 190.2247302819742,
+      "step_log_seconds": 190.198639,
+      "steps": 180,
+      "first_step_ms": 286.91519796848297,
+      "median_after_first_ms": 1047.4877660162747,
+      "mean_after_first_ms": 1051.0683349787657,
+      "own_peak_gpu_bytes": 5507121152,
+      "receipt": "gpu-final-run/run-receipt.json",
+      "progress": "gpu-final-progress.jsonl"
+    },
+    "duplicate_run": "An unintended duplicate admission controller launched the same corrected installed package and configuration a second time while the first was running. No changed scientific case or tuning sweep.",
+    "duplicate_all_history_files_byte_identical": true,
+    "temperature_observations": [
+      {
+        "hour": 0,
+        "native": {
+          "count": 179,
+          "bias_k": -0.22684673969969799,
+          "mae_k": 1.7076589990446487,
+          "rmse_k": 2.2627190078986676
+        },
+        "gpu": {
+          "count": 179,
+          "bias_k": -0.22684673969969799,
+          "mae_k": 1.7076589990446487,
+          "rmse_k": 2.2627190078986676
+        }
+      },
+      {
+        "hour": 1,
+        "native": {
+          "count": 179,
+          "bias_k": -0.7929974338713595,
+          "mae_k": 1.6558111416930854,
+          "rmse_k": 2.108397599327751
+        },
+        "gpu": {
+          "count": 179,
+          "bias_k": -0.7985601575532729,
+          "mae_k": 1.657905772781598,
+          "rmse_k": 2.106909924181278
+        }
+      },
+      {
+        "hour": 2,
+        "native": {
+          "count": 179,
+          "bias_k": -0.13301953458398863,
+          "mae_k": 1.350159896197039,
+          "rmse_k": 1.7835730420506184
+        },
+        "gpu": {
+          "count": 179,
+          "bias_k": -0.15199106833267928,
+          "mae_k": 1.355101936667098,
+          "rmse_k": 1.7887709602466333
+        }
+      },
+      {
+        "hour": 3,
+        "native": {
+          "count": 179,
+          "bias_k": -0.0604671655864248,
+          "mae_k": 1.2838294154142862,
+          "rmse_k": 1.7560670518787413
+        },
+        "gpu": {
+          "count": 179,
+          "bias_k": -0.0805557449880484,
+          "mae_k": 1.2901153507623317,
+          "rmse_k": 1.759132180537975
+        }
+      }
+    ],
+    "final_t2_max_delta_k": 0.46343994140625,
+    "final_rainnc_max_delta_mm": 1.7341785430908203
+  },
+  "installed_forecast_restart": {
+    "from_hour": 2,
+    "to_hour": 3,
+    "field_count": 224,
+    "float32_words": 7044496,
+    "different_float32_words": 0,
+    "different_fields": [],
+    "passed": true
+  },
+  "lifecycle": {
+    "real_capture_restart": true,
+    "actual_two_member_gpu_physics": true,
+    "same_scheme_gpu_nest_feedback_modes": [
+      0,
+      1
+    ],
+    "scope": "Nest GPU carrier/feedback checks and real module member checks; no second nested or ensemble whole forecast."
+  },
+  "performance": {
+    "device": "NVIDIA GeForce RTX 4090",
+    "cells": 70006,
+    "dt_s": 60,
+    "ntu_resident_ms": 66.82720184326172,
+    "ntu_stages_ms": {
+      "ntu_level_pre_kernel": 66.23538970947266,
+      "ntu_column_flux_kernel": 0.5253120064735413,
+      "ntu_level_post_kernel": 0.16383999586105347
+    },
+    "nearest_scheme": "Milbrandt-Yau two-moment mp_physics=9",
+    "nearest_resident_ms": 0.18943999707698822,
+    "ratio": 352.76183949740675,
+    "within_1_2x": false,
+    "physical_cost_exception": {
+      "gamln_calls": 2685059,
+      "adaptive_iterations": 274625,
+      "critical_cell_iterations": 397,
+      "critical_cell_same_device_ms": 39.9846076965332
+    },
+    "limitations": [
+      "Remaining total cost includes divergence and other native work; no claim of globally optimal throughput.",
+      "No native adaptive iteration was capped, omitted or replaced."
+    ]
+  },
+  "limits": [
+    "RTE+RRTMGP refused: qualified moment-derived effective-radii closure missing.",
+    "Mixed NTU/other-scheme nest edges refused: aerosol/shape transition closure missing.",
+    "WRF NTU supplies no REFL_10CM; engine Rayleigh reflectivity is its own diagnostic.",
+    "Native initialization reads an unfilled top density; the engine fills its analytic cold-start density.",
+    "Native real step 60 has a witnessed uninitialized DNGRM read and 1,399 standalone-native versus whole-native differing words; no later wet-graupel parity claim.",
+    "Option-off byte comparison covers one whole RK3 step: 8,924 words, zero differences."
+  ],
+  "evidence_sha256": {
+    "native-final-first-step.json": "a3c45e133c19a9bef76738729360ccf6f41c80454ee908b3a1137e63ea3bb3bf",
+    "real-lifecycle-final.json": "2a23dfa84be78b8ac08aa5b97dc447653476923c4598a615aa32eeb2feb5c2d8",
+    "forecast-restart-comparison.json": "756904377c680667f0cec3d82e86c81883e0bf845174dcb45220ac61b22dd756",
+    "benchmark-final-node1.json": "e78d1b2b8f33ee8e93971a447eb3d898be46aca1fc9cd272c426c43081252228",
+    "critical-cell-node1.json": "029f923caaf72c0aba090ff3b81ceadfe2fc55094c62e7ceccd16b11a5b492cd",
+    "native-operation-counts.json": "36c8aa9b6d3c97e6b4df9352179724140de2ce84094f7f466c87886458b6dfe7",
+    "native-adaptive-distribution.json": "4879ce7326a82fbcb52b71f42f0c5a9d851fe8c67a8ad27f87cea590177c28cb",
+    "gpu-final-comparison.json": "e2f01160180c7ea1a61451be501d355224d05baf7ee3cec809eaddd53572ac7d",
+    "corrected-run-identities.json": "c0da47467f386d0ef9418bf0966ac5ecd3616b8a0f23c1961f3fb860738b0a7b",
+    "gpu-final-run/run-receipt.json": "aa62545717c01991be185b36b6a7e2c71c6cca4e2c258615d8017617689869ce",
+    "gpu-final-duplicate-run/run-receipt.json": "80bd12c717b924d72903aa8dddfb37b1601c6e823ebf0efcc7d3d6a680cd756f",
+    "gpu-resume-run/run-receipt.json": "cc3c3eb5781504782a2facd6a70f37e803305393a757600415d1ab9016a4ec85",
+    "whole-wheel.json": "eb1c8d353611f7bc739e91a32e866a0d949de9ea9cd442255feb0aba9ba14039",
+    "gpu-final-namelist.input": "99d5129e1f075d11b3a9ca68c69644d6db410136cfc76387bb1bd1f6f0fa43b1",
+    "default-off-comparison.json": "d8415d519c51e7b9d791532e492eda0d03f4e739a1c3c3425f2f1cca9232fa3c"
+  }
+}

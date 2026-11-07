@@ -77,7 +77,7 @@
     ],
     "cupy_version": "14.2.0",
     "module_source_sha256": {
-      "smag2d": "2cdfe1e9b38cfd901a837460526bed5887285bb367593992fd95b95df15e3d24",
+      "smag2d": "e0ddc6075c1da84434eea66c55f39340e40a273c1080ae32578540a706b8e270",
       "diff_opt1": "9737655267fca7f30d0a4053008997de55a8e12f4fe552622a09f70ea994e271",
       "acoustic": "22704608360351a64d84bbf90ed1574e8e62edb5b06f5deea85376d93fca5cf8"
     },
@@ -144,8 +144,8 @@
         "bytes": 254812
       },
       "woof/nvrtc_ptx_cache.py": {
-        "sha256": "6070bc5dae66835f55d7017708d685cae9acdab4c24e5c7130f4d506b968470f",
-        "bytes": 14060
+        "sha256": "5929748d63f633f1dcb26c281e52664a41b0e47203b45aecb762cd84bd6833c9",
+        "bytes": 14069
       },
       "woof/wrf_exact.py": {
         "sha256": "d732e6ae4b6487302b4e06af8c3cdd601a8dfcdb8fe40599f1bc1a6be715406d",
@@ -218,8 +218,8 @@
         "bytes": 255566
       },
       "woof/nvrtc_ptx_cache.py": {
-        "sha256": "6070bc5dae66835f55d7017708d685cae9acdab4c24e5c7130f4d506b968470f",
-        "bytes": 14060
+        "sha256": "5929748d63f633f1dcb26c281e52664a41b0e47203b45aecb762cd84bd6833c9",
+        "bytes": 14069
       },
       "woof/wrf_exact.py": {
         "sha256": "d732e6ae4b6487302b4e06af8c3cdd601a8dfcdb8fe40599f1bc1a6be715406d",
@@ -308,8 +308,8 @@
         "bytes": 5260
       },
       "woof/nvrtc_ptx_cache.py": {
-        "sha256": "6070bc5dae66835f55d7017708d685cae9acdab4c24e5c7130f4d506b968470f",
-        "bytes": 14060
+        "sha256": "5929748d63f633f1dcb26c281e52664a41b0e47203b45aecb762cd84bd6833c9",
+        "bytes": 14069
       },
       "tools/assembled_legacy_replay.py": {
         "sha256": "b53ef8e66b860b442b18e2a587419fd119f9518aa1d6300b425d4b4fb8fc6788",
@@ -374,8 +374,8 @@
         "bytes": 5260
       },
       "woof/nvrtc_ptx_cache.py": {
-        "sha256": "6070bc5dae66835f55d7017708d685cae9acdab4c24e5c7130f4d506b968470f",
-        "bytes": 14060
+        "sha256": "5929748d63f633f1dcb26c281e52664a41b0e47203b45aecb762cd84bd6833c9",
+        "bytes": 14069
       },
       "tools/assembled_legacy_replay.py": {
         "sha256": "b53ef8e66b860b442b18e2a587419fd119f9518aa1d6300b425d4b4fb8fc6788",

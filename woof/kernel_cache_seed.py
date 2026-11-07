@@ -41,6 +41,10 @@ def _entries(root: Path):
                     yield entry.name, Path(entry.path)
     except OSError:
         return
+    for backend_dir in ("gpuwm-hip","gpuwm-hiprtc"):
+        for path in (root/backend_dir).glob("*"):
+            if path.is_file() and path.suffix in (".hsaco",".cubin",".json"):
+                yield f"{backend_dir}/{path.name}",path
     direct = root / _DIRECT
     try:
         with os.scandir(direct) as scan:

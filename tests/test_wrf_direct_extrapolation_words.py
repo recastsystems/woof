@@ -3,7 +3,7 @@
 What breaks without this: wrf.exe reads all six from wrfinput and never
 recomputes them.  The exporter left CF1-3/CFN/CFN1 to a template prototype
 (another vertical grid's values) and rounded MF_VX_INV from a float64
-reciprocal, so wrf.exe 4.6.1 ran a 9 km d01 with a foreign model-top
+reciprocal, so wrf.exe 4.6.1 ran the nested-domain 9 km d01 with a foreign model-top
 extrapolation and, with every physics scheme off, differed from strict WOOF
 in 495,278 U words after one step (2026-10-29).  The expected words
 are gfortran's (-O2 -fno-fast-math -ffp-contract=off, the pinned strict
@@ -43,6 +43,6 @@ def test_mf_vx_inv_is_the_fp32_reciprocal_real_exe_stores():
             'dtype=np.float32)') in source
     msfv = _word("3F7AF1EA")
     # real.exe's word for the stored factor; the old writer's reciprocal of
-    # the unrounded float64 factor wrote 3F829413 here (a 9 km d01, 4,560 of
+    # the unrounded float64 factor wrote 3F829413 here (nested-domain d01, 4,560 of
     # 12,120 words one ULP off).
     assert format(int((np.float32(1.0) / msfv).view(np.uint32)), "08X") == "3F829414"

@@ -6,10 +6,10 @@ INPUT_DIR holds the real.exe wrfinput_d01/d02 the native two-domain run read;
 NATIVE_RUN holds that wrf.exe 4.6.1 strict run's wrfout_d02 frames.  The script
 rebuilds the nest's first history frame from the input files alone, by WRF's
 own transaction, and compares it word for word (the transaction WOOF's door
-has to perform).
+has to perform; see the reference run).
 
 What WRF does to an input-file nest before the nest's t = 0 history, as
-measured here (9 km/3 km, physics off, feedback = 1, every field below
+measured here (nested 9 km/3 km, physics off, feedback = 1, every field below
 0 differing words against wrf.exe 4.6.1 strict on a development machine):
 
 1. med_initialdata_input reads wrfinput_d02 AND runs start_domain on it: MUB,

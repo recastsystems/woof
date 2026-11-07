@@ -427,6 +427,8 @@ pub enum CanonicalField {
     /// Cloud liquid water in a column, or a layer of it, where the air
     /// is colder than 0 C, g m-2.
     SupercooledLiquidWaterPath,
+    /// Total column frozen-water mass, including adaptive-habit categories, g m-2.
+    IceWaterPath,
     Pm25Dry,
     DustMassConcentration,
     OzoneConcentration,
@@ -546,6 +548,7 @@ impl CanonicalField {
             Self::SnowMixingRatio => "snow_mixing_ratio",
             Self::GraupelMixingRatio => "graupel_mixing_ratio",
             Self::SupercooledLiquidWaterPath => "supercooled_liquid_water_path",
+            Self::IceWaterPath => "ice_water_path",
         }
     }
 
@@ -636,6 +639,7 @@ impl CanonicalField {
             Self::SnowMixingRatio => "Snow Mixing Ratio",
             Self::GraupelMixingRatio => "Graupel Mixing Ratio",
             Self::SupercooledLiquidWaterPath => "Supercooled Liquid Water Path",
+            Self::IceWaterPath => "Ice Water Path",
         }
     }
 
@@ -713,7 +717,7 @@ impl CanonicalField {
             | Self::CloudIceMixingRatio
             | Self::SnowMixingRatio
             | Self::GraupelMixingRatio => "kg/kg",
-            Self::SupercooledLiquidWaterPath => "g/m^2",
+            Self::SupercooledLiquidWaterPath | Self::IceWaterPath => "g/m^2",
         }
     }
 }

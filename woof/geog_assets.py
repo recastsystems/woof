@@ -578,7 +578,7 @@ GEOG_ARCHIVES: tuple[GeogArchive, ...] = (
     # orogwd_10m beside orogwd3_10m), so the default fetch stages them or
     # a fresh machine's default run refuses for want of the statistics.
     # NCAR-only (the mirror does not carry them); pinned from TLS
-    # downloads from UCAR on 2026-10-06 (lane/pi-geog-orogwd).
+    # downloads from UCAR on 2026-10-06 (development branch).
     GeogArchive(
         "orogwd_10m", "orogwd_10m.tar.bz2", 3332672,
         "0e8c292c901e5148cb80849dc154d19cc885393658c5725741da597859777e5c",
@@ -784,7 +784,7 @@ def add_geog_root_argument(parser, *, help: str = GEOG_ROOT_HELP):
 
     One definition for the doors that prepare static fields, so their
     spelling, type and default cannot drift.  Breakage (2.9.4 landing,
-    V58 2026-10-20): ``woof earth2`` had no ``--geog-root`` while
+    test host 2026-10-20): ``woof earth2`` had no ``--geog-root`` while
     ``woof go`` had one, so an Earth-2 nest could only read the default
     tree.
     """

@@ -1,0 +1,102 @@
+Numerical Recipes Software -- the GAMMLN log-gamma routine
+
+The notice, reproduced verbatim as WRF v4.6.1 preserves it:
+
+    !  (C) Copr. 1986-92 Numerical Recipes Software 2.02
+
+WRF v4.6.1 carries that line ten times, at phys/module_mp_thompson.F:5291,
+:5323, :5348 and :5369, phys/module_diag_nwp.F:887, phys/module_mp_radar.F:616,
+phys/physics_mmm/mp_radar.F90:311, and three times in phys/module_ra_flg.F
+(in the shortened form "(C) Copr. 1986-92 Numerical Recipes Software .").
+Two of those ten bracket the routine WOOF's material descends from:
+phys/module_mp_thompson.F:5323 sits immediately above REAL FUNCTION
+GAMMLN(XX) (:5325-5347) and :5348 immediately below it.
+
+Where it reaches WOOF
+---------------------
+The Lanczos g=5, n=6 coefficient set
+
+    STP = 2.5066282746310005D0
+    SER = 1.000000000190015D0
+    COF = 76.18009172947146D0, -86.50532032941677D0, 24.01409824083091D0,
+          -1.231739572450155D0, .1208650973866179D-2, -.5395239384953D-5
+
+and the evaluation WRF wraps around it appear in three shipped files:
+
+    woof/core/thompson_aerosol_contract.py   gammln_fp32()
+    woof/core/milbrandt2_constants.py        gamma_my2(), 4-term truncation
+    woof/core/kernels/nssl2_fused_gs.cu      wrf_gamma_dp(), unrolled
+
+and the values they produce are baked into the THOMPSON_AA_CC* tables in
+woof/core/kernels/thompson_aerosol_common.cuh.  woof/core/refl.py
+substitutes an exact math.gamma for the same pair and records that it does.
+
+WOOF's position, stated rather than left silent
+-----------------------------------------------
+Numerical Recipes code is licensed to book purchasers and is not generally
+redistributable without a licence from Numerical Recipes Software.  WOOF
+did not take this material from Numerical Recipes.  It took it from WRF,
+which UCAR places in the public domain, and it reproduces the arithmetic in
+order to match WRF bit for bit -- the constants are facts about the
+behaviour of the program WOOF is graded against, and there is no other
+sequence of operations that reproduces WRF's answers.  The coefficients
+themselves are the standard Lanczos g=5, n=6 set, published in the
+mathematical literature and reproduced in many independent codebases.
+
+Against that: WRF did not itself treat these routines as public domain --
+it preserved Numerical Recipes' copyright line, and UCAR's declaration
+disclaims UCAR's claims and cannot dispose of anyone else's.  WOOF
+therefore preserves the line here, as WRF does, rather than relying on the
+public-domain declaration to have swept it away.
+
+If this reliance is ever tested, the remedy is available and is recorded so
+that it is not discovered under pressure: a correctly-rounded log-gamma
+substitutes for GAMMLN wherever bit-parity with WRF is not the point, which
+is already what woof/core/refl.py does.  On the paths that ARE graded
+bitwise against WRF the substitution changes answers, so it is not made
+silently.
+
+Why this is kept
+----------------
+  * This material reaches WOOF through an intermediary that placed it in
+    the public domain.  UCAR's declaration cannot dispose of Numerical
+    Recipes' claim, which is why the line is preserved above, but it is
+    also not nothing, and it is the only channel involved.
+  * The coefficients are the standard Lanczos g=5, n=6 set from the
+    published literature, reproduced in many independent codebases.
+  * The purpose is reproduction of the reference implementation.  WOOF
+    grades Thompson and Milbrandt bitwise against WRF; the arithmetic is
+    here because WRF's answers are the specification.
+
+None of that is a licence, and none of it is offered as one.  It is the
+reason the material is kept, stated so a reader can judge it.
+
+What the substitution would cost, measured
+------------------------------------------
+The remedy named above is priced rather than deferred.  Every argument the
+two Python carriers pass to GAMMLN was captured by instrumenting them, and
+each result was compared with the correctly rounded float32 gamma computed
+at 113 bits with libquadmath's tgammaq -- 153 arguments in all: the 75
+Thompson moment exponents behind ccg1..ccg5 (module_mp_thompson.F:671-685)
+and the 78 calls Milbrandt's constant table makes.
+
+    Thompson   75 arguments,  63 move (84.0 %), median 4 ULP,
+               worst 21 ULP = 1.593e-06 relative
+    Milbrandt  78 arguments,  78 move (100 %),  median 330 ULP,
+               worst 486 ULP = 3.170e-05 relative
+    Overall   153 arguments, 141 move (92.2 %)
+
+The correctly rounded value is the right one in every one of those cases;
+what the table measures is WRF's error, not WOOF's.  Milbrandt's is two
+orders of magnitude the worse because WRF truncates the six-term series to
+four there (module_mp_milbrandt2mom.F:184, `do j=1,4`), and the
+transcription reproduces the truncation.
+
+So the substitution is not free and is not merely cosmetic: it would move
+141 of 153 shipped constants and break bit parity with WRF in two schemes
+that are graded bitwise against it.  That is the same trade the
+Grell-Freitas gamma replacement at 2.6.6 made and documented in
+docs/gf_gamma_known_delta.md, and it is available on the same terms (a
+measured divergence, a known-delta document and a replacement oracle) on
+the day the reliance above stops being acceptable.  It is not made
+pre-emptively, because nothing in the path forces it.

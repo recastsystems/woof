@@ -15,7 +15,8 @@ NOAHRES), and the land-ice column: ``ivgtyp == isice`` runs WRF's
 ``SFLX_GLACIAL`` (module_sf_noahlsm_glacial_only.F) through the driver's
 ICE == -1 arm in ``noah_glacial_column``, as WRF does (until 2.9.0 such a
 column was left untouched), graded bitwise against WRF by
-tests/test_noah_wrf461_parity.py.  NOT ported: UA_PHYS, FASDAS, WRF-Hydro,
+tests/test_noah_wrf461_parity.py.  FASDAS heat/moisture partition and soil heat adjustment run when
+``grid_sfdda=2``. UA snow and canopy physics use the same kernel family. NOT ported: WRF-Hydro,
 the urban canopy models themselves (they run after the kernel,
 :mod:`woof.core.urban_driver`; the kernel carries their hand-over through
 ``launch_noah(urban=...)``, and the plain ``VEGTYP==ISURBAN`` parameter
@@ -246,6 +247,7 @@ class NoahParams:
     natural: int
     lutype: str
     sltype: str
+    canopy: np.ndarray | None = None
 
 
 #: (ISURBAN, ISICE) for each land-use dataset VEGPARM.TBL carries.  WRF's
@@ -306,7 +308,8 @@ def pack_params(t: NoahTables) -> NoahParams:
             gen[i] = getattr(t, name)
     return NoahParams(veg=veg, soil=soil, gen=gen, lucats=t.lucats,
                       slcats=t.slcats, bare=t.bare, natural=t.natural,
-                      lutype=t.lutype, sltype=t.sltype)
+                      lutype=t.lutype, sltype=t.sltype,
+                      canopy=np.column_stack((t.ztopvtbl,t.zbotvtbl)))
 
 
 def noah_initial_snow_albedo(
@@ -506,9 +509,7 @@ SEAICE_F2D = ("xice", "psfc", "sfcprs", "sfctmp", "qv1", "qgh", "glw",
               "hfx", "qfx", "potevp", "grdflx", "qsfc", "acsnow", "acsnom",
               "snopcx", "sfcrunoff", "noahres")
 
-#: WRF v4.6.1 Registry.EM_COMMON defaults for the sea-ice namelist, the only
-#: values woof runs: seaice_albedo_opt = 0, seaice_thickness_opt = 0,
-#: seaice_snowdepth_opt = 0 and fractional_seaice = 0.
+#: WRF Registry.EM_COMMON defaults for the prescribed sea-ice namelist.
 SEAICE_THICKNESS_DEFAULT_M = 3.0
 SEAICE_SNOWDEPTH_MIN_M = 0.001
 SEAICE_SNOWDEPTH_MAX_M = 1.0e10
@@ -517,7 +518,12 @@ SEAICE_SNOWDEPTH_MAX_M = 1.0e10
 def launch_noah_seaice(dev: dict, dt: float, *, frpcpn: bool,
                        xice_threshold: float = 0.5,
                        albedo_default: float = 0.65,
-                       check_snow_density: bool = False) -> None:
+                       check_snow_density: bool = False,
+                       albedo_opt: int = 0, thickness_opt: int = 0,
+                       snowdepth_opt: int = 0,
+                       thickness_default: float = SEAICE_THICKNESS_DEFAULT_M,
+                       snowdepth_min: float = SEAICE_SNOWDEPTH_MIN_M,
+                       snowdepth_max: float = SEAICE_SNOWDEPTH_MAX_M) -> None:
     """WRF's ``seaice_noah`` on device arrays (in place).
 
     The surface driver calls it after ``lsm`` / ``lsm_mosaic`` on every Noah
@@ -551,11 +557,29 @@ def launch_noah_seaice(dev: dict, dt: float, *, frpcpn: bool,
     fatal = cp.zeros((1,), dtype=cp.int32)
     args += [tslb, fatal, DTYPE(dt), DTYPE(xice_threshold),
              np.int32(1 if frpcpn else 0), DTYPE(albedo_default),
-             DTYPE(SEAICE_THICKNESS_DEFAULT_M), DTYPE(SEAICE_SNOWDEPTH_MIN_M),
-             DTYPE(SEAICE_SNOWDEPTH_MAX_M), np.int32(ny), np.int32(nx)]
-    kern = get_kernel("noah", "noah_seaice_column")
+             DTYPE(thickness_default), DTYPE(snowdepth_min),
+             DTYPE(snowdepth_max), np.int32(ny), np.int32(nx)]
+    options = bool(albedo_opt or thickness_opt or snowdepth_opt)
+    if options:
+        for name in ("albsi", "icedepth", "snowsi"):
+            value = dev.get(name)
+            if (not isinstance(value, cp.ndarray) or value.dtype != cp.float32
+                    or value.shape != (ny, nx) or not value.flags.c_contiguous):
+                raise ValueError(f"sea ice {name}: expected contiguous ({ny},{nx}) float32")
+            args.append(value)
+        args += [np.int32(albedo_opt), np.int32(thickness_opt), np.int32(snowdepth_opt)]
+    kern = get_kernel("noah_seaice_options" if options else "noah",
+                      "noah_seaice_options_column" if options else "noah_seaice_column")
     kern(((ny * nx + _TPB - 1) // _TPB,), (_TPB,), tuple(args))
-    if check_snow_density and int(fatal.get()[0]) != 0:
+    if check_snow_density:
+        from woof.core.health_ledger import read_status
+        flags = read_status(fatal, site="noah_seaice.snow_density",
+                            describe=_raise_seaice_snow_density)
+        _raise_seaice_snow_density(flags)
+
+
+def _raise_seaice_snow_density(flags):
+    if flags:
         raise ValueError(
             "Noah sea ice: Physical snow depth is less than snow water equiv. "
             "(WRF SFLX_SEAICE's fatal): a sea-ice column has SNOW/1000 > SNOWH "
@@ -633,7 +657,7 @@ def launch_noah(dev: dict, params: NoahParams, dt: float, dzs,
                 xice_threshold: float = 0.5, frpcpn: bool = False,
                 usemonalb: bool = False, rdlai2d: bool = False,
                 opt_thcnd: int = 1, itimestep: int = 2,
-                urban: dict | None = None) -> None:
+                urban: dict | None = None, fasdas: dict | None = None, ua_phys: bool = False, irrigation_channel=None) -> None:
     """Run the ``noah_column`` kernel on device arrays (in place).
 
     ``dev`` maps field names to CuPy arrays: every name in ``_F2D`` as
@@ -690,15 +714,52 @@ def launch_noah(dev: dict, params: NoahParams, dt: float, dzs,
              np.int32(1 if frpcpn else 0), np.int32(1 if usemonalb else 0),
              np.int32(1 if rdlai2d else 0), np.int32(opt_thcnd),
              np.int32(ny), np.int32(nx)]
+    if ua_phys:
+        args += _ua_args(dev, params, ny, nx)
+    module = "noah_ua" if ua_phys else "noah"
     # The default path launches noah_column, the URBAN = false
     # instantiation, which compiles from exactly the statements it had
     # before the urban hand-over: compiling the hand-over into the one
     # kernel behind a runtime flag changed NVRTC's FMA contraction and moved
     # default forecasts (kernels/noah.cu).
-    if urban is None:
-        kern = get_kernel("noah", "noah_column")
-    else:
+    name = "noah_column" if urban is None else "noah_column_urban"
+    if urban is not None:
         args += _urban_args(urban, ny, nx)
-        kern = get_kernel("noah", "noah_column_urban")
+    if fasdas is not None:
+        for key in ("heat", "moisture", "qnorm"):
+            value = fasdas[key]
+            if (not isinstance(value, cp.ndarray) or value.dtype != cp.float32
+                    or value.shape != (ny,nx) or not value.flags.c_contiguous):
+                raise ValueError(f"FASDAS {key} needs contiguous float32 mass-grid columns")
+            args.append(value)
+        name += "_fasdas"
+    if irrigation_channel is not None:
+        if urban is not None or fasdas is not None:
+            raise ValueError("channel irrigation with urban or FASDAS needs a combined soil-water kernel")
+        if irrigation_channel.shape != (ny, nx) or irrigation_channel.dtype != cp.float32:
+            raise ValueError("IRRIGATION_CHANNEL must be a float32 surface field")
+        args.append(irrigation_channel)
+        name = "noah_column_irrigation"
+    kern = get_kernel(module, name)
     blocks = (ny * nx + _TPB - 1) // _TPB
     kern((blocks,), (_TPB,), tuple(args))
+
+UA_FIELDS = ("flx4", "fvb", "fbur", "fgsn")
+_UA_TABLES = {}
+
+def _ua_args(dev, params, ny, nx):
+    """UA's extra table and Registry fields, appended to the original ABI."""
+    import cupy as cp
+    from woof.core.device_cache import cached_ready
+    if params.canopy is None or params.canopy.shape != (params.lucats,2):
+        raise ValueError("UA canopy heights are missing from the Noah VEGPARM table")
+    host=np.ascontiguousarray(params.canopy,dtype=np.float32)
+    key=(int(cp.cuda.Device().id),host.shape,host.tobytes())
+    canopy=cached_ready(cp,_UA_TABLES,key,lambda: cp.asarray(host))
+    outputs=[]
+    for name in UA_FIELDS:
+        array=dev[name]
+        if array.shape != (ny,nx) or array.dtype != cp.float32 or not array.flags.c_contiguous:
+            raise ValueError(f"{name}: UA state requires contiguous ({ny},{nx}) float32")
+        outputs.append(array)
+    return [canopy,*outputs]

@@ -137,8 +137,30 @@ class CycleGrid:
     #: ``publication_lag`` rows).  Empty means one delay for every cycle
     #: and lead: ``delay_hours``.
     delays: tuple[PublicationRule, ...] = ()
+    #: UTC hours at which the source holds an ANALYSIS valid time, where
+    #: that set is wider than the grid ``latest`` snaps to.  Empty means
+    #: :attr:`hours`.  ERA5 keeps ``latest`` on 00/06/12/18 (whole
+    #: 6-hourly files, the cheapest fetch) but publishes an analysis
+    #: every hour, and the ordinary fetch takes any of them.  Breakage
+    #: it prevents: a WOOF ensemble from ERA5 2011-04-27T16 (12 h) was
+    #: refused by the WoFS ladder with "era5 2011-04-27T16Z does not
+    #: cover the requested window" because its knots 16Z/22Z/04Z were
+    #: checked against the ``latest`` grid.  Read through
+    #: :attr:`analysis_valid_hours`.
+    analysis_hours: tuple[int, ...] = ()
+
+    @property
+    def analysis_valid_hours(self) -> tuple[int, ...]:
+        """The hours an analysis valid time may fall on."""
+        return self.analysis_hours or self.hours
 
     def __post_init__(self) -> None:
+        if self.analysis_hours and (
+                sorted(set(self.analysis_hours)) != list(self.analysis_hours)
+                or not all(0 <= hour <= 23 for hour in self.analysis_hours)):
+            raise ValueError(
+                f"CycleGrid analysis_hours {self.analysis_hours} must be "
+                "sorted, unique UTC hours of day")
         if not self.hours:
             raise ValueError(
                 "a CycleGrid must declare at least one UTC hour; a source "

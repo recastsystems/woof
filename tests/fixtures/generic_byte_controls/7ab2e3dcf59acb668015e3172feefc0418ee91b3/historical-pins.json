@@ -104,7 +104,7 @@
     "gpuwm/source_cycles.py": {
       "bytes": 19303,
       "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
-      "sha256": "c89085b03b0d22c734879aab61736caed01f8c845c704dafce4b0a5a3d1b8e2c"
+      "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
     }
   },
   "cases": {

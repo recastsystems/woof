@@ -9,6 +9,19 @@ import pytest
 from woof.hex.drivers import fullstep_lts_restart_v841 as restart
 
 
+def test_class_background_passes_required_init_identity(monkeypatch, tmp_path):
+    monkeypatch.setattr(restart, "assemble_seam_leaves", lambda *args, **kwargs: {})
+    active = SimpleNamespace(cp=None, classes=[SimpleNamespace(tables=SimpleNamespace(
+        layout=SimpleNamespace(_global_cells=2)))], gather=lambda _: {"pressure_perturbation": None})
+    def writer(*, init_path, **kwargs):
+        return dict(init_path=init_path)
+    forecast = SimpleNamespace(_seam_leaf_fields=None, write_jedi_background=writer)
+    source = tmp_path / "current-init.nc"
+    result = restart.write_class_background(forecast, active=active, stacks=[], host={}, snapshot={},
+        label="end", valid_time="time", soil_levels=9, init_fallback={}, init_path=source, output_root=tmp_path)
+    assert result["init_path"] == source
+
+
 def layout(owned_cells, halo_cells, n_global):
     l2g = np.asarray(list(owned_cells) + list(halo_cells), dtype=np.int64)
     return SimpleNamespace(n_owned_cells=len(owned_cells), n_local_cells=l2g.size, cell_l2g=l2g,
@@ -100,3 +113,20 @@ def test_the_door_forwards_the_cycling_selections_to_the_driver(tmp_path):
     argv = _cycling_argv(SimpleNamespace(checkpoint_hours="1,2", restart_from=checkpoint, da_analysis=None,
                                          jedi_background=True))
     assert argv == ("--checkpoint-hours", "1,2", "--restart-from", str(checkpoint.absolute()), "--jedi-background")
+
+
+def test_class_radii_use_restart_state_and_owned_global_order():
+    from woof.hex.drivers.run_cuda_v841_forecast import _seam_leaf_fields
+    a, b = layout([0, 2], [1], 4), layout([1, 3], [2], 4)
+    class Backend:
+        def __init__(self, values): self.values = values
+        def restart_state(self):
+            return {"seam": {"arrays": {"state/effc": self.values,
+                                       "fields/effc": np.full((2, 3), -99, dtype=np.float32)}}}
+    stacks = [{"backend": Backend(np.array([[10, 12, 999], [20, 22, 999]], dtype=np.float32))},
+              {"backend": Backend(np.array([[11, 13, 888], [21, 23, 888]], dtype=np.float32))}]
+    merged = restart.assemble_seam_leaves(stacks, [a, b], n_global_cells=4,
+                                         seam_leaf_fields=_seam_leaf_fields)
+    np.testing.assert_array_equal(merged["effc"], [[10, 11, 12, 13], [20, 21, 22, 23]])
+    assert merged["effc"].dtype == np.float32
+    assert _seam_leaf_fields({"seam": {"arrays": {"state/unrelated": np.ones(3)}}}) == {}

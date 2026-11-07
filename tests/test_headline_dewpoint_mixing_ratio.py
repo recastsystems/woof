@@ -3,7 +3,7 @@
 WRF's Q2 is kg of vapour per kg of DRY air, so its vapour pressure is
 ``w p / (0.622 + w)``. The kernel used the specific-humidity form
 ``w p / (0.622 + 0.378 w)``, which read the 2 m dewpoint 0.1-0.25 K moist
-(lane/dewpoint-mixing-ratio). The CUDA source is checked as text and its
+(development branch). The CUDA source is checked as text and its
 arithmetic re-evaluated in NumPy against the Rust import's reference values.
 """
 from __future__ import annotations

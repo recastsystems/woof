@@ -5,7 +5,7 @@
       "satellite": "H09", "instrument": "ahi", "sector": "F", "bucket": "noaa-himawari9",
       "cadence_minutes": 10, "offset_minutes": 0,
       "prefix": "AHI-L1b-FLDK/{Y}/{m}/{d}/{H}{M}/",
-      "file": "HS_H09_{Y}{m}{d}_{H}{M}_{band}_FLDK_R20_S*10.DAT.bz2",
+      "file": "HS_H09_{Y}{m}{d}_{H}{M}_{band}_FLDK_R20_S*.DAT.bz2",
       "files_per_band": 10,
       "bands": {"7": "B07", "8": "B08", "9": "B09", "10": "B10", "11": "B11", "12": "B12", "13": "B13", "14": "B14", "15": "B15", "16": "B16"},
       "first_scan": "2022-12-13",
@@ -15,11 +15,11 @@
       "satellite": "H08", "instrument": "ahi", "sector": "F", "bucket": "noaa-himawari8",
       "cadence_minutes": 10, "offset_minutes": 0,
       "prefix": "AHI-L1b-FLDK/{Y}/{m}/{d}/{H}{M}/",
-      "file": "HS_H08_{Y}{m}{d}_{H}{M}_{band}_FLDK_R20_S*10.DAT.bz2",
+      "file": "HS_H08_{Y}{m}{d}_{H}{M}_{band}_FLDK_R20_S*.DAT.bz2",
       "files_per_band": 10,
       "bands": {"7": "B07", "8": "B08", "9": "B09", "10": "B10", "11": "B11", "12": "B12", "13": "B13", "14": "B14", "15": "B15", "16": "B16"},
       "last_scan": "2022-12-13",
-      "note": "archive only: Himawari-8 was replaced by Himawari-9 on 2022-12-13"
+      "note": "archive whole-disk S0101 and segmented Sxx10 files; archive only: Himawari-8 was replaced by Himawari-9 on 2022-12-13"
     },
     {
       "satellite": "GK2A", "instrument": "ami", "sector": "F", "bucket": "noaa-gk2a-pds",

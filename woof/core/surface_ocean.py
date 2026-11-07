@@ -28,7 +28,7 @@ def update_ocean_diagnostics(fields):
         if name not in fields:
             fields[name] = cp.empty_like(fields['tsk'])
     t0 = fields['om_tini'][0] if 'om_tini' in fields else fields['t0ml']
-    _DIAGNOSTICS(fields['tsk'], t0, fields.get('xland', np.float32(1)), fields.get('lakemask', np.float32(0)),
+    _DIAGNOSTICS(fields['tsk'], t0, fields.get('_pwp_land', fields.get('xland', np.float32(1))), fields.get('lakemask', np.float32(0)),
                  fields['ocean_sst'], fields['ocean_sst_change'])
 
 def ocean_history_diagnostic(value, fields):
@@ -36,7 +36,7 @@ def ocean_history_diagnostic(value, fields):
     if not hasattr(value, 'dtype'):
         return value  # The disk planner walks shape-only descriptors.
     import cupy as cp
-    wet = (fields['xland'] > 1.5) & (fields.get('lakemask', 0) < 0.5)
+    wet = (fields.get('_pwp_land', fields['xland']) > 1.5) & (fields.get('lakemask', 0) < 0.5)
     return cp.where(wet, value, cp.float32('nan'))
 
 
@@ -102,8 +102,31 @@ def launch_ocean_step(fields, *, dt, gamma, relaxation_time, constants_override=
         tuple(np.float32(v) for v in (dt, gamma, relaxation_time, c["rhowater"], c["cwater"], c["stbolt"], constants.G)) + (np.int32(n),))
     update_ocean_diagnostics(fields)
 
-def initialize_ocean(fields, cfg, initial=None, *, start=True, latitude=None, longitude=None, rotation=None, expected_time=None):
+def initialize_ocean(fields, cfg, initial=None, *, start=True, continuing=False, latitude=None, longitude=None, rotation=None, expected_time=None):
+    if cfg.sf_ocean_physics == 0:
+        # An explicitly supplied analysis may also initialize a fixed-SST
+        # control. It allocates no carried ocean state and advances no ocean.
+        # Moving domains inherit the live surface instead of reloading t=0.
+        if start and not continuing and cfg.ocean_analysis:
+            from woof.ocean.mixed_layer.analysis import load
+            from woof.ocean.mixed_layer import ocean_land
+            import cupy as cp
+            mapped = load(cfg.ocean_analysis, latitude=latitude, longitude=longitude,
+                          land=ocean_land(fields), levels=cfg.ocean_levels,
+                          source=cfg.ocean_analysis_source, rotation=rotation,
+                          expected_time=expected_time, uncovered="prescribed")
+            wet = mapped['om_active'] > .5
+            cp.copyto(fields['tsk'], mapped['om_tmp'][0], where=wet)
+            if 'sst' in fields:
+                cp.copyto(fields['sst'], mapped['om_tmp'][0], where=wet)
+        return
     if cfg.sf_ocean_physics == 2:
+        if continuing:
+            from dataclasses import replace
+            from woof.ocean.mixed_layer import STATE_FIELDS as pwp_fields
+            if not initial or not set(pwp_fields) <= set(initial):
+                raise ValueError("PWP continuation requires every ocean state field")
+            cfg = replace(cfg, ocean_analysis="", ocean_z=(), ocean_t=(), ocean_s=())
         if start and not cfg.ocean_analysis and not cfg.ocean_z and not initial and cfg.ocean_mld_climatology == 'woa18':
             from woof.ocean.mixed_layer.climatology import load
             from woof.ocean.mixed_layer import ocean_land
@@ -119,7 +142,7 @@ def initialize_ocean(fields, cfg, initial=None, *, start=True, latitude=None, lo
             from woof.ocean.mixed_layer import ocean_land
             initial = load(cfg.ocean_analysis, latitude=latitude, longitude=longitude,
                            land=ocean_land(fields), levels=cfg.ocean_levels,
-                           source=cfg.ocean_analysis_source, rotation=rotation, expected_time=expected_time)
+                           source=cfg.ocean_analysis_source, rotation=rotation, expected_time=expected_time, uncovered="prescribed")
         from woof.ocean.mixed_layer import initialize
         initialize(fields, cfg, initial, start=start)
         if start:

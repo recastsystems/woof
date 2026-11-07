@@ -76,8 +76,34 @@ grid/spectral masking and end-ramp methods. It does not promise bitwise WRF
 identity. `gfdda_inname` and `io_form_gfdda` are recorded as replaced by the
 engine's own prepared-analysis store.
 
-Surface and point-observation nudging (`grid_sfdda`, `obs_nudge_opt`) remain
-refused because gridded source fields do not supply those observations.
+Surface analysis nudging accepts `grid_sfdda=1` and FASDAS accepts
+`grid_sfdda=2`, with WRF's required `grid_fdda=1`. Supply native
+`sgfdda_inname` auxinput9 files containing OLD/NEW fields, observation
+distances, and a complete time window (`sgfdda_interval_m`, `sgfdda_end_h`).
+The stock-file door is `woof go --wrfinput CASE --outdir forecast`.
+Mode 2 couples native heat/moisture corrections to Noah, including QNORM,
+evaporation partition and soil temperature. Surface and upper-air
+coefficients are independent; zero upper coefficients permit surface-only
+forcing while preserving the native driver pairing. PX's
+`pxlsm_soil_nudge=1` reads native T2/Q2/SN from the same stream with its own
+per-domain/member device clock. Rust loads bounded records before stepping;
+CUDA selects records and performs the column calculations. Neither path
+synchronizes the host on each step.
+
+Held tendencies, FASDAS fluxes and clocks survive restart/checkpoint.
+Both nest feedback modes and independent ensemble members have GPU checks.
+Strict native captures replay with zero differing defined words; three-hour
+stock-file forecasts were inspected on Rust maps beside native WRF and
+archived ASOS. The forcing in these qualification cases was constructed
+from real initializations, with explicit NEW perturbations; it was not an
+independent observation analysis. See `qualified-proof.json` beside the
+nudging implementation and `woof/data/pxlsm/soil-nudging-proof.json`.
+Native WRF leaves glacier FASDAS heat capacity undefined; that combination
+has a named refusal. Adaptive clocks and tile-streamed surface FDDA remain
+outside this resident fixed-step implementation.
+
+Point-observation nudging (`obs_nudge_opt`) still requires its separate
+point-observation input path.
 Nonzero alternate begin/end date components are refused because they would
 change the requested window; use `gfdda_interval_m` and `gfdda_end_h`.
 

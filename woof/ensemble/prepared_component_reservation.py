@@ -329,8 +329,8 @@ def plan_prepared_component_reservation(member_inputs, *, domain_metadata=None,
             return decline(f"domain {gid}: selected solar/aerosol policy needs its current packed carriers and ABI qualification")
         if getattr(cfg, "inflow_perturbation", 0):
             return decline(f"domain {gid}: active nest inflow retains its original post-interpolation perturbation binding")
-        if cfg.cu_physics:
-            return decline(f"domain {gid}: packed production has no original cumulus leaf binding")
+        if cfg.cu_physics not in (0, 99):
+            return decline(f"domain {gid}: packed production cumulus binds cu_physics=99; the selected scheme needs its own original column leaf")
         if cfg.mosaic_lu or cfg.mosaic_soil or any(getattr(cfg, f"spp_{name}", 0) for name in ("conv", "pbl", "lsm")):
             return decline(f"domain {gid}: mosaic or stochastic leaf patterns lack their private packed bindings")
         try:

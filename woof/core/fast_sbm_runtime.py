@@ -59,7 +59,7 @@ def apply(state,cfg,dt,*,refl_10cm_due=False):
     nz,ny,nx=state.p.shape
     thb=state.thb if state.thb.ndim==3 else state.thb[:,None,None]
     phb=state.phb if state.phb.ndim==3 else state.phb[:,None,None]
-    th=state.scratch((nz,ny,nx),"mp_th"); th[:]=thb+state.thp
+    th=state.scratch((nz,ny,nx),"mp_th"); th[:]=state.total_theta() if getattr(state,"use_theta_m",0) else thb+state.thp
     rho=state.scratch((nz,ny,nx),"mp_rho"); rho[:]=1./state.alt
     pii=state.scratch((nz,ny,nx),"mp_pii"); pii[:]=cp.power(state.p/np.float32(c.P0),np.float32(c.RCP))
     dz=state.scratch((nz,ny,nx),"mp_dz8w")

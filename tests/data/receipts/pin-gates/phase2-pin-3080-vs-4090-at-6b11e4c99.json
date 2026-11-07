@@ -1,7 +1,7 @@
 {
   "comparison": "committed pin at 6b11e4c99 (RTX 3080, 2026-09-03) vs capture at 6b11e4c99 on the RTX 4090",
-  "old": "<home>/work/pin-gates-276/proof/pin-6b11e4c99-3080.npz",
-  "new": "<home>/work/pin-gates-276/proof/cap-6b11e4c99-4090.npz",
+  "old": "<home>/tool-work/pin-gates-276/proof/pin-6b11e4c99-3080.npz",
+  "new": "<home>/tool-work/pin-gates-276/proof/cap-6b11e4c99-4090.npz",
   "old_content_sha256": "47d484bd40032b419710ce1a375ef4b495263a323dc2087a87a6f3ca3737cbd5",
   "new_content_sha256": "47d484bd40032b419710ce1a375ef4b495263a323dc2087a87a6f3ca3737cbd5",
   "entries": {

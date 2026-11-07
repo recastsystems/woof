@@ -41,7 +41,7 @@ from woof.config import NO_LAND_SURFACE_SOIL_LAYERS, soil_layer_count
 from woof.io.classic_tape import (ClassicDim, ClassicTape, ClassicVariable,
                                    classic_attr_value)
 from woof.io.wrf_output_schema import (
-    HISTORY_FIELDS_BY_NETCDF_NAME, PHYSICS_SELECTOR_GLOBALS,
+    HISTORY_FIELDS_BY_NETCDF_NAME, history_field_schema, PHYSICS_SELECTOR_GLOBALS,
     RADIATION_CLDFRA_ATTRIBUTES,
     REGISTRY_VAR_META, SCHEME_OUTPUT_FIELDS, WRF_FIELD_TYPE_INTEGER,
     WRF_FIELD_TYPE_REAL,
@@ -105,7 +105,7 @@ def resolve_wrfout_engine(engine: str | None = None) -> str:
     return value
 
 
-#: How history frames are stored.  ``deflate`` (the DEFAULT, the project owner
+#: How history frames are stored.  ``deflate`` (the DEFAULT, the owner
 #: 2026-10-28: "Lossless compression is the default") writes each frame as
 #: a NetCDF-4 file whose chunks are byte-shuffled and deflated: every value
 #: is the same word after decompression, and the file is about a third of
@@ -215,10 +215,14 @@ _VAR_META = REGISTRY_VAR_META
 #: ``_stag`` to a dimension's dataset name exactly when the field is staggered
 #: on that axis (``tools/gen_wrf_io.c:138,187,213``), which is why the snow
 #: and snow+soil axes below are ``*_stag`` and not the bare dimspec names:
-#: every Noah-MP field on them is declared ``Z``-staggered.
+#: every Noah-MP field on them is declared ``Z``-staggered.  The existing
+#: public PWP axis is ``ocean_levels``; its profile rows also declare ``Z``
+#: in Registry.EM_COMMON:1339-1348, independently of atmospheric levels.
 _STAGGER = {"west_east_stag": "X", "south_north_stag": "Y",
             "bottom_top_stag": "Z", "soil_layers_stag": "Z",
-            "snow_layers_stag": "Z", "snso_layers_stag": "Z", "seed_dim_stag": "Z"}
+            "crop_types_stag": "Z", "snow_layers_stag": "Z",
+            "soil_composition_layers_stag": "Z", "snso_layers_stag": "Z",
+            "seed_dim_stag": "Z", "ocean_levels": "Z"}
 
 #: Noah-MP snow-stack history fields, keyed by name for the same reason
 #: TSLB/SMOIS/SH2O are: their leading extent is a scheme's own vertical axis,
@@ -252,8 +256,13 @@ _SNSO_LAYER_FIELDS = frozenset({SCHEME_OUTPUT_FIELDS["zsnsoxy"].netcdf_name})
 #: so a soil array is unroutable by shape alone and a nine-level soil field
 #: over a twenty-level column raises ``KeyError`` rather than picking a wrong
 #: axis.  That is what it did before these two names were added.
-_SOIL_LAYER_FIELDS = frozenset({"TSLB", "SMOIS", "SH2O", "SMCREL",
+_SOIL_LAYER_FIELDS = frozenset({"SMCWLT_3D", "SMCREF_3D", "SMCMAX_3D", "BEXP_3D",
+    "PSISAT_3D", "DKSAT_3D", "DWSAT_3D", "SMCDRY_3D", "QUARTZ_3D", "SMOISEQ", "ACC_ETRANI", "TSLB", "SMOIS", "SH2O", "SMCREL",
                                 "SMFR3D", "KEEPFR3DFLAG", "TVGL_URB", "SMG_URB"})
+#: The soil geometry itself, ``ZS``/``DZS`` (Registry.EM_COMMON:68-69,
+#: ``l``-dimensioned, ``Z``-staggered): one value per soil layer, written
+#: where the land scheme publishes its geometry (the slab scheme today).
+_SOIL_GEOMETRY_FIELDS = frozenset({"ZS", "DZS"})
 
 #: The land-use table identity stamped on every history file.
 #:
@@ -557,6 +566,8 @@ def wrf_global_attrs(
         attrs["ETAC"] = np.float32(etac)
     if run is not None:
         attrs.update(wrf_physics_selector_attrs(run))
+        if int(getattr(run, "use_theta_m", 0)):
+            attrs["USE_THETA_M"] = np.int32(run.use_theta_m)
         attrs["IFIRE"] = np.int32(getattr(run, "ifire", 0))
         if int(getattr(run, "ifire", 0)) == 2:
             attrs.update(IFIRE=np.int32(2), SR_X=np.int32(run.sr_x),
@@ -828,7 +839,7 @@ def state_frame(
             start_t = cp.asnumpy(start_t)
         fields = {
             "T": (start_t if start_t is not None
-                  else cp.asnumpy(state.thp) if _WRF_EXACT
+                  else cp.asnumpy(state.thp) if _WRF_EXACT and not getattr(state, "use_theta_m", 0)
                   else cp.asnumpy(state.total_theta()) - np.float32(300.0)),
             **{name: cp.asnumpy(getattr(state, attribute))
                for name, attribute in CORE_DIRECT_STATE_FIELDS.items()},
@@ -836,9 +847,10 @@ def state_frame(
             "MUB": cp.asnumpy(state.mub2d),
             "HGT": cp.asnumpy(state.ht),
         }
-        # WOOF advances dry perturbation theta, the USE_THETA_M=0 record.
-        fields["THM"] = (fields["T"] if start_t is None
-                         else cp.asnumpy(state.thp))
+        fields["THM"] = (cp.asnumpy(state.thp) if _WRF_EXACT
+                         else cp.asnumpy(state.prognostic_theta()) - np.float32(300.0)
+                         ) if getattr(state, "use_theta_m", 0) else (
+                             fields["T"] if start_t is None else cp.asnumpy(state.thp))
         if include_diagnostic_pressure:
             pb = state.pb
             pb3 = pb if pb.ndim == 3 else pb[:, None, None]
@@ -1344,6 +1356,12 @@ class WrfoutWriter:
 
     def _dims_for(self, name, shape):
         nz, ny, nx = self.nz, self.ny, self.nx
+        from woof.core.trajectory_contract import COORDINATES
+        if name in tuple(n.upper() for n in COORDINATES):
+            if len(shape) != 1 or not 1 <= shape[0] <= 1000:
+                raise ValueError(f"{name} requires native num_traj allocation")
+            self._ensure_dimension("num_traj_stag", shape[0])
+            return ("Time", "num_traj_stag")
         if name in ("TURBINE_POWER", "TURBINE_HUB_WIND", "TURBINE_FARM_INDEX", "TURBINE_HUB_HEIGHT", "FARM_POWER", "FARM_HUB_WIND"):
             if len(shape) != 1 or shape[0] < 1:
                 raise ValueError(f"wind-farm history {name} requires a nonempty one-dimensional index")
@@ -1391,6 +1409,15 @@ class WrfoutWriter:
                 raise ValueError("fire level-function history time must contain one ignition time")
             self._ensure_dimension("i_lfn_history", 1)
             return ("Time", "i_lfn_history")
+        if name == "CROPTYPE":
+            if tuple(shape)!=(5,ny,nx):raise ValueError("CROPTYPE needs the five native crop fractions")
+            self._ensure_dimension("crop_types_stag",5)
+            return ("Time","crop_types_stag","south_north","west_east")
+        if name == "SOILCOMP":
+            if tuple(shape)!=(2*self.soil_layers,ny,nx):
+                raise ValueError("Noah-MP SOILCOMP needs sand and clay at each soil depth")
+            self._ensure_dimension("soil_composition_layers_stag",2*self.soil_layers)
+            return ("Time","soil_composition_layers_stag","south_north","west_east")
         if name in _SNOW_LAYER_FIELDS or name in _SNSO_LAYER_FIELDS:
             snow_layers = int(tuple(shape)[0]) if name in _SNOW_LAYER_FIELDS \
                 else int(tuple(shape)[0]) - self.soil_layers
@@ -1424,6 +1451,12 @@ class WrfoutWriter:
                     f"WRF soil history field {name} must have shape "
                     f"{expected}, got {tuple(shape)}")
             return ("Time", "soil_layers_stag", "south_north", "west_east")
+        from woof.core.rasm import SURFACE
+        if name in {k.upper()+"_D" for k in SURFACE}:
+            if tuple(shape)!=(8,ny,nx):
+                raise ValueError("RASM diurnal history must have eight cycles")
+            self._ensure_dimension("diurnal_cycles",8)
+            return ("Time","diurnal_cycles","south_north","west_east")
         table = {
             (): (),
             (nz,): ("bottom_top",),
@@ -1449,7 +1482,8 @@ class WrfoutWriter:
         wrong axis, which is a schema lie a reader cannot detect -- so it is
         refused here instead of published.
         """
-        schema = HISTORY_FIELDS_BY_NETCDF_NAME.get(name)
+        schema = history_field_schema(name, sf_surface_physics=int(
+            getattr(self.ds, "SF_SURFACE_PHYSICS", 0)))
         if schema is not None:
             dtype, field_type = schema.dtype, schema.field_type
             desc, units = schema.description, schema.units
@@ -1470,6 +1504,8 @@ class WrfoutWriter:
                 f"stagger is {stagger!r}, but WRF v4.6.1 declares it "
                 f"{schema.stagger!r} ({schema.registry})")
         var = self.ds.createVariable(name, dtype, dims)
+        if name == "THM" and int(getattr(self.ds, "USE_THETA_M", 0)):
+            desc = "perturbation moist potential temperature"
         fire_coordinates = str(getattr(self.ds, "FIRE_COORDINATE_MODE", "geographic"))
         if name in ("FXLAT", "FXLONG"):
             if fire_coordinates not in ("metric", "geographic"):
@@ -1489,6 +1525,8 @@ class WrfoutWriter:
             var.MemoryOrder = "Z  "
         else:
             var.MemoryOrder = "XYZ" if len(dims) == 4 else "XY "
+        if name == "THM" and int(getattr(self.ds, "USE_THETA_M", 0)):
+            desc = "perturbation moist potential temperature"
         var.description = desc
         var.units = units
         var.stagger = stagger
@@ -1799,9 +1837,9 @@ def _wrf_start_history_t(state):
     """
     if not _WRF_EXACT:
         return None
-    from woof.state_serialization_contract import WRF_MUTS_SLOT
+    from woof.state_serialization_contract import carried_wrf_muts
     start_t = getattr(state, "_wrf_start_history_t", None)
-    if start_t is not None and state.existing_scratch(WRF_MUTS_SLOT) is None:
+    if start_t is not None and carried_wrf_muts(state) is None:
         return start_t
     # After the first step: th_phy_m_t0 where it parts from t_2, a
     # parent's (woof.core.nest_round_trip.th_phy_m_t0_after_step).
@@ -1823,13 +1861,16 @@ def _device_state_frame(state, *, include_diagnostic_pressure: bool = True):
         start_t = _wrf_start_history_t(state)
         fields = {
             "T": (cp.asarray(start_t) if start_t is not None
-                  else state.thp if _WRF_EXACT
+                  else state.thp if _WRF_EXACT and not getattr(state, "use_theta_m", 0)
                   else state.total_theta() - cp.float32(300.0)),
             **{name: getattr(state, attribute)
                for name, attribute in CORE_DIRECT_STATE_FIELDS.items()},
             "PHB": phb, "MUB": state.mub2d, "HGT": state.ht,
         }
-        fields["THM"] = fields["T"] if start_t is None else state.thp
+        fields["THM"] = (state.thp if _WRF_EXACT else
+                         state.prognostic_theta() - cp.float32(300.0)
+                         ) if getattr(state, "use_theta_m", 0) else (
+                             fields["T"] if start_t is None else state.thp)
         if include_diagnostic_pressure:
             pb = state.pb
             pb3 = pb if pb.ndim == 3 else pb[:, None, None]
@@ -2942,7 +2983,7 @@ class PerDomainWrfoutWriters:
                  initial_condition=None, source=None,
                  progress_callback=None, history_selection=None,
                  episodes_by_grid_id=None, simulated_radar=None,
-                 radar_output_dir=None):
+                 radar_output_dir=None, restored_checkpoint=False):
         """``initial_condition`` is the preparation receipt's provenance
         block, stamped onto every domain's frames so the durable artifact
         states what its initial state was and not only when it began.
@@ -3028,6 +3069,8 @@ class PerDomainWrfoutWriters:
                 grid_id=node.cfg.grid_id,
                 history_selection=self._selection_for(node.cfg),
                 device=_domain_output_device(node.state))
+        from woof.io.level_output import LevelOutputWriters
+        self._auxiliary = LevelOutputWriters(self, restored_checkpoint=restored_checkpoint)
         self.last_durable_wrfout = None
         if simulated_radar is not None and simulated_radar.enabled:
             from woof.simulated_radar import LiveSimulatedRadar
@@ -3230,10 +3273,15 @@ class PerDomainWrfoutWriters:
         if self._frame_sink is not None:
             self._writers[grid_id].frame_sink = self._frame_sink
             self._writers[grid_id].write_files = self._write_files
+        file_grid = getattr(case, "wrf_file_grid", None)
+        if file_grid:
+            self._metadata_by_grid_id[grid_id].update(file_grid)
+        self._auxiliary.add_domain(grid_id)
 
     def remove_domain(self, grid_id: int) -> None:
         """Drain and close one retired episode without losing its paths."""
         grid_id = int(grid_id)
+        self._auxiliary.remove_domain(grid_id)
         writer = self._writers.pop(grid_id, None)
         if writer is None:
             return
@@ -3259,6 +3307,7 @@ class PerDomainWrfoutWriters:
         the outgoing placement keep the coordinates that produced them.
         """
         grid_id = int(grid_id)
+        self._auxiliary.drain(grid_id)
         node = self.model.node(grid_id)
         case = self.model._prepared_by_grid_id[grid_id]
         from woof.runtime import _global_wrf_attrs, _metadata_frame
@@ -3280,6 +3329,9 @@ class PerDomainWrfoutWriters:
             source=self._source,
             simulation_start_time=self.start_time,
             static_fields=static_fields))
+
+    def submit_auxiliary(self, node, ticks):
+        self._auxiliary.submit(node, ticks)
 
     def submit(self, node, ticks: int, *, refl_field=None) -> None:
         """One domain's history frame, from wherever that domain's truth is.
@@ -3307,6 +3359,50 @@ class PerDomainWrfoutWriters:
             if log is not None and log and log[-1][2] is None:
                 log[-1][2] = round(time.perf_counter() - submitted, 6)
 
+    def submit_native_auxiliary(self, node, ticks, *, initial=False):
+        """Native CLWRF/RASM alarms, independent of regular history cadence.
+
+        Reuse the stream-ordered Rust writer and its byte-bounded queue.
+        Each child calls this on its own committed clock, before feedback.
+        """
+        cfg=node.cfg.run
+        if not (cfg.mean_diag or cfg.diurnal_diag or (cfg.output_diagnostics and cfg.auxhist3_interval)):
+            return
+        from woof.core.rasm import alarm,HISTORY as RASM_HISTORY
+        from woof.core.clwrf import HISTORY as CL_HISTORY
+        from woof.io.history_selection import HistorySelection
+        seconds=ticks/node.clock.tick_den
+        valid=self.start_time+timedelta(seconds=seconds)
+        before=seconds-float(cfg.dt)
+        now=self.start_time+timedelta(seconds=before)
+        streams=[]
+        if cfg.output_diagnostics and cfg.auxhist3_interval:
+            # WRF's auxhist3 alarm rings at initialization and every interval.
+            period=cfg.auxhist3_interval*60
+            if initial or abs(seconds/period-round(seconds/period))<1.e-8:
+                streams.append((3,tuple(row[0] for row in CL_HISTORY.values())))
+        if cfg.mean_diag and not initial:
+            interval=cfg.mean_interval*{1:1,2:60,3:3600,4:86400,5:1}[cfg.mean_freq]
+            if alarm(before,cfg.dt,interval,monthly=cfg.mean_freq==5,now=now)[1]:
+                streams.append((5,tuple(row[0] for key,row in RASM_HISTORY.items() if key.endswith('_mean'))))
+        if cfg.diurnal_diag and not initial and alarm(before,cfg.dt,1,monthly=True,now=now)[1]:
+            streams.append((6,tuple(row[0] for key,row in RASM_HISTORY.items() if key.endswith('_diurn'))))
+        writer=self._writers[node.cfg.grid_id]
+        for stream,names in streams:
+            path=self.output_dir/f"auxhist{stream}_d{node.cfg.grid_id:02d}_{valid:%Y-%m-%d_%H:%M:%S}"
+            if path in self._published_paths:
+                raise RuntimeError(f'duplicate native auxiliary alarm: {path}')
+            self._published_paths.add(path)
+            selection=HistorySelection(history_vars=names)
+            streamed=getattr(node.state,'_streamed_domain',None)
+            frame=None if streamed is None else streamed.history_fields()
+            writer.submit(path,valid,node.state if frame is None else None,frame=frame,
+                extra_fields=self._metadata_by_grid_id[node.cfg.grid_id],history_selection=selection)
+            if frame is not None:
+                if bool(getattr(frame,'deferred',False)):
+                    streamed.add_store_guard(writer.drain_staging)
+                else:writer.drain_staging()
+
     def _capture_radar(self, node, valid_time, refl_field, *, quicklook=False):
         radar = getattr(self, "_simulated_radar", None)
         if radar is not None and getattr(node.cfg, "quicklook_output", None) is not None:
@@ -3325,6 +3421,8 @@ class PerDomainWrfoutWriters:
         if getattr(self, "_simulated_radar", None) is not None:
             self._simulated_radar.check()
         seconds = ticks / node.clock.tick_den
+        if seconds == 0:
+            self.submit_native_auxiliary(node,ticks,initial=True)
         valid_time = self.start_time + timedelta(seconds=seconds)
         self._capture_radar(node, valid_time, refl_field,
                             quicklook=quicklook_selection(node, ticks) is not None)
@@ -3434,7 +3532,7 @@ class PerDomainWrfoutWriters:
             # frame's size is known, declares the bytes still to move:
             # everything queued plus this frame, written and read back.
             with self._write_beat(phase, self.pending_work_bytes):
-                frame = streamed.history_fields()
+                frame = streamed.history_fields(state=node.state)
                 deferred = bool(getattr(frame, "deferred", False))
                 frame_bytes = (int(frame.nbytes) if deferred
                                else _frame_nbytes(frame))
@@ -3539,6 +3637,7 @@ class PerDomainWrfoutWriters:
         checkpoint), and each domain's wait is a ``writing:`` record on the
         attached write progress, sized the same way.
         """
+        self._auxiliary.drain()
         for gid in sorted(self._writers):
             if before_domain is not None:
                 before_domain(gid, self.pending_work_bytes)
@@ -3632,6 +3731,12 @@ class PerDomainWrfoutWriters:
 
     def close(self) -> None:
         saved: BaseException | None = None
+        auxiliary = getattr(self, "_auxiliary", None)
+        if auxiliary is not None:
+            try:
+                auxiliary.close()
+            except BaseException as exc:
+                saved = exc
         for gid in sorted(self._writers):
             writer = self._writers[gid]
             try:

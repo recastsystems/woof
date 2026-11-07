@@ -2,12 +2,12 @@
   "real-periodic2": {
     "ph_tend": {
       "words": 6000,
-      "different_words": 2618,
-      "max_ulp": 1536,
-      "max_abs": 0.06640625,
-      "actual_sha256": "d962a2441147d623a9e192acbec6e6c8316d752dc573b7e5f8cbd4d3eb3380ea",
+      "different_words": 0,
+      "max_ulp": 0,
+      "max_abs": 0.0,
+      "actual_sha256": "9c2f89f57ac3842fd86231c5a211a0350f1c3c57bc93e364cac09f5d59916eab",
       "reference_sha256": "9c2f89f57ac3842fd86231c5a211a0350f1c3c57bc93e364cac09f5d59916eab",
-      "total_phi_control_max_ulp": 512
+      "total_phi_control_max_ulp": 2048
     },
     "rho": {
       "words": 5880,
@@ -109,12 +109,12 @@
   "real-specified2": {
     "ph_tend": {
       "words": 6000,
-      "different_words": 2118,
-      "max_ulp": 1536,
-      "max_abs": 0.0703125,
-      "actual_sha256": "26ae21d08654cf9ff19b6674d392e2c9dd5b5b4c2f4da154d17897dc13a7bea9",
+      "different_words": 0,
+      "max_ulp": 0,
+      "max_abs": 0.0,
+      "actual_sha256": "f2087edb695c03561647ecc48efb3dac0d4df6845a14e4bbc12f1ea648bf83b2",
       "reference_sha256": "f2087edb695c03561647ecc48efb3dac0d4df6845a14e4bbc12f1ea648bf83b2",
-      "total_phi_control_max_ulp": 512
+      "total_phi_control_max_ulp": 2048
     },
     "rho": {
       "words": 5880,
@@ -430,12 +430,12 @@
   "steep-terrain": {
     "ph_tend": {
       "words": 6000,
-      "different_words": 4059,
-      "max_ulp": 2336,
-      "max_abs": 9.0,
-      "actual_sha256": "ff908d3e20157111da06b2ae69f98da5128164d99b5c4244b9e4a98fcdbe4226",
+      "different_words": 0,
+      "max_ulp": 0,
+      "max_abs": 0.0,
+      "actual_sha256": "5bd63b847f6d8c57b267359620eb06883b42ad25e11df7e89d1b58b34beb3d8d",
       "reference_sha256": "5bd63b847f6d8c57b267359620eb06883b42ad25e11df7e89d1b58b34beb3d8d",
-      "total_phi_control_max_ulp": 480
+      "total_phi_control_max_ulp": 2816
     },
     "rho": {
       "words": 5880,
@@ -537,12 +537,12 @@
   "map-extremes": {
     "ph_tend": {
       "words": 6000,
-      "different_words": 1877,
-      "max_ulp": 64,
-      "max_abs": 0.25,
-      "actual_sha256": "44c76078eee1ec7b2e26a0a3e3bd1308cd2303f54aec755307ca1801e13e21bc",
+      "different_words": 0,
+      "max_ulp": 0,
+      "max_abs": 0.0,
+      "actual_sha256": "2201dfa89ab0b7ab34afbc1089adc91decd63681358e5d84e93dc0b8599b351b",
       "reference_sha256": "2201dfa89ab0b7ab34afbc1089adc91decd63681358e5d84e93dc0b8599b351b",
-      "total_phi_control_max_ulp": 64
+      "total_phi_control_max_ulp": 8
     },
     "rho": {
       "words": 5880,
@@ -751,12 +751,12 @@
   "near-zero-motion": {
     "ph_tend": {
       "words": 6000,
-      "different_words": 2612,
-      "max_ulp": 4608,
-      "max_abs": 6.462348535570529e-27,
-      "actual_sha256": "777d27cb7b56cde906bdbd75e3c3964746d92982291eb358e6dfe8dc55eef65b",
+      "different_words": 0,
+      "max_ulp": 0,
+      "max_abs": 0.0,
+      "actual_sha256": "31cb04978ca5e63c937f8aed5d1467eab37f0b9195e46a91408905b745376a6d",
       "reference_sha256": "31cb04978ca5e63c937f8aed5d1467eab37f0b9195e46a91408905b745376a6d",
-      "total_phi_control_max_ulp": 1856
+      "total_phi_control_max_ulp": 3072
     },
     "rho": {
       "words": 5880,

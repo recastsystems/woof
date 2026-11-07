@@ -31,10 +31,10 @@ $py = Join-Path $Target 'Scripts\python.exe'
 & $py -m pip install -q --upgrade pip
 & $py -m pip install -q 'setuptools>=77' build wheel 'pytest==8.4.2'
 $env:WOOF_ALLOW_UNPINNED_WHEEL = '1'
-& $py -m pip install -q -e (Join-Path $repo 'recast-woof-data') -e "$repo[$Extras]"
+& $py -m pip install -q -e (Join-Path $repo 'recast-woof-data') -e (Join-Path $repo 'gpuwm-kernels') -e "$repo[$Extras]"
 Push-Location $env:TEMP
 try {
-    $bound = & $py -c "import woof, importlib.metadata as m; print(m.version('woof'), m.version('recast-woof-data'), woof.__file__)"
+    $bound = & $py -c "import woof, importlib.metadata as m; print(m.version('woof'), m.version('recast-woof-data'), m.version('gpuwm-kernels'), woof.__file__)"
 } finally { Pop-Location }
 "provisioned: $bound"
 if ($bound -notmatch [regex]::Escape($repo)) { throw "the venv resolves woof outside this checkout: $bound" }

@@ -83,3 +83,22 @@ fn run(path:&Path)->R<()> {
  fs::write(receipt_path,serde_json::to_vec_pretty(&receipt).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;println!("{}",receipt);Ok(())
 }
 pub fn cli(args:&[String])->Option<R<()>>{match args.first().map(String::as_str){Some("--ocean-products")=>Some(args.get(1).ok_or("--ocean-products needs request JSON".into()).and_then(|p|run(Path::new(p)))),Some("--ocean-products-abi")=>Some({println!("gpuwm.ocean.products/v1");Ok(())}),_=>None}}
+
+// Bearings are TOWARDS clockwise from true north, matching the ocean ABI.
+// Endpoints follow great circles so arrows retain their direction on the map.
+fn destination(lat:f64,lon:f64,bearing:f64,angle:f64)->(f64,f64){
+ let (p,l,b)=(lat.to_radians(),lon.to_radians(),bearing.to_radians());
+ let y=(p.sin()*angle.cos()+p.cos()*angle.sin()*b.cos()).clamp(-1.,1.).asin();
+ let x=l+(b.sin()*angle.sin()*p.cos()).atan2(angle.cos()-p.sin()*y.sin());
+ (y.to_degrees(),(x.to_degrees()+180.).rem_euclid(360.)-180.)
+}
+fn direction_arrows(lat:&[f32],lon:&[f32],direction:&[f32],height:&[f32],wet:Option<&[f32]>,nx:usize,ny:usize)->MapOverlays{
+ let mut overlays=MapOverlays::default();let stride=(nx.max(ny)/22).max(2);
+ let angular=((lat[nx] as f64-lat[0] as f64).abs().to_radians()*stride as f64*0.6).max(0.0001);
+ for y in (stride/2..ny).step_by(stride){for x in (stride/2..nx).step_by(stride){let i=y*nx+x;
+  if !height[i].is_finite()||height[i]<0.05||wet.is_some_and(|w|w[i]<=0.5){continue;}
+  let bearing=direction[i]as f64;let start=(lat[i]as f64,lon[i]as f64);let tip=destination(start.0,start.1,bearing,angular);
+  let left=destination(tip.0,tip.1,bearing+150.,angular*0.3);let right=destination(tip.0,tip.1,bearing-150.,angular*0.3);
+  for points in [vec![start,tip],vec![left,tip,right]]{overlays.lines.push(LineSpec{points,color:"#101418".into(),width:2,closed:false});}
+ }}overlays
+}

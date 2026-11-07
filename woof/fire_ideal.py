@@ -126,6 +126,10 @@ def load_native_configuration(path, *, input_directory=None, run_seconds=None):
     if isinstance(tracer_opt, bool) or tracer_opt not in (0, 3):
         raise ValueError("native SFIRE tracer_opt must be 0 or 3 to select the implemented bulk-smoke row")
     values["fire_smoke"] = tracer_opt == 3
+    # SFIRE tracer_opt = 3 is the bulk-smoke row above, not the non-Chem EM
+    # passive-tracer package RunConfig.tracer_opt selects (0747f1ef907),
+    # which refuses 3; the native key is consumed here.
+    values["tracer_opt"] = 0
     fuel_file = directory / "namelist.fire"
     if fuel_file.is_file() and not values.get("fire_fuel_namelist"):
         values["fire_fuel_namelist"] = str(fuel_file)

@@ -1,0 +1,73 @@
+{
+  "tbaut_nc_sub": {
+    "typ": "double",
+    "dims": [
+      "nxaut",
+      "numax"
+    ],
+    "shape": [
+      9991,
+      15
+    ]
+  },
+  "tbaut_nc_tot": {
+    "typ": "double",
+    "dims": [
+      "nxaut",
+      "numax"
+    ],
+    "shape": [
+      9991,
+      15
+    ]
+  },
+  "tbaut_qc_sub": {
+    "typ": "double",
+    "dims": [
+      "nxaut",
+      "numax"
+    ],
+    "shape": [
+      9991,
+      15
+    ]
+  },
+  "tbaut_qc_tot": {
+    "typ": "double",
+    "dims": [
+      "nxaut",
+      "numax"
+    ],
+    "shape": [
+      9991,
+      15
+    ]
+  },
+  "tbshape": {
+    "typ": "float",
+    "dims": [
+      "nxshape"
+    ],
+    "shape": [
+      9991
+    ]
+  },
+  "tbsvp": {
+    "typ": "float",
+    "dims": [
+      "nxsvp"
+    ],
+    "shape": [
+      7501
+    ]
+  },
+  "tbsvpw": {
+    "typ": "float",
+    "dims": [
+      "nxsvpw"
+    ],
+    "shape": [
+      7501
+    ]
+  }
+}

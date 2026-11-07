@@ -2,7 +2,7 @@
 
 THE BREAKAGE THIS PREVENTS: the global and variable-resolution doors rendered their maps only after the whole forecast
 (`forecast --no-products`, then `products`), so the first map of a 24 h run waited for all 24 hours to integrate.
-On one box on 2026-10-23 the 60 km globe wrote its f000 frame 20 s into the forecast stage and
+On 2026-10-23 the 60 km globe wrote its f000 frame 20 s into the forecast stage and
 the f000 maps take 13 s to draw (71 pictures, all views); the run's first map still came only after the forecast
 and the full products pass.
 

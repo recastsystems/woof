@@ -1,0 +1,130 @@
+{
+  "scope": "native forecast CU_KSAS module call, MPI rank 0, after 20 real model steps",
+  "groups": [
+    {
+      "ncol": 45000,
+      "nz": 49,
+      "stepcu": 1,
+      "mp_physics": 6,
+      "f_qc": 1,
+      "f_qi": 1,
+      "dx_factor_nsas": 0,
+      "itimestep": 21,
+      "dt": 15.0,
+      "dx": 3000.0
+    }
+  ],
+  "words": 13410000,
+  "differing_words": 0,
+  "ledger": {
+    "rthcuten": {
+      "words": 2205000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 11116,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "rqvcuten": {
+      "words": 2205000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 11934,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "rqccuten": {
+      "words": 2205000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 1906,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "rqicuten": {
+      "words": 2205000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 1096,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "rucuten": {
+      "words": 2205000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 11933,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "rvcuten": {
+      "words": 2205000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 11903,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "raincv": {
+      "words": 45000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 496,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "pratec": {
+      "words": 45000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 496,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "hbot": {
+      "words": 45000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 45000,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    },
+    "htop": {
+      "words": 45000,
+      "differing_words": 0,
+      "nonfinite_native": 0,
+      "nonfinite_gpu": 0,
+      "native_nonzero": 496,
+      "max_absolute_difference": 0.0,
+      "first_differences": []
+    }
+  },
+  "environment": {
+    "GPUWM_NUMERICS": "strict",
+    "GPUWM_WRF_EXACT": "1",
+    "GPUWM_WRF_GLIBC": "2.43",
+    "CUDA_PATH": "scratch/python/nvidia/cu13"
+  },
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "libc": [
+    "glibc",
+    "2.43"
+  ],
+  "module_options": [
+    "-std=c++17",
+    "--ftz=false",
+    "--fmad=false"
+  ],
+  "module_source_sha256": "babb75fac0e72cca6feca186b6989b546c86110d8b138c37f3d41804477083e2",
+  "inputs_sha256": "d2e0de15ed7249ee46718c153b1cca22bec1b0e8e54760d5fc331261788b5f4b",
+  "outputs_sha256": "8b0797ae5496aa80bde5305d3dd6b8c7e5b8df2d67a663eaf0582b0e0fef752b"
+}

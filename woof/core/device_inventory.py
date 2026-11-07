@@ -20,10 +20,14 @@ from __future__ import annotations
 from woof.core.column_schemes import COLUMN_SCHEMES
 
 from dataclasses import dataclass
+from woof.core.mp_column_schemes import (SIX_MASS_TABLE_SCHEMES,
+                                         TABLE_SCHEMES)
 
 from woof.microphysics_schemes import scheme as _named_scheme
 
-from woof.config import (CUMULUS_ADVECTIVE_FORCING_SCHEMES,
+from woof.config import p3_variant
+from woof.config import (consumes_advective_forcing, is_p3,
+                          p3_predicts_nc,
                           SASE_PBL_SCHEME, RunConfig)
 
 
@@ -121,6 +125,7 @@ class DeviceLocalMemoryProfile:
     #: recorded rows with the basis stated
     #: (:func:`woof.core.noahmp_frame_provenance.frame_basis_for_profile`).
     compile_platform: tuple[str, str] | None = None
+    backend: str = "cuda"
 
     @property
     def platform_is_read(self) -> bool:
@@ -146,6 +151,10 @@ class DeviceLocalMemoryProfile:
         both instrumented Linux cards showed to within 5 MiB of each
         other.  No card this build reads is measured for it.
         """
+        if self.backend == 'hip':
+            # An explicit envelope, pending AMD measurement. Do not reuse
+            # NVIDIA's calibrated context/stack cancellation on ROCm.
+            return int(self.bare_context_bytes or 0) + 2 * 1024**3
         bare = self.bare_context_bytes
         if bare is None:
             bare = (MODELLED_BARE_CONTEXT_BYTES_PER_RESIDENT_THREAD
@@ -165,6 +174,8 @@ class DeviceLocalMemoryProfile:
         to within 1.5 MiB on Linux).  The law is not the defect; what was
         wrong was the profile it was evaluated on.
         """
+        if self.backend == 'hip':
+            return max(0,int(max_local_size_bytes))*self.resident_thread_capacity
         over = int(max_local_size_bytes) - self.default_stack_limit_bytes
         return 0 if over <= 0 else over * self.resident_thread_capacity
 
@@ -230,6 +241,9 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
         "dnw": (nz,), "rdnw": (nz,), "dn": (nz,), "rdn": (nz,),
         "fnp": (nz,), "fnm": (nz,), "znu": (nz,), "znw": (nz + 1,),
     }
+    if cfg.m_opt or cfg.sfs_opt:
+        for name in ("m11", "m22", "m33", "m12", "m13", "m23"):
+            shapes[name] = m
     from woof.wrf_exact import DIAGNOSTICS_ENABLED
     if DIAGNOSTICS_ENABLED:
         shapes["p_perturbation"] = m
@@ -245,29 +259,75 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
     if cfg.moist:
         for name in ("qv", "qc", "qr", "qv0", "qc0", "qr0", "h_diabatic"):
             shapes[name] = m
-        if cfg.cu_physics in CUMULUS_ADVECTIVE_FORCING_SCHEMES:
+        if consumes_advective_forcing(cfg):
             # WRF RTHFTEN/RQVFTEN, allocated by the same table predicate
             # woof/core/state.py uses.  Two persistent mass-point rates
             # priced in the VRAM projection for the schemes that read them
             # and for nobody else.
             shapes["rthften"] = m
             shapes["rqvften"] = m
-        if cfg.mp_physics == 5:
-            # Ferrier-Aligo (Registry.EM_COMMON:3019, and the mp==5 arm of
-            # woof/core/state.py): total ice, the qt carrier, the three
-            # WRF state fields, and qi's RK time-t copy.
-            for name in ("qi", "qt", "f_ice", "f_rain", "f_rimef", "qi0"):
+        if cfg.mp_physics == 96:
+            for name in ("qi", "qs", "qi0", "qs0"):
                 shapes[name] = m
-        elif cfg.mp_physics == 50:
+        if cfg.mp_physics == 56:
+            from woof.core.ntu import NTU_SPECIES
+            shapes.update({name: m for name in NTU_SPECIES + ("effc", "effi", "effs")})
+            shapes.update({name + "0": m for name in NTU_SPECIES})
+        from woof.core.fer_hires import package_for
+        ferrier_package = package_for(cfg.mp_physics)
+        _p3 = p3_variant(cfg.mp_physics)
+        from woof.physics_registry import consumer_row_for_selector
+        native = consumer_row_for_selector("microphysics", "native_column", cfg.mp_physics)
+        from woof.physics_registry import column_microphysics_binding
+        binding = column_microphysics_binding(cfg.mp_physics)
+        if native:
+            for name in native["state_fields"]:
+                shapes[name] = m
+            for name in native["transport"]:
+                shapes[name + "0"] = m
+        elif binding is not None:
+            shapes.update({name: m for name in binding['volume_fields']})
+            shapes.update({name + '0': m for name in binding['transported_extras']})
+        elif ferrier_package:
+            # Match the shared Ferrier variant's state and RK time-t
+            # copies: MP15 carries QRIMEF instead of MP5's QT/fractions.
+            for name in ferrier_package["state_fields"] + [n + "0" for n in ferrier_package["transported"]]:
+                shapes[name] = m
+        elif _p3 is not None:
             # P3 one-category (Registry.EM_COMMON:3038, and the mp==50 arm
             # of woof/core/state.py): ONE ice mass with rime mass and rime
             # volume, no qs/qg/effs, plus the two cross-step supersaturation
             # carriers p3_main writes at the end of every call.  Every
             # transported field carries its RK time-t copy.
-            for name in ("qi", "ni", "nr", "qir", "qib", "effc", "effi",
-                         "th_old", "qv_old",
-                         "qi0", "ni0", "nr0", "qir0", "qib0"):
+            # mp=53 adds its P3Variant.extra_species (nc, qzi) and their
+            # RK time-t copies, exactly as woof/core/state.py allocates.
+            for name in (("qi", "ni", "nr", "qir", "qib", "effc", "effi",
+                          "th_old", "qv_old",
+                          "qi0", "ni0", "nr0", "qir0", "qib0")
+                         + _p3.extra_species
+                         + tuple(n + "0" for n in _p3.extra_species)):
                 shapes[name] = m
+        elif _column_kernel_row(cfg.mp_physics) is not None:
+            # A table-admitted column scheme: the same row-derived
+            # inventory woof/core/state.py allocates (extra moist
+            # species with their time-t copies, plus the scheme's state
+            # fields, no radii).
+            row = _column_kernel_row(cfg.mp_physics)
+            extra = [name for name in row["species"]
+                     if name not in ("qv", "qc", "qr")]
+            transported = extra + [
+                name for name in row["state_fields"]
+                if row.get("state_field_io", {}).get(name, {}).get("advected")]
+            for name in extra + list(row["state_fields"]) + [
+                    f"{name}0" for name in transported]:
+                shapes[name] = m
+        elif cfg.mp_physics == 14:
+            from woof.core.wdm6_constants import wdm_scheme
+            row = wdm_scheme(cfg.mp_physics)
+            for name in tuple(x for x in row.mass_species if x not in ("qv", "qc", "qr")) + ("effc", "effi", "effs"):
+                shapes[name] = m
+            for name in tuple(x for x in row.mass_species if x not in ("qv", "qc", "qr")) + row.number_species:
+                shapes[name + "0"] = m
         elif cfg.mp_physics == 2:
             for name in ("qi","qs","qg","qi0","qs0","qg0"):
                 shapes[name] = m
@@ -284,7 +344,12 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
                     shapes[name] = shapes[name + "0"] = m
             for name in ("effc", "effi", "effs"):
                 shapes[name] = m
-        elif cfg.mp_physics in (6, 8, 9, 10, 16, 18, 24, 28, 106):
+        elif cfg.mp_physics == 95:
+            for name in ("qs", "qt", "f_ice_phy", "f_rain_phy", "f_rimef_phy", "qs0", "qt0"):
+                shapes[name] = m
+            shapes.update(etanew_restart_state=(43,), etanew_tbpvs=(7501,),
+                          etanew_tbpvs0=(7501,), etanew_restart_dt=(1,))
+        elif cfg.mp_physics in (6, 8, 9, 10, 16, 18, 24, 26, 27, 28, 29, 38, 40, 106) + SIX_MASS_TABLE_SCHEMES:
             # WRF's SIX-MASS moist package, transcribed.  This tuple is
             # not "the schemes with ice" -- it is the schemes whose
             # Registry package is moist:qv,qc,qr,qi,qs,qg
@@ -354,13 +419,27 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
             for name in ("qh", "nc", "nr", "ni", "ns", "ng", "nh",
                          "qh0", "nc0", "nr0", "ni0", "ns0", "ng0", "nh0"):
                 shapes[name] = m
-        if cfg.mp_physics == 16:
+        if cfg.mp_physics in (14, 16):
             for name in ("nn", "nc", "nr", "nn0", "nc0", "nr0"):
+                shapes[name] = m
+        if cfg.mp_physics in (26, 27):
+            # WDM7: WDM6's moments plus the hail mass, each with its RK
+            # time-t copy (woof/core/state.py, the WDM arms).
+            for name in ("qh", "nn", "nc", "nr", "qh0", "nn0", "nc0",
+                         "nr0"):
                 shapes[name] = m
         if cfg.mp_physics == 8:
             for name in ("nr", "ni", "nr0", "ni0"):
                 shapes[name] = m
-        if cfg.mp_physics == 10:
+        if cfg.mp_physics == 40:
+            from woof.core.morrison_aero import AERO_DIAGNOSTIC_FIELDS
+            shapes.update({name:m for name in AERO_DIAGNOSTIC_FIELDS})
+            shapes["nc0"] = m
+            if cfg.aercu_opt>0:
+                shapes["aerocu"]=(10,)+m
+                shapes["aeromcu"]=(10,12,30,ny,nx)
+                shapes["aeropcu"]=(12,30,ny,nx)
+        if cfg.mp_physics in (10, 40):
             for name in ("nc", "nr", "ni", "ns", "ng", "nr0", "ni0",
                          "ns0", "ng0", "effr"):
                 shapes[name] = m
@@ -371,13 +450,16 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
                     "qni0", "qns0", "qng0", "qnh0", "qnn0", "qvolg0",
                     "qvolh0"):
                 shapes[name] = m
-        if cfg.mp_physics == 28:
+        if cfg.mp_physics in THOMPSON_AEROSOL_FAMILY:
             # Thompson aerosol-aware: prognostic droplet number plus the two
             # aerosol number tracers, each with its RK time-t copy
             # (woof/core/state.py, the mp==28 arms).
             for name in ("nc", "nr", "ni", "nwfa", "nifa",
                          "nc0", "nr0", "ni0", "nwfa0", "nifa0"):
                 shapes[name] = m
+            for name in THOMPSON_AEROSOL_FAMILY[cfg.mp_physics].graupel_species:
+                shapes[name] = m
+                shapes[name + "0"] = m
             # QNWFA2D / QNIFA2D surface emission tendencies, # kg-1 s-1.
             # Cross-step constants, allocated once per domain.
             for name in ("nwfa2d", "nifa2d"):
@@ -392,6 +474,16 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
                 shapes[name] = m
             for name in named.surface_fields:
                 shapes[name] = s2
+            for name in named.diagnostic_species:
+                shapes[name] = m
+    from woof.core.passive_tracer_contract import active_tracers
+    from woof.core.trajectory_contract import enabled as trajectory_enabled
+    if trajectory_enabled(cfg):
+        shapes["traj_coordinates"] = (5, cfg.num_traj)
+        shapes["traj_status"] = (2,)
+    for name in active_tracers(cfg):
+        shapes[name] = m
+        shapes[name + "0"] = m
     if cfg.bl_pbl_physics == 5 and cfg.bl_mynn_tkeadvect:
         shapes["qke_adv"] = m
         shapes["qke_adv0"] = m
@@ -399,11 +491,14 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
     for name, _ in PBL_ADVECTED_SCALARS.get(cfg.bl_pbl_physics, ()):
         shapes[name] = m
         shapes[name + "0"] = m
-    if cfg.km_opt == 2:
+    if cfg.km_opt in (2, 5):
         # WRF's two-time-level prognostic TKE (Registry.EM_COMMON:312):
         # the SERIALIZED carrier plus its REBUILT time-t copy.
         shapes["tke"] = m
         shapes["tke0"] = m
+    if cfg.km_opt == 5:
+        shapes.update(gamu=s2, gamv=s2, nlflux=(nz + 1, ny, nx),
+                      dlk=m, l_diss=m, elmin=m, xkmv_meso=m)
     if cfg.bl_pbl_physics in (SASE_PBL_SCHEME, 11):
         # The published subgrid energy (state.py allocates it under the
         # same two-scheme condition): SASE's prognostic closure energy,
@@ -411,6 +506,10 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
         # instrument reads state.e_sgs whichever closure produced it.
         shapes["e_sgs"] = m
     shapes.update(chem_state_array_shapes(cfg))
+    from woof.core.physics_inventory import pbl_advected_scalars
+    for name in pbl_advected_scalars(cfg):
+        shapes[name] = m
+        shapes[name + "0"] = m
     return shapes
 
 
@@ -527,3 +626,13 @@ __all__ = [
     "MODELLED_BARE_CONTEXT_BYTES_PER_RESIDENT_THREAD",
     "chem_state_array_shapes", "lbc_interval_values", "state_array_shapes",
 ]
+
+
+def _column_kernel_row(mp_physics):
+    """The registry ``column_kernel`` row for ``mp_physics``, or None."""
+    from woof.physics_registry import consumer_row_for_selector
+    row = consumer_row_for_selector("microphysics", "column_kernel",
+                                    int(mp_physics))
+    return row if isinstance(row, dict) else None
+
+from woof.config import THOMPSON_AEROSOL_FAMILY

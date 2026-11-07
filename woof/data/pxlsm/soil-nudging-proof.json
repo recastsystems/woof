@@ -1,0 +1,2807 @@
+{
+  "schema": "gpuwm.pxlsm.soil-nudging-proof.v1",
+  "date": "2026-11-01",
+  "qualified_selector": {
+    "sf_surface_physics": 7,
+    "sf_sfclay_physics": 7,
+    "bl_pbl_physics": 7,
+    "pxlsm_soil_nudge": 1,
+    "grid_fdda": 1,
+    "grid_sfdda": 1
+  },
+  "licence": "WRF public domain; surface_sources.json records each reviewed file. Existing Noah/PX tables retain individual source licence receipts.",
+  "source_pin": "WRF v4.6.1; complete PX and tables pinned by tools/pxlsm_wrf461_oracle/source-pin.json",
+  "native_replay": {
+    "strict": true,
+    "compared_words": 525600,
+    "differing_words": 0,
+    "excluded_words": 0,
+    "cupy": "14.2.0",
+    "numpy": "2.5.4",
+    "device": "NVIDIA GeForce RTX 5090",
+    "cases": [
+      {
+        "name": "native-step000001",
+        "columns": 4380,
+        "itimestep": 1,
+        "curr_secs": 0.0,
+        "soil_nudge": 1,
+        "smois_init": 1,
+        "input_sha256": "09415a7b26077ba806f6ba0ee3280f8ea8c912b53a2df427a72e0e26fcce1c33",
+        "native_sha256": "50f2309611bc360c128383421f49914e973a9df778c6107044816e77e58a2804",
+        "fields": [
+          {
+            "step": 0,
+            "field": "ra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "919fa21e76a0143f6db379d383a26e85e8f59016ef138d8733cb9223bad68f51",
+            "native_sha256": "919fa21e76a0143f6db379d383a26e85e8f59016ef138d8733cb9223bad68f51",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "rs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "1e1928a1cee24f4fceba580e320c7217ebc005092eb6fd1eb8726f8cc30765a7",
+            "native_sha256": "1e1928a1cee24f4fceba580e320c7217ebc005092eb6fd1eb8726f8cc30765a7",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "znt",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c361bea120adf2a90b4774054476c143fd6da850df38c75c42a301b5937ed098",
+            "native_sha256": "c361bea120adf2a90b4774054476c143fd6da850df38c75c42a301b5937ed098",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qsfc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "8109b1341e4274c524e1d1edc359a3c79ce80daca4fd522e46bc6c90791fc76e",
+            "native_sha256": "8109b1341e4274c524e1d1edc359a3c79ce80daca4fd522e46bc6c90791fc76e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "capg",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "78b6b9d61961a9e9b6f1894b0d73ddfab3f4ac621773a310a1b0c55fc689bdc2",
+            "native_sha256": "78b6b9d61961a9e9b6f1894b0d73ddfab3f4ac621773a310a1b0c55fc689bdc2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canwat",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "183f4497f247153eff5a0957ac9bee1c890a0bd113d2efe66dfe5224df5276f1",
+            "native_sha256": "183f4497f247153eff5a0957ac9bee1c890a0bd113d2efe66dfe5224df5276f1",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "2cd8be0632cc009b03b8873f07d3b1de7d287d57760644668ef5760e2a646710",
+            "native_sha256": "2cd8be0632cc009b03b8873f07d3b1de7d287d57760644668ef5760e2a646710",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "hfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "22cf7805ba161b85317f9f5655d8150e3639afb96d64aea7d132d42823e0ba71",
+            "native_sha256": "22cf7805ba161b85317f9f5655d8150e3639afb96d64aea7d132d42823e0ba71",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "591550ed1d8ccf5c9863dc7b187ed6666615a95639dfd79ecaa23415d7375772",
+            "native_sha256": "591550ed1d8ccf5c9863dc7b187ed6666615a95639dfd79ecaa23415d7375772",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "psih",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cc7a44a9e6ec235ec59a2245492b6e50af324f04af61ad8f1374fd9e2f7baaf7",
+            "native_sha256": "cc7a44a9e6ec235ec59a2245492b6e50af324f04af61ad8f1374fd9e2f7baaf7",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "native_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegf_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e5eceb90c0d070fd6fbd2a5e7188b56f476d50ebe4e03059bfa4012d08bd0b02",
+            "native_sha256": "e5eceb90c0d070fd6fbd2a5e7188b56f476d50ebe4e03059bfa4012d08bd0b02",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snow",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e90fc23eb8c4c0713b89594c55ace9e4bd5a38fb8bef279cc84086a5e50803da",
+            "native_sha256": "e90fc23eb8c4c0713b89594c55ace9e4bd5a38fb8bef279cc84086a5e50803da",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snoalb",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "native_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e9ef6e7984b1bfeb62653553ffd68d40ad4f038f60c922dc07143c525490a60b",
+            "native_sha256": "e9ef6e7984b1bfeb62653553ffd68d40ad4f038f60c922dc07143c525490a60b",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "9a08302b12eeda55ceac413d14412ee8beb5e5cca50aa84f4da9dd36f97ba22c",
+            "native_sha256": "9a08302b12eeda55ceac413d14412ee8beb5e5cca50aa84f4da9dd36f97ba22c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "albedo",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "74620867258f0196eac18e0df1947ee6d3b3433401171cd8cbaeb6d141a0cea3",
+            "native_sha256": "74620867258f0196eac18e0df1947ee6d3b3433401171cd8cbaeb6d141a0cea3",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xland",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "native_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xice",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "native_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "imperv",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "grdflx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e9734e9ebc998a7f3610d26f645620d47186966332e94c7281cb44c5ec73fa45",
+            "native_sha256": "e9734e9ebc998a7f3610d26f645620d47186966332e94c7281cb44c5ec73fa45",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tsk",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "eb9d8e467c2d4dfc0656144a04c39b35caa65921dcd98b066fd5c352bbff4b2d",
+            "native_sha256": "eb9d8e467c2d4dfc0656144a04c39b35caa65921dcd98b066fd5c352bbff4b2d",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "ta2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "f4046a753840aef7f3f20c2d598920395b25006836aeb0eb1957fefd0dea63ee",
+            "native_sha256": "f4046a753840aef7f3f20c2d598920395b25006836aeb0eb1957fefd0dea63ee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qa2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cca66985a5792867c9b359a391017dfda39ae9b4a23e2fa8f4d448628bb6fd5b",
+            "native_sha256": "cca66985a5792867c9b359a391017dfda39ae9b4a23e2fa8f4d448628bb6fd5b",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "t2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "75a27a78b15ed74134c080a21360b6b8d189ba7641d010ca7b3c79ae3eca8366",
+            "native_sha256": "75a27a78b15ed74134c080a21360b6b8d189ba7641d010ca7b3c79ae3eca8366",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "q2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "acc36c22c7b91996d134b3873f65fafbb34e5e7c8dffa641fb8a9b08207bdbdf",
+            "native_sha256": "acc36c22c7b91996d134b3873f65fafbb34e5e7c8dffa641fb8a9b08207bdbdf",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "099f6943a2a3bbd310a019a592027fb1e9a76a0fc54fe5825ec8644deac97969",
+            "native_sha256": "099f6943a2a3bbd310a019a592027fb1e9a76a0fc54fe5825ec8644deac97969",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wwlt_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "native_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wfc_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "native_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wsat_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "native_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "clay_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "native_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "csand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "native_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "fmsand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "native_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "isltyp",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686",
+            "native_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686"
+          },
+          {
+            "step": 0,
+            "field": "smois",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "647e81a2f85d15858b162cdcbabbba09154ba259764390d1fbdfb2cc836cddd8",
+            "native_sha256": "647e81a2f85d15858b162cdcbabbba09154ba259764390d1fbdfb2cc836cddd8",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tslb",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "d3b7977ed9c011c7ebd49f51c6a451beff59b700d13bd98502001d3ff61df79c",
+            "native_sha256": "d3b7977ed9c011c7ebd49f51c6a451beff59b700d13bd98502001d3ff61df79c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          }
+        ]
+      },
+      {
+        "name": "native-step000061",
+        "columns": 4380,
+        "itimestep": 61,
+        "curr_secs": 3600.0,
+        "soil_nudge": 1,
+        "smois_init": 1,
+        "input_sha256": "f2e87eec2b49759483be02d32de8854d9a62223370597e584a223a67e80b521c",
+        "native_sha256": "54c2559450a4ebe611c1fa0a149314fc44e4bbd650cc221ec23c31c03e0ccf61",
+        "fields": [
+          {
+            "step": 0,
+            "field": "ra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "99a60024cf9d162c4f329eae67d38de8c6e11cf17c52f1302fb8c83075feb52a",
+            "native_sha256": "99a60024cf9d162c4f329eae67d38de8c6e11cf17c52f1302fb8c83075feb52a",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "rs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "9f29ba29ac602cca4122990afe3e9784be18cc939674d56f24f500b0a076bb85",
+            "native_sha256": "9f29ba29ac602cca4122990afe3e9784be18cc939674d56f24f500b0a076bb85",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "znt",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "81afe9f331b10be090fd74e0869706505d084bb5bddeec02fa8e7ea0307394e5",
+            "native_sha256": "81afe9f331b10be090fd74e0869706505d084bb5bddeec02fa8e7ea0307394e5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qsfc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "66ddf2c0037ca624a20c1d9cab26d265aa51ba2d97c9d37c083013b0f104fa82",
+            "native_sha256": "66ddf2c0037ca624a20c1d9cab26d265aa51ba2d97c9d37c083013b0f104fa82",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "capg",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "9298fb00e988c75eec8d8097bc7ac60c6eef2e0acd5047101cdbecd8da43f9a9",
+            "native_sha256": "9298fb00e988c75eec8d8097bc7ac60c6eef2e0acd5047101cdbecd8da43f9a9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canwat",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b8317c93d516002cb99be40553ebb0a7335a299ac8ee122abb248df655aae81e",
+            "native_sha256": "b8317c93d516002cb99be40553ebb0a7335a299ac8ee122abb248df655aae81e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "81cea65ee790a2bdcdb1f244a9d44095718d03e448ab92cef962bd0ad3d4d233",
+            "native_sha256": "81cea65ee790a2bdcdb1f244a9d44095718d03e448ab92cef962bd0ad3d4d233",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "hfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "44e126ab74bd1808205646975593a6714d2ac9761d6049d9f7711d8ef3f97e0b",
+            "native_sha256": "44e126ab74bd1808205646975593a6714d2ac9761d6049d9f7711d8ef3f97e0b",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cd6dc60a6a78099deeea9e4df19b35c3b4066ecb244617fc2dfb21b4ca871e07",
+            "native_sha256": "cd6dc60a6a78099deeea9e4df19b35c3b4066ecb244617fc2dfb21b4ca871e07",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "psih",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "62895f0924ac184ebe7510605a07f27580825d7fc4b51d8ccccf91d21e033a78",
+            "native_sha256": "62895f0924ac184ebe7510605a07f27580825d7fc4b51d8ccccf91d21e033a78",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "native_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegf_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "48057464dd2e44f382f661bc0d615d1e1c5f2897fe13616c022491044ac19914",
+            "native_sha256": "48057464dd2e44f382f661bc0d615d1e1c5f2897fe13616c022491044ac19914",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snow",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7d59438395f1549dd06289e5b6276b337c7e70d8e104f17edab8929927527e65",
+            "native_sha256": "7d59438395f1549dd06289e5b6276b337c7e70d8e104f17edab8929927527e65",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snoalb",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "native_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "805d4307ddf3fd47cc02b560b3500bf0397e266f62c8f15ec7aedd6977a8533d",
+            "native_sha256": "805d4307ddf3fd47cc02b560b3500bf0397e266f62c8f15ec7aedd6977a8533d",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "29be1695c8e2e52c46800340182e527ead847440ddc6964a7fbdb78265358724",
+            "native_sha256": "29be1695c8e2e52c46800340182e527ead847440ddc6964a7fbdb78265358724",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "albedo",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "fa926f90a73b3778a5cc8ccd6e9da98748c8fa25e00b110d5815be6f2618f059",
+            "native_sha256": "fa926f90a73b3778a5cc8ccd6e9da98748c8fa25e00b110d5815be6f2618f059",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xland",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "native_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xice",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "native_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "imperv",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "grdflx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "9cfc95718f07015a5d59b037a9ba55365f6f63742dc5bb7a57124da00bc2b0f4",
+            "native_sha256": "9cfc95718f07015a5d59b037a9ba55365f6f63742dc5bb7a57124da00bc2b0f4",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tsk",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "85ef54fa2e2716730174133a8610cef3cdc43a01820f4b961eb7cd7cfdb2a0a9",
+            "native_sha256": "85ef54fa2e2716730174133a8610cef3cdc43a01820f4b961eb7cd7cfdb2a0a9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "ta2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "41532fa21dc8569773748f228f4264a6ec9806ca8ac8a3782a96a2f00702f88c",
+            "native_sha256": "41532fa21dc8569773748f228f4264a6ec9806ca8ac8a3782a96a2f00702f88c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qa2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b7f7ee3dec4b9b73f978180fdeccfeb37fb593e409f35bb3fbae8a10114faaa9",
+            "native_sha256": "b7f7ee3dec4b9b73f978180fdeccfeb37fb593e409f35bb3fbae8a10114faaa9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "t2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "ef006b55025750a0d56301ab00bdf340e0e61a7ac83e19cc78c3f083b9e4a2ce",
+            "native_sha256": "ef006b55025750a0d56301ab00bdf340e0e61a7ac83e19cc78c3f083b9e4a2ce",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "q2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b7fa3939d99dec639d64a76553f4e63d9342bf4b97cf4de20204a93193fdf1d3",
+            "native_sha256": "b7fa3939d99dec639d64a76553f4e63d9342bf4b97cf4de20204a93193fdf1d3",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bc5ca45b7b772e72e2b57872b0afc9fa4818b11b579bdca521a665d76830fe23",
+            "native_sha256": "bc5ca45b7b772e72e2b57872b0afc9fa4818b11b579bdca521a665d76830fe23",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wwlt_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "native_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wfc_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "native_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wsat_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "native_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "clay_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "native_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "csand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "native_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "fmsand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "native_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "isltyp",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686",
+            "native_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686"
+          },
+          {
+            "step": 0,
+            "field": "smois",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "1ecf7ec0fa56ac62b278c2073601fb21a03b8d21be80fcc9d34c14bb863e2010",
+            "native_sha256": "1ecf7ec0fa56ac62b278c2073601fb21a03b8d21be80fcc9d34c14bb863e2010",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tslb",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "42c433ba46f711a1513404265b23f70875914001aebf3cdb852c3e5e404586ac",
+            "native_sha256": "42c433ba46f711a1513404265b23f70875914001aebf3cdb852c3e5e404586ac",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          }
+        ]
+      },
+      {
+        "name": "native-step000121",
+        "columns": 4380,
+        "itimestep": 121,
+        "curr_secs": 7200.0,
+        "soil_nudge": 1,
+        "smois_init": 1,
+        "input_sha256": "9bdb43c39efd3736ff9fbc36c9d267679d822d7c6bf3ee2d4e75ec6e8d1fa4d3",
+        "native_sha256": "54a1efd76373897fa8eec8fe4d7cd7ae92bd721b13fe62149e74bdbe26ba10df",
+        "fields": [
+          {
+            "step": 0,
+            "field": "ra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "2f8a3121788b2a77b746ea2dae4761d29dbf04c8311f5cb8e3a5d72b540a13bb",
+            "native_sha256": "2f8a3121788b2a77b746ea2dae4761d29dbf04c8311f5cb8e3a5d72b540a13bb",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "rs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e1c027ef20a4758f0a22f8f489b7a06428573deaedaf9934bdaa0c3227ad77d7",
+            "native_sha256": "e1c027ef20a4758f0a22f8f489b7a06428573deaedaf9934bdaa0c3227ad77d7",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "znt",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "f3b9d9f061fc6f798d3860c8055e9724f803a070829d689e6dc07697b5bb1084",
+            "native_sha256": "f3b9d9f061fc6f798d3860c8055e9724f803a070829d689e6dc07697b5bb1084",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qsfc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "465d1ede84fe3c8fc5440da754e68137e186c39257ef2319b0b4dc945c2bc877",
+            "native_sha256": "465d1ede84fe3c8fc5440da754e68137e186c39257ef2319b0b4dc945c2bc877",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "capg",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "0d00a8e9f9de8e56f9a424a7cacd033270ad4bb6857c76dbef2cacb4e670f06f",
+            "native_sha256": "0d00a8e9f9de8e56f9a424a7cacd033270ad4bb6857c76dbef2cacb4e670f06f",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canwat",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e863583604de6d17f0580ae2fbdeb93448a213fc17c9ef753352f06c6153c333",
+            "native_sha256": "e863583604de6d17f0580ae2fbdeb93448a213fc17c9ef753352f06c6153c333",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "5845b64bd3ca8dcf9b7a248f8d1f0e774386f0b3e112d884532a50d780b261f7",
+            "native_sha256": "5845b64bd3ca8dcf9b7a248f8d1f0e774386f0b3e112d884532a50d780b261f7",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "hfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cfdf30e324424dce07ae6f9b57eaee1ca30933a6bf6848ba1b3a1ccccc3c10ab",
+            "native_sha256": "cfdf30e324424dce07ae6f9b57eaee1ca30933a6bf6848ba1b3a1ccccc3c10ab",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "1b0e8957439e39361a406df9cca62538054f4452ef7b3212a7f35ae381347857",
+            "native_sha256": "1b0e8957439e39361a406df9cca62538054f4452ef7b3212a7f35ae381347857",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "psih",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "452721d5cf5d575954b34f2497c20ee1720ad732a6cef9d4cab648035bda8fb9",
+            "native_sha256": "452721d5cf5d575954b34f2497c20ee1720ad732a6cef9d4cab648035bda8fb9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "native_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegf_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c66fbf021b7e53f876a24bac9d8500eccefe8802333d6569e2debf1510281ac5",
+            "native_sha256": "c66fbf021b7e53f876a24bac9d8500eccefe8802333d6569e2debf1510281ac5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snow",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "96f6de4bf88b727e1159a5c012e1e77e82fd73cf412d19d03b25c3c1ac9be1eb",
+            "native_sha256": "96f6de4bf88b727e1159a5c012e1e77e82fd73cf412d19d03b25c3c1ac9be1eb",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snoalb",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "native_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bea93d9caa13b9e2dd648321e569e3fd4794d0f28944d6d09c8c926704743b3d",
+            "native_sha256": "bea93d9caa13b9e2dd648321e569e3fd4794d0f28944d6d09c8c926704743b3d",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b45f4229cfeb0540309de3dd0d29219292f6c6451e9ff85e767dce4f76bb4eea",
+            "native_sha256": "b45f4229cfeb0540309de3dd0d29219292f6c6451e9ff85e767dce4f76bb4eea",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "albedo",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "f672620528acd305bc1889ae4bd01cd6699bcb36ff262322bcc109537993bcbc",
+            "native_sha256": "f672620528acd305bc1889ae4bd01cd6699bcb36ff262322bcc109537993bcbc",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xland",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "native_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xice",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "native_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "imperv",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "grdflx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "47258cd2c97d00dc23033966e7cdaecf48a57264f19433011bf4d5a107aeefee",
+            "native_sha256": "47258cd2c97d00dc23033966e7cdaecf48a57264f19433011bf4d5a107aeefee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tsk",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cb37825d7eafc6413388046bfd61302a3d9679d33a9ec8e382ba0476bea516f4",
+            "native_sha256": "cb37825d7eafc6413388046bfd61302a3d9679d33a9ec8e382ba0476bea516f4",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "ta2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "a941d76a8fea656555a0382605f7ee306ed45ec34a06551898172f30e5d85292",
+            "native_sha256": "a941d76a8fea656555a0382605f7ee306ed45ec34a06551898172f30e5d85292",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qa2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7083d455e026ab26104e4f8f25559bf40759c6c096f91347637161a42a485ee9",
+            "native_sha256": "7083d455e026ab26104e4f8f25559bf40759c6c096f91347637161a42a485ee9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "t2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "59eb28ef1aecd60d4d9ed8ba1c413fc85ae7fae97063593bd1480fc2b06c0f96",
+            "native_sha256": "59eb28ef1aecd60d4d9ed8ba1c413fc85ae7fae97063593bd1480fc2b06c0f96",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "q2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "6c0ee3d0438e53ca466e146bf99e3da624db5f4e0efb3bd9e2dcce240b6195b1",
+            "native_sha256": "6c0ee3d0438e53ca466e146bf99e3da624db5f4e0efb3bd9e2dcce240b6195b1",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "d48a409963d7c1a6e7df8ad39c2ab4f0b06266c8d65dbb70cc35b76a92bb9ad2",
+            "native_sha256": "d48a409963d7c1a6e7df8ad39c2ab4f0b06266c8d65dbb70cc35b76a92bb9ad2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wwlt_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "native_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wfc_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "native_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wsat_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "native_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "clay_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "native_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "csand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "native_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "fmsand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "native_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "isltyp",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686",
+            "native_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686"
+          },
+          {
+            "step": 0,
+            "field": "smois",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "a241fba19cfa7786d8e764276f76713c68e0087b6ff333ce20d99792e32646b0",
+            "native_sha256": "a241fba19cfa7786d8e764276f76713c68e0087b6ff333ce20d99792e32646b0",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tslb",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "a404ac7a6a2ec2e09e3cef4136d1c174ce6d00870ee54bceeca5633df51c7365",
+            "native_sha256": "a404ac7a6a2ec2e09e3cef4136d1c174ce6d00870ee54bceeca5633df51c7365",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          }
+        ]
+      }
+    ],
+    "kernel_manifest": {
+      "gpuwm.core.kernels:pxlsm": {
+        "source_sha256": "3e50f184b3593e66dd8e1ce2988ee146a2b55c01f471a601526f4129f4cfacdc",
+        "options": [
+          "-std=c++17",
+          "--fmad=false",
+          "--ftz=false",
+          "--prec-div=true",
+          "--prec-sqrt=true",
+          "-DGPUWM_WRF_EXACT=1",
+          "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+          "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+          "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+          "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+        ],
+        "compiled_image": {
+          "status": "unavailable",
+          "reason": "the installed CuPy exposes no PTX or cubin on RawModule"
+        }
+      }
+    }
+  },
+  "live_input_and_clock_replay": {
+    "strict": true,
+    "compared_words": 525600,
+    "differing_words": 0,
+    "excluded_words": 0,
+    "cupy": "14.2.0",
+    "numpy": "2.5.4",
+    "device": "NVIDIA GeForce RTX 5090",
+    "cases": [
+      {
+        "name": "native-step000001",
+        "columns": 4380,
+        "itimestep": 1,
+        "curr_secs": 0.0,
+        "soil_nudge": 1,
+        "smois_init": 1,
+        "input_sha256": "09415a7b26077ba806f6ba0ee3280f8ea8c912b53a2df427a72e0e26fcce1c33",
+        "native_sha256": "50f2309611bc360c128383421f49914e973a9df778c6107044816e77e58a2804",
+        "fields": [
+          {
+            "step": 0,
+            "field": "ra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "919fa21e76a0143f6db379d383a26e85e8f59016ef138d8733cb9223bad68f51",
+            "native_sha256": "919fa21e76a0143f6db379d383a26e85e8f59016ef138d8733cb9223bad68f51",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "rs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "1e1928a1cee24f4fceba580e320c7217ebc005092eb6fd1eb8726f8cc30765a7",
+            "native_sha256": "1e1928a1cee24f4fceba580e320c7217ebc005092eb6fd1eb8726f8cc30765a7",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "znt",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c361bea120adf2a90b4774054476c143fd6da850df38c75c42a301b5937ed098",
+            "native_sha256": "c361bea120adf2a90b4774054476c143fd6da850df38c75c42a301b5937ed098",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qsfc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "8109b1341e4274c524e1d1edc359a3c79ce80daca4fd522e46bc6c90791fc76e",
+            "native_sha256": "8109b1341e4274c524e1d1edc359a3c79ce80daca4fd522e46bc6c90791fc76e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "capg",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "78b6b9d61961a9e9b6f1894b0d73ddfab3f4ac621773a310a1b0c55fc689bdc2",
+            "native_sha256": "78b6b9d61961a9e9b6f1894b0d73ddfab3f4ac621773a310a1b0c55fc689bdc2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canwat",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "183f4497f247153eff5a0957ac9bee1c890a0bd113d2efe66dfe5224df5276f1",
+            "native_sha256": "183f4497f247153eff5a0957ac9bee1c890a0bd113d2efe66dfe5224df5276f1",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "2cd8be0632cc009b03b8873f07d3b1de7d287d57760644668ef5760e2a646710",
+            "native_sha256": "2cd8be0632cc009b03b8873f07d3b1de7d287d57760644668ef5760e2a646710",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "hfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "22cf7805ba161b85317f9f5655d8150e3639afb96d64aea7d132d42823e0ba71",
+            "native_sha256": "22cf7805ba161b85317f9f5655d8150e3639afb96d64aea7d132d42823e0ba71",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "591550ed1d8ccf5c9863dc7b187ed6666615a95639dfd79ecaa23415d7375772",
+            "native_sha256": "591550ed1d8ccf5c9863dc7b187ed6666615a95639dfd79ecaa23415d7375772",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "psih",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cc7a44a9e6ec235ec59a2245492b6e50af324f04af61ad8f1374fd9e2f7baaf7",
+            "native_sha256": "cc7a44a9e6ec235ec59a2245492b6e50af324f04af61ad8f1374fd9e2f7baaf7",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "native_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegf_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e5eceb90c0d070fd6fbd2a5e7188b56f476d50ebe4e03059bfa4012d08bd0b02",
+            "native_sha256": "e5eceb90c0d070fd6fbd2a5e7188b56f476d50ebe4e03059bfa4012d08bd0b02",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snow",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e90fc23eb8c4c0713b89594c55ace9e4bd5a38fb8bef279cc84086a5e50803da",
+            "native_sha256": "e90fc23eb8c4c0713b89594c55ace9e4bd5a38fb8bef279cc84086a5e50803da",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snoalb",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "native_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e9ef6e7984b1bfeb62653553ffd68d40ad4f038f60c922dc07143c525490a60b",
+            "native_sha256": "e9ef6e7984b1bfeb62653553ffd68d40ad4f038f60c922dc07143c525490a60b",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "9a08302b12eeda55ceac413d14412ee8beb5e5cca50aa84f4da9dd36f97ba22c",
+            "native_sha256": "9a08302b12eeda55ceac413d14412ee8beb5e5cca50aa84f4da9dd36f97ba22c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "albedo",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "74620867258f0196eac18e0df1947ee6d3b3433401171cd8cbaeb6d141a0cea3",
+            "native_sha256": "74620867258f0196eac18e0df1947ee6d3b3433401171cd8cbaeb6d141a0cea3",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xland",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "native_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xice",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "native_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "imperv",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "grdflx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e9734e9ebc998a7f3610d26f645620d47186966332e94c7281cb44c5ec73fa45",
+            "native_sha256": "e9734e9ebc998a7f3610d26f645620d47186966332e94c7281cb44c5ec73fa45",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tsk",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "eb9d8e467c2d4dfc0656144a04c39b35caa65921dcd98b066fd5c352bbff4b2d",
+            "native_sha256": "eb9d8e467c2d4dfc0656144a04c39b35caa65921dcd98b066fd5c352bbff4b2d",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "ta2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "f4046a753840aef7f3f20c2d598920395b25006836aeb0eb1957fefd0dea63ee",
+            "native_sha256": "f4046a753840aef7f3f20c2d598920395b25006836aeb0eb1957fefd0dea63ee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qa2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cca66985a5792867c9b359a391017dfda39ae9b4a23e2fa8f4d448628bb6fd5b",
+            "native_sha256": "cca66985a5792867c9b359a391017dfda39ae9b4a23e2fa8f4d448628bb6fd5b",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "t2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "75a27a78b15ed74134c080a21360b6b8d189ba7641d010ca7b3c79ae3eca8366",
+            "native_sha256": "75a27a78b15ed74134c080a21360b6b8d189ba7641d010ca7b3c79ae3eca8366",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "q2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "acc36c22c7b91996d134b3873f65fafbb34e5e7c8dffa641fb8a9b08207bdbdf",
+            "native_sha256": "acc36c22c7b91996d134b3873f65fafbb34e5e7c8dffa641fb8a9b08207bdbdf",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "099f6943a2a3bbd310a019a592027fb1e9a76a0fc54fe5825ec8644deac97969",
+            "native_sha256": "099f6943a2a3bbd310a019a592027fb1e9a76a0fc54fe5825ec8644deac97969",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wwlt_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "native_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wfc_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "native_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wsat_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "native_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "clay_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "native_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "csand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "native_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "fmsand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "native_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "isltyp",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686",
+            "native_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686"
+          },
+          {
+            "step": 0,
+            "field": "smois",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "647e81a2f85d15858b162cdcbabbba09154ba259764390d1fbdfb2cc836cddd8",
+            "native_sha256": "647e81a2f85d15858b162cdcbabbba09154ba259764390d1fbdfb2cc836cddd8",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tslb",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "d3b7977ed9c011c7ebd49f51c6a451beff59b700d13bd98502001d3ff61df79c",
+            "native_sha256": "d3b7977ed9c011c7ebd49f51c6a451beff59b700d13bd98502001d3ff61df79c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          }
+        ],
+        "analysis_input_words": 26280,
+        "analysis_input_differing_words": 0
+      },
+      {
+        "name": "native-step000061",
+        "columns": 4380,
+        "itimestep": 61,
+        "curr_secs": 3600.0,
+        "soil_nudge": 1,
+        "smois_init": 1,
+        "input_sha256": "f2e87eec2b49759483be02d32de8854d9a62223370597e584a223a67e80b521c",
+        "native_sha256": "54c2559450a4ebe611c1fa0a149314fc44e4bbd650cc221ec23c31c03e0ccf61",
+        "fields": [
+          {
+            "step": 0,
+            "field": "ra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "99a60024cf9d162c4f329eae67d38de8c6e11cf17c52f1302fb8c83075feb52a",
+            "native_sha256": "99a60024cf9d162c4f329eae67d38de8c6e11cf17c52f1302fb8c83075feb52a",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "rs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "9f29ba29ac602cca4122990afe3e9784be18cc939674d56f24f500b0a076bb85",
+            "native_sha256": "9f29ba29ac602cca4122990afe3e9784be18cc939674d56f24f500b0a076bb85",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "znt",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "81afe9f331b10be090fd74e0869706505d084bb5bddeec02fa8e7ea0307394e5",
+            "native_sha256": "81afe9f331b10be090fd74e0869706505d084bb5bddeec02fa8e7ea0307394e5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qsfc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "66ddf2c0037ca624a20c1d9cab26d265aa51ba2d97c9d37c083013b0f104fa82",
+            "native_sha256": "66ddf2c0037ca624a20c1d9cab26d265aa51ba2d97c9d37c083013b0f104fa82",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "capg",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "9298fb00e988c75eec8d8097bc7ac60c6eef2e0acd5047101cdbecd8da43f9a9",
+            "native_sha256": "9298fb00e988c75eec8d8097bc7ac60c6eef2e0acd5047101cdbecd8da43f9a9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canwat",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b8317c93d516002cb99be40553ebb0a7335a299ac8ee122abb248df655aae81e",
+            "native_sha256": "b8317c93d516002cb99be40553ebb0a7335a299ac8ee122abb248df655aae81e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "81cea65ee790a2bdcdb1f244a9d44095718d03e448ab92cef962bd0ad3d4d233",
+            "native_sha256": "81cea65ee790a2bdcdb1f244a9d44095718d03e448ab92cef962bd0ad3d4d233",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "hfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "44e126ab74bd1808205646975593a6714d2ac9761d6049d9f7711d8ef3f97e0b",
+            "native_sha256": "44e126ab74bd1808205646975593a6714d2ac9761d6049d9f7711d8ef3f97e0b",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cd6dc60a6a78099deeea9e4df19b35c3b4066ecb244617fc2dfb21b4ca871e07",
+            "native_sha256": "cd6dc60a6a78099deeea9e4df19b35c3b4066ecb244617fc2dfb21b4ca871e07",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "psih",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "62895f0924ac184ebe7510605a07f27580825d7fc4b51d8ccccf91d21e033a78",
+            "native_sha256": "62895f0924ac184ebe7510605a07f27580825d7fc4b51d8ccccf91d21e033a78",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "native_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegf_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "48057464dd2e44f382f661bc0d615d1e1c5f2897fe13616c022491044ac19914",
+            "native_sha256": "48057464dd2e44f382f661bc0d615d1e1c5f2897fe13616c022491044ac19914",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snow",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7d59438395f1549dd06289e5b6276b337c7e70d8e104f17edab8929927527e65",
+            "native_sha256": "7d59438395f1549dd06289e5b6276b337c7e70d8e104f17edab8929927527e65",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snoalb",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "native_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "805d4307ddf3fd47cc02b560b3500bf0397e266f62c8f15ec7aedd6977a8533d",
+            "native_sha256": "805d4307ddf3fd47cc02b560b3500bf0397e266f62c8f15ec7aedd6977a8533d",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "29be1695c8e2e52c46800340182e527ead847440ddc6964a7fbdb78265358724",
+            "native_sha256": "29be1695c8e2e52c46800340182e527ead847440ddc6964a7fbdb78265358724",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "albedo",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "fa926f90a73b3778a5cc8ccd6e9da98748c8fa25e00b110d5815be6f2618f059",
+            "native_sha256": "fa926f90a73b3778a5cc8ccd6e9da98748c8fa25e00b110d5815be6f2618f059",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xland",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "native_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xice",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "native_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "imperv",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "grdflx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "9cfc95718f07015a5d59b037a9ba55365f6f63742dc5bb7a57124da00bc2b0f4",
+            "native_sha256": "9cfc95718f07015a5d59b037a9ba55365f6f63742dc5bb7a57124da00bc2b0f4",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tsk",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "85ef54fa2e2716730174133a8610cef3cdc43a01820f4b961eb7cd7cfdb2a0a9",
+            "native_sha256": "85ef54fa2e2716730174133a8610cef3cdc43a01820f4b961eb7cd7cfdb2a0a9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "ta2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "41532fa21dc8569773748f228f4264a6ec9806ca8ac8a3782a96a2f00702f88c",
+            "native_sha256": "41532fa21dc8569773748f228f4264a6ec9806ca8ac8a3782a96a2f00702f88c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qa2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b7f7ee3dec4b9b73f978180fdeccfeb37fb593e409f35bb3fbae8a10114faaa9",
+            "native_sha256": "b7f7ee3dec4b9b73f978180fdeccfeb37fb593e409f35bb3fbae8a10114faaa9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "t2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "ef006b55025750a0d56301ab00bdf340e0e61a7ac83e19cc78c3f083b9e4a2ce",
+            "native_sha256": "ef006b55025750a0d56301ab00bdf340e0e61a7ac83e19cc78c3f083b9e4a2ce",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "q2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b7fa3939d99dec639d64a76553f4e63d9342bf4b97cf4de20204a93193fdf1d3",
+            "native_sha256": "b7fa3939d99dec639d64a76553f4e63d9342bf4b97cf4de20204a93193fdf1d3",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bc5ca45b7b772e72e2b57872b0afc9fa4818b11b579bdca521a665d76830fe23",
+            "native_sha256": "bc5ca45b7b772e72e2b57872b0afc9fa4818b11b579bdca521a665d76830fe23",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wwlt_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "native_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wfc_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "native_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wsat_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "native_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "clay_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "native_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "csand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "native_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "fmsand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "native_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "isltyp",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686",
+            "native_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686"
+          },
+          {
+            "step": 0,
+            "field": "smois",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "1ecf7ec0fa56ac62b278c2073601fb21a03b8d21be80fcc9d34c14bb863e2010",
+            "native_sha256": "1ecf7ec0fa56ac62b278c2073601fb21a03b8d21be80fcc9d34c14bb863e2010",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tslb",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "42c433ba46f711a1513404265b23f70875914001aebf3cdb852c3e5e404586ac",
+            "native_sha256": "42c433ba46f711a1513404265b23f70875914001aebf3cdb852c3e5e404586ac",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          }
+        ],
+        "analysis_input_words": 26280,
+        "analysis_input_differing_words": 0
+      },
+      {
+        "name": "native-step000121",
+        "columns": 4380,
+        "itimestep": 121,
+        "curr_secs": 7200.0,
+        "soil_nudge": 1,
+        "smois_init": 1,
+        "input_sha256": "9bdb43c39efd3736ff9fbc36c9d267679d822d7c6bf3ee2d4e75ec6e8d1fa4d3",
+        "native_sha256": "54a1efd76373897fa8eec8fe4d7cd7ae92bd721b13fe62149e74bdbe26ba10df",
+        "fields": [
+          {
+            "step": 0,
+            "field": "ra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "2f8a3121788b2a77b746ea2dae4761d29dbf04c8311f5cb8e3a5d72b540a13bb",
+            "native_sha256": "2f8a3121788b2a77b746ea2dae4761d29dbf04c8311f5cb8e3a5d72b540a13bb",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "rs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e1c027ef20a4758f0a22f8f489b7a06428573deaedaf9934bdaa0c3227ad77d7",
+            "native_sha256": "e1c027ef20a4758f0a22f8f489b7a06428573deaedaf9934bdaa0c3227ad77d7",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "znt",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "f3b9d9f061fc6f798d3860c8055e9724f803a070829d689e6dc07697b5bb1084",
+            "native_sha256": "f3b9d9f061fc6f798d3860c8055e9724f803a070829d689e6dc07697b5bb1084",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qsfc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "465d1ede84fe3c8fc5440da754e68137e186c39257ef2319b0b4dc945c2bc877",
+            "native_sha256": "465d1ede84fe3c8fc5440da754e68137e186c39257ef2319b0b4dc945c2bc877",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "capg",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "0d00a8e9f9de8e56f9a424a7cacd033270ad4bb6857c76dbef2cacb4e670f06f",
+            "native_sha256": "0d00a8e9f9de8e56f9a424a7cacd033270ad4bb6857c76dbef2cacb4e670f06f",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canwat",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e863583604de6d17f0580ae2fbdeb93448a213fc17c9ef753352f06c6153c333",
+            "native_sha256": "e863583604de6d17f0580ae2fbdeb93448a213fc17c9ef753352f06c6153c333",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "5845b64bd3ca8dcf9b7a248f8d1f0e774386f0b3e112d884532a50d780b261f7",
+            "native_sha256": "5845b64bd3ca8dcf9b7a248f8d1f0e774386f0b3e112d884532a50d780b261f7",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "hfx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cfdf30e324424dce07ae6f9b57eaee1ca30933a6bf6848ba1b3a1ccccc3c10ab",
+            "native_sha256": "cfdf30e324424dce07ae6f9b57eaee1ca30933a6bf6848ba1b3a1ccccc3c10ab",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "1b0e8957439e39361a406df9cca62538054f4452ef7b3212a7f35ae381347857",
+            "native_sha256": "1b0e8957439e39361a406df9cca62538054f4452ef7b3212a7f35ae381347857",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "psih",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "452721d5cf5d575954b34f2497c20ee1720ad732a6cef9d4cab648035bda8fb9",
+            "native_sha256": "452721d5cf5d575954b34f2497c20ee1720ad732a6cef9d4cab648035bda8fb9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "native_sha256": "abc65b8624fe0890ee5fdbe48d09ca60926ffc5d1db16d11ad80d0dcb7957f88",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "vegf_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c66fbf021b7e53f876a24bac9d8500eccefe8802333d6569e2debf1510281ac5",
+            "native_sha256": "c66fbf021b7e53f876a24bac9d8500eccefe8802333d6569e2debf1510281ac5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snow",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "96f6de4bf88b727e1159a5c012e1e77e82fd73cf412d19d03b25c3c1ac9be1eb",
+            "native_sha256": "96f6de4bf88b727e1159a5c012e1e77e82fd73cf412d19d03b25c3c1ac9be1eb",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snoalb",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "native_sha256": "061d11f392ee87d16b83f764cee39c70a87471b3b22b3dda7dd7455bbf4dca1c",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowh",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bea93d9caa13b9e2dd648321e569e3fd4794d0f28944d6d09c8c926704743b3d",
+            "native_sha256": "bea93d9caa13b9e2dd648321e569e3fd4794d0f28944d6d09c8c926704743b3d",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "snowc",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b45f4229cfeb0540309de3dd0d29219292f6c6451e9ff85e767dce4f76bb4eea",
+            "native_sha256": "b45f4229cfeb0540309de3dd0d29219292f6c6451e9ff85e767dce4f76bb4eea",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "albedo",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "f672620528acd305bc1889ae4bd01cd6699bcb36ff262322bcc109537993bcbc",
+            "native_sha256": "f672620528acd305bc1889ae4bd01cd6699bcb36ff262322bcc109537993bcbc",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xland",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "native_sha256": "b2122f9a723f5b5c6bdfac866bd6b7956ff26218d3b7fa697b604d14d10ad1a5",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "xice",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "native_sha256": "bb61e72823d6a856bd240519a76ac16712c6896eaf3c1d5c6b4c2f4793e3a817",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "imperv",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "canfra",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "native_sha256": "76c68c3e1ff1bcc8f7445321381c3f4a766233d5dc35ce6d56e5af59b1118458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "grdflx",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "47258cd2c97d00dc23033966e7cdaecf48a57264f19433011bf4d5a107aeefee",
+            "native_sha256": "47258cd2c97d00dc23033966e7cdaecf48a57264f19433011bf4d5a107aeefee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tsk",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "cb37825d7eafc6413388046bfd61302a3d9679d33a9ec8e382ba0476bea516f4",
+            "native_sha256": "cb37825d7eafc6413388046bfd61302a3d9679d33a9ec8e382ba0476bea516f4",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "ta2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "a941d76a8fea656555a0382605f7ee306ed45ec34a06551898172f30e5d85292",
+            "native_sha256": "a941d76a8fea656555a0382605f7ee306ed45ec34a06551898172f30e5d85292",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "qa2",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7083d455e026ab26104e4f8f25559bf40759c6c096f91347637161a42a485ee9",
+            "native_sha256": "7083d455e026ab26104e4f8f25559bf40759c6c096f91347637161a42a485ee9",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "t2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "59eb28ef1aecd60d4d9ed8ba1c413fc85ae7fae97063593bd1480fc2b06c0f96",
+            "native_sha256": "59eb28ef1aecd60d4d9ed8ba1c413fc85ae7fae97063593bd1480fc2b06c0f96",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "q2obs",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "6c0ee3d0438e53ca466e146bf99e3da624db5f4e0efb3bd9e2dcce240b6195b1",
+            "native_sha256": "6c0ee3d0438e53ca466e146bf99e3da624db5f4e0efb3bd9e2dcce240b6195b1",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "lai_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "d48a409963d7c1a6e7df8ad39c2ab4f0b06266c8d65dbb70cc35b76a92bb9ad2",
+            "native_sha256": "d48a409963d7c1a6e7df8ad39c2ab4f0b06266c8d65dbb70cc35b76a92bb9ad2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wwlt_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "native_sha256": "05cb7338fb3dd20813610acb12034bba49e6ca818fba4fc02a1c4187e25190ee",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wfc_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "native_sha256": "0cbf03e45c4621df6fa5a0a0b553dad8e4a009f0b08c40ca1e2990ae1dc53e6e",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "wsat_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "native_sha256": "7f44c62bd52b9e03248df97fc9e1dd55af997773df1f85a30944067e30b3bb10",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "clay_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "native_sha256": "94640a0a53b34fec63e42705294aba76ef556f531e905b944d1b6169b1e71458",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "csand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "native_sha256": "c89baf0ab90b131f994f4cbb8971070e26a6e30e53def53b5faab78e0c4f77c2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "fmsand_px",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "native_sha256": "e8e500c49d9727c069800807f4cd21231d63cfc53b48f6c0e8ce8a674d2c99b2",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "isltyp",
+            "words": 4380,
+            "differing_words": 0,
+            "gpu_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686",
+            "native_sha256": "7087d0ecaa8c68e31d3b7cf8e79eabc152fd5e09f7a3f445a477ab1b8129d686"
+          },
+          {
+            "step": 0,
+            "field": "smois",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "a241fba19cfa7786d8e764276f76713c68e0087b6ff333ce20d99792e32646b0",
+            "native_sha256": "a241fba19cfa7786d8e764276f76713c68e0087b6ff333ce20d99792e32646b0",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          },
+          {
+            "step": 0,
+            "field": "tslb",
+            "words": 8760,
+            "differing_words": 0,
+            "gpu_sha256": "a404ac7a6a2ec2e09e3cef4136d1c174ce6d00870ee54bceeca5633df51c7365",
+            "native_sha256": "a404ac7a6a2ec2e09e3cef4136d1c174ce6d00870ee54bceeca5633df51c7365",
+            "max_ulp": 0,
+            "native_nonfinite_words": 0
+          }
+        ],
+        "analysis_input_words": 26280,
+        "analysis_input_differing_words": 0
+      }
+    ],
+    "kernel_manifest": {
+      "gpuwm.core.kernels:pxlsm": {
+        "source_sha256": "3e50f184b3593e66dd8e1ce2988ee146a2b55c01f471a601526f4129f4cfacdc",
+        "options": [
+          "-std=c++17",
+          "--fmad=false",
+          "--ftz=false",
+          "--prec-div=true",
+          "--prec-sqrt=true",
+          "-DGPUWM_WRF_EXACT=1",
+          "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+          "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+          "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+          "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+        ],
+        "compiled_image": {
+          "status": "unavailable",
+          "reason": "the installed CuPy exposes no PTX or cubin on RawModule"
+        }
+      },
+      "gpuwm.spectral_nudging.px_inputs": {
+        "source_sha256": "5d2ca5facc327364a153d36ec096a727774b5120ff16f660da694ce1c044b73f",
+        "options": [
+          "--std=c++17",
+          "--fmad=false",
+          "--ftz=false",
+          "--prec-div=true",
+          "--prec-sqrt=true",
+          "-DGPUWM_WRF_EXACT=1",
+          "-DGPUWM_WRF_EXACT_D_DIAGNOSTICS=1",
+          "-DGPUWM_WRF_EXACT_C_ADVECTION=1",
+          "-DGPUWM_WRF_EXACT_C_DIFFUSION=1",
+          "-DGPUWM_WRF_EXACT_C_BIGSTEP=1"
+        ],
+        "compiled_image": {
+          "status": "unavailable",
+          "reason": "the installed CuPy exposes no PTX or cubin on RawModule"
+        }
+      }
+    }
+  },
+  "endpoint_words": 78840,
+  "endpoint_differing_words": 0,
+  "timing": {
+    "schema": "px-analysis-stage-v1",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "columns": 4380,
+    "numerics": "fast",
+    "scope": "complete PX column; enabled arm includes device record selection, six endpoint copies and device clock",
+    "px_without_soil_nudging_ms": 0.06319999694824219,
+    "px_with_soil_nudging_ms": 0.06729599833488464,
+    "ratio": 1.0648101516523314,
+    "samples": {
+      "0": [
+        0.0631679967045784,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.06323199719190598,
+        0.06323199719190598,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.0631679967045784,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.0631679967045784,
+        0.06319999694824219,
+        0.061184000223875046,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.0631679967045784,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.06319999694824219,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06521599739789963,
+        0.06323199719190598,
+        0.06319999694824219,
+        0.061184000223875046,
+        0.06319999694824219
+      ],
+      "1": [
+        0.06732799857854843,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06732799857854843,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06524799764156342,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.07344000041484833,
+        0.07142399996519089,
+        0.0713919997215271,
+        0.06931199878454208,
+        0.06729599833488464,
+        0.06729599833488464,
+        0.06729599833488464
+      ]
+    }
+  },
+  "forecast": {
+    "start": "2000-01-24T12:00:00Z",
+    "hours": 3,
+    "steps": 180,
+    "shape": [
+      47,
+      60,
+      73
+    ],
+    "dx_m": 30000,
+    "dt_s": 60,
+    "gpu_wall_s": 5.8,
+    "gpu_log": "gpu-px-go-final.log",
+    "native_log": "px-native-fixed-rsl.log",
+    "native_version": "4.6.1",
+    "map_sheet": "figures/paired-px/d01-30km/compare_panels_{2m_temperature,2m_dewpoint,10m_wind_speed}/2000-01-24/px-soil-nudging-native-asos.png"
+  },
+  "forcing": "Real atmosphere initializations and boundary data; native OLD endpoints derived from initialization, NEW winds +0.5 m/s, temperature +1 K, Q2*0.95 and distance 20 km. This is constructed analysis forcing, not an independent observational analysis.",
+  "observations": {
+    "0": [
+      {
+        "arms": [
+          {
+            "bias": -0.676721540445408,
+            "count": 383,
+            "label": "Native WRF",
+            "rmse": 2.2436292808172342
+          },
+          {
+            "bias": -0.676721540445408,
+            "count": 383,
+            "label": "GPU PX soil nudging",
+            "rmse": 2.2436292808172342
+          }
+        ],
+        "quantity": "temperature_2m",
+        "status": "ready",
+        "units": "K",
+        "winner": null
+      },
+      {
+        "arms": [
+          {
+            "bias": 0.3507927889158204,
+            "count": 377,
+            "label": "Native WRF",
+            "rmse": 2.1239675072797852
+          },
+          {
+            "bias": 0.3507927889158204,
+            "count": 377,
+            "label": "GPU PX soil nudging",
+            "rmse": 2.1239675072797852
+          }
+        ],
+        "quantity": "dewpoint_2m",
+        "status": "ready",
+        "units": "K",
+        "winner": null
+      },
+      {
+        "arms": [
+          {
+            "bias": 1.8579179941227328,
+            "count": 382,
+            "label": "Native WRF",
+            "rmse": 2.624421786150202
+          },
+          {
+            "bias": 1.8579179941227328,
+            "count": 382,
+            "label": "GPU PX soil nudging",
+            "rmse": 2.624421786150202
+          }
+        ],
+        "quantity": "wind_speed_10m",
+        "status": "ready",
+        "units": "m s-1",
+        "winner": null
+      }
+    ],
+    "1": [
+      {
+        "arms": [
+          {
+            "bias": -0.8922505859586232,
+            "count": 383,
+            "label": "Native WRF",
+            "rmse": 2.214390497538563
+          },
+          {
+            "bias": -0.8970896546717736,
+            "count": 383,
+            "label": "GPU PX soil nudging",
+            "rmse": 2.215624791986826
+          }
+        ],
+        "quantity": "temperature_2m",
+        "status": "ready",
+        "units": "K",
+        "winner": "Native WRF"
+      },
+      {
+        "arms": [
+          {
+            "bias": -0.39655918496506215,
+            "count": 378,
+            "label": "Native WRF",
+            "rmse": 2.0642053772330557
+          },
+          {
+            "bias": -0.39791349916846164,
+            "count": 378,
+            "label": "GPU PX soil nudging",
+            "rmse": 2.0654771544685397
+          }
+        ],
+        "quantity": "dewpoint_2m",
+        "status": "ready",
+        "units": "K",
+        "winner": "Native WRF"
+      },
+      {
+        "arms": [
+          {
+            "bias": 0.11440698255013207,
+            "count": 382,
+            "label": "Native WRF",
+            "rmse": 1.7017517141591696
+          },
+          {
+            "bias": 0.11509576884750121,
+            "count": 382,
+            "label": "GPU PX soil nudging",
+            "rmse": 1.702602020834406
+          }
+        ],
+        "quantity": "wind_speed_10m",
+        "status": "ready",
+        "units": "m s-1",
+        "winner": "Native WRF"
+      }
+    ],
+    "2": [
+      {
+        "arms": [
+          {
+            "bias": -0.5497935804825432,
+            "count": 383,
+            "label": "Native WRF",
+            "rmse": 1.8425721781595064
+          },
+          {
+            "bias": -0.5610191327208296,
+            "count": 383,
+            "label": "GPU PX soil nudging",
+            "rmse": 1.84638321648695
+          }
+        ],
+        "quantity": "temperature_2m",
+        "status": "ready",
+        "units": "K",
+        "winner": "Native WRF"
+      },
+      {
+        "arms": [
+          {
+            "bias": -0.25803656105048606,
+            "count": 378,
+            "label": "Native WRF",
+            "rmse": 1.982425865783334
+          },
+          {
+            "bias": -0.2634293813308907,
+            "count": 378,
+            "label": "GPU PX soil nudging",
+            "rmse": 1.9857498581478517
+          }
+        ],
+        "quantity": "dewpoint_2m",
+        "status": "ready",
+        "units": "K",
+        "winner": "Native WRF"
+      },
+      {
+        "arms": [
+          {
+            "bias": 0.4156644347331307,
+            "count": 381,
+            "label": "Native WRF",
+            "rmse": 1.6686779463192845
+          },
+          {
+            "bias": 0.41526730268400397,
+            "count": 381,
+            "label": "GPU PX soil nudging",
+            "rmse": 1.6689891017267378
+          }
+        ],
+        "quantity": "wind_speed_10m",
+        "status": "ready",
+        "units": "m s-1",
+        "winner": "Native WRF"
+      }
+    ],
+    "3": [
+      {
+        "arms": [
+          {
+            "bias": -0.34017743399701705,
+            "count": 383,
+            "label": "Native WRF",
+            "rmse": 1.7123193855530139
+          },
+          {
+            "bias": -0.3581130420606633,
+            "count": 383,
+            "label": "GPU PX soil nudging",
+            "rmse": 1.7146822390134302
+          }
+        ],
+        "quantity": "temperature_2m",
+        "status": "ready",
+        "units": "K",
+        "winner": "Native WRF"
+      },
+      {
+        "arms": [
+          {
+            "bias": -0.028794180390528563,
+            "count": 378,
+            "label": "Native WRF",
+            "rmse": 1.8876647934036386
+          },
+          {
+            "bias": -0.038774678495776566,
+            "count": 378,
+            "label": "GPU PX soil nudging",
+            "rmse": 1.8908469062492852
+          }
+        ],
+        "quantity": "dewpoint_2m",
+        "status": "ready",
+        "units": "K",
+        "winner": "Native WRF"
+      },
+      {
+        "arms": [
+          {
+            "bias": 0.45250782508175535,
+            "count": 382,
+            "label": "Native WRF",
+            "rmse": 1.7308039828164172
+          },
+          {
+            "bias": 0.4525062280432199,
+            "count": 382,
+            "label": "GPU PX soil nudging",
+            "rmse": 1.731034508348617
+          }
+        ],
+        "quantity": "wind_speed_10m",
+        "status": "ready",
+        "units": "m s-1",
+        "winner": "Native WRF"
+      }
+    ]
+  },
+  "map_review": "Viewed native/GPU/ASOS temperature, dewpoint and wind at hours 0\u20133. Cold inland air and warm/moist coast align. No seams or instability. Hour 3 wind remains modestly high in both native and GPU; single-case skill only.",
+  "native_stream_note": "WRF check_a_mundo sets io_form_sgfdda=0 when all grid_sfdda=0, even with pxlsm_soil_nudge=1. Qualified native stock case therefore enables grid_fdda=1/grid_sfdda=1 with all atmospheric and surface relaxation coefficients zero; PX soil nudging stays active.",
+  "lifecycle": "px-lifecycle-final.log: 10 passed; real CUDA restart across record seam, tree checkpoint, both nest feedback modes, independent member clocks.",
+  "default_off": {
+    "history_candidate": {
+      "bytes": 342776,
+      "sha256": "f80c6b18aad064a5d41bca52e7797f40e96766d6a42dc34a63e42c8defafa2ac"
+    },
+    "history_lane": {
+      "bytes": 342776,
+      "sha256": "f80c6b18aad064a5d41bca52e7797f40e96766d6a42dc34a63e42c8defafa2ac"
+    },
+    "state_arrays_compared": 134,
+    "state_arrays_differing": [],
+    "header_note": "Checkpoint inventory adds nullable surface fields. Scientific arrays and complete history bytes unchanged."
+  }
+}

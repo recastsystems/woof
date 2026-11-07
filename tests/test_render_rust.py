@@ -1222,7 +1222,7 @@ def test_list_products_reports_the_full_catalog(wrfout, tmp_path, capsys):
     # smoke, dry PM2.5, dust, ozone and aerosol optical depth; the existing
     # canonical smoke and column recipes remain in the original catalog.
     # The coupled fire's three maps (fire_perimeter, fire_ros,
-    # fire_heat_flux, lane/ec-sfire) are listed too, excluded on this
+    # fire_heat_flux, development branch) are listed too, excluded on this
     # fixture because it carries no refined fire grid: 364 + 3 = 367.
     # Three interval winter products add snowfall_window, snow_10to1_window
     # and snow_kuchera_window to that complete catalog: 367 + 3 = 370.
@@ -1243,10 +1243,25 @@ def test_list_products_reports_the_full_catalog(wrfout, tmp_path, capsys):
     # The hex IVT companion's model-column recipe (bc8db45d3fe) renamed its
     # duplicate "ivt" to ivt_column and gave its two component planes their
     # own rows, ivt_column_eastward and ivt_column_northward: 409 + 2 = 411.
-    # The two fixed-height W products from lane/292-les-w-products
+    # The two fixed-height W products from development branch
     # (1km_vertical_velocity, 3km_vertical_velocity; catalog fixture
     # b0790a03c8): 411 + 2 = 413.
-    assert "total=413" in out
+    # The mp55 (ISHMAEL) habit columns add ice_water_path (d765178a42,
+    # a blocked catalog row on this fixture): 413 + 1 = 414.
+    # The 0-1/0-2/0-3 km UH layers (dce81682858, 3.0.0) add ten direct
+    # recipes: uh_0to1km/0to2km/0to3km, composite_reflectivity_uh0to1km/
+    # 0to2km/0to3km and 1km_reflectivity_uh2to5km/0to1km/0to2km/0to3km:
+    # 414 + 10 = 424.
+    assert "total=424" in out
+    for slug in ("uh_0to1km", "uh_0to2km", "uh_0to3km",
+                 "composite_reflectivity_uh0to1km",
+                 "composite_reflectivity_uh0to2km",
+                 "composite_reflectivity_uh0to3km",
+                 "1km_reflectivity_uh2to5km", "1km_reflectivity_uh0to1km",
+                 "1km_reflectivity_uh0to2km", "1km_reflectivity_uh0to3km"):
+        rows = [line for line in out.splitlines()
+                if len(line.split()) >= 3 and line.split()[2] == slug]
+        assert len(rows) == 1, (slug, rows)
     for slug in ("ivt", "ivt_column", "ivt_column_eastward",
                  "ivt_column_northward"):
         rows = [line for line in out.splitlines()
@@ -1290,7 +1305,7 @@ def test_list_products_reports_the_full_catalog(wrfout, tmp_path, capsys):
     # heat_index_2m, apparent_temperature_2m, wetbulb_2m and
     # fire_weather_composite planes, each the sole source of its named
     # product, so each prints as one more deduplicated generic row.
-    # 34 and 11: lane/vpd-window-products (51fabe790f, merged 054770cd6e)
+    # 34 and 11: development branch (51fabe790f, merged 054770cd6e)
     # stores the native WRF vpd_2m plane, the sole source of its named VPD
     # product and of the day-window VPD rows, so it is one more
     # deduplicated generic row.

@@ -2445,7 +2445,7 @@ SFCTMP_DATASETS = {15: "MODIFIED_IGBP_MODIS_NOAH", 24: "USGS"}
 #: none.  The eleven cells that used to be pinned here (dew/eeta/evapl/fltot/
 #: qcg/qfx/qsg/qvg/s in the dense-new-snow case, soilice/soiliqw at level 8)
 #: were RUC's float64-rounded-once transcendentals, not the dispatch; with
-#: WOOF's float32 libm in their place (lane/verify-ruc-lsm) the fixture
+#: WOOF's float32 libm in their place (development branch) the fixture
 #: reproduces bitwise.  Any nonzero cell fails.
 SFCTMP_UPSTREAM_RESIDUE = {}
 SFCTMP_STACK_CONTROL_CELLS = {
@@ -2642,7 +2642,7 @@ LSMRUC_ALIAS = {"keepfr3dflag": "keepfr"}
 #: driver: ``_f32_tanh`` ran its reduction on a float64 ``expm1`` rounded once
 #: (25 cells, the new-snow density at ``:1520-1521`` and what it carried),
 #: and ``exp``/``pow``/``log10`` were float64 rounded once (``("grdflx", 21,
-#: 0)``).  With WOOF's float32 libm in their place (lane/verify-ruc-lsm) the
+#: 0)``).  With WOOF's float32 libm in their place (development branch) the
 #: fixture reproduces bitwise -- except SFCEVP, which WRF counts twice and
 #: WOOF once, graded through :func:`_lsmruc_expected`.
 LSMRUC_UPSTREAM_RESIDUE = {}
@@ -3083,7 +3083,7 @@ def test_lsmruc_mutation_control_is_the_port_not_the_fixture():
     itself "killed" and all 218 mutants scored as detected for free.  Against
     the port's own output 30 of them survive.
 
-    The residue is gone (lane/verify-ruc-lsm) but the raw fixture is still
+    The residue is gone (development branch) but the raw fixture is still
     not the control: it carries WRF's doubled SFCEVP, which WOOF does not
     copy.  This pins that the port equals the single-count fixture word for
     word, differs from the raw one exactly in SFCEVP, and that the identity

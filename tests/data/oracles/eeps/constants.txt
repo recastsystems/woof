@@ -1,0 +1,13 @@
+r_d     438F8000
+r_v     43E6CCCD
+prandtl 3EAAAAAB
+ep_1    3F1BBDA4
+ep_2    3F1F2B09
+g       411CF5C3
+karman  3ECCCCCD
+cp      447B2000
+rcp     3E924925
+xlv     4A189680
+xls     4A2DF340
+xlf     48AAE600
+p1000mb 47C35000

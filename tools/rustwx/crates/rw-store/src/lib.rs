@@ -9,6 +9,7 @@
 pub mod atomic;
 pub mod codec;
 pub mod columns;
+pub mod series;
 pub mod diff;
 pub mod error;
 pub mod format;

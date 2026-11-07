@@ -1,0 +1,14 @@
+WRF v4.6.1 (d66e442) SAS column oracle, tools/sas_wrf461_oracle/build.sh
+linked against the built strict and scalar trees' phys objects;
+the records are the scalar tree's (identical to strict, see below).
+
+strict == scalar stage1.bin
+strict == scalar stage2.bin
+strict == scalar stage3.bin
+strict == scalar stage3_shaloff.bin
+strict == scalar tables.bin
+
+strict FCOPTIM -O2 -fno-fast-math -ffp-contract=off
+scalar FCOPTIM -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize
+GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+cases 120 chained-mismatch 0 row-mismatch 0

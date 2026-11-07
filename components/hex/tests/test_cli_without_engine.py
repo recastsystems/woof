@@ -39,7 +39,8 @@ def test_help_lists_every_door_without_the_engine(no_engine, capsys):
 def test_an_engine_door_refuses_by_name_without_the_engine(no_engine, capsys):
     assert cli.main(["country", "--row", "x", "--cycle", "2026-10-29T12"]) == 2
     error = capsys.readouterr().err
-    assert "country door needs the woof engine" in error and "woof>=2.9.10" in error
+    # (Recast WOOF) the engine ships inside recast-woof, so the remedy names it without an engine version
+    assert "country door needs the woof engine" in error and "pip install --force-reinstall 'recast-woof'" in error
 
 
 def test_an_engine_free_door_still_builds_alone_without_the_engine(no_engine):

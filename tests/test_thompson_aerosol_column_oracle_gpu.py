@@ -13,7 +13,7 @@ does not meet graupel, WOOF's mp=28 must give those words exactly.
 That covers every repair that made it so, each of which, undone, moves a
 committed column: the source networks in WRF's arithmetic order
 (ThompsonAaLevel, the warm and cold lanes), WRF's REAL accumulators
-applied once (qc, qr, nr, qi, ni, qv, T, and since lane/mp28-exact qs, qg
+applied once (qc, qr, nr, qi, ni, qv, T, and since development branch qs, qg
 and the graupel number), the phase cleanup's latent heat on WRF's own
 ocp(k)/lvap(k), the snow and graupel
 fallout, surface totals and echo in WRF's form, and WOOF's own math

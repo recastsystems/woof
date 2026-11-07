@@ -7,17 +7,17 @@
       3,
       4
     ],
-    "owner": "lane-c-hydro-coupling",
+    "owner": "hydro-coupling",
     "reason": "Resident parent runoff and PET hooks support Noah (2), RUC (3), and Noah-MP (4): Noah-MP through its per-step RUNSRF/RUNSUB carriers (parent-noahmp-routed), Noah and RUC through their accumulated SFCRUNOFF/UDRUNOFF differenced per LSM call (parent-noah-routed, parent-ruc-routed)."
   },
   "budget": {
     "max_fraction_of_atmosphere_step": 0.05,
-    "ruling": "Project ruling, 2026-10-18T08:40Z: per-step cost stays under 5 percent of the step or it is a defect"
+    "ruling": "2026-10-18T08:40Z: per-step cost stays under 5 percent of the step or it is a defect"
   },
   "providers": [
     {
       "id": "conus-nhdplus-v21",
-      "owner": "lane-c-hydro-data",
+      "owner": "hydro-data",
       "priority": 10,
       "kind": "builder",
       "coverage": [

@@ -1,0 +1,939 @@
+{
+  "cases": {
+    "real_open": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "780a6e4bbddd16fa9f46afdde1bd732992a9736261cf8dd16ed5b60e99ee9ef6"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f64b0ba06f8fbe07d1184b59c5db85bf252d79e337c459affe8272bd1de5f28a"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ede44c30d89e041cce5f247dcb769845a9cf7af095e0442ad740fbd9c85681d9"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "70fb71317dea87bd336d8730eb795f67dda69ad6f225e4ae3cc3731cb28ba63d"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "780a6e4bbddd16fa9f46afdde1bd732992a9736261cf8dd16ed5b60e99ee9ef6"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f64b0ba06f8fbe07d1184b59c5db85bf252d79e337c459affe8272bd1de5f28a"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ede44c30d89e041cce5f247dcb769845a9cf7af095e0442ad740fbd9c85681d9"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5ba91a018745257b14b38f278d8e47d7a7446609a99cefdacb79353591e5b5e6"
+      }
+    },
+    "real_periodic": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "e476355765a49c8e7c0cdd98b0f178aba1ce2b4fe312de1d0df28833d738c311"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "10b461d10e258a1a7e047c533e9df0ee181b8a2a84f5fca9458663ff6215d126"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5fcb157fcf014272bbc128fc79be1c461dbeb36c54669381f9cad375cd50ea6f"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "3d160cd436fc571d515a5c49daa813f2dca4d581f65f59f99d83ae2202629e01"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "e476355765a49c8e7c0cdd98b0f178aba1ce2b4fe312de1d0df28833d738c311"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "10b461d10e258a1a7e047c533e9df0ee181b8a2a84f5fca9458663ff6215d126"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5fcb157fcf014272bbc128fc79be1c461dbeb36c54669381f9cad375cd50ea6f"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "b302f0875c70b55f89374258fc317fe19493942bbdfa708d4956171318c2e660"
+      }
+    },
+    "steep_open": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f660edf2cf96b0d2ca220a68aeac90e00c397aaba3fcd6b2ac5e621b46a2d9b1"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "cac5dfe0869935d7587913663fe242f22a24dfb4eae76d00f9b296c154113eb3"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "c79ef0bb865e4a6f6c3d5276b9916e5e1281b85079052aad2b946061c1744c79"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "1b079bca3065e14ba1c5df154b31b261098fe80a64f252925bdca420c7b91e4c"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f660edf2cf96b0d2ca220a68aeac90e00c397aaba3fcd6b2ac5e621b46a2d9b1"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "cac5dfe0869935d7587913663fe242f22a24dfb4eae76d00f9b296c154113eb3"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "c79ef0bb865e4a6f6c3d5276b9916e5e1281b85079052aad2b946061c1744c79"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "0d85b9053645d63521591f80f83706accc4c5d64c70d2df93f5bdec92a5753fd"
+      }
+    },
+    "map_extremes": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "04f1c6a756ad5b35797df5d27f9acf2052e8a4632dc042fae4a3810227152608"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "a91d6930c8970244daffd6de2b4fc8eab386b9cb9ae37454f3bfcd4988ab210f"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "68450a628261ec13bff2a8fa3965cf488fbeb1b4cce30c72c8568f39856c7224"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "86aaf26c85582cb047ec16c341beabe2c18bb3f5607d917bdffd981f6e82d136"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "04f1c6a756ad5b35797df5d27f9acf2052e8a4632dc042fae4a3810227152608"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "a91d6930c8970244daffd6de2b4fc8eab386b9cb9ae37454f3bfcd4988ab210f"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "68450a628261ec13bff2a8fa3965cf488fbeb1b4cce30c72c8568f39856c7224"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "7d669f13a5976ce42785179691847dba1a6fb92454d4b73a68cf4967d85a0b1d"
+      }
+    },
+    "zero_flow": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "184726a0f3a98e022e48933374f2792976c896f30cf4d672b22855ddfcdd55f2"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae3f1cc0379ae03d18a99bca07fed1ee0a80453b7090d490bc0622aacb41b593"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5c9b37300155c1f3338bc88f17d69c51fb248b0de0155630962ca6504d789bba"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "064472034d4d30eef4b30d1f71db4d142ab7f646582e44e062fe897d0b5b7e23"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "184726a0f3a98e022e48933374f2792976c896f30cf4d672b22855ddfcdd55f2"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae3f1cc0379ae03d18a99bca07fed1ee0a80453b7090d490bc0622aacb41b593"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5c9b37300155c1f3338bc88f17d69c51fb248b0de0155630962ca6504d789bba"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "064472034d4d30eef4b30d1f71db4d142ab7f646582e44e062fe897d0b5b7e23"
+      }
+    },
+    "near_zero_flow": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "184726a0f3a98e022e48933374f2792976c896f30cf4d672b22855ddfcdd55f2"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae3f1cc0379ae03d18a99bca07fed1ee0a80453b7090d490bc0622aacb41b593"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5c9b37300155c1f3338bc88f17d69c51fb248b0de0155630962ca6504d789bba"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "064472034d4d30eef4b30d1f71db4d142ab7f646582e44e062fe897d0b5b7e23"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "184726a0f3a98e022e48933374f2792976c896f30cf4d672b22855ddfcdd55f2"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae3f1cc0379ae03d18a99bca07fed1ee0a80453b7090d490bc0622aacb41b593"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5c9b37300155c1f3338bc88f17d69c51fb248b0de0155630962ca6504d789bba"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "064472034d4d30eef4b30d1f71db4d142ab7f646582e44e062fe897d0b5b7e23"
+      }
+    },
+    "southern_open": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "501f56f9e53fe4e2ec64062dae541143472077f1d65d7d80ce22d2261e459f32"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "79c26f181e5e7c924c42e25921958d96a70f1ac66b2e86fa8cc6cb3f0a482a70"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "efdb7faeb99903bb73882200609196b71a8a443d7207ab6921d5eb1ecee8d576"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "099e6b630c46c77d6f123bfcf6d1d5fc7f19775e4e92ec235f290d2b12b0f6c5"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "501f56f9e53fe4e2ec64062dae541143472077f1d65d7d80ce22d2261e459f32"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "79c26f181e5e7c924c42e25921958d96a70f1ac66b2e86fa8cc6cb3f0a482a70"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "efdb7faeb99903bb73882200609196b71a8a443d7207ab6921d5eb1ecee8d576"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "bc490cd38956b6a2fefc424d9ad39e81031a632898127a2f0d9f19e2c6d21053"
+      }
+    },
+    "evolved_real_open": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae7a5ada7e88b539e59f207411a2c8094a72f5f5bd93315384e8ba6e6fce376f"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "9ec748dda9b9b6bd19e090bb90d9e33acf19379690b1a0107823faa05f9e8538"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "b7a2ed7e2d076a0c1cf6210457973cbb135ed8d93f829d731ecf7ee1fe555336"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "c6be77f864b44f99f6605ec3ed56d03dbbdcc6bc833fd49bff4b296c71ddde0a"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae7a5ada7e88b539e59f207411a2c8094a72f5f5bd93315384e8ba6e6fce376f"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "9ec748dda9b9b6bd19e090bb90d9e33acf19379690b1a0107823faa05f9e8538"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "b7a2ed7e2d076a0c1cf6210457973cbb135ed8d93f829d731ecf7ee1fe555336"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "616d21693637aa3224f274e9f153561b1f8f6968b89ff197b0c7774d80291117"
+      }
+    },
+    "evolved_real_periodic": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f8c3b95130674db55c3d50c8a7e1d9d9b7a9cd024fe85c2d863d027bb3df6603"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "23202095d31e3c3e879b607e88cfcc13393d680ddac896e7ab2f5a1eca6fa30c"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "679d1edb2fc5176021e29d6f28a98bb8510bbc97d0ade466bcaf802719036617"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "2e9e0d3971ec08ea88c4ab3d149e3ffa1d47bf9ec12274892bfbfb4ef055a6c1"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f8c3b95130674db55c3d50c8a7e1d9d9b7a9cd024fe85c2d863d027bb3df6603"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "23202095d31e3c3e879b607e88cfcc13393d680ddac896e7ab2f5a1eca6fa30c"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "679d1edb2fc5176021e29d6f28a98bb8510bbc97d0ade466bcaf802719036617"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "7b9afb5a2a03ebfa529f3415c0676a9b86a0fc3f0fdbabb95780c26c8901eaeb"
+      }
+    },
+    "evolved_steep_open": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "45231f18e965f6aaa94e6ca39f9b177f6d0acdb2c62b04608f5234184edbef75"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "7b71115e428fadb5238aa9d39f3b04386d2c3a038161925ef3efdf0abc61aebf"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ca18e5ef67b48e91ce355456f0221de803713ed21e6b6d06057a01e5ef16830b"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "3acde59df790bbe73b20ce9971c1f086cd613d9318f934e3c020a94b36eba58b"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "45231f18e965f6aaa94e6ca39f9b177f6d0acdb2c62b04608f5234184edbef75"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "7b71115e428fadb5238aa9d39f3b04386d2c3a038161925ef3efdf0abc61aebf"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ca18e5ef67b48e91ce355456f0221de803713ed21e6b6d06057a01e5ef16830b"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "27e181378a48ae3c97023e57ed1a3d853d6ef89f97d6dbe88f42aa29bd4bb91f"
+      }
+    },
+    "evolved_map_extremes": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "154690206c8f807e690abedea3f02840c5d44b00bcf7501af82f6187d3ae9675"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f6147c9d0d45fc67174a35dcc0b6174750c84c780a60f0522dba2a527457fa2d"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "3d2994e7708eb18c9a0457c59f98ab741333a2e21bc4f26aee7ccc640afe4e47"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "6661db8c3350dbdc8de241b3dcc5113875590e043549e85437510be2e2599dce"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "154690206c8f807e690abedea3f02840c5d44b00bcf7501af82f6187d3ae9675"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f6147c9d0d45fc67174a35dcc0b6174750c84c780a60f0522dba2a527457fa2d"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "3d2994e7708eb18c9a0457c59f98ab741333a2e21bc4f26aee7ccc640afe4e47"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "17a0af4ba393a4d5630364dd700d7c9e41a8499b2290599b84c98187b3eb58d0"
+      }
+    },
+    "evolved_zero_flow": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "184726a0f3a98e022e48933374f2792976c896f30cf4d672b22855ddfcdd55f2"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae3f1cc0379ae03d18a99bca07fed1ee0a80453b7090d490bc0622aacb41b593"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5c9b37300155c1f3338bc88f17d69c51fb248b0de0155630962ca6504d789bba"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "064472034d4d30eef4b30d1f71db4d142ab7f646582e44e062fe897d0b5b7e23"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "184726a0f3a98e022e48933374f2792976c896f30cf4d672b22855ddfcdd55f2"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae3f1cc0379ae03d18a99bca07fed1ee0a80453b7090d490bc0622aacb41b593"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5c9b37300155c1f3338bc88f17d69c51fb248b0de0155630962ca6504d789bba"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "064472034d4d30eef4b30d1f71db4d142ab7f646582e44e062fe897d0b5b7e23"
+      }
+    },
+    "evolved_near_zero_flow": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "184726a0f3a98e022e48933374f2792976c896f30cf4d672b22855ddfcdd55f2"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae3f1cc0379ae03d18a99bca07fed1ee0a80453b7090d490bc0622aacb41b593"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5c9b37300155c1f3338bc88f17d69c51fb248b0de0155630962ca6504d789bba"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "064472034d4d30eef4b30d1f71db4d142ab7f646582e44e062fe897d0b5b7e23"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "184726a0f3a98e022e48933374f2792976c896f30cf4d672b22855ddfcdd55f2"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "ae3f1cc0379ae03d18a99bca07fed1ee0a80453b7090d490bc0622aacb41b593"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "5c9b37300155c1f3338bc88f17d69c51fb248b0de0155630962ca6504d789bba"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "064472034d4d30eef4b30d1f71db4d142ab7f646582e44e062fe897d0b5b7e23"
+      }
+    },
+    "evolved_southern_open": {
+      "thp_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "76171fbe60680b9980c388eb50b81b4ca81114768d6b4615b60a5c940ae30b2d"
+      },
+      "thp_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f45b310560aeea7b6ec272cfe18721806748eed5f3790ecf0db02abc1d3bca8a"
+      },
+      "thp_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "3888f19f17b022764a6593b2b8d03e30451467922c48311e6430894ae0e616b6"
+      },
+      "thp_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "cc89f2ec15314702539b5e7ae4004fe9c5e08bd319e4a2c64a0633a060ba34c2"
+      },
+      "qv_u": {
+        "words": 9996,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "76171fbe60680b9980c388eb50b81b4ca81114768d6b4615b60a5c940ae30b2d"
+      },
+      "qv_v": {
+        "words": 10192,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "f45b310560aeea7b6ec272cfe18721806748eed5f3790ecf0db02abc1d3bca8a"
+      },
+      "qv_w": {
+        "words": 9600,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "3888f19f17b022764a6593b2b8d03e30451467922c48311e6430894ae0e616b6"
+      },
+      "qv_s": {
+        "words": 9408,
+        "different_words": 0,
+        "max_ulp": 0,
+        "max_absolute": 0.0,
+        "nonfinite_words": 0,
+        "gpu_sha256": "2aaaf69dd2533128991400c7fc35b74da047bd7cfc5cf882f4e4289d644c54ad"
+      }
+    }
+  },
+  "kernel_source_sha256": "7dec200c373ce4a01684df3dca4d3797b511bba4c50c0c71465f979a2fb380a2",
+  "executed_source_sha256": "7dec200c373ce4a01684df3dca4d3797b511bba4c50c0c71465f979a2fb380a2",
+  "compiler_options": [
+    "-std=c++17"
+  ],
+  "cupy": "14.2.0",
+  "device": "b'NVIDIA RTX PRO 6000 Blackwell Server Edition'",
+  "manifest_sha256": "5c5fd63dfaa6fb1ad3c32e251b853131d70428ed9b3b6bf21840874b4c1b2ddd",
+  "diagnostic_no_fma": false,
+  "diagnostic_reference_metrics": false,
+  "diagnostic_reference_order": false
+}

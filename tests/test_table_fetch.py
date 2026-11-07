@@ -883,7 +883,13 @@ def test_doctor_reads_the_activation_table_the_loader_would_read(
 
 def test_a_server_that_withholds_the_body_is_a_refusal_within_the_timeout(
         tmp_path, monkeypatch):
-    """HTTP 200 and a length, then nothing: this used to wait forever."""
+    """HTTP 200 and a length, then nothing: this used to wait forever.
+
+    Since acb3e817fdf (bounded mesh fetch) a 200's Content-Length proves the
+    object length, so the refusal now comes from the stall guard rather than
+    the length probe. The stall window is shortened here so the bound is
+    checked in seconds; production keeps its 30 s window.
+    """
 
     import http.server
     import threading
@@ -910,6 +916,7 @@ def test_a_server_that_withholds_the_body_is_a_refusal_within_the_timeout(
     root = tmp_path / "root"
     root.mkdir()
     url = f"http://127.0.0.1:{server.server_address[1]}/{asset.filename}"
+    monkeypatch.setenv("RUSTWX_DOWNLOAD_STALL_SECONDS", "1")
     started = clock.monotonic()
     try:
         with pytest.raises(table_assets.TableAssetError) as excinfo:
@@ -918,9 +925,10 @@ def test_a_server_that_withholds_the_body_is_a_refusal_within_the_timeout(
         release.set()
         server.shutdown()
         server.server_close()
-    assert clock.monotonic() - started < 10
+    # 1 s stall window, the client retries with backoff: about 7 s on a development machine.
+    assert clock.monotonic() - started < 30
     message = str(excinfo.value)
-    assert "object length is unavailable" in message
+    assert "stalled" in message, message
     assert not (root / asset.filename).exists()
     assert list(root.glob(".*fetch-partial*")) == []
 

@@ -290,9 +290,9 @@ class ThinCapture:
         refl = cp.max(refl, axis=0) if refl.ndim == 3 else refl
         wind = cp.sqrt(fields['u10']**2 + fields['v10']**2)
         if self.cyclone_request is not None:
-            from woof.core.storm_tracking import mslp_hpa_from_state
+            from woof.tc.intensity import surface_pressure_hpa
             arrays = {'refl': cp.asnumpy(refl), 'wind10': cp.asnumpy(wind),
-                'mslp': mslp_hpa_from_state(state),
+                'mslp': cp.asnumpy(surface_pressure_hpa(state)),
                 'latitude': np.asarray(metadata['XLAT'], dtype=np.float32),
                 'longitude': np.asarray(metadata['XLONG'], dtype=np.float32)}
             directory = self.root/'diagnostics'/f'd{grid_id:02d}'/str(episode)/valid_time.strftime('%Y-%m-%d_%H-%M-%S')/f'member-{member_id:05d}'
@@ -321,6 +321,10 @@ class ThinCapture:
         uh = existing_scratch('up_heli_max') if callable(existing_scratch) else None
         if uh is not None:
             arrays['uh'] = cp.asnumpy(uh)
+        for suffix in ('01', '02', '03'):
+            band = existing_scratch('up_heli_max' + suffix) if callable(existing_scratch) else None
+            if band is not None:
+                arrays['uh' + suffix] = cp.asnumpy(band)
         stamp = valid_time.strftime('%Y-%m-%d_%H-%M-%S')
         directory = self.root / 'diagnostics' / f'd{grid_id:02d}' / str(episode) / stamp
         path = directory / f'member-{member_id:05d}.npz'
@@ -571,7 +575,7 @@ def resume_completed(root, receipt, parents, members, hours):
     return list(completed.values())
 
 
-#: Auto co-residency cap: the project's ruling that co-resident members are fine
+#: Auto co-residency cap: the owner's ruling that co-resident members are fine
 #: (hex up to 4 per card), carried to ArWen and sized by memory below it.
 AUTO_MEMBERS_PER_CARD_CAP = 4
 #: Free memory kept back on each card beyond the priced members.

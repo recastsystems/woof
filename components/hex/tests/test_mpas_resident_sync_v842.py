@@ -10,6 +10,40 @@ from woof.hex.mpasphys import diagnostics_v842 as diagnostics
 from woof.hex.mpasphys.runtime_v842 import ResidentNativeCoupling
 
 
+@pytest.mark.parametrize('forcing', ['none', 'stochastic', 'iau'])
+def test_scalar_publication_is_preserved_before_in_place_forcing(monkeypatch, forcing):
+    from woof.hex.cuda_physics_v841 import CudaMpasStageSourcesV842
+    monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', 'compact')
+    cells = np.ones((2, 3), np.float32)
+    scalars = np.arange(12, dtype=np.float32).reshape(2, 2, 3)
+    original = scalars.copy()
+    sources = CudaMpasStageSourcesV842(cells, cells, cells, scalars)
+    driver = NS(physics_get_tend=lambda **kw: sources,
+                release_held_tendencies=lambda: None)
+    coupling = ResidentNativeCoupling.__new__(ResidentNativeCoupling)
+    coupling.cp = np
+    coupling.sources = None
+    coupling.session = NS(driver=driver, put=lambda *a, **kw: None,
+                         field=lambda *a: cells)
+    coupling.widen_sources = coupling.exchange_sources = None
+    coupling.solve_extent = None
+    coupling.itimestep, coupling.stochastic_dt, coupling.names = 1, 30., ('qv', 'qc')
+    coupling.dycore = NS(cache=None, atmosphere=NS(state=NS(time_seconds=0.)))
+    def modify(value, **kw):
+        value.scalars[...] += np.float32(4.)
+        return value
+    coupling.stochastic = NS(apply=modify) if forcing == 'stochastic' else None
+    coupling.iau = (NS(apply=lambda **kw: modify(kw.pop('sources'), **kw))
+                    if forcing == 'iau' else None)
+    result = coupling.stage(rk_step=1, dynamics_substep=1, state=NS(rho=cells),
+                            saved=NS(normal_velocity=cells), diagnostics=NS(h_edge=cells))
+    assert np.array_equal(scalars.view(np.uint32), original.view(np.uint32))
+    if forcing == 'none':
+        assert result.scalars is scalars
+    else:
+        assert np.array_equal(result.scalars, original + np.float32(4.))
+
+
 def setup_coupling(monkeypatch, *, resident=True, les=True):
     shape = (2, 3)
     allocated, launches, writes, fetched, preparations = [], [], [], [], []

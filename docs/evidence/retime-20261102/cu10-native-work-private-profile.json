@@ -1,0 +1,55 @@
+{
+  "scope": "Diagnostic inclusive clock64 cycles, all active threads, every block; private per-column counters avoid atomic contention, whole real forecast. Nested times overlap; these are not matched speed measurements or a lower bound.",
+  "commit": "17f06c397baa6d87e1018d667cbeb9c6768b2816",
+  "functions": [
+    "kc_column",
+    "kc_para",
+    "kc_slope_sigma",
+    "kc_jfd",
+    "kc_adjust_mf",
+    "kc_cloud_fraction",
+    "cup_driver_branch",
+    "cup_para",
+    "cup_initial_cloud_zero"
+  ],
+  "images": [
+    {
+      "kc_column": {
+        "selected_thread_cycles": 352663444925,
+        "selected_thread_calls": 262800
+      },
+      "kc_para": {
+        "selected_thread_cycles": 108809874174,
+        "selected_thread_calls": 228939
+      },
+      "kc_slope_sigma": {
+        "selected_thread_cycles": 914857253,
+        "selected_thread_calls": 228939
+      },
+      "kc_jfd": {
+        "selected_thread_cycles": 271644011,
+        "selected_thread_calls": 103580
+      },
+      "kc_adjust_mf": {
+        "selected_thread_cycles": 7246417,
+        "selected_thread_calls": 1282
+      },
+      "kc_cloud_fraction": {
+        "selected_thread_cycles": 224643217,
+        "selected_thread_calls": 103580
+      },
+      "cup_driver_branch": {
+        "selected_thread_cycles": 150581964690,
+        "selected_thread_calls": 103580
+      },
+      "cup_para": {
+        "selected_thread_cycles": 72057084733,
+        "selected_thread_calls": 103580
+      },
+      "cup_initial_cloud_zero": {
+        "selected_thread_cycles": 1329979665,
+        "selected_thread_calls": 228939
+      }
+    }
+  ]
+}

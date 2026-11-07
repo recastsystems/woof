@@ -34,7 +34,7 @@ use std::process::ExitCode;
 
 use netcdf_writer::{AttrValue, NcFormat, NcType, NcWriter, Schema, VarData};
 
-const USAGE: &str = "usage: nc_rewrite IN.nc OUT.nc [--format cdf2|cdf5|auto] [--fields-from TEMPLATE.nc NAME[,NAME]]";
+const USAGE: &str = "usage: nc_rewrite IN.nc OUT.nc [--format cdf2|cdf5|auto] [--fields-from TEMPLATE.nc NAME[,NAME]] [--select-dimension NAME=INDEX,INDEX] [--global-int NAME=VALUE]";
 
 fn main() -> ExitCode {
     match run() {
@@ -62,8 +62,27 @@ fn run() -> Result<String, String> {
     let output = PathBuf::from(args.next().ok_or(USAGE)?);
     let mut choice = FormatChoice::Auto;
     let mut extra = None;
+    let mut selections: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut global_ints: HashMap<String, i32> = HashMap::new();
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--select-dimension" => {
+                let spec = args.next().ok_or(USAGE)?;
+                let (dim, words) = spec.split_once('=').ok_or("dimension selection must be NAME=INDEX,INDEX")?;
+                let indices = words.split(',').map(|v| v.parse::<usize>())
+                    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+                if dim.is_empty() || indices.is_empty() || selections.insert(dim.into(), indices).is_some() {
+                    return Err("dimension names must be nonempty and unique".into());
+                }
+            }
+            "--global-int" => {
+                let spec = args.next().ok_or(USAGE)?;
+                let (name, word) = spec.split_once('=').ok_or("global integer must be NAME=VALUE")?;
+                let value = word.parse::<i32>().map_err(|e| e.to_string())?;
+                if name.is_empty() || global_ints.insert(name.into(), value).is_some() {
+                    return Err("global attribute names must be nonempty and unique".into());
+                }
+            }
             "--fields-from" => {
                 let template = PathBuf::from(args.next().ok_or(USAGE)?);
                 let names = args.next().ok_or(USAGE)?;
@@ -95,6 +114,16 @@ fn run() -> Result<String, String> {
     let dims = structure
         .dimensions()
         .map_err(|err| format!("dimensions: {err}"))?;
+    for (name, indices) in &selections {
+        let dim = dims.iter().find(|d| d.name() == name).ok_or_else(|| format!("no dimension '{name}'"))?;
+        if dim.is_unlimited() || indices.iter().any(|&i| i >= dim.len()) {
+            return Err(format!("'{name}': selection leaves its fixed dimension"));
+        }
+        let mut ordered = indices.clone(); ordered.sort_unstable(); ordered.dedup();
+        if ordered.len() != indices.len() {
+            return Err(format!("'{name}': duplicate index"));
+        }
+    }
     let vars = structure
         .variables()
         .map_err(|err| format!("variables: {err}"))?;
@@ -173,16 +202,20 @@ fn run() -> Result<String, String> {
         let mut dimid_of: HashMap<String, usize> = HashMap::new();
         for dim in &dims {
             let dimid = schema
-                .def_dim(dim.name(), dim.len(), dim.is_unlimited())
+                .def_dim(dim.name(), selections.get(dim.name()).map_or(dim.len(), Vec::len), dim.is_unlimited())
                 .map_err(|err| format!("dimension '{}': {err}", dim.name()))?;
             dimid_of.insert(dim.name().to_string(), dimid);
         }
         for attr in &gattrs {
+            if global_ints.contains_key(attr.name()) { continue; }
             let value = map_attr(attr.value())
                 .map_err(|err| format!("global attribute '{}': {err}", attr.name()))?;
             schema
                 .put_global_attr(attr.name(), value)
                 .map_err(|err| format!("global attribute '{}': {err}", attr.name()))?;
+        }
+        for (name, value) in &global_ints {
+            schema.put_global_attr(name, AttrValue::Ints(vec![*value])).map_err(|e| e.to_string())?;
         }
         let mut varids = Vec::with_capacity(vars.len());
         for (var, from_template) in vars
@@ -242,7 +275,7 @@ fn run() -> Result<String, String> {
             } else {
                 &values
             };
-            copy_variable(reader, &mut writer, *varid, var, numrecs)?;
+            copy_variable(reader, &mut writer, *varid, var, numrecs, &selections)?;
         }
         writer
             .finish()
@@ -340,6 +373,7 @@ fn copy_variable(
     varid: usize,
     var: &netcrust::Variable,
     numrecs: u64,
+    selections: &HashMap<String, Vec<usize>>,
 ) -> Result<(), String> {
     let name = var.name();
     let is_record = var
@@ -347,9 +381,9 @@ fn copy_variable(
         .first()
         .is_some_and(|dim| dim.is_unlimited());
     let slab_elems: usize = if is_record {
-        var.dimensions().iter().skip(1).map(|d| d.len()).product()
+        var.dimensions().iter().skip(1).map(|d| selections.get(d.name()).map_or(d.len(), Vec::len)).product()
     } else {
-        var.dimensions().iter().map(|d| d.len()).product()
+        var.dimensions().iter().map(|d| selections.get(d.name()).map_or(d.len(), Vec::len)).product()
     };
 
     macro_rules! copy {
@@ -358,6 +392,7 @@ fn copy_variable(
                 .read_variable::<$t>(name)
                 .map_err(|err| format!("read '{name}': {err}"))?;
             let flat = array.into_raw_vec_and_offset().0;
+            let flat = select_variable(flat, var, selections)?;
             push(
                 writer,
                 varid,
@@ -383,7 +418,7 @@ fn copy_variable(
         netcrust::DataType::I64 => copy!(i64, VarData::I64),
         netcrust::DataType::U64 => copy!(u64, VarData::U64),
         netcrust::DataType::Char | netcrust::DataType::String => {
-            let flat = char_bytes(values, var)?;
+            let flat = select_variable(char_bytes(values, var)?, var, selections)?;
             push(
                 writer,
                 varid,
@@ -501,4 +536,58 @@ where
             .map_err(|err| format!("write record {record} of '{name}': {err}"))?;
     }
     Ok(())
+}
+
+
+/// Select stored words, without converting their numeric type or NaN payload.
+fn select_words<T: Copy>(flat: Vec<T>, shape: &[usize], indices: &[Vec<usize>]) -> Result<Vec<T>, String> {
+    if shape.len() != indices.len() || shape.iter().product::<usize>() != flat.len() {
+        return Err("dimension selection shape does not match stored words".into());
+    }
+    if shape.iter().zip(indices).any(|(&n, ix)| ix.iter().any(|&i| i >= n)) {
+        return Err("dimension index leaves stored words".into());
+    }
+    if indices.iter().zip(shape).all(|(ix, &n)| ix.iter().copied().eq(0..n)) { return Ok(flat); }
+    let nout = indices.iter().map(Vec::len).product::<usize>();
+    let mut out = Vec::with_capacity(nout);
+    for k in 0..nout {
+        let (mut word, mut offset, mut stride) = (k, 0usize, 1usize);
+        for axis in (0..shape.len()).rev() {
+            offset += indices[axis][word % indices[axis].len()] * stride;
+            word /= indices[axis].len();
+            stride *= shape[axis];
+        }
+        out.push(flat[offset]);
+    }
+    Ok(out)
+}
+
+fn select_variable<T: Copy>(flat: Vec<T>, var: &netcrust::Variable, selections: &HashMap<String, Vec<usize>>) -> Result<Vec<T>, String> {
+    let shape = var.dimensions().iter().map(|d| d.len()).collect::<Vec<_>>();
+    let indices = var.dimensions().iter().map(|d| selections.get(d.name()).cloned()
+        .unwrap_or_else(|| (0..d.len()).collect())).collect::<Vec<_>>();
+    select_words(flat, &shape, &indices)
+}
+
+#[cfg(test)]
+mod dimension_selection_tests {
+    use super::select_words;
+    #[test]
+    fn interior_axis_reorders_whole_planes_and_retains_payloads() {
+        let bits: Vec<u32> = (0..24).map(|i| 0x7fc00000 + i).collect();
+        let words: Vec<f32> = bits.iter().map(|&b| f32::from_bits(b)).collect();
+        let got = select_words(words, &[2,3,4], &[vec![0,1],vec![2,0],vec![0,1,2,3]]).unwrap();
+        let expected = [bits[8..12].to_vec(),bits[0..4].to_vec(),bits[20..24].to_vec(),bits[12..16].to_vec()].concat();
+        assert_eq!(got.iter().map(|v| v.to_bits()).collect::<Vec<_>>(), expected);
+    }
+    #[test]
+    fn no_selection_preserves_every_word_and_scalars() {
+        assert_eq!(select_words(vec![17i32], &[], &[]).unwrap(), vec![17]);
+        assert_eq!(select_words(vec![1,2,3,4], &[2,2], &[vec![0,1],vec![0,1]]).unwrap(), vec![1,2,3,4]);
+    }
+    #[test]
+    fn invalid_extent_and_indices_fail_before_copy() {
+        assert!(select_words(vec![1u8,2], &[3], &[vec![0]]).is_err());
+        assert!(select_words(vec![1u8,2], &[2], &[vec![2]]).is_err());
+    }
 }

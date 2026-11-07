@@ -1,0 +1,1949 @@
+[
+  {
+    "name": "abari",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 0,
+    "bytes": 32
+  },
+  {
+    "name": "abarl",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 32,
+    "bytes": 32
+  },
+  {
+    "name": "abco2",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 64,
+    "bytes": 152
+  },
+  {
+    "name": "abh2o",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 216,
+    "bytes": 152
+  },
+  {
+    "name": "abo2",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 368,
+    "bytes": 152
+  },
+  {
+    "name": "abo3",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 520,
+    "bytes": 152
+  },
+  {
+    "name": "abs_cff_mss_aer",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        7
+      ]
+    ],
+    "count": 7,
+    "offset": 672,
+    "bytes": 56
+  },
+  {
+    "name": "ah2onw",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        25
+      ],
+      [
+        1,
+        21
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    "count": 367500,
+    "offset": 728,
+    "bytes": 2940000
+  },
+  {
+    "name": "ah2ow",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        25
+      ],
+      [
+        1,
+        21
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    "count": 367500,
+    "offset": 2940728,
+    "bytes": 2940000
+  },
+  {
+    "name": "amco2",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880728,
+    "bytes": 8
+  },
+  {
+    "name": "amd",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880736,
+    "bytes": 8
+  },
+  {
+    "name": "amo",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880744,
+    "bytes": 8
+  },
+  {
+    "name": "bbari",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 5880752,
+    "bytes": 32
+  },
+  {
+    "name": "bbarl",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 5880784,
+    "bytes": 32
+  },
+  {
+    "name": "bgscl_rf",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880816,
+    "bytes": 8
+  },
+  {
+    "name": "c16",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880824,
+    "bytes": 8
+  },
+  {
+    "name": "c17",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880832,
+    "bytes": 8
+  },
+  {
+    "name": "c26",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880840,
+    "bytes": 8
+  },
+  {
+    "name": "c27",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880848,
+    "bytes": 8
+  },
+  {
+    "name": "c28",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880856,
+    "bytes": 8
+  },
+  {
+    "name": "c29",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880864,
+    "bytes": 8
+  },
+  {
+    "name": "c30",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880872,
+    "bytes": 8
+  },
+  {
+    "name": "c31",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880880,
+    "bytes": 8
+  },
+  {
+    "name": "cappa",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880888,
+    "bytes": 8
+  },
+  {
+    "name": "carscl",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880896,
+    "bytes": 8
+  },
+  {
+    "name": "carscl_rf",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880904,
+    "bytes": 8
+  },
+  {
+    "name": "cbari",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 5880912,
+    "bytes": 32
+  },
+  {
+    "name": "cbarl",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 5880944,
+    "bytes": 32
+  },
+  {
+    "name": "ch4vmr",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 5880976,
+    "bytes": 8
+  },
+  {
+    "name": "cn_ah2ow",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        25
+      ],
+      [
+        1,
+        21
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    "count": 367500,
+    "offset": 5880984,
+    "bytes": 2940000
+  },
+  {
+    "name": "cn_eh2ow",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        25
+      ],
+      [
+        1,
+        21
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    "count": 367500,
+    "offset": 8820984,
+    "bytes": 2940000
+  },
+  {
+    "name": "co2",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        233
+      ]
+    ],
+    "count": 233,
+    "offset": 11760984,
+    "bytes": 1864
+  },
+  {
+    "name": "co2mmr",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11762848,
+    "bytes": 8
+  },
+  {
+    "name": "co2vmr",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11762856,
+    "bytes": 8
+  },
+  {
+    "name": "coefh",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        2
+      ],
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 8,
+    "offset": 11762864,
+    "bytes": 64
+  },
+  {
+    "name": "coefj",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        3
+      ],
+      [
+        1,
+        2
+      ]
+    ],
+    "count": 6,
+    "offset": 11762928,
+    "bytes": 48
+  },
+  {
+    "name": "coefk",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        3
+      ],
+      [
+        1,
+        2
+      ]
+    ],
+    "count": 6,
+    "offset": 11762976,
+    "bytes": 48
+  },
+  {
+    "name": "cpair",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763024,
+    "bytes": 8
+  },
+  {
+    "name": "cplol",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763032,
+    "bytes": 8
+  },
+  {
+    "name": "cplos",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763040,
+    "bytes": 8
+  },
+  {
+    "name": "dayspy",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763048,
+    "bytes": 8
+  },
+  {
+    "name": "dbari",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 11763056,
+    "bytes": 32
+  },
+  {
+    "name": "dbarl",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 11763088,
+    "bytes": 32
+  },
+  {
+    "name": "delta",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763120,
+    "bytes": 8
+  },
+  {
+    "name": "dlp_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763128,
+    "bytes": 8
+  },
+  {
+    "name": "dlu_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763136,
+    "bytes": 8
+  },
+  {
+    "name": "dpfco2",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763144,
+    "bytes": 8
+  },
+  {
+    "name": "dpfo3",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763152,
+    "bytes": 8
+  },
+  {
+    "name": "drh_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763160,
+    "bytes": 8
+  },
+  {
+    "name": "dte_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763168,
+    "bytes": 8
+  },
+  {
+    "name": "dtp_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763176,
+    "bytes": 8
+  },
+  {
+    "name": "dustscl",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763184,
+    "bytes": 8
+  },
+  {
+    "name": "dustscl_rf",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 11763192,
+    "bytes": 8
+  },
+  {
+    "name": "ebari",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 11763200,
+    "bytes": 32
+  },
+  {
+    "name": "ebarl",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 11763232,
+    "bytes": 32
+  },
+  {
+    "name": "eh2onw",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        25
+      ],
+      [
+        1,
+        21
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    "count": 367500,
+    "offset": 11763264,
+    "bytes": 2940000
+  },
+  {
+    "name": "epsilo",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14703264,
+    "bytes": 8
+  },
+  {
+    "name": "epsqs",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14703272,
+    "bytes": 8
+  },
+  {
+    "name": "estbl",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        250
+      ]
+    ],
+    "count": 250,
+    "offset": 14703280,
+    "bytes": 2000
+  },
+  {
+    "name": "estblh2o",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        0,
+        192
+      ]
+    ],
+    "count": 193,
+    "offset": 14705280,
+    "bytes": 1544
+  },
+  {
+    "name": "f11vmr",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14706824,
+    "bytes": 8
+  },
+  {
+    "name": "f12vmr",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14706832,
+    "bytes": 8
+  },
+  {
+    "name": "fat",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        6
+      ],
+      [
+        1,
+        2
+      ]
+    ],
+    "count": 12,
+    "offset": 14706840,
+    "bytes": 96
+  },
+  {
+    "name": "fbari",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 14706936,
+    "bytes": 32
+  },
+  {
+    "name": "fbarl",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ]
+    ],
+    "count": 4,
+    "offset": 14706968,
+    "bytes": 32
+  },
+  {
+    "name": "fc1",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14707000,
+    "bytes": 8
+  },
+  {
+    "name": "fet",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        6
+      ],
+      [
+        1,
+        2
+      ]
+    ],
+    "count": 12,
+    "offset": 14707008,
+    "bytes": 96
+  },
+  {
+    "name": "frcsol",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 14707104,
+    "bytes": 152
+  },
+  {
+    "name": "fwc1",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14707256,
+    "bytes": 8
+  },
+  {
+    "name": "fwc2",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14707264,
+    "bytes": 8
+  },
+  {
+    "name": "fwcoef",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14707272,
+    "bytes": 8
+  },
+  {
+    "name": "gbg",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 14707280,
+    "bytes": 152
+  },
+  {
+    "name": "gcb",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 14707432,
+    "bytes": 152
+  },
+  {
+    "name": "gcphil",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 14707584,
+    "bytes": 152000
+  },
+  {
+    "name": "gcphob",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 14859584,
+    "bytes": 152
+  },
+  {
+    "name": "gdst",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 76,
+    "offset": 14859736,
+    "bytes": 608
+  },
+  {
+    "name": "gravit",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14860344,
+    "bytes": 8
+  },
+  {
+    "name": "gravmks",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 14860352,
+    "bytes": 8
+  },
+  {
+    "name": "gsslt",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 14860360,
+    "bytes": 152000
+  },
+  {
+    "name": "gsul",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 15012360,
+    "bytes": 152000
+  },
+  {
+    "name": "gvolc",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 15164360,
+    "bytes": 152
+  },
+  {
+    "name": "inf",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 15164512,
+    "bytes": 8
+  },
+  {
+    "name": "kbg",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 15164520,
+    "bytes": 152
+  },
+  {
+    "name": "kcb",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 15164672,
+    "bytes": 152
+  },
+  {
+    "name": "kcphil",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 15164824,
+    "bytes": 152000
+  },
+  {
+    "name": "kcphob",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 15316824,
+    "bytes": 152
+  },
+  {
+    "name": "kdst",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 76,
+    "offset": 15316976,
+    "bytes": 608
+  },
+  {
+    "name": "ksslt",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 15317584,
+    "bytes": 152000
+  },
+  {
+    "name": "ksul",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 15469584,
+    "bytes": 152000
+  },
+  {
+    "name": "kvolc",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 15621584,
+    "bytes": 152
+  },
+  {
+    "name": "latice",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 15621736,
+    "bytes": 8
+  },
+  {
+    "name": "latvap",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 15621744,
+    "bytes": 8
+  },
+  {
+    "name": "ln_ah2ow",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        25
+      ],
+      [
+        1,
+        21
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    "count": 367500,
+    "offset": 15621752,
+    "bytes": 2940000
+  },
+  {
+    "name": "ln_eh2ow",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        10
+      ],
+      [
+        1,
+        25
+      ],
+      [
+        1,
+        21
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    "count": 367500,
+    "offset": 18561752,
+    "bytes": 2940000
+  },
+  {
+    "name": "max_lp_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501752,
+    "bytes": 8
+  },
+  {
+    "name": "max_lu_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501760,
+    "bytes": 8
+  },
+  {
+    "name": "max_rh_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501768,
+    "bytes": 8
+  },
+  {
+    "name": "max_te_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501776,
+    "bytes": 8
+  },
+  {
+    "name": "max_tp_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501784,
+    "bytes": 8
+  },
+  {
+    "name": "min_lp_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501792,
+    "bytes": 8
+  },
+  {
+    "name": "min_lu_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501800,
+    "bytes": 8
+  },
+  {
+    "name": "min_p_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501808,
+    "bytes": 8
+  },
+  {
+    "name": "min_rh_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501816,
+    "bytes": 8
+  },
+  {
+    "name": "min_te_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501824,
+    "bytes": 8
+  },
+  {
+    "name": "min_tp_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501832,
+    "bytes": 8
+  },
+  {
+    "name": "min_u_h2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501840,
+    "bytes": 8
+  },
+  {
+    "name": "mwch4",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501848,
+    "bytes": 8
+  },
+  {
+    "name": "mwco2",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501856,
+    "bytes": 8
+  },
+  {
+    "name": "mwdry",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501864,
+    "bytes": 8
+  },
+  {
+    "name": "mwf11",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501872,
+    "bytes": 8
+  },
+  {
+    "name": "mwf12",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501880,
+    "bytes": 8
+  },
+  {
+    "name": "mwh2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501888,
+    "bytes": 8
+  },
+  {
+    "name": "mwn2o",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501896,
+    "bytes": 8
+  },
+  {
+    "name": "n2ovmr",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21501904,
+    "bytes": 8
+  },
+  {
+    "name": "nirwgt",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21501912,
+    "bytes": 152
+  },
+  {
+    "name": "o2mmr",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21502064,
+    "bytes": 8
+  },
+  {
+    "name": "p0",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21502072,
+    "bytes": 8
+  },
+  {
+    "name": "pcf",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        6
+      ]
+    ],
+    "count": 6,
+    "offset": 21502080,
+    "bytes": 48
+  },
+  {
+    "name": "pco2",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21502128,
+    "bytes": 152
+  },
+  {
+    "name": "ph2o",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21502280,
+    "bytes": 152
+  },
+  {
+    "name": "pie",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21502432,
+    "bytes": 8
+  },
+  {
+    "name": "po2",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21502440,
+    "bytes": 152
+  },
+  {
+    "name": "r_universal",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21502592,
+    "bytes": 8
+  },
+  {
+    "name": "rair",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21502600,
+    "bytes": 8
+  },
+  {
+    "name": "raytau",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21502608,
+    "bytes": 152
+  },
+  {
+    "name": "retab",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        95
+      ]
+    ],
+    "count": 95,
+    "offset": 21502760,
+    "bytes": 760
+  },
+  {
+    "name": "rga",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503520,
+    "bytes": 8
+  },
+  {
+    "name": "rgsslp",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503528,
+    "bytes": 8
+  },
+  {
+    "name": "scon",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503536,
+    "bytes": 8
+  },
+  {
+    "name": "sslp",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503544,
+    "bytes": 8
+  },
+  {
+    "name": "ssltscl",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503552,
+    "bytes": 8
+  },
+  {
+    "name": "ssltscl_rf",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503560,
+    "bytes": 8
+  },
+  {
+    "name": "stebol",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503568,
+    "bytes": 8
+  },
+  {
+    "name": "sulscl",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503576,
+    "bytes": 8
+  },
+  {
+    "name": "sulscl_rf",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503584,
+    "bytes": 8
+  },
+  {
+    "name": "tauback",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503592,
+    "bytes": 8
+  },
+  {
+    "name": "tmax",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503600,
+    "bytes": 8
+  },
+  {
+    "name": "tmelt",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503608,
+    "bytes": 8
+  },
+  {
+    "name": "tmin",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503616,
+    "bytes": 8
+  },
+  {
+    "name": "v_abo3_35",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503624,
+    "bytes": 8
+  },
+  {
+    "name": "v_abo3_64",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503632,
+    "bytes": 8
+  },
+  {
+    "name": "v_raytau_35",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503640,
+    "bytes": 8
+  },
+  {
+    "name": "v_raytau_64",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503648,
+    "bytes": 8
+  },
+  {
+    "name": "volcscl",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503656,
+    "bytes": 8
+  },
+  {
+    "name": "volcscl_rf",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21503664,
+    "bytes": 8
+  },
+  {
+    "name": "wavmax",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21503672,
+    "bytes": 152
+  },
+  {
+    "name": "wavmin",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21503824,
+    "bytes": 152
+  },
+  {
+    "name": "wbg",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21503976,
+    "bytes": 152
+  },
+  {
+    "name": "wcb",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21504128,
+    "bytes": 152
+  },
+  {
+    "name": "wcphil",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 21504280,
+    "bytes": 152000
+  },
+  {
+    "name": "wcphob",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21656280,
+    "bytes": 152
+  },
+  {
+    "name": "wdst",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        4
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 76,
+    "offset": 21656432,
+    "bytes": 608
+  },
+  {
+    "name": "wsslt",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 21657040,
+    "bytes": 152000
+  },
+  {
+    "name": "wsul",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        1000
+      ],
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19000,
+    "offset": 21809040,
+    "bytes": 152000
+  },
+  {
+    "name": "wvolc",
+    "dtype": "double precision",
+    "bounds": [
+      [
+        1,
+        19
+      ]
+    ],
+    "count": 19,
+    "offset": 21961040,
+    "bytes": 152
+  },
+  {
+    "name": "zvir",
+    "dtype": "double precision",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961192,
+    "bytes": 8
+  },
+  {
+    "name": "have_ozone",
+    "dtype": "logical",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961200,
+    "bytes": 4
+  },
+  {
+    "name": "idxbcphi",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961204,
+    "bytes": 4
+  },
+  {
+    "name": "idxbcpho",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961208,
+    "bytes": 4
+  },
+  {
+    "name": "idxbg",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961212,
+    "bytes": 4
+  },
+  {
+    "name": "idxcarbonfirst",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961216,
+    "bytes": 4
+  },
+  {
+    "name": "idxdustfirst",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961220,
+    "bytes": 4
+  },
+  {
+    "name": "idxocphi",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961224,
+    "bytes": 4
+  },
+  {
+    "name": "idxocpho",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961228,
+    "bytes": 4
+  },
+  {
+    "name": "idxsslt",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961232,
+    "bytes": 4
+  },
+  {
+    "name": "idxsul",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961236,
+    "bytes": 4
+  },
+  {
+    "name": "idxvolc",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961240,
+    "bytes": 4
+  },
+  {
+    "name": "indirect",
+    "dtype": "logical",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961244,
+    "bytes": 4
+  },
+  {
+    "name": "ixcldice",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961248,
+    "bytes": 4
+  },
+  {
+    "name": "ixcldliq",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961252,
+    "bytes": 4
+  },
+  {
+    "name": "levsiz_ozone_save",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961256,
+    "bytes": 4
+  },
+  {
+    "name": "masterproc",
+    "dtype": "logical",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961260,
+    "bytes": 4
+  },
+  {
+    "name": "mxaerl",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961264,
+    "bytes": 4
+  },
+  {
+    "name": "ntoplw",
+    "dtype": "integer",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961268,
+    "bytes": 4
+  },
+  {
+    "name": "ozncyc",
+    "dtype": "logical",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961272,
+    "bytes": 4
+  },
+  {
+    "name": "radforce",
+    "dtype": "logical",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961276,
+    "bytes": 4
+  },
+  {
+    "name": "strat_volcanic",
+    "dtype": "logical",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961280,
+    "bytes": 4
+  },
+  {
+    "name": "trace_gas",
+    "dtype": "logical",
+    "bounds": [],
+    "count": 1,
+    "offset": 21961284,
+    "bytes": 4
+  },
+  {
+    "name": "yrdata",
+    "dtype": "integer",
+    "bounds": [
+      [
+        1,
+        233
+      ]
+    ],
+    "count": 233,
+    "offset": 21961288,
+    "bytes": 932
+  }
+]

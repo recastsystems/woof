@@ -15,7 +15,10 @@ from tilestream import driver, multigpu
 
 @pytest.fixture
 def host_arrays(monkeypatch):
-    # These checks inspect the CPU geography contract, without a CUDA context.
+    # These checks inspect the CPU geography contract, without a CUDA context.  The geography check imports
+    # woof.io.restart (-> model -> state) lazily; import it before the stub, as a full suite run has, because
+    # state binds cupy at import and the stub has no float32 (red whenever this file ran alone).
+    import woof.io.restart  # noqa: F401
     monkeypatch.setitem(sys.modules, "cupy", SimpleNamespace(ndarray=()))
 
 

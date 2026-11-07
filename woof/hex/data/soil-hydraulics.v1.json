@@ -195,6 +195,8 @@
         "land_value": 1
       },
       "target": {
+        "land_surface_schemes": ["noah", "noahmp"],
+        "noahmp_contract": "STAS WLTSMC/REFSMC/MAXSMC and urban overrides must equal the pinned engine tables at initialization",
         "soil_knots": [
           [
             0,

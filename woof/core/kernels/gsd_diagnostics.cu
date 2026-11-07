@@ -4,8 +4,12 @@
 #define S(a,b) __fsub_rn((a),(b))
 #define M(a,b) __fmul_rn((a),(b))
 #define D(a,b) __fdiv_rn((a),(b))
-__device__ real gd_t(const real* thp,const real* thb,int thb3,const real* p,int k,int c,int n){
- return M(A(thp[k*n+c],thb[thb3?k*n+c:k]),gfk_pow(M(p[k*n+c],1.e-5f),.28589641f));
+__device__ real gd_t(const real* thp,const real* thb,int thb3,const real* p,const real* qv,int k,int c,int n){
+ real theta=A(thp[k*n+c],thb[thb3?k*n+c:k]);
+#ifdef GPUWM_USE_THETA_M
+ theta=D(theta,A(1.f,M(D(461.6f,287.f),qv[k*n+c])));
+#endif
+ return M(theta,gfk_pow(M(p[k*n+c],1.e-5f),.28589641f));
 }
 __device__ real gd_rho(const real* alt,const real* qv,int i){return M(D(1.f,alt[i]),A(1.f,qv[i]));}
 __device__ real gd_z(const real* ph,const real* phb,int phb3,int k,int c,int n){
@@ -24,7 +28,11 @@ extern "C" __global__ void gsd_prepare(
  if(diagflag){wind10[c]=-99.f;wind80[c]=-99.f;}
  for(int k=0;k<nz;++k){
   int t=k*n+c;
-  temperature[t]=M(A(thp[t],thb[thb3?t:k]),gfk_pow(D(p[t],100000.f),.2857142857142857f));
+  real theta=A(thp[t],thb[thb3?t:k]);
+#ifdef GPUWM_USE_THETA_M
+  theta=D(theta,A(1.f,M(D(461.6f,287.f),qv[t])));
+#endif
+  temperature[t]=M(theta,gfk_pow(D(p[t],100000.f),.2857142857142857f));
   rho[t]=gd_rho(alt,qv,t);
   if(k>0)pw[t]=A(M(fnm[k],p[t]),M(fnp[k],p[t-n]));
   if(diagflag){
@@ -109,9 +117,9 @@ extern "C" __global__ void gsd_columns(
   real depth=S(zhi,zlo),rho=density[t];
   grpl=A(grpl,M(M(qg[t],depth),rho));
   ice=A(ice,M(M(A(A(qi[t],qs[t]),qg[t]),depth),rho));
-  real temp=gd_t(thp,thb,thb3,p,k,c,n);
+  real temp=gd_t(thp,thb,thb3,p,qv,k,c,n);
   if(!threat&&k+1<nz){
-   real tb=gd_t(thp,thb,thb3,p,k+1,c,n);
+   real tb=gd_t(thp,thb,thb3,p,qv,k+1,c,n);
    if(M(A(temp,tb),.5f)<258.15f){
     threat=true;real val=D(M(M(M(M(.042f,1000.f),1.22f),w[t]),M(A(qg[t],qg[t+n]),.5f)),msft[c]);
     if(val<1.5f)val=0.f;ltg1[c]=val;if(val>ltg1max[c])ltg1max[c]=val;
@@ -120,7 +128,7 @@ extern "C" __global__ void gsd_columns(
   // Find the highest -10 C crossing by allowing later qualifying levels
   // to replace earlier ones (the authority walks the levels downward).
   if(k>0){
-   real ta=gd_t(thp,thb,thb3,p,k-1,c,n);
+   real ta=gd_t(thp,thb,thb3,p,qv,k-1,c,n);
    if(temp<=263.15f&&ta>=263.15f){
     real a=D(S(263.15f,ta),S(temp,ta));
     real rr=A(qr[t-n],M(a,S(qr[t],qr[t-n])));

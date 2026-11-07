@@ -397,7 +397,8 @@ def test_an_unimplemented_selector_value_is_told_what_is_implemented():
 
     with pytest.raises(PhysicsCapabilityError) as caught:
         _resolve_physics_component_options(
-            {"ra_lw_physics": 7, "ra_sw_physics": 7})
+            # 7/7 (Fu-Liou-Gu) is ported now; 24/24 (fast RRTMG) is not.
+            {"ra_lw_physics": 24, "ra_sw_physics": 24})
     message = str(caught.value)
     assert "Implemented selector tuples for this component" in message
     assert "'ra_lw_physics': 4" in message

@@ -10,10 +10,10 @@ runs. They do not establish seasonal-skill qualification.
 balanced across `--lagged` offsets. Native-member ranges such as `1-4` belong
 to the `global` door and are not S2S counts.
 The default is fast numerics, daily history, surface updates
-and checkpoints every five days. SPPT and SKEB follow the stochastic lane
-policy: on for ensembles with more than one output member and fewer than ten
-native source members, off otherwise. Lagged deterministic ensembles enable
-both. Their amplitudes, scales and taper use the shared stochastic defaults.
+and checkpoints every five days. SPPT and SKEB follow the stochastic
+policy: on for every ensemble with more than one output member
+([stochastic physics](../stochastic-physics.md)). Lagged deterministic
+ensembles enable both. Their amplitudes, scales and taper use the shared stochastic defaults.
 Each card holds up to four
 members in separate CUDA streams, within the existing co-tenancy admission.
 Every visible card gets a queue. `--devices 0` restricts the queue to card 0.
@@ -278,7 +278,7 @@ zero ensemble spread and binary above-normal probabilities, without calibration.
 The first-ten-day comparison still has only a day-0 GFS analysis available for
 this current cycle. Evidence: delivered `evidence/remote/run90-runtime-summary.json`,
 `evidence/remote/qualification90/`, `scripts/run-s2s90-eager.sh`, and
-the figures kept with the run.
+`evidence/S2S-90DAY-2026-10-17/`.
 
 The earlier four-member 30-day qualification used older analyses and model warm-up.
 After connecting the delivered source-lead contract, a separate four-member
@@ -319,7 +319,7 @@ it does not repeat the full four-member 30-day qualification with the corrected
 planner or establish seasonal skill. Evidence: delivered
 `scripts/run-s2s30-six-hour.sh`, `evidence/remote/run30-six-hour-proof.json`,
 `evidence/remote/qualification-six-hour/`, and
-the figures kept with the run.
+`evidence/S2S-SIX-HOUR-2026-10-17/`.
 
 
 ## CFS-initialized 24-hour GPU check, 2026-10-17
@@ -366,7 +366,7 @@ Whole measured wall across both invocations, including restart and all stages, w
 
 Products use ERA5 1990-2019 WeatherBench2 smoothed six-hour climatology; 1.5 degree source; GPU window means and nearest-grid remap. Analysis verification measured 1 available reference, with 21 missing and 5 metric rows. This is not complete ten-day verification or a seasonal-skill claim. Eight original Rust figures and six contact sheets covering all 120 maps were viewed and captioned. Checkpoint hashes, compact health/physical-gate evidence and bounded product archives remain; raw history, checkpoints and prepared inputs were consumed after acceptance.
 
-Exact launch scripts/run-s2s30-gefs.sh; acceptance scripts/gefs30-proof.py; evidence/gefs30/proof.json; figures kept with the run. This new native-GEFS check does not repeat corrected four-lag GFS 30 days, long 60 km or multiple-card qualification. The 88 unchanged landing G0 failures/errors and unrun G1/G2 remain stated in REPORT.md.
+Exact launch scripts/run-s2s30-gefs.sh; acceptance scripts/gefs30-proof.py; evidence/gefs30/proof.json; figures evidence/S2S-GEFS-2026-10-17/. This new native-GEFS check does not repeat corrected four-lag GFS 30 days, long 60 km or multiple-card qualification. The 88 unchanged landing G0 failures/errors and unrun G1/G2 remain stated in REPORT.md.
 
 
 ### Two-day stochastic cost pair, shared card 0
@@ -406,7 +406,7 @@ The current builder, terrain-adjusted ERA5 normal, Rust NetCDF writer and
 rw_wrfbatch renderer were exercised together on 128 analytic cells, two
 prescribed members and eight daily frames spanning seven days. All 20 maps
 were written; seven were viewed and captioned in the delivered
-the figures kept with the fixture. These are labeled synthetic
+`evidence/S2S-PRODUCT-FIXTURE-2026-10-17/`. These are labeled synthetic
 fields, with clipping recorded in the captions.
 
 The initial GPU wrapper took 7.746294 s and peaked at 928 MiB of own VRAM

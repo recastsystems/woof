@@ -148,6 +148,16 @@ def test_every_test_file_on_disk_is_named_by_a_tier(test_file: str) -> None:
 #: purpose -- an entry silently gaining a second tier doubles a leg's cost and
 #: makes "which tier owns this file" unanswerable.
 DUAL_TIER_ALLOWED: dict[str, str] = {
+    "tests/test_moving_ocean_gpu.py":
+        "tier 1 takes the moving ocean host contract; tier 3 steps its CUDA ocean carrier on a device",
+    "tests/test_ocean_pwp.py":
+        "tier 1 takes the PWP column, snapshot and option checks; tier 3 takes the CUDA PWP kernel words",
+    "tests/test_tc_climate.py":
+        "tier 1 takes TC climate tracking and receipts; tier 3 takes its CUDA field reduction",
+    "tests/test_ozone_streamed_months.py":
+        "tier 1 checks calendar source order; tier 3 compares streamed device words",
+    "tests/test_public_continuation_defects.py":
+        "tier 1 checks public continuation and producers; tier 3 checks CUDA checkpoint words",
     "tests/test_fct_horizontal_scale_fusion.py":
         "tier 1 takes host hook and admission checks; tier 3 takes fused device equality",
     "tests/test_stochastic.py":

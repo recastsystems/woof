@@ -1,0 +1,175 @@
+{
+  "date": "2026-11-02",
+  "lane": "spd-mp52-p3-2cat",
+  "base": "0486d32de99ea2cd5a7ce10d85a9924f776d2ed9",
+  "measured_runtime_commit": "eddd89faf30493798c6ce8608fef18bed2505870",
+  "qualified_runtime_commit": "e13a8bf6f1997f2bf3224bcaa68f4ad837c4cfab",
+  "change": "Default-fast MP52 uses CUDA REAL32 transcendental leaves; both strict selectors preserve replay math and explicit native double expressions.",
+  "performance": {
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "card": 1,
+    "shared": true,
+    "numerics": "fast",
+    "grid": [
+      22500,
+      49
+    ],
+    "input": "M0300-x0002-j0038.meta",
+    "rounds": 10,
+    "order": "three interleaved arms, reverse order on alternate rounds",
+    "metric": "median of per-sample sums of four CUDA event kernel times",
+    "mp50_ms": 0.7436959929764271,
+    "before_mp52_ms": 1.034367986023426,
+    "after_mp52_ms": 0.7351679913699627,
+    "before_ratio": 1.3908478676665565,
+    "after_ratio": 0.988532946678476,
+    "under_1_2x": true
+  },
+  "replay": {
+    "captures": 16,
+    "steps": [
+      2,
+      300,
+      600,
+      900
+    ],
+    "words": 1456320,
+    "differing_words": 0,
+    "replay_helper_unchanged": true,
+    "rimed_mass_active": false
+  },
+  "option_off": {
+    "scheme": 50,
+    "scope": "All fields, diagnostics, surfaces and working buffers on 16 captured real states",
+    "fast": {
+      "words": 2273280,
+      "differing_words": 0
+    },
+    "strict": {
+      "words": 2273280,
+      "differing_words": 0
+    }
+  },
+  "forecast": {
+    "start": "2024-05-25T18:00:00Z",
+    "end": "2024-05-25T21:00:00Z",
+    "grid": [
+      150,
+      150,
+      49
+    ],
+    "dx_m": 3000,
+    "dt_s": 12,
+    "steps": 900,
+    "numerics": "fast",
+    "status": "PASS",
+    "logged_wall_seconds": 480.8,
+    "fields_checked": 15,
+    "frames": 4,
+    "nonfinite": 0,
+    "final_ice2_positive": 49502,
+    "final_ice2_max": 7.305460167117417e-05,
+    "final_rain_max_mm": 0.011983039788901806,
+    "looked_at_hours": [
+      19,
+      20,
+      21
+    ],
+    "visual_finding": "Broad temperature gradients, weak western/southwestern echoes and below-palette rain match the prior maps; local echo shapes and strengths differ. No observation skill or whole-model byte identity is claimed."
+  },
+  "tests": {
+    "cpu_passed": 32,
+    "gpu_passed": 3,
+    "whole_package_build": true,
+    "compileall_workers": 8
+  },
+  "compiled_equivalence": {
+    "fast": {
+      "sources": [
+        "cffdb899eab8ff99a951182d29713c4f2e59393ac50d04f7a44f15a60d3b8eec",
+        "e3ad055e13a5e1501c58990d82e8fb8fae546644eee3f80ccc86722966e56423"
+      ],
+      "images": [
+        "eeda013033e3d3b8ca2b996f4be2341d7ea1193abf1822e1e7b88d4dd267c62a"
+      ],
+      "both_sources_present": true,
+      "images_identical": true
+    },
+    "strict": {
+      "sources": [
+        "cffdb899eab8ff99a951182d29713c4f2e59393ac50d04f7a44f15a60d3b8eec",
+        "e3ad055e13a5e1501c58990d82e8fb8fae546644eee3f80ccc86722966e56423"
+      ],
+      "images": [
+        "fd983269412fc356a37add5723c8dead09639b82387ca321cfa7920e980028cf"
+      ],
+      "both_sources_present": true,
+      "images_identical": true
+    }
+  },
+  "profile": {
+    "nsys": "Four kernels, four launches, no transfers; only the harness end fence synchronizes.",
+    "ncu_gpu": "RTX 5070 Ti",
+    "cause": "FP64 replay transcendental internals in default-fast REAL math",
+    "fp64_pipe_pct_before_after": {
+      "prepare": [
+        77.818256,
+        0
+      ],
+      "process": [
+        50.856313,
+        2.639445
+      ],
+      "sedimentation": [
+        15.700224,
+        0
+      ],
+      "finish": [
+        62.168117,
+        0
+      ]
+    },
+    "register_spill_requests": 0,
+    "dram_mb_approximately": 439
+  },
+  "follow_up": "Cold P3 NVRTC compilation is serial for more than 30 seconds; see first-use-compile.txt and gpuwm/nvrtc_ptx_cache.py:309.",
+  "evidence_root": "<reports>/WRF-PORTS-2026-11-01/evidence/spd-mp52-p3-2cat/",
+  "receipts": {
+    "timing.json": {
+      "sha256": "af519059469a0a42cafeee82d6a06262f6c70f60bd757b2cd6d4110720c00062",
+      "bytes": 12646
+    },
+    "real-replay.json": {
+      "sha256": "005fe4497c7cae7d482367bb811fef72cee3161b15945f7f5b2f5a2a89f579b3",
+      "bytes": 9790
+    },
+    "option-off-mp50-fast.json": {
+      "sha256": "e2bf41079957e329243fe4e967cd88a5a4ce4a3872a50db9349f179df9da5abc",
+      "bytes": 2516
+    },
+    "option-off-mp50-strict.json": {
+      "sha256": "b55f6669150ec518e532bc0339d23cdda7154dd5b44a6d41996d73436f051af6",
+      "bytes": 2515
+    },
+    "forecast-fields.json": {
+      "sha256": "83fb8db8f2fe01e5e4e89fc3b27b8babeb9450363144b5c51129d81d25392c0c",
+      "bytes": 20674
+    },
+    "forecast-run/run-receipt.json": {
+      "sha256": "caf4472e9bd798fe6bf2015b6f03abf30a8dd8862c7176e7e9b7b7b2346ec0c2",
+      "bytes": 64325
+    },
+    "visual-review.json": {
+      "sha256": "f0da16416d2a5046f1a877441f0b6f524e2e5faeeef2818c53ca6f31bb02538d",
+      "bytes": 5813
+    },
+    "profile-summary.json": {
+      "sha256": "f610c439169fb2b2d8cd827c76c73b0dfa281756a6cc08e596136bc92580435e",
+      "bytes": 3999
+    },
+    "compiled-equivalence.json": {
+      "sha256": "594673b8a31576e943f97f8224eddb4c57068391e6997d15cf2cbee43316f71c",
+      "bytes": 699
+    }
+  }
+}

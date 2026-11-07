@@ -327228,7 +327228,7 @@
   "fixture_manifest_sha256": "e6ca54054d518a7615bf12f46dd68a074776ceec74118ca292c96695c95e4bad",
   "gpu": "NVIDIA GeForce RTX 4090",
   "kernels": {
-    "advection": "ba500e338d41859b88351ca8014921381c2a33a78b9d56ec66d351a3ccdc073c",
+    "advection": "af8f5c6cb0441dcdc8198ac7453bca539edaaf56aa1d450e9ab0fb7d1d8de66e",
     "openbc": "5bf7babe4a953b1a12f8ddca403f04d86fa0aed0f7684992b5eabb5d82cbca57",
     "pd_advection": "9011930b5b510770f81e11c56a7fd6764233e1592127edc05c1d9c20f7e5142b",
     "pd_vertical_sl": "929291a52c94c01fc7a3c648d867e26f0339b84865a24445911d8f7b2f862222"

@@ -52,6 +52,7 @@ from woof.io import history_selection as history_selection_module
 from woof import simulated_radar_config as simulated_radar_module
 from woof.config_keys import KeyRow, key_rows
 from woof.config import (DEFAULT_COLUMN_CHUNK, RADAR_HEATING_OFF, RadarHeatingConfig,
+                          KF_FAMILY_CU_SCHEMES,
                           EXPLICIT_HORIZONTAL_DIFFUSION_LIMIT,
                           EPSSM_AUTO,
                           GRELL_FAMILY_CU_PHYSICS, GRELL_FAMILY_DEFAULTS,
@@ -281,7 +282,28 @@ _SHARED_FORBIDDEN = {
 #: cannot be round-tripped back to a namelist.
 from woof.sfire_config import FIRE_DOMAIN_FIELDS
 
+# Observation FDDA is domain-local, including its native scalar controls.
+# Each child owns a reader, clock, weights and immutable forcing identity.
+from dataclasses import fields as _run_fields
+_FDDAOBS_DOMAIN_KEYS = tuple(f.name for f in _run_fields(RunConfig)
+    if f.name.startswith("obs_") or f.name in ("max_obs", "fdda_start", "fdda_end"))
+
 _DOMAIN_RUN_OVERRIDES = (
+    "madwrf_opt", "madwrf_cldinit", "madwrf_dt_relax", "madwrf_dt_nudge",
+    "ra_call_offset",
+    "tc_flux_curve", "tc_spray", "tc_wave_roughness", "tc_wave_source",
+    "tc_fetch_m", "tc_horizontal_length_m", "tc_spray_partition",
+    "numbins", "thbinsize", "rbinsize", "mindeepfreq", "minshallowfreq", "shallowcu_forced_ra",
+    # The two native level streams and their derived calculation clocks
+    # are max_domains Registry controls. Targets and selectors are global.
+    "auxhist22_interval_s", "auxhist22_begin_s", "auxhist22_end_s",
+    "auxhist22_outname", "frames_per_auxhist22", "z_lev_interval_s",
+    "auxhist23_interval_s", "auxhist23_begin_s", "auxhist23_end_s",
+    "auxhist23_outname", "frames_per_auxhist23", "p_lev_interval_s",
+
+    "moist_adv_dfi_opt",
+
+    *_FDDAOBS_DOMAIN_KEYS,
     "hailcast_opt", "haildt", "hailcast_version",
     "lightning_option", "lightning_dt", "lightning_start_seconds",
     "flashrate_factor", "iccg_method", "iccg_prescribed_num",
@@ -292,15 +314,16 @@ _DOMAIN_RUN_OVERRIDES = (
     # Grell-Freitas with another cumulus choice a [shared] value reaches
     # the Grell-Freitas domains only (see tree_runs_grell below).
     # cugd_avedx joins them for Grell 3D (cu_physics = 5) on the same terms.
-    "cu_physics", "cudt_minutes", "clos_choice", "ishallow", "cugd_avedx",
+    "cu_physics", "shcu_physics", "icloud_bl", "cudt_minutes", "bmj_rad_feedback", "clos_choice", "ishallow", "cugd_avedx",
+    "kf_edrates",
     "maxiens", "maxens", "maxens2", "maxens3", "ensdim", "cu_diag", "convtrans_avglen_m",
     # The SAS-family keys, on the Grell keys' terms (tree_runs_sas below):
     # per-domain because the scheme they configure is.  sas_pgcon is a WRF
     # max_domains key; nsas_dx_factor is WRF scope 1, and the namelist door
     # writes the one value onto every New SAS domain, so a per-domain
     # difference is reachable only by writing the TOML directly.
-    "sas_pgcon", "nsas_dx_factor",
-    "radt", "radt_minutes", "bldt",
+    "sas_pgcon", "nsas_dx_factor", "shalconv",
+    "radt", "radt_minutes", "bldt", "grav_settling",
     # Every domain owns its radiation driver. Spectrum composition, CAM
     # parent transport and shared workspace sizing resolve these choices
     # per domain; requiring them to match has no remaining runtime basis.
@@ -315,6 +338,8 @@ _DOMAIN_RUN_OVERRIDES = (
     # registry physics every earlier preparation was bound to.
     "spp_conv", "spp_pbl",
     "km_opt", "bl_pbl_physics", "sf_sfclay_physics", "c_s", "c_k",
+    "tke_adv_opt", "sfs_opt", "m_opt",
+    "tke_mix2_off", "tke_mix6_off",
     # WRF Registry.EM_COMMON:2889 declares moist_mix6_off max_domains, so it
     # is per domain here for the same reason diff_6th_factor is.
     "moist_mix6_off",
@@ -346,9 +371,12 @@ _DOMAIN_RUN_OVERRIDES = (
     "emdiv", "smdiv",
     "khdif", "kvdif", "diff_opt", "mix_full_fields",
     "h_sca_adv_order", "moist_adv_opt",
+    "tracer_opt", "tracer_adv_opt", "tracer_mix2_off",
+    "tracer_mix6_off", "tracer_pblmix",
+    "dm_has_traj", "trajectory_input",
     # WRF declares the remaining advection orders max_domains too
     # (operational HRRR runs vert_order 5 on d01 and 3 on its nests).
-    "v_sca_adv_order", "v_mom_adv_order", "h_mom_adv_order",
+    "v_sca_adv_order", "v_mom_adv_order", "h_mom_adv_order", "rk_ord", "momentum_adv_opt",
     "tke_budget",
     # Output-only, and per domain because its cost scales with the grid:
     # four extra (nz+1, ny, nx) planes per frame, so the finest domains
@@ -409,9 +437,13 @@ _DOMAIN_RUN_OVERRIDES = (
     # (woof.core.terrain_drag); the GSL suite tapers itself with each
     # domain's grid length, so a column is the natural shape.
     "topo_wind", "gwd_opt",
-    "wind_farm_scheme", "wind_farm_table", "wind_farm_max_dx_m", "wind_farms", "windfarm_tke_factor",
+    "wind_farm_scheme", "wind_farm_table", "wind_farm_max_dx_m", "wind_farms", "windfarm_tke_factor", "windfarm_ij", "windfarm_wake_model", "windfarm_overlap_method", "windfarm_deg", "windfarm_induction",
+    "windturbines_spec", "td_turbgridid", "td_hubheight", "td_diameter", "td_stdthrcoef", "td_cutinspeed", "td_cutoutspeed", "td_power", "td_turbpercell", "td_ewfx", "td_ewfy", "td_pwfx", "td_pwfy",
     "history_interval2_s", "history_interval_change_s",
     "prec_acc_dt", "prec_acc_dt1", "gsd_diagnostics", "reset_interval1",
+    "do_avgflx_em", "do_avgflx_cugd",
+    "acc_phy_tend", "auxhist3_interval",
+    'sf_surf_irr_scheme', 'irr_daily_amount', 'irr_start_hour', 'irr_num_hours', 'irr_start_julianday', 'irr_end_julianday', 'irr_freq', 'irr_ph',
 ) + FIRE_DOMAIN_FIELDS
 
 #: Per-domain vertical keys are REJECTED outright (F1 amendment: the
@@ -1861,9 +1893,9 @@ def load_experiment(path: str | Path) -> ExperimentConfig:
     source = str(authority.source)
     from woof.config import _anchor_config_file_paths
     _anchor_config_file_paths(raw.get("shared", {}), authority.source,
-                              keys=("rrtmg_smoke_manifest", "wind_farm_table", "wind_farms"))
+                              keys=("rrtmg_smoke_manifest", "wind_farm_table", "wind_farms", "windturbines_spec"))
     for domain in raw.get("domain", []):
-        _anchor_config_file_paths(domain, authority.source, keys=("wind_farm_table", "wind_farms"))
+        _anchor_config_file_paths(domain, authority.source, keys=("wind_farm_table", "wind_farms", "windturbines_spec"))
     base_dir = Path(authority.source).parent
     experiment = build_experiment_from_config_tables(
         raw, source=source, base_dir=base_dir)
@@ -1917,7 +1949,7 @@ def build_experiment_from_config_tables(raw: dict, *, source: str,
     from woof.config import _anchor_config_file_paths
     for table in [raw.get("shared", {}), *raw.get("domain", [])]:
         _anchor_config_file_paths(table, base_dir / "experiment.toml",
-                                  keys=("wind_farm_table", "wind_farms"))
+                                  keys=("wind_farm_table", "wind_farms", "windturbines_spec"))
     fetch_table = raw.pop("fetch", None)
     if fetch_table is not None:
         from woof.fetch import validate_fetch_hints
@@ -1983,10 +2015,10 @@ def drop_unreached_grell_selectors(raw: dict, kept_runs) -> None:
     it.  With a Grell-Freitas domain kept, they stay and reach it.
     """
     shared = raw.get("shared")
-    if not any(run.cu_physics in SAS_PGCON_SCHEMES for run in kept_runs):
-        # The SAS-family keys, on the same terms.
-        if isinstance(shared, dict):
-            for key in SAS_FAMILY_DEFAULTS:
+    from woof.config import CUMULUS_PARAMETER_IDENTITY_RULES
+    if isinstance(shared, dict):
+        for key, (_, readers) in CUMULUS_PARAMETER_IDENTITY_RULES.items():
+            if readers and not any(run.cu_physics in readers for run in kept_runs):
                 shared.pop(key, None)
     if any(run.cu_physics in GRELL_FAMILY_CU_PHYSICS for run in kept_runs):
         return
@@ -4408,11 +4440,12 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
             for key, default in G3_RUN_DEFAULTS.items():
                 if key not in dom:
                     kw[key] = default
-        if (tree_runs_sas and kw.get("cu_physics", RunConfig.cu_physics)
-                not in SAS_PGCON_SCHEMES):
-            for key, default in SAS_FAMILY_DEFAULTS.items():
-                if key not in dom:
-                    kw[key] = default
+        from woof.config import CUMULUS_PARAMETER_IDENTITY_RULES
+        if tree_runs_sas:
+            for key, (default, readers) in CUMULUS_PARAMETER_IDENTITY_RULES.items():
+                if readers and kw.get("cu_physics", RunConfig.cu_physics) not in readers:
+                    if key not in dom:
+                        kw[key] = default
         # bl_pbl_physics is per-domain for every scheme, SASE included:
         # each domain's PhysicsDriver runs its own closure on its own
         # state, and SASE's prognostic e_sgs is not a nest-forced field
@@ -4566,6 +4599,11 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
         mixed_edge_entry_note, resolve_microphysics_transition,
     )
     for dc in domains[1:]:
+        if dc.run.use_theta_m != by_id[dc.parent_id].run.use_theta_m:
+            raise ValueError(
+                "use_theta_m must match across a nest tree: boundary forcing "
+                "and feedback interpolate the same prognostic thermal variable "
+                "on parent and child")
         contract = resolve_microphysics_transition(
             by_id[dc.parent_id].run, dc.run)
         # A mixed edge that seeds a moment from a ported default rather
@@ -4844,8 +4882,9 @@ def _bind_physics_params(experiment, source: str):
     names a different set refuses.
     """
     from dataclasses import replace as _replace
+    from woof import physics_params as _physics_params
     from woof.physics_params import (
-        PhysicsParamsError, check_schemes, declare, environment_set)
+        PhysicsParamsError, declare, environment_set)
     pset = getattr(experiment, "physics_params", None)
     try:
         from_env = environment_set()
@@ -4859,8 +4898,11 @@ def _bind_physics_params(experiment, source: str):
                     f"but WOOF_PHYSICS_PARAMS names {from_env.name!r}; two "
                     "sources for one run's constants cannot both be honoured")
         if pset is not None:
-            check_schemes(pset, [dc.run for dc in experiment.domains],
-                          source=source)
+            # Loading a family set from the worker environment installs its
+            # consumer checks. Resolve the checker after that bootstrap so
+            # generation and mixing-length requirements cannot be bypassed.
+            _physics_params.check_schemes(
+                pset, [dc.run for dc in experiment.domains], source=source)
         declare(pset, source=source)
     except PhysicsParamsError as err:
         raise ValueError(str(err)) from None
@@ -5598,26 +5640,72 @@ def _public_config_value(value):
         run_document = (document if isinstance(value, RunConfig) else
                         document.get("run") if isinstance(value, DomainConfig) else None)
         if isinstance(run_document, dict):
+            # The legacy-order marker binds only an explicitly written order 2,
+            # as in restart_identity_payload; the legacy default (True) and
+            # every other order keep the document's pre-marker bytes.
+            if (run_document.get("h_sca_adv_order") != 2
+                    or run_document.get("_legacy_h_sca") is not False):
+                run_document.pop("_legacy_h_sca", None)
+            # The sea-ice options, ua_phys and the irrigation block at their
+            # defaults leave the public document by the checkpoint echo's rule.
+            from woof.checkpoint_identity import (
+                drop_default_sms_selectors, drop_default_surface_port_keys)
+            drop_default_surface_port_keys(run_document)
+            drop_default_sms_selectors(run_document)
+            for name, default in (("rk_ord", 3), ("momentum_adv_opt", 1)):
+                if run_document.get(name, default) == default:
+                    run_document.pop(name, None)
+            if not run_document.get("use_theta_m", 0):
+                run_document.pop("use_theta_m", None)
+            from woof.config import radiation_scheme_ids_from_settings
+            if 3 not in radiation_scheme_ids_from_settings(run_document):
+                run_document.pop("cam_abs_freq_s", None)
             from woof.config import drop_inert_g3_fields
             drop_inert_g3_fields(run_document)
+            from woof.tc.config import drop_inert_tc
+            drop_inert_tc(run_document)
             from woof.checkpoint_identity import drop_default_cumulus_selectors
             drop_default_cumulus_selectors(run_document)
+            from woof.core.passive_tracer_contract import drop_inactive_tracer_controls
+            drop_inactive_tracer_controls(run_document)
+            from woof.core.trajectory_contract import drop_inactive as drop_inactive_trajectory
+            drop_inactive_trajectory(run_document)
+            # Match the checkpoint's scheme scope for new port controls.
+            # They cannot change a regional, non-NSSL, non-slab run, and
+            # must not change its public document or prepared identity.
+            if not run_document.get("polar", False):
+                run_document.pop("polar", None)
+                run_document.pop("fft_filter_lat", None)
+            for name, default in (("nssl_cccn", 0.5e9), ("nssl_alphah", 0.0),
+                                  ("nssl_alphahl", 1.0), ("nssl_icdx", 6),
+                                  ("nssl_icdxhl", 6)):
+                if (run_document.get("mp_physics") != 18
+                        or run_document.get(name, default) == default):
+                    run_document.pop(name, None)
+            if run_document.get("sf_surface_physics", 0) != 1:
+                run_document.pop("ifsnow", None)
             # The generic forms existed before these selectors. Keep
             # their public bytes; an explicitly moved form remains bound.
             for name, default in (("ruc_irrigation", "wrf_461"),
                                   ("ruc_qvg_cold_start", "wrf"),
                                   ("ruc_2m_diagnostic", "flux"),
                                   ("ruc_snow", "wrf_461"),
-                                  ("swint_opt", 0), ("aer_opt", 0),
+                                  ("ra_call_offset", 0), ("swint_opt", 0), ("aer_opt", 0), ("couple_farms", False), ("cu_rad_feedback",False), ("rrtmg_aer3_source","operational_fork"),
                                   ("alb_sol", 0),
                                   ("thompson_version", "wrf_461"),
                                   ("thompson_table_dir", None),
+                                  ("force_read_thompson", False),
+                                  ("write_thompson_tables", True),
+                                  ("write_thompson_mp38table", False),
                                   ("thompson_fork_snow_fall", "blend"),
                                   ("rrtmg_cloud_optics_form", "wrf_461"),
                                   ("rrtmg_aer3_type_source", "rural"),
                                   ("rrtmg_smoke_manifest", ""),
                                   ("surface_energy_diag", False),
-                                  ("cycling", False),
+                                  ("aercu_opt", 0), ("aercu_fct", 1.0),
+                                  ("cycling", False), ("sst_skin", 0),
+                                  ("sst_update", 0), ("surface_analysis", ""),
+                                  ("tmn_update", 0), ("lagday", 150),
                                   ("bl_mynn_mixaerosols", 0),
                                   ("bl_mynn_mixnumcon", 0),
                                   ("tempo_ml_for_bl_nc", False),
@@ -5677,8 +5765,8 @@ def _public_config_value(value):
             drop_inactive_radiation_port_keys(run_document)
             # The 2.9.4 capabilities campaign, by the checkpoint echo's rule
             # (woof.checkpoint_identity.drop_capability_campaign_keys), plus
-            # lane/cap-eclipse's default-on shadow (absent reads 1) and
-            # lane/cap-slab-ocean's PWP controls at their defaults while the
+            # development branch's default-on shadow (absent reads 1) and
+            # development branch's PWP controls at their defaults while the
             # ocean is off.
             from woof.checkpoint_identity import drop_capability_campaign_keys
             drop_capability_campaign_keys(run_document)

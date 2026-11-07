@@ -1,0 +1,794 @@
+[[knobs]]
+name = "physics.mynn.czil"
+family = "physics"
+units = "fractional change"
+min = -0.5
+max = 1
+default = 0
+description = "Changes land thermal roughness and surface heat exchange."
+parameter = "mynn.czil"
+range_basis = "Conservative sensitivity interval within the existing runtime registry bounds; not a calibrated prior."
+reference = "https://journals.ametsoc.org/view/journals/mwre/145/4/mwr-d-16-0160.1.xml"
+
+[[knobs]]
+name = "physics.mynn.prandtl"
+family = "physics"
+units = "fractional change"
+min = -0.15
+max = 0.3
+default = 0
+description = "Changes heat diffusion relative to momentum diffusion."
+parameter = "mynn.prandtl"
+range_basis = "Conservative sensitivity interval within the existing runtime registry bounds; not a calibrated prior."
+reference = "https://journals.ametsoc.org/view/journals/mwre/145/4/mwr-d-16-0160.1.xml"
+
+[[knobs]]
+name = "physics.mynn.cns"
+family = "physics"
+units = "fractional change"
+min = -0.5
+max = 0.4
+default = 0
+description = "Changes stable surface layer mixing length."
+parameter = "mynn.cns"
+range_basis = "Conservative sensitivity interval within the existing runtime registry bounds; not a calibrated prior."
+reference = "https://journals.ametsoc.org/view/journals/mwre/145/4/mwr-d-16-0160.1.xml"
+
+[[knobs]]
+name = "physics.mynn.alp1"
+family = "physics"
+units = "fractional change"
+min = -0.3
+max = 0.5
+default = 0
+description = "Changes the daytime turbulent mixing length."
+parameter = "mynn.alp1"
+range_basis = "Conservative sensitivity interval within the existing runtime registry bounds; not a calibrated prior."
+reference = "https://journals.ametsoc.org/view/journals/mwre/145/4/mwr-d-16-0160.1.xml"
+
+[[knobs]]
+name = "physics.mynn.edmf_entrainment"
+family = "physics"
+units = "fractional change"
+min = -0.35
+max = 0.5
+default = 0
+description = "Changes dilution of subgrid boundary layer plumes."
+parameter = "mynn.edmf_entrainment"
+range_basis = "Conservative sensitivity interval within the existing runtime registry bounds; not a calibrated prior."
+reference = "https://journals.ametsoc.org/view/journals/mwre/145/4/mwr-d-16-0160.1.xml"
+
+[[knobs]]
+name = "physics.ruc.z0.tall"
+family = "physics"
+units = "fractional change"
+min = -0.5
+max = 1
+default = 0
+description = "Changes momentum roughness for tall land cover."
+parameter = "ruc.z0.tall"
+range_basis = "Conservative sensitivity interval within the existing runtime registry bounds; not a calibrated prior."
+reference = "https://journals.ametsoc.org/view/journals/mwre/145/4/mwr-d-16-0160.1.xml"
+
+[[knobs]]
+name = "physics.ruc.z0.short"
+family = "physics"
+units = "fractional change"
+min = -0.5
+max = 1
+default = 0
+description = "Changes momentum roughness for short land cover."
+parameter = "ruc.z0.short"
+range_basis = "Conservative sensitivity interval within the existing runtime registry bounds; not a calibrated prior."
+reference = "https://journals.ametsoc.org/view/journals/mwre/145/4/mwr-d-16-0160.1.xml"
+
+[[knobs]]
+name = "physics.ruc.rs"
+family = "physics"
+units = "fractional change"
+min = -0.5
+max = 1
+default = 0
+description = "Changes stomatal resistance and transpiration."
+parameter = "ruc.rs"
+range_basis = "Conservative sensitivity interval within the existing runtime registry bounds; not a calibrated prior."
+reference = "https://journals.ametsoc.org/view/journals/mwre/145/4/mwr-d-16-0160.1.xml"
+
+[[knobs]]
+name = "physics.mynn.b1"
+family = "physics"
+units = "fractional change"
+min = -0.25
+max = 0.1
+default = 0
+description = "Changes turbulent kinetic energy dissipation."
+parameter = "mynn.b1"
+physical_default = 24
+scheme = "MYNN PBL"
+range_basis = "Published B1 envelope 12-36; current closure admissibility narrows this to 18-26.4. Derived C1 and dissipation lengths follow B1. Joint parameter validation prevents a negative stability radical."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "b1 = 24.0f"
+literal = "24.0f"
+count = 6
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "b1 = 24.0f"
+literal = "24.0f"
+count = 6
+
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "real b1l = MYNN_MUL(MYNN_MUL(24.0f, 0.5f)"
+literal = "24.0f"
+count = 1
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "real b1l = MYNN_MUL(MYNN_MUL(24.0f, 0.5f)"
+literal = "24.0f"
+count = 1
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "real b1l = 24.0f * 0.5f"
+literal = "24.0f"
+count = 1
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "real b1l = 24.0f * 0.5f"
+literal = "24.0f"
+count = 1
+[[knobs]]
+name = "physics.mynn.b2"
+family = "physics"
+units = "fractional change"
+min = -0.1
+max = 0.3
+default = 0
+description = "Changes temperature and moisture variance relaxation."
+parameter = "mynn.b2"
+physical_default = 15
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "b2 = 15.0f"
+literal = "15.0f"
+count = 5
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "b2 = 15.0f"
+literal = "15.0f"
+count = 5
+
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = ": MYNN_DIV(MYNN_MUL(MYNN_MUL(15.0f, 0.25f)"
+literal = "15.0f"
+count = 1
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = ": MYNN_DIV(MYNN_MUL(MYNN_MUL(15.0f, 0.25f)"
+literal = "15.0f"
+count = 1
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "real b2l = 15.0f * 0.5f"
+literal = "15.0f"
+count = 1
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "real b2l = 15.0f * 0.5f"
+literal = "15.0f"
+count = 1
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = ": 15.0f * 0.25f * (el[idx + 1]"
+literal = "15.0f"
+count = 1
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = ": 15.0f * 0.25f * (el[idx + 1]"
+literal = "15.0f"
+count = 1
+[[knobs]]
+name = "physics.mynn.g1"
+family = "physics"
+units = "fractional change"
+min = -0.05
+max = 0.015
+default = 0
+description = "Changes the neutral momentum stability function."
+parameter = "mynn.g1"
+physical_default = 0.235
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "g1 = 0.235f"
+literal = "0.235f"
+count = 3
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "g1 = 0.235f"
+literal = "0.235f"
+count = 3
+
+[[knobs]]
+name = "physics.mynn.c2"
+family = "physics"
+units = "fractional change"
+min = -0.15
+max = 0.15
+default = 0
+description = "Changes pressure redistribution in the turbulence closure."
+parameter = "mynn.c2"
+physical_default = 0.729
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "c2 = 0.729f"
+literal = "0.729f"
+count = 3
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "c2 = 0.729f"
+literal = "0.729f"
+count = 3
+
+[[knobs]]
+name = "physics.mynn.c3"
+family = "physics"
+units = "fractional change"
+min = -0.02
+max = 0.45
+default = 0
+description = "Changes buoyancy coupling in the turbulence closure."
+parameter = "mynn.c3"
+physical_default = 0.34
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "c3 = 0.340f"
+literal = "0.340f"
+count = 3
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "c3 = 0.340f"
+literal = "0.340f"
+count = 3
+
+[[knobs]]
+name = "physics.mynn.c5"
+family = "physics"
+units = "fractional change"
+min = -0.5
+max = 0.5
+default = 0
+description = "Changes pressure and buoyancy coupling in scalar mixing."
+parameter = "mynn.c5"
+physical_default = 0.2
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "c5 = 0.2f"
+literal = "0.2f"
+count = 3
+[[knobs.sites]]
+module = "mynn_dmp_sibling"
+anchor = "c5 = 0.2f"
+literal = "0.2f"
+count = 3
+
+[[knobs]]
+name = "physics.mynn.length2.alp2"
+family = "physics"
+units = "fractional change"
+min = -0.3
+max = 0.5
+default = 0
+description = "Changes the stable buoyancy mixing length."
+parameter = "mynn.length2.alp2"
+physical_default = 0.3
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+bl_mynn_mixlength = [2]
+[knobs.conditions]
+bl_mynn_version = ["gsd_41"]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "alp2 = 0.3f"
+literal = "0.3f"
+count = 1
+
+[[knobs]]
+name = "physics.mynn.length2.alp3"
+family = "physics"
+units = "fractional change"
+min = -0.25
+max = 0.5
+default = 0
+description = "Changes stratification suppression of mixing length."
+parameter = "mynn.length2.alp3"
+physical_default = 2
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+bl_mynn_mixlength = [2]
+[knobs.conditions]
+bl_mynn_version = ["gsd_41"]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "alp3 = 2.0f"
+literal = "2.0f"
+count = 1
+
+[[knobs]]
+name = "physics.mynn.length2.alp4"
+family = "physics"
+units = "fractional change"
+min = -0.25
+max = 0.5
+default = 0
+description = "Changes the unstable surface mixing length response."
+parameter = "mynn.length2.alp4"
+physical_default = 20
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+bl_mynn_mixlength = [2]
+[knobs.conditions]
+bl_mynn_version = ["gsd_41"]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "alp4 = 20.0f"
+literal = "20.0f"
+count = 1
+
+[[knobs]]
+name = "physics.mynn.length2.alp5"
+family = "physics"
+units = "fractional change"
+min = -0.3
+max = 0.5
+default = 0
+description = "Changes the buoyancy length cap in stable air."
+parameter = "mynn.length2.alp5"
+physical_default = 0.3
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+bl_mynn_mixlength = [2]
+[knobs.conditions]
+bl_mynn_version = ["gsd_41"]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "alp5 = 0.3f"
+literal = "0.3f"
+count = 1
+
+[[knobs]]
+name = "physics.mynn.length2.alp6"
+family = "physics"
+units = "fractional change"
+min = -0.3
+max = 0.5
+default = 0
+description = "Changes plume velocity contribution to buoyancy mixing length."
+parameter = "mynn.length2.alp6"
+physical_default = 50
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+bl_mynn_mixlength = [2]
+[knobs.conditions]
+bl_mynn_version = ["gsd_41"]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "alp6 = 50.0f"
+literal = "50.0f"
+count = 1
+
+[[knobs]]
+name = "physics.mynn.length2.base"
+family = "physics"
+units = "fractional change"
+min = -0.3
+max = 0.3
+default = 0
+description = "Changes the baseline turbulent length scale."
+parameter = "mynn.length2.base"
+physical_default = 0.25
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+bl_mynn_mixlength = [2]
+[knobs.conditions]
+bl_mynn_version = ["gsd_41"]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "real alp1 = MYNN_ADD(0.25f,"
+literal = "0.25f"
+count = 1
+
+[[knobs]]
+name = "physics.mynn.length2.depth"
+family = "physics"
+units = "fractional change"
+min = -0.5
+max = 0.5
+default = 0
+description = "Changes the increase of turbulent length scale with boundary layer depth."
+parameter = "mynn.length2.depth"
+physical_default = 0.02
+scheme = "MYNN PBL"
+range_basis = "Sensitivity envelope informed by Table 1 and its fallback perturbation rule. Version-dependent constants use a narrower interval around this engine default; this is an inferred test range."
+reference = "https://repository.library.noaa.gov/view/noaa/63927/noaa_63927_DS1.pdf"
+[knobs.requires]
+bl_pbl_physics = [5]
+bl_mynn_mixlength = [2]
+[knobs.conditions]
+bl_mynn_version = ["gsd_41"]
+[[knobs.sites]]
+module = "mynn_pbl"
+anchor = "MYNN_MUL(0.02f, mynn_min2("
+literal = "0.02f"
+count = 1
+
+[[knobs]]
+name = "physics.thompson.auto_amplitude"
+family = "physics"
+units = "fractional change"
+min = -0.5
+max = 0.5
+default = 0
+description = "Changes conversion of cloud liquid mass to rain mass."
+parameter = "thompson.auto_amplitude"
+physical_default = 0.027
+scheme = "classic microphysics"
+range_basis = "Conservative inferred sensitivity interval. The source study demonstrates altered warm rain and fall speed physics; it does not calibrate these bounds."
+reference = "https://journals.ametsoc.org/view/journals/atsc/72/9/jas-d-14-0099.1.xml"
+[knobs.requires]
+mp_physics = [8]
+[knobs.conditions]
+thompson_version = ["wrf_461"]
+[[knobs.sites]]
+module = "thompson"
+anchor = "const float zeta = 0.027f *"
+literal = "0.027f"
+count = 5
+[[knobs.sites]]
+module = "thompson_classic"
+anchor = "const float zeta = 0.027f *"
+literal = "0.027f"
+count = 1
+
+[[knobs]]
+name = "physics.thompson.auto_timescale"
+family = "physics"
+units = "fractional change"
+min = -0.3
+max = 0.5
+default = 0
+description = "Changes the time needed for cloud drops to produce rain."
+parameter = "thompson.auto_timescale"
+physical_default = 3.72
+scheme = "classic microphysics"
+range_basis = "Conservative inferred sensitivity interval. The source study demonstrates altered warm rain and fall speed physics; it does not calibrate these bounds."
+reference = "https://journals.ametsoc.org/view/journals/atsc/72/9/jas-d-14-0099.1.xml"
+[knobs.requires]
+mp_physics = [8]
+[knobs.conditions]
+thompson_version = ["wrf_461"]
+[[knobs.sites]]
+module = "thompson"
+anchor = "const float tau = 3.72f /"
+literal = "3.72f"
+count = 5
+[[knobs.sites]]
+module = "thompson_classic"
+anchor = "const float tau = 3.72f /"
+literal = "3.72f"
+count = 1
+
+[[knobs]]
+name = "physics.thompson.auto_diameter"
+family = "physics"
+units = "fractional change"
+min = -0.2
+max = 0.2
+default = 0
+description = "Changes the drop diameter threshold for warm rain production."
+parameter = "thompson.auto_diameter"
+physical_default = 7.5
+scheme = "classic microphysics"
+range_basis = "Conservative inferred sensitivity interval. The source study demonstrates altered warm rain and fall speed physics; it does not calibrate these bounds."
+reference = "https://journals.ametsoc.org/view/journals/atsc/72/9/jas-d-14-0099.1.xml"
+[knobs.requires]
+mp_physics = [8]
+[knobs.conditions]
+thompson_version = ["wrf_461"]
+[[knobs.sites]]
+module = "thompson"
+anchor = "const float tau_diameter = 0.5f * dcb - 7.5f;"
+literal = "7.5f"
+count = 5
+[[knobs.sites]]
+module = "thompson_classic"
+anchor = "Dc_b - 7.5f"
+literal = "7.5f"
+count = 2
+
+[[knobs]]
+name = "physics.thompson.rain_fall"
+family = "physics"
+units = "fractional change"
+min = -0.2
+max = 0.2
+default = 0
+description = "Changes rain fall speed and rain collision ventilation coefficients."
+parameter = "thompson.rain_fall"
+physical_default = 4854
+scheme = "classic microphysics"
+range_basis = "Conservative inferred sensitivity interval. The source study demonstrates altered warm rain and fall speed physics; it does not calibrate these bounds."
+reference = "https://journals.ametsoc.org/view/journals/atsc/72/9/jas-d-14-0099.1.xml"
+[knobs.requires]
+mp_physics = [8]
+[knobs.conditions]
+thompson_version = ["wrf_461"]
+[[knobs.sites]]
+module = "thompson"
+anchor = "4854.0f"
+literal = "4854.0f"
+count = 20
+[[knobs.sites]]
+module = "thompson_classic"
+anchor = "#define TC_AV_R 4854.0f"
+literal = "4854.0f"
+count = 1
+
+[[knobs]]
+name = "physics.thompson.graupel_fall"
+family = "physics"
+units = "fractional change"
+min = -0.2
+max = 0.2
+default = 0
+description = "Changes graupel fall speed and graupel collision ventilation coefficients."
+parameter = "thompson.graupel_fall"
+physical_default = 442
+scheme = "classic microphysics"
+range_basis = "Conservative inferred sensitivity interval. The source study demonstrates altered warm rain and fall speed physics; it does not calibrate these bounds."
+reference = "https://journals.ametsoc.org/view/journals/atsc/72/9/jas-d-14-0099.1.xml"
+[knobs.requires]
+mp_physics = [8]
+[knobs.conditions]
+thompson_version = ["wrf_461"]
+[[knobs.sites]]
+module = "thompson"
+anchor = "442.0f"
+literal = "442.0f"
+count = 18
+
+[[knobs.sites]]
+module = "thompson_classic"
+anchor = "TC_AV_G(TC_IDX_BG1)"
+literal = "TC_AV_G(TC_IDX_BG1)"
+count = 5
+[[knobs.sites]]
+module = "thompson_classic"
+anchor = "afall = 442.0f;"
+literal = "442.0f"
+count = 1
+
+[[knobs]]
+name = "physics.thompson.ice_fall"
+family = "physics"
+units = "fractional change"
+min = -0.2
+max = 0.2
+default = 0
+description = "Changes cloud ice fall speed."
+parameter = "thompson.ice_fall"
+physical_default = 1493.9
+scheme = "classic microphysics"
+range_basis = "Conservative inferred sensitivity interval. The source study demonstrates altered warm rain and fall speed physics; it does not calibrate these bounds."
+reference = "https://journals.ametsoc.org/view/journals/atsc/72/9/jas-d-14-0099.1.xml"
+[knobs.requires]
+mp_physics = [8]
+[knobs.conditions]
+thompson_version = ["wrf_461"]
+[[knobs.sites]]
+module = "thompson"
+anchor = "1493.9f"
+literal = "1493.9f"
+count = 4
+[[knobs.sites]]
+module = "thompson_classic"
+anchor = "#define TC_AV_I 1493.9f"
+literal = "1493.9f"
+count = 1
+
+[[knobs]]
+name = "physics.rrtmg.radius_liquid"
+family = "physics"
+units = "fractional change"
+min = -0.2
+max = 0.2
+default = 0
+description = "Changes liquid cloud radius supplied to radiation while retaining the existing minimum radius check."
+parameter = "rrtmg.radius_liquid"
+kind = "family-source"
+physical_default = 1
+scheme = "legacy radiation"
+range_basis = "Conservative inferred radius multiplier around the existing diagnosed radius. The source tests cloud radii of 5-25 micrometres; native optical validity checks remain active."
+reference = "https://dtcenter.org/sites/default/files/visitor-projects/Iacono_Henderson_DTC_FinalReport_2016.pdf"
+[knobs.requires]
+use_mp_re = [1]
+ra_lw_physics = [4]
+ra_sw_physics = [4]
+[knobs.conditions]
+ra_rrtmg_variant = ["rrtmg_legacy"]
+[[knobs.sites]]
+module = "rrtmg_legacy_prep"
+anchor = "RP_RADIUS(rc[j])"
+literal = "RP_RADIUS(rc[j])"
+count = 1
+
+[[knobs]]
+name = "physics.rrtmg.radius_ice"
+family = "physics"
+units = "fractional change"
+min = -0.2
+max = 0.2
+default = 0
+description = "Changes ice cloud radius supplied to radiation within the existing 5 to 140 micrometre optical table bounds."
+parameter = "rrtmg.radius_ice"
+kind = "family-source"
+physical_default = 1
+scheme = "legacy radiation"
+range_basis = "Conservative inferred radius multiplier around the existing diagnosed radius. The source tests cloud radii of 5-25 micrometres; native optical validity checks remain active."
+reference = "https://dtcenter.org/sites/default/files/visitor-projects/Iacono_Henderson_DTC_FinalReport_2016.pdf"
+[knobs.requires]
+use_mp_re = [1]
+ra_lw_physics = [4]
+ra_sw_physics = [4]
+[knobs.conditions]
+ra_rrtmg_variant = ["rrtmg_legacy"]
+[[knobs.sites]]
+module = "rrtmg_legacy_prep"
+anchor = "hi ? rp_max(5.0f, RP_RADIUS(ri[j])) : 10.0f"
+literal = "RP_RADIUS(ri[j])"
+count = 1
+
+[[knobs]]
+name = "physics.rrtmg.radius_snow"
+family = "physics"
+units = "fractional change"
+min = -0.2
+max = 0.2
+default = 0
+description = "Changes snow radius supplied to radiation including the ice to snow fallback."
+parameter = "rrtmg.radius_snow"
+kind = "family-source"
+physical_default = 1
+scheme = "legacy radiation"
+range_basis = "Conservative inferred radius multiplier around the existing diagnosed radius. The source tests cloud radii of 5-25 micrometres; native optical validity checks remain active."
+reference = "https://dtcenter.org/sites/default/files/visitor-projects/Iacono_Henderson_DTC_FinalReport_2016.pdf"
+[knobs.requires]
+use_mp_re = [1]
+ra_lw_physics = [4]
+ra_sw_physics = [4]
+[knobs.conditions]
+ra_rrtmg_variant = ["rrtmg_legacy"]
+[[knobs.sites]]
+module = "rrtmg_legacy_prep"
+anchor = "RP_RADIUS(rs[j])"
+literal = "RP_RADIUS(rs[j])"
+count = 1
+[[knobs.sites]]
+module = "rrtmg_legacy_prep"
+anchor = "rp_max(10.0f, RP_RADIUS(ri[j]))"
+literal = "RP_RADIUS(ri[j])"
+count = 1
+
+[[knobs]]
+name = "physics.convective.entrainment_deep"
+family = "physics"
+units = "fractional change"
+min = -0.3
+max = 0.3
+default = 0
+description = "Changes dilution of deep parameterized convective plumes."
+parameter = "convective.entrainment_deep"
+physical_default = 7E-05
+scheme = "cumulus"
+range_basis = "Conservative inferred parameter sensitivity interval within the existing convective SPP amplitude envelope."
+reference = "https://dtcenter.ucar.edu/GMTB/v6.0.0/sci_doc/_g_f_s__s_p_p.html"
+[knobs.requires]
+cu_physics = [3]
+[[knobs.sites]]
+module = "gf"
+anchor = "#define K_ENTR_BASE __uint_as_float(GFC[52])"
+literal = "__uint_as_float(GFC[52])"
+count = 1
+
+[[knobs]]
+name = "physics.convective.entrainment_shallow"
+family = "physics"
+units = "fractional change"
+min = -0.3
+max = 0.3
+default = 0
+description = "Changes dilution of shallow parameterized convective plumes."
+parameter = "convective.entrainment_shallow"
+physical_default = 9E-05
+scheme = "cumulus"
+range_basis = "Conservative inferred parameter sensitivity interval within the existing convective SPP amplitude envelope."
+reference = "https://dtcenter.ucar.edu/GMTB/v6.0.0/sci_doc/_g_f_s__s_p_p.html"
+[knobs.requires]
+cu_physics = [3]
+ishallow = [1]
+[[knobs.sites]]
+module = "gf"
+anchor = "#define K_ENTR_SH __uint_as_float(GFC[126])"
+literal = "__uint_as_float(GFC[126])"
+count = 1
+[[knobs]]
+name = "physics.rrtmg.overlap_break_fraction"
+family = "physics"
+units = "subcolumn fraction"
+min = 0
+max = 1
+default = 0
+description = "Changes a fraction of radiation subcolumns from maximum random overlap to random overlap."
+parameter = "rrtmg.overlap_break_fraction"
+physical_default = 0
+transform = "absolute"
+kind = "family-source"
+scheme = "legacy radiation"
+range_basis = "Explicit new mixture between two published overlap endpoints, not the exponential decorrelation model. Zero retains the original maximum random operator."
+reference = "https://dtcenter.org/sites/default/files/visitor-projects/Iacono_Henderson_DTC_FinalReport_2016.pdf"
+[knobs.requires]
+ra_lw_physics = [4]
+ra_sw_physics = [4]
+[knobs.conditions]
+ra_rrtmg_variant = ["rrtmg_legacy"]
+[[knobs.sites]]
+module = "rrtmg_mcica_wrf"
+anchor = "walked = (prev > clear) ? prev : RMCW_MU(walked, clear);"
+literal = "walked = (prev > clear) ? prev : RMCW_MU(walked, clear);"
+count = 2

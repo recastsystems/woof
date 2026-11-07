@@ -48,8 +48,9 @@ def test_matrix_covers_every_implemented_registry_row_and_dispatch_selector():
         values = {dict(row.selectors)[selector] for row in matrix if selector in dict(row.selectors)}
         assert values == set(dispatch)
     assert {dict(row.selectors)["mp_physics"] for row in matrix if row.component == "microphysics"} == {
-        0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16, 18, 24, 28, 30, 50, 106, 900}
-    assert {dict(row.selectors)["cu_physics"] for row in matrix if row.component == "cumulus"} == {0, 1, 3, 5, 6, 16, 96}
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 50, 51, 52, 53,
+        55, 56, 95, 96, 97, 106, 900}
+    assert {dict(row.selectors)["cu_physics"] for row in matrix if row.component == "cumulus"} == {0, 1, 2, 3, 5, 6, 7, 10, 11, 14, 16, 93, 94, 95, 96, 99}
     assert all(row.receipt()["fallback"] == "original_member_operation" for row in matrix)
 
 
@@ -73,7 +74,8 @@ def test_all_front_door_presets_route_without_changing_their_switches():
     {"mp_physics": 50}, {"mp_physics": 28}, {"mp_physics": 1},
     {"sf_surface_physics": 3}, {"sf_surface_physics": 4},
     {"bl_pbl_physics": 9}, {"sf_sfclay_physics": 5},
-    {"cu_physics": 1}, {"cu_physics": 3}, {"cu_physics": 16},
+    {"cu_physics": 1}, {"cu_physics": 2}, {"cu_physics": 3}, {"cu_physics": 16}, {"cu_physics": 95},
+    {"cu_physics": 93},
     {"ra_rrtmg_variant": "rte-rrtmgp"}, {"ra_lw_physics": 1, "ra_sw_physics": 1},
     {"ra_lw_physics": 90, "ra_sw_physics": 90},
     {"use_adaptive_time_step": True}, {"bldt": 5.0},

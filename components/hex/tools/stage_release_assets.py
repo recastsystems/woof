@@ -43,7 +43,7 @@ def load_pins(paths: list[Path]) -> list[dict]:
         release = document["release_assets"]
         tag = safe_component(release["tag"])
         repository = release["repository"]
-        if repository != "FahrenheitResearch/gpuwm-hex":
+        if repository not in {"FahrenheitResearch/gpuwm-hex", "recastsystems/gpuwm-hex"}:
             raise ValueError(f"{path}: unexpected repository {repository!r}")
         table = document["bridges" if schema == SCHEMAS[0] else "assets"]
         entries = list(table.items() if isinstance(table, dict) else ((row["name"], row) for row in table))
@@ -168,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         rows = list(pool.map(lambda pin: stage_one(pin, sources, out), pins))
-    commands = ["# Asset releases must be created before the v0.4.1 release.",
+    commands = ["# Asset releases must be created before the v0.4.12 release.",
                 "# Run only after every manifest asset is verified."]
     for tag in sorted({row["tag"] for row in rows}):
         group = [row for row in rows if row["tag"] == tag]

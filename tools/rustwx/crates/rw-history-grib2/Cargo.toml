@@ -1,0 +1,30 @@
+# WOOF forecast files as GRIB2, lossless (Apache-2.0).
+#
+# Reads one WOOF forecast file (ArWen's wrfout, a hex door's lat-lon
+# export: NetCDF classic or NetCDF-4) with the pure-Rust netcrust reader and
+# writes every variable its parameter table maps as WMO FM 92 GRIB2 Edition 2,
+# data representation template 5.4 (IEEE binary32): every value's 32 bits as
+# they are, never scaled or rounded. The variable -> GRIB2 parameter mapping is
+# data (the table the caller passes), never code per variable.
+[package]
+name = "rw-history-grib2"
+# The same clean-tree source stamp as the other history exporter.
+build = "../rw-grib2export/build.rs"
+version = "0.2.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+rust-version = "1.77"
+
+[[bin]]
+name = "rw_history_grib2"
+path = "src/main.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+ndarray = "0.17"
+netcrust = { path = "../../vendor/netcrust" }
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wx-core = { path = "../../vendor/wx-core", version = "0.3.10", default-features = false }

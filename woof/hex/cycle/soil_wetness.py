@@ -151,6 +151,27 @@ def source_contract(map_sources, name=None):
     return matches[0] if matches else None
 
 
+def validate_target_hydraulics(contract, land_surface):
+    """Accept a land model only when this recipe carries its target anchors.
+
+    The WOOF Noah-MP route uses STAS and the same urban hydraulic override
+    as Noah. Verify every anchor against the pinned engine tables rather
+    than inferring compatibility from the four-layer geometry alone.
+    """
+    target = contract['target']
+    if land_surface not in target.get('land_surface_schemes', ['noah']):
+        raise ValueError(f'cold soil hydraulic contract does not support {land_surface}')
+    if land_surface == 'noahmp':
+        from woof.core.noahmp import load_noahmp_parameters, SOILPARM_SECTION, URBAN_SOIL_OVERRIDE
+        table = load_noahmp_parameters().soil[SOILPARM_SECTION]
+        expected = np.column_stack((np.zeros(len(table.column('MAXSMC'))),
+            table.column('WLTSMC'), table.column('REFSMC'), table.column('MAXSMC'))).astype('f4')
+        supplied = np.asarray(target['soil_knots'], dtype='f4')[1:]
+        urban = np.asarray([0., *(URBAN_SOIL_OVERRIDE[k] for k in ('SMCWLT','SMCREF','SMCMAX'))], dtype='f4')
+        if not np.array_equal(supplied, expected) or not np.array_equal(np.asarray(target['urban_knots'], dtype='f4'), urban):
+            raise ValueError('cold soil hydraulic anchors differ from the pinned Noah-MP tables')
+
+
 def remap_cold_init(path, donor, contract, start_time):
     """Admit a co-located native donor, then remap valid soil onto cold init.
 
@@ -309,7 +330,7 @@ def _cold_remap_plan(path, donor, contract, start_time):
     # starts it, and Noah's SSTEP caps SMC at SMCMAX on the first step, draining the excess as runoff
     # (module_sf_noahlsm.F:4018-4030, woof/hex/mpasphys/noah_v842.py). So the gate below checks every cell this remap
     # writes or vouches for, and counts, rather than refuses, the untouched kept cells.
-    # THE BREAKAGE THIS PREVENTS (shape1-mesh, V2X6000, 2026-10-29): the 20 km GFS globe still refused after abf837a3,
+    # THE BREAKAGE THIS PREVENTS (shape1-mesh, two-card system, 2026-10-29): the 20 km GFS globe still refused after abf837a3,
     # "soil bounds cell=522193 layer=0: sh2o=0.0 smois=0.468 porosity=0.434" -- a Kerguelen cell (-49.1, 70.4) whose
     # cold soil is GFS's saturated 0.468 on a sandy-loam target class, a cell this remap never touched.
     kept_violations = int(np.count_nonzero((sm[kept] > cap[kept, None]) | (sw[kept] > sm[kept]) | (sw[kept] < 0)))
@@ -339,3 +360,76 @@ def _cold_remap_plan(path, donor, contract, start_time):
                'target_changed_liquid_values': int(np.count_nonzero(new_sw != sw)),
                'water_ice_columns_unchanged': int(len(sm)-len(target_ids))}
     return {'smois': new_sm, 'sh2o': new_sw, 'receipt': {'applied': True, **receipt}}
+
+
+#: The init's land surface -> the soil model row of woof's land-state table
+#: whose hydraulics it runs (woof/data/soil/land-state.v1.json).
+LAND_SURFACE_SOIL_MODEL = {"noah": "noah", "noahmp": "noah", "ruc": "ruc"}
+
+
+def remap_deep_soil_levels(path, *, keep_above_m, source_model, source_id, land_surface):
+    """Move a deep-soil donor's moisture onto the init's own land-model hydraulics.
+
+    A packaged source that publishes one soil layer (ECCC's HRDPS and RDPS)
+    carries the layers below it from a declared donor (woof's
+    ``soil_layers.deep_donor``: GFS's Noah layers at the same valid time,
+    written into the WPS box).  After the init, the levels deeper than
+    ``keep_above_m`` hold that donor's moisture on Noah's hydraulics.  For a
+    RUC init they are moved onto RUC's by relative wetness, cell by cell on
+    the init's own soil class -- the one formula and table WOOF's land-state
+    remap uses (``woof.ingest.land_state.soil_moisture_index_remap``); the
+    source's own levels above are kept as published.  Noah to Noah is the
+    identity and writes nothing.  Liquid water keeps its fraction of the
+    total.  Returns the receipt, also written beside the init.
+    """
+    import json
+    from pathlib import Path
+    from netCDF4 import Dataset
+    from woof.ingest.land_state import soil_moisture_index_remap
+    from .land_state import read
+
+    target = LAND_SURFACE_SOIL_MODEL.get(str(land_surface))
+    if target is None:
+        raise ValueError(f'deep soil remap: no soil model row for land surface {land_surface!r}')
+    with Dataset(path) as init:
+        sm = read(init['smois']).astype(np.float64)
+        sw = read(init['sh2o']).astype(np.float64) if 'sh2o' in init.variables else None
+        depths = read(init['zs']).astype(np.float64)
+        if depths.ndim == 2:
+            depths = depths[0]
+        soil = np.asarray(read(init['isltyp']), dtype=np.int64)
+        if 'landmask' in init.variables:
+            land = np.asarray(read(init['landmask'])) == 1
+        else:
+            land = np.asarray(read(init['xland'])) == 1
+    if sm.ndim != 2 or depths.shape != (sm.shape[1],):
+        raise ValueError(f'deep soil remap: smois {sm.shape} and zs {depths.shape} disagree')
+    deep = depths > float(keep_above_m) + 1e-6
+    receipt = {'schema': 'hex.deep-soil-remap/v1', 'donor': source_id, 'donor_soil_model': source_model,
+               'target_soil_model': target, 'land_surface': land_surface,
+               'levels_m': depths.round(4).tolist(), 'kept_levels_m': depths[~deep].round(4).tolist(),
+               'remapped_levels_m': depths[deep].round(4).tolist()}
+    if source_model == target or not deep.any():
+        receipt['moisture'] = 'copied: the donor and the init share a soil model'
+    else:
+        cells = land & (soil != 14)
+        converted, result = soil_moisture_index_remap(sm[:, deep].T, soil, source_model=source_model,
+                                                      target_model=target, land=cells)
+        new_sm = sm.copy()
+        new_sm[:, deep] = converted.T
+        receipt.update(result)
+        with Dataset(path, 'r+') as init:
+            names = [('smois', new_sm)]
+            if sw is not None:
+                fraction = np.divide(sw, sm, out=np.zeros_like(sw), where=sm > 0)
+                new_sw = np.where(np.isfinite(sw), np.where(deep[None, :], new_sm * fraction, sw), sw)
+                names.append(('sh2o', new_sw))
+            for name, values in names:
+                var = init[name]
+                values = values.astype(var.dtype)
+                if var.dimensions[:1] == ('Time',):
+                    var[0] = values
+                else:
+                    var[:] = values
+    Path(str(path) + '.deep-soil.json').write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+    return receipt

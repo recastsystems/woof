@@ -170,6 +170,17 @@ def test_generated_map_projection_enum_matches_the_runtime_contract() -> None:
     assert physics_registry()["parameters"]["map_proj"]["enum"] == [0, 1, 2, 3]
 
 
+def test_moist_theta_is_visible_to_registry_consumers() -> None:
+    """Plan review must see the thermal prognostic admitted by stock import."""
+    registry = physics_registry()
+    assert "use_theta_m" in registry_setting_names(registry)
+    row = registry["parameters"]["use_theta_m"]
+    assert row["consuming_read"] == "woof/core/state.py"
+    assert row["per_domain"] is False
+    assert row["enum"] == [0, 1]
+    assert row["default"] == 0
+
+
 #: A declaration whose whole spec the builder's own table pins, so its default
 #: is one byte the builder rewrites unconditionally.
 _OWNED_ROW = b'"num_soil_layers":{'
@@ -179,8 +190,24 @@ _DEFAULT_KEY = b'"default":'
 def _perturb_one_owned_byte(tracked: bytes) -> bytes:
     """Change the declared default of an owned row, one byte, nothing else."""
 
-    row = tracked.index(_OWNED_ROW)
-    index = tracked.index(_DEFAULT_KEY, row) + len(_DEFAULT_KEY)
+    # The key can also occur in a component's nested contract. Locate its
+    # complete root parameter row, then mutate one byte of the original tape.
+    import json
+    name = _OWNED_ROW.decode().split('"')[1]
+    doc = json.loads(tracked)
+    import re
+    text = tracked.decode()
+    candidates = []
+    for match in re.finditer(r'"' + re.escape(name) + r'"\s*:\s*\{', text):
+        value, end = json.JSONDecoder().raw_decode(text, match.end() - 1)
+        if value == doc["parameters"][name]:
+            candidates.append((match.start(), end))
+    assert len(candidates) == 1
+    start, end = candidates[0]
+    row = text[start:end].encode()
+    default = re.search(rb'"default"\s*:\s*', row)
+    assert default is not None
+    index = len(text[:start].encode()) + default.end()
     digit = tracked[index:index + 1]
     assert digit.isdigit(), (
         f"expected a single-digit default at byte {index}, found {digit!r}")
@@ -405,7 +432,11 @@ def test_a_remedy_label_names_exactly_the_edit_its_remedy_settings_makes(
     # five closures; their labels name only the selector their edit sets
     # to zero.  FAST_SBM (mp30) refuses RRTMGP with the legacy-RRTMG
     # remedy, and Purdue Lin (mp2) does the same.  1 + 3 + 5 + 5 + 1 + 1.
-    assert checked == 16
+    # SMS adds the cumulus refusal and the three shared diffusion/terrain remedies.
+    # SBU-YLin adds its RRTMGP cloud-optics remedy. Measured across all rows.
+    # The union also includes SSiB and NTU legacy cloud-optics remedies.
+    # Eta MP95 adds its native legacy cloud-optics remedy to the union.
+    assert checked == 24
 
 
 def test_the_builder_refuses_a_remedy_label_that_promises_a_second_edit(
@@ -427,3 +458,30 @@ def test_the_builder_refuses_a_remedy_label_that_promises_a_second_edit(
         _check_remedy_label_describes_its_edit(silent, registry, "a-scheme")
     accurate = dict(rule, remedy_label="Set ra_rrtmg_variant='rrtmg_legacy'.")
     _check_remedy_label_describes_its_edit(accurate, registry, "a-scheme")
+
+
+def test_mskf_handoffs_retire_their_ledger_refusals():
+    import json
+    from pathlib import Path
+    from tools import build_registry
+    root = Path(__file__).resolve().parents[1]
+    registry = build_registry.build(json.loads((root / "woof/physics_registry_v2.json").read_text()))
+    for name in ("aercu_opt", "aercu_fct", "cu_rad_feedback"):
+        assert registry["parameters"][name]["implemented"] is True
+        assert "unimplemented_reason" not in registry["parameters"][name]
+        assert registry["parameters"][name]["readers"]
+
+
+def test_citation_workers_honor_affinity_before_python_313(monkeypatch):
+    from tools import build_registry
+    monkeypatch.delattr(build_registry.os, "process_cpu_count", raising=False)
+    monkeypatch.setattr(build_registry.os, "sched_getaffinity", lambda pid: {96, 97}, raising=False)
+    monkeypatch.setattr(build_registry.os, "cpu_count", lambda: 256)
+    assert build_registry.available_cpus() == 2
+
+
+def test_citation_workers_use_process_count_when_available(monkeypatch):
+    from tools import build_registry
+    monkeypatch.setattr(build_registry.os, "process_cpu_count", lambda: 3, raising=False)
+    monkeypatch.setattr(build_registry.os, "cpu_count", lambda: 256)
+    assert build_registry.available_cpus() == 3

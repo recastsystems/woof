@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import ast
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -900,6 +901,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     rows.append(row)
                     continue
                 try:
+                    declared = declared_fork_window(cited, first, last, occurrences[0].python_path)
+                    if declared is not None:
+                        row.update(declared)
+                        rows.append(row)
+                        continue
                     if fork_citation_window(cited,first,last):
                         root=Path(os.environ["RRFS_REF"]) if os.environ.get("RRFS_REF") else RRFS_SOURCE_ROOT
                         resolved=resolve_cited_path(cited.removeprefix("MPAS-Model-rrfs/"),root)
@@ -968,11 +974,72 @@ def is_mpas_citation(cited: str) -> bool:
     # Noah-MP shdmax binding (cuda_arwen_physics_v841, hex 0.4.0); MPAS v8.4.2
     # carries the refactored physics_noahmp/ and does not contain this WRF file.
     # An explicitly MPAS-qualified spelling still fails source resolution.
-    if cited in ("module_microphysics_driver.F", "module_sf_noahmplsm.F"):
+    if cited in ("module_microphysics_driver.F", "module_sf_noahmplsm.F", "module_radiation_driver.F"):
         return False
     return (basename.startswith(("mpas_", "module_")) or basename == "Registry.xml" or
             cited in ALIASES or "MPAS-Model" in cited)
 
+
+
+@lru_cache(maxsize=2)
+def _fork_manifest(newer):
+    return json.loads((ROOT / "src/hexcore/data/mpasphys-native" /
+        ("mpas-source-rrfs-44c0849.json" if newer else "mpas-source-rrfs.json")).read_text())
+
+
+@lru_cache(maxsize=128)
+def _authenticated_fork_lines(target, expected):
+    path = Path(target)
+    if _sha256_file(path) != expected:
+        raise ValueError("fork citation source SHA-256 differs from its committed manifest: " + target)
+    return path.read_text().splitlines(keepends=True)
+
+
+def declared_fork_window(cited: str, first: int, last: int, python_path: str):
+    """Authenticate a fork citation with the committed source/submodule manifest.
+
+    The generated newer MYNN and smoke modules declare their newer parent pin;
+    the retained fork modules use the original parent. Bare references inside
+    either fork belong to that fork, rather than the main MPAS source tree.
+    """
+    filename = Path(python_path).name
+    fork = "/mpasphys/rrfs/" in python_path.replace("\\", "/")
+    if not fork and not (filename == "forecast_v842.py" and cited == "Registry.xml") and not (
+            filename == "bl_mynn_v842.py" and cited == "module_bl_mynnedmf.F90"):
+        return None
+    newer = (filename in {"bl_mynnedmf_c6d08709.py", "smoke_5d2c71e2.py", "smoke_resident.py"} or
+             (filename == "stream_xml_rrfs.py" and cited == "mpas_output_timelevels.F"))
+    manifest = _fork_manifest(newer)
+    relative = cited.removeprefix("MPAS-Model-rrfs/")
+    rows = manifest["files"]
+    if relative in rows:
+        resolved = relative
+    else:
+        matches = [name for name in rows if name.endswith("/" + relative)]
+        if len(matches) != 1:
+            # The source manifest covers scheme inputs. Other fork files keep
+            # their immutable parent Git-object authentication.
+            if fork_citation_window("MPAS-Model-rrfs/" + relative, first, last):
+                root = Path(os.environ.get("RRFS_REF", RRFS_SOURCE_ROOT))
+                resolved = resolve_cited_path(relative, root)
+                return {"release": "rrfs-" + RRFS_COMMIT, "source_path": resolved,
+                        "window_sha256": window_sha256(source_window(resolved, first, last, root)),
+                        "authority": "immutable parent Git object"}
+            raise ValueError(f"fork citation {cited!r} resolves to {matches}")
+        resolved = matches[0]
+    if "stochastic_physics" in resolved:
+        raise ValueError("withheld source cannot be read by the citation checker")
+    row = rows[resolved]
+    cache = Path(os.environ.get("RRFS_CITATION_CACHE", ROOT / ".citation-cache"))
+    target = cache / row["sha256"] / Path(resolved).name
+    if not target.is_file():
+        raise ValueError(f"pinned fork citation source unavailable: {target}; stage the declared source manifest")
+    lines = _authenticated_fork_lines(str(target), row["sha256"])
+    if first < 1 or last < first or last > len(lines):
+        raise ValueError(f"{resolved} has {len(lines)} lines, not {first}-{last}")
+    return {"release": "rrfs-" + manifest["pins"]["rrfs-model"], "source_path": resolved,
+            "window_sha256": window_sha256("".join(lines[first-1:last])),
+            "authority": "committed fork and submodule source manifest"}
 
 
 def fork_citation_window(cited: str, first: int, last: int) -> bool:
@@ -1028,9 +1095,21 @@ def check_campaign_citations(source_root: Path, mpas_source: Path) -> list[str]:
         if not is_mpas_citation(cited):
             continue  # glibc and other non-MPAS source references
         label = f"{citation} ({occurrences[0].python_path}:{occurrences[0].python_line})"
+        # This shared elementary-function note explicitly names WRF's Thompson
+        # source, whose line numbering differs from MPAS's vendored version.
+        if citation == "module_mp_thompson.F:5950" and all(
+                Path(item.python_path).name == "rkind_libm.py" for item in occurrences):
+            continue
         rrfs_errors = check_rrfs_window(citation, occurrences)
         if rrfs_errors is not None:
             failures.extend(f"{label}: {error}" for error in rrfs_errors)
+            continue
+        try:
+            declared = [declared_fork_window(cited, first, last, item.python_path) for item in occurrences]
+            if all(record is not None for record in declared):
+                continue
+        except (OSError, ValueError, IndexError) as error:
+            failures.append(f"{label}: {error}")
             continue
         if citation in PINS:
             failures.extend(f"{label}: {error}" for error in check_legacy_window(citation))
@@ -1139,6 +1218,8 @@ def check_routine_coverage(source_root: Path, mpas_source: Path) -> list[str]:
                     continue
                 cited = cited.removeprefix("MPAS-Model-v8.4.2/")
                 try:
+                    if declared_fork_window(cited, first, last, str(path)) is not None:
+                        continue
                     if not fork_citation_window(cited,first,last):
                         resolved = resolve_cited_path(cited, mpas_source)
                         source_window(resolved, first, last, mpas_source)

@@ -6,7 +6,7 @@ The breakage each one prevents, named:
    ``kf_column``'s column arrays used to live in the per-thread local frame,
    and CUDA sizes ONE per-context local-memory backing store to the widest
    frame in the context times the card's RESIDENT-THREAD CAPACITY, not times
-   the occupancy the kernel achieves.  MEASURED on a development machine (RTX 5070 Ti, 70
+   the occupancy the kernel achieves.  MEASURED on test host 1 (RTX 5070 Ti, 70
    SMs x 1,536, sm_120, NVRTC 13.0.48): the 9,216 B frame at nz = 49 took
    840.0 MiB at first launch and never gave it back.  Anything that puts a
    column array back on the stack brings that reservation back, and this

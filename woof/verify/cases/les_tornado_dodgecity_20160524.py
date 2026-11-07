@@ -41,7 +41,7 @@ Run it::
     python -m woof.verify.cases.les_tornado_dodgecity_20160524 \\
         --config PATH/TO/les_tornado_100m_dodgecity_20160524.toml
 
-The config is a repository file under ``configs/``, which woof 2.5.0 and
+The config is a repository file under ``configs/``, which gpuwm 2.5.0 and
 later ship beside the package, so an install finds it with no argument.
 Where it is missing -- an older install, or a config kept outside the
 tree -- name it with ``--config`` or point ``WOOF_CONFIGS_ROOT`` at the

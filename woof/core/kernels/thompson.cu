@@ -8571,12 +8571,22 @@ extern "C" __global__ void thompson_adapter_prepare(
     float* __restrict__ qg,
     float* __restrict__ entry_graupel, float* __restrict__ warm_entry,
     float* __restrict__ graupelncv, float* __restrict__ micro_columns,
-    float gravity, int size, int columns, int thb_full, int phb_full)
+    float gravity, int size, int columns, int thb_full, int phb_full
+#ifdef GPUWM_USE_THETA_M
+    , const float* __restrict__ qv
+#endif
+    )
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= size) return;
     const int k = idx / columns;
-    const float theta = __fadd_rn(thb[thb_full ? idx : k], thp[idx]);
+    const float thermal = __fadd_rn(thb[thb_full ? idx : k], thp[idx]);
+#ifdef GPUWM_USE_THETA_M
+    const float theta = __fdiv_rn(thermal,
+        __fadd_rn(1.0f, __fmul_rn(RVOVRD, qv[idx])));
+#else
+    const float theta = thermal;
+#endif
     const float temp = __fmul_rn(theta, pii[idx]);
     th[idx] = theta;
     temperature[idx] = temp;
@@ -8661,6 +8671,7 @@ extern "C" __global__ void thompson_adapter_finish(
     if (idx >= size) return;
     const float theta = temperature[idx] / pii[idx];
     th[idx] = theta;
+#ifndef GPUWM_USE_THETA_M
     if (!no_mp_heating) {
         float increment = __fsub_rn(theta, h_diabatic[idx]);
         increment = isnan(increment) || isnan(limit)
@@ -8672,6 +8683,7 @@ extern "C" __global__ void thompson_adapter_finish(
     } else {
         h_diabatic[idx] = 0.0f;
     }
+#endif
     if (idx < columns) {
         const float frozen = __fadd_rn(snowncv[idx], graupelncv[idx]);
         const float ratio = frozen / rainncv[idx];

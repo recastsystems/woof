@@ -35,7 +35,7 @@ def test_dust_pins_and_default_scope():
                               "modis_landuse_20class_30s", "landuse_30s",
                               # the packaged HRRR recipe's gwd_opt 3 terrain drag,
                               # fetched by default since 959e1f06016
-                              # (lane/improve-47-geog-orogwd3)
+                              # (development branch)
                               "orogwd3_10m",
                               # the orographic drag statistics a default
                               # WOOF Global run reads (ddc882f020)

@@ -52,7 +52,7 @@ import json
 import math
 from pathlib import Path
 import sys
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Any, Callable
 
 import numpy as np
@@ -852,7 +852,7 @@ def _verify_checkout_root(root: Path) -> engine_pin.EngineIdentity:
     contract surface hash mismatch".  Neither names a breakage -- a digest
     that differs says the engine is another build, not that it cannot run --
     and together they refused every forecast on an engine newer than the pin
-    (8-card RTX PRO 6000 host, woof 2.8.9 against the 2.8.7 pin).  The match is recorded
+    (8-card RTX PRO 6000 host, gpuwm 2.8.9 against the 2.8.7 pin).  The match is recorded
     (:func:`engine_pin.identity_of`; ``matches_measured_row`` in the pin
     mapping and every receipt) and nothing refuses on it.
 
@@ -935,7 +935,8 @@ def _load_pinned_arwen_factory(
                     "so the run would execute the first tree's physics while "
                     "its receipt named the second"
                 )
-        elif str(requested) not in sys.path:
+        elif not any(isinstance(entry, str) and Path(entry or ".").resolve() == requested.resolve()
+                     for entry in sys.path):
             sys.path.insert(0, str(requested))
 
     import woof.core.microphysics as microphysics
@@ -1069,6 +1070,31 @@ class CudaArwenDiagnosticSnapshotV841:
     gwdo: Mapping[str, Any]
     metadata: Mapping[str, Any]
     receipt: Mapping[str, Any]
+
+
+def history_cumulus_rain_rate(owner: Any, seam: Any, rainc: Any, cp: Any) -> dict[str, Any]:
+    """``{"cuprec": mm/s}`` when the run has a cumulus scheme, the name MPAS-A's history gives it; else nothing.
+
+    The scheme's mean rate since the last snapshot, from its accumulated rain: GF and New Tiedtke add an increment to
+    ``rainc`` and leave no rate on the driver, so this one rule serves every scheme. ``rainc`` is the snapshot's own
+    detached copy, held for the next one; the card does one subtraction per history frame and nothing per step.
+
+    THE BREAKAGE THIS PREVENTS (WOOF physics, GFS 2026-10-31 06Z, f006, 120 km global and 96 -> 3 km zoom globe): the
+    history carried only ``rainc``, so rw_mpas_convert had no rate to add to REFC and the reflectivity map showed none
+    of the tropical rain bands the run's own rain map showed. A run with no cumulus scheme has no accumulator on its
+    driver: it writes no field and its frame keeps drawing its volume.
+    """
+
+    if getattr(getattr(seam, "_driver", None), "rainc", None) is None:
+        return {}
+    seconds = float(seam.elapsed_seconds)
+    held = getattr(owner, "_history_cuprec", None)
+    if held is None or held[0] != seconds:
+        rate = cp.zeros_like(rainc)
+        if held is not None and seconds > held[0]:
+            rate = cp.maximum(rainc - held[1], 0.0) / (seconds - held[0])
+        held = owner._history_cuprec = (seconds, rainc, rate)
+    return {"cuprec": cp.array(held[2], copy=True, order="C")}
 
 
 #: A species or moment name of the engine's state (qv, qr, nr, nwfa, qir, bir, ...).
@@ -1768,7 +1794,17 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
                 raise FloatingPointError(
                     f"{error}.  " + _locate_degenerate_columns(prepared)
                 ) from error
-            self._les_columns = prepared
+            # LES reads only these two winds. Retaining the whole preparation
+            # kept pressure, species, interfaces and scratch through the
+            # dycore and alongside the next step's new preparation.
+            # The wave coupling reads one more row: the lowest level's moist air density (waves._arwen_forcing).
+            # THE BREAKAGE THIS PREVENTS: trimming this to the LES winds (26ebf4d3) left the wave forcing reading
+            # prepared.rho_dry off it, so every ArWen-route run with --waves on stopped at its first commit.
+            wave_rho_air = None
+            if getattr(self, "wave_binding", None) is not None:
+                wave_rho_air = __import__("cupy").ascontiguousarray(
+                    prepared.rho_dry[0] * (np.float32(1) + prepared.species_p["qv"][0]))
+            self._les_columns = SimpleNamespace(u_p=prepared.u_p, v_p=prepared.v_p, wave_rho_air=wave_rho_air)
             self._validate_phase1_output(output, time_seconds=start)
             surface_classification = self._validate_surface_classification()
             noahmp_census = self._validate_noahmp_census(require=True)
@@ -2294,6 +2330,8 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         self._pending_lagged_diabatic_theta = None
         if getattr(self, "_surface_updates", None) is not None:
             self._surface_updates.commit()
+        if getattr(self, "wave_binding", None) is not None:
+            self.wave_binding.after_arwen_step(self)
         prior = self._last_receipt
         self._phase = "boundary"
         self._boundary_snapshot = None
@@ -2478,15 +2516,38 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             for name in names
             if name in selected and name not in _SOIL_DIAGNOSTIC_FIELDS
         }
+        surface.update(history_cumulus_rain_rate(self, self._seam, precipitation["rainc"], cp))
         if getattr(self, "_surface_updates", None) is not None:
             surface.update({name: self._surface_updates.owned[name].copy()
                             for name in ("sst", "sstsk")})
             surface["tmn"] = cp.array(self._seam._driver.fields["tmn"].reshape(-1), copy=True)
             ocean = getattr(self._surface_updates, "ocean", None)
+            waves = getattr(self._surface_updates, "waves", None)
+            if waves is not None:
+                surface.update(waves.history())
+                # The enclosing snapshot reads step_receipt after this history
+                # export. Refresh its cached wave counters here so the final
+                # interval is represented without a new step synchronization.
+                self._last_receipt = {
+                    **self._last_receipt,
+                    "surface_update": self._surface_updates.receipt(),
+                }
             if ocean is not None:
                 surface.update({"ocean_"+key: ocean.array(key).copy() for key in
                     ("depth", "volume", "area", "ice_temp", "snow_water", "melt", "basal",
                      "net_flux", "energy", "entrainment", "residual", "initial_sst", "initial_ice")})
+                if "ocean_pwp_diagnostics" in self._surface_updates.owned:
+                    surface["ocean_pwp_mixing_failures"] = ocean.array("pwp_diagnostics")[:,2].copy()
+                    import os
+                    if os.environ.get('WOOF_TC_OCEAN_DIAGNOSTICS') == '1':
+                        from .ocean_tc import history_fields
+                        surface.update(history_fields(ocean))
+                    columns = ocean.array("pwp_columns")
+                    surface["ocean_pwp_active"] = ocean.array("pwp_diagnostics")[:,3].copy()
+                    surface["ocean_temperature"] = cp.ascontiguousarray(columns[:,0,:].T)
+                    surface["ocean_salinity"] = cp.ascontiguousarray(columns[:,1,:].T)
+                    bottoms = (cp.arange(columns.shape[2], dtype=cp.float32)+1)*ocean.options["pwp"]["layer_m"]
+                    surface["ocean_layer_bottom"] = cp.broadcast_to(bottoms[:,None], (columns.shape[2], columns.shape[0])).copy()
         soil = {
             name: selected[name]
             for name in names
@@ -2571,6 +2632,8 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             "schema": CUDA_ARWEN_PHYSICS_V841_SCHEMA,
             **({"surface_updates": self._surface_updates.state()}
                if getattr(self, "_surface_updates", None) is not None else {}),
+            **({"waves": self.wave_binding.service.snapshot()}
+               if getattr(self, "wave_binding", None) is not None else {}),
             "identity": self._restart_identity(),
             "seam": self._seam.export_state(),
             "adapter": {
@@ -2594,7 +2657,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         # "lagged_heating" key and resumes with no carry for its first step
         # (recorded as restored_from_restart False); one that has it must
         # carry a plane of this backend's shape.
-        if not isinstance(payload, Mapping) or set(payload) - {"lagged_heating", "surface_updates"} != expected_keys:
+        if not isinstance(payload, Mapping) or set(payload) - {"lagged_heating", "surface_updates", "waves"} != expected_keys:
             raise ValueError(
                 "backend restart payload must contain "
                 "schema/identity/seam/adapter (and optionally lagged_heating) exactly"
@@ -2640,6 +2703,15 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         prepare_restart_ice(fresh, (payload["seam"] or {}).get("arrays") or {})
         fresh.restore_state(payload["seam"])
         self._seam = fresh
+        self._wave_restart = payload.get("waves")
+        if getattr(self, "wave_binding", None) is not None:
+            if self._wave_restart is None:
+                raise ValueError("wave-enabled backend requires its spectral checkpoint")
+            self.wave_binding.service.restore(self._wave_restart)
+            if self.wave_binding.service.options["roughness_feedback"]:
+                from .waves import ArwenFeedback
+                fresh._driver.ocean = ArwenFeedback(self.wave_binding, fresh._driver.fields["psfc"].shape,
+                                                     getattr(fresh._driver, "ocean", None))
         self._surface_restart = payload.get("surface_updates")
         if getattr(self, "_surface_updates", None) is not None:
             if self._surface_restart is None:

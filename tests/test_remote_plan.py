@@ -604,7 +604,7 @@ def test_review_cli_stages_then_reviews_without_starting(saved, monkeypatch, cap
     config, plan = saved
     parser = ArgumentParser()
     rc.register_cli(parser.add_subparsers())
-    args = parser.parse_args(["remote", "review-plan", "--host", "host-1", "--python", "/node/python",
+    args = parser.parse_args(["remote", "review-plan", "--host", "test-host-1", "--python", "/node/python",
         "--workspace", "/node/work", "--plan", str(plan), "--outdir", "/node/work/new",
         "--expected-plan-sha256", sha(plan.read_bytes()), "--expected-config-sha256", sha(config.read_bytes()), "--json"])
     monkeypatch.setattr(rc, "ssh_command", lambda _: ["never-executed"])

@@ -137,6 +137,27 @@ NON_NEGATIVE_FIELDS = (
     # state the scheme has: its column kernel stops with a status code on
     # one (woof/core/kernels/fast_sbm_core.cuh, status 8610 for ff1r).
     *_FSBM_BIN_SPECIES,
+    # mp 53 (P3 three-moment ice) advected moment (N*Z)**0.5: a square
+    # root, so never negative (module_mp_p3.F:916-919 writes 0 or a root).
+    "qzi",
+    # The second and third free ice categories the restart contract carries
+    # (woof/state_serialization_contract.py): mp 52 (P3 two-category) mass,
+    # number, rime mass and rime volume, and mp 55 (ISHMAEL) category masses
+    # and numbers.  Same reason as their first-category spellings above
+    # (qi/ni, qir/qib): a mass, a count or a rime quantity below zero is not
+    # a state either scheme has, and a full-moment analysis moves them.
+    "qi2", "ni2", "qir2", "qib2", "qi3", "ni3",
+    # The unpaired and volume moments the 3.0 ports put in the restart
+    # contract, each a moment, mass, count, volume or fraction of a
+    # non-negative population: ISHMAEL's per-category volume moments
+    # (qvoli*, qaoli*), Ferrier-Aligo advected rime (qrimef), and NTU's
+    # ice/snow/graupel/hail shape and volume moments (ai, as_, ag, ah, vi,
+    # vs, vg, fi, fs, i3m) and its five-field aerosol budget (qdcn, qtcn,
+    # qccn, qrcn, qnin).
+    "qvoli", "qvoli2", "qvoli3", "qaoli", "qaoli2", "qaoli3", "qrimef",
+    "ai", "as_", "ag", "ah", "vi", "vs", "vg", "fi", "fs", "i3m",
+    "qdcn", "qtcn", "qccn", "qrcn", "qnin",
+    'qt',
 )
 
 

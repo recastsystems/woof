@@ -1,0 +1,768 @@
+{
+  "schema": "gpuwm-mp7-integration-repair-v1",
+  "mp_physics": 7,
+  "base_commit": "c36c3b166676aa94b59c1a28ab4e02cb2fd9793e",
+  "tested_runtime_commit": "039c0550b738d30cf8cbd9caf649edc463bec853",
+  "defect": "MP7 column wrapper passed moist prognostic theta to dry native physics, then composed moist heating again. Stock use_theta_m=1 drove TSK above 400 K at step 28.",
+  "fix": "Use DomainState.total_theta for the moist carrier in the column wrapper. The dry-carrier operation and CUDA native scheme are unchanged.",
+  "licence": "No new physics source: pinned public-domain WRF 4.6.1, MIT strict log10 helper, original notices retained.",
+  "native": {
+    "command": [
+      "mpiexec",
+      "-n",
+      "4",
+      "./wrf.exe"
+    ],
+    "start": 1793581720.8136914,
+    "nproc_x": 1,
+    "nproc_y": 4,
+    "reason": "More MPI ranks reduce future capture wall time while preserving strict module arithmetic; captures are graded against their own native trajectory.",
+    "exit": 0,
+    "end": 1793584069.3719523,
+    "success": true
+  },
+  "retained_native_capture": {
+    "root": "<paper-archive>/wrf-ports/port-mp7-goddard4ice/mp7-skeptic2",
+    "commit": "039c0550b738d30cf8cbd9caf649edc463bec853",
+    "native": {
+      "command": [
+        "mpiexec",
+        "-n",
+        "4",
+        "./wrf.exe"
+      ],
+      "start": 1793581720.8136914,
+      "nproc_x": 1,
+      "nproc_y": 4,
+      "reason": "More MPI ranks reduce future capture wall time while preserving strict module arithmetic; captures are graded against their own native trajectory.",
+      "exit": 0,
+      "end": 1793584069.3719523,
+      "success": true
+    },
+    "files": {
+      "WRF-README": {
+        "bytes": 17722,
+        "sha256": "7ec4e1da2950e9276ede1cddb24a923ecef4e0e7c8805405dfc814a8df10f958"
+      },
+      "cases/case-real-000001.bin": {
+        "bytes": 35681648,
+        "sha256": "0334bfbfc2717c016ec8cb8c8f7502a2a2b2cb7bd0c13c48966020a63121bb33"
+      },
+      "cases/case-real-000001.expected.out": {
+        "bytes": 39909088,
+        "sha256": "c1ec9cc9c438321cf4d7555fa46235124a4a3e04773d83a17e7948d31b2d66b8"
+      },
+      "cases/case-real-000300.bin": {
+        "bytes": 35681648,
+        "sha256": "141e052efc079c991c324a776ab85d18756f99d119cbbc0693e58059419725f0"
+      },
+      "cases/case-real-000300.expected.out": {
+        "bytes": 39909088,
+        "sha256": "ad82d91e4d814073323a6de2887f2e6272d31ee6b632713348e1fe80a69b5367"
+      },
+      "cases/case-real-000600.bin": {
+        "bytes": 35681648,
+        "sha256": "ffa844d4c9a669ab3d291b32b26de6f4f9def71f6a548c52dbc39172055a9862"
+      },
+      "cases/case-real-000600.expected.out": {
+        "bytes": 39909088,
+        "sha256": "d52a04fc738bb229b99643a02d13c97ccfbe2ecc3d37541463cdc14b9a2b62b8"
+      },
+      "cases/case-real-000900.bin": {
+        "bytes": 35681648,
+        "sha256": "26d323df11796c6186f567b54808a99ce55d90d78db9b7d92aca7b35af99b8e0"
+      },
+      "cases/case-real-000900.expected.out": {
+        "bytes": 39909088,
+        "sha256": "6d36d62357c2686cc93d14274341a7021487f74bf9ea9a2b90e847c2e8e21c9c"
+      },
+      "cases/case-real-001200.bin": {
+        "bytes": 35681648,
+        "sha256": "52b684f69d1507c52622ea09600f9f9272fd731c780e09c6a588e29804e2ee86"
+      },
+      "cases/case-real-001200.expected.out": {
+        "bytes": 39909088,
+        "sha256": "d2ff0e44899bec00a354aff3688f6a9bc3f0c7ce70a884446d7054fe6e59346b"
+      },
+      "cases/case-real-001500.bin": {
+        "bytes": 35681648,
+        "sha256": "9e4798dee61ebebeeb4ed859eb94012ce895b26ccd50e13ae0bdbfd463f19c27"
+      },
+      "cases/case-real-001500.expected.out": {
+        "bytes": 39909088,
+        "sha256": "82bd646e97b58212e26d868fddfb54b913d1b3dd13303d3617077d24253740da"
+      },
+      "cases/case-real-001800.bin": {
+        "bytes": 35681648,
+        "sha256": "c6a8409377831818b7d6a287e9568c8344cd485cf0e92f337e31563aa86f0840"
+      },
+      "cases/case-real-001800.expected.out": {
+        "bytes": 39909088,
+        "sha256": "449e6c9659d88f368bf488969060b50ace6dd964ee91f69a496f68e640b31b39"
+      },
+      "jan-inputs/met_em.d01.2000-01-24_12:00:00.nc": {
+        "bytes": 5485304,
+        "sha256": "6acd419fa0272634b0ca6076d5f82c478b357323e67c4260aaf7281b84e02705"
+      },
+      "jan-inputs/met_em.d01.2000-01-24_15:00:00.nc": {
+        "bytes": 5467556,
+        "sha256": "8bfb2533eed4146d4ae1443492aaf7db0ce4ffb48c2e6caa155e1ef282a25179"
+      },
+      "jan-inputs/namelist.input": {
+        "bytes": 1593,
+        "sha256": "ad54e73637db5da436ed08ce4d6c3a7fc4137f6dd899b471c5c61df18e7f2a89"
+      },
+      "jan-inputs/wrfbdy_d01": {
+        "bytes": 2076420,
+        "sha256": "a269473c566a2d6c392b8a3762d2b4d22d7d4c44efaa7b9dd311427d13f3c241"
+      },
+      "jan-inputs/wrfinput_d01": {
+        "bytes": 5688805,
+        "sha256": "a1f0cddae96957ab4767c65c708053cf61ab9f61ad72ab20a600ea5c5020227f"
+      },
+      "module_mp_gsfcgce_4ice_nuwrf.F": {
+        "bytes": 189316,
+        "sha256": "86e6706586db0c72deaaa59e1c41e530c58cd5bf92dfecc631b117f9552ab9f1"
+      },
+      "namelist.input": {
+        "bytes": 2024,
+        "sha256": "09ce863e95b1a8d608e95573038e66a688c239246739506480681d61f379f96f"
+      },
+      "wrf.exe": {
+        "bytes": 54133800,
+        "sha256": "c6bb063e7049c8081f0c8068055303cafc1105d5d5eca08be0a24e71b21304a0"
+      },
+      "wrfbdy_d01": {
+        "bytes": 27110619,
+        "sha256": "7195a4ee80282f4bbcc3ec9c57ff2d9fe1af1a86590327d42e860d80db1939a8"
+      },
+      "wrfinput_d01": {
+        "bytes": 29237990,
+        "sha256": "923a53a3544510e37d14a603e35c6fc43c2882cd17d742356747da5bf87c37f1"
+      }
+    }
+  },
+  "strict_module_replay": {
+    "command": {
+      "command": [
+        "<lanes>/port-mp7-goddard4ice/.venv/bin/python",
+        "<lanes>/port-mp7-goddard4ice/engine/tools/gsfcgce4ice_wrf461_oracle/run_gpu.py",
+        "<paper-archive>/wrf-ports/port-mp7-goddard4ice/mp7-skeptic2",
+        "--json",
+        "<lanes>/port-mp7-goddard4ice/evidence/skeptic2/strict-replay.json"
+      ],
+      "environment": {
+        "GPUWM_WRF_EXACT": "1",
+        "GPUWM_WRF_GLIBC": "2.43",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "exit": 0,
+      "seconds": 5.540231563150883,
+      "free_gpu_mib_before": 32149
+    },
+    "total": {
+      "words": 60449564,
+      "nonzero_ulp_words": 0,
+      "signed_zero_words": 0,
+      "max_ulp": 0,
+      "rejected_words": 0
+    },
+    "native_undefined_exclusions": [],
+    "coverage": [
+      {
+        "case": "case-real-000001",
+        "ncol": 5476,
+        "nz": 49,
+        "step": [
+          1
+        ],
+        "species": {
+          "qc": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "qr": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "qi": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "qs": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "qg": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "qh": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      {
+        "case": "case-real-000300",
+        "ncol": 5476,
+        "nz": 49,
+        "step": [
+          300
+        ],
+        "species": {
+          "qc": {
+            "nonzero": 31453,
+            "min": -2.048887948191691e-09,
+            "max": 0.00047331038513220847
+          },
+          "qr": {
+            "nonzero": 811,
+            "min": -1.0575292590550115e-22,
+            "max": 9.119720847317559e-18
+          },
+          "qi": {
+            "nonzero": 52645,
+            "min": -6.14078503758525e-13,
+            "max": 9.277136268792674e-05
+          },
+          "qs": {
+            "nonzero": 77024,
+            "min": -5.595427482354802e-14,
+            "max": 3.072504114243202e-05
+          },
+          "qg": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "qh": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      {
+        "case": "case-real-000600",
+        "ncol": 5476,
+        "nz": 49,
+        "step": [
+          600
+        ],
+        "species": {
+          "qc": {
+            "nonzero": 56767,
+            "min": -1.892287576632512e-10,
+            "max": 0.00022353425447363406
+          },
+          "qr": {
+            "nonzero": 382,
+            "min": -5.454619749917758e-23,
+            "max": 2.0331596944331294e-18
+          },
+          "qi": {
+            "nonzero": 68801,
+            "min": -1.2498987305223364e-12,
+            "max": 0.00014232052490115166
+          },
+          "qs": {
+            "nonzero": 105197,
+            "min": -3.647225479529864e-13,
+            "max": 4.430067565408535e-05
+          },
+          "qg": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "qh": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      {
+        "case": "case-real-000900",
+        "ncol": 5476,
+        "nz": 49,
+        "step": [
+          900
+        ],
+        "species": {
+          "qc": {
+            "nonzero": 94316,
+            "min": -9.085903140970686e-10,
+            "max": 0.0006028097122907639
+          },
+          "qr": {
+            "nonzero": 2252,
+            "min": -7.335650489148247e-16,
+            "max": 2.8955543518449645e-10
+          },
+          "qi": {
+            "nonzero": 83599,
+            "min": -1.0378716983061587e-11,
+            "max": 0.00016461611085105687
+          },
+          "qs": {
+            "nonzero": 108822,
+            "min": -9.468323477687668e-13,
+            "max": 8.291058475151658e-05
+          },
+          "qg": {
+            "nonzero": 0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "qh": {
+            "nonzero": 20,
+            "min": -9.267405410556273e-27,
+            "max": 3.2748440928853615e-22
+          }
+        }
+      },
+      {
+        "case": "case-real-001200",
+        "ncol": 5476,
+        "nz": 49,
+        "step": [
+          1200
+        ],
+        "species": {
+          "qc": {
+            "nonzero": 108081,
+            "min": -6.199059754408154e-08,
+            "max": 0.003716863226145506
+          },
+          "qr": {
+            "nonzero": 19791,
+            "min": -1.000009186569173e-09,
+            "max": 0.005964359268546104
+          },
+          "qi": {
+            "nonzero": 90911,
+            "min": -3.922260205513339e-08,
+            "max": 0.003483087057247758
+          },
+          "qs": {
+            "nonzero": 134739,
+            "min": -5.794312585294392e-08,
+            "max": 0.005191406700760126
+          },
+          "qg": {
+            "nonzero": 81273,
+            "min": -1.108089087153985e-08,
+            "max": 0.001392977312207222
+          },
+          "qh": {
+            "nonzero": 43323,
+            "min": -1.0139210360193829e-08,
+            "max": 0.0071466839872300625
+          }
+        }
+      },
+      {
+        "case": "case-real-001500",
+        "ncol": 5476,
+        "nz": 49,
+        "step": [
+          1500
+        ],
+        "species": {
+          "qc": {
+            "nonzero": 112245,
+            "min": -1.9159881503583165e-07,
+            "max": 0.0035727289505302906
+          },
+          "qr": {
+            "nonzero": 34111,
+            "min": -5.680170716004795e-07,
+            "max": 0.008470620028674603
+          },
+          "qi": {
+            "nonzero": 104445,
+            "min": -3.338801590757612e-08,
+            "max": 0.0030356477946043015
+          },
+          "qs": {
+            "nonzero": 152557,
+            "min": -3.943310034060232e-08,
+            "max": 0.005386138800531626
+          },
+          "qg": {
+            "nonzero": 121264,
+            "min": -1.8060882567283443e-08,
+            "max": 0.0025654800701886415
+          },
+          "qh": {
+            "nonzero": 79742,
+            "min": -3.020194583314151e-08,
+            "max": 0.006631264928728342
+          }
+        }
+      },
+      {
+        "case": "case-real-001800",
+        "ncol": 5476,
+        "nz": 49,
+        "step": [
+          1800
+        ],
+        "species": {
+          "qc": {
+            "nonzero": 108874,
+            "min": -5.582446860330492e-08,
+            "max": 0.00377456727437675
+          },
+          "qr": {
+            "nonzero": 48402,
+            "min": -1.2695653595073964e-06,
+            "max": 0.011835192330181599
+          },
+          "qi": {
+            "nonzero": 119359,
+            "min": -2.2434088364775562e-08,
+            "max": 0.003040705807507038
+          },
+          "qs": {
+            "nonzero": 137207,
+            "min": -1.460092562410864e-07,
+            "max": 0.004776807501912117
+          },
+          "qg": {
+            "nonzero": 115495,
+            "min": -1.0309432951771669e-07,
+            "max": 0.003952828235924244
+          },
+          "qh": {
+            "nonzero": 86098,
+            "min": -3.7875345526572346e-08,
+            "max": 0.009518184699118137
+          }
+        }
+      }
+    ]
+  },
+  "stock_forecast": {
+    "case": "Jan-2000 30 km, exact skeptic MP7 namelist, use_theta_m=1",
+    "command": {
+      "command": [
+        "<lanes>/port-mp7-goddard4ice/.venv/bin/python",
+        "<lanes>/port-mp7-goddard4ice/evidence/skeptic2/profile_go.py",
+        "<lanes>/port-mp7-goddard4ice/evidence/skeptic2/forecast.stage.json",
+        "--wrfinput",
+        "<lanes>/port-mp7-goddard4ice/native/skeptic2-jan-mp7",
+        "--outdir",
+        "<lanes>/port-mp7-goddard4ice/run-skeptic2-jan-mp7",
+        "--run-seconds",
+        "7200",
+        "--no-supervise",
+        "--allow-shared-gpu",
+        "--benchmark",
+        "--products",
+        "none",
+        "--no-verify-visuals",
+        "--run-stamp",
+        "off"
+      ],
+      "cwd": "<lanes>/port-mp7-goddard4ice",
+      "environment": {
+        "OPENBLAS_NUM_THREADS": "2",
+        "GPUWM_KERNEL_PLAN_WORKERS": "2",
+        "OMP_NUM_THREADS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "GPUWM_WRF_EXACT": "0",
+        "GPUWM_NUMERICS": "fast",
+        "GPUWM_HISTORY_COMPRESSION": "none",
+        "GPUWM_VERIFY_VISUALS": "0",
+        "GPUWM_STATIC_BRIDGE": "<lanes>/port-mp7-goddard4ice/native/rustwx-target/release/libstatic_fields.so",
+        "GPUWM_NCWRITE_BRIDGE": "<lanes>/port-mp7-goddard4ice/native/rustwx-target/release/libnetcdf_writer.so",
+        "GPUWM_RW_NETCDF": "~/.gpuwm/bridges/rw_netcdf",
+        "GPUWM_RW_WRFBATCH": "<lanes>/port-mp7-goddard4ice/native/rustwx-target/release/rw_wrfbatch",
+        "GPUWM_RW_VERIFY": "<lanes>/port-mp7-goddard4ice/native/rustwx-target/release/rw_verify",
+        "CUPY_CACHE_DIR": "<lanes>/port-mp7-goddard4ice/.cache/cupy"
+      },
+      "commit": "039c0550b738d30cf8cbd9caf649edc463bec853",
+      "free_gpu_mib_before": 28984,
+      "load_before": 40.2177734375,
+      "start": 1793581765.2416801,
+      "exit": 0,
+      "wall_seconds": 82.50704041775316,
+      "end": 1793581847.779244
+    },
+    "benchmark": {
+      "excluded": [
+        "render",
+        "observation verification"
+      ],
+      "first_step": 1,
+      "first_valid_time": "2000-01-24_12:01:00",
+      "kernel_prewarm": {
+        "errors": {},
+        "modules": [
+          "smag2d",
+          "diff_opt1",
+          "diff6"
+        ],
+        "seconds": {
+          "diff6": 0.004,
+          "diff_opt1": 5.113,
+          "smag2d": 32.971
+        },
+        "wall_seconds": 38.089
+      },
+      "last_step": 120,
+      "last_valid_time": "2000-01-24_14:00:00",
+      "max_step_seconds": 0.080466,
+      "mean_step_seconds": 0.019883,
+      "median_step_seconds": 0.01616,
+      "phases_seconds": {
+        "finish": 0.329,
+        "first_step": 53.111,
+        "forecast": 68.973,
+        "init": 5.242,
+        "read": 3.345,
+        "startup": 12.808,
+        "steps": 6.875,
+        "total": 82.111,
+        "write": 0.4
+      },
+      "restart": null,
+      "schema": "gpuwm.benchmark-timing.v1",
+      "startup_split_seconds": {
+        "init_to_first_step": 5.242,
+        "input_read": 0.254,
+        "worker_imports": 12.81,
+        "worker_plan_review": 3.091
+      },
+      "status": "SUCCESS",
+      "steps": 120,
+      "steps_after_first": 119
+    },
+    "TSK": [
+      {
+        "frame": "wrfout_d01_2000-01-24_12_00_00",
+        "shape": [
+          1,
+          60,
+          73
+        ],
+        "min": 243.0664825439453,
+        "max": 297.8950500488281,
+        "nonfinite": 0,
+        "sha256": "c150410bd91ec4a11fc7fd17b4b391a675de39b9179ef74b2eccbac18dbaf752",
+        "cell_j5_i43": 293.7652587890625
+      },
+      {
+        "frame": "wrfout_d01_2000-01-24_13_00_00",
+        "shape": [
+          1,
+          60,
+          73
+        ],
+        "min": 240.3363800048828,
+        "max": 297.8950500488281,
+        "nonfinite": 0,
+        "sha256": "94a4f3fcb7579fda410a5d246eed16758eba43449797e311f4f50e0e5d65805f",
+        "cell_j5_i43": 288.1539001464844
+      },
+      {
+        "frame": "wrfout_d01_2000-01-24_14_00_00",
+        "shape": [
+          1,
+          60,
+          73
+        ],
+        "min": 243.6903076171875,
+        "max": 297.8950500488281,
+        "nonfinite": 0,
+        "sha256": "af0a2a0206414259c1d857c0dd78fb4a235520aec70dd23a150d693e7ff9a849",
+        "cell_j5_i43": 289.6988220214844
+      }
+    ],
+    "all_saved_numeric_fields_finite": true,
+    "recovery": {
+      "attempts": [],
+      "enabled_by_default": true,
+      "failures": [],
+      "maximum_retries": 2,
+      "schema": "gpuwm.nested-health-recovery/v1",
+      "status": "NOT_NEEDED",
+      "step_reduction_factor": 0.5
+    },
+    "visual_review": {
+      "looked_by_eye": true,
+      "hours": [
+        "2000-01-24_12:00:00",
+        "2000-01-24_13:00:00",
+        "2000-01-24_14:00:00"
+      ],
+      "renderer": "rw_compare dispatches rw_wrfbatch via gpuwm.rustwx.renderer_env",
+      "findings": [
+        "2 m temperature retains the initial cold continent/warm offshore gradient through both later hours. No growing hot patch or boundary seam is visible.",
+        "Reflectivity is unplotted at initialization (native MP7 starts its diagnostic at zero), then develops broad 20-40 dBZ precipitation from Florida/Georgia into the Carolinas and offshore by 14 UTC, with a local roughly 40 dBZ maximum. No grid-aligned runaway appears.",
+        "These three Rust frames check the integration failure; this January review makes no native forecast or observation skill comparison. The former six-hour May native/MRMS/ASOS comparison remains historical evidence."
+      ],
+      "files": [
+        {
+          "path": "figures/d01-30km/compare_panels_2m_temperature/2000-01-24/jan00-mp7-theta1.json",
+          "sha256": "0445ca663bcbe21f1c2e6cf416978cfa916479c1acb7c2650f9a82599cfddb24"
+        },
+        {
+          "path": "figures/d01-30km/compare_panels_2m_temperature/2000-01-24/jan00-mp7-theta1.png",
+          "sha256": "c8a7100620d9799a0bd66becbe8bd1997da31ffb5bc079e3f725180703c0c48e"
+        },
+        {
+          "path": "figures/d01-30km/compare_panels_composite_reflectivity/2000-01-24/jan00-mp7-theta1.json",
+          "sha256": "bc98810de321668297e484238e8557c29972413feb3af6eb5e27809c7393e85b"
+        },
+        {
+          "path": "figures/d01-30km/compare_panels_composite_reflectivity/2000-01-24/jan00-mp7-theta1.png",
+          "sha256": "11f9bde05ab04ec6bfbbe45d4b041946e2233c2e5facb55e88ccf7dc7f683b28"
+        }
+      ]
+    }
+  },
+  "production_microphysics_stage": {
+    "stage": "gpuwm.core.dycore.apply_microphysics",
+    "calls": 120,
+    "first_ms": 924.7127685546875,
+    "median_after_first_ms": 3.043328046798706,
+    "mean_after_first_ms": 3.834901513171797,
+    "wall_s": 77.91216558311135,
+    "numerics": "fast",
+    "all_ms": [
+      924.7127685546875,
+      2.711103916168213,
+      4.612127780914307,
+      3.5700480937957764,
+      2.42192006111145,
+      3.5249600410461426,
+      3.604480028152466,
+      2.5905919075012207,
+      5.184544086456299,
+      2.7225921154022217,
+      2.7736001014709473,
+      2.5804479122161865,
+      2.736128091812134,
+      2.6920320987701416,
+      5.617663860321045,
+      4.728352069854736,
+      5.892159938812256,
+      6.26470422744751,
+      6.750304222106934,
+      2.976991891860962,
+      4.918079853057861,
+      2.6767361164093018,
+      2.7832319736480713,
+      2.8190720081329346,
+      5.9389119148254395,
+      4.360159873962402,
+      6.089695930480957,
+      3.1462719440460205,
+      3.6607680320739746,
+      2.8702399730682373,
+      6.258528232574463,
+      3.0020480155944824,
+      6.357503890991211,
+      4.9126081466674805,
+      3.1063361167907715,
+      2.9920639991760254,
+      3.407263994216919,
+      4.928544044494629,
+      2.9421119689941406,
+      3.032896041870117,
+      3.1424319744110107,
+      3.0628159046173096,
+      3.761535882949829,
+      2.803679943084717,
+      2.846719980239868,
+      2.944063901901245,
+      2.884608030319214,
+      2.802687883377075,
+      3.549760103225708,
+      3.137471914291382,
+      8.257472038269043,
+      2.9697279930114746,
+      2.9448320865631104,
+      2.9173760414123535,
+      2.9122560024261475,
+      3.130784034729004,
+      3.0048959255218506,
+      2.9316799640655518,
+      2.955264091491699,
+      3.027967929840088,
+      2.4698879718780518,
+      2.9870400428771973,
+      2.520064115524292,
+      4.810751914978027,
+      2.9938559532165527,
+      5.055200099945068,
+      3.3548800945281982,
+      4.584735870361328,
+      3.118272066116333,
+      4.101247787475586,
+      3.0904319286346436,
+      3.0545918941497803,
+      3.1496639251708984,
+      2.974720001220703,
+      3.0179200172424316,
+      2.9132800102233887,
+      2.959359884262085,
+      3.2325758934020996,
+      6.04915189743042,
+      6.5991997718811035,
+      4.311967849731445,
+      3.962815999984741,
+      5.842944145202637,
+      3.926624059677124,
+      5.159520149230957,
+      15.917183876037598,
+      2.966655969619751,
+      3.859071969985962,
+      2.9679040908813477,
+      3.1098880767822266,
+      4.750304222106934,
+      4.932608127593994,
+      2.923520088195801,
+      8.984959602355957,
+      6.7597761154174805,
+      6.358975887298584,
+      6.004928112030029,
+      3.027967929840088,
+      3.007456064224243,
+      6.878208160400391,
+      3.0689280033111572,
+      2.9296960830688477,
+      3.043328046798706,
+      2.880511999130249,
+      2.9634881019592285,
+      2.9460480213165283,
+      2.958336114883423,
+      2.939903974533081,
+      3.0115840435028076,
+      3.053567886352539,
+      3.0494720935821533,
+      3.01363205909729,
+      2.91430401802063,
+      2.4002559185028076,
+      2.4329919815063477,
+      2.9450559616088867,
+      2.4524800777435303,
+      2.4729599952697754,
+      3.0250558853149414,
+      3.015712022781372
+    ]
+  },
+  "speed_scope": "3.043 ms is the full stage inside this real forecast, on a contended shared GPU. No new paired WSM6 run was made in this single-case repair. The earlier 0.897x number is a generated-fixture benchmark, not this production measurement.",
+  "earlier_lifecycle_and_option_off": "Retained original qualification.json records the earlier six-hour, checkpoint, nest, ensemble and option-off checks; those were not repeated for this scoped wrapper correction."
+}

@@ -1,0 +1,61 @@
+{
+  "measurement": "compile-only NVRTC PTX plus ptxas; no GPU context or execution",
+  "compute_capability": "89",
+  "nvrtc_build": "12.9.86",
+  "nvrtc_build_id": "CL-36037853",
+  "assembler": "ptxas: NVIDIA (R) Ptx optimizing assembler\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Tue_May_27_02:18:05_PDT_2025\nCuda compilation tools, release 12.9, V12.9.86\nBuild cuda_12.9.r12.9/compiler.36037853_0\n",
+  "hostname": "82539ecaae84",
+  "rows": {
+    "qnsesfc": {
+      "local_size_bytes": 0,
+      "entries": {
+        "qnsesfc_column": 0
+      },
+      "command": [
+        "/work/pool-port-sfclay4-qnse/cuda-tools/nvidia/cuda_nvcc/bin/ptxas",
+        "-v",
+        "--gpu-name=sm_89",
+        "/work/pool-port-sfclay4-qnse/compile-frames/qnsesfc.ptx",
+        "-o",
+        "/work/pool-port-sfclay4-qnse/compile-frames/qnsesfc.cubin"
+      ],
+      "source_sha256": "b06be9472443b2ba56fdd2e4d44a38f89fdd735b48ba31045c02ef27b4ea4438",
+      "ptx_sha256": "1311a355df07f971bae5724c6b49d70b9dec395abd827bfd4ed0ef24eb103e8a",
+      "options": [
+        "-std=c++17",
+        "--fmad=false",
+        "--ftz=false",
+        "--prec-div=true",
+        "--prec-sqrt=true",
+        "--gpu-architecture=compute_89"
+      ],
+      "log": "ptxas info    : 2192 bytes gmem, 64 bytes cmem[4]\nptxas info    : Compiling entry function 'qnsesfc_column' for 'sm_89'\nptxas info    : Function properties for qnsesfc_column\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 66 registers, used 0 barriers, 820 bytes cmem[0], 144 bytes cmem[2]\nptxas info    : Compile time = 115.047 ms\n"
+    },
+    "qnsepbl": {
+      "local_size_bytes": 15360,
+      "entries": {
+        "qnsepbl_column": 9232,
+        "mfshconv_column": 15360
+      },
+      "command": [
+        "/work/pool-port-sfclay4-qnse/cuda-tools/nvidia/cuda_nvcc/bin/ptxas",
+        "-v",
+        "--gpu-name=sm_89",
+        "/work/pool-port-sfclay4-qnse/compile-frames/qnsepbl.ptx",
+        "-o",
+        "/work/pool-port-sfclay4-qnse/compile-frames/qnsepbl.cubin"
+      ],
+      "source_sha256": "22a280369d3e4309f6c1198d3be4867e976b64c180f92a252adf25bf78343ee1",
+      "ptx_sha256": "30b4d0a82473b3dd95df7db4a114ff82601964a22ec4ae9022f7e016a221d0e9",
+      "options": [
+        "-std=c++17",
+        "--fmad=false",
+        "--ftz=false",
+        "--prec-div=true",
+        "--prec-sqrt=true",
+        "--gpu-architecture=compute_89"
+      ],
+      "log": "ptxas info    : 2192 bytes gmem, 64 bytes cmem[4]\nptxas info    : Compiling entry function 'qnsepbl_column' for 'sm_89'\nptxas info    : Function properties for qnsepbl_column\n    9232 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 56 registers, used 0 barriers, 9232 bytes cumulative stack size, 668 bytes cmem[0], 128 bytes cmem[2]\nptxas info    : Compile time = 376.363 ms\nptxas info    : Compiling entry function 'mfshconv_column' for 'sm_89'\nptxas info    : Function properties for mfshconv_column\n    15360 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 72 registers, used 0 barriers, 15360 bytes cumulative stack size, 608 bytes cmem[0], 168 bytes cmem[2]\nptxas info    : Compile time = 531.048 ms\n"
+    }
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "files": [
+    {
+      "version": "v4.6.1",
+      "path": "LICENSE.txt",
+      "bytes": 1027,
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/LICENSE.txt",
+      "license": "WRF public domain"
+    },
+    {
+      "version": "v4.6.1",
+      "path": "phys/module_bl_eepsilon.F",
+      "bytes": 41859,
+      "sha256": "b1ea6db55866af15cb3c6962b1a15fa512eda803078f7304e6a133462d7e12de",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/phys/module_bl_eepsilon.F",
+      "license": "WRF public domain"
+    },
+    {
+      "version": "v4.6.1",
+      "path": "share/module_model_constants.F",
+      "bytes": 8280,
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.6.1/share/module_model_constants.F",
+      "license": "WRF public domain"
+    },
+    {
+      "version": "v4.7.1",
+      "path": "LICENSE.txt",
+      "bytes": 1027,
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/LICENSE.txt",
+      "license": "WRF public domain"
+    },
+    {
+      "version": "v4.7.1",
+      "path": "phys/module_bl_eepsilon.F",
+      "bytes": 41859,
+      "sha256": "b1ea6db55866af15cb3c6962b1a15fa512eda803078f7304e6a133462d7e12de",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_bl_eepsilon.F",
+      "license": "WRF public domain"
+    },
+    {
+      "version": "v4.7.1",
+      "path": "share/module_model_constants.F",
+      "bytes": 8280,
+      "sha256": "5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/share/module_model_constants.F",
+      "license": "WRF public domain"
+    },
+    {
+      "version": "v4.7.1",
+      "path": "Registry/Registry.EM_COMMON",
+      "bytes": 437707,
+      "sha256": "6f3ee02175b76487c5c6c046ff2fb4c5d41980b86c0f06eb2e09e34dacc9623a",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/Registry/Registry.EM_COMMON",
+      "license": "WRF public domain",
+      "role": "allocation, driver binding and pairing authority"
+    },
+    {
+      "version": "v4.7.1",
+      "path": "phys/module_physics_init.F",
+      "bytes": 289619,
+      "sha256": "f48cf9793f782a72c3969e986eef24746252f030cd33cfba71cc82b81d128d90",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_physics_init.F",
+      "license": "WRF public domain",
+      "role": "allocation, driver binding and pairing authority"
+    },
+    {
+      "version": "v4.7.1",
+      "path": "phys/module_sf_myjsfc.F",
+      "bytes": 44871,
+      "sha256": "7ae02680a9f2f781fd5c13c55b102cc86fa216f72de08ce6e58c1b012efa29f3",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_sf_myjsfc.F",
+      "license": "WRF public domain",
+      "role": "allocation, driver binding and pairing authority"
+    },
+    {
+      "version": "v4.7.1",
+      "path": "phys/module_surface_driver.F",
+      "bytes": 396530,
+      "sha256": "a653965f9ffd1db5e4c42aa79e41b4d111755b6fca0f1a3b91f3a93455813ffd",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_surface_driver.F",
+      "license": "WRF public domain",
+      "role": "allocation, driver binding and pairing authority"
+    },
+    {
+      "version": "v4.7.1",
+      "path": "phys/module_pbl_driver.F",
+      "bytes": 140576,
+      "sha256": "42ff53571ba1fb926fa6063108806d9a2f8ff5fdd1fa2ecfc1fdde60f2bf65fb",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.7.1/phys/module_pbl_driver.F",
+      "license": "WRF public domain",
+      "role": "allocation, driver binding and pairing authority"
+    }
+  ],
+  "external_tables": [],
+  "strict_flags": [
+    "-O2",
+    "-fno-fast-math",
+    "-ffp-contract=off",
+    "-fno-tree-vectorize"
+  ],
+  "native_undefined": [
+    "RADSUM uninitialized: phys/module_bl_eepsilon.F:748",
+    "SZV(KMINRAD-2) when KMINRAD<3: phys/module_bl_eepsilon.F:734"
+  ],
+  "acceptance": "Synthetic fixtures are regression checks. Real native WRF captures are replayed independently by replay.py, including every output word and native carried state. See docs/public/wrf-comparison/eeps-port.md for the measured case and limits.",
+  "native_capture": {
+    "tool": "capture_native.py",
+    "format": "replay.py stream oracle layout",
+    "columns": [
+      40,
+      103
+    ],
+    "row": 75,
+    "calls": [
+      1,
+      301,
+      601,
+      901,
+      1201,
+      1501
+    ],
+    "requires": "captured strip lies wholly inside one native MPI tile; strict native compilation; dt=12 for hourly spacing",
+    "arithmetic_change": "RADSUM initialized to zero, separately witnessed against stock-zero and stock-snan native builds"
+  }
+}

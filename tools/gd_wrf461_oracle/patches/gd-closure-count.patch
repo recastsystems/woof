@@ -1,0 +1,48 @@
+--- a/phys/module_cu_gd.F	2026-10-08 00:40:16.754838583 +0000
++++ b/phys/module_cu_gd.F	2026-10-08 00:40:16.770980783 +0000
+@@ -2810,7 +2810,7 @@
+                       massfln(i,j,nall+2)=0.
+                       xff_ens3(3) =0.
+                       massfln(i,j,nall+3)=0.
+-                      closure_n(i)=closure_n(i)-1.
++                      if(iedt.eq.1.and.ne.eq.1)closure_n(i)=closure_n(i)-3.
+ 
+                       xff_ens3(7) =0.
+                       massfln(i,j,nall+7)=0.
+@@ -2818,7 +2818,7 @@
+                       massfln(i,j,nall+8)=0.
+                       xff_ens3(9) =0.
+ !                     massfln(i,j,nall+9)=0.
+-                      closure_n(i)=closure_n(i)-1.
++                      if(iedt.eq.1.and.ne.eq.1)closure_n(i)=closure_n(i)-3.
+                 endif
+ !
+ !   also take out some closures in general
+@@ -2829,7 +2829,7 @@
+                       massfln(i,j,nall+5)=0.
+                       xff_ens3(6) =0.
+                       massfln(i,j,nall+6)=0.
+-                      closure_n(i)=closure_n(i)-3.
++                      if(iedt.eq.1.and.ne.eq.1)closure_n(i)=closure_n(i)-3.
+ 
+                       xff_ens3(10)=0.
+                       massfln(i,j,nall+10)=0.
+@@ -2837,15 +2837,16 @@
+                       massfln(i,j,nall+11)=0.
+                       xff_ens3(12)=0.
+                       massfln(i,j,nall+12)=0.
+-                      if(ne.eq.1)closure_n(i)=closure_n(i)-3
++                      if(iedt.eq.1.and.ne.eq.1)closure_n(i)=closure_n(i)-3
+                       xff_ens3(13)=0.
+                       massfln(i,j,nall+13)=0.
+                       xff_ens3(14)=0.
+                       massfln(i,j,nall+14)=0.
+                       xff_ens3(15)=0.
+                       massfln(i,j,nall+15)=0.
++                      xff_ens3(16)=0.
+                       massfln(i,j,nall+16)=0.
+-                      if(ne.eq.1)closure_n(i)=closure_n(i)-4
++                      if(iedt.eq.1.and.ne.eq.1)closure_n(i)=closure_n(i)-4
+ 
+                 endif
+ !

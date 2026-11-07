@@ -202,7 +202,25 @@ def static_modules(experiment) -> tuple[str, ...]:
     if any(getattr(getattr(dc, "run", None), "nwp_diagnostics", 0)
            for dc in getattr(experiment, "domains", ())):
         modules.add("uh_diag")
+    if any(getattr(getattr(dc, "run", None), "m_opt", 0)
+           for dc in getattr(experiment, "domains", ())):
+        modules.add("sfs_output")
     modules -= set(preflight.UNMEASURED_KERNEL_MODULES)
+    for domain in getattr(experiment, "domains", ()):
+        run = getattr(domain, "run", None)
+        if getattr(run, "ua_phys", False):
+            modules.update({"noah_ua", "noah_ua_sfcdiags"})
+            if getattr(run, "sf_surface_mosaic", 0) == 1:
+                modules.add("noah_mosaic_ua")
+        if getattr(run, "sf_surf_irr_scheme", 0):
+            modules.add("irrigation")
+        if any(getattr(run, key, 0) for key in (
+                "seaice_albedo_opt", "seaice_snowdepth_opt", "seaice_thickness_opt")):
+            modules.add("noah_seaice_options")
+        if getattr(run, "fractional_seaice", 0) and getattr(run, "sf_surface_physics", 0) in (2, 4):
+            modules.update({"noah_fractional", "noah_seaice_options"})
+            if getattr(run, "sf_sfclay_physics", 0) == 1:
+                modules.add("sfclay_dx2d")
     return tuple(sorted(modules))
 
 
@@ -242,12 +260,33 @@ def static_jobs(experiment, *, columns: bool = False, hydro: bool = False) -> li
     # size suggests. Starting it tenth left an 8 s serial pool tail on the
     # cold go route, so start that long compile beside the largest units.
     for name in sorted(static_modules(experiment), key=lambda n: (n != "sfclay", -_source_bytes(n), n)):
+        if name == "flg_column":
+            from woof.physics_compat import radiation_scheme_ids
+            for nv1 in sorted({int(dc.run.nz)+1 for dc in experiment.domains
+                               if radiation_scheme_ids(dc.run)[0] == 7}):
+                defines = (("FLG_NV1", nv1),)
+                jobs.append((f"flg_column[FLG_NV1={nv1}]",
+                             kernels.load_module_unflushed.__wrapped__, (name, defines)))
+            continue
         if name in _COMPOSED_LOADERS:
             jobs.append((name, _warm_composed, (name,)))
         elif name in _DEVICE_LOADERS:
             jobs.append((name, _warm_device_loader, (name,)))
-        elif name == "kf":
-            jobs.append((name, _warm_kf, ()))
+        elif name in _KF_TRIGGERS:
+            jobs.append((name, _warm_kf, (_KF_TRIGGERS[name],)))
+        elif name == "mskf":
+            from woof.core.kernels.no_ftz import load_module_no_ftz
+
+            # The aerosol-off runtime uses its own source and arithmetic
+            # options. Warming the unspecialized aerosol column compiles an
+            # unused, much larger unit and leaves the real column cold.
+            tiers = {(("GPUWM_MSKF_NO_AEROSOL", 1),)
+                     if int(getattr(dc.run, "aercu_opt", 0)) == 0 else ()
+                     for dc in experiment.domains
+                     if int(getattr(dc.run, "cu_physics", 0)) == 11}
+            for defines in sorted(tiers):
+                label = name + ("[GPUWM_MSKF_NO_AEROSOL=1]" if defines else "")
+                jobs.append((label, load_module_no_ftz.__wrapped__, (name, defines)))
         elif name in kernels._DIFFUSION_MODULES:
             jobs.append((name, kernels._load_diffusion_module.__wrapped__, (name,)))
         else:
@@ -315,6 +354,21 @@ def _variant_jobs(experiment, modules):
             elif name == "mynn_surface":
                 defines = MYNN_SFCLAY_DEFINES[getattr(run, "mynn_sfclay_variant", "wrf_461")]
             tiers = [defines] if defines else []
+            if name == "advection":
+                if getattr(run, "momentum_adv_opt", 1) == 3:
+                    tiers.append((("GPUWM_WENO_MOM", 1),))
+                horder = getattr(run, "h_mom_adv_order", 5)
+                if horder != 5:
+                    tiers.append((("GPUWM_NO_HADV", 1),) if horder == 0 else
+                                 (("GPUWM_HORDER", int(horder)),))
+            if name in ("advection", "pd_advection"):
+                from woof.core.advection import scalar_horizontal_order
+                hsca=scalar_horizontal_order(run)
+                if hsca != 5 and not (name == "pd_advection" and hsca == 0):
+                    tiers.append((("GPUWM_NO_HADV", 1),) if hsca == 0 else
+                                 (("GPUWM_HORDER", hsca),))
+                    if name == "advection" and hsca == 0:
+                        tiers.append((("GPUWM_NO_HADV", 1), ("GPUWM_THETA_OFFSET", 1)))
             if name in FUNCTIONS and all(hasattr(run, dim) for dim in ("nz", "ny", "nx")):
                 nz, ny, nx = (int(getattr(run, dim)) for dim in ("nz", "ny", "nx"))
                 shapes = ([(1, 1, ny * nx)] if name == "mynn_surface" else
@@ -356,6 +410,7 @@ def _variant_jobs(experiment, modules):
 # Preflight names assembled translation units, not source files. Use the
 # forecast factories, including their options and symbol/constant setup.
 _COMPOSED_LOADERS = {
+    "etanew": ("etanew", "frame_module"),
     "noahmp_driver_composed": ("noahmp_driver_gpu", "driver_module"),
     "noahmp_energy_composed": ("noahmp_energy_gpu", "energy_module"),
     "noahmp_glacier_composed": ("noahmp_glacier_gpu", "glacier_module"),
@@ -368,7 +423,7 @@ _COMPOSED_LOADERS = {
     # (woof/core/preflight.py CHAINED_TRANSLATION_UNIT_FRAMES).  None has a
     # .cu of its own, so load_module refused each one: the HRRR v4 recipe's
     # gwd_opt = 3 put terrain_drag_composed in the plan and the pre-warm
-    # child exited 1 with "No such file ... terrain_drag_composed.cu" (V59
+    # child exited 1 with "No such file ... terrain_drag_composed.cu" (test host
     # 8x5090, 2026-10-21).
     "p3_composed": ("p3_device", "p3_module"),
     "urban_bem_composed": ("urban_bem", "_bem_module"),
@@ -378,8 +433,19 @@ _COMPOSED_LOADERS = {
 
 #: Chained units whose forecast factory takes the device it loads on.
 _DEVICE_LOADERS = {
+    "acm2pbl_composed": ("acm2pbl", "_module"),
+    "gbmpbl_composed": ("gbmpbl", "_module"),
     "terrain_drag_composed": ("terrain_drag", "_module"),
+    "fogdes_composed": ("fog_settling", "_module"),
     "thompson_fork_unit": ("thompson_fork", "_module"),
+    # The two PBL ports whose production loaders compile their own
+    # direct-NVRTC unit per device (woof/core/gbmpbl.py and
+    # woof/core/acm2pbl.py ``_module(device)``).  preflight prices both as
+    # chained units, so with no row here load_module looked for
+    # gbmpbl_composed.cu / acm2pbl_composed.cu and the pre-warm child
+    # exited on FileNotFoundError for a bl_pbl_physics = 12 or 7 plan.
+    "gbmpbl_composed": ("gbmpbl", "_module"),
+    "acm2pbl_composed": ("acm2pbl", "_module"),
 }
 
 
@@ -405,12 +471,18 @@ def _warm_device_loader(name):
     return getattr(module, factory_name)(cp.cuda.runtime.getDevice())
 
 
-def _warm_kf():
+# These chained units share a production factory, with a selector argument.
+# Keep them in the route inventory as well as the static plan: otherwise the
+# complete chained-unit gate cannot resolve the trigger-2/3 loader routes.
+_KF_TRIGGERS = {"kf": 1, "kf_trigger2": 2, "kf_trigger3": 3}
+
+
+def _warm_kf(trigger=1):
     """KF runs on its own unflushed direct-NVRTC route, not load_module."""
     import cupy as cp
     from woof.core.kf import _kf_module
 
-    return _kf_module(cp.cuda.runtime.getDevice())
+    return _kf_module(cp.cuda.runtime.getDevice(), trigger)
 
 
 def _inline_jobs(modules):

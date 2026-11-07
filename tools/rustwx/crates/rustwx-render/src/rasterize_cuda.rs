@@ -38,12 +38,15 @@ impl Renderer {
         };
         let ctx = CudaContext::new(ordinal).map_err(|e| e.to_string())?;
         let visible = std::env::var("CUDA_VISIBLE_DEVICES").unwrap_or_else(|_| "unset".into());
-        eprintln!("Rust renderer: raster fills on CUDA device {ordinal} ({}, CUDA_VISIBLE_DEVICES={visible}); \
+        eprintln!("Rust renderer: raster fills on selected GPU device {ordinal} ({}, CUDA_VISIBLE_DEVICES={visible}); \
                    RUSTWX_RASTER_DEVICE=cpu keeps them on the CPU",
                   ctx.name().unwrap_or_else(|_| "unnamed".into()));
         let (least, _) = cudarc::driver::result::stream::get_priority_range().map_err(|e| e.to_string())?;
         let stream = ctx.new_stream_with_priority(least).map_err(|e| e.to_string())?;
-        let module = ctx.load_module(Ptx::from_src(include_str!("rasterize_structured.ptx"))).map_err(|e| e.to_string())?;
+        let image=if cudarc::gpuwm_hip::requested() {
+            Ptx::from_binary(cudarc::gpuwm_hip::compile(include_str!("rasterize_structured.cu"),&["--std=c++17".into(),"--fmad=false".into(),"--ftz=false".into()])?)
+        } else {Ptx::from_src(include_str!("rasterize_structured.ptx"))};
+        let module=ctx.load_module(image).map_err(|e|e.to_string())?;
         let function = module.load_function("rasterize_structured").map_err(|e| e.to_string())?;
         let robinson = module.load_function("rasterize_robinson").map_err(|e| e.to_string())?;
         Ok(Self { stream, function, robinson })

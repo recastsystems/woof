@@ -117,7 +117,11 @@ def test_a_named_shallower_ladder_is_the_deepest_one_that_fits(
 
     shallower_presets = ("12-3-1", "12-3", "12")
     named_any = False
-    for vram in ("4", "4.5", "4.6"):
+    # 4.6, 5 and 5.5 GiB since the 3.0.0 kernel set: its grid-independent
+    # envelope (2.88 GiB + the 0.50 GiB margin) leaves a 4 or 4.5 GiB card
+    # no budget for any layout, which is a different refusal; these three
+    # still reach the minimum layout and name 12, 12 and 12-3-1.
+    for vram in ("4.6", "5", "5.5"):
         rc, message = _run("12-3-1-0.5", vram, tmp_path / f"deep-{vram}.toml")
         # Watched firing: the minimum-layout memory refusal on every card.
         assert rc == 2, message
@@ -330,7 +334,12 @@ def test_the_source_default_is_named_first_when_it_fits():
 
 def test_a_small_card_names_the_source_default_and_prints_no_candidate_warnings(
         tmp_path, capsys):
-    """5.5 GiB, the 500 m ladder, no suite named.
+    """5.75 GiB, the 500 m ladder, no suite named.
+
+    (5.5 GiB until the 3.0.0 kernel set's grid-independent envelope grew:
+    the source default no longer fits 5.5 GiB either, so 5.75 GiB is now
+    the card where the sub-km default is refused and the source's own
+    default fits, measured on fix/seal4-uh.)
 
     (6 GiB until dad24232a priced the Thompson kernels at the shallow
     exports nz <= 64 launches: the sub-km default's 4.68 GiB envelope now
@@ -346,7 +355,7 @@ def test_a_small_card_names_the_source_default_and_prints_no_candidate_warnings(
 
     from woof.physics_menu import default_profile_for
 
-    request = ["domain", "--point", "39.1,-94.6", "--vram-gib", "5.5",
+    request = ["domain", "--point", "39.1,-94.6", "--vram-gib", "5.75",
                "--ladder", "12-3-1-0.5", "--source", "gfs", "--hours", "6",
                "--cycle", "2026-08-12T00"]
     rc = cli_main([*request, "--out", str(tmp_path / "refused.toml")])

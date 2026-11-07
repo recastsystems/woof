@@ -13,7 +13,7 @@
     ],
     "cupy_version": "14.2.0",
     "module_source_sha256": {
-      "smag2d": "2cdfe1e9b38cfd901a837460526bed5887285bb367593992fd95b95df15e3d24",
+      "smag2d": "e0ddc6075c1da84434eea66c55f39340e40a273c1080ae32578540a706b8e270",
       "diff_opt1": "9737655267fca7f30d0a4053008997de55a8e12f4fe552622a09f70ea994e271",
       "acoustic": "22704608360351a64d84bbf90ed1574e8e62edb5b06f5deea85376d93fca5cf8"
     },
@@ -480,9 +480,9 @@
     }
   },
   "artifacts": {
-    "horizontal-driver.json": "2faca36db7816149d204e361c95d0e30755c7d4381251dececa3be4e6c061886",
-    "vertical-driver.json": "49343e3039c7b4c9106611875869cdc37e41e61ef069140759c70ad3ed6f4f26",
-    "km-mutations.json": "d8bd2017ba22f24750c551b829490ff24a8d565b44da56ebb802ff420dacc818",
+    "horizontal-driver.json": "4b53a12bf374601bc1c79e79cc1a5044ec851afb4a7b2e862f092b4fda30eed4",
+    "vertical-driver.json": "008015f0076b47a4a88257ecf3d549c1acb62e9226f9f69b13c4e702f23e0f24",
+    "km-mutations.json": "854d86d71946e17b4291631e2a64dfbfcaf6d1211a8c18d41571c431d7d2f286",
     "vertical-native-control.json": "cf914ed6b16ca594bfca126daecefe58b2a1d8e1229d3cd8732bbdcaf887db33"
   },
   "source_provenance": "Raw source hashes read from actual6cbd capture commit; current raw bytes equal committed capture source. Compiled module/options certified GPU measured. Historical GPU comparisons remain unchanged and refuse corrected old words."

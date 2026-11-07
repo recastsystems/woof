@@ -297,6 +297,19 @@ def test_the_staged_release_tree_carries_no_machine_paths():
             snap.matches("/".join(parts[:index]), rules)
             for index in range(1, len(parts) + 1))
 
+    # In a private checkout the suite tables still hold the rows the cut
+    # removes; an exported tree already carries the rewritten tables and not
+    # the cut tooling, so the rewrite is read by path only where it exists.
+    hygiene_path = REPO / "tools" / "release" / "cut" / "hygiene.py"
+    suite_files, public_suite = (), None
+    if hygiene_path.is_file():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("cut_hygiene_by_path", hygiene_path)
+        hygiene = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = hygiene
+        spec.loader.exec_module(hygiene)
+        suite_files, public_suite = hygiene.SUITE_FILES, hygiene.public_suite
+
     offenders = []
     scanned = containers = 0
     for rel in _release_tree_files():
@@ -307,6 +320,11 @@ def test_the_staged_release_tree_carries_no_machine_paths():
             raw = path.read_bytes()
         except OSError:
             continue
+        if rel in suite_files:
+            # The cut publishes these tables only after removing the
+            # private suite rows (tools/release/cut/hygiene.py); read the
+            # bytes it ships, as the export's own scan does.
+            raw = public_suite(rel, raw.decode("utf-8")).encode("utf-8")
         container = Path(rel).suffix.lower() in snap.METADATA_CONTAINER_SUFFIXES
         if not container and not snap.reads_as_text(raw):
             continue
@@ -522,7 +540,7 @@ def test_the_host_rule_covers_every_package_data_declaration():
     from tools.release_exclusions import CODE_SUFFIXES, ships_as_wheel_data
 
     declared = []
-    for project, root in ((REPO, ""), (REPO / "recast-woof-data", "recast-woof-data/")):
+    for project, root in ((REPO, ""), (REPO / "recast-woof-data", "recast-woof-data/"), (REPO / "gpuwm-kernels", "gpuwm-kernels/"), (REPO / "gpuwm-kernels-startup", "gpuwm-kernels-startup/")):
         pyproject = project / "pyproject.toml"
         if not pyproject.is_file():
             continue

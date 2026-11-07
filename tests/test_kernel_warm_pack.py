@@ -166,6 +166,56 @@ def test_macro_header_refuses_old_image_and_storing_unbound_result(tmp_path):
     assert pack.get(args) is None and not pack.rows
 
 
+def test_unbound_requests_and_shared_header_trees_are_checked_once(tmp_path, monkeypatch):
+    headers = tmp_path / 'include'
+    headers.mkdir()
+    header = headers / 'host.h'
+    header.write_text('#include "../outside.h"\n')
+    from pathlib import Path
+    original = Path.read_bytes
+    reads = []
+    def read(path):
+        if path == header:
+            reads.append(path)
+        return original(path)
+    monkeypatch.setattr(Path, 'read_bytes', read)
+    images = WarmImages(tmp_path / 'cache', {}, 'shape', '120')
+    args = dict(source='one', options=['-I' + str(headers)])
+    with pytest.warns(RuntimeWarning, match='may escape'):
+        assert images.get(args) is None
+    images.put(args, (b'\x7fELFunbound', None))
+    assert images.get(dict(args, source='two')) is None
+    assert len(reads) == 1
+    assert not images.rows and not images.pending
+    # A new session checks the actual bytes again, including repaired roots.
+    header.write_text('// no external dependency\n')
+    assert WarmImages(tmp_path / 'cache', {}, 'shape', '120')._request_key(args) is not None
+    assert len(reads) == 2
+
+
+def test_header_escape_snapshot_binds_the_complete_search_roots(tmp_path):
+    from woof.kernel_dependencies import include_tree_dependencies
+    headers = tmp_path / 'include'
+    headers.mkdir()
+    (headers / 'host.h').write_text('#include "../outside.h"\n')
+    (tmp_path / 'outside.h').write_text('// included from parent\n')
+    snapshots = {}
+    narrow = ['-I' + str(headers)]
+    wide = [*narrow, '-I' + str(tmp_path)]
+    with pytest.raises(ValueError, match='may escape'):
+        include_tree_dependencies(narrow, snapshots)
+    assert len(include_tree_dependencies(wide, snapshots)) == 2
+    with pytest.raises(ValueError, match='may escape'):
+        include_tree_dependencies(narrow, snapshots)
+
+
+def test_escaped_windows_linker_string_is_not_an_absolute_include(tmp_path):
+    from woof.kernel_dependencies import include_tree_dependencies
+    (tmp_path / 'nvtx.h').write_text(
+        r'#define EXPORT _Pragma("comment(linker, \"/EXPORT:\" __FUNCTION__)")' + '\n')
+    assert len(include_tree_dependencies(['-I' + str(tmp_path)], {})) == 1
+
+
 def test_header_parser_does_not_hide_directive_after_comment_like_string(tmp_path):
     from woof.kernel_dependencies import header_dependencies
     header = tmp_path / 'owned.h';header.write_text('#define VALUE 1\n')

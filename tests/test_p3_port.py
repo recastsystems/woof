@@ -55,7 +55,7 @@ def _cfg(**overrides) -> RunConfig:
 
 
 # ---------------------------------------------------------------------------
-# 1.  The selector is reachable, and its three siblings are refused BY NAME.
+# 1.  The selector is reachable, and its two unported siblings are refused.
 # ---------------------------------------------------------------------------
 
 def test_validate_run_config_admits_mp_physics_50():
@@ -66,17 +66,14 @@ def test_validate_run_config_admits_mp_physics_50():
 @pytest.mark.parametrize(
     "value,must_say",
     (
-        (51, "prognostic droplet number"),
-        (52, "two ice categories"),
-        (53, "three-moment ice"),
     ),
 )
 def test_the_unported_p3_variants_are_refused_by_name(value, must_say):
     """A user who asked for two ice categories is owed the reason.
 
     WRF v4.6.1 maps P3 across mp_physics 50/51/52/53
-    (Registry.EM_COMMON:3038-3041) and woof ports only 50.  The failure
-    this guards against is not "51 runs" -- it is "51 is refused with a
+    (Registry.EM_COMMON:3038-3041); all four packages now run.
+    Historical unsupported-package checks have no remaining rows.
     message that makes the number look meaningless", which invites the user
     to conclude P3 is absent entirely.
     """
@@ -164,7 +161,7 @@ def test_the_namelist_importer_takes_mp50_natively():
     assert _MP_MAP[50][0] == 50
     # The unported siblings must be ABSENT, so no namelist can be silently
     # downgraded onto the one-category solver.
-    for unported in (51, 52, 53):
+    for unported in ():
         assert unported not in _MP_MAP
 
 
@@ -208,7 +205,10 @@ def test_a_missing_table_is_a_loud_refusal_not_a_fallback(tmp_path):
 
     with pytest.raises(FileNotFoundError) as caught:
         load_lookup_table_1(str(tmp_path))
-    assert "mp_physics=50 cannot run" in str(caught.value)
+    # The loader names the selectors that read the table (mp 50/51/52 share
+    # the 2momI table since the multi-category ports).
+    assert "mp_physics=50/51/52 cannot run" in str(caught.value)
+    assert "p3_lookupTable_1.dat-v5.4_2momI" in str(caught.value)
 
 
 def test_a_byte_modified_table_is_refused(tmp_path):
@@ -529,8 +529,9 @@ def test_the_first_step_qvs_floor_pins_sup_at_minus_one():
 @pytest.mark.parametrize(
     "kwargs,pattern",
     (
-        ({"n_cat": 2}, "nCat>1"),
-        ({"log_predictNc": True}, "prognostic-Nc"),
+        # mp 52 runs two categories on the CUDA kernels; the CPU reference
+        # still refuses them by name.
+        ({"n_cat": 2}, "carries one ice category"),
         ({"model": "GEM"}, "only the WRF orientation"),
     ),
 )
@@ -661,6 +662,26 @@ def _background_radius_arms():
             from woof.core.column_schemes import COLUMN_SCHEMES
             arms.append(tuple(COLUMN_SCHEMES))
             continue
+        if (isinstance(test, ast.Compare) and len(test.ops) == 1
+                and isinstance(test.ops[0], ast.In)
+                and isinstance(test.comparators[0], ast.BinOp)
+                and isinstance(test.comparators[0].op, ast.Add)):
+            # A literal tuple extended by a module-level scheme tuple (the
+            # table-driven column schemes, woof.core.mp_column_schemes):
+            # still a membership row, its members read from the module.
+            members = []
+            for side in (test.comparators[0].left,
+                         test.comparators[0].right):
+                if isinstance(side, ast.Tuple):
+                    members += [element.value for element in side.elts]
+                elif isinstance(side, ast.Name):
+                    members += list(getattr(state_module, side.id))
+                else:
+                    members = None
+                    break
+            if members is not None:
+                arms.append(tuple(members))
+                continue
         assert (isinstance(test, ast.Compare)
                 and len(test.ops) == 1
                 and isinstance(test.ops[0], ast.In)
@@ -1174,6 +1195,7 @@ def test_an_mp50_run_writes_and_resumes_a_restart_after_real_steps(tmp_path):
 
 def test_p3_declares_cloud_and_ice_radii_to_legacy_rrtmg_but_no_snow():
     """The triple, and that P3 is the only selector that needs a triple."""
+    from woof.config import P3_MP_PHYSICS
     from woof.core.rrtmg_legacy import (
         _MP_DECLARES_RADII, legacy_scheme_has_req)
 
@@ -1192,7 +1214,9 @@ def test_p3_declares_cloud_and_ice_radii_to_legacy_rrtmg_but_no_snow():
     # "add 50: True" is not the fix.
     for mp_physics in sorted(_MP_DECLARES_RADII):
         flags = set(legacy_scheme_has_req(mp_physics, 1))
-        if mp_physics == 50:
+        # JENSEN_ISHMAEL shares the override block by name
+        # (module_physics_init.F:1029), so it shares the triple.
+        if mp_physics in P3_MP_PHYSICS or mp_physics == 55:
             assert flags == {0, 1}
         else:
             assert len(flags) == 1, (

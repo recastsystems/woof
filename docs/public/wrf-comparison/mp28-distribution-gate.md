@@ -158,9 +158,9 @@ replications that are screens, not extra draws:
   the corruption detector on a card with no ECC;
 * the **WRF cross-node replication**: the full WRF quartet is built and
   run independently on both weather nodes from the banked recipes. The
-  gate set is **a development machine's quartet, fixed here in advance**.
-  A development machine's quartet re-computes the control arm's median and p95; if
-  either differs from a development machine's by more than **2 % relative**, the gate
+  gate set is **test host 1's quartet, fixed here in advance**.
+  test host 2's quartet re-computes the control arm's median and p95; if
+  either differs from test host 1's by more than **2 % relative**, the gate
   is VOID. The published cross-pass reproducibility of these cells is
   1.373e-3 relative, so 2 % is ≈15× headroom: a screen that only a real
   environment difference can trip, and one that no amount of tripping
@@ -171,7 +171,7 @@ replications that are screens, not extra draws:
 No rentals. CPU work on the weather nodes, GPU work on the local
 RTX 5090, per standing allocation.
 
-**a development machine and a development machine (CPU, independently, same steps).**
+**test host 1 and test host 2 (CPU, independently, same steps).**
 Work root `$T` (only the root path may differ from the banked scripts,
 as before). Stage the pinned tarball, `input_sounding`, `mknml.sh`;
 then, in order, the four banked scripts from
@@ -186,7 +186,7 @@ Wall measured by the second pass: vec 597 + 216 s, novec 823 + 373 s,
 plus ICs, under 40 minutes a node, ~2.2 GB a node, both nodes in
 parallel. Provenance per §6 before anything moves off-node.
 
-**local RTX 5090 (WOOF + the gate).** A development machine's `runs/` tree is
+**local RTX 5090 (WOOF + the gate).** test host 1's `runs/` tree is
 transferred with hashes verified at both ends, then:
 
     bash run-sw-arwen.sh   # 4 runs: mp{8,28} × duplicates, ~2 min GPU total
@@ -268,7 +268,7 @@ it is byte-unchanged from that commit except the §0 approval line.*
 
 ## 9. Provenance
 
-**Weather nodes.** `a development machine` and `a development machine`, each 24 cores,
+**Weather nodes.** `test host 1` and `test host 2`, each 24 cores,
 Ubuntu 26.04 LTS, gfortran/gcc 15.2.0 (Ubuntu 15.2.0-16ubuntu1), glibc
 2.43, netCDF-Fortran 4.6.2: a newer toolchain than either prior pass
 (13.3.0 / 2.39), disclosed, equality never required. Both nodes ran the
@@ -314,8 +314,8 @@ libm drift (`t_Nc`) inert because the canonical bytes are what load. A
 convective-boundary-layer job was cycling on the card (48 % util at
 launch); the four gate runs (2.1–2.9 s each) ran beside it, and every
 transferred input was hash-verified against the producing node's
-manifest before use. Node walls: builds 479+190 s (a development machine) /
-889+185 s (a development machine), quartet 447 s / 453 s.
+manifest before use. Node walls: builds 479+190 s (test host 1) /
+889+185 s (test host 2), quartet 447 s / 453 s.
 
 ## 10. Screens
 

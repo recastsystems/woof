@@ -1,0 +1,68 @@
+{
+  "schema": "gpuwm.acm2-constants/v1",
+  "wrf_source_sha256": "f18685f7ea091f567c3f37e983f26357dcd7e9ec2eea9a6e70635c506a66d60c",
+  "kernel": [
+    {
+      "macro": "ACM_RIC",
+      "literal": "0.25f",
+      "wrf": ":7    critical Richardson number"
+    },
+    {
+      "macro": "ACM_CRANKP",
+      "literal": "0.5f",
+      "wrf": ":8    Crank-Nicolson parameter"
+    },
+    {
+      "macro": "ACM_KARMAN",
+      "literal": "0.4f",
+      "wrf": ":169, :713, :911, :1245"
+    },
+    {
+      "macro": "ACM_RV",
+      "literal": "461.5f",
+      "wrf": ":707  EDDYX's own R_v"
+    },
+    {
+      "macro": "ACM_RLAM",
+      "literal": "80.0f",
+      "wrf": ":709"
+    },
+    {
+      "macro": "ACM_GAMH",
+      "literal": "16.0f",
+      "wrf": ":710"
+    },
+    {
+      "macro": "ACM_GAMM",
+      "literal": "16.0f",
+      "wrf": ":711"
+    },
+    {
+      "macro": "ACM_BETAH",
+      "literal": "5.0f",
+      "wrf": ":712"
+    },
+    {
+      "macro": "ACM_EDYZ0",
+      "literal": "0.01f",
+      "wrf": ":715  minimum Kz"
+    },
+    {
+      "macro": "ACM_PR",
+      "literal": "0.8f",
+      "wrf": ":716  Prandtl number"
+    },
+    {
+      "macro": "ACM_XX",
+      "literal": "0.5f",
+      "wrf": ":910, :1244"
+    }
+  ],
+  "driver_words": {
+    "G": "411cf5c3",
+    "R_D": "438f8000",
+    "R_V": "43e6cccd",
+    "CP": "447b2000",
+    "EP_1": "3f1bbda4"
+  }
+}

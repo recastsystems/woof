@@ -56,7 +56,7 @@ def test_prepared_factory_builds_matching_neutral_statics(monkeypatch, topo, gwd
 
     def build(tile_cfg, *_args, **kwargs):
         observed.update(kwargs)
-        return SimpleNamespace(), None
+        return SimpleNamespace(existing_scratch=lambda *_: None), None
 
     monkeypatch.setattr(streaming, "_domain_start_time", lambda *_: None)
     monkeypatch.setattr(streaming, "domain_vertical_coord", lambda *_: object())
@@ -67,7 +67,7 @@ def test_prepared_factory_builds_matching_neutral_statics(monkeypatch, topo, gwd
         lat=np.zeros((cfg.ny, cfg.nx)), lon=np.zeros((cfg.ny, cfg.nx))))
     monkeypatch.setattr(harness, "make_physics_state", build)
     factory = streaming.prepared_tile_state_factory(
-        SimpleNamespace(physics=driver), cfg)
+        SimpleNamespace(physics=driver, existing_scratch=lambda *_: None), cfg)
     tile = factory(cfg)
     assert tile._tile_buffer
     statics = observed["terrain_drag_static"]

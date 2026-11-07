@@ -555,7 +555,8 @@ def _restored(**kwargs):
     return result, grid
 
 
-def test_apply_to_state_rebalances_the_geopotential_at_the_held_pressure():
+@pytest.mark.parametrize("use_theta_m", [0, 1])
+def test_apply_to_state_rebalances_the_geopotential_at_the_held_pressure(use_theta_m):
     """The prepared-tree route keeps p and re-integrates phi, as WRF does.
 
     Without the rebalance the diagnostic held phi and raised p inside the
@@ -568,6 +569,13 @@ def test_apply_to_state_rebalances_the_geopotential_at_the_held_pressure():
     seam, grid = _initialize(perturbation_cfg=spec)
     restored, _ = _restored()
     state = restored.state
+    if use_theta_m:
+        from woof.core import constants as c
+        base = state.thb if state.thb.ndim == 3 else state.thb[:, None, None]
+        state.thp[...] = ((base + state.thp)
+                          * (np.float32(1.0) + np.float32(c.RVOVRD) * state.qv)
+                          - base)
+        state.use_theta_m = 1
     p_before = np.array(state.p, dtype=np.float64)
     php_before = np.array(state.php, dtype=np.float64)
     thp_before = np.array(state.thp, dtype=np.float64)

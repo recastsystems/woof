@@ -572,20 +572,29 @@ def _ruc_suites():
                  if int(_switches(profile)["sf_surface_physics"]) == 3)
 
 
-def test_a_ruc_suite_on_a_source_whose_soil_ruc_cannot_start_is_refused_at_the_door():
-    """GEM GDPS publishes one 0-10 cm slab, and RUC's remap needs two.
+def test_a_ruc_suite_on_a_source_whose_soil_ruc_cannot_start_is_refused_at_the_door(monkeypatch):
+    """A source publishing one 0-10 cm slab with no deep donor is refused.
 
     On 2.8.0 a RUC suite on ``--source gem-gdps`` passed ``woof domain``,
     ``woof check`` and ``woof go --dry-run``, and the only refusal was
     the preparation's soil ingest after the cycle had been downloaded.
-    The pairing predicate asks that ingest's own question now, so the
-    wizard refuses before anything is fetched, naming the one-layer soil.
+    The pairing predicate asks that ingest's own question, so the wizard
+    refuses before anything is fetched, naming the one-layer soil.  ECCC's
+    rows now declare a GFS deep-soil donor (deep_soil_donor.py), so the
+    one-slab case is the GDPS contract with its donor dropped.
     """
 
+    from woof import physics_menu
     from woof.domain_wizard import _refuse_profile_its_source_cannot_prepare
+    from woof.ingest.deep_soil_donor import primary_soil_layer_contract
     from woof.physics_compat import THOMPSON_MYNN_RUC_RTE_RRTMGP_PROFILE_ID
     from woof.physics_menu import admissible_profiles, profile_route_blocker
 
+    one_slab = primary_soil_layer_contract(
+        physics_menu._source_soil_contract("gem-gdps"))
+    real = physics_menu._source_soil_contract
+    monkeypatch.setattr(physics_menu, "_source_soil_contract",
+                        lambda source: one_slab if source == "gem-gdps" else real(source))
     suites = _ruc_suites()
     assert THOMPSON_MYNN_RUC_RTE_RRTMGP_PROFILE_ID in suites
     for profile in suites:
@@ -599,6 +608,27 @@ def test_a_ruc_suite_on_a_source_whose_soil_ruc_cannot_start_is_refused_at_the_d
             THOMPSON_MYNN_RUC_RTE_RRTMGP_PROFILE_ID, "gem-gdps")
     assert "cannot be initialised from the soil --source gem-gdps" in str(
         refused.value)
+
+
+def test_ruc_starts_from_every_eccc_source_through_its_deep_soil_donor():
+    """hrrrv5's land surface from HRDPS, RDPS and GDPS: the defect fixed.
+
+    Each GEM row publishes one 0-10 cm slab and declares GFS's layers
+    below it as a deep donor, so RUC's remap sees four layers (samples at
+    5, 25, 70, 150 cm) and every RUC suite is admitted.
+    """
+
+    from woof.ingest.soil_contract import ruc_soil_remap_policy
+    from woof.physics_menu import (_source_soil_contract, admissible_profiles,
+                                    profile_route_blocker)
+
+    for source in ("gem-hrdps", "gem-rdps", "gem-gdps"):
+        contract = _source_soil_contract(source)
+        assert contract["deep_donor"]["source_id"] == "gfs"
+        assert ruc_soil_remap_policy(contract)["sample_depths"] == (5, 25, 70, 150)
+        for profile in _ruc_suites():
+            assert profile_route_blocker(profile, source) is None, (source, profile)
+            assert profile in admissible_profiles(source)
 
 
 def test_template_evidence_membership_still_refuses_nothing():
@@ -630,7 +660,9 @@ def test_template_evidence_membership_still_refuses_nothing():
         assert blocked == {expected_refused}, source
         if expected_refused:
             refused.add(source)
-    assert refused == {"gem-gdps"}
+    # ECCC's three GEM rows publish one 0-10 cm soil slab each and declare
+    # GFS's layers below it as a deep donor, so none is refused.
+    assert refused == set()
     for source in ("hrrr-prs", "gfs", "era5", "hrrr", "rap"):
         assert source not in refused
 

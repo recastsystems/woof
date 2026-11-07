@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-01",
+  "baseline": "published gpuwm 2.9.11 wheel",
+  "baseline_wheel_sha256": "1755b97a6107dadf8ffbcb9aa11f6e1063a12fa8e38207db5b262f8fa4d21a54",
+  "candidate_revision": "cc34c38411d",
+  "compiler": {
+    "nvrtc_build": "13.4.59",
+    "nvrtc_build_id": "CL-38657139",
+    "nvrtc_library_sha256": "5fc18c75a772c5fe0684d2a1bf3fa6ea964b6a71d0caaa828e5e1785dc16daba",
+    "cuda_driver_version": "13030",
+    "device_compute_capability": "120",
+    "cupy_version": "14.2.0",
+    "numpy_version": "2.5.3"
+  },
+  "card": "NVIDIA GeForce RTX 5090",
+  "independent_processes": 2,
+  "off_path_sha256": "887cf16540a769794ff9dc94fe0bbfe27e93ca72a073419539d19d4d488490ec",
+  "e_sgs_present": false,
+  "shinhong_max_ulp": {
+    "du": 0,
+    "dv": 0,
+    "dtheta": 0,
+    "dqv": 15069,
+    "dqc": 155602,
+    "dqi": 3055548,
+    "exch_h": 0,
+    "tke": 0,
+    "el": 0,
+    "hpbl": 0,
+    "wstar": 0,
+    "delta": 0
+  },
+  "noah_max_ulp": 0,
+  "noah_fields": 34,
+  "method": "Independent published-wheel and candidate processes called bl1_micro_run_digest and the native-fixture Shin-Hong field comparators. Noah parity measured all 34 fields at zero ULP after restoring pinned table bytes. No kernel arithmetic or previous reference row changed."
+}

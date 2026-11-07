@@ -1,6 +1,6 @@
-"""An engine woof ships on demand is staged on first use, not refused (woof 2.9.10, PyPI per-file limit).
+"""An engine woof ships on demand is staged on first use, not refused (gpuwm 2.9.10, PyPI per-file limit).
 
-THE BREAKAGE: woof 2.9.10 leaves rw_mpas_init_v831 and rw_mpas_gsl_oro to its release bundle so its platform
+THE BREAKAGE: gpuwm 2.9.10 leaves rw_mpas_init_v831 and rw_mpas_gsl_oro to its release bundle so its platform
 wheels stay under PyPI's 100,000,000-byte limit. woof.hex.engines.resolve read only the directories, so a plain
 install's `woof hex init --physics-suite hrrrv5` refused with "rw_mpas_init_v831 not found" until the user ran
 `woof fetch-bridges` by hand.

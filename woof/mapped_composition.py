@@ -97,6 +97,7 @@ def _shared_composition_key(arguments, source_key):
         "member": arguments["member"], "member_identity": arguments["member_identity"],
         "grids": [grid.definition() for grid in arguments["atmospheric_grids"]],
         "lead_batch": arguments["lead_batch"],
+        **({"full_initial_frame": True} if arguments.get("full_initial_frame") else {}),
         "memory_budget_bytes": arguments["memory_budget_bytes"],
         # A fallback the engine substitutes for an unpublished field changes
         # the composed frames, so two members that differ only here must not
@@ -295,12 +296,17 @@ def load_composition(
         raw, "composition",
         allowed={
             "schema", "name", "mapping_binding", "soil_layers", "supplements",
-            "field_sources",
+            "field_sources", "upper_air_donor",
         },
         required={
             "schema", "name", "mapping_binding", "soil_layers", "supplements",
         },
     )
+    if "upper_air_donor" in contract:
+        # The column above the source's top, from a declared analysis
+        # (woof.ingest.upper_air_donor); applied to the written WPS file.
+        from woof.ingest.upper_air_donor import validate_upper_air_donor
+        validate_upper_air_donor(contract["upper_air_donor"])
     if contract["schema"] != COMPOSITION_SCHEMA:
         raise ValueError(f"unsupported composition schema {contract['schema']!r}")
     _string(contract["name"], "composition.name")
@@ -2021,9 +2027,9 @@ class _RegularSnapshots(_ABCSequence):
         the frameset stores under its canonical name is read and verified
         alone here and converted exactly as the pack converts it
         (``np.asarray(values, dtype=np.float64)``).  A latitude-longitude
-        source may be re-cut around the globe by the pack, so it, and any
-        frameset without single-field reads, answers ``None`` and the
-        caller packs the snapshot as before.
+        source re-cut around the globe by the pack, and any frameset
+        without single-field reads, answers ``None``; an uncut source
+        reads only the requested surface plane.
         """
 
         from woof.mapped_source import REGULAR_SNAPSHOT_LEGACY_NAMES
@@ -2037,7 +2043,12 @@ class _RegularSnapshots(_ABCSequence):
             return None
         index = self._order[int(position)]
         if header(index).grid.projection == "regular_latitude_longitude":
-            return None
+            coordinates = getattr(frames, "coordinates", None)
+            if coordinates is None:
+                return None
+            latitude, longitude = coordinates(index)
+            if self._ring_cut(latitude, longitude, None) is not None:
+                return None
         try:
             values = field(index, canonical).values
         except KeyError:
@@ -2244,7 +2255,8 @@ def _partition_contributing(
     fields = partition["fields"]
     assert isinstance(fields, dict)
     kept: dict[str, object] = {}
-    for name in field_names:
+    pending = list(field_names)
+    for name in pending:
         field = fields.get(name)
         if field is None:
             raise ValueError(
@@ -2259,6 +2271,9 @@ def _partition_contributing(
                 "field is not decodable in a partitioned donor decode"
             )
         kept[name] = field
+        if field.get("missing", {}).get("kind") in {"landmask_water", "landmask_zero_water"}:
+            if "land_fraction" not in pending:
+                pending.append("land_fraction")
     partition["fields"] = kept
     return partition
 
@@ -2412,6 +2427,7 @@ def _compose_through_engine(
     member_identity: str | None = None,
     scratch_destination: Path | None = None,
     atmospheric_grids=(),
+    full_initial_frame: bool = False,
     workers: int | None = None,
     lead_batch: bool = False,
     memory_budget_bytes: int | None = None,
@@ -2482,6 +2498,7 @@ def _compose_through_engine(
                         contributing_mappings=contributing, input_manifest=manifest_path,
                         input_manifest_sha256=manifest_sha256, engine=engine,
                         atmospheric_grids=atmospheric_grids, threads=workers, lead_batch=lead_batch,
+                        **({"full_initial_frame": True} if full_initial_frame else {}),
                         **({} if memory_budget_bytes is None else {"memory_budget_bytes": memory_budget_bytes}),
                         **({"unpublished_fallbacks": unpublished_fallbacks}
                            if unpublished_fallbacks else {}),
@@ -2697,6 +2714,7 @@ def decode_composed_source(
     grib2_dump: str | Path | None = None,
     scratch_destination: str | Path | None = None,
     atmospheric_grids=(),
+    full_initial_frame: bool = False,
     workers: int | None = None,
     lead_batch: bool = False,
     memory_budget_bytes: int | None = None,
@@ -2981,6 +2999,7 @@ def decode_composed_source(
                 None if scratch_destination is None
                 else Path(scratch_destination)),
             atmospheric_grids=atmospheric_grids,
+            **({"full_initial_frame": True} if full_initial_frame else {}),
             workers=workers,
             lead_batch=lead_batch,
             memory_budget_bytes=memory_budget_bytes,
@@ -3058,6 +3077,9 @@ def decode_composed_source(
             contributing_records.append(record)
             unpublished.update(bound_names)
             continue
+        donor_collection = _dataclass_replace(donor_collection, direct={
+            key: value for key, value in donor_collection.direct.items()
+            if key[2] in bound_names})
         combined, receipt = _compose_bound_fields(
             combined, donor_collection,
             binding_name=binding_name, binding=binding,

@@ -75,6 +75,20 @@ def test_source_rejects_field_pointer_escape():
         flux_trial_source(source, FLUX_DIV_SCALAR_SPEC, 4, layout="innermost")
 
 
+def test_zero_fusion_tracks_nested_advection_order_directives():
+    from woof.ensemble.batch_layout_trials import _stencil_cpp_arms
+    from woof.ensemble.batch_kernel import BatchKernelUnsupported
+    body = "\n#if GPUWM_WRF_EXACT_C_ADVECTION || GPUWM_HORDER == 2\nA\n#if GPUWM_NO_HADV\nB\n#else\nC\n#endif\n#else\nD\n#endif\n"
+    arms = _stencil_cpp_arms(body)
+    assert "A\n#if" in arms[2] and "C\n#endif" in arms[2]
+    assert arms[4] == "\nD\n"
+    assert "".join(arms) == body
+    with pytest.raises(BatchKernelUnsupported, match="topology"):
+        _stencil_cpp_arms(body.replace("\n#else\nD", "\n#elif OTHER\nD"))
+    with pytest.raises(BatchKernelUnsupported, match="unbalanced|topology"):
+        _stencil_cpp_arms(body + "#endif\n")
+
+
 @pytest.mark.gpu
 @requires_gpu
 @pytest.mark.parametrize("members", MEMBERS)

@@ -965,6 +965,10 @@ class AdaptiveClockDriver:
         physics = getattr(node.state, "physics", None)
         if physics is None or not hasattr(physics, "stepbl"):
             return
+        if getattr(node.cfg.run, "bl_pbl_physics", 0) == 17:
+            # The KEPS reset is keyed on the first two MODEL steps. A
+            # shortened/adaptive dt cannot reconstruct that from elapsed/dt.
+            physics.keps_itimestep_override = int(node.clock.step_count) + 1
         due = _physics_deadline_due(node, "bldt")
         if due is not None:
             physics.surface_pbl_due_override = due

@@ -170,7 +170,7 @@ pub(super) fn build_render_request(
     };
     // Keep a fixed hurricane-range ceiling across member/frame sheets.
     // An unset override preserves the operational standalone wind scale.
-    if recipe.slug == "10m_wind_speed_and_direction" {
+    if matches!(recipe.slug, "10m_wind_speed_and_direction" | "mslp_10m_winds" | "gefs_avg_mslp_10m_winds") {
         if let Ok(text) = std::env::var("RUSTWX_WIND_MAX_KT") {
             let ceiling = text.parse::<f64>()
                 .map_err(|_| "RUSTWX_WIND_MAX_KT must be numeric")?;
@@ -701,10 +701,22 @@ pub(super) fn scale_for_filled_selector_in(
         return ensemble_spread_scale(values);
     }
     let scale = scale_for_recipe_in(recipe, filled_selector, hemisphere);
+    // These pressure recipes fill the companion 10-m wind magnitude in
+    // knots, while retaining pressure as the selector for contour overlays.
+    if recipe.slug == "mslp_10m_winds" || recipe.slug == "gefs_avg_mslp_10m_winds" {
+        return match scale {
+            ColorScale::Discrete(discrete) => ColorScale::Discrete(
+                crate::plot_design::fit_surface_wind_scale(discrete, values)),
+            other => other,
+        };
+    }
     // Isobaric temperature: the fixed mid-latitude ladder moves onto a
     // field it would otherwise saturate (a tropical 300 hPa map drew one
     // colour); unchanged where the field already fits.
     match (&recipe.style, filled_selector.field, filled_selector.vertical, scale) {
+        (_, CanonicalField::WindSpeed, VerticalSelector::HeightAboveGroundMeters(10),
+         ColorScale::Discrete(discrete)) => ColorScale::Discrete(
+            crate::plot_design::fit_surface_wind_scale(discrete, values)),
         (RenderStyle::WeatherTemperature, CanonicalField::Temperature, VerticalSelector::IsobaricHpa(_),
          ColorScale::Discrete(discrete)) => ColorScale::Discrete(
             crate::plot_design::fit_isobaric_temperature_scale(discrete, values)),

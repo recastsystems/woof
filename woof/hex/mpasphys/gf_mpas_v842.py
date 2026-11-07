@@ -5,6 +5,8 @@ module_cu_gf.mpas.F, GNU 15.2 strict original tree. Tests contain the
 lowering tool and the pristine Fortran oracle binding. See the lane report
 for the measured identity scope; no forecast qualification is implied.
 """
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 # Modified derivative of MPAS-Model v8.4.2: CUDA transcription and launcher.
 # Copyright (c) 2013-2019, Los Alamos National Security, LLC (LANS)
@@ -24483,11 +24485,15 @@ def _compile_module(source, device):
     import uuid
     from cupy_backends.cuda.libs import nvrtc
     with cp.cuda.Device(device):
-        arch = cp.cuda.Device(device).compute_capability
+        arch = _compilation_target(device, xp=cp)
         options = _hex_numerics.options(COMPILER_OPTIONS) + (f"--gpu-architecture=sm_{arch}",)
         identity = dict(source_sha256=hashlib.sha256(source.encode()).hexdigest(),
                         filename="gf_mpas_v842.cu", options=list(options),
                         nvrtc=list(nvrtc.getVersion()), cupy=cp.__version__)
+        from woof.hip_backend import active
+        if active():
+            from ..cuda_backend.aot import compiler_identity
+            identity["compiler"] = compiler_identity()
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         directory = Path(os.environ.get("CUPY_CACHE_DIR", Path.home()/".cupy/kernel_cache"))/"hex-gf-mpas"
         path, record_path = directory/(key+".cubin"), directory/(key+".json")
@@ -24569,7 +24575,7 @@ def _tile_columns(ncol, workspace_bytes, processors, blocks_per_processor, free_
 def _device_properties(device):
     """cudaGetDeviceProperties of one device, read once per process (the fields read here never change).
 
-    THE BREAKAGE THIS PREVENTS (hex host-bound, V5090 2026-10-27): every GF call (every physics step of every
+    THE BREAKAGE THIS PREVENTS (hex host-bound, reference system 2026-10-27): every GF call (every physics step of every
     LTS class) read the device's whole property set on the thread that issues the card's work; py-spy put it at
     the top of the MPAS-physics LTS class threads' per-step host work (about 6 %).  The tile it sizes is the same.
     """
@@ -24578,9 +24584,13 @@ def _device_properties(device):
 
 
 def _blocks_per_processor(function, properties):
-    """Resident 128-thread blocks per SM from the loaded image's registers."""
-    from cupy.cuda import driver
+    """Keep CUDA's slab sizing; use native occupancy for AMD compute units."""
+    import cupy as cp
     from .gf_lanes import LANES
+    if cp.cuda.runtime.is_hip:
+        from woof.backend import active_blocks_per_multiprocessor
+        return max(1, active_blocks_per_multiprocessor(function.ptr, LANES, xp=cp))
+    from cupy.cuda import driver
     registers = max(int(driver.funcGetAttribute(driver.CU_FUNC_ATTRIBUTE_NUM_REGS, function.ptr)), 1)
     by_registers = int(properties["regsPerMultiprocessor"]) // (((registers * 32 + 255) // 256) * 256 * (LANES // 32))
     by_threads = int(properties["maxThreadsPerMultiProcessor"]) // LANES

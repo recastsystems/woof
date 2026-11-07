@@ -26,7 +26,7 @@ LAYOUT_TRIALS = ("none", "outermost", "innermost")
 _FIELD_HELPERS = {
     "xface_cell_open": "q", "xface_cell_per": "q",
     "yface_cell_open": "q", "yface_cell_per": "q",
-    "zface_half": "q", "w_lid_velocity": "flux",
+    "zface_half": "q", "zface_w_centered": "w", "w_lid_velocity": "flux",
 }
 
 
@@ -303,6 +303,41 @@ def _helper_definition(source, name):
     return match.start(), start, end, body_start, body_end
 
 
+def _stencil_cpp_arms(body):
+    """Split the two numerical arms without mistaking nested order clauses.
+
+    Each arm owns its bounds guard and exit stores. Horizontal-order
+    specializations add nested #if/#else directives inside those arms;
+    splitting every #else formerly refused every fused production launch.
+    """
+    depth = 0
+    outer = []
+    for match in re.finditer(r"^[ \t]*#(if|ifdef|ifndef|elif|else|endif)\b[^\n]*", body, re.M):
+        kind = match.group(1)
+        if kind in ("if", "ifdef", "ifndef"):
+            if depth == 0:
+                outer.append(match)
+            depth += 1
+        elif kind == "endif":
+            depth -= 1
+            if depth < 0:
+                raise BatchKernelUnsupported("stencil CPP directives are unbalanced")
+            if depth == 0:
+                outer.append(match)
+        elif depth == 1:
+            outer.append(match)
+    if (depth or [m.group(1) for m in outer] != ["if", "else", "endif"]
+            or not outer[0].group().startswith("#if GPUWM_WRF_EXACT_C_ADVECTION")):
+        raise BatchKernelUnsupported("stencil CPP arm topology changed; numerical exits need a new audit")
+    parts = []
+    end = 0
+    for match in outer:
+        parts.extend((body[end:match.start()], body[match.start():match.end()]))
+        end = match.end()
+    parts.append(body[end:])
+    return parts
+
+
 def flux_trial_source(source, spec, members, *, layout="outermost", zero_tendency=False):
     """Transform one complete advection entry and its field-reading helpers.
 
@@ -361,10 +396,7 @@ def flux_trial_source(source, spec, members, *, layout="outermost", zero_tendenc
         output = (_inner_address("tend_out", index, members) if layout == "innermost"
                   else f"tend_out[{index}]")
         store = f"{output} = __trial_tendency;"
-        arms = re.split(r"(^#(?:if GPUWM_WRF_EXACT_C_ADVECTION|else|endif)\s*$)", body,
-                        flags=re.MULTILINE)
-        if len(arms) != 7:
-            raise BatchKernelUnsupported("stencil CPP arm topology changed; numerical exits need a new audit")
+        arms = _stencil_cpp_arms(body)
         for at in (2, 4):
             arm = arms[at]
             guard = re.search(r"if \(i >= [^\n]+\) return;", _masked(arm))
@@ -383,7 +415,7 @@ def flux_trial_source(source, spec, members, *, layout="outermost", zero_tendenc
 def prepare_flux_div_trial(field, ru, rv, rw, tend, spacing, fnm, fnp, msf, *,
                            dx, dy, stagger="", open_x=False, open_y=False,
                            has_msf=False, spec=False, layout="outermost", zero_tendency=False,
-                           vorder=3):
+                           vorder=3, horder=5, theta_offset=False):
     """Bind the closed stencil layout and optional adjacent RK-zero fusion.
 
     With fusion, omit this field's row from the external RK tendency zero. The
@@ -433,7 +465,8 @@ def prepare_flux_div_trial(field, ru, rv, rw, tend, spacing, fnm, fnp, msf, *,
         original = operators.prepare_flux_div(
             *(_outer_view(value, layout) for value in (field, ru, rv, rw, tend)),
             spacing, fnm, fnp, msf, dx=dx, dy=dy, stagger=stagger,
-            open_x=open_x, open_y=open_y, has_msf=has_msf, spec=spec, vorder=vorder)
+            open_x=open_x, open_y=open_y, has_msf=has_msf, spec=spec, vorder=vorder,
+            horder=horder, theta_offset=theta_offset)
         def scalar():
             if zero_tendency:
                 tend.fill(0)
@@ -441,7 +474,12 @@ def prepare_flux_div_trial(field, ru, rv, rw, tend, spacing, fnm, fnp, msf, *,
         return _trial(scalar, candidate="advection", layout=layout, members=1,
                       n1_original_entry=True, zero_tendency=bool(zero_tendency),
                       removed_logical_global_bytes=0)
-    source = flux_trial_source(module_source("advection"), kernel_spec, members,
+    from woof.core.kernel_shape import shape_defines, specialize_source
+    source = specialize_source("advection", _order_source(
+                                   operators.advection_order_defines(
+                                       horder, theta_offset=theta_offset, stagger=stagger)),
+                               shape_defines("advection", kernel_spec.entry, (nz, ny, nx)))
+    source = flux_trial_source(source, kernel_spec, members,
                                layout=layout, zero_tendency=zero_tendency)
     trial_spec = KernelSpec("ensemble_layout_trials", kernel_spec.entry,
                             kernel_spec.pointers, kernel_spec.options)
@@ -565,7 +603,8 @@ def advection_family_source(source, members, *, layout="outermost", zero_tendenc
 def prepare_advection_family_trial(rows, ru, rv, rw, fnm, fnp, *, dx, dy,
                                     open_x=False, open_y=False, has_msf=False,
                                     specified=False, layout="outermost", zero_tendency=True,
-                                    vorder_scalar=3, vorder_momentum=3):
+                                    vorder_scalar=3, vorder_momentum=3,
+                                    horder_scalar=5, horder_momentum=5, theta_offset=False):
     """Bind the four-stagger family with disjoint output and shared-field audits.
 
     ``vorder_scalar`` (WRF v_sca_adv_order) reaches the scalar and w rows,
@@ -621,12 +660,23 @@ def prepare_advection_family_trial(rows, ru, rv, rw, fnm, fnp, *, dx, dy,
                          "ladders the kernel carries)")
     row_orders = {"": vorder_scalar, "x": vorder_momentum, "y": vorder_momentum,
                   "z": vorder_scalar}
+    row_horders = {"": horder_scalar, "x": horder_momentum, "y": horder_momentum,
+                   "z": horder_scalar}
+    family_defines = operators.advection_order_defines(horder_scalar)
+    if members > 1 and (operators.advection_order_defines(horder_momentum) != family_defines
+                        or theta_offset):
+        raise BatchKernelUnsupported(
+            "the family translation unit compiles one horizontal order tier for all four "
+            f"rows; scalar order {horder_scalar}, momentum order {horder_momentum}"
+            f"{' and the theta offset row' if theta_offset else ''} need per-row entries "
+            "(family=False), or the family would advect a row at another order than a single run")
     if members == 1:
         originals = tuple(prepare_flux_div_trial(
             row[0], ru, rv, rw, row[1], row[2], fnm, fnp, row[3], dx=dx, dy=dy,
             stagger=row[4], open_x=open_x, open_y=open_y, has_msf=has_msf,
             spec=specified, layout=layout, zero_tendency=False,
-            vorder=row_orders[row[4]]) for row in rows)
+            vorder=row_orders[row[4]], horder=row_horders[row[4]],
+            theta_offset=theta_offset and row[4] == "") for row in rows)
         scalar_zero = None
         if zero_tendency:
             from woof.ensemble.batch_bookkeeping import prepare_bookkeeping
@@ -644,8 +694,11 @@ def prepare_advection_family_trial(rows, ru, rv, rw, fnm, fnp, *, dx, dy,
                       delegated_zero_kernel_calls_per_stage=int(bool(zero_tendency)),
                       zero_tendency=bool(zero_tendency))
     from woof.ensemble.batch_kernel import _runtime_audit_options
+    from woof.core.kernel_shape import shape_defines, specialize_source
+    scalar_source = specialize_source("advection", _order_source(family_defines),
+        shape_defines("advection", "flux_div_scalar", (nz, ny, nx)))
     source, spec = advection_family_source(
-        module_source("advection"), members, layout=layout, zero_tendency=zero_tendency,
+        scalar_source, members, layout=layout, zero_tendency=zero_tendency,
         audit_options=_runtime_audit_options(operators.FLUX_DIV_SCALAR_SPEC))
     values = arrays + (rows[0][2], rows[3][2], fnm, fnp,
                        rows[0][3], rows[1][3], rows[2][3])
@@ -708,7 +761,15 @@ def layout_trial_workspace_payload_bytes(cfg, members, selection):
     return sum(row["payload_bytes"] for row in layout_trial_workspace_inventory(cfg, members, selection))
 
 
-def prepare_stage_trials(state, ru, rv, ww, rows, *, layout, family=False):
+def _order_source(defines):
+    """The advection unit at the scalar launcher's horizontal order tier."""
+    from woof.core.kernels import module_source, module_source_int_defines
+    return (module_source_int_defines("advection", defines) if defines
+            else module_source("advection"))
+
+
+def prepare_stage_trials(state, ru, rv, ww, rows, *, layout, family=False,
+                         horders=None, theta_offset=False):
     """Bind a complete stage trial, with all inner transitions inside launches.
 
     Authoritative state stays member-outermost. Inner stage fluxes are packed
@@ -725,9 +786,17 @@ def prepare_stage_trials(state, ru, rv, ww, rows, *, layout, family=False):
     options = dict(dx=cfg.dx, dy=cfg.dy, has_msf=state.has_msf)
     from woof.core.advection import vertical_orders
     vorder_scalar, vorder_momentum = vertical_orders(cfg)
-    family_orders = dict(vorder_scalar=vorder_scalar, vorder_momentum=vorder_momentum)
+    if horders is None:
+        from woof.ensemble.batch_operators import flux_row_horizontal_orders
+        horders = flux_row_horizontal_orders(cfg)
+    family_orders = dict(vorder_scalar=vorder_scalar, vorder_momentum=vorder_momentum,
+                         horder_scalar=horders[""], horder_momentum=horders["x"],
+                         theta_offset=theta_offset)
     row_orders = {"": vorder_scalar, "x": vorder_momentum, "y": vorder_momentum,
                   "z": vorder_scalar}
+    def row_tier(stagger):
+        return dict(vorder=row_orders[stagger], horder=horders[stagger],
+                    theta_offset=theta_offset and stagger == "")
     requested_layout = layout
     layout = "outermost" if state.members == 1 else layout
     additional = layout_trial_workspace_bytes(
@@ -750,7 +819,7 @@ def prepare_stage_trials(state, ru, rv, ww, rows, *, layout, family=False):
             advection = tuple(prepare_flux_div_trial(
                 field, ru, rv, ww, tendency, spacing, state.fnm, state.fnp, msf,
                 stagger=stagger, layout=layout, zero_tendency=True,
-                vorder=row_orders[stagger], **options)
+                **row_tier(stagger), **options)
                 for field, tendency, spacing, msf, stagger in rows)
     else:
         import cupy as cp
@@ -805,7 +874,7 @@ def prepare_stage_trials(state, ru, rv, ww, rows, *, layout, family=False):
                     field_inner, inner_ru, inner_rv, inner_ww, tendency_inner,
                     spacing, state.fnm, state.fnp, msf, stagger=stagger,
                     layout=layout, zero_tendency=True,
-                    vorder=row_orders[stagger], **options)
+                    **row_tier(stagger), **options)
                 def transported(operation=inner_launch, source=field, packed=field_inner,
                                 packed_output=tendency_inner, destination=tendency):
                     cp.copyto(packed, cp.moveaxis(source, 0, -1))

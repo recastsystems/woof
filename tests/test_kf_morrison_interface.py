@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from _run_config_fake import run_config_fake
 
 
 class _NumpyCupyShim:
@@ -212,6 +213,8 @@ def test_nca_expiry_preserves_current_rk_copy_but_zeros_morrison_rates(
     driver = object.__new__(PhysicsDriver)
     driver.ruc_params = None
     driver.noahmp_params = None
+    # No land-surface rain carriers and no CUPPT diagnostic allocated.
+    driver.fields = {}
     driver.cu_pratec = np.zeros(surface, dtype=np.float32)
     driver.rainc = np.zeros(surface, dtype=np.float32)
     driver._pending_rainbl = np.zeros(surface, dtype=np.float32)
@@ -239,7 +242,7 @@ def test_nca_expiry_preserves_current_rk_copy_but_zeros_morrison_rates(
 
     driver._advance_cumulus_clock(
         SimpleNamespace(elapsed_seconds=0.0),
-        SimpleNamespace(dt=60.0, clock_dt=0.0))
+        run_config_fake(dt=60.0, clock_dt=0.0, cu_physics=1))
 
     for name in scalar_names:
         np.testing.assert_array_equal(

@@ -1,6 +1,6 @@
 {
   "schema": "gpuwm-land-state-v1",
-  "purpose": "How a source's soil moisture reaches a land surface model whose soil hydraulics differ. Each source's soil model is a row here, never a code path. Defect it fixes: an ERA5 start copied HTESSEL soil moisture straight into RUC (top level 0.36 against HRRR's RUC 0.21 at the same cells), so latent heat took the sun and T2 ran 1-2 C cold from the first hour with no storms (found 2026-10-26, Oklahoma 2024-05-06 18Z).",
+  "purpose": "How a source's soil moisture reaches a land surface model whose soil hydraulics differ. Each source's soil model is a row here, never a code path. Defect it fixes: an ERA5 start copied HTESSEL soil moisture straight into RUC (top level 0.36 against HRRR's RUC 0.21 at the same cells), so latent heat took the sun and T2 ran 1-2 C cold from the first hour with no storms (2026-10-26 cold-start study, Oklahoma 2024-05-06 18Z).",
   "opt_out_env": "GPUWM_SOIL_LAND_STATE",
   "soil_models": {
     "htessel": {

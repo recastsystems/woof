@@ -266,6 +266,8 @@ class DomainSetup:
             "ZNW": np.ascontiguousarray(np.asarray(self.znw)),
             "P_TOP": np.asarray(self.p_top, dtype=np.float32),
         }
+        if self.cfg.mp_physics == 55:
+            statics.update(C1H=self.c1h, C2H=self.c2h)
         return statics
 
 
@@ -354,13 +356,25 @@ def restart_scalars(header: Mapping[str, Any]) -> dict:
     """
     scalars: dict[str, Any] = {
         "elapsed_seconds": float(header["elapsed_seconds"])}
+    if "wrf_mass_carriers_cold" in header:
+        scalars["wrf_mass_carriers_cold"] = _restart.validate_strict_mass_cold(header)
+    if "scratch/wrf_exact_muts" in header.get("array_manifest", {}):
+        mass = header.get("strict_mass_carriers", {})
+        scalars["wrf_mass_carriers_ready"] = bool(mass.get("ready", True))
+        scalars["wrf_start_diagnostics_carried"] = bool(
+            mass.get("start_diagnostics_carried", False))
     driver = header.get("driver")
     if driver is not None:
+        if 'radiation_owned' in driver:
+            scalars['radiation_owned']=driver['radiation_owned']
+        if "wrf_rthraten_coupled" in driver:
+            scalars["wrf_rthraten_coupled"] = bool(driver["wrf_rthraten_coupled"])
         scalars["call_counts"] = {str(key): int(value)
                                   for key, value in
                                   driver["call_counts"].items()}
         scalars["ysu_nan_guard_fires"] = int(driver["ysu_nan_guard_fires"])
         scalars["microphysics_updates"] = int(driver["microphysics_updates"])
+        scalars["swdd_from_scheme"] = bool(driver.get("swdd_from_scheme", False))
         if "fire" in driver:
             from tilestream.sfire import GRID_CLOCKS
             scalars["fire_clocks"] = {key: driver["fire"]["grid"][key] for key in GRID_CLOCKS}
@@ -401,7 +415,12 @@ def driver_restart_header(scalars: Mapping[str, Any]) -> dict | None:
                             for key, value in scalars["call_counts"].items()},
             "ysu_nan_guard_fires": int(scalars["ysu_nan_guard_fires"]),
             "microphysics_updates": int(scalars["microphysics_updates"]),
+            "swdd_from_scheme": bool(scalars.get("swdd_from_scheme", False)),
         }
+        if 'radiation_owned' in scalars:
+            driver_header['radiation_owned']=scalars['radiation_owned']
+        if "wrf_rthraten_coupled" in scalars:
+            driver_header["wrf_rthraten_coupled"] = bool(scalars["wrf_rthraten_coupled"])
         # Key-for-key what restart.write_restart's driver header carries
         # (woof/io/restart.py, "carriers"/"surface_radiation_policy"):
         # the carrier contract is the provenance a checkpoint's arrays
@@ -460,6 +479,9 @@ def store_restart_header(arrays: Mapping[str, np.ndarray],
                   "dtype": str(np.asarray(arrays[key]).dtype)}
             for key in sorted(arrays)},
     }
+    if scalars.get("wrf_mass_carriers_cold", False):
+        header["wrf_mass_carriers_cold"] = True
+        _restart.validate_strict_mass_cold(header)
     lbc_clock = setup.lbc_clock_identity(cfg)
     if lbc_clock is not None:
         header["root_external_lbc_clock"] = lbc_clock
@@ -561,6 +583,7 @@ def read_store_restart(path, store, setup: DomainSetup, cfg, *,
     """
     path = Path(path)
     header, stored = _restart._load_restart(path, with_arrays=True)
+    _restart.validate_strict_mass_cold(header)
 
     missing_header = sorted({
         "format_version", "config", "setup_fingerprint", "physics_setup",

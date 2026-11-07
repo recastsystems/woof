@@ -81,6 +81,17 @@ def native_prepared_eligibility(inputs, node=None, *, members=2, restart=None, k
     cfg = exp.root.run if node is None else node.cfg.run
     suite = plan_suite(cfg, members=members)
     reasons = list(suite.native_fallback_reasons)
+    if getattr(cfg, 'dfi_opt', 0):
+        reasons.append("DFI initializes each perturbed member through its ordinary coupled startup before packing")
+    nudging = getattr(exp, "nudging", None)
+    if nudging is not None and any(nudging.for_domain(d.grid_id) is not None for d in exp.domains):
+        reasons.append("member-indexed native batch stages do not launch the resident FDDA graphs; each member keeps its ordinary GPU graph and independent forcing clock")
+    if any(d.run.sf_surface_physics == 7 and d.run.pxlsm_soil_nudge for d in exp.domains):
+        reasons.append("PX soil analyses retain each member's resident CUDA record clock and physics graph")
+    if cfg.tracer_opt == 2:
+        reasons.append("passive tracers keep the ordinary member runner with independent advection controls and zero-inflow boundaries")
+    if cfg.traj_opt == 1:
+        reasons.append("native trajectories retain each member's independent particles and point-output clock in the ordinary runner")
     from woof.ensemble.optional_routing import enabled_for
     if enabled_for(inputs):
         reasons.append("NextGen keeps each member's original resident hydro driver")
@@ -618,6 +629,17 @@ def native_memory_model_from_node(inputs, node, *, runtime_reservation, allocato
                         fixed_bytes=bootstrap_live_bytes if free_sample_timing == "before_bootstrap" else 0,
                         basis="measured", evidence=f"{free_sample_timing} free sample; bootstrap live {bootstrap_live_bytes} bytes"),
     ]
+    if cfg.cu_physics == 99:
+        from woof.ensemble.batch_kf import kf_old_driver_reservation
+        components += [
+            MemoryComponent("native_cumulus_coupling", "physics", plan=physics_coupling_memory_plan(**sizes),
+                            evidence="CU99 separate retained member-column coupling owner"),
+            MemoryComponent("native_cu99_call_peak", "physics",
+                plan_for_members=lambda members: BatchMemoryPlan((BatchArraySpec(
+                    "cumulus:due_call_envelope", (kf_old_driver_reservation(**sizes,
+                        members=members, edrates=cfg.kf_edrates),), "shared", "uint8"),), reserved_bytes=0),
+                basis="envelope", evidence="native CU99 outputs, bounded workspace and stock hold/health temporary upper bound"),
+        ]
     if cfg.specified:
         if boundary_plan is None:
             from woof.ensemble.batch_boundaries import MemberBoundaryTables
@@ -630,7 +652,7 @@ def native_memory_model_from_node(inputs, node, *, runtime_reservation, allocato
                                           evidence="MemberBoundaryTables allocation declarations"))
     if (cfg.specified or cfg.nested) and cfg.spec_zone:
         from woof.core.physics_inventory import ring_guard_row
-        row = ring_guard_row(8)
+        row = ring_guard_row(cfg.mp_physics)
         fields = {name: spec for name, spec in ((spec.name, spec) for spec in specs)}
         levels = {name: fields[name].shape[0] for name in row["state_fields"] if name in bootstrap.model_names}
         slots = {field.name: field.shape for field in bootstrap.scratch_fields}
@@ -640,9 +662,9 @@ def native_memory_model_from_node(inputs, node, *, runtime_reservation, allocato
         from woof.ensemble.batch_physics import THOMPSON_CLOUD_BOOKING_SLOTS
         levels.update({name: 1 for name in THOMPSON_CLOUD_BOOKING_SLOTS if name in slots})
         levels["h_diabatic"] = cfg.nz
-        components.append(MemoryComponent("native_thompson_ring", "physics",
+        components.append(MemoryComponent("native_registered_ring" if cfg.mp_physics == 55 else "native_thompson_ring", "physics",
             plan=ring_memory_plan(levels, ny=cfg.ny, nx=cfg.nx, width=cfg.spec_zone, zero_fields=("h_diabatic",)),
-            evidence="Thompson ring state and surface slot declarations"))
+            evidence="Configured microphysics ring state and surface slot declarations"))
     from woof.core.radiation_composition import legacy_radiation_adapter
     legacy = legacy_radiation_adapter(state.physics.radiation_callable)
     from woof.core import rrtmg_legacy as radiation

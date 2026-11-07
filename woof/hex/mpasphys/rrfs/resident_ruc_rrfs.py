@@ -109,10 +109,13 @@ class _Boundary:
             raise ValueError('RUC parameter tables must be 955 resident float32 words')
         rows, bound = ruc.arena_rows(entry, arguments, scalars)
         self.rows = rows
+        self.work_columns = ruc.workspace_columns(entry, n)
+        from woof.hip_backend import active
+        self.hip_tiles = active() and entry in (_LAND, _ICE)
         if workspace is not None:
             self._check(workspace, n)
         # Arena offsets are int32 (launch_boundary): past 2**31 words a cell addresses another cell's scratch.
-        if n * (ruc.WORK_WORDS if bound is None else bound) >= 2**31:
+        if self.work_columns * (ruc.WORK_WORDS if bound is None else bound) >= 2**31:
             raise ValueError(f'RUC launch of {n} cells x {ruc.WORK_WORDS if bound is None else bound} arena words '
                              'overflows the kernel int32 arena offsets; run this tile on more ranks')
         self.tile_stop = None
@@ -131,9 +134,9 @@ class _Boundary:
 
     def _check(self, workspace, n):
         import cupy as cp
-        if (workspace.ndim != 2 or workspace.shape[1] != n or workspace.shape[0] < self.rows
+        if (workspace.ndim != 2 or workspace.shape[1] != self.work_columns or workspace.shape[0] < self.rows
                 or workspace.dtype != cp.float32 or not workspace.flags.c_contiguous):
-            raise ValueError(f'RUC workspace must have shape (>= {self.rows} arena words, {n} cells), float32 and '
+            raise ValueError(f'RUC workspace must have shape (>= {self.rows} arena words, {self.work_columns} cells), float32 and '
                              'contiguous storage')
 
     def __call__(self, workspace=None):
@@ -151,7 +154,10 @@ class _Boundary:
         # blocks the x1.2562 tile (2,562 cells) sat on 41 of the RTX 5090's 170 SMs, two warps each; one warp per
         # block spreads it over 81 SMs: land 2.685 -> 2.416 ms, sea ice 2.205 -> 1.998 ms per call (CUDA events,
         # hrrrv5 6 h fast, quiet card, SPEED-2 glue lane 2026-10-28).
-        self.kernel(((n + 31) // 32,), (32,), (self.ptrs, self.tables, workspace, self.errors, np.int32(n)))
+        if self.hip_tiles:
+            ruc.launch_hip_tiles(self.kernel, self.ptrs, self.tables, workspace, self.errors, n, block=32)
+        else:
+            self.kernel(((n + 31) // 32,), (32,), (self.ptrs, self.tables, workspace, self.errors, np.int32(n)))
 
 
 class ResidentRucSlot:
@@ -454,19 +460,30 @@ class ResidentRucSlot:
         self.gather()
         for array in self.per_call:
             array.fill(call.itimestep)
-        work = cp.empty((self.rows, self.n), cp.float32)
+        if self.main.hip_tiles:
+            all_boundaries = (*self.launches, self.main, *((self.blend,) if self.blend is not None else ()))
+            storage = cp.empty(max(b.rows * b.work_columns for b in all_boundaries), cp.float32)
+            def work_for(boundary):
+                return storage[:boundary.rows * boundary.work_columns].reshape(boundary.rows, boundary.work_columns)
+        else:
+            work = cp.empty((self.rows, self.n), cp.float32)
+            def work_for(boundary):
+                return work
         boundaries = iter(self.launches)
         if self.entry in (_LAND, _ICE):
-            next(boundaries)(work)                 # drivers_driver_forcing
+            boundary = next(boundaries)
+            boundary(work_for(boundary))            # drivers_driver_forcing
         if self.background is not None:
             background, albbck, xice, threshold = self.background
             cp.copyto(background, albbck, where=xice < threshold)
-            next(boundaries)(work)                 # drivers_seaice_prepare
-            next(boundaries)(work)                 # drivers_correct_tsk_over_seaice
+            boundary = next(boundaries)
+            boundary(work_for(boundary))            # drivers_seaice_prepare
+            boundary = next(boundaries)
+            boundary(work_for(boundary))            # drivers_correct_tsk_over_seaice
             cp.copyto(*self.tsk_ice)
-        self.main(work)
+        self.main(work_for(self.main))
         if self.blend is not None:
-            self.blend(work)
+            self.blend(work_for(self.blend))
         self.scatter()
         # Every word is set only at a source-native fatal-error call site; read off the step path.
         from ..deferred_checks_v842 import defer

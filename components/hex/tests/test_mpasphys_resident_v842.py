@@ -16,7 +16,7 @@ def test_resident_slot_retirement_keeps_authority_until_publication():
     class Device(np.ndarray):
         def get(self, order='C'):
             return np.array(self, order=order, copy=True)
-    p.cp.asarray = lambda value: np.asarray(value).view(Device)
+    p.cp.asarray = lambda value, **kw: np.asarray(value, **kw).view(Device)
     p.cp.ascontiguousarray = lambda value: np.array(value, copy=True, order='C').view(Device)
     p.cp.float32, p.cp.int32, p.cp.uint32 = np.float32, np.int32, np.uint32
     p.resident = True
@@ -89,15 +89,21 @@ def test_resident_unknown_field_operation_cannot_fall_back_to_native():
         hooks.invoke('allocate_unknown', call())
 
 
-def test_resident_assembly_uses_level_two_mass_and_both_radiation_rates():
+def test_resident_assembly_uses_level_two_mass_and_both_radiation_rates(monkeypatch):
+    monkeypatch.setenv('WOOF_HEX_MEMBER_MEMORY', 'compact')
     reads = []
     class Pools:
         level = 1
+        def release_prepared(self):
+            reads.append('released-prepared')
         def field(self, pool, name):
             reads.append((pool, name, self.level))
             return np.zeros((2, 3), np.float32)
         def commit(self):
             pass
+        def adopt_tendency(self, name, value):
+            reads.append(('adopted', name))
+            return value
     fields = [dict(pool='tend_physics', pool_name=name)
               for name in ('rublten', 'rvblten', 'rthblten', 'rthratenlw', 'rthratensw')]
     def assemble(**kwargs):
@@ -110,9 +116,11 @@ def test_resident_assembly_uses_level_two_mass_and_both_radiation_rates():
     glue.assembler = SimpleNamespace(get_tend=assemble)
     glue.ncells, glue.dimensions, glue.invalid = 3, {'nEdgesSolve': 6}, None
     glue.get_tend(SimpleNamespace(pools={'rk_step': 1, 'dynamics_substep': 1}))
+    assert reads[0] == 'released-prepared'
     assert ('state', 'rho_zz', 2) in reads
     assert ('state', 'theta_m', 1) in reads
     assert ('state', 'scalars', 1) in reads
+    assert ('adopted', 'scalars_tend') in reads
 
 
 def test_ported_route_refuses_suites_without_ported_glue_by_name():
@@ -158,10 +166,10 @@ def test_snapshot_releases_only_output_inputs_and_preserves_accumulating_fields(
     diagnostics.convective = SimpleNamespace(reset=lambda: reset.append(True))
     diagnostics.acoustic = {'ru_p': object()}
     retained = {('diag', 'cape'): object(), ('diag', 'wmax'): object(),
-                ('diag', 'vorticity'): object(), ('state', 'w'): object(),
+                ('state', 'w'): object(),
                 ('mesh', 'zgrid'): object()}
     diagnostics.buffers = dict(retained)
-    diagnostics.buffers.update({('state', 'scalars'): object(), ('state', 'theta_m'): object(),
+    diagnostics.buffers.update({('diag', 'vorticity'): object(), ('diag', 'temperature_500hPa'): object(), ('state', 'scalars'): object(), ('state', 'theta_m'): object(),
         ('diag', 'exner'): object(), ('diag', 'pressure_base'): object(),
         ('diag', 'pressure_p'): object()})
     diagnostics.after_snapshot()

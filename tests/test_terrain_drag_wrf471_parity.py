@@ -232,7 +232,7 @@ def test_gwdo_gsl_matches_wrf_module_bl_gwdo_gsl(dx):
 #: call, per field, over the columns that take WRF's branches. Cases 12
 #: and 13 have inherited branch differences, pinned separately below rather
 #: than hidden inside the arithmetic maximum.  Case 7 (a positive subnormal
-#: br) joined the arithmetic columns in lane/parity-286, when the kernel's
+#: br) joined the arithmetic columns in development branch, when the kernel's
 #: br > 0 compare moved to double (ysu_f2d) and stopped DAZing it. Measured on the RTX 4090 (sm_89) and the RTX
 #: 5090 (sm_120), identical on both, pinned for equality.
 #:
@@ -241,7 +241,7 @@ def test_gwdo_gsl_matches_wrf_module_bl_gwdo_gsl(dx):
 #: five (ctopo, ctopo2) variants, the same as with ctopo = 1, which is the YSU
 #: baseline (``BASELINE_MAX_ULP`` in tests/test_ysu_wrf461_parity.py,
 #: du 1457 and dv 23302 against this same call, which every YSU entry point
-#: takes with ctopo = 1 since lane/parity-286).  The ULP count rises to 5826
+#: takes with ctopo = 1 since development branch).  The ULP count rises to 5826
 #: only because ctopo = 0 and 0.5 shrink the worst lane's tendency four-fold
 #: (:func:`test_the_topo_arm_adds_no_absolute_error_to_ysus_own`).  The one
 #: U10 ULP is a 1e-45 m/s input wind: the YSU module compiles through
@@ -249,7 +249,7 @@ def test_gwdo_gsl_matches_wrf_module_bl_gwdo_gsl(dx):
 #: the subnormal to 0 where gfortran keeps it (``SUBNORMAL_LANES`` in the YSU
 #: test is the same flush; :func:`test_the_u10_ulp_is_a_flushed_subnormal_input`).
 #:
-#: RE-MEASURED 2026-10-05 (lane/parity-286, sweep row 10): du/dv 5826/23302
+#: RE-MEASURED 2026-10-05 (development branch, sweep row 10): du/dv 5826/23302
 #: -> 0.  The YSU unit now compiles with --fmad=false and glibc's powf/expf,
 #: so every (ctopo, ctopo2) variant is bitwise WRF's ctopo call; the U10 ULP is
 #: the flushed subnormal input above.  RTX PRO 6000, NVRTC 13.4.92 and 12.9.86.
@@ -263,7 +263,7 @@ YSU_BRANCH_CASES = (13,)
 #: The two calm columns, still asserted variant by variant below.
 YSU_CALM_CASES = (12, 13)
 #: The YSU kernel's worst absolute momentum-tendency error against WRF, with
-#: or without the topo arm (m/s2): zero since lane/parity-286 (was
+#: or without the topo arm (m/s2): zero since development branch (was
 #: 4.2375177e-08, CUDA libm and contraction).
 YSU_ABS_MOMENTUM_ERROR = np.float32(0.0)
 
@@ -356,7 +356,7 @@ def test_the_u10_ulp_is_a_flushed_subnormal_input():
 # return and sat 1e9 ULP from WRF; with that return removed every lane is
 # WRF's word, for every (ctopo, ctopo2) variant, wherever WRF wrote a number.
 # (Case 7, a positive subnormal BR the kernel used to flush and read as
-# convective, was closed in lane/parity-286 and is graded with the rest.)
+# convective, was closed in development branch and is graded with the rest.)
 # WRF case 13 produces 0/0 in prfac2, so its theta rates and one heat
 # diffusivity are NaN (1 << 40 is this file's ULP distance to a NaN); the
 # port is finite there by declared divergence.

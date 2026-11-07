@@ -275,6 +275,11 @@ _P3_MASS = (
 from woof.core.fast_sbm_contract import BIN_SPECIES as _FSBM_BIN_SPECIES
 
 _INVENTORIES = {
+    96: StockWrfPhysicsInventory(
+        mp_physics=96, scheme="MAD-WRF", registry_package="madwrf_mp",
+        wrfinput_fields=(_moist("qv", "QVAPOR"), _moist("qc", "QCLOUD"),
+                         _moist("qi", "QICE"), _moist("qs", "QSNOW")),
+        runtime_state_not_wrfinput=()),
     # WRF v4.6.1 Registry.EM_COMMON:3016, no scalar or radius fields.
     2: StockWrfPhysicsInventory(mp_physics=2,scheme="Purdue Lin",
         registry_package="linscheme",wrfinput_fields=_ICE_MASS,
@@ -319,6 +324,59 @@ _INVENTORIES = {
         wrfinput_fields=_ICE_MASS + (_moist("qh", "QHAIL"),),
         runtime_state_not_wrfinput=_EFFECTIVE_RADII,
     ),
+    13: StockWrfPhysicsInventory(
+        mp_physics=13,
+        scheme="MP13 five-class",
+        registry_package="sbu_ylinscheme",
+        wrfinput_fields=tuple(f for f in _ICE_MASS if f.registry_name != "qg") + (
+            WrfInputField(registry_name="rimi", netcdf_name="RIMI",
+                          collection="state", units="fraction"),),
+        runtime_state_not_wrfinput=(),
+    ),
+    # WRF v4.6.1 Registry.EM_COMMON:3035. Hail is mass-only; WDM's
+    # CCN/cloud/rain numbers use the existing nn/nc/nr state names.
+    26: StockWrfPhysicsInventory(
+        mp_physics=26, scheme="WDM7", registry_package="wdm7scheme",
+        wrfinput_fields=_ICE_MASS + (_moist("qh", "QHAIL"),
+            _scalar("qnn", "QNCCN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="nn"),
+            _scalar("qnc", "QNCLOUD", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="nc"),
+            _scalar("qnr", "QNRAIN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nr")),
+        runtime_state_not_wrfinput=_EFFECTIVE_RADII),
+    27: StockWrfPhysicsInventory(
+        mp_physics=27, scheme="UDM", registry_package="udmscheme",
+        wrfinput_fields=_ICE_MASS + (_moist("qh", "QHAIL"),
+            _scalar("qnn", "QNCCN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="nn"),
+            _scalar("qnc", "QNCLOUD", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="nc"),
+            _scalar("qnr", "QNRAIN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nr")),
+        runtime_state_not_wrfinput=_EFFECTIVE_RADII),
+
+    7: StockWrfPhysicsInventory(
+        mp_physics=7, scheme='Goddard four-ice', registry_package='nuwrf4icescheme',
+        wrfinput_fields=_ICE_MASS + (_moist('qh', 'QHAIL'),),
+        runtime_state_not_wrfinput=tuple(RuntimeStateField(name, name.upper())
+            for name in ('phys_tot', 'physc', 'physe', 'physd', 'physs', 'physm', 'physf',
+                         'acphys_tot', 'acphysc', 'acphyse', 'acphysd', 'acphyss', 'acphysm', 'acphysf',
+                         'preci3d', 'precs3d', 'precg3d', 'precr3d', 'prech3d',
+                         're_cloud_gsfc', 're_rain_gsfc', 're_ice_gsfc', 're_snow_gsfc',
+                         're_graupel_gsfc', 're_hail_gsfc', 're_cloud', 're_ice', 're_snow')),
+    ),
+    15: StockWrfPhysicsInventory(
+        mp_physics=15, scheme="Ferrier-Aligo advected rime",
+        registry_package="fer_mp_hires_advect",
+        wrfinput_fields=_P3_MASS + (_scalar("qrimef", "QRIMEF", units="kg kg-1"),),
+        runtime_state_not_wrfinput=()),
+    # Registry.EM_COMMON:529-530 and :3045, with runtime-only phase state.
+    95: StockWrfPhysicsInventory(mp_physics=95, scheme="Eta Ferrier",
+        registry_package="etampnew",
+        wrfinput_fields=(_moist("qv", "QVAPOR"), _moist("qc", "QCLOUD"),
+                         _moist("qr", "QRAIN"), _moist("qs", "QSNOW"),
+                         _scalar("qt", "CWM", units="kg kg-1")),
+        runtime_state_not_wrfinput=(RuntimeStateField("f_ice_phy", "F_ICE_PHY"),
+            RuntimeStateField("f_rain_phy", "F_RAIN_PHY"),
+            RuntimeStateField("f_rimef_phy", "F_RIMEF_PHY"))),
+
     # Registry.EM_COMMON:3021
     6: StockWrfPhysicsInventory(
         mp_physics=6,
@@ -349,6 +407,18 @@ _INVENTORIES = {
         runtime_state_not_wrfinput=_EFFECTIVE_RADII,
     ),
     # Registry.EM_COMMON:3026.  Do not collapse Morrison moments into mass.
+    # Public WRF v4.7.1 Registry.EM_COMMON:3031; no graupel category.
+    11: StockWrfPhysicsInventory(
+        mp_physics=11, scheme="CAM Morrison-Gettelman", registry_package="cammgmpscheme",
+        wrfinput_fields=tuple(f for f in _ICE_MASS if f.registry_name != "qg") + (
+            _scalar("qnc", "QNCLOUD", state_name="nc"),
+            _scalar("qni", "QNICE", state_name="ni"),
+            _scalar("qnr", "QNRAIN", state_name="nr"),
+            _scalar("qns", "QNSNOW", state_name="ns")),
+        runtime_state_not_wrfinput=tuple(RuntimeStateField(n, n.upper()) for n in (
+            "rh_old_mp","lcd_old_mp","cldfra_old_mp","cldfra_mp","cldfra_mp_all",
+            "cldfra_conv","cldfrai","cldfral","wsedl3d","lradius","iradius")),
+    ),
     10: StockWrfPhysicsInventory(
         mp_physics=10,
         scheme="Morrison two-moment",
@@ -364,6 +434,16 @@ _INVENTORIES = {
             RuntimeStateField("rqscuten", "RQSCUTEN"),
             RuntimeStateField("rqicuten", "RQICUTEN"),
         ),
+    ),
+    # Registry.EM_COMMON:3030, five masses and three transported numbers.
+    14: StockWrfPhysicsInventory(
+        mp_physics=14, scheme="WDM5", registry_package="wdm5scheme",
+        wrfinput_fields=tuple(f for f in _ICE_MASS if f.registry_name != "qg") + (
+            _scalar("qnn", "QNCCN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="nn"),
+            _scalar("qnc", "QNCLOUD", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="nc"),
+            _scalar("qnr", "QNRAIN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="nr"),
+        ),
+        runtime_state_not_wrfinput=_EFFECTIVE_RADII,
     ),
     # Registry.EM_COMMON:3033,3049,3052,3054,3056 after WRF's option-18
     # selector defaults resolve to two moments, hail, predicted CCN, and
@@ -452,6 +532,43 @@ _INVENTORIES = {
                 "taod5502d", "TAOD5502D", dimensions=WRFINPUT_2D_DIMS),
         ),
     ),
+    # WRF 4.7.1 Registry.EM_COMMON:3053 has the same package fields.
+    29: StockWrfPhysicsInventory(
+        mp_physics=29,
+        scheme="RCON",
+        registry_package="rcon_mp_scheme",
+        wrfinput_fields=_ICE_MASS + (
+            # Units are WRF's post-reg_parse values; see
+            # WRF_RESOLVED_UNITS_NUMBER_PAREN above for why they carry a
+            # blank where the Registry line shows '#'.
+            _scalar("qni", "QNICE", units=WRF_RESOLVED_UNITS_NUMBER_PLAIN,
+                    state_name="ni"),
+            _scalar("qnr", "QNRAIN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nr"),
+            _scalar("qnc", "QNCLOUD", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nc"),
+            _scalar("qnwfa", "QNWFA", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nwfa"),
+            _scalar("qnifa", "QNIFA", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nifa"),
+            # No woof species: written at zero, which IS stock behaviour
+            # (real.exe's aer_init_opt=0 arm writes exact 0.0 for it).
+            _scalar("qnbca", "QNBCA", units=WRF_RESOLVED_UNITS_NUMBER_PAREN),
+            _aerosol_emission("qnwfa2d", "QNWFA2D", state_name="nwfa2d"),
+            _aerosol_emission("qnifa2d", "QNIFA2D", state_name="nifa2d"),
+        ),
+        runtime_state_not_wrfinput=_EFFECTIVE_RADII + (
+            # Registry.EM_COMMON:1738-1739.  taod5503d is bare ``r`` and
+            # taod5502d is ``rh``: restart and history, never input.  They
+            # are the 550 nm aerosol optical depth diagnostics WRF's
+            # aerosol-aware Thompson publishes for radiation; woof does
+            # not compute them, which is a woof gap and not a reason to
+            # misreport WRF's package.
+            RuntimeStateField("taod5503d", "TAOD5503D"),
+            RuntimeStateField(
+                "taod5502d", "TAOD5502D", dimensions=WRFINPUT_2D_DIMS),
+        ),
+    ),
     # Registry.EM_COMMON:3038.  P3 one-category, two-moment ice:
     #
     #   package p3_1category mp_physics==50 -
@@ -485,9 +602,41 @@ _INVENTORIES = {
     # two the resolved value and the Registry text are the same string and
     # there is nothing to resolve.
     #
-    # mp=51 (p3_1category_nc, :3039) is the same port with qnc added and is
-    # NOT inventoried here: woof.config accepts 50 only.  52 and 53 are
-    # refused by name (woof/config.py:1134-1172).
+    # The two-category package (52, :3040) is inventoried separately below.
+    # Other P3 variants retain their own selector admission and inventory.
+    55: StockWrfPhysicsInventory(
+        mp_physics=55,
+        scheme="ISHMAEL adaptive-habit ice",
+        registry_package="jensen_ishmael",
+        wrfinput_fields=_P3_MASS + (
+            _moist("qi2", "QICE2"), _moist("qi3", "QICE3"),
+            _scalar("qnr", "QNRAIN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nr"),
+            _scalar("qni", "QNICE", units=WRF_RESOLVED_UNITS_NUMBER_PLAIN,
+                    state_name="ni"),
+            _scalar("qvoli", "QVOLI", units="m(3) kg(-1)"),
+            _scalar("qaoli", "QAOLI", units="m(3) kg(-1)"),
+            _scalar("qni2", "QNICE2", units=WRF_RESOLVED_UNITS_NUMBER_PLAIN,
+                    state_name="ni2"),
+            _scalar("qvoli2", "QVOLI2", units="m(3) kg(-1)"),
+            _scalar("qaoli2", "QAOLI2", units="m(3) kg(-1)"),
+            _scalar("qni3", "QNICE3", units=WRF_RESOLVED_UNITS_NUMBER_PLAIN,
+                    state_name="ni3"),
+            _scalar("qvoli3", "QVOLI3", units="m(3) kg(-1)"),
+            _scalar("qaoli3", "QAOLI3", units="m(3) kg(-1)"),
+        ),
+        runtime_state_not_wrfinput=(
+            RuntimeStateField("re_cloud", "RE_CLOUD"),
+            RuntimeStateField("re_ice", "RE_ICE"),
+            *(RuntimeStateField(reg + suffix, nc + number)
+              for suffix, number in (("", ""), ("_2", "2"), ("_3", "3"))
+              for reg, nc in (("vmi3d", "v_ice"), ("rhopo3d", "rho_ice"),
+                              ("di3d", "d_ice"), ("phii3d", "phi_ice"),
+                              ("itype", "ice_type"))),
+            RuntimeStateField("refl_10cm", "refl_10cm"),
+        ),
+    ),
+
     50: StockWrfPhysicsInventory(
         mp_physics=50,
         scheme="P3 one-category two-moment ice",
@@ -511,7 +660,136 @@ _INVENTORIES = {
             RuntimeStateField("qv_old", "QV_OLD"),
         ),
     ),
+    # Registry.EM_COMMON:3039.  P3 one-category with predicted droplet
+    # number:
+    #
+    #   package p3_1category_nc mp_physics==51 -
+    #     moist:qv,qc,qr,qi;
+    #     scalar:qnc,qni,qnr,qir,qib;
+    #     state:re_cloud,re_ice,vmi3d,rhopo3d,di3d,refl_10cm,th_old,qv_old
+    #
+    # mp=50's row with qnc first in the scalar list (WRF's package order,
+    # the order its scalar indices are assigned in, inc/scalar_indices.inc).
+    # qnc is Registry :541-542, ``i0rhusdf`` and ``"# kg(-1)"``, so it is a
+    # wrfinput member with the mp=28 qnc's resolved unit; woof's state name
+    # is ``nc``.  The state half is mp=50's, member for member.
+    52: StockWrfPhysicsInventory(
+        mp_physics=52,
+        scheme="P3 two-category two-moment ice",
+        registry_package="p3_2category",
+        wrfinput_fields=_P3_MASS + (_moist("qi2", "QICE2"),) + (
+            _scalar("qnc", "QNCLOUD", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="nc"),
+            _scalar("qni2", "QNICE2", units=WRF_RESOLVED_UNITS_NUMBER_PLAIN, state_name="ni2"),
+            _scalar("qir2", "QIR2", units="kg kg(-1)"),
+            _scalar("qib2", "QIB2", units="m(3) kg(-1)"),
+            _scalar("qni", "QNICE", units=WRF_RESOLVED_UNITS_NUMBER_PLAIN,
+                    state_name="ni"),
+            _scalar("qnr", "QNRAIN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nr"),
+            _scalar("qir", "QIR", units="kg kg(-1)"),
+            _scalar("qib", "QIB", units="m(3) kg(-1)"),
+        ),
+        runtime_state_not_wrfinput=(
+            RuntimeStateField("re_cloud", "RE_CLOUD"),
+            RuntimeStateField("re_ice", "RE_ICE"),
+            RuntimeStateField("vmi3d", "v_ice"),
+            RuntimeStateField("di3d", "d_ice"),
+            RuntimeStateField("vmi3d_2", "v_ice2"),
+            RuntimeStateField("di3d_2", "d_ice2"),
+            RuntimeStateField("rhopo3d_2", "rho_ice2"),
+            RuntimeStateField("rhopo3d", "rho_ice"),
+            RuntimeStateField("refl_10cm", "refl_10cm"),
+            RuntimeStateField("th_old", "TH_OLD"),
+            RuntimeStateField("qv_old", "QV_OLD"),
+        ),
+    ),
+    53: StockWrfPhysicsInventory(
+        mp_physics=53,
+        scheme="P3 one-category three-moment ice",
+        registry_package="p3_1cat_3mom",
+        wrfinput_fields=_P3_MASS + (
+            _scalar("qnc", "QNCLOUD", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nc"),
+            _scalar("qni", "QNICE", units=WRF_RESOLVED_UNITS_NUMBER_PLAIN,
+                    state_name="ni"),
+            _scalar("qnr", "QNRAIN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nr"),
+            _scalar("qir", "QIR", units="kg kg(-1)"),
+            _scalar("qib", "QIB", units="m(3) kg(-1)"),
+            _scalar("qzi", "QZI", units="m(3) kg(-1)"),
+        ),
+        runtime_state_not_wrfinput=(
+            RuntimeStateField("re_cloud", "RE_CLOUD"),
+            RuntimeStateField("re_ice", "RE_ICE"),
+            RuntimeStateField("vmi3d", "v_ice"),
+            RuntimeStateField("di3d", "d_ice"),
+            RuntimeStateField("rhopo3d", "rho_ice"),
+            RuntimeStateField("refl_10cm", "refl_10cm"),
+            RuntimeStateField("th_old", "TH_OLD"),
+            RuntimeStateField("qv_old", "QV_OLD"),
+        ),
+    ),
+    51: StockWrfPhysicsInventory(
+        mp_physics=51,
+        scheme="P3 one-category two-moment ice, predicted droplet number",
+        registry_package="p3_1category_nc",
+        wrfinput_fields=_P3_MASS + (
+            _scalar("qnc", "QNCLOUD", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nc"),
+            _scalar("qni", "QNICE", units=WRF_RESOLVED_UNITS_NUMBER_PLAIN,
+                    state_name="ni"),
+            _scalar("qnr", "QNRAIN", units=WRF_RESOLVED_UNITS_NUMBER_PAREN,
+                    state_name="nr"),
+            _scalar("qir", "QIR", units="kg kg(-1)"),
+            _scalar("qib", "QIB", units="m(3) kg(-1)"),
+        ),
+        runtime_state_not_wrfinput=(
+            RuntimeStateField("re_cloud", "RE_CLOUD"),
+            RuntimeStateField("re_ice", "RE_ICE"),
+            RuntimeStateField("vmi3d", "v_ice"),
+            RuntimeStateField("di3d", "d_ice"),
+            RuntimeStateField("rhopo3d", "rho_ice"),
+            RuntimeStateField("refl_10cm", "refl_10cm"),
+            RuntimeStateField("th_old", "TH_OLD"),
+            RuntimeStateField("qv_old", "QV_OLD"),
+        ),
+    ),
 }
+
+
+# Table-column packages declare their moist species in the owning row.
+from woof.core.mp_column_schemes import MP_COLUMN_SCHEMES as _TABLE_ROWS
+_mass_by_name = {field.registry_name: field for field in _ICE_MASS}
+_INVENTORIES.update({
+    mp: StockWrfPhysicsInventory(
+        mp_physics=mp, scheme=row.name, registry_package=row.registry_package,
+        wrfinput_fields=tuple(_mass_by_name[name] for name in row.species),
+        runtime_state_not_wrfinput=())
+    for mp, row in _TABLE_ROWS.items()
+})
+del _mass_by_name
+
+from dataclasses import replace as _replace_inventory
+_INVENTORIES[38] = _replace_inventory(
+    _INVENTORIES[28], mp_physics=38, scheme="Thompson graupel-hail",
+    registry_package="thompsongh",
+    wrfinput_fields=_INVENTORIES[28].wrfinput_fields + (
+        _scalar("qng", "QNGRAUPEL", units=WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name="ng"),
+        _scalar("qvolg", "QVGRAUPEL", units="m(3) kg(-1)", state_name="qvolg")))
+_INVENTORIES[40] = StockWrfPhysicsInventory(
+    mp_physics=40, scheme="Morrison aerosol", registry_package="morr_tm_aero",
+    wrfinput_fields=_INVENTORIES[10].wrfinput_fields + (_scalar("qnc","QNCLOUD",units="# kg(-1)",state_name="nc"),),
+    runtime_state_not_wrfinput=_INVENTORIES[10].runtime_state_not_wrfinput + _EFFECTIVE_RADII + tuple(RuntimeStateField(name,name) for name in ("EFCG","EFIG","EFSG","WACT","CCN1_GS","CCN2_GS","CCN3_GS","CCN4_GS","CCN5_GS","CCN6_GS","CCN7_GS","mskf_refl_10cm")),
+)
+# NTU package, Registry.EM_COMMON:3044; every scalar carries input and restart.
+from woof.core.ntu import NTU_SCALARS
+from woof.io.wrf_output_schema import NTU_OUTPUT_FIELDS
+_NTU_NUMBER_NAMES = dict(qnc="QNCLOUD", qnr="QNRAIN", qni="QNICE", qns="QNSNOW", qng="QNGRAUPEL", qnh="QNHAIL")
+_INVENTORIES[56] = StockWrfPhysicsInventory(
+    mp_physics=56, scheme="NTU multi-moment", registry_package="ntu3m",
+    wrfinput_fields=tuple(_moist(n, w) for n, w in (("qv", "QVAPOR"), ("qc", "QCLOUD"), ("qr", "QRAIN"), ("qi", "QICE"), ("qs", "QSNOW"), ("qg", "QGRAUP"), ("qh", "QHAIL"))) + tuple(
+        _scalar(wrf, _NTU_NUMBER_NAMES[wrf], units=WRF_RESOLVED_UNITS_NUMBER_PLAIN if wrf=="qni" else WRF_RESOLVED_UNITS_NUMBER_PAREN, state_name=attr) if wrf in _NTU_NUMBER_NAMES else _scalar(wrf, NTU_OUTPUT_FIELDS[attr].netcdf_name, units=NTU_OUTPUT_FIELDS[attr].units.replace('#',' '), state_name=attr)
+        for wrf, attr in NTU_SCALARS), runtime_state_not_wrfinput=())
 
 
 def supported_stock_wrf_mp_physics() -> tuple[int, ...]:

@@ -1,9 +1,4 @@
-"""The CUDA forecast requirement, shared by CLI and direct model callers.
-
-CPU preprocessing and NumPy setup states are not a CPU forecast dycore.
-This boundary prevents their reaching CUDA allocation/launch failures after
-preparation, or a downstream caller mistaking a setup state for a CPU solver.
-"""
+"""Legacy CUDA admission entry point, delegated to the selected backend."""
 
 from __future__ import annotations
 
@@ -17,7 +12,8 @@ FORECAST_GPU_REQUIREMENT = (
     "Forecasts require an NVIDIA GPU and a driver supporting CUDA 12.x "
     "with pip install 'recast-woof[gpu-cu12]' (CuPy >=14.0 and its CUDA toolkit); "
     "on a CUDA-13-only system use 'recast-woof[gpu-cu13]' instead. "
-    "There is no CPU forecast step. VRAM depends on the domain and physics; "
+    "Experimental AMD ROCm execution requires --backend amd and the rocm extra. "
+    "VRAM depends on the domain and physics; "
     "use woof check to size the run. "
     "Without a GPU you can fetch, prepare (woof prep --preprocess-backend "
     "cpu), run woof doctor, render existing output, and extract soundings.")
@@ -60,6 +56,8 @@ def forecast_gpu_gap() -> str | None:
         cp = importlib.import_module('cupy')
     except Exception as error:
         return f"CuPy unavailable ({type(error).__name__}: {error})"
+    if getattr(cp.cuda.runtime, 'is_hip', False):
+        return "CUDA is the default; a ROCm CuPy installation requires --backend amd"
     from woof.capabilities import GPU_RUNTIME_MINIMUM, installed_cupy_version
 
     version = installed_cupy_version()
@@ -77,6 +75,14 @@ def forecast_gpu_gap() -> str | None:
 
 def require_forecast_gpu() -> None:
     """Raise :class:`ForecastGPURequired` before forecast allocation or step."""
+    from woof.hip_backend import active
+    if active():
+        from woof.backend import get_backend
+        try:
+            get_backend()
+        except Exception as error:
+            raise ForecastGPURequired(str(error)) from None
+        return
     gap = forecast_gpu_gap()
     if gap is not None:
         raise ForecastGPURequired(gap) from None

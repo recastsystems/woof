@@ -1,0 +1,100 @@
+{
+  "files": [
+    {
+      "file": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/LICENSE.txt",
+      "bytes": 1027,
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "license": "WRF public domain, WRF-LICENSE.txt",
+      "upstream_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28"
+    },
+    {
+      "file": "phys/module_cu_osas.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_cu_osas.F",
+      "bytes": 86971,
+      "sha256": "f8cc3fbd6277cf886bcdffa9e8df7623884dfb1886acdbfd0d2471329c3cfd50",
+      "license": "WRF public domain, WRF-LICENSE.txt",
+      "upstream_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28"
+    },
+    {
+      "file": "phys/module_gfs_machine.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_gfs_machine.F",
+      "bytes": 567,
+      "sha256": "300ee4f75663e89d34c8a9b8733cc07a5dd48c3d973da019d31cb76524babe25",
+      "license": "WRF public domain, WRF-LICENSE.txt",
+      "upstream_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28"
+    },
+    {
+      "file": "phys/module_gfs_physcons.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_gfs_physcons.F",
+      "bytes": 2781,
+      "sha256": "2b8ef99663ba62748b57c7002f5e5b8c9338f2a825c1d32c113bd4e3bff2eb52",
+      "license": "WRF public domain, WRF-LICENSE.txt",
+      "upstream_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28"
+    },
+    {
+      "file": "phys/module_gfs_funcphys.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_gfs_funcphys.F",
+      "bytes": 112944,
+      "sha256": "0d43dccf0510bd49ef07f81c357e4b96fd9391604f7c14d7e3cf8700ff383e74",
+      "license": "WRF public domain, WRF-LICENSE.txt",
+      "upstream_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28"
+    },
+    {
+      "file": "tools/standard.c",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/tools/standard.c",
+      "bytes": 6658,
+      "sha256": "a766c03a8049f906b848d6ae10c9ef2d8d57944f1e87396a14de90fcfa306f37",
+      "license": "WRF public domain, WRF-LICENSE.txt",
+      "upstream_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28"
+    }
+  ],
+  "table_license": "Derived exclusively from the pinned public-domain module_gfs_funcphys.F; no external table data.",
+  "equivalent_upstream": {
+    "version": "WRF v4.7.1",
+    "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+    "license": {
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/LICENSE.txt",
+      "bytes": 1027,
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "public_domain_notice_reviewed_before_modules": true
+    },
+    "files": [
+      {
+        "file": "phys/module_cu_osas.F",
+        "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_cu_osas.F",
+        "bytes": 86971,
+        "sha256": "f8cc3fbd6277cf886bcdffa9e8df7623884dfb1886acdbfd0d2471329c3cfd50",
+        "equal_to_wrf461": true
+      },
+      {
+        "file": "phys/module_gfs_machine.F",
+        "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_gfs_machine.F",
+        "bytes": 567,
+        "sha256": "300ee4f75663e89d34c8a9b8733cc07a5dd48c3d973da019d31cb76524babe25",
+        "equal_to_wrf461": true
+      },
+      {
+        "file": "phys/module_gfs_physcons.F",
+        "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_gfs_physcons.F",
+        "bytes": 2781,
+        "sha256": "2b8ef99663ba62748b57c7002f5e5b8c9338f2a825c1d32c113bd4e3bff2eb52",
+        "equal_to_wrf461": true
+      },
+      {
+        "file": "phys/module_gfs_funcphys.F",
+        "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/phys/module_gfs_funcphys.F",
+        "bytes": 112944,
+        "sha256": "0d43dccf0510bd49ef07f81c357e4b96fd9391604f7c14d7e3cf8700ff383e74",
+        "equal_to_wrf461": true
+      },
+      {
+        "file": "tools/standard.c",
+        "url": "https://raw.githubusercontent.com/wrf-model/WRF/f52c197ed39d12e087d02c50f412d90d418f6186/tools/standard.c",
+        "bytes": 6658,
+        "sha256": "a766c03a8049f906b848d6ae10c9ef2d8d57944f1e87396a14de90fcfa306f37",
+        "equal_to_wrf461": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "source_pin": "tools/nssl2_wrf461_variant_oracle/SOURCE_PIN.json",
+  "native_source": "WRF v4.6.1 with the four repository default referee fixes from wrf_bugfix.py",
+  "compiler": "GNU Fortran 15.2.1, strict -O2 -fno-tree-vectorize -fno-fast-math -ffp-contract=off; glibc 2.43",
+  "real_case": "2024-05-25 18 UTC real.exe initialization, native timestep 2, six wet columns, 49 levels, dt=12",
+  "mixed_case": "variant_column.F90 independent six-column mixed-phase fixture, 40 levels, dt=6, step=2",
+  "files": {
+    "mp19-wet-native-capture.bin": {
+      "bytes": 68772,
+      "sha256": "2a2b1d93dda899b27b331b15c736f200f9e05c95f7a99493365ce9fe5e43e233"
+    },
+    "mp19-mixed-phase.npz": {
+      "bytes": 86938,
+      "sha256": "90cc77bd8045bdd0e4b3a162015c07bfa50828f9bd61f7ea712d3749d5e4ef98"
+    },
+    "mp21-wet-native-capture.bin": {
+      "bytes": 68772,
+      "sha256": "f300bd791cfef7cad41202414002a8e528c8def5db911efab442b61a80ec7abb"
+    },
+    "mp21-mixed-phase.npz": {
+      "bytes": 86918,
+      "sha256": "f09823e8f52d0880796f396f48100e8a3ca68bce16d871169421732df2f552a0"
+    },
+    "mp19-mixed-coefficients.npz": {
+      "bytes": 86938,
+      "sha256": "a14c6ffb9a3b33ee8d8b2f4e054330549e013c587e79179dbf29774f4301cc79",
+      "coefficients": {
+        "nssl_cccn": 10000000.0,
+        "nssl_alphah": 2.5,
+        "nssl_alphahl": 0.0,
+        "nssl_icdx": 2,
+        "nssl_icdxhl": 4
+      },
+      "different_words": 0,
+      "compared_words": 10614
+    },
+    "mp21-mixed-coefficients.npz": {
+      "bytes": 86918,
+      "sha256": "9d579fbbfa3f53cd57dc89c131ab6e9455a66a207e781c195db2e8283fa97c76",
+      "coefficients": {
+        "nssl_cccn": 10000000.0,
+        "nssl_alphah": 2.5,
+        "nssl_alphahl": 0.0,
+        "nssl_icdx": 2,
+        "nssl_icdxhl": 4
+      },
+      "different_words": 0,
+      "compared_words": 10614
+    }
+  },
+  "real_replay_active_words": {
+    "mp19": 2994,
+    "mp21": 2406
+  },
+  "native_unwritten_radius_witness": {
+    "fields": [
+      "effc_m",
+      "effi_m",
+      "effs_m"
+    ],
+    "words": 882,
+    "source": "module_physics_init.F:985-1023 and module_mp_nssl_2mom.F:3170-3208",
+    "finding": "PRESENT-but-unwritten actual arguments including a NaN residue; before/after/GPU bytes are identical and excluded from finite active physics counts. Original capture retained unchanged."
+  }
+}

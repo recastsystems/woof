@@ -69,9 +69,12 @@ def _digest_without_the_adaptive_config_keys(
         # setup fingerprints; unwind exactly that binding, as test_restart's
         # canonical digest does.
         _unwind_v7_inverse_binding(header)
+        # The anchor predates the hailcast_version header key
+        # (fix/hailcast-resume): drop it, as test_restart's reconstruction does.
+        header.pop(restart.HAILCAST_VERSION_HEADER_KEY)
         # eta_levels was appended later (80a3009c2/06c29b747), the
         # relax_timescale_s / relax_w pair after it, and the three urban
-        # canopy keys (lane/urban-infra) after those.  Unwind those separate
+        # canopy keys (development branch) after those.  Unwind those separate
         # config additions to reach the historical pre-adaptive tree;
         # leave every array and non-config header bound.
         for key in ADAPTIVE_TIMESTEP_RUN_FIELDS + (
@@ -94,7 +97,7 @@ def _digest_without_the_adaptive_config_keys(
             setup["algorithms"][component] = identity
         header["physics_setup"] = setup
         header["physics_setup_fingerprint"] = restart._json_sha256(setup)
-        # The historical anchor also predates lane/cap-hail's eleven
+        # The historical anchor also predates development branch's eleven
         # persistent HAILCAST members (tests/test_restart.py
         # _LIFECYCLE_FREE_ROOT_DIGEST): unwind exactly those.
         names = _unwind_hailcast_members(

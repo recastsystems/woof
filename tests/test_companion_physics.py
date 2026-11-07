@@ -405,7 +405,8 @@ def test_a_refusal_another_choice_would_clear_leaves_its_option_reachable(
     surface = option_row(result, "surface_layer", "eta-similarity")
     assert kinds_of(surface) == [COMBINATION]
     assert surface["reasons"][0]["closes"] is False
-    assert "bl_pbl_physics=2 (MYJ) only" in surface["reasons"][0]["reason"]
+    # MYJ, EEPS and BouLac are the PBLs the Eta layer is admitted with.
+    assert "admitted with bl_pbl_physics=2 (MYJ)" in surface["reasons"][0]["reason"]
     # Measured, not assumed: another installed choice really does open it,
     # which is why the cell that reaches it stays live.
     assert option_row(ask(source, settings={"moist": True, "bl_pbl_physics": 2}),

@@ -3,7 +3,7 @@
 The port under test is :mod:`woof.ingest.wif_climatology` -- WRF's
 ``QNWFA_QNIFA_SIGMA_MONTHLY.dat`` input path (metgrid ``constants_name``
 horizontal + real.exe monthly/vertical) -- whose end-to-end oracle is a
-WRF-4.7.1 real.exe run of the summer reference case (a development machine,
+WRF-4.7.1 real.exe run of the summer reference case (test host 4,
 ``cases/summer-20260825/run-ctrl``): against that wrfinput the port's
 QNWFA agreed to a pointwise relative max of 1.03e-5, QNIFA to 7.84e-6,
 QNWFA2D to 1.26e-6 (bit-exact when fed metgrid's own horizontal output),
@@ -154,7 +154,7 @@ def test_monthly_weights_match_the_oracle_date():
 
     Aug 15 is julian day 227 and Sep 15 is 258 in 2026 (non-leap), the
     target Aug 25 is 237, so month1=8/month2=9 weighted 21/31 and 10/31 --
-    the same integers the a development machine comparison receipt carried.
+    the same integers the test host 4 comparison receipt carried.
     """
     assert monthly_interp_weights("2026-08-25_18:00:00") == (8, 9, 21, 10, 31)
 
@@ -324,7 +324,7 @@ def test_default_selectors_still_refuse_exactly_as_before():
 
 
 def test_the_climatology_pair_no_longer_demands_an_explicit_path(tmp_path):
-    """RE-BASELINED (lane/wif-default).
+    """RE-BASELINED (development branch).
 
     The old pin asserted that ``aer_init_opt=1``/``wif_input_opt=1`` was
     admitted ONLY alongside a non-empty ``wif_climatology_path``, and that

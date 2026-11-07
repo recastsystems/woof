@@ -102,6 +102,15 @@ pub fn render_panel_with_unobserved(
     render_panel_with(request, unobserved, None).map(|(path, _)| path)
 }
 
+/// A sparse geographic product keeps the requested map frame even where
+/// no moving-domain sample exists. Coverage masking does not crop context.
+pub fn render_panel_with_unobserved_bounds(
+    request: PanelRequest<'_>, unobserved: Option<&[bool]>,
+    bounds: (f64,f64,f64,f64),
+) -> Result<PathBuf,String> {
+    render_panel_impl(request,unobserved,None,false,Some(bounds)).map(|(path,_)|path)
+}
+
 /// A geographic context raster shares the numeric field's exact fine grid.
 /// The numeric values and legend remain available to the normal render path.
 /// Returns the panel's map transform with the path, so the caller folds it
@@ -228,7 +237,9 @@ fn render_panel_impl(
     // A requested diagnostic frame belongs to the extent, not the finite
     // weather footprint. Native-grid framing and recentering otherwise move
     // model and observation panels differently.
-    if bounds.is_some() { map_request.domain_frame = None; }
+    if bounds.is_some() {
+        map_request.domain_frame = Some(rustwx_render::DomainFrame::map_viewport_default());
+    }
     map_request.width = request.width;
     map_request.height = request.height;
     map_request.chrome_scale = rustwx_products::shared_context::static_chrome_scale();

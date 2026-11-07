@@ -14,7 +14,7 @@ baseline's -- `gpuwm/verify/gray_zone.py` diffs ZERO against `82c8155b`,
 and the only `cbl_dry.py` change against it is a comment block declaring
 the `km_opt=4` fall-through.  Tree under test: `61488333`, the merge of
 the shipped `integration/release-1.5.1` (`cf159eb2`) into
-`lane/shinhong-port`.  Card: the local RTX 5090 (no ECC; determinism
+`development branch`.  Card: the local RTX 5090 (no ECC; determinism
 pairs are the corruption screen).  Every number below is reproducible
 from `shinhong_runs.jsonl` beside this file (42 JSON receipts, npz
 profile stacks under `npz/`) via

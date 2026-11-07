@@ -95,8 +95,7 @@ def test_every_unported_microphysics_is_refused_by_name(tmp_path, value):
     assert f"mp_physics={value} (" in message and "is not ported" in message
 
 
-@pytest.mark.parametrize("key,value", [("cu_physics", 2), ("bl_pbl_physics", 7),
-                                       ("sf_sfclay_physics", 7),
+@pytest.mark.parametrize("key,value", [("cu_physics", 4),
                                        ("sf_surface_physics", 1)])
 def test_the_config_loader_prints_the_reason(key, value):
     from test_checkpoint_scheme_identity_gate import _cfg
@@ -120,28 +119,28 @@ def test_ocean_windfarm_and_lagday_off_import_as_if_absent(tmp_path, lines):
     written, report = import_namelists(*_pair(tmp_path, inp=_extra(lines)),
                                        name="x")
     # An omitted ocean selector now resolves to the default selection (PWP
-    # on multi-day forecasts, lane/cap-slab-ocean a382c235f2b), so the
+    # on multi-day forecasts, development branch a382c235f2b), so the
     # importer keeps an explicit off as its own line; nothing else moves.
     kept = "sf_ocean_physics = 0\n" if "sf_ocean_physics" in lines else ""
     assert kept in written
     assert written.replace(kept, "", 1) == plain
     reported = ({entry.key for entry in report.dropped}
                 | {entry.key for entry in report.fixed})
-    for key in ("oml_hml0", "omdt", "windfarm_ij", "lagday"):
+    for key in ("oml_hml0", "omdt", "windfarm_ij"):
         if key in lines:
             assert key in reported
 
 
 def test_the_3d_pwp_ocean_imports(tmp_path):
-    """WRF's 3-D PWP ocean is ported (lane/cap-slab-ocean, aa6bdeed308)."""
+    """WRF's 3-D PWP ocean is ported (development branch, aa6bdeed308)."""
     written, _ = import_namelists(
         *_pair(tmp_path, inp=_extra(" sf_ocean_physics = 2,")), name="x")
     assert "sf_ocean_physics = 2\n" in written
 
 
 @pytest.mark.parametrize("lines,needle", [
-    (" windfarm_opt = 1, 1,\n windfarm_ij = 1,", "Fitch"),
-    (" windfarm_opt = 2, 2,", "MAV"),
+    (" windfarm_opt = 1, 1,\n windfarm_ij = 1,", "Wind farms require MYNN"),
+    (" windfarm_opt = 2, 2,", "Wind farms require MYNN"),
 ])
 def test_ocean_and_windfarm_on_are_refused_by_name(tmp_path, lines, needle):
     with pytest.raises(ValueError) as caught:
@@ -154,9 +153,11 @@ def test_ocean_and_windfarm_on_are_refused_by_name(tmp_path, lines, needle):
 def test_the_namelist_contract_publishes_the_reasons():
     from woof.namelist_contract import _value_rules
     rules = _value_rules()
-    assert "Betts-Miller-Janjic" in rules[("physics", "cu_physics")]["unported"]["2"]
-    assert "Pleim-Xiu" in rules[("physics", "sf_surface_physics")]["unported"]["7"]
-    assert "WDM7" in rules[("physics", "mp_physics")]["unported"]["26"]
+    assert "2" not in rules[("physics", "cu_physics")]["unported"]
+    assert "scale-aware SAS" in rules[("physics", "cu_physics")]["unported"]["4"]
+    assert "7" not in rules[("physics", "sf_surface_physics")]["unported"]
+    assert "CLM" in rules[("physics", "sf_surface_physics")]["unported"]["5"]
+    assert "26" not in rules[("physics", "mp_physics")]["unported"]
 
 
 def test_the_3d_ocean_profile_in_domains_drops_as_inert(tmp_path):

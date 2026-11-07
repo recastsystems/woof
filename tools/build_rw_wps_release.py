@@ -104,6 +104,9 @@ _TOP_LEVEL_EXCLUDES = {
     # exists to call is not in this wheel, so shipping it would offer a
     # command that cannot run.
     "go_cli.py",
+    # Native-input and spherical-grid front doors execute the excluded
+    # forecast kernels; their input readers remain in the preparation wheel.
+    "native_go.py", "global_forecast.py",
     # Launch-time smoke capacity decisions rebuild forecast companion setups.
     # Preparation shares only the CPU receipt helpers in smoke_receipts.py.
     "smoke_execution.py",
@@ -121,7 +124,7 @@ _TOP_LEVEL_EXCLUDES = {
     # Their checkpoint verification imports the forecast-only io.restart;
     # no standalone preparation door imports this module.
     "input_cycle.py",
-    # Nested health recovery (lane/prod-stability) restores a forecast
+    # Nested health recovery (development branch) restores a forecast
     # from a checkpoint and re-arms the supervisor.  Its only importer,
     # prepared_domain_tree_forecast.py, is the forecast runner this wheel
     # does not carry; a preprocessing wheel runs no forecast to recover.
@@ -308,6 +311,8 @@ _TOP_LEVEL_EXCLUDES = {
     # Forecast input runners and terminal job/catalog entry points have no
     # standalone preprocessing command. Their readers remain staged below.
     "metem_forecast.py", "wrfinput_forecast.py",
+    # This GO adapter launches the excluded CUDA forecast executor.
+    "wrfinput_go.py", "go_wrfinput.py", "wrf_go.py",
     # The resident member-leg server (2.9.2, woof/leg_server.py) runs
     # WRF-input forecast legs in warm engine processes: it imports the
     # excluded woof.wrfinput_forecast on both of its paths, nothing
@@ -345,9 +350,9 @@ _TOP_LEVEL_EXCLUDES = {
     # kernels.
     "kernel_prewarm.py",
     # The capability lanes' forecast/product doors (2.9.4): hub-height wind
-    # maps are a render product (lane/cap-hubwind; importers woof.render,
+    # maps are a render product (development branch; importers woof.render,
     # woof.go_cli, woof.cli) and the tropical-cyclone accumulator is a
-    # `woof go` request loader (lane/cap-cyclone-go; importer woof.go_cli).
+    # `woof go` request loader (development branch; importer woof.go_cli).
     # Both reach excluded doors; a preprocessing wheel renders and runs
     # nothing.
     "hubwind.py", "tc_accumulator.py",
@@ -378,6 +383,11 @@ _TOP_LEVEL_EXCLUDES = {
     # staging outright.  A preprocessing wheel prepares inputs for a forecast
     # it does not run; it has no forecast setups to save or start from.
     "companion_setups.py",
+    # The go-launch step of TC initialization (3.0.0, split out of
+    # woof/storm_merge.py): it re-times a saved setup through
+    # companion_setups above, and only woof.go_cli (excluded) calls it.
+    # storm_merge itself stays: preparation runs the merge.
+    "storm_merge_launch.py",
     "configuration_recovery.py", "remote_artifacts.py",
     "remote_input_transfer.py", "remote_plan.py", "remote_processed.py",
     # Companion forecast configuration and remote rendering/preparation
@@ -443,6 +453,8 @@ _CORE_MODULES = {
     # The physics cadence refresh is function-local and recorded below.
     "adaptive_clock.py", "adaptive_timestep.py",
     "constants.py",
+    # State allocation and device pricing share this runtime-free metadata.
+    "physics_inventory.py",
     "diagnostics.py",
     # The C-library transcriptions the CPU paths hash through (A126):
     # diagnostics.py imports noahmp_libm.powf_array, and
@@ -496,14 +508,14 @@ _CORE_MODULES = {
     # import by the process interface's contract; the card path of step()
     # is function-local and never reached by a preparation.
     "chem_vertmx.py",
-    # The smoke set's processes (lane/aq-smoke), for the same reason: a
+    # The smoke set's processes (development branch), for the same reason: a
     # preparation of the smoke set reads their ALLOCATES.  chem_plumerise
     # imports its parameter and cadence module at module scope.
     "chem_fire.py",
     "chem_plumerise.py",
     "chem_plumerise_cache.py",
     "chem_wetdep.py",
-    # The GOCART process modules (lane/aq-gocart), for the same reason:
+    # The GOCART process modules (development branch), for the same reason:
     # a prepared GOCART state names them and attach_chem_state reads their
     # ALLOCATES.  CuPy-free at import; each launcher and step() imports the
     # card path inside the function, and chem_column holds their shared
@@ -664,6 +676,9 @@ _CORE_MODULES = {
     # them when publishing a domain clock, including prepared host state.
     "sfire_clock.py",
     "thompson_contract.py",
+    # Pure scalar table metadata, with no device or forecast imports.
+    "temf_constants.py",
+    "physics_inventory.py",  # Pure allocation and workspace metadata.
     # The mp=28 real-data cold start closes cloud droplet, rain and ice
     # number over the analyzed mass through the scheme's own entry block
     # (woof/ingest/real.py, staged above), and that block is the host
@@ -1088,7 +1103,7 @@ _OPTIONAL_STAGED_IMPORTS = {
     ("woof/ingest/stream_resume.py", "woof.io.restart"):
         "the checkpoint clock of `seal-prefix --checkpoint` "
         "(read_restart_header), imported inside main only when a forecast "
-        "checkpoint names the prefix to seal (lane/spot-resume).  This "
+        "checkpoint names the prefix to seal.  This "
         "package writes and resumes no checkpoint; a standalone "
         "preparation seals by --checkpoint-seconds, and its staged "
         "callers (fetch_as_posted, hrrr_hierarchy_direct) import only the "
@@ -1504,6 +1519,10 @@ def _complete_staged_import_closure(destination: Path, derived_modules=None, *, 
             for count in range(1, len(parts) + 1):
                 path = REPO.joinpath(*parts[:count])
                 source = path / "__init__.py" if path.is_dir() else path.with_suffix(".py")
+                # A namespace parent has no initializer to copy. Its concrete
+                # leaf still passes the same source and exclusion checks.
+                if count < len(parts) and path.is_dir() and not source.is_file():
+                    continue
                 relative = source.relative_to(REPO).as_posix()
                 if relative in _FORBIDDEN_STAGED_FILES or _names_verify(module):
                     raise RuntimeError(
@@ -1533,9 +1552,11 @@ def _analyze_staged_source(item):
     nodes = []
     type_checking_nodes = set()
     incoming = {}
+    bindings = []
     package = owner if is_package else owner.rpartition(".")[0]
 
     def retain(module, names=None):
+        bindings.append((node, module, names))
         if module not in incoming:
             incoming[module] = names
         elif incoming[module] is not None:
@@ -1580,7 +1601,7 @@ def _analyze_staged_source(item):
     # Only derived modules need function bodies for symbol reachability. Sending
     # every original AST back would serialize the stage on Python unpickling.
     return (tree if keep_tree else None, nodes,
-            type_checking_nodes.intersection(nodes), incoming)
+            type_checking_nodes.intersection(nodes), incoming, bindings)
 
 
 class _StagedImportScan:
@@ -1627,7 +1648,9 @@ class _StagedImportScan:
             if self.pool is None and len(changed) > 1:
                 cores = (len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity")
                          else os.cpu_count() or 1)
-                workers = min(cores, len(changed))
+                # Independent xdist workers already supply concurrency.
+                limit = 1 if os.environ.get("PYTEST_XDIST_WORKER") else 16
+                workers = min(limit, cores, len(changed))
                 if os.name == "nt":
                     # ProcessPoolExecutor's Windows wait API admits at most 61 workers.
                     workers = min(workers, 61)
@@ -1643,19 +1666,36 @@ class _StagedImportScan:
             for item, facts in zip(changed, results):
                 self.facts[item[0]] = facts
         self.sources = [(source, owner, package) for source, owner, package in sources if owner]
-        self.incoming = {}
-        for source, owner, is_package in self.sources:
-            relative = owner.replace(".", "/") + ("/__init__.py" if is_package else ".py")
-            for module, names in self.facts[source][3].items():
-                if (relative, module) in _OPTIONAL_STAGED_IMPORTS:
+        # Trace symbols from the original preprocessing doors. Imports in an
+        # unreached function must not make a second module's runtime class
+        # reachable merely because both files have been copied into staging.
+        derived = set(derived_modules or ())
+        incoming = {owner: None for _, owner, _ in self.sources if owner not in derived}
+        while True:
+            following = {module: None if names is None else set(names)
+                         for module, names in incoming.items()}
+            for source, owner, is_package in self.sources:
+                if owner not in incoming:
                     continue
-                if module not in self.incoming:
-                    self.incoming[module] = None if names is None else set(names)
-                elif self.incoming[module] is not None:
-                    if names is None:
-                        self.incoming[module] = None
-                    else:
-                        self.incoming[module].update(names)
+                tree, _, type_checking, _, bindings = self.facts[source]
+                unreached = (_unreached_function_nodes(owner, tree, incoming)
+                             if owner in derived else set())
+                relative = owner.replace(".", "/") + ("/__init__.py" if is_package else ".py")
+                for node, module, names in bindings:
+                    if (node in type_checking or node in unreached
+                            or (relative, module) in _OPTIONAL_STAGED_IMPORTS):
+                        continue
+                    if module not in following:
+                        following[module] = None if names is None else set(names)
+                    elif following[module] is not None:
+                        if names is None:
+                            following[module] = None
+                        else:
+                            following[module].update(names)
+            if following == incoming:
+                break
+            incoming = following
+        self.incoming = incoming
 
     def unreached_function_nodes(self, module, tree):
         """Cache reachability by AST identity and the current imported symbols."""
@@ -1689,7 +1729,27 @@ def _unreached_function_nodes(module, tree, incoming):
         return set()
     definitions = {node.name: node for node in tree.body
                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
-    active = [node for node in tree.body if node not in definitions.values()]
+    active = []
+    unreached = set()
+    for node in tree.body:
+        if node in definitions.values():
+            continue
+        # Named imports never execute a module's script entry point. Its
+        # runtime-only main must not expand the preprocessing symbol graph.
+        test = node.test if isinstance(node, ast.If) else None
+        script_entry = (isinstance(test, ast.Compare)
+                        and isinstance(test.left, ast.Name)
+                        and test.left.id == "__name__"
+                        and len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq)
+                        and len(test.comparators) == 1
+                        and isinstance(test.comparators[0], ast.Constant)
+                        and test.comparators[0].value == "__main__")
+        if script_entry:
+            active.extend(node.orelse)
+            for statement in node.body:
+                unreached.update(ast.walk(statement))
+        else:
+            active.append(node)
     for definition in definitions.values():
         active.extend(definition.decorator_list)
         if isinstance(definition, ast.ClassDef):
@@ -1718,7 +1778,6 @@ def _unreached_function_nodes(module, tree, incoming):
                 names.add(used.id)
         for name in names & definitions.keys():
             active.append(definitions.pop(name))
-    unreached = set()
     for definition in definitions.values():
         functions = ([definition] if not isinstance(definition, ast.ClassDef)
                      else [node for node in ast.walk(definition)
@@ -1755,7 +1814,7 @@ def _staged_internal_imports(
     modules = {module for _, module, _ in sources}
     violations: list[dict[str, object]] = []
     for source, current_module, is_package in sources:
-        tree, nodes, type_checking_nodes, _ = scan.facts[source]
+        tree, nodes, type_checking_nodes, _, _ = scan.facts[source]
         unreached = (scan.unreached_function_nodes(current_module, tree)
                      if current_module in (derived_modules or ()) else set())
         current_package = (
@@ -1888,6 +1947,7 @@ include = ["woof*", "tools"]
 woof = [
   "native_wrf_support_v1.json",
   "physics_params_registry_v1.json",
+  "knobs/families/*.toml", "knobs/WRF-NOTICE.txt",
   "physics_registry_v2.json",
   "wrf_direct_v461_contract.json",
   "terrain_clock_map.json",
@@ -2015,6 +2075,10 @@ def _stage_rw_wps_python_project(destination: Path) -> dict[str, object]:
         for source in sorted((REPO / "woof" / subpackage).glob("*.py")):
             if source.name not in excludes:
                 _copy_source(source, package / subpackage / source.name)
+    # The existing parameter parser imports its namespace-package family.
+    # Its immutable row table is preparation input, not a forecast executor.
+    for relative in ("knobs/families/physics.toml", "knobs/WRF-NOTICE.txt"):
+        _copy_source(REPO / "woof" / relative, package / relative)
     for name in sorted(_IO_MODULES):
         _copy_source(
             REPO / "woof" / "io" / name,
@@ -2166,6 +2230,7 @@ def _cargo_release_environment(
     environment = os.environ.copy()
     environment.pop("RUSTFLAGS", None)
     rust_flags = [
+        f"--remap-path-prefix={Path.home()}=/users",
         f"--remap-path-prefix={source_root.resolve()}=/usr/src/rw-wps",
     ]
     if platform.system() == "Windows":

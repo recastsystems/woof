@@ -225,11 +225,51 @@ def test_actual_initializer_forwards_supplied_fields_and_preserves_absent_cold_s
             np.testing.assert_array_equal(fields[name.lower()].view('u4'), expected.view('u4'))
 
 
+@pytest.mark.parametrize('surface_layer,pbl', [(2, 2), (4, 4)])
+@pytest.mark.parametrize('theta_m', [0, 1])
+@pytest.mark.parametrize('warm', [False, True])
+def test_native_special_surface_winds_seed_every_cold_start(
+        tmp_path, monkeypatch, surface_layer, pbl, theta_m, warm):
+    cfg = _cfg(sf_surface_physics=1, num_soil_layers=5,
+               sf_sfclay_physics=surface_layer, bl_pbl_physics=pbl,
+               use_theta_m=theta_m)
+    restored = _read(_input(tmp_path/'input', cfg, _surface_values(cfg)), cfg)
+    if warm:
+        restored = SimpleNamespace(raw=restored.raw,
+            global_attributes=restored.global_attributes, warm_start=object())
+    shape = (cfg.ny, cfg.nx)
+    fields = dict(albbck=np.zeros(shape, np.float32), lai=np.zeros(shape, np.float32),
+                  u10=np.arange(cfg.nx*cfg.ny, dtype=np.float32).reshape(shape)+.25,
+                  v10=np.full(shape, -3.5, np.float32),
+                  u10e=np.full(shape, -77., np.float32),
+                  v10e=np.full(shape, -88., np.float32))
+    driver = SimpleNamespace(fields=fields, rainc=None, noah_params=None)
+    monkeypatch.setitem(sys.modules, 'cupy', np)
+    monkeypatch.setitem(sys.modules, 'woof.core.physics', SimpleNamespace(
+        physics_driver_required=lambda cfg: True,
+        initialize_physics=lambda *args, **kwargs: driver))
+    wi.initialize_wrfinput_physics(object(), restored, cfg)
+    for target, source, preserved in [('u10e', 'u10', -77.), ('v10e', 'v10', -88.)]:
+        expected = np.full(shape, preserved, np.float32) if warm else fields[source]
+        np.testing.assert_array_equal(fields[target].view('u4'), expected.view('u4'))
+
+
 def _from_driver(driver, cp):
     raw = {aliases[0]: cp.asnumpy(driver.fields[field])
-           for field, aliases in wi.PHYSICS_FIELD_ALIASES.items() if field in driver.fields}
+           for field, aliases in wi.PHYSICS_FIELD_ALIASES.items()
+           if field in driver.fields and aliases[0] in wi.WRFINPUT_DIMENSIONS}
     raw['LU_INDEX'] = raw['IVGTYP']
     return raw
+
+
+def test_cold_fixture_omits_restart_only_driver_fields():
+    vegetation = np.ones((4, 6), dtype=np.int32)
+    driver = SimpleNamespace(fields={
+        'ivgtyp': vegetation, 'sstsk': np.full((4, 6), 280., np.float32),
+        'dtw': np.full((4, 6), 0.25, np.float32)})
+    raw = _from_driver(driver, SimpleNamespace(asnumpy=np.asarray))
+    assert set(raw) == {'IVGTYP', 'LU_INDEX'}
+    np.testing.assert_array_equal(raw['IVGTYP'], vegetation)
 
 
 class _ConsumerReached(Exception):

@@ -1,0 +1,67 @@
+NumPy -- BSD 3-Clause License
+=============================
+
+This is NumPy's licence (https://github.com/numpy/numpy).  It is reproduced
+here because WOOF distributes NumPy-derived material in both source and
+binary form, and clauses 1 and 2 each condition that on this text
+travelling with the copy.  What WOOF carries, and where:
+
+  * tools/rustwx/crates/static-fields/src/projection/npmath.rs ports four
+    NumPy SIMD kernels -- float32 sin, cos, exp and log -- from
+    numpy/_core/src/umath/loops_trigonometric.dispatch.cpp and
+    numpy/_core/src/umath/loops_exponent_log.dispatch.c.src at v2.2.6,
+    with coefficients from npy_simd_data.h.  Same constants, same
+    fused-multiply-add sequence, deliberately: the port's contract is byte
+    parity with NumPy, and its module documentation says so.  That library
+    is compiled and SHIPPED -- it is the `static_fields` entry in
+    woof.bridge_assets.BUNDLED_ARTIFACTS, staged into platform wheels at
+    woof/libexec/bridges/ and packed into the GitHub release bridge
+    bundles -- so clause 2 attaches, and this text is reproduced in the
+    binary-form notice at
+    licenses/THIRD-PARTY-LICENSES-bridge-binaries.txt as well.
+  * tools/static_rust_port/numpy_src/ holds verbatim reference copies of
+    those three upstream files, 1,973 lines.  They are not compiled; they
+    record exactly what was ported.  Clause 1 attaches to them, and this
+    text sits beside them in that directory too.
+
+The text below is numpy/LICENSE.txt at v2.2.6, the vintage ported.  Current
+upstream reads "Copyright (c) 2005-2025, NumPy Developers." -- a year roll
+and nothing else -- and that later span is the one npmath.rs quotes.
+
+This is NumPy's own licence over NumPy's own source.  The third-party
+components a NumPy WHEEL bundles (OpenBLAS and the rest) carry separate
+licences appended to the wheel's copy of this file; none of them is
+involved here, because nothing WOOF took came from them.
+
+------------------------------------------------------------------------
+
+Copyright (c) 2005-2024, NumPy Developers.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+    * Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above
+       copyright notice, this list of conditions and the following
+       disclaimer in the documentation and/or other materials provided
+       with the distribution.
+
+    * Neither the name of the NumPy Developers nor the names of any
+       contributors may be used to endorse or promote products derived
+       from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

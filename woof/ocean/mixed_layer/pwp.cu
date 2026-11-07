@@ -5,7 +5,7 @@
 #endif
 #define L OCEAN_LEVELS
 __device__ float sigma(float tt,float s) {
- float t=tt-273.f,sg=((6.76786136e-6f*s-4.8249614e-4f)*s+0.814876577f)*s-0.0934458632f;
+ float t=tt-273.15f,sg=((6.76786136e-6f*s-4.8249614e-4f)*s+0.814876577f)*s-0.0934458632f;
  return ((((-1.43803061e-7f*t-1.98248399e-3f)*t-0.545939111f)*t+4.53168426f)*t)/(t+67.26f)
  +((((1.667e-8f*t-8.164e-7f)*t+1.803e-5f)*t)*sg+((-1.0843e-6f*t+9.8185e-5f)*t-4.7867e-3f)*t+1.f)*sg;
 }
@@ -18,7 +18,7 @@ __device__ int mld(const float *r) {
  for(int k=0;k<L-1;k++)if(fabsf(r[k+1]-r[k])>1.e-5f)return k+1;
  return L;
 }
-__device__ float depth_mld(const float *z,int m){return z[m-1]+(m>1?(z[m-1]-z[m-2])*0.5f:0.f);}
+__device__ float depth_mld(const float *z,int m){return z[m-1];}
 __device__ void rotate(float *u,float *v,float sa,float ca){
  for(int k=0;k<L;k++){float a=u[k],b=v[k];u[k]=a*ca+b*sa;v[k]=b*ca-a*sa;}
 }
@@ -95,7 +95,7 @@ extern "C" __global__ void pwp_column(
  float *tout,float *sout,float *uout,float *vout,float *density,float *mlout,float *tsk,
  const float *base,const float *zall,const float *trall,const float *srall,
  const float *hfx,const float *lh,const float *sw,const float *lw,const float *qfx,
- const float *ust,const float *ua,const float *va,const float *f,const float *land,
+ const float *ust,const float *ua,const float *va,const float *rhoair,const float *f,const float *land,
  const float *ice_mask,float *tend,int *status,float dt,float stage_dt,float stbolt,int coupled_ice,int n){
  int i=blockDim.x*blockIdx.x+threadIdx.x;if(i>=n||land[i]<=1.5f)return;
  float t[L],s[L],u[L],v[L],r[L],z[L],ri[L-1];
@@ -112,9 +112,12 @@ extern "C" __global__ void pwp_column(
  // Incoming flux times absorption is finite even when GSW+GLW=0.
  for(int k=0;k<L&&!ice_owned;k++){
   float z1=k?z[k-1]:0.f,dz=z[k]-z1;
-  float heat=(z[k]/0.6f<70.f?sw[i]*(expf(-z1/0.6f)-expf(-z[k]/0.6f)):0.f)
-            +(z[k]/20.f<70.f?lw[i]*(expf(-z1/20.f)-expf(-z[k]/20.f)):0.f);
-  if(k==0)heat-=lh[i]+hfx[i]+stbolt*t[0]*t[0]*t[0]*t[0];t[k]+=dt*heat/(dz*1024.f*4183.3f);
+  // Paulson and Simpson (1977), DOI 10.1175/1520-0485(1977)007<0952:IMITUO>2.0.CO;2.
+  // Two solar bands; longwave is absorbed at the surface, not at 20 m.
+  float heat=sw[i]*(0.62f*(expf(-z1/1.5f)-expf(-z[k]/1.5f))
+                  +0.38f*(expf(-z1/20.f)-expf(-z[k]/20.f)));
+  if(k==0)heat+=lw[i]-lh[i]-hfx[i]-stbolt*t[0]*t[0]*t[0]*t[0];
+  t[k]+=dt*heat/(dz*1024.f*4183.3f);
  }
  s[0]+=s[0]*qfx[i]*dt/(1024.f*z[0]);
  for(int k=0;k<L;k++)r[k]=dr+alpha*(t[k]-tr)+beta*(s[k]-sr);
@@ -123,7 +126,8 @@ extern "C" __global__ void pwp_column(
  if(ml>1){mix(t,z,ml);mix(s,z,ml);mix(u,z,ml);mix(v,z,ml);mix(r,z,ml);}
  float sa=sinf(f[i]*dt*0.5f),ca=cosf(f[i]*dt*0.5f);rotate(u,v,sa,ca);
  ml=mld(r);float dml=depth_mld(z,ml),speed=fmaxf(sqrtf(ua[i]*ua[i]+va[i]*va[i]),0.1f);
- float du=ust[i]*ust[i]*ua[i]/speed*dt/(1024.f*dml),dv=ust[i]*ust[i]*va[i]/speed*dt/(1024.f*dml);
+ // UST is atmospheric friction velocity: stress is rho_air * UST^2.
+ float du=rhoair[i]*ust[i]*ust[i]*ua[i]/speed*dt/(1024.f*dml),dv=rhoair[i]*ust[i]*ust[i]*va[i]/speed*dt/(1024.f*dml);
  for(int k=0;k<ml;k++){u[k]+=du;v[k]+=dv;}
  for(int k=ml-1;k<L-1;k++){
   float dz=depth_mld(z,k+1),delr=(r[k+1]-r[k])/1024.f,a=u[k+1]-u[k],b=v[k+1]-v[k];
@@ -198,15 +202,23 @@ extern "C" __global__ void ocean_nearest(const float *slat,const float *slon,
  if(tid==0)index[i]=(scores[0]>0.00007615242f?-1:indices[0]);
 }
 extern "C" __global__ void ocean_profiles(const float *src,const float *depth,const int *index,
- float *out,float *zout,int ns,int nt,int nk,int celsius){
+ float *out,float *zout,int ns,int nt,int nk,int celsius,float layer_m){
  int q=blockDim.x*blockIdx.x+threadIdx.x;if(q>=nt*L)return;
- int i=q%nt,k=q/nt,j=index[i];float z=5.f*(k+1);zout[q]=z;
+ int i=q%nt,k=q/nt,j=index[i];float bottom=layer_m*(k+1),top=layer_m*k;zout[q]=bottom;
  if(j<0){out[q]=(j==-2?0.f:nanf(""));return;}
- int hi=1;while(hi<nk-1&&depth[hi]<z)hi++;int lo=hi-1;
- float a=src[lo*ns+j],b=src[hi*ns+j];
- float weight=fminf(fmaxf((z-depth[lo])/(depth[hi]-depth[lo]),0.f),1.f);
- out[q]=a+(b-a)*weight+(celsius?273.15f:0.f);
+ // Conservative mean of the analysis's piecewise-linear vertical profile.
+ // Constant extension above its shallowest sample, no bottom extrapolation.
+ float total=0.f,left=top;
+ if(left<depth[0]){float right=fminf(bottom,depth[0]);total+=(right-left)*src[j];left=right;}
+ for(int hi=1;hi<nk&&left<bottom;hi++){
+  if(depth[hi]<=left)continue;
+  float right=fminf(bottom,depth[hi]),zlo=depth[hi-1],dz=depth[hi]-zlo;
+  float a=src[(hi-1)*ns+j],slope=(src[hi*ns+j]-a)/dz;
+  total+=(right-left)*(a+0.5f*slope*(left+right-2.f*zlo));left=right;
+ }
+ out[q]=total/layer_m+(celsius?273.15f:0.f);
 }
+
 extern "C" __global__ void pwp_diagnose(const float *t,const float *s,const float *z,
  const float *tr,const float *sr,float *rout,float *ml,const float *land,int n){
  int i=blockDim.x*blockIdx.x+threadIdx.x;if(i>=n||land[i]<=1.5f)return;

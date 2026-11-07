@@ -37,7 +37,7 @@ def _stand_in_cards_are_not_the_local_device(monkeypatch):
     """Every card in this file is a stand-in with a stated free memory.
 
     The CPU battery legs set GPUWM_NO_LOCAL_GPU, and since 083ac7cd0
-    (lane/sw-excess) the backend selection refuses CUDA under it before any
+    (development branch) the backend selection refuses CUDA under it before any
     probe.  That refusal is right for the local device and has its own
     tests (tests/test_preprocess_no_local_gpu.py); here it would hide the
     pricing decisions this file exists to hold, none of which opens a

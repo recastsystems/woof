@@ -1,0 +1,33 @@
+--- a/phys/module_mp_morr_two_moment_aero.F
++++ b/phys/module_mp_morr_two_moment_aero.F
+@@ -116,7 +116,7 @@
+    USE module_mp_radar
+ 
+ ! USE WRF PHYSICS CONSTANTS
+-  use module_model_constants, ONLY: CP, G, R => r_d, RV => r_v, EP_2, t0 ! TWG add
++  use module_model_constants, ONLY: CP, G, R => r_d, RV => r_v, EP_2, t0, svpt0 ! TWG add
+ 
+ !  USE module_state_description
+ 
+@@ -640,7 +640,7 @@
+       sq2_pamdm=1.41421356237
+ 
+       surften_pamdm=0.076
+-      aten_pamdm=2.*MW*surften_pamdm/(RR*t0*RHOW)
++      aten_pamdm=2.*MW*surften_pamdm/(RR*svpt0*RHOW)
+       alogaten_pamdm=log(aten_pamdm)
+       alog2_pamdm=log(2.)
+       alog3_pamdm=log(3.)
+@@ -5722,9 +5722,9 @@
+       if(wbar.le.0.)return
+ 
+       pres=R*rhoair*tair
+-      diff0=0.211e-4*(p0/pres)*(tair/t0)**1.94
+-      conduct0=(5.69+0.017*(tair-t0))*4.186e2*1.e-5 ! convert to J/m/s/deg
+-      es=1000.*svp1*exp( svp2*(tair-t0)/(tair-svp3) )
++      diff0=0.211e-4*(p0/pres)*(tair/svpt0)**1.94
++      conduct0=(5.69+0.017*(tair-svpt0))*4.186e2*1.e-5 ! convert to J/m/s/deg
++      es=1000.*svp1*exp( svp2*(tair-svpt0)/(tair-svp3) )
+       qs=ep_2*es/(pres-es)
+       dqsdt=latvap/(RV*tair*tair)*qs
+       alpha_cesm=G*(latvap/(CP*RV*tair*tair)-1./(R*tair))

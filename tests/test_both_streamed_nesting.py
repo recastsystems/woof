@@ -141,20 +141,28 @@ def test_both_streamed_feedback_matches_and_detects_stale_diagnostic_write(monke
     one_way = trajectory(monkeypatch, mode="resident", feedback=0)
     assert resident["domains"][1]["digest"] != one_way["domains"][1]["digest"]
 
-    # Independent counterfactual at the actual canonical write seam: leak
-    # one attach-time column outside the diagnosed footprint. The old
-    # _sync_out hook is no longer on the bounded parent transaction.
-    original = NestWindowSource.write
-    def stale_diagnostic_write(source, name, window, value):
-        import cupy as cp
-        original(source, name, window, value)
-        if name in ("p", "al", "alt"):
-            source.array(name)[..., 0, 0] = cp.asnumpy(
-                getattr(source.state, name)[..., 0, 0])
-    monkeypatch.setattr(NestWindowSource, "write", stale_diagnostic_write)
+    # Corrupt one column outside the feedback footprint after the final
+    # commit. Strict WRF preserves its previous diagnostics here, whereas
+    # fast mode diagnoses the changed footprint; both must digest the same
+    # canonical store, rather than an attach-time template.
+    from woof.core.nest import NestCoupler
+    original = NestCoupler.feedback_finalize
+    injected = []
+    def stale_diagnostic_write(coupler, node, *, start=False):
+        original(coupler, node, start=start)
+        if coupler.feedback_count == 7 and getattr(
+                node.parent.state, "_streamed_domain", None) is not None:
+            import numpy as np
+            source = NestWindowSource(node.parent.state)
+            for name in ("p", "al", "alt"):
+                field = source.array(name)
+                field[..., 0, 0] = np.nextafter(field[..., 0, 0], np.float32(np.inf))
+                injected.append(name)
+    monkeypatch.setattr(NestCoupler, "feedback_finalize", stale_diagnostic_write)
     stale = trajectory(monkeypatch, mode="both", feedback=1)
     differing = {name for name, sha in stale["domains"][1]["fields"].items()
                  if sha != resident["domains"][1]["fields"][name]}
+    assert injected == ["p", "al", "alt"]
     assert differing == {"state/p", "state/al", "state/alt"}
     assert stale["domains"][2] == resident["domains"][2]
 

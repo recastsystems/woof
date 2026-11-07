@@ -3,7 +3,7 @@
 `--wind-farms` adds opt-in Fitch momentum drag and turbine-generated TKE
 inside MYNN on the GPU. Turbines are assigned to Voronoi cells, and forcing
 uses each cell's actual spherical area. Inputs and turbine curves are shared
-with woof 3.0.
+with gpuwm 2.9.12.
 
 For an initialized global or zoom globe, add the option to the usual forecast:
 

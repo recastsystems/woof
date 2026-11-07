@@ -34,10 +34,14 @@ def main():
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--receipt', type=Path, required=True)
     p.add_argument('--stop-gib', type=float, default=28,
-                   help='stop below the 40 GB hard cap, allowing pending writes')
+                   help='stop below the configured hard cap, allowing pending writes')
+    p.add_argument('--hard-cap-gb', type=float, default=40,
+                   help='decimal GB cap recorded in this run receipt')
     p.add_argument('--max-wall-seconds', type=float, default=None)
     p.add_argument('command', nargs=argparse.REMAINDER)
     a = p.parse_args()
+    if not 0 < a.stop_gib * (1 << 30) < a.hard_cap_gb * 1_000_000_000:
+        p.error("stop threshold must be positive and below the declared hard cap")
     command = a.command[1:] if a.command[:1] == ['--'] else a.command
     if not command:
         p.error('a producer command is required')
@@ -80,7 +84,7 @@ def main():
             stream.flush()
             if used >= a.stop_gib * (1 << 30) or (a.max_wall_seconds is not None
                     and time.monotonic()-began >= a.max_wall_seconds):
-                reason = ('disk guard stopped producer before hard lane cap'
+                reason = ('disk guard reached configured stop threshold'
                           if used >= a.stop_gib * (1 << 30) else 'explicit wall limit')
                 for child in reversed(owned):
                     try:
@@ -112,7 +116,7 @@ def main():
     temporary = a.receipt.with_suffix('.part')
     temporary.write_text(json.dumps(dict(command=command, returncode=rc, reason=reason,
         wall_seconds=time.monotonic()-began, peak_bytes=peak_bytes, peak_vram_mib=peak_mib,
-        stop_gib=a.stop_gib, hard_lane_cap_gb=40, devices=device_info,
+        stop_gib=a.stop_gib, hard_lane_cap_gb=a.hard_cap_gb, devices=device_info,
         visible_devices=os.environ.get('CUDA_VISIBLE_DEVICES'),
         source_commit=os.environ.get('WOOF_HURRICANE_SOURCE_COMMIT')), indent=2)+'\n')
     temporary.replace(a.receipt)

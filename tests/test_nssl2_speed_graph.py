@@ -58,7 +58,9 @@ def test_graph_capture_matches_eager_base(nz, warm, monkeypatch):
     inputs_before = [value.get().view(np.uint32).copy() for value in inputs]
     # The eager reference takes the route a capture takes: no gamma table.
     with monkeypatch.context() as patch:
-        patch.setattr(driver, "_velocity_gamma_table", lambda device_id: None)
+        # The table is keyed by the shape coefficients too (032b43f5a0).
+        patch.setattr(driver, "_velocity_gamma_table",
+                      lambda device_id, shapes=driver.DEFAULT_SHAPES: None)
         driver.gather_initialize_and_sediment(
             rho, dz, *fields, 15.0, workspace=expected, **kwargs)
     driver._cached_velocity_gamma_table.cache_clear()
@@ -74,10 +76,18 @@ def test_graph_capture_matches_eager_base(nz, warm, monkeypatch):
             captured_names.append(name)
         return original_get_kernel(module, name)
     monkeypatch.setattr(driver, "get_kernel", get_kernel)
+    # The sediment launches resolve through nssl2_shape.shape_kernel since
+    # the shape-coefficient port (032b43f5a0); record those too.
+    original_shape_kernel = driver.shape_kernel
+    def shape_kernel(module, name, *args, **kwargs):
+        if cp.cuda.get_current_stream().is_capturing():
+            captured_names.append(name)
+        return original_shape_kernel(module, name, *args, **kwargs)
+    monkeypatch.setattr(driver, "shape_kernel", shape_kernel)
     cached_function = driver._cached_velocity_gamma_table
-    def guarded_cache(device_id):
+    def guarded_cache(device_id, shapes=driver.DEFAULT_SHAPES):
         assert not cp.cuda.get_current_stream().is_capturing()
-        return cached_function(device_id)
+        return cached_function(device_id, shapes)
     monkeypatch.setattr(driver, "_cached_velocity_gamma_table", guarded_cache)
     stream = cp.cuda.Stream(non_blocking=True)
     with stream:

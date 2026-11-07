@@ -120,7 +120,8 @@ def test_workspace_is_priced_from_the_launchers_own_formula():
 
     def exp(*cu):
         return SimpleNamespace(domains=[SimpleNamespace(run=SimpleNamespace(
-            cu_physics=c, bl_pbl_physics=0, nx=300, ny=200, nz=50))
+            cu_physics=c, bl_pbl_physics=0, mp_physics=0, shcu_physics=0, grav_settling=0,
+            nx=300, ny=200, nz=50))
             for c in cu])
     priced = column_cumulus_workspace_bytes(exp(96))
     assert priced == workspace_bytes(96, 50, 60000, 188) or priced > 0
@@ -142,8 +143,10 @@ def test_knobs_leave_every_other_schemes_identity_unchanged():
     from woof.core import model
     src = inspect.getsource(model)
     assert "_cumulus_scoped_run_fields()" in src
-    assert set(model._cumulus_scoped_run_fields()) == set(SAS_FAMILY_DEFAULTS)
-    assert NSAS_DX_FACTOR_SCHEMES == SAS_PGCON_SCHEMES == frozenset({96})
+    assert set(model._cumulus_scoped_run_fields()) == set(SAS_FAMILY_DEFAULTS) | {
+        "numbins", "thbinsize", "rbinsize", "mindeepfreq", "minshallowfreq", "shallowcu_forced_ra", "kf_edrates"}
+    assert NSAS_DX_FACTOR_SCHEMES == frozenset({96})
+    assert SAS_PGCON_SCHEMES == frozenset({94, 96})
 
 
 # --------------------------------------------------------------------------

@@ -967,11 +967,11 @@ def test_entry_hydrometeors_at_or_below_r1_are_zeroed_mass_and_number(
 
 
 #: The argument shape mp=8's adapter gave the four thompson.cu launchers
-#: mp=28 reuses, as it stood at lane/verify-base 91de806e2, the last tree
+#: mp=28 reuses, as it stood at development branch 91de806e2, the last tree
 #: in which mp=8 called them: there this test compared the two adapters
 #: call for call and passed, so the shape below is mp=8's own, recorded by
 #: this file's ``label`` (position by position, and which state array or
-#: scratch slot each position holds).  lane/parity-mp-libm moved mp=8 onto
+#: scratch slot each position holds).  development branch moved mp=8 onto
 #: its own unit (kernels/thompson_classic.cu, the column transcription of
 #: WRF v4.6.1 mp_thompson), so mp=8 no longer makes these calls and a live
 #: comparison would compare mp=28 with nothing.  The shape is pinned
@@ -1286,9 +1286,20 @@ def test_init_fill_is_not_a_per_step_call_and_refuses_other_schemes():
 
     source = (_REPO / "woof" / "core" / "microphysics_aerosol.py").read_text(
         encoding="utf-8")
-    body = source.split("def _apply_thompson_aerosol", 1)[1].split(
-        "def thompson_aerosol_init_fill", 1)[0]
-    assert "init_profile" not in body and "init_fill" not in body, (
+    import ast
+    tree = ast.parse(source)
+    step_functions = {
+        "_apply_thompson_aerosol", "_apply_thompson_aerosol_call"}
+    forbidden = {
+        "aerosol_profile_fill", "thompson_aerosol_init_fill",
+        "launch_aerosol_init_profile"}
+    bodies = [node for node in tree.body
+              if isinstance(node, ast.FunctionDef)
+              and node.name in step_functions]
+    assert {node.name for node in bodies} == step_functions
+    calls = {node.func.id for body in bodies for node in ast.walk(body)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    assert not calls.intersection(forbidden), (
         "the per-step adapter must never run thompson_init's profile fill")
 
 
@@ -2619,7 +2630,7 @@ _G3_ALLOWANCE_ONLY_CLEAN: tuple[str, ...] = ()
 #: contract shape (``_run_g3(widened=False)``), measured on an RTX PRO 6000
 #: Blackwell (sm_120).
 #:
-#: RE-MEASURED 2026-10-07 by lane/mp28-exact, after WRF's qsten/qgten/ngten
+#: RE-MEASURED 2026-10-07 by development branch, after WRF's qsten/qgten/ngten
 #: accumulators (snow and graupel applied once, :4054-4059): ``qs`` fell
 #: inside the gate (2.266e-06 -> 1.926e-06) and left the row, ``qg`` read
 #: 8.776e-05 (was 8.770e-05) and ``effs_m`` 6.574e-06 (was 4.697e-06).  Both
@@ -4551,16 +4562,9 @@ def test_preflight_module_inventory_covers_every_launched_module():
     from woof.core import preflight
 
     del cp
-    listed = None
-    for attribute in dir(preflight):
-        value = getattr(preflight, attribute)
-        if isinstance(value, dict) and 28 in value and isinstance(
-                value.get(28), tuple):
-            listed = set(value[28])
-            break
-    assert listed == set(
-        preflight._MICROPHYSICS_KERNEL_MODULES[28])
-    assert listed is not None, "preflight has no mp=28 kernel-module row"
+    row = preflight._MICROPHYSICS_KERNEL_MODULES[28]
+    assert isinstance(row, tuple)
+    listed = set(row)
     assert listed == {
         "thompson", "thompson_aerosol_state", "thompson_aerosol_sat",
         "thompson_aerosol_cold", "thompson_aerosol_warm",

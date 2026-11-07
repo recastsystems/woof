@@ -29,6 +29,6 @@ __device__ float lin_mul(float a,float b) { return a*b; }
 // A146: the callers pass literal divisors, which NVVM rewrites into a
 // reciprocal multiply on Blackwell under -ftz=true (lin compiles on that
 // route); __fdiv_rn is the IEEE quotient there and identical to div.rn for a
-// variable divisor.  2.9.0 round 2, a development machine division census.
+// variable divisor.  2.9.0 round 2, device division census.
 __device__ float lin_div(float a,float b) { return __fdiv_rn(a,b); }
 #endif

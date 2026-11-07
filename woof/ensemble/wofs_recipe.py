@@ -334,7 +334,8 @@ def source_population(source, cycle, *, provider=None, members=None, base_seed=0
     owner = selection_owner(adapter)
     if owner is not None:
         selected = _owner_call(owner.ensemble_members, provider=provider, source=token,
-                               members=members, base_seed=base_seed, index_offset=index_offset)
+                               members=members, base_seed=base_seed, index_offset=index_offset,
+                               cycle=cycle)
         if selected:
             return tuple(SourceTrajectory(token, cycle, member) for member in selected)
     ensemble = adapter.source_id if adapter.member_set else None

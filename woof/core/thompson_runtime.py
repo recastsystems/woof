@@ -11,7 +11,7 @@ owner before its simultaneous source and fallout calls.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import threading
 import json
@@ -322,6 +322,59 @@ def _upload_table_set(
     )
 
 
+def _graupel_coefficient():
+    from woof.physics_params import active
+    parameters = active()
+    if parameters is not None and "thompson.graupel_fall" in parameters.changed():
+        return np.float32(parameters.value("thompson.graupel_fall"))
+    return None
+
+
+def _regenerate_graupel(result, backend, coefficient):
+    """Integrate WRF's collision table on the card once, before publication.
+
+    No host table generator, output transfer or timestep synchronization.
+    Each entry preserves WRF's complete ordered 100 by 100 quadrature.
+    """
+    from woof.core.kernels import load_module, module_source
+    start = perf_counter()
+    module = load_module("thompson_collision")
+    nr = backend.empty(37*37*100, dtype=np.float64)
+    ng = backend.empty_like(nr)
+    pairs = backend.empty(50000, dtype=np.float64)
+    arrays = dict(result.arrays)
+    outputs = [backend.empty_like(arrays[name], order="F")
+               for name in RAIN_GRAUPEL_TABLE_NAMES]
+    module.get_function("collision_distributions")(
+        ((nr.size+127)//128,), (128,), (nr, ng))
+    module.get_function("collision_pairs")(
+        (79,), (128,), (coefficient, pairs))
+    count = 37**4
+    module.get_function("collision_integrate")(
+        ((count+127)//128,), (128,), (nr, ng, pairs, *outputs))
+    # Publish on every domain stream only after this initialization stream
+    # finishes. Temporaries stay owned until that boundary.
+    _synchronize(backend)
+    arrays.update(zip(RAIN_GRAUPEL_TABLE_NAMES, outputs))
+    identity = json.loads(result.identity_json)
+    identity["generated_collision"] = {
+        "native_pin": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+        "algorithm_sha256": hashlib.sha256(
+            module_source("thompson_collision").encode("utf-8")).hexdigest(),
+        "av_g_float32_hex": float(coefficient).hex(),
+        "records": list(RAIN_GRAUPEL_TABLE_NAMES),
+        "quadrature": [100, 100], "backend": "CUDA",
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    hashes = {name: value for name, value in result.array_sha256.items()
+              if name not in RAIN_GRAUPEL_TABLE_NAMES}
+    return replace(result, arrays=MappingProxyType(arrays),
+                   array_sha256=MappingProxyType(hashes),
+                   identity_json=encoded,
+                   identity_sha256=hashlib.sha256(encoded.encode("ascii")).hexdigest(),
+                   upload_seconds=result.upload_seconds+perf_counter()-start)
+
+
 _DEVICE_CACHE: dict[tuple[Path, int, int | None], DeviceClassicTableSet] = {}
 _DEVICE_CACHE_LOCK = threading.RLock()
 
@@ -344,12 +397,17 @@ def load_classic_device_tables(
     if version not in TABLE_SETS_BY_VERSION:
         raise ValueError(
             f"no Thompson table set for thompson_version={version!r}")
+    coefficient = _graupel_coefficient()
+    if coefficient is not None and version != "wrf_461":
+        raise ValueError("graupel coefficient requires the WRF 4.6.1 collision quadrature")
     root = Path(path).resolve()
     cuda = getattr(backend, "cuda", None)
     device = getattr(cuda, "Device", None)
     device_id = int(device().id) if device is not None else None
     key = ((root, id(backend), device_id) if version == "wrf_461"
            else (root, id(backend), device_id, version))
+    if coefficient is not None:
+        key = (*key, float(coefficient).hex())
     # A split domain's slabs step on their own non-blocking streams, and the
     # first microphysics call of each loads these tables at once.
     # Each uploaded its own copy on its own stream,
@@ -376,6 +434,8 @@ def load_classic_device_tables(
             device_id=device_id,
             verify_roundtrip=verify_roundtrip,
         )
+        if coefficient is not None:
+            result = _regenerate_graupel(result, backend, coefficient)
         if cache:
             if existing is not None:
                 # A copy being replaced (a verified load asked for after

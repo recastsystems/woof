@@ -4,6 +4,8 @@ Pool arrays use (level,entity), matching the dycore, and scalar arrays use
 (scalar,level,cell). cellsOnVertex remains native one-based, including the
 nCells+1 sentinel. Python only orchestrates device kernels and pool binding.
 """
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 from functools import lru_cache
 import os
@@ -24,7 +26,7 @@ def _module(device):
         module = cp.cuda.function.Module()
         artifact = os.environ.get("HEX_MPASDIAG_CUDA_ARTIFACT")
         if artifact:
-            architecture = artifact_architecture(artifact, cp.cuda.Device(device).compute_capability)
+            architecture = artifact_architecture(artifact, _compilation_target(device, xp=cp))
             path = authenticate(artifact, source, architecture)
             module.load(path.read_bytes())
         else:
@@ -33,7 +35,7 @@ def _module(device):
             # output so native subnormal interpolation words are retained.
             from cupy.cuda import compiler
             binary, _ = compiler.compile_using_nvrtc(source, options=_hex_numerics.options(OPTIONS),
-                         arch=cp.cuda.Device(device).compute_capability)
+                         arch=_compilation_target(device, xp=cp))
             module.load(binary)
         return module
 

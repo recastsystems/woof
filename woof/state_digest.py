@@ -132,7 +132,7 @@ _CANONICAL_REFL_SLOTS = frozenset({"refl_10cm"})
 _CANONICAL_EXTRA_PREFIXES = ("nest_", "lbc_weights_", "refl_")
 # Reflectivity phase arrays are overwritten on each WSM3 diagnostic call.
 _CANONICAL_EXCLUDED_FRAME_SCRATCH = frozenset({
-    "refl_t", "refl_wsm3_rain", "refl_wsm3_snow", "refl_wsm3_graupel",
+    "refl_t", "refl_sbu_snow", "refl_sbu_graupel", "refl_wsm3_rain", "refl_wsm3_snow", "refl_wsm3_graupel",
     # The fork's gsd_diagnostics reflectivity at 1 km and 4 km AGL
     # (woof/core/gsd_diagnostics.py), recomputed from the state at every
     # history time and read by nothing that steps: output, not trajectory.
@@ -169,8 +169,8 @@ def lazy_inventory_member_class(name: str) -> str | None:
     scratch_slot = (
         name.removeprefix("scratch/") if name.startswith("scratch/") else None
     )
-    if scratch_slot in _CANONICAL_NEST_SLOTS or _is_chem_nest_slot(
-            scratch_slot):
+    if (scratch_slot in _CANONICAL_NEST_SLOTS or _is_chem_nest_slot(scratch_slot)
+            or (scratch_slot is not None and is_archive_slot(scratch_slot))):
         return CANONICAL_LAZY_MEMBER_CLASSES[0]
     if scratch_slot in _CANONICAL_LBC_SLOTS:
         return CANONICAL_LAZY_MEMBER_CLASSES[1]
@@ -185,7 +185,8 @@ def lazy_inventory_member_class(name: str) -> str | None:
                 return CANONICAL_LAZY_MEMBER_CLASSES[4]
     if is_archive_slot(scratch_slot):
         return CANONICAL_LAZY_MEMBER_CLASSES[6]
-    if name == "cumulus/w0avg":
+    if (name.startswith("cumulus/")
+            and name.removeprefix("cumulus/") in restart_io.CUMULUS_CALLABLE_ARRAYS):
         return CANONICAL_LAZY_MEMBER_CLASSES[5]
     return None
 
@@ -371,6 +372,8 @@ def canonical_state_digest(state, clock, *,
             "microphysics_updates": int(driver.microphysics_updates),
         }),
     }
+    if hasattr(state, '_dfi_physics_epoch'):
+        scalars['dfi_physics_epoch'] = float(state._dfi_physics_epoch)
     return _canonical_digest_document(manifest, scalars, scope,
                                       before_hash=before_hash)
 
@@ -414,7 +417,8 @@ def _canonical_store_manifest(store) -> dict[str, object]:
         head, _, slot = key.partition("/")
         if head != "scratch":
             manifest[key] = value
-        elif restart_io.classify_scratch_slot(slot) == "serialize":
+        elif (restart_io.classify_scratch_slot(slot) == "serialize"
+              or slot in restart_io.CHECKPOINTED_CARRIED_SCRATCH_SLOTS):
             manifest[key] = value
         elif slot in _CANONICAL_EXCLUDED_FRAME_SCRATCH:
             continue

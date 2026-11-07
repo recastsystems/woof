@@ -62,6 +62,10 @@
 // map scale factor").  has_msf == 0 keeps the original expressions
 // verbatim (bitwise Phase 2, regression-pinned).
 
+#ifndef GPUWM_HORDER
+#define GPUWM_HORDER 5
+#endif
+
 // Periodic indices retain the original normalization in the exact build.
 __device__ __forceinline__
 int pd_periodic(int index, int extent)
@@ -81,6 +85,17 @@ __device__ __forceinline__
 real pd_flux5(real qm3, real qm2, real qm1, real q0, real qp1, real qp2,
               real vel)
 {
+#if GPUWM_HORDER == 2
+    return 0.5f*vel*(q0+qm1);
+#elif GPUWM_HORDER == 3
+    real center=0.5833333134651184f*(q0+qm1)-0.0833333358168602f*(qp1+qm2);
+    real dissipation=copysignf(1.0f,vel)*0.0833333358168602f*((qp1-qm2)-3.0f*(q0-qm1));
+    return vel*(center+dissipation);
+#elif GPUWM_HORDER == 4
+    return vel*(0.5833333134651184f*(q0+qm1)-0.0833333358168602f*(qp1+qm2));
+#elif GPUWM_HORDER == 6
+    return vel*(0.6166666746139526f*(q0+qm1)-0.13333334028720856f*(qp1+qm2)+0.01666666753590107f*(qp2+qm3));
+#else
 #if GPUWM_WRF_EXACT_C_ADVECTION
     real center = 0.6166666746139526f * (q0 + qm1)
                 - 0.13333334028720856f * (qp1 + qm2)
@@ -92,6 +107,7 @@ real pd_flux5(real qm3, real qm2, real qm1, real q0, real qp1, real qp2,
     return __fdiv_rn((vel * (37.0f * (q0 + qm1) - 8.0f * (qp1 + qm2) + (qp2 + qm3))
             - fabsf(vel) * (10.0f * (q0 - qm1) - 5.0f * (qp1 - qm2)
                             + (qp2 - qm3))), 60.0f);
+#endif
 #endif
 }
 
@@ -136,6 +152,9 @@ real pd_flux5v(real qm3, real qm2, real qm1, real q0, real qp1, real qp2,
 __device__ __forceinline__
 real pd_flux3h(real qm2, real qm1, real q0, real qp1, real vel)
 {
+#if GPUWM_HORDER == 4 || GPUWM_HORDER == 6
+    return vel*(0.5833333134651184f*(q0+qm1)-0.0833333358168602f*(qp1+qm2));
+#else
 #if GPUWM_WRF_EXACT_C_ADVECTION
     real center = 0.5833333134651184f * (q0 + qm1)
                 - 0.0833333358168602f * (qp1 + qm2);
@@ -145,6 +164,7 @@ real pd_flux3h(real qm2, real qm1, real q0, real qp1, real vel)
 #else
     return __fdiv_rn((vel * (7.0f * (q0 + qm1) - (qp1 + qm2))
             - fabsf(vel) * (3.0f * (q0 - qm1) - (qp1 - qm2))), 12.0f);
+#endif
 #endif
 }
 
@@ -161,9 +181,21 @@ real pd_zface_half(const real* q, real vel, int kf, int j, int i,
                    const real* fnm, const real* fnp, int vorder)
 {
     if (kf == 0 || kf == nz) return 0.0f;
-    if (kf == 1 || kf == nz - 1)
+    if (vorder == 2 || kf == 1 || kf == nz - 1)
         return vel * (fnm[kf] * q[I3S(kf, j, i, ny, nxs)]
                       + fnp[kf] * q[I3S(kf - 1, j, i, ny, nxs)]);
+    if (vorder == 6 && kf >= 3 && kf <= nz - 3)
+        return vel * (0.6166666746139526f *
+                          (q[I3S(kf,j,i,ny,nxs)] + q[I3S(kf-1,j,i,ny,nxs)])
+                      - 0.13333334028720856f *
+                          (q[I3S(kf+1,j,i,ny,nxs)] + q[I3S(kf-2,j,i,ny,nxs)])
+                      + 0.01666666753590107f *
+                          (q[I3S(kf+2,j,i,ny,nxs)] + q[I3S(kf-3,j,i,ny,nxs)]));
+    if (vorder == 4 || vorder == 6)
+        return vel * (0.5833333134651184f *
+                          (q[I3S(kf,j,i,ny,nxs)] + q[I3S(kf-1,j,i,ny,nxs)])
+                      - 0.0833333358168602f *
+                          (q[I3S(kf+1,j,i,ny,nxs)] + q[I3S(kf-2,j,i,ny,nxs)]));
     if (vorder == 5 && kf >= 3 && kf <= nz - 3)
         return pd_flux5v(q[I3S(kf - 3, j, i, ny, nxs)],
                          q[I3S(kf - 2, j, i, ny, nxs)],
@@ -244,14 +276,14 @@ dxp = dx * 2.0f / (msft[(size_t)j * nx + i]
 #if GPUWM_WRF_EXACT_C_ADVECTION
             // The western second-order face divides the velocity by its
             // face mass before constructing its Courant number in WRF.
-            if (i == 1) cr = __fdiv_rn(__fdiv_rn(vel, muf) * dt, dxp);
+            if (i == 1 && GPUWM_HORDER != 2) cr = __fdiv_rn(__fdiv_rn(vel, muf) * dt, dxp);
 #endif
             real fl = muf * (dxp / dt)
                     * flux_upwind(q0[IDX3(k, j, i - 1)],
                                   q0[IDX3(k, j, i)], cr);
             int d = min(i, nx - i);
             real fh;
-            if (d == 1)                           // 2nd order at the edge
+            if (d == 1 || GPUWM_HORDER == 2)                           // 2nd order at the edge
                 fh = 0.5f * vel * (q[IDX3(k, j, i)] + q[IDX3(k, j, i - 1)]);
             else if (d == 2)                      // 3rd order one face in
                 fh = pd_flux3h(q[IDX3(k, j, i - 2)], q[IDX3(k, j, i - 1)],
@@ -322,7 +354,7 @@ dyp = dy * 2.0f / (msft[(size_t)j * nx + i]
                                   q0[IDX3(k, j, i)], cr);
             int d = min(j, ny - j);
             real fh;
-            if (d == 1)
+            if (d == 1 || GPUWM_HORDER == 2)
                 fh = 0.5f * vel * (q[IDX3(k, j, i)] + q[IDX3(k, j - 1, i)]);
             else if (d == 2)
                 fh = pd_flux3h(q[IDX3(k, j - 2, i)], q[IDX3(k, j - 1, i)],

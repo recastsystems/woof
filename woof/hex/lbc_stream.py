@@ -88,6 +88,8 @@ def wait_file(directory, valid_time, *, timeout=1800.0, stage="linger.lbc_hour")
                 raise ValueError(f"boundary producer failed: {failure.read_text()}; refuses frozen boundaries")
             if not waiting:
                 waiting = True
+                import sys
+                print(f"forecast: waiting for complete boundary {valid_time}: {marker}",file=sys.stderr,flush=True)
                 time_ledger.emit(stage, "begin", attrs={"valid_time": valid_time, "marker": str(marker),
                                                        "reason": "missing_lbc_hour"})
             if time.monotonic() - started >= timeout:
@@ -99,6 +101,8 @@ def wait_file(directory, valid_time, *, timeout=1800.0, stage="linger.lbc_hour")
         return admitted
     finally:
         if waiting:
+            import sys
+            print(f"forecast: boundary wait ended for {valid_time} after {time.monotonic()-started:.3f} s",file=sys.stderr,flush=True)
             time_ledger.emit(stage, "end", attrs={"valid_time": valid_time, "marker": str(marker)})
 
 

@@ -455,6 +455,8 @@ def data_path(relative: str | Path) -> Path:
     """
 
     posix = str(relative).replace("\\", "/").strip("/")
+    if _is_verify_oracle(posix):
+        return verify_oracle_path(posix)
     root = companion_root() if _is_companion(posix) else _PACKAGE_DATA_ROOT
     return root.joinpath(*posix.split("/")) if posix else root
 
@@ -513,9 +515,135 @@ def companion_reinstall_command() -> str:
         "pip install", "pip install --force-reinstall", 1)
 
 
+
+# ---------------------------------------------------------------------------
+# The verification oracles (3.0.0)
+# ---------------------------------------------------------------------------
+#
+# The native-WRF captures the GPU ports are graded against (the CSV, binary
+# and archive fixtures under ``woof/data/<scheme>/oracle`` and its
+# siblings) are verification data: ``woof.verify`` reads them, the
+# forecast path never does.  The 3.0.0 manylinux wheel measured
+# 109,246,370 bytes against the release's 100,000,000-byte per-file gate,
+# and these trees were 12.0 MB of it compressed.  The ``recast-woof-data``
+# companion had 1.37 MB of room left (98,629,793 bytes), so they ship in
+# the ``gpuwm-kernels`` companion instead: a hard ``==`` dependency like
+# ``recast-woof-data``, pip-installable and usable offline, with 43.7 MB of room.
+#
+# The source tree keeps its copy where it always was; the woof wheel
+# leaves these trees out (``[tool.setuptools.exclude-package-data]``) and
+# the gpuwm-kernels build copies them in from the same commit
+# (``gpuwm-kernels/setup.py``), with a SHA-256 manifest.  A checkout reads
+# its own copy; an install reads the companion's.
+#
+# Two oracle directories stay in this wheel because the FORECAST reads a
+# member of each at run time: ``ruc/oracle`` (``tbq.csv``, the RUC
+# saturation table, ``woof.core.ruc._load_ruc_saturation_table``) and
+# ``urban/oracle`` (``ucm480/schema.json``, ``woof.core.urban_ucm``).
+
+#: PyPI name and import name of the companion that carries them.
+VERIFY_ORACLE_DISTRIBUTION = "gpuwm-kernels"
+VERIFY_ORACLE_PACKAGE = "gpuwm_kernels"
+
+#: Directory inside that package mirroring ``woof/data`` for these trees.
+VERIFY_ORACLE_SUBDIR = "verify_oracles"
+
+#: ``woof/data``-relative trees that ship in the companion, not this wheel.
+#: Kept in step with the root pyproject.toml's exclude-package-data entry and
+#: gpuwm-kernels/setup.py by tests/test_package_data_coverage.py.
+VERIFY_ORACLE_TREES: tuple[str, ...] = (
+    "fogdes/oracle",
+    "gbmpbl/oracle",
+    "gecros/oracle",
+    "gfs_pbl/oracle",
+    "keps/oracle",
+    "lake/oracle",
+    "mrf/oracle",
+    "mynn/oracle",
+    "noah/oracle",
+    "noah/seaice_oracle",
+    "noah/ua_oracle",
+    "nssl2/driver-oracle",
+    "nssl2/fused-gs-oracle",
+    "nssl2/oracle",
+    "pxlsm/oracle",
+    "pxsfclay/oracle",
+    "ruc/oracle_fork",
+    "ruc/spp_oracle",
+    "sbu_ylin/oracle",
+    "shinhong/oracle",
+    "terrain_drag/oracle",
+    "thompson/oracle",
+    "thompson/oracle-aero",
+    "thompson/oracle-hail",
+    "ysu/oracle",
+)
+
+
+def _is_verify_oracle(relative: str) -> bool:
+    posix = relative.replace("\\", "/").strip("/")
+    return any(posix == tree or posix.startswith(tree + "/")
+               for tree in VERIFY_ORACLE_TREES)
+
+
+def _running_from_checkout() -> bool:
+    return _is_checkout_root(Path(__file__).resolve().parent.parent)
+
+
+def verify_oracle_path(relative: str | Path) -> Path:
+    """Where a verification-oracle path's bytes live.  Never raises.
+
+    A checkout answers out of its own ``woof/data``; an install answers out
+    of the ``gpuwm-kernels`` companion.  With the companion absent the
+    in-package spelling comes back, which does not exist on an install;
+    :func:`require_verify_oracle` turns that into a plain refusal.  Module
+    constants use this form so importing a verifier never fails.
+    """
+
+    posix = str(relative).replace("\\", "/").strip("/")
+    local = _PACKAGE_DATA_ROOT.joinpath(*posix.split("/"))
+    if _running_from_checkout():
+        return local
+    import importlib.resources as resources
+
+    try:
+        anchor = resources.files(VERIFY_ORACLE_PACKAGE)
+    except ModuleNotFoundError:
+        return local
+    return Path(str(anchor)).joinpath(VERIFY_ORACLE_SUBDIR, *posix.split("/"))
+
+
+def verify_oracle_install_command() -> str:
+    """The pip line that restores the companion carrying the oracles."""
+
+    required = _required_companion_version()
+    if required == _UNKNOWN_VERSION:
+        return f"pip install --force-reinstall {VERIFY_ORACLE_DISTRIBUTION}"
+    return (f"pip install --force-reinstall "
+            f"{VERIFY_ORACLE_DISTRIBUTION}=={required}")
+
+
+def require_verify_oracle(path: str | Path) -> Path:
+    """``path`` if it exists, else the plain refusal naming the companion."""
+
+    path = Path(path)
+    if path.exists():
+        return path
+    raise CompanionDataMissing(
+        f"woof cannot find its verification data: {path} is absent.  The "
+        f"native-WRF reference captures that `woof verify` and the parity "
+        f"checks grade against ship in the {VERIFY_ORACLE_DISTRIBUTION} "
+        f"companion (a hard dependency of woof, installed by a plain "
+        f"`pip install recast-woof`), and this install does not have them.  "
+        f"Forecasts are not affected.  Fix it:\n"
+        f"    {verify_oracle_install_command()}")
+
 __all__ = ["COMPANION_BASEMAP", "COMPANION_DISTRIBUTION", "COMPANION_PACKAGE",
            "COMPANION_TREES", "CompanionDataMissing",
            "companion_basemap_dir", "companion_install_command",
            "companion_reinstall_command", "companion_root", "data_path",
            "package_data_root", "require_companion_member",
-           "rrtmgp_data_dir", "thompson_table_dir"]
+           "rrtmgp_data_dir", "require_verify_oracle", "thompson_table_dir",
+           "VERIFY_ORACLE_DISTRIBUTION", "VERIFY_ORACLE_PACKAGE",
+           "VERIFY_ORACLE_SUBDIR", "VERIFY_ORACLE_TREES",
+           "verify_oracle_install_command", "verify_oracle_path"]

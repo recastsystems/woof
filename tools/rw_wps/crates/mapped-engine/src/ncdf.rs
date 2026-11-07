@@ -2137,7 +2137,7 @@ pub fn decode_netcdf(mapping: &Mapping, files: &[String]) -> Result<DecodedColle
             mapping.doc.get("grid").unwrap().to_value()).as_bytes())
     } else { grid_fingerprint };
     let direct = if declaration.rotates_winds() {
-        crate::assemble::rotate_grid_relative_winds(direct, declaration.parameters.as_ref().unwrap(), None)?
+        crate::assemble::rotate_grid_relative_winds(direct, &declaration, None)?
     } else { direct };
     Ok(DecodedCollection {
         latitude,

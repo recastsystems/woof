@@ -10,7 +10,7 @@ fn options(args: &[String]) -> Result<BTreeMap<&str, &str>, Failure> {
     let mut out = BTreeMap::new();
     if args.len() % 2 != 0 { return Err(Failure::Usage("asset options need values".into())); }
     for pair in args.chunks(2) {
-        if !["--url", "--output", "--input", "--bytes", "--sha256", "--datasets", "--codec"].contains(&pair[0].as_str())
+        if !["--url", "--output", "--input", "--bytes", "--sha256", "--datasets", "--codec", "--gzip-decoder"].contains(&pair[0].as_str())
             || out.insert(pair[0].as_str(), pair[1].as_str()).is_some() {
             return Err(Failure::Usage(format!("unknown or repeated asset option {}", pair[0])));
         }
@@ -88,7 +88,14 @@ pub fn command(kind: &str, args: &[String]) -> Result<String, Failure> {
         }
         "unpack" | "unpack-audit" => {
             let names = get("--datasets")?.split(',').map(str::to_owned).collect::<Vec<_>>();
-            let counts = unpack(Path::new(get("--input")?), Path::new(get("--output")?), &names, kind == "unpack-audit")?;
+            let counts = if let Some(program) = opt.get("--gzip-decoder") {
+                let root = Path::new(get("--output")?);
+                fs::create_dir(root).map_err(|e| Failure::Refused(e.to_string()))?;
+                let mut reader = ParallelGzip::open(Path::new(get("--input")?), program)?;
+                untar(&mut reader, root, &names, kind == "unpack-audit")?
+            } else {
+                unpack(Path::new(get("--input")?), Path::new(get("--output")?), &names, kind == "unpack-audit")?
+            };
             serde_json::to_value(counts).map_err(|e| Failure::Refused(e.to_string()))?
         }
         "decode" => {
@@ -249,6 +256,43 @@ fn untar(reader: &mut impl Read, root: &Path, datasets: &[String], audit: bool) 
 /// A read error from an in-process decoder is the codec refusing the stream
 /// (a CRC, checksum or framing failure), so it is named as one.
 struct Decoding<R> { inner: R, label: String }
+
+// rapidgzip decodes ordinary single-stream gzip on independent workers. A
+// streaming tar walk consumes it once; seeking a gzip tar member used to
+// decompress the full archive twice. CRC and child status must both pass.
+struct ParallelGzip { child: std::process::Child, output: std::process::ChildStdout, ended: bool }
+impl ParallelGzip {
+    fn open(input: &Path, program: &str) -> Result<Self, String> {
+        let workers = std::env::var("RAYON_NUM_THREADS").ok()
+            .and_then(|n| n.parse::<usize>().ok()).filter(|n| *n > 0)
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from));
+        let mut child = std::process::Command::new(program)
+            .args(["--decompress", "--stdout", "--verify", "--decoder-parallelism", &workers.to_string()])
+            .arg(input).stdout(std::process::Stdio::piped()).spawn()
+            .map_err(|e| format!("parallel gzip decoder {program}: {e}"))?;
+        let output = child.stdout.take().ok_or("parallel gzip decoder has no output")?;
+        Ok(Self { child, output, ended: false })
+    }
+}
+impl Read for ParallelGzip {
+    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        let n = self.output.read(bytes)?;
+        if n == 0 && !bytes.is_empty() && !self.ended {
+            self.ended = true;
+            let status = self.child.wait()?;
+            if !status.success() {
+                return Err(io::Error::other(format!("parallel gzip integrity failed: {status}")));
+            }
+        }
+        Ok(n)
+    }
+}
+impl Drop for ParallelGzip {
+    fn drop(&mut self) {
+        if !self.ended { let _ = self.child.kill(); }
+        let _ = self.child.wait();
+    }
+}
 
 impl<R: Read> Read for Decoding<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {

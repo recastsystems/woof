@@ -213,7 +213,12 @@ fn cubins_serve_their_architecture_family() {
 #[ignore = "needs an NVIDIA GPU"]
 fn forced_ptx_opens_the_ptx() {
     let g = GpuPost::open_with(0, rw_post::gpu::KernelImage::Ptx).expect("an NVIDIA GPU");
-    assert_eq!(g.device.kernel_artifact, format!("{} PTX", rw_post::gpu::PTX_VIRTUAL_ARCHITECTURE));
+    if cudarc::gpuwm_hip::requested() {
+        assert!(g.device.kernel_artifact.starts_with("HIP "));
+        assert!(g.device.kernel_artifact.ends_with("source-bound image"));
+    } else {
+        assert_eq!(g.device.kernel_artifact, format!("{} PTX", rw_post::gpu::PTX_VIRTUAL_ARCHITECTURE));
+    }
     eprintln!("{}", g.device.describe());
 }
 

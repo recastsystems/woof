@@ -189,7 +189,7 @@ class _PhysicsResourceScope:
                 namespace[name] = _fresh_cache(name, definition["globals"][name], initialize)
             shortwave_stream_fence = group == "legacy" and "_sw" in namespace
             if shortwave_stream_fence:
-                # woof 2.8 _cuda_sw resolves this global module attribute.
+                # gpuwm 2.8 _cuda_sw resolves this global module attribute.
                 # A global CuPy shim would also change LW/McICA and other
                 # ranks; the private namespace substitutes only construction.
                 namespace["_sw"] = _shortwave_module_proxy(namespace["_sw"], self, key)

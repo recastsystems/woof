@@ -183,6 +183,24 @@ class SameHostRankExecution(RankExecution):
     def step_label(self):
         return getattr(self, '_step', 0)
 
+    def wave_input(self):
+        """The wave service's owner map: the global mesh this rank's partition was cut from, and its cells.
+
+        Every rank's local mesh names that mesh (``partition_source_mesh``, partition_local_mesh_v841): rank threads
+        hold the one object, rank processes receive it with their inputs (rank_processes.SharedObjects).  THE
+        BREAKAGE THIS PREVENTS: this read ``wave_global_mesh``, which only the thread executor set, so ``--waves on``
+        with same-host rank processes (the Linux default) stopped with AttributeError when the wave service attached.
+        """
+        mesh = getattr(self.inputs[0], 'partition_source_mesh', None)
+        if mesh is None:
+            raise ValueError("this rank's mesh does not name the global mesh it was cut from; the wave service "
+                             "cannot map its owned cells to global wave cells")
+        return mesh, self.partition.cell_l2g, self.partition.n_owned_cells
+
+    def wave_rank_comm(self):
+        """The rank communicator the wave coupling uses (waves._attach_mpas_ranks): one service, on rank 0."""
+        return self.comm
+
     def bind_dycore(self, dycore):
         from ..partition_overlap_v841 import interior_edges
         from ..partition_samehost_v841 import SameHostHaloExchanger
@@ -474,7 +492,6 @@ def _host_arrays(value, out, seen, depth=0):
         _host_arrays(item, out, seen, depth + 1)
     return out
 
-
 def _released_host_bytes(inputs, cuts, prepared, executor):
     """MiB of host arrays the forecast parent stops holding once the ranks' inputs are prepared (receipt only).
 
@@ -520,12 +537,47 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
     configs_before = dict(layout.configs)
     payload, out = Path(payload).resolve(), Path(out).resolve()
     job = out / 'samehost-ranks'
-    job.mkdir(parents=True, exist_ok=False)
+    from ..run_owner import claim_directory
+    claim_directory(job)
     request = SimpleNamespace(grid=Path(getattr(arguments, 'grid', None) or arguments.init),
                               scratch=job, cells=layout.dimensions['nCells'])
-    partitions = request_options(arguments, request)['layouts']
+    # Several hosts (--hosts, woof.hex.multihost): rank 0 cuts the partitions and assigns ranks to hosts; every
+    # other host takes them from rank 0 and prepares only its own ranks, from its own copy of the inputs.
+    from .. import multihost
+    session = multihost.current()
+    executor, reason = executor_choice(arguments)
+    halo = halo_choice(arguments, session, executor)
+    fingerprint = None if session is None else inputs_fingerprint(arguments, layout, configs_before)
+    nccl_uid = None
+    distributor = None
+    tables = None
+    if session is not None and session.joined:
+        partitions, plan, nccl_uid = receive_plan(session, fingerprint)
+        session.plan = plan
+    else:
+        partitions = request_options(arguments, request)['layouts']
+        if session is not None:
+            tables = build_all(partitions)
+            plan = multihost.plan_ranks(session.hosts, tables)
+            session.plan = plan
+        if halo == 'nccl':
+            from ..nccl_runtime import unique_id
+            nccl_uid = unique_id()
+        if session is not None and len(session.hosts) > 1:
+            distributor = distribute_plan(session, partitions, plan, nccl_uid, fingerprint)
     if len(partitions) != len(devices):
         raise ValueError(f'{len(partitions)} partitions need {len(partitions)} devices, got {len(devices)}')
+    if session is not None:
+        devices = tuple(plan.card_of_rank)
+        local_ranks = plan.local_ranks(session.host_index)
+    else:
+        local_ranks = list(range(len(partitions)))
+    if halo == 'nccl' and len({devices[rank] for rank in local_ranks}) < len(local_ranks):
+        # Two ranks of this host on one card (a test layout): NCCL 2.27+ refuses that unless told it is meant.
+        os.environ.setdefault('NCCL_MULTI_RANK_GPU_ENABLE', '1')
+    peer_gate = None
+    if halo == 'nccl' and len({devices[rank] for rank in local_ranks}) > 1:
+        peer_gate = start_peer_gate(sorted({devices[rank] for rank in local_ranks}))
     row = load_table()[getattr(config, 'table_key', 'mpasphys_v842')]
     from .partition_v842 import project_payloads, rank_halo_ends
 
@@ -536,14 +588,15 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
     # bytes and manifests as project_payload (woof.hex.mpasphys.partition_v842).
     # It reads only the layout, the payload and the partitions, so it runs on a side thread beside the global
     # dycore inputs, analysis recoupling and halo tables below.  THE COST THIS REMOVES (conus3km on 4 same-host
-    # ranks, V4X6000, 2026-10-29): ~18-21 s of projection after ~30 s of global inputs, one after the other,
+    # ranks, four-card system, 2026-10-29): ~18-21 s of projection after ~30 s of global inputs, one after the other,
     # inside the 59 s preparation before any card worked.  Each rank's configs are replaced by configs_before
     # below, so the in-place config_len_disp resolution of the global inputs never reaches a rank either way.
     def projection():
         projection_began = time.perf_counter()
-        projected = project_payloads(layout, payload, partitions,
-                                     [job / f'pool.rank{rank}' for rank in range(len(partitions))])
-        return projected, time.perf_counter() - projection_began
+        # This host's ranks only (all of them on one host).
+        projected = project_payloads(layout, payload, [partitions[rank] for rank in local_ranks],
+                                     [job / f'pool.rank{rank}' for rank in local_ranks])
+        return dict(zip(local_ranks, projected)), time.perf_counter() - projection_began
 
     # The side thread always finishes (shutdown waits) before this function goes on or raises, so no projection
     # write is left running into the job directory; a projection error is raised at result().
@@ -563,13 +616,12 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
             inputs, moving_state = prepare_moving(moving, inputs, config, layout, payload, arguments)
         from .cycling_v842 import recouple_analysis
         inputs, analysis_receipt = recouple_analysis(arguments, layout, inputs, work_dir=job/'da-cycling')
-        executor, reason = executor_choice(arguments)
         shared_future = None
         if executor == 'processes':
             # The global mesh every child's partition is cut from (each local mesh's partition_source_mesh) goes to
             # the children once, written while the projection and the rank cuts run (rank_processes.SharedObjects).
             from ..rank_processes import SharedObjects
-            source_mesh = inputs[0]   # bound here: the global inputs are released once every rank's inputs are cut
+            source_mesh = inputs[0]
 
             def write_shared():
                 began_shared = time.perf_counter()
@@ -578,19 +630,19 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
             shared_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-shared-objects')
             shared_future = shared_pool.submit(write_shared)
             shared_pool.shutdown(wait=False)
-        tables = build_all(partitions)
+        tables = build_all(partitions) if tables is None else tables
         indices = build_field_indices(partitions, mesh.arrays['cellsOnEdge'], tables=tables)
 
         # Every rank's inputs are cut while the payload projection is still running: local_inputs reads only the
         # global inputs and the partition, never the projected pools.  THE COST THIS REMOVES (conus3km, 8 ranks,
-        # V8X6000, 2026-10-29): once the global inputs were read beside the pool transport, the projection (20-22 s)
+        # eight-card system, 2026-10-29): once the global inputs were read beside the pool transport, the projection (20-22 s)
         # was the last thing running, and the 8 rank cuts (6-7 s) waited for it before starting.
         def cut(rank):
             began_cut = time.perf_counter()
             return local_inputs(inputs, partitions[rank]), time.perf_counter() - began_cut
 
-        with ThreadPoolExecutor(max_workers=len(partitions)) as cutters:
-            cuts = list(cutters.map(cut, range(len(partitions))))
+        with ThreadPoolExecutor(max_workers=len(local_ranks)) as cutters:
+            cuts = dict(zip(local_ranks, cutters.map(cut, local_ranks)))
         projected, projection_seconds = projection_future.result()
 
     def prepare(rank):
@@ -608,33 +660,35 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
         local, cut_seconds = cuts[rank]
         return local_layout, local_payload, local, time.perf_counter() - rank_began + cut_seconds
 
-    with ThreadPoolExecutor(max_workers=len(partitions)) as pool:
-        prepared = list(pool.map(prepare, range(len(partitions))))
-    # Every rank's inputs are cut, so the global grid, state, reference and saved arrays are not needed here any more
-    # (the global mesh stays alive through each local mesh's partition_source_mesh), and ``cuts`` held a second
-    # reference to every rank's local inputs, so run_process_ranks' "prepared[rank] = None" never freed a child's
-    # inputs once it was sent.  THE BREAKAGE (NOAA RRFS v2 conus3km, V8XB, 2026-10-29): the forecast parent (rank 0)
-    # peaked at 148.6 GiB VmHWM on 8 cards and 163.6 GiB on 4 cards while each child's own peak was 35-36 GiB (8) and
-    # 59 GiB (4); the parent held the global inputs and every child's cut for the whole run.
-    released = _released_host_bytes(inputs, cuts, prepared, executor)
+    prepared = [None] * len(partitions)
+    with ThreadPoolExecutor(max_workers=len(local_ranks)) as pool:
+        for rank, item in zip(local_ranks, pool.map(prepare, local_ranks)):
+            prepared[rank] = item
+    released = _released_host_bytes(inputs, [cuts[r] for r in local_ranks],
+                                    [prepared[r] for r in local_ranks], executor)
     del cuts, inputs, mesh
     receipt = dict(schema='mpas-samehost-launch-v1', completed=False, ranks=len(devices),
                    devices=list(devices), framework='ported (no native library)',
-                   transport='same-host device copies',
+                   transport='same-host device copies', halo_transport=halo, local_ranks=list(local_ranks), parent_released_host_mib=released,
                    preparation_seconds=time.perf_counter() - began, preparation_started_utc=started,
                    preparation_parallelism=(f'global inputs beside the pool transport; payload projection on a '
                                             f'side thread beside the global inputs and {len(partitions)} host '
                                             f'rank-input threads; before rank CUDA work'),
-                   rank_preparation_seconds=[item[3] for item in prepared],
+                   rank_preparation_seconds=[None if item is None else item[3] for item in prepared],
                    payload_projection_seconds=projection_seconds,
                    owned_cells=[int(part.n_owned_cells) for part in partitions],
-                   local_cells=[int(part.n_local_cells) for part in partitions],
-                   parent_released_host_mib=released)
+                   local_cells=[int(part.n_local_cells) for part in partitions])
     write_rank_receipt(out / 'samehost-rank-launch.json', receipt)
 
     timeout = float(os.environ.get('WOOF_HEX_MPAS_SAMEHOST_TIMEOUT', '1800'))
     receipt.update(rank_executor=executor, rank_executor_reason=reason,
                    rank_host_parallelism=rank_host_parallelism(executor))
+    if peer_gate is not None:
+        receipt['nccl_peer_gate'] = peer_gate.result()
+    if distributor is not None:
+        receipt['multihost_distribution'] = distributor.result()
+    if session is not None:
+        receipt['multihost'] = session.receipt()
     if executor == 'threads' and receipt['rank_host_parallelism'] == 'serialised (GIL)':
         from ..partition_samehost_v841 import warn_serialised_ranks
         warn_serialised_ranks(len(devices), reason)
@@ -648,7 +702,8 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
                               stop=stop, dt=dt, steps=steps, out=out, job=job, devices=devices,
                               partitions=partitions, tables=tables, indices=indices, prepared=prepared,
                               analysis_receipt=analysis_receipt, moving_state=moving_state, timeout=timeout,
-                              receipt=receipt, shared_future=shared_future)
+                              receipt=receipt, shared_future=shared_future, halo=halo, nccl_uid=nccl_uid,
+                              session=session, local_ranks=local_ranks)
         else:
             _run_rank_threads(arguments, config, layout, streams, start, stop, dt, steps, out, devices, partitions,
                               tables, indices, prepared, analysis_receipt, moving_state, timeout, receipt)
@@ -662,6 +717,16 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
     finally:
         os.chdir(before)
     receipt.update(completed=True, execution_seconds=time.perf_counter() - run_began)
+    if session is not None and session.joined:
+        # This host's ranks are done and their receipts are with rank 0, which writes every output file; the
+        # door's products and receipts belong to rank 0's host.
+        write_rank_receipt(out / 'samehost-rank-launch.json', receipt)
+        import shutil
+        shutil.rmtree(job, ignore_errors=True)
+        session.finish()
+        print(f'woof hex: host {session.host_index}: ranks {local_ranks} finished; rank 0 writes the output',
+              file=sys.stderr, flush=True)
+        raise SystemExit(0)
     ranks_receipts = []
     for rank in range(len(devices)):
         path = out / f'native-physics-receipt.rank{rank}.json'
@@ -705,6 +770,16 @@ def executor_choice(arguments):
         print('woof hex: --samehost-transport peer: same-host ranks run as threads of one process '
               '(card-to-card halo copies)', file=sys.stderr, flush=True)
         return 'threads', 'requested peer halo transport (process ranks stage halos through the host)'
+    from .. import multihost
+    if (getattr(arguments, 'samehost_transport', None) or 'auto').strip().lower() == 'nccl' or multihost.current():
+        # NCCL halos (one host or several) run one process per card: an NCCL communicator has one rank per process.
+        if requested == 'threads':
+            raise ValueError('NCCL halos (--samehost-transport nccl or --hosts) need one process per card; drop '
+                             '--samehost-ranks threads')
+        available, why = supported()
+        if not available:
+            raise ValueError(f'NCCL halos and --hosts need one process per card, which is not available here: {why}')
+        return 'processes', 'NCCL halos: one process per card'
     available, why = supported()
     if requested == 'processes':
         if not available:
@@ -714,6 +789,143 @@ def executor_choice(arguments):
         return 'processes', 'default (one process per card)'
     print(f'woof hex: same-host ranks run as threads of one process: {why}', file=sys.stderr, flush=True)
     return 'threads', why
+
+
+def halo_choice(arguments, session, executor):
+    """'nccl' (NCCL point-to-point, any number of hosts) or 'process' (shared host memory, one host)."""
+    requested = (getattr(arguments, 'samehost_transport', None) or 'auto').strip().lower()
+    if session is not None:
+        if requested in ('peer', 'staged'):
+            raise ValueError(f'--hosts moves halos through NCCL; --samehost-transport {requested} names a one-host '
+                             'route that cannot reach another host')
+        return 'nccl'
+    if requested == 'nccl':
+        if executor != 'processes':
+            raise ValueError('--samehost-transport nccl needs one process per card')
+        return 'nccl'
+    return 'process'
+
+
+def inputs_fingerprint(arguments, layout, configs):
+    """What every host must agree on before its ranks join: the global mesh's sizes, the run's configuration words
+    and the initial file (size, and digests of its first and last 8 MiB).
+
+    THE BREAKAGE THIS PREVENTS: each host reads its own copy of the inputs (woof.hex.multihost); a host with a
+    different init or namelist would run its partitions from other words and the seams would mix two forecasts.
+    """
+    import hashlib
+    record = dict(dimensions={str(k): int(v) for k, v in sorted(dict(layout.dimensions).items())},
+                  # Path-valued words name each host's own scratch, so they are left out.
+                  configs=hashlib.sha256(repr(sorted((str(k), repr(v)) for k, v in dict(configs).items()
+                                                     if not (isinstance(v, str) and '/' in v))).encode()).hexdigest())
+    init = getattr(arguments, 'init', None)
+    if init is not None and Path(init).is_file():
+        path = Path(init)
+        size = path.stat().st_size
+        digest = hashlib.blake2b(digest_size=16)
+        with path.open('rb') as handle:
+            digest.update(handle.read(8 << 20))
+            if size > 16 << 20:
+                handle.seek(size - (8 << 20))
+                digest.update(handle.read(8 << 20))
+        record.update(init_bytes=size, init_head_tail=digest.hexdigest())
+    return record
+
+
+def _fingerprint_refusal(mine, theirs, host):
+    if mine == theirs:
+        return None
+    keys = sorted(k for k in set(mine) | set(theirs) if mine.get(k) != theirs.get(k))
+    return (f'host {host} prepared from different inputs than rank 0 ({", ".join(keys)} differ); every host must '
+            'read the same init, mesh and namelist (the same paths, same files); prevents seams that mix two '
+            'forecasts')
+
+
+def distribute_plan(session, partitions, plan, nccl_uid, fingerprint):
+    """Rank 0: send every other host the partitions, the rank plan and the NCCL id, on side threads, while this
+    host prepares its own ranks; the returned future checks each host's inputs against rank 0's."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(host):
+        began = time.perf_counter()
+        link = session.host_link(host)
+        link.send(dict(partitions=partitions, plan=plan, nccl_uid=nccl_uid, fingerprint=fingerprint))
+        hello = link.recv()
+        refusal = _fingerprint_refusal(fingerprint, hello.get('fingerprint'), host)
+        if refusal is not None:
+            raise ValueError(refusal)
+        return dict(host=host, seconds=time.perf_counter() - began, sent_bytes=link.sent_bytes,
+                    host_name=session.hosts[host].name)
+
+    pool = ThreadPoolExecutor(max_workers=max(1, len(session.hosts) - 1), thread_name_prefix='hex-multihost-plan')
+    futures = [pool.submit(one, host) for host in range(1, len(session.hosts))]
+    pool.shutdown(wait=False)
+
+    class _All:
+        def result(self):
+            return [future.result() for future in futures]
+
+    return _All()
+
+
+def receive_plan(session, fingerprint):
+    """A joined host: rank 0's partitions, plan and NCCL id; refuse if this host prepared from other inputs."""
+    link = session.host_link()
+    message = link.recv()
+    link.send(dict(host=session.host_index, fingerprint=fingerprint))
+    refusal = _fingerprint_refusal(message['fingerprint'], fingerprint, session.host_index)
+    if refusal is not None:
+        raise ValueError(refusal)
+    return message['partitions'], message['plan'], message['nccl_uid']
+
+
+def start_peer_gate(cards):
+    """Run the peer-copy self-test over this host's card pairs in a short side process, before NCCL starts.
+
+    THE BREAKAGE THIS PREVENTS (woof.hex.peer_self_test): on a rented 8x RTX PRO 6000 container peer copies finished
+    with wrong bytes and NCCL's P2P transport never completed.  A pair that fails sets NCCL_P2P_DISABLE=1 for this
+    host's ranks (NCCL then stages through host memory), and the receipt says which pair failed.  A side process,
+    so this host's leader does not hold a CUDA context on every card for the whole run.
+    """
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor
+    if os.environ.get('NCCL_P2P_DISABLE', '') not in ('', '0'):
+        class _Skip:
+            def result(self):
+                return dict(skipped='NCCL_P2P_DISABLE is already set', cards=list(cards))
+        return _Skip()
+    pairs = [(a, b) for a in cards for b in cards if a != b]
+    script = ('import json, cupy\n'
+              'from woof.hex.peer_self_test import check_pairs\n'
+              'pairs = [tuple(p) for p in json.loads(input())]\n'
+              'ok = []\n'
+              'for a, b in pairs:\n'
+              '    ok.append(bool(cupy.cuda.runtime.deviceCanAccessPeer(a, b)))\n'
+              'records = check_pairs(cupy, [p for p, o in zip(pairs, ok) if o])\n'
+              'print(json.dumps(dict(records=records, no_access=[p for p, o in zip(pairs, ok) if not o])))\n')
+
+    def run():
+        began = time.perf_counter()
+        environment = dict(os.environ, PYTHONPATH=os.pathsep.join(path for path in sys.path if path))
+        done = subprocess.run([sys.executable, '-c', script], input=json.dumps(pairs), capture_output=True,
+                              text=True, env=environment, timeout=300)
+        if done.returncode != 0:
+            os.environ['NCCL_P2P_DISABLE'] = '1'
+            return dict(cards=list(cards), error=done.stderr[-2000:], nccl_p2p_disable='1 (self-test did not run)',
+                        seconds=time.perf_counter() - began)
+        result = json.loads(done.stdout.strip().splitlines()[-1])
+        failed = [record for record in result['records'] if record['verdict'] != 'passed']
+        if failed:
+            os.environ['NCCL_P2P_DISABLE'] = '1'
+        return dict(cards=list(cards), pairs_tested=len(result['records']), failed=failed,
+                    no_peer_access=result['no_access'],
+                    nccl_p2p_disable='1 (a pair failed the self-test)' if failed else None,
+                    seconds=time.perf_counter() - began)
+
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-peer-gate')
+    future = pool.submit(run)
+    pool.shutdown(wait=False)
+    return future
 
 
 def rank_host_parallelism(executor):

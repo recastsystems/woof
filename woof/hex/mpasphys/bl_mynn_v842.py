@@ -7,6 +7,8 @@ arguments and persistent pool synchronization.
 All weather-field arithmetic below executes in CUDA; Python handles arguments.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex.device_memory_release import shared_card_memory
 from woof.hex import numerics as _hex_numerics
 
@@ -304,11 +306,15 @@ def _compile_device_module(source, extra_options=()):
     from cupy.cuda import compiler
     from cupy_backends.cuda.libs import nvrtc
 
-    arch = cp.cuda.Device().compute_capability
+    arch = _compilation_target(xp=cp)
     options = (*_hex_numerics.options(MYNN_CUDA_OPTIONS), *extra_options)
     identity = {"source_sha256": hashlib.sha256(source.encode()).hexdigest(),
                 "options": list(options), "arch": arch,
                 "nvrtc": list(nvrtc.getVersion()), "cupy": cp.__version__}
+    from woof.hip_backend import active
+    if active():
+        from ..cuda_backend.aot import compiler_identity
+        identity["compiler"] = compiler_identity()
     cache_root = os.environ.get("CUPY_CACHE_DIR")
     cache = Path(cache_root) / "mpas_mynn_v842" if cache_root else None
     binary = None
@@ -1065,7 +1071,18 @@ class MynnCudaModule:
         if held is None or held[0] != key:
             processors = cp.cuda.runtime.getDeviceProperties(device)['multiProcessorCount']
             free_bytes, _ = cp.cuda.runtime.memGetInfo()
-            held = self._workers = (key, _column_batch(ncol, stride, processors, free_bytes, shared_card=True))
+            # Compact single forecasts keep a wider throughput tile,
+            # but borrow its arena only for this call. The 64-worker shared
+            # width took 61 ms against 27 ms at 256 workers/SM on a 70-SM
+            # card. Retaining the faster width need not retain its GiB of
+            # storage through the following dycore step.
+            import os
+            narrow = os.environ.get('WOOF_HEX_MEMBER_MEMORY', 'compact').strip().lower() == 'shared-card'
+            idle = cp.get_default_memory_pool().free_bytes()
+            batch = _column_batch(ncol, stride, processors, free_bytes + idle, shared_card=narrow)
+            if not narrow:
+                batch = min(batch, 128 * processors)
+            held = self._workers = (key, batch)
         batch = held[1]
         return (cp.empty(batch * stride, dtype=cp.uint8),
                 cp.empty(ncol, dtype=cp.int32), batch)
@@ -1526,6 +1543,192 @@ def commit_native_outputs(provider, driver, fields):
 
 # BEGIN GENERATED MPAS MMM MYNN
 MYNN_MODULE_CUDA = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_3CA3D70A_DEFINED
+#define HEX_DIVISOR_3CA3D70A_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3ca3d70a = 0.02f;
+#else
+static const float hex_divisor_3ca3d70a = 0.02f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_3CF5C28F_DEFINED
+#define HEX_DIVISOR_3CF5C28F_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3cf5c28f = 0.03f;
+#else
+static const float hex_divisor_3cf5c28f = 0.03f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_3D23D70A_DEFINED
+#define HEX_DIVISOR_3D23D70A_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3d23d70a = 0.04f;
+#else
+static const float hex_divisor_3d23d70a = 0.04f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_3D4CCCCD_DEFINED
+#define HEX_DIVISOR_3D4CCCCD_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3d4ccccd = 0.05f;
+#else
+static const float hex_divisor_3d4ccccd = 0.05f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_3E147AE1_DEFINED
+#define HEX_DIVISOR_3E147AE1_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3e147ae1 = 0.145f;
+#else
+static const float hex_divisor_3e147ae1 = 0.145f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_3E99999A_DEFINED
+#define HEX_DIVISOR_3E99999A_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_3e99999a = 0.3f;
+#else
+static const float hex_divisor_3e99999a = 0.3f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40000000_DEFINED
+#define HEX_DIVISOR_40000000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40000000 = 2.f;
+#else
+static const float hex_divisor_40000000 = 2.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40400000_DEFINED
+#define HEX_DIVISOR_40400000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40400000 = 3.0f;
+#else
+static const float hex_divisor_40400000 = 3.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40800000_DEFINED
+#define HEX_DIVISOR_40800000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40800000 = 4.f;
+#else
+static const float hex_divisor_40800000 = 4.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41400000_DEFINED
+#define HEX_DIVISOR_41400000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41400000 = 12.f;
+#else
+static const float hex_divisor_41400000 = 12.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41700000_DEFINED
+#define HEX_DIVISOR_41700000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41700000 = 15.f;
+#else
+static const float hex_divisor_41700000 = 15.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41A147AE_DEFINED
+#define HEX_DIVISOR_41A147AE_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41a147ae = 20.16f;
+#else
+static const float hex_divisor_41a147ae = 20.16f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41E80000_DEFINED
+#define HEX_DIVISOR_41E80000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41e80000 = 29.0f;
+#else
+static const float hex_divisor_41e80000 = 29.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_41F00000_DEFINED
+#define HEX_DIVISOR_41F00000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41f00000 = 30.0f;
+#else
+static const float hex_divisor_41f00000 = 30.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_42200000_DEFINED
+#define HEX_DIVISOR_42200000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_42200000 = 40.f;
+#else
+static const float hex_divisor_42200000 = 40.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_42C80000_DEFINED
+#define HEX_DIVISOR_42C80000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_42c80000 = 100.0f;
+#else
+static const float hex_divisor_42c80000 = 100.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_43480000_DEFINED
+#define HEX_DIVISOR_43480000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43480000 = 200.f;
+#else
+static const float hex_divisor_43480000 = 200.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_43960000_DEFINED
+#define HEX_DIVISOR_43960000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43960000 = 300.f;
+#else
+static const float hex_divisor_43960000 = 300.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_43FA0000_DEFINED
+#define HEX_DIVISOR_43FA0000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43fa0000 = 500.f;
+#else
+static const float hex_divisor_43fa0000 = 500.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_44480000_DEFINED
+#define HEX_DIVISOR_44480000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_44480000 = 800.f;
+#else
+static const float hex_divisor_44480000 = 800.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_44BB8000_DEFINED
+#define HEX_DIVISOR_44BB8000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_44bb8000 = 1500.f;
+#else
+static const float hex_divisor_44bb8000 = 1500.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_44FA0000_DEFINED
+#define HEX_DIVISOR_44FA0000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_44fa0000 = 2000.f;
+#else
+static const float hex_divisor_44fa0000 = 2000.f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_47C5E680_DEFINED
+#define HEX_DIVISOR_47C5E680_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_47c5e680 = 101325.f;
+#else
+static const float hex_divisor_47c5e680 = 101325.f;
+#endif
+#endif
+
 // Generated from pinned MPAS MMM; see translation receipt.
 struct MynnColumn {
 MynnArena& arena;
@@ -1642,7 +1845,7 @@ esl = mpas_add(j0, mpas_mul(xc, mpas_add(j1, mpas_mul(xc, mpas_add(j2, mpas_mul(
 // mynn_shared.F90:60
 esi = mpas_add(k0, mpas_mul(xc, mpas_add(k1, mpas_mul(xc, mpas_add(k2, mpas_mul(xc, mpas_add(k3, mpas_mul(xc, mpas_add(k4, mpas_mul(xc, mpas_add(k5, mpas_mul(xc, mpas_add(k6, mpas_mul(xc, mpas_add(k7, mpas_mul(xc, k8))))))))))))))));
 // mynn_shared.F90:61
-chi = mpas_div(mpas_sub(273.16f, t), 20.16f);
+chi = mpas_div(mpas_sub(273.16f, t), hex_divisor_41a147ae);
 // mynn_shared.F90:62
 esat_blend = mpas_add(mpas_mul(mpas_sub(1.f, chi), esl), mpas_mul(chi, esi));
 // mynn_shared.F90:63
@@ -1798,7 +2001,7 @@ el(kts) = 0.0f;
 // bl_mynn_subroutines.F90:527
 if (initialize_qke) {
 // bl_mynn_subroutines.F90:529
-qke(kts) = mpas_mul(mpas_mul(1.5f, mynn_ipow<2>(ust)), mynn_pow(((float)(mpas_mul(b1, pmz))), ((float)(mpas_div(2.0f, 3.0f)))));
+qke(kts) = mpas_mul(mpas_mul(1.5f, mynn_ipow<2>(ust)), mynn_pow(((float)(mpas_mul(b1, pmz))), ((float)(mpas_div(2.0f, hex_divisor_40400000)))));
 // bl_mynn_subroutines.F90:530
 for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
 // bl_mynn_subroutines.F90:533
@@ -1808,7 +2011,7 @@ qke(k) = mpas_mul(qke(kts), mynn_max(((float)(mpas_div(mpas_sub(mpas_mul(ust, 70
 // bl_mynn_subroutines.F90:535
 }
 // bl_mynn_subroutines.F90:537
-phm = mpas_div(mpas_mul(phh, b2), mynn_pow(((float)(mpas_mul(b1, pmz))), ((float)(mpas_div(1.0f, 3.0f)))));
+phm = mpas_div(mpas_mul(phh, b2), mynn_pow(((float)(mpas_mul(b1, pmz))), ((float)(mpas_div(1.0f, hex_divisor_40400000)))));
 // bl_mynn_subroutines.F90:538
 tsq(kts) = mpas_mul(phm, mynn_ipow<2>(mpas_div(flt, ust)));
 // bl_mynn_subroutines.F90:539
@@ -1820,7 +2023,7 @@ for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
 // bl_mynn_subroutines.F90:543
 vkz = mpas_mul(karman, zw(k));
 // bl_mynn_subroutines.F90:544
-el(k) = mpas_div(vkz, mpas_add(1.0f, mpas_div(vkz, 100.0f)));
+el(k) = mpas_div(vkz, mpas_add(1.0f, mpas_div(vkz, hex_divisor_42c80000)));
 // bl_mynn_subroutines.F90:547
 tsq(k) = 0.0f;
 // bl_mynn_subroutines.F90:548
@@ -1856,11 +2059,11 @@ elv = mpas_div(mpas_mul(0.5f, mpas_add(el(((kts) + (1))), el(kts))), vkz);
 // bl_mynn_subroutines.F90:584
 if (initialize_qke) {
 // bl_mynn_subroutines.F90:586
-qke(kts) = mpas_mul(mpas_mul(1.0f, mynn_ipow<2>(mynn_max(((float)(ust)), ((float)(0.02f))))), mynn_pow(((float)(mpas_mul(mpas_mul(b1, pmz), elv))), ((float)(mpas_div(2.0f, 3.0f)))));
+qke(kts) = mpas_mul(mpas_mul(1.0f, mynn_ipow<2>(mynn_max(((float)(ust)), ((float)(0.02f))))), mynn_pow(((float)(mpas_mul(mpas_mul(b1, pmz), elv))), ((float)(mpas_div(2.0f, hex_divisor_40400000)))));
 // bl_mynn_subroutines.F90:587
 }
 // bl_mynn_subroutines.F90:589
-phm = mpas_div(mpas_mul(phh, b2), mynn_pow(((float)(mpas_div(mpas_mul(b1, pmz), mynn_ipow<2>(elv)))), ((float)(mpas_div(1.0f, 3.0f)))));
+phm = mpas_div(mpas_mul(phh, b2), mynn_pow(((float)(mpas_div(mpas_mul(b1, pmz), mynn_ipow<2>(elv)))), ((float)(mpas_div(1.0f, hex_divisor_40400000)))));
 // bl_mynn_subroutines.F90:590
 tsq(kts) = mpas_mul(phm, mynn_ipow<2>(mpas_div(flt, ust)));
 // bl_mynn_subroutines.F90:591
@@ -2147,7 +2350,7 @@ h1 = mynn_max(((float)(mpas_mul(0.3f, zi2))), ((float)(mindz)));
 // bl_mynn_subroutines.F90:892
 h1 = mynn_min(((float)(h1)), ((float)(maxdz)));
 // bl_mynn_subroutines.F90:893
-h2 = mpas_div(h1, 2.0f);
+h2 = mpas_div(h1, hex_divisor_40000000);
 // bl_mynn_subroutines.F90:895
 qkw(kts) = mynn_sqrt(mynn_max(((float)(qke(kts))), ((float)(1.0e-10f))));
 // bl_mynn_subroutines.F90:896
@@ -2189,7 +2392,7 @@ elt = mpas_div(mpas_mul(alp1, elt), vsc);
 // bl_mynn_subroutines.F90:918
 vflx = mpas_add(mpas_mul(mpas_add(vt(kts), 1.0f), flt), mpas_mul(mpas_add(vq(kts), tv0), flq));
 // bl_mynn_subroutines.F90:919
-vsc = mynn_pow(((float)(mpas_mul(mpas_mul(gtr, elt), mynn_max(((float)(vflx)), ((float)(0.0f)))))), ((float)(mpas_div(1.0f, 3.0f))));
+vsc = mynn_pow(((float)(mpas_mul(mpas_mul(gtr, elt), mynn_max(((float)(vflx)), ((float)(0.0f)))))), ((float)(mpas_div(1.0f, hex_divisor_40400000))));
 // bl_mynn_subroutines.F90:922
 el(kts) = 0.0f;
 // bl_mynn_subroutines.F90:923
@@ -2237,7 +2440,7 @@ ugrid = mynn_sqrt(mpas_add(mynn_ipow<2>(u1(kts)), mynn_ipow<2>(v1(kts))));
 // bl_mynn_subroutines.F90:961
 uonset = 15.f;
 // bl_mynn_subroutines.F90:962
-wt_u = mpas_sub(1.0f, mynn_min(((float)(mpas_div(mynn_max(((float)(mpas_sub(ugrid, uonset))), ((float)(0.0f))), 30.0f))), ((float)(0.5f))));
+wt_u = mpas_sub(1.0f, mynn_min(((float)(mpas_div(mynn_max(((float)(mpas_sub(ugrid, uonset))), ((float)(0.0f))), hex_divisor_41f00000))), ((float)(0.5f))));
 // bl_mynn_subroutines.F90:963
 cns = 2.7f;
 // bl_mynn_subroutines.F90:964
@@ -2259,7 +2462,7 @@ h1 = mynn_max(((float)(mpas_mul(0.3f, zi2))), ((float)(300.f)));
 // bl_mynn_subroutines.F90:974
 h1 = mynn_min(((float)(h1)), ((float)(600.f)));
 // bl_mynn_subroutines.F90:975
-h2 = mpas_div(h1, 2.0f);
+h2 = mpas_div(h1, hex_divisor_40000000);
 // bl_mynn_subroutines.F90:977
 qtke(kts) = mynn_max(((float)(mpas_mul(0.5f, qke(kts)))), ((float)(0.01f)));
 // bl_mynn_subroutines.F90:978
@@ -2489,7 +2692,7 @@ elb_mf = elb;
 // bl_mynn_subroutines.F90:1170
 }
 // bl_mynn_subroutines.F90:1171
-elf = mpas_div(elf, mpas_add(1.f, mpas_div(elf, 800.f)));
+elf = mpas_div(elf, mpas_add(1.f, mpas_div(elf, hex_divisor_44480000)));
 // bl_mynn_subroutines.F90:1172
 elb_mf = mynn_max(((float)(elb_mf)), ((float)(0.01f)));
 // bl_mynn_subroutines.F90:1175
@@ -2509,7 +2712,7 @@ el(k) = mynn_sqrt(mpas_div(mynn_ipow<2>(els), mpas_add(mpas_add(1.f, mpas_div(my
 // bl_mynn_subroutines.F90:1186
 el(k) = mpas_add(mpas_mul(el(k), mpas_sub(1.f, wt)), mpas_mul(elf, wt));
 // bl_mynn_subroutines.F90:1189
-el_les = mynn_min(((float)(mpas_div(els, mpas_add(1.f, mpas_div(els, 12.f))))), ((float)(elb_mf)));
+el_les = mynn_min(((float)(mpas_div(els, mpas_add(1.f, mpas_div(els, hex_divisor_41400000))))), ((float)(elb_mf)));
 // bl_mynn_subroutines.F90:1190
 el(k) = mpas_add(mpas_mul(el(k), psig_bl), mpas_mul(mpas_sub(1.f, psig_bl), el_les));
 // bl_mynn_subroutines.F90:1192
@@ -3386,9 +3589,9 @@ if (((spp_pbl) == (1))) {
 // bl_mynn_subroutines.F90:2096
 for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
 // bl_mynn_subroutines.F90:2097
-dfm(k) = mpas_add(dfm(k), mpas_mul(mpas_mul(mpas_mul(dfm(k), rstoch_col(k)), 1.5f), mynn_max(((float)(mynn_exp(mpas_div(mynn_neg(mynn_max(((float)(mpas_sub(zw(k), 8000.f))), ((float)(0.0f)))), 2000.f)))), ((float)(0.001f)))));
+dfm(k) = mpas_add(dfm(k), mpas_mul(mpas_mul(mpas_mul(dfm(k), rstoch_col(k)), 1.5f), mynn_max(((float)(mynn_exp(mpas_div(mynn_neg(mynn_max(((float)(mpas_sub(zw(k), 8000.f))), ((float)(0.0f)))), hex_divisor_44fa0000)))), ((float)(0.001f)))));
 // bl_mynn_subroutines.F90:2098
-dfh(k) = mpas_add(dfh(k), mpas_mul(mpas_mul(mpas_mul(dfh(k), rstoch_col(k)), 1.5f), mynn_max(((float)(mynn_exp(mpas_div(mynn_neg(mynn_max(((float)(mpas_sub(zw(k), 8000.f))), ((float)(0.0f)))), 2000.f)))), ((float)(0.001f)))));
+dfh(k) = mpas_add(dfh(k), mpas_mul(mpas_mul(mpas_mul(dfh(k), rstoch_col(k)), 1.5f), mynn_max(((float)(mynn_exp(mpas_div(mynn_neg(mynn_max(((float)(mpas_sub(zw(k), 8000.f))), ((float)(0.0f)))), hex_divisor_44fa0000)))), ((float)(0.001f)))));
 // bl_mynn_subroutines.F90:2099
 }
 // bl_mynn_subroutines.F90:2100
@@ -3855,11 +4058,11 @@ theta1 = th(k);
 // bl_mynn_subroutines.F90:2634
 theta2 = th(((k) + (2)));
 // bl_mynn_subroutines.F90:2635
-ht1 = mpas_mul(44307.692f, mpas_sub(1.0f, mynn_pow(((float)(mpas_div(p(k), 101325.f))), ((float)(0.190f)))));
+ht1 = mpas_mul(44307.692f, mpas_sub(1.0f, mynn_pow(((float)(mpas_div(p(k), hex_divisor_47c5e680))), ((float)(0.190f)))));
 // bl_mynn_subroutines.F90:2636
-ht2 = mpas_mul(44307.692f, mpas_sub(1.0f, mynn_pow(((float)(mpas_div(p(((k) + (2))), 101325.f))), ((float)(0.190f)))));
+ht2 = mpas_mul(44307.692f, mpas_sub(1.0f, mynn_pow(((float)(mpas_div(p(((k) + (2))), hex_divisor_47c5e680))), ((float)(0.190f)))));
 // bl_mynn_subroutines.F90:2637
-if (((((((mpas_div(mpas_sub(theta2, theta1), mpas_sub(ht2, ht1))) < (mpas_div(10.f, 1500.f)))) && (((ht1) < (19000.f))))) && (((ht1) > (4000.f))))) {
+if (((((((mpas_div(mpas_sub(theta2, theta1), mpas_sub(ht2, ht1))) < (mpas_div(10.f, hex_divisor_44bb8000)))) && (((ht1) < (19000.f))))) && (((ht1) > (4000.f))))) {
 // bl_mynn_subroutines.F90:2639
 goto mynn_label_86;
 // bl_mynn_subroutines.F90:2640
@@ -3917,7 +4120,7 @@ qll = mynn_max(((float)(mpas_add(mpas_mul(cldfra_bl1d(k), q1k), eq1))), ((float)
 // bl_mynn_subroutines.F90:2695
 ql(k) = mpas_mul(mpas_mul(alp(k), sgm(k)), qll);
 // bl_mynn_subroutines.F90:2697
-liq_frac = mynn_min(((float)(1.0f)), ((float)(mynn_max(((float)(0.0f)), ((float)(mpas_div(mpas_sub(t, 240.0f), 29.0f)))))));
+liq_frac = mynn_min(((float)(1.0f)), ((float)(mynn_max(((float)(0.0f)), ((float)(mpas_div(mpas_sub(t, 240.0f), hex_divisor_41e80000)))))));
 // bl_mynn_subroutines.F90:2698
 qc_bl1d(k) = mpas_mul(liq_frac, ql(k));
 // bl_mynn_subroutines.F90:2699
@@ -3967,7 +4170,7 @@ dth = mpas_sub(mpas_mul(0.5f, mpas_add(thl(((k) + (1))), thl(k))), mpas_mul(0.5f
 // bl_mynn_subroutines.F90:2738
 dqw = mpas_sub(mpas_mul(0.5f, mpas_add(qw(((k) + (1))), qw(k))), mpas_mul(0.5f, mpas_add(qw(k), qw(mynn_max(((int)(((k) - (1)))), ((int)(kts)))))));
 // bl_mynn_subroutines.F90:2739
-sgm(k) = mynn_sqrt(mynn_max(((float)(mpas_mul(mpas_div(mpas_mul(mpas_mul(mpas_mul(mynn_ipow<2>(alp(k)), mynn_max(((float)(mynn_ipow<2>(el(k)))), ((float)(0.1f)))), b2), mynn_max(((float)(0.03f)), ((float)(sh(k))))), 4.f), mynn_ipow<2>(mpas_sub(mpas_div(dqw, dzk), mpas_mul(bet(k), mpas_div(dth, dzk))))))), ((float)(1.0e-10f))));
+sgm(k) = mynn_sqrt(mynn_max(((float)(mpas_mul(mpas_div(mpas_mul(mpas_mul(mpas_mul(mynn_ipow<2>(alp(k)), mynn_max(((float)(mynn_ipow<2>(el(k)))), ((float)(0.1f)))), b2), mynn_max(((float)(0.03f)), ((float)(sh(k))))), hex_divisor_40800000), mynn_ipow<2>(mpas_sub(mpas_div(dqw, dzk), mpas_mul(bet(k), mpas_div(dth, dzk))))))), ((float)(1.0e-10f))));
 // bl_mynn_subroutines.F90:2742
 qmq = mpas_sub(qw(k), qsl);
 // bl_mynn_subroutines.F90:2743
@@ -3983,7 +4186,7 @@ qll = mynn_max(((float)(mpas_add(mpas_mul(cldfra_bl1d(k), q1k), eq1))), ((float)
 // bl_mynn_subroutines.F90:2753
 ql(k) = mpas_mul(mpas_mul(alp(k), sgm(k)), qll);
 // bl_mynn_subroutines.F90:2754
-liq_frac = mynn_min(((float)(1.0f)), ((float)(mynn_max(((float)(0.0f)), ((float)(mpas_div(mpas_sub(t, 240.0f), 29.0f)))))));
+liq_frac = mynn_min(((float)(1.0f)), ((float)(mynn_max(((float)(0.0f)), ((float)(mpas_div(mpas_sub(t, 240.0f), hex_divisor_41e80000)))))));
 // bl_mynn_subroutines.F90:2755
 qc_bl1d(k) = mpas_mul(liq_frac, ql(k));
 // bl_mynn_subroutines.F90:2756
@@ -4049,13 +4252,13 @@ sgm(k) = mynn_real32(mynn_sqrt(r3sq));
 // bl_mynn_subroutines.F90:2813
 sgm(k) = mynn_min(((float)(mpas_mul(qsat_tk, 0.666f))), ((float)(sgm(k))));
 // bl_mynn_subroutines.F90:2817
-wt = mpas_div(mynn_max(((float)(mpas_sub(500.f, mynn_max(((float)(mpas_sub(dz(k), 100.f))), ((float)(0.0f)))))), ((float)(0.0f))), 500.f);
+wt = mpas_div(mynn_max(((float)(mpas_sub(500.f, mynn_max(((float)(mpas_sub(dz(k), 100.f))), ((float)(0.0f)))))), ((float)(0.0f))), hex_divisor_43fa0000);
 // bl_mynn_subroutines.F90:2818
 sgm(k) = mpas_add(sgm(k), mpas_mul(mpas_mul(sgm(k), 0.2f), mpas_sub(1.0f, wt)));
 // bl_mynn_subroutines.F90:2821
 qpct = mpas_add(mpas_mul(qpct_pbl, wt), mpas_mul(qpct_trp, mpas_sub(1.0f, wt)));
 // bl_mynn_subroutines.F90:2822
-qpct = mynn_min(((float)(qpct)), ((float)(mynn_max(((float)(qpct_sfc)), ((float)(mpas_div(mpas_mul(qpct_pbl, zagl), 500.f)))))));
+qpct = mynn_min(((float)(qpct)), ((float)(mynn_max(((float)(qpct_sfc)), ((float)(mpas_div(mpas_mul(qpct_pbl, zagl), hex_divisor_43fa0000)))))));
 // bl_mynn_subroutines.F90:2823
 sgm(k) = mynn_max(((float)(mpas_mul(qsat_tk, qpct))), ((float)(sgm(k))));
 // bl_mynn_subroutines.F90:2825
@@ -4063,7 +4266,7 @@ q1(k) = mpas_div(qmq, sgm(k));
 // bl_mynn_subroutines.F90:2829
 rh_hack = rh(k);
 // bl_mynn_subroutines.F90:2830
-wt2 = mynn_min(((float)(mpas_div(mynn_max(((float)(mpas_sub(zagl, pblh2))), ((float)(0.0f))), 300.f))), ((float)(1.0f)));
+wt2 = mynn_min(((float)(mpas_div(mynn_max(((float)(mpas_sub(zagl, pblh2))), ((float)(0.0f))), hex_divisor_43960000))), ((float)(1.0f)));
 // bl_mynn_subroutines.F90:2832
 if (((((mpas_add(qi(k), qs(k))) > (1.e-9f))) && (((zagl) > (pblh2))))) {
 // bl_mynn_subroutines.F90:2833
@@ -4191,7 +4394,7 @@ vq(k) = mpas_sub(mpas_add(alpha, mpas_mul(mpas_mul(mpas_mul(cfmax, beta), a(k)),
 // bl_mynn_subroutines.F90:2950
 fac_damp = mynn_min(((float)(mpas_mul(zagl, 0.0025f))), ((float)(1.0f)));
 // bl_mynn_subroutines.F90:2953
-cld_factor = mpas_add(1.0f, mpas_mul(fac_damp, mynn_min(((float)(mynn_ipow<2>(mpas_div(mynn_max(((float)(0.0f)), ((float)(mpas_sub(rh(k), 0.92f)))), 0.145f)))), ((float)(0.37f)))));
+cld_factor = mpas_add(1.0f, mpas_mul(fac_damp, mynn_min(((float)(mynn_ipow<2>(mpas_div(mynn_max(((float)(0.0f)), ((float)(mpas_sub(rh(k), 0.92f)))), hex_divisor_3e147ae1)))), ((float)(0.37f)))));
 // bl_mynn_subroutines.F90:2954
 cldfra_bl1d(k) = mynn_min(((float)(1.f)), ((float)(mpas_mul(cld_factor, cldfra_bl1d(k)))));
 // bl_mynn_subroutines.F90:2955
@@ -5797,7 +6000,7 @@ ktke = 1;
 // bl_mynn_subroutines.F90:4560
 maxqke = mynn_max(((float)(qke1d(kts))), ((float)(0.f)));
 // bl_mynn_subroutines.F90:4563
-tkeeps = mpas_div(maxqke, 40.f);
+tkeeps = mpas_div(maxqke, hex_divisor_42200000);
 // bl_mynn_subroutines.F90:4564
 tkeeps = mynn_max(((float)(tkeeps)), ((float)(0.02f)));
 // bl_mynn_subroutines.F90:4565
@@ -5807,9 +6010,9 @@ k = ((ktke) + (1));
 // bl_mynn_subroutines.F90:4569
 for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
 // bl_mynn_subroutines.F90:4571
-qtke = mynn_max(((float)(mpas_div(qke1d(k), 2.f))), ((float)(0.f)));
+qtke = mynn_max(((float)(mpas_div(qke1d(k), hex_divisor_40000000))), ((float)(0.f)));
 // bl_mynn_subroutines.F90:4572
-qtkem1 = mynn_max(((float)(mpas_div(qke1d(((k) - (1))), 2.f))), ((float)(0.f)));
+qtkem1 = mynn_max(((float)(mpas_div(qke1d(((k) - (1))), hex_divisor_40000000))), ((float)(0.f)));
 // bl_mynn_subroutines.F90:4573
 if (((qtke) <= (tkeeps))) {
 // bl_mynn_subroutines.F90:4574
@@ -6301,11 +6504,11 @@ wspd_pbl = mynn_sqrt(mynn_max(((float)(mpas_add(mynn_ipow<2>(u(kts)), mynn_ipow<
 // bl_mynn_subroutines.F90:4976
 if (((mpas_sub(landsea, 1.5f)) < (0))) {
 // bl_mynn_subroutines.F90:4977
-width_flx = mynn_max(((float)(mynn_min(((float)(mpas_mul(1000.f, mpas_add(mpas_mul(0.6f, mynn_tanh(mpas_div(mpas_sub(fltv, 0.040f), 0.04f))), .5f)))), ((float)(1000.f))))), ((float)(0.f)));
+width_flx = mynn_max(((float)(mynn_min(((float)(mpas_mul(1000.f, mpas_add(mpas_mul(0.6f, mynn_tanh(mpas_div(mpas_sub(fltv, 0.040f), hex_divisor_3d23d70a))), .5f)))), ((float)(1000.f))))), ((float)(0.f)));
 // bl_mynn_subroutines.F90:4978
 } else {
 // bl_mynn_subroutines.F90:4979
-width_flx = mynn_max(((float)(mynn_min(((float)(mpas_mul(1000.f, mpas_add(mpas_mul(0.6f, mynn_tanh(mpas_div(mpas_sub(fltv, 0.007f), 0.02f))), .5f)))), ((float)(1000.f))))), ((float)(0.f)));
+width_flx = mynn_max(((float)(mynn_min(((float)(mpas_mul(1000.f, mpas_add(mpas_mul(0.6f, mynn_tanh(mpas_div(mpas_sub(fltv, 0.007f), hex_divisor_3ca3d70a))), .5f)))), ((float)(1000.f))))), ((float)(0.f)));
 // bl_mynn_subroutines.F90:4980
 }
 // bl_mynn_subroutines.F90:4981
@@ -6313,7 +6516,7 @@ maxwidth = mynn_min(((float)(maxwidth)), ((float)(width_flx)));
 // bl_mynn_subroutines.F90:4982
 minwidth = lmin;
 // bl_mynn_subroutines.F90:4985
-if (((((maxwidth) >= (mpas_sub(lmax, 1.0f)))) && (((fltv) > (0.2f))))) { minwidth = mpas_add(lmin, mpas_mul(dlmin, mynn_min(((float)(mpas_div(mpas_sub(fltv, 0.2f), 0.3f))), ((float)(1.f))))); }
+if (((((maxwidth) >= (mpas_sub(lmax, 1.0f)))) && (((fltv) > (0.2f))))) { minwidth = mpas_add(lmin, mpas_mul(dlmin, mynn_min(((float)(mpas_div(mpas_sub(fltv, 0.2f), hex_divisor_3e99999a))), ((float)(1.f))))); }
 // bl_mynn_subroutines.F90:4987
 if (((maxwidth) <= (minwidth))) {
 // bl_mynn_subroutines.F90:4988
@@ -6349,11 +6552,11 @@ c = mpas_div(atot, cn);
 // bl_mynn_subroutines.F90:5012
 if (((mpas_sub(landsea, 1.5f)) < (0))) {
 // bl_mynn_subroutines.F90:5013
-acfac = mpas_add(mpas_mul(.5f, mynn_tanh(mpas_div(mpas_sub(fltv2, 0.02f), 0.05f))), .5f);
+acfac = mpas_add(mpas_mul(.5f, mynn_tanh(mpas_div(mpas_sub(fltv2, 0.02f), hex_divisor_3d4ccccd))), .5f);
 // bl_mynn_subroutines.F90:5014
 } else {
 // bl_mynn_subroutines.F90:5015
-acfac = mpas_add(mpas_mul(.5f, mynn_tanh(mpas_div(mpas_sub(fltv2, 0.01f), 0.03f))), .5f);
+acfac = mpas_add(mpas_mul(.5f, mynn_tanh(mpas_div(mpas_sub(fltv2, 0.01f), hex_divisor_3cf5c28f))), .5f);
 // bl_mynn_subroutines.F90:5016
 }
 // bl_mynn_subroutines.F90:5021
@@ -6363,7 +6566,7 @@ ac_wsp = 1.0f;
 // bl_mynn_subroutines.F90:5023
 } else {
 // bl_mynn_subroutines.F90:5024
-ac_wsp = mpas_sub(1.0f, mynn_min(((float)(mpas_div(mpas_sub(wspd_pbl, 10.0f), 15.f))), ((float)(1.0f))));
+ac_wsp = mpas_sub(1.0f, mynn_min(((float)(mpas_div(mpas_sub(wspd_pbl, 10.0f), hex_divisor_41700000))), ((float)(1.0f))));
 // bl_mynn_subroutines.F90:5025
 }
 // bl_mynn_subroutines.F90:5026
@@ -6611,15 +6814,15 @@ wn = mpas_add(upw(((k) - (1)), i), mpas_mul(mpas_add(mpas_mul(mpas_mul(mynn_neg(
 // bl_mynn_subroutines.F90:5234
 }
 // bl_mynn_subroutines.F90:5237
-if (((wn) > (mpas_add(upw(((k) - (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, mpas_sub(zw(k), zw(((k) - (1))))), 200.f))), ((float)(2.0f))))))) {
+if (((wn) > (mpas_add(upw(((k) - (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, mpas_sub(zw(k), zw(((k) - (1))))), hex_divisor_43480000))), ((float)(2.0f))))))) {
 // bl_mynn_subroutines.F90:5238
-wn = mpas_add(upw(((k) - (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, mpas_sub(zw(k), zw(((k) - (1))))), 200.f))), ((float)(2.0f))));
+wn = mpas_add(upw(((k) - (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, mpas_sub(zw(k), zw(((k) - (1))))), hex_divisor_43480000))), ((float)(2.0f))));
 // bl_mynn_subroutines.F90:5239
 }
 // bl_mynn_subroutines.F90:5241
-if (((wn) < (mpas_sub(upw(((k) - (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, mpas_sub(zw(k), zw(((k) - (1))))), 200.f))), ((float)(2.0f))))))) {
+if (((wn) < (mpas_sub(upw(((k) - (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, mpas_sub(zw(k), zw(((k) - (1))))), hex_divisor_43480000))), ((float)(2.0f))))))) {
 // bl_mynn_subroutines.F90:5242
-wn = mpas_sub(upw(((k) - (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, mpas_sub(zw(k), zw(((k) - (1))))), 200.f))), ((float)(2.0f))));
+wn = mpas_sub(upw(((k) - (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, mpas_sub(zw(k), zw(((k) - (1))))), hex_divisor_43480000))), ((float)(2.0f))));
 // bl_mynn_subroutines.F90:5243
 }
 // bl_mynn_subroutines.F90:5244
@@ -7755,15 +7958,15 @@ mindownw = mynn_min(((float)(downw(((k) + (1)), i))), ((float)(mynn_neg(0.2f))))
 // bl_mynn_subroutines.F90:6181
 wn = mpas_add(downw(((k) + (1)), i), mpas_mul(mpas_sub(mpas_mul(mpas_mul(mynn_neg(2.f), ent(k, i)), downw(((k) + (1)), i)), mpas_div(mpas_mul(bcoeff, b), mindownw)), mynn_min(((float)(dz(k))), ((float)(250.f)))));
 // bl_mynn_subroutines.F90:6186
-if (((wn) < (mpas_sub(downw(((k) + (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, dz(k)), 200.f))), ((float)(mynn_neg(2.0f)))))))) {
+if (((wn) < (mpas_sub(downw(((k) + (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, dz(k)), hex_divisor_43480000))), ((float)(mynn_neg(2.0f)))))))) {
 // bl_mynn_subroutines.F90:6187
-wn = mpas_sub(downw(((k) + (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, dz(k)), 200.f))), ((float)(mynn_neg(2.0f)))));
+wn = mpas_sub(downw(((k) + (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, dz(k)), hex_divisor_43480000))), ((float)(mynn_neg(2.0f)))));
 // bl_mynn_subroutines.F90:6188
 }
 // bl_mynn_subroutines.F90:6190
-if (((wn) > (mpas_add(downw(((k) + (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, dz(k)), 200.f))), ((float)(2.0f))))))) {
+if (((wn) > (mpas_add(downw(((k) + (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, dz(k)), hex_divisor_43480000))), ((float)(2.0f))))))) {
 // bl_mynn_subroutines.F90:6191
-wn = mpas_add(downw(((k) + (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, dz(k)), 200.f))), ((float)(2.0f))));
+wn = mpas_add(downw(((k) + (1)), i), mynn_min(((float)(mpas_div(mpas_mul(1.25f, dz(k)), hex_divisor_43480000))), ((float)(2.0f))));
 // bl_mynn_subroutines.F90:6192
 }
 // bl_mynn_subroutines.F90:6193

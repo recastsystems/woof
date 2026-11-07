@@ -53,8 +53,8 @@ DESIGN_COMMIT = "0d69a648"
 M_MEDIAN = 1.7
 P_P95 = 2.1
 
-#: Cross-node replication screen, declaration section 4: a development machine's control
-#: arm statistics must sit within 2 % relative of a development machine's, or the gate is
+#: Cross-node replication screen, declaration section 4: test-machine-2's control
+#: arm statistics must sit within 2 % relative of test-machine-1's, or the gate is
 #: VOID (the noise floor exceeds what the margin derivation assumed).
 CROSS_NODE_REL = 0.02
 
@@ -159,9 +159,9 @@ def control_statistics(runs: Path, dt: float, steps) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", required=True, type=Path,
-                    help="a development machine's run tree plus the local WOOF runs")
+                    help="test-machine-1's run tree plus the local WOOF runs")
     ap.add_argument("--node2-runs", required=True, type=Path,
-                    help="a development machine's independently built WRF quartet")
+                    help="test-machine-2's independently built WRF quartet")
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--dt", type=float, default=60.0)
     args = ap.parse_args()
@@ -259,7 +259,7 @@ def main() -> int:
     else:
         cross_node = {"median_rel": None, "p95_rel": None,
                       "bound": CROSS_NODE_REL, "pass": False,
-                      "reason": "a development machine control arm missing or degenerate"}
+                      "reason": "test-machine-2 control arm missing or degenerate"}
     report["cross_node"] = cross_node
 
     # --- D1 / D2 -------------------------------------------------------------

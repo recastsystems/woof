@@ -7,10 +7,10 @@ reflectivity of its own:
 
 * the start frame of a forecast (f000), written before any physics has run, carries the init's
   ``refl10cm`` (zero on every start, including an IAU start from a background full of rain);
-* an analysis (DA posterior, recentred or clear-air-cleaned member init) carries the BACKGROUND's
+* an analysis (state analysis posterior, recentred or clear-air-cleaned member init) carries the BACKGROUND's
   stored ``refl10cm``, since no analysis updates that diagnostic.
 
-THE BREAKAGE THIS ENDS.  The hrrrv5 DA arms (Vermont 2023-07-10, V8X6000) could not score or draw the
+THE BREAKAGE THIS ENDS.  The HRRRv5 diagnostic runs on an eight-card system could not score or draw the
 10:15 analysis frame (the IAU start's f000 refl10cm was 0 everywhere), and the posterior O-A for radar
 reflectivity was measured with WSM6's operator on a TEMPO suite, an operator residue of 13 dB at p99.9
 against the stored background (refl_rediag.json), so "Z 3.93 -> 3.64 dBZ" was part operator.
@@ -457,7 +457,7 @@ class StartFrameReflectivity:
 
     THE BREAKAGE THIS ENDS: an MPAS-suite start frame is written before any microphysics has run, so its
     reflectivity is the init's placeholder, zero everywhere, even when the start state is full of rain:
-    the hrrrv5 DA arms' IAU analysis-mean forecast from 10:15 (Vermont 2023-07-10) published an empty
+    the hrrrv5 state analysis arms' IAU analysis-mean forecast from 10:15 (Vermont 2023-07-10) published an empty
     analysis-time map and its 10:15 frame could not be scored.  The state's own TEMPO reflectivity
     (``refl10cm`` above) is formed from the frame's captured state on a side thread and card stream while
     step 1 runs, and written into the held frame only where a field holds its placeholder (one word in every cell).

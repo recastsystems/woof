@@ -91,6 +91,15 @@ def refuse_one_input(request, holds) -> None:
     if request.sources:
         from woof.ensemble_admission import unbound_sources_refusal
         raise ValueError(unbound_sources_refusal())
+    # This existing initializer gives each member its own seeded wind
+    # state in PreparedEnsembleSession. It consumes one source by design;
+    # refusing it here made the native-input door unreachable even though
+    # the complete ordinary member runner already owns the initialization.
+    from woof.ensemble.initial_perturbation import (
+        is_initial_perturbation, validate_initial_perturbation)
+    if is_initial_perturbation(request.perturbation):
+        validate_initial_perturbation(request.perturbation)
+        return
     if request.members > 1:
         raise ValueError(one_input_refusal(request.members, holds))
 

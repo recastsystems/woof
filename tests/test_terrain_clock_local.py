@@ -519,7 +519,7 @@ def _same(got, want):
 
 def test_ncar_12km_is_admitted_at_72_s_from_the_door_s_own_fields():
     """NCAR's 12 km grid at its published 72 s, read from the fields the
-    WRF-input door itself read (box W1, 2026-10-07, fix/step2/w1), on the
+    WRF-input door itself read (test host, 2026-10-07, fix/step2/w1), on the
     rows with the 12-hour long-probe entries (fix/step4/LONG-PROBES.md)."""
     fields, meta = _load("ncar-conus12km-faces-d01.npz")
     door = json.loads((DATA / "ncar-conus12km-terrain-clock.json")
@@ -766,7 +766,7 @@ def test_the_adaptive_entries_are_the_12_hour_blow_up_rows():
 
 def _parent_grid(name, table=None):
     """A parent grid's face groups saved from the tree runner's preflight
-    on box W1 (fix/step4, slim5.py), derived again on the engine's own
+    on test host (fix/step4, slim5.py), derived again on the engine's own
     functions: ``(document, adaptation)``."""
     doc = json.loads((DATA / name).read_text(encoding="utf-8"))
     run = SimpleNamespace(**doc["run"])

@@ -363,8 +363,8 @@ traceback delivery defect is fixed (exit 78, no traceback)
 verdicts, not its gap list. The front doors themselves have since been proven
 directly: the battery re-fired bare-default at the assembly tip b63c9f9c3 on
 2026-08-18 through the real fetch, prep, 6 h simulation, and render chain on
-both GPU nodes, with no decoder-tool flags anywhere; a development machine (RTX 5090) ran rap,
-gem, gdas, aigefs, and rrfs to PASS, and a development machine (RTX 5070 Ti) ran aifs,
+both GPU nodes, with no decoder-tool flags anywhere; test host 2 (RTX 5090) ran rap,
+gem, gdas, aigefs, and rrfs to PASS, and test host 1 (RTX 5070 Ti) ran aifs,
 ecmwf-ifs, gefs, and aigfs to PASS with icon-eu the designed named refusal, a
 clean sentence naming the exact out-of-grid coordinates
 [receipt:battery-refire-2p5-20260818/CAPTIONS.md, render sets sha256-verified

@@ -197,6 +197,12 @@ def _fake_worker(tmp_path):
         "        break\n"
         "    began = time.time()\n"
         "    time.sleep(job.get('sleep', 0.05))\n"
+        "    if job.get('until'):\n"
+        "        path, lines = job['until']\n"
+        "        deadline = time.time() + 60\n"
+        "        while time.time() < deadline and not (os.path.exists(path) and\n"
+        "                                               len(open(path).read().splitlines()) >= lines):\n"
+        "            time.sleep(0.02)\n"
         "    if job.get('die'):\n"
         "        os._exit(3)\n"
         "    os.makedirs(os.path.dirname(job['result']), exist_ok=True)\n"
@@ -239,7 +245,11 @@ def _run_fake_batch(tmp_path, monkeypatch, members, cards, per_card, release=0, 
 
 
 def test_idle_cards_go_back_to_the_queue_while_another_card_still_works(tmp_path, monkeypatch):
-    members = [_member(tmp_path, "long", sleep=2.5)] + [_member(tmp_path, f"m{i:02d}", sleep=0.2) for i in range(7)]
+    # The long member runs until both other cards have been handed back (their release log lines), not for a fixed
+    # 2.5 s: at host load ~55 (hex 0.5.0 sealing pass) the short members' process starts outlasted that sleep.
+    until = [str(tmp_path / "release.log"), 2]
+    members = ([_member(tmp_path, "long", sleep=0.2, until=until)] +
+               [_member(tmp_path, f"m{i:02d}", sleep=0.2) for i in range(7)])
     rc, receipt, calls = _run_fake_batch(tmp_path, monkeypatch, members, ["4", "5", "6"], 2)
     rows = {row["run_id"]: row for row in receipt["members"]}
     assert rc == 0 and receipt["status"] == "passed" and receipt["card_release"] == "on"

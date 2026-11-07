@@ -49,7 +49,7 @@ def test_current_transport_layout_bound_is_not_the_scientific_record_start():
     from woof import fetch_endpoints
 
     # GDAS reads only the current /atmos/ S3 layout.  GFS also reads the
-    # dated archive layouts (32dea003f45, lane/cap-gfs-archive), so its
+    # dated archive layouts (32dea003f45, development branch), so its
     # bound is the oldest declared layout, still a layout bound and not the
     # model's scientific record start.
     oldest = min(row["record_start"] for row in fetch_endpoints.archive_rows("gfs"))

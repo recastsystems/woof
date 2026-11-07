@@ -1,0 +1,103 @@
+# phys/module_cu_kf.F lines gcov counts as executable: 1324; executed by the fixture's cases: 1222; never executed: 102
+  580:         GOTO 325
+  622:    29   CONTINUE
+  623:         GOTO 325
+  881:             EE2=1.
+  882:             UD2=0.
+  883:             EQFRC(NK1)=1.0
+  884:             GOTO 50
+ 1254:   107   CONTINUE
+ 1381:           DPPTDF=0.
+ 1415:           UPDINC=1.
+ 1586:               CALL wrf_error_fatal ( 'module_cu_kf.F: problem with kf scheme:  qg = 0 at the surface' )
+ 1615:         WRITE(6,*)'ERROR:  MASS DOES NOT BALANCE IN KF SCHEME;'        &
+ 1616:        ,'TOPOMG, OMG =',TOPOMG,OMG(LTOP)
+ 1617:           ISTOP=1
+ 1618:           GOTO 265
+ 1754:           GOTO 265
+ 1761:           AINC=AINC*0.5
+ 1885:         WRITE(6,1070)'  P  ','   DP ',' DT K/D ',' DR K/D ','   OMG  ',  &
+ 1886:       ' DOMGDP ','   UMF  ','   UER  ','   UDR  ','   DMF  ','   DER  '  &
+ 1887:       ,'   DDR  ','   EMS  ','    W0  ','  DETLQ ',' DETIC '
+ 1888:           DO 300 K=LTOP,1,-1
+ 1889:             DTT=(TG(K)-T0(K))*86400./TIMEC
+ 1890:             RL=XLV0-XLV1*TG(K)
+ 1891:             DR=-(QG(K)-Q0(K))*RL*86400./(TIMEC*CP)
+ 1892:             UDFRC=UDR(K)*TIMEC*EMSD(K)
+ 1893:             UEFRC=UER(K)*TIMEC*EMSD(K)
+ 1894:             DDFRC=DDR(K)*TIMEC*EMSD(K)
+ 1895:             DEFRC=-DER(K)*TIMEC*EMSD(K)
+ 1896:             WRITE (6,1075)P0(K)/100.,DP(K)/100.,DTT,DR,OMG(K),DOMGDP(K)* &
+ 1897:                           1.E4,UMF(K)/1.E6,UEFRC,UDFRC,DMF(K)/1.E6,DEFRC &
+ 1898:                           ,DDFRC,EMS(K)/1.E11,W0AVG1D(K)*1.E2,DETLQ(K) &
+ 1899:                           *TIMEC*EMSD(K)*1.E3,DETIC(K)*TIMEC*EMSD(K)*    &
+ 1900:                           1.E3
+ 1901:   300     CONTINUE
+ 1902:         WRITE(6,1085)'K','P','Z','T0','TG','DT','TU','TD','Q0','QG',     &
+ 1903:                   'DQ','QU','QD','QLG','QIG','QRG','QSG','RH0','RHG'
+ 1904:           DO 305 K=KX,1,-1
+ 1905:             DTT=TG(K)-T0(K)
+ 1906:             TUC=TU(K)-T00
+ 1907:             IF(K.LT.LC.OR.K.GT.LTOP)TUC=0.
+ 1908:             TDC=TZ(K)-T00
+ 1909:             IF((K.LT.LDB.OR.K.GT.LDT).AND.K.NE.LFS)TDC=0.
+ 1910:             ES=ALIQ*EXP((BLIQ*TG(K)-CLIQ)/(TG(K)-DLIQ))
+ 1911:             QGS=ES*EP2/(P0(K)-ES)
+ 1912:             RH0=Q0(K)/QES(K)
+ 1913:             RHG=QG(K)/QGS
+ 1914:             WRITE (6,1090)K,P0(K)/100.,Z0(K),T0(K)-T00,TG(K)-T00,DTT,TUC &
+ 1915:                           ,TDC,Q0(K)*1000.,QG(K)*1000.,(QG(K)-Q0(K))*    &
+ 1916:                           1000.,QU(K)*1000.,QD(K)*1000.,QLG(K)*1000.,    &
+ 1917:                           QIG(K)*1000.,QRG(K)*1000.,QSG(K)*1000.,RH0,RHG
+ 1918:   305     CONTINUE
+ 1923:           IF(ISTOP.EQ.1)THEN
+ 1924:             DO 310 K=1,KX
+ 1926:                             Z0(K),P0(K)/100.,T0(K)-273.16,Q0(K)*1000.,   &
+ 1927:                             U0(K),V0(K),DP(K)/100.,W0AVG1D(K)
+ 1928:               CALL wrf_message ( TRIM( wrf_err_message ) )
+ 1929:   310       CONTINUE
+ 1930:             CALL wrf_error_fatal ( 'module_cu_kf.F: KAIN-FRITSCH' )
+ 2022:               CALL wrf_error_fatal ( 'module_cu_kf: THIS COMBINATION OF IMOIST,  IICE NOT ALLOWED' )
+ 2425:           DQLIQ=0.0-QICE
+ 2426:           QICE=0.0
+ 2561:       DSSDT=(CLIQ-BLIQ*DLIQ)/((T1-DLIQ)*(T1-DLIQ))
+ 2562:       DT=RL*RS*(1.-RH)/(CCP+RL*RH*RS*DSSDT)
+ 2563:       T1RH=T1+DT
+ 2564:       ES=RH*ALIQ*EXP((BLIQ*T1RH-CLIQ)/(T1RH-DLIQ))
+ 2565:       RSRH=EP2*ES/(P-ES)
+ 2570:       IF(RSRH.LT.RD)THEN
+ 2571:         RSRH=RD
+ 2572:         T1RH=T1+(RS-RSRH)*RL/CCP
+ 2574:       T1=T1RH
+ 2575:       RS=RSRH
+ 2583:    SUBROUTINE kfinit(RTHCUTEN,RQVCUTEN,RQCCUTEN,RQRCUTEN,           &
+ 2584:                      RQICUTEN,RQSCUTEN,NCA,W0AVG,P_QI,P_QS,         &
+ 2612:    jtf=min0(jte,jde-1)
+ 2613:    ktf=min0(kte,kde-1)
+ 2614:    itf=min0(ite,ide-1)
+ 2616:    IF(.not.restart)THEN
+ 2617:      DO j=jts,jtf
+ 2618:      DO k=kts,ktf
+ 2619:      DO i=its,itf
+ 2620:         RTHCUTEN(i,k,j)=0.
+ 2621:         RQVCUTEN(i,k,j)=0.
+ 2622:         RQCCUTEN(i,k,j)=0.
+ 2623:         RQRCUTEN(i,k,j)=0.
+ 2628:      IF (P_QI .ge. P_FIRST_SCALAR) THEN
+ 2629:         DO j=jts,jtf
+ 2630:         DO k=kts,ktf
+ 2631:         DO i=its,itf
+ 2632:            RQICUTEN(i,k,j)=0.
+ 2638:      IF (P_QS .ge. P_FIRST_SCALAR) THEN
+ 2639:         DO j=jts,jtf
+ 2640:         DO k=kts,ktf
+ 2641:         DO i=its,itf
+ 2642:            RQSCUTEN(i,k,j)=0.
+ 2648:      DO j=jts,jtf
+ 2649:      DO i=its,itf
+ 2650:         NCA(i,j)=-100.
+ 2654:      DO j=jts,jtf
+ 2655:      DO k=kts,ktf
+ 2656:      DO i=its,itf
+ 2657:         W0AVG(i,k,j)=0.
+ 2664:    END SUBROUTINE kfinit

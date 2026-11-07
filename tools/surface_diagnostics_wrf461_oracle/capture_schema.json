@@ -1,0 +1,1200 @@
+{
+  "solar_diag": {
+    "source": "module_diag_solar.F",
+    "rows": [
+      {
+        "name": "dt",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "param_first_scalar",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "p_qc",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "p_qi",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "p_qs",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "has_reqc",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "has_reqi",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "has_reqs",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "f_qv",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "f_qc",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "f_qi",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "f_qs",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "rho",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "dz8w",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "ph",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "phb",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "cldfrac3d",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "qv",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "qc",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "qi",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "qs",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "qc_tot",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "qi_tot",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "re_cloud",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "re_ice",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "re_snow",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "coszen",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swdnb",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swdnt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "clrnidx",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "sza",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "ghi_accum",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "cldfrac2d",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "wvp2d",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lwp2d",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "iwp2d",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swp2d",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "wp2d_sum",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lwp2d_tot",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "iwp2d_tot",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "wp2d_tot_sum",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "re_cloud_path",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "re_ice_path",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "re_snow_path",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "re_cloud_path_tot",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "re_ice_path_tot",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "tau_qc",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "tau_qi",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "tau_qs",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "tau_qc_tot",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "tau_qi_tot",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "cbase",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "ctop",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "cbase_tot",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "ctop_tot",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "clrnidx",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "sza",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "ghi_accum",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "cldfrac2d",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "wvp2d",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lwp2d",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "iwp2d",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swp2d",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "wp2d_sum",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lwp2d_tot",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "iwp2d_tot",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "wp2d_tot_sum",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "re_cloud_path",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "re_ice_path",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "re_snow_path",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "re_cloud_path_tot",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "re_ice_path_tot",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "tau_qc",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "tau_qi",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "tau_qs",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "tau_qc_tot",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "tau_qi_tot",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "cbase",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "ctop",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "cbase_tot",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "ctop_tot",
+        "shape": "2",
+        "phase": "after"
+      }
+    ],
+    "instrumented_sha256": "eef4b0dd20f8b31f4abc7d4c80552345360f4084fc55c162489b47072daa1055"
+  },
+  "mean_output_calc": {
+    "source": "module_diag_rasm.F",
+    "rows": [
+      {
+        "name": "dt",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "xtime",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "stats_interval",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "output_freq",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "psfc",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "tsk",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "t2",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "th2",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "q2",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "u10",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "v10",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "hfx",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "lh",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swdnb",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "glw",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "lwupb",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swupb",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swupt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swdnt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "lwupt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "lwdnt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "t",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "p",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "pb",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "moist",
+        "shape": "3",
+        "phase": "input"
+      },
+      {
+        "name": "ht",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "psfc_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "tsk_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "pmsl_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "t2_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "th2_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "q2_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "u10_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "v10_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "hfx_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lh_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swdnb_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "glw_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lwupb_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swupb_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swupt_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swdnt_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lwupt_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lwdnt_mean",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "nsteps",
+        "shape": "s",
+        "phase": "before"
+      },
+      {
+        "name": "psfc_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "tsk_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "pmsl_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "t2_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "th2_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "q2_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "u10_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "v10_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "hfx_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lh_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swdnb_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "glw_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lwupb_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swupb_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swupt_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swdnt_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lwupt_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lwdnt_mean",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "nsteps",
+        "shape": "s",
+        "phase": "after"
+      }
+    ],
+    "instrumented_sha256": "cdc93d106009e2ed962643f02878af81a4aaba73564e26baa6db469facf66df3"
+  },
+  "diurnalcycle_output_calc": {
+    "source": "module_diag_rasm.F",
+    "rows": [
+      {
+        "name": "dt",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "xtime",
+        "shape": "s",
+        "phase": "scalar"
+      },
+      {
+        "name": "psfc",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "tsk",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "t2",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "th2",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "q2",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "u10",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "v10",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "hfx",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "lh",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swdnb",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "glw",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "lwupb",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swupb",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swupt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "swdnt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "lwupt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "lwdnt",
+        "shape": "2",
+        "phase": "input"
+      },
+      {
+        "name": "psfc_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "tsk_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "t2_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "th2_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "q2_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "u10_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "v10_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "hfx_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lh_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swdnb_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "glw_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lwupb_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swupb_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swupt_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "swdnt_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lwupt_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "lwdnt_dtmp",
+        "shape": "2",
+        "phase": "before"
+      },
+      {
+        "name": "psfc_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "tsk_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "t2_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "th2_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "q2_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "u10_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "v10_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "hfx_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "lh_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "swdnb_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "glw_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "lwupb_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "swupb_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "swupt_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "swdnt_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "lwupt_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "lwdnt_diurn",
+        "shape": "d",
+        "phase": "before"
+      },
+      {
+        "name": "avg_nsteps",
+        "shape": "s",
+        "phase": "before"
+      },
+      {
+        "name": "diurnal_nsteps",
+        "shape": "s",
+        "phase": "before"
+      },
+      {
+        "name": "psfc_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "tsk_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "t2_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "th2_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "q2_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "u10_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "v10_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "hfx_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lh_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swdnb_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "glw_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lwupb_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swupb_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swupt_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "swdnt_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lwupt_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "lwdnt_dtmp",
+        "shape": "2",
+        "phase": "after"
+      },
+      {
+        "name": "psfc_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "tsk_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "t2_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "th2_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "q2_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "u10_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "v10_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "hfx_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "lh_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "swdnb_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "glw_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "lwupb_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "swupb_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "swupt_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "swdnt_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "lwupt_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "lwdnt_diurn",
+        "shape": "d",
+        "phase": "after"
+      },
+      {
+        "name": "avg_nsteps",
+        "shape": "s",
+        "phase": "after"
+      },
+      {
+        "name": "diurnal_nsteps",
+        "shape": "s",
+        "phase": "after"
+      }
+    ],
+    "instrumented_sha256": "e306549aa50cd17f26e0474e35ed946bed83bfaebd76a8b292711e8f6f01c33b"
+  }
+}

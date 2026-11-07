@@ -168,6 +168,8 @@ tools/rustwx/crates/rw-post/kernels/*.ptx -whitespace
 # merged diff_opt1 attribution); a whitespace edit would invalidate those receipts.
 woof/core/kernels/sfire_moisture.cu -whitespace
 woof/core/sfire_fuel_data.py -whitespace
+
+tools/gd_wrf461_oracle/patches/*.patch whitespace=-blank-at-eol
 # Byte-exact fixtures: a compiled oracle's recorded toolchain lines and an imported WRF namelist keep
 # their own trailing spaces and final blank line; the 2.8.8 cut's export whitespace check refused them.
 tests/data/oracles/sfclay_classic/toolchain.txt -whitespace
@@ -221,3 +223,31 @@ tools/hail_wrf461/upstream/module_diag_hailcast.F -whitespace
 # The operational HRRR v4.1.21 branch's HAILCAST (NOAA-EMC/HRRR 40ee6058c2, sha256 pinned in
 # tools/hail_wrf461/translate.py) stays byte for byte as fetched.
 tools/hail_wrf461/upstream_hrrr_v4121/module_diag_hailcast.F -whitespace
+# WRF P3 table 2 keeps its pinned upstream bytes, including its blank second record.
+woof/data/p3/tables/p3_lookupTable_2.dat-v5.3 -whitespace
+
+# MP40 oracle artifacts retain their recorded source and patch bytes.
+woof/core/kernels/morrison_aero_refl.cu -whitespace
+tools/morrison_aero_wrf461_oracle/check_receipt.py -whitespace
+tools/morrison_aero_wrf461_oracle/mp10-mp40-source.diff -whitespace
+tools/morrison_aero_wrf461_oracle/prepare_forecast_input.py -whitespace
+tools/morrison_aero_wrf461_oracle/render_receipt.py -whitespace
+tools/morrison_aero_wrf461_oracle/t0fix.patch -whitespace
+
+# Retained native capture patches preserve the exact recorded bytes.
+tools/ferrier_hires_wrf461_oracle/advect/native-capture.patch -whitespace
+tools/ferrier_hires_wrf461_oracle/advect/native-driver-correction.patch -whitespace
+tools/ferrier_hires_wrf461_oracle/advect/native_startup_trace.patch -whitespace
+# Native wind oracle: pinned WRF table bytes and exact Fortran patch context.
+tools/wind_mav_wrf471_oracle/wind-turbine-1.tbl -whitespace
+tools/wind_mav_wrf471_oracle/capture.patch -whitespace
+# V3.5's public-domain notice and native source patch retain upstream bytes.
+tools/wind_legacy_wrf35_oracle/NOTICE.txt -whitespace
+tools/wind_legacy_wrf35_oracle/capture.patch -whitespace
+# The WRF 4.7.1 MYNN translation (generated, f2c layout) and its Sun erf keep
+# the exact bytes their source-bound sm_89/sm_120 images bind
+# (woof/data/mynn471/images, complete source SHA256 in qualification.json).
+woof/data/mynn471/model.cu -whitespace
+woof/data/mynn471/erff.cuh -whitespace
+# Byte-unmodified WRF 4.7.1 diagnostic oracle sources keep upstream indentation.
+tools/diag_wrf471_oracle/upstream/** -whitespace

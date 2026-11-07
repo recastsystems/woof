@@ -109,13 +109,15 @@ def test_actual_registry_expands_restart_and_file_members(tmp_path):
                        maxEdges=6,maxEdges2=12,vertexDegree=3,nVertLevels=4))
     (tmp_path/'fields.txt').write_text('u\nqv\n# comment\npressure\n')
     streams=tmp_path/'streams.atmosphere'
-    streams.write_text('<streams><immutable_stream name="restart" type="input;output" filename_template="r.nc" output_interval="0_01:00:00"/><stream name="output" type="output" filename_template="o.nc" output_interval="0_01:00:00" filename_interval="output_interval"><file name="fields.txt"/></stream></streams>')
+    streams.write_text('<streams><immutable_stream name="restart" type="input;output" filename_template="r.nc" input_interval="initial_only" output_interval="0_01:00:00"/><stream name="output" type="output" filename_template="o.nc" output_interval="0_01:00:00" filename_interval="output_interval"><file name="fields.txt"/></stream></streams>')
     restart,output=read_streams(streams,layout)
     assert restart.directions==('input','output')
     assert 'scalars' in restart.fields and 'theta_m' in restart.fields
     assert output.fields==('u','qv','pressure')
     assert output.filename_interval=='0_01:00:00'
-    assert restart.filename_interval=='none'
+    # Native xml_stream_parser.c:1137-1160: an input;output stream with an unset filename_interval takes its input
+    # interval when that is an interval, else its output interval (initial_only here), so one file per restart time.
+    assert restart.filename_interval=='0_01:00:00'
 
 
 def test_native_output_delegates_alarm_steps_and_initial_restart_policy():

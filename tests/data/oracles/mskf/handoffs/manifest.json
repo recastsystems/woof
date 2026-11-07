@@ -1,0 +1,20 @@
+{
+  "source_commit": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "columns": 64,
+  "months": 8,
+  "model_levels": 8,
+  "source_sha256": {
+    "module_cumulus_driver.F": "d73eb4b670599e0bbf98a3661b5dbf17413aed01139d18fa1a84161578dc31e3",
+    "module_radiation_driver.F": "779875651512709c47d50ef6c1e1216ad94726f1996c5e45a0db8eb800733ffa"
+  },
+  "generated_fortran_sha256": "2991d664141eb864513de8269496dbb795f09af478c644e38f0d78ba0424297e",
+  "compile": [
+    "gfortran",
+    "-O2",
+    "-fno-fast-math",
+    "-ffp-contract=off",
+    "-fno-tree-vectorize",
+    "-ffree-line-length-none"
+  ],
+  "fixture_sha256": "dcea8d43f6f1f72c050a26a5874069c862f44e88c36e1e1e0e9b95adefed6a43"
+}

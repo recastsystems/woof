@@ -144,3 +144,4 @@ tests/test_go_dry_run_geography.py # the gfs --dry-run plans through the native 
 tests/test_analysis_bundle.py # rw_netcdf and netcdf-writer read, patch and write the bundle's classic files.
 tests/test_analysis_boundary.py # rw_netcdf and netcdf-writer read and patch the boundary file.
 tests/test_analysis_door.py # rw_netcdf and netcdf-writer read the bundle and write the door's derived files.
+tests/test_wrf_options_page.py # rw-wind-table decodes the turbine table the windfarm_opt = 2 (MAV) probe imports; the 2.9.12 R7b CPU route refused it without the decoder.

@@ -1,0 +1,15 @@
+cold table psim1: 0 words differ, max 0 ULP
+cold table psih1: 79 words differ, max 2 ULP
+cold table psim2: 0 words differ, max 0 ULP
+cold table psih2: 79 words differ, max 2 ULP
+cold fields moved (words): rmol:2
+warm table psim1: 0 words differ, max 0 ULP
+warm table psih1: 79 words differ, max 2 ULP
+warm table psim2: 0 words differ, max 0 ULP
+warm table psih2: 79 words differ, max 2 ULP
+warm fields moved (words): none
+nz2 table psim1: 0 words differ, max 0 ULP
+nz2 table psih1: 79 words differ, max 2 ULP
+nz2 table psim2: 0 words differ, max 0 ULP
+nz2 table psih2: 79 words differ, max 2 ULP
+nz2 fields moved (words): chs2:1 cqs2:1

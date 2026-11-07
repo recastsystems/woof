@@ -1761,26 +1761,22 @@ fn projected_grid_to_pixels_cached(
     extent: &MapExtent,
     layout: &Layout,
 ) -> Arc<[Option<(f32, f32)>]> {
-    PROJECTED_PIXEL_CACHE.with(|cache_cell| {
-        let mut cache = cache_cell.borrow_mut();
-        if let Some(cached) = cache.as_ref() {
-            if cached.matches(grid, extent, layout) {
-                return Arc::clone(&cached.pixels);
-            }
-        }
-
-        let pixels: Arc<[Option<(f32, f32)>]> =
-            projected_grid_to_pixels(grid, extent, layout).into();
-        *cache = Some(CachedProjectedPixels::new(
-            grid,
-            extent,
-            layout,
-            Arc::clone(&pixels),
-        ));
-        #[cfg(test)]
-        PROJECTED_PIXEL_CACHE_MISSES.with(|count| count.set(count.get() + 1));
-        pixels
-    })
+    if let Some(pixels) = PROJECTED_PIXEL_CACHE.with(|slot| {
+        slot.borrow().as_ref().filter(|cached| cached.matches(grid, extent, layout))
+            .map(|cached| Arc::clone(&cached.pixels))
+    }) {
+        return pixels;
+    }
+    let pixels: Arc<[Option<(f32, f32)>]> =
+        projected_grid_to_pixels(grid, extent, layout).into();
+    PROJECTED_PIXEL_CACHE.with(|slot| {
+        slot.replace(Some(CachedProjectedPixels::new(
+            grid, extent, layout, Arc::clone(&pixels),
+        )));
+    });
+    #[cfg(test)]
+    PROJECTED_PIXEL_CACHE_MISSES.with(|count| count.set(count.get() + 1));
+    pixels
 }
 
 fn hash_rgba(hasher: &mut impl Hasher, color: Rgba) {
@@ -1921,30 +1917,24 @@ fn cached_static_base_image(
         map_background,
         draw_static_polygons,
     );
-    STATIC_BASE_CACHE.with(|cache_cell| {
-        let mut cache = cache_cell.borrow_mut();
-        if let Some(cached) = cache.as_ref() {
-            if cached.key == static_base_key {
-                return (cached.image.clone(), 0, 0);
-            }
-        }
-
-        let (image, background_ms, polygon_fill_ms) = build_static_base_image(
-            opts,
-            layout,
-            extent,
-            domain_frame_rect,
-            canvas_background,
-            map_background,
-            polygon_clip_rect,
-            draw_static_polygons,
-        );
-        *cache = Some(CachedStaticBase {
+    if let Some(image) = STATIC_BASE_CACHE.with(|slot| {
+        slot.borrow().as_ref().filter(|cached| cached.key == static_base_key)
+            .map(|cached| cached.image.clone())
+    }) {
+        return (image, 0, 0);
+    }
+    // Keep TLS borrows out of drawing, which may yield to another product.
+    let (image, background_ms, polygon_fill_ms) = build_static_base_image(
+        opts, layout, extent, domain_frame_rect, canvas_background,
+        map_background, polygon_clip_rect, draw_static_polygons,
+    );
+    STATIC_BASE_CACHE.with(|slot| {
+        slot.replace(Some(CachedStaticBase {
             key: static_base_key,
             image: image.clone(),
-        });
-        (image, background_ms, polygon_fill_ms)
-    })
+        }));
+    });
+    (image, background_ms, polygon_fill_ms)
 }
 
 fn field_and_colormap_are_opaque(data: &[f64], opts: &RenderOpts) -> bool {
@@ -4650,7 +4640,10 @@ fn draw_variable_layers(
     };
     let rasterize_ms = rasterize_start.elapsed().as_millis();
     let projection_clip_mask =
-        if opts.inverse_projected_grid.is_some() && opts.cmap.mask_below.is_none() {
+        if opts.inverse_projected_grid.is_some() && opts.cmap.mask_below.is_none()
+            // An explicit geographic viewport includes context outside a sparse
+            // weather footprint (for example a moving storm's wind swath).
+            && !matches!(opts.domain_frame, Some(frame) if matches!(frame.source, DomainFrameSource::MapViewport)) {
             build_alpha_clip_mask(&map_img)
         } else {
             None
@@ -5611,15 +5604,20 @@ fn render_to_image_profile_inner(
 pub const EMPTY_MAP_NOTE: &str = "No values to plot";
 
 /// The note to draw on a filled map that has nothing to draw: no value of
-/// the field takes a visible colour on its scale, and no contour, barb,
-/// streamline or RGBA layer draws anything over it. `None` when anything is
-/// drawn, and for a map without a colour bar (overlay-only pictures are
-/// blank fills by design).
+/// the field takes a visible colour on its scale, no mesh cell does either,
+/// and no contour, barb, streamline or RGBA layer draws anything over it.
+/// `None` when anything is drawn, and for a map without a colour bar
+/// (overlay-only pictures are blank fills by design).
 ///
 /// WHAT BREAKAGE THIS PREVENTS (gate law): a map with nothing to draw for a
 /// valid reason (no 0 C level in a cold column, the Haines layer below
 /// ground, an accumulation at F000) looked exactly like a failed render (R10
 /// look, 2.9.4).
+///
+/// The mesh layer counts as data. A `mesh:`/`meshdiff:` product carries its
+/// values on the cells and hands the raster a 2x2 NaN placeholder, so a
+/// check of `data` alone stamped "No values to plot" over every mesh panel
+/// whose cells were plainly coloured (autodiff U9 sheets, 2026-11-03).
 pub fn empty_map_note(data: &[f64], opts: &RenderOpts) -> Option<String> {
     if !opts.colorbar
         || opts.rgba_grid.is_some()
@@ -5632,6 +5630,16 @@ pub fn empty_map_note(data: &[f64], opts: &RenderOpts) -> Option<String> {
     }
     if data.iter().any(|value| opts.cmap.map(*value).a > 0) {
         return None;
+    }
+    if let Some(mesh) = opts.mesh_cells.as_ref() {
+        if mesh
+            .cells
+            .iter()
+            .filter_map(|cell| cell.value)
+            .any(|value| opts.cmap.map(value).a > 0)
+        {
+            return None;
+        }
     }
     Some(
         opts.empty_note

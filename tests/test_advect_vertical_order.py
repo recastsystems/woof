@@ -125,11 +125,14 @@ def test_fields_default_to_the_ladder_every_earlier_run_took():
     assert (cfg.v_sca_adv_order, cfg.v_mom_adv_order, cfg.h_mom_adv_order) == (3, 3, 5)
 
 
+# The 3.0 transport port carries vertical orders 2-6 and horizontal momentum
+# orders 0 and 2-6 (2582c065c99); what is still refused is a value WRF has no
+# operator for.
 @pytest.mark.parametrize("field,value,needle", [
-    ("v_sca_adv_order", 2, "v_sca_adv_order = 2"),
-    ("v_sca_adv_order", 4, "not transcribed"),
-    ("v_mom_adv_order", 6, "v_mom_adv_order = 6"),
-    ("h_mom_adv_order", 3, "flux5 only"),
+    ("v_sca_adv_order", 1, "v_sca_adv_order = 1"),
+    ("v_sca_adv_order", 7, "integer orders 2 through 6"),
+    ("v_mom_adv_order", 7, "v_mom_adv_order = 7"),
+    ("h_mom_adv_order", 1, "orders 0, 2, 3, 4, 5 and 6 only"),
     ("v_sca_adv_order", True, "v_sca_adv_order = True"),
 ])
 def test_unported_orders_are_refused_by_name(field, value, needle):
@@ -622,7 +625,9 @@ def test_launchers_refuse_an_unported_order_by_name():
     vc = make_vertical_coord(6)
     q, u, v, w, ru, rv, rw, msft, msfu, msfv = (cp.asarray(a) for a in _fields(1, 6, 4, 8))
     with pytest.raises(ValueError, match="vorder must be one of"):
-        launch_flux_div_scalar(q, ru, rv, rw, cp.zeros_like(q), vc, 100.0, 100.0, vorder=4)
+        # Orders 2 through 6 are ported (26548e9345); 7 is no WRF
+        # vert_order branch.
+        launch_flux_div_scalar(q, ru, rv, rw, cp.zeros_like(q), vc, 100.0, 100.0, vorder=7)
 
 
 @pytest.mark.gpu

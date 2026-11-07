@@ -12,10 +12,15 @@ added, and IEEE division and square root stay NVRTC's default.
 
 Dedicated prepared-input modules marked ``-DGPUWM_PREPARATION_IDENTITY=1`` keep
 their no-contraction request in either mode: changing the preparation backend
-must not change the child's SINT terrain capture. Forecast modules remain fast.
+must not change the child's SINT terrain capture. MSKF modules separately preserve
+FP32 operation order for aerosol coupling because contraction changes aerosol
+numbers by up to 5.7%. The aerosol-off specialization permits contraction in
+fast mode. Default FP64 operations use CUDA libm; strict uses software libm.
 
-``strict`` compiles every tuple exactly as written.  ``GPUWM_WRF_EXACT=1`` implies strict (its own installer
-then pins every unit to WRF's arithmetic).  The mode is read once per process from ``GPUWM_NUMERICS``.
+Both backends retain each unit's strict compiler options. HIP mirrors CuPy's
+implicit FTZ option only at the RawModule boundary, not for direct compilation.
+``GPUWM_WRF_EXACT=1`` implies strict (its own installer
+then pins every unit to WRF's arithmetic). The mode is read once per process from ``GPUWM_NUMERICS``.
 
 The boundary is applied before every compiled-image cache key is formed (CuPy's disk cache and the direct
 NVRTC cache, woof/nvrtc_ptx_cache.py), so fast and strict images never share a cache entry.
@@ -23,12 +28,16 @@ NVRTC cache, woof/nvrtc_ptx_cache.py), so fast and strict images never share a c
 from __future__ import annotations
 
 import functools
+from contextlib import contextmanager
+from contextvars import ContextVar
 import os
 import sys
 
 ENV = "GPUWM_NUMERICS"
 MODES = ("fast", "strict")
 DEFAULT = "fast"
+
+STRICT_CONTROLS = ("--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true")
 
 _NO_CONTRACTION = ("--fmad=false", "-fmad=false", "--fmad=False", "-fmad=False")
 
@@ -43,6 +52,17 @@ def _resolve() -> str:
 
 
 _mode: str | None = None
+_final_options = ContextVar("gpuwm_final_compiler_options", default=False)
+
+
+@contextmanager
+def preserve_final_options():
+    """Replay already-bound options without changing strict or fast policy."""
+    token = _final_options.set(True)
+    try:
+        yield
+    finally:
+        _final_options.reset(token)
 
 
 def mode() -> str:
@@ -75,11 +95,18 @@ def is_strict() -> bool:
 def effective_options(options) -> tuple[str, ...]:
     """Final arithmetic options, including opt-in WRF controls, before cache lookup."""
     options = tuple(options)
+    if _final_options.get():
+        return options
     # Prepared inputs have one arithmetic contract across CPU and CUDA.
     # A dedicated preparation module may pin that contract without changing
     # the forecast's fast mode. Keep the marker in both compiler cache keys.
     preparation_identity = "-DGPUWM_PREPARATION_IDENTITY=1" in options
-    if mode() != "strict" and not preparation_identity:
+    # MSKF aerosol numbers amplify contraction changes beyond the column
+    # regression's 0.1% field-peak tolerance (ni_cu: 5.7%, nc_cu: 1.9%).
+    # Preserve the native operation order while its default CUDA libm stays
+    # fast. This marker is requested by the two MSKF modules only.
+    mskf_operation_order = "-DGPUWM_MSKF_OPERATION_ORDER=1" in options
+    if mode() != "strict" and not (preparation_identity or mskf_operation_order):
         options = tuple(option for option in options if option not in _NO_CONTRACTION)
     if os.environ.get("GPUWM_WRF_EXACT", "0") == "1":
         # The program hook applies these even to direct NVRTC. Its image
@@ -101,9 +128,13 @@ _STATE: dict = {}
 def install(compiler=None) -> None:
     """Apply :func:`effective_options` at CuPy's cached compile and at NVRTC's program compile.
 
-    Idempotent; a pass-through in strict mode.  ``compiler`` is ``cupy.cuda.compiler``."""
+    Idempotent. ``compiler`` is ``cupy.cuda.compiler``."""
     if compiler is None:
         from cupy.cuda import compiler
+    from woof.hip_backend import install as install_hip
+    install_hip(compiler)
+    from woof.hip_backend import active
+    if os.environ.get("GPUWM_WRF_EXACT", "0") == "1" and not active(): return
     if not (hasattr(compiler, "_compile_with_cache_cuda") and hasattr(compiler, "_NVRTCProgram")):
         return
     if getattr(compiler, "_gpuwm_numerics_fast", False):
@@ -158,7 +189,8 @@ class _CompilerImportHook:
 def arm() -> None:
     """Called by ``import woof``: install now if CuPy's compiler is loaded, else when it is.  Nothing is
     armed under ``GPUWM_WRF_EXACT=1`` (its own installer owns the compile boundary)."""
-    if os.environ.get("GPUWM_WRF_EXACT", "0") == "1":
+    if (os.environ.get("GPUWM_WRF_EXACT", "0") == "1"
+            and os.environ.get('WOOF_BACKEND', 'cuda') not in ('amd', 'hip', 'rocm', 'hip-nvidia')):
         return
     module = sys.modules.get("cupy.cuda.compiler")
     if module is not None:

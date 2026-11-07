@@ -142,12 +142,19 @@ def find_nexrad_bin() -> Path | None:
     """
 
     override = os.environ.get(NEXRAD_ENV)
-    for candidate in nexrad_candidates():
-        if candidate.is_file():
-            return accept_resolved(candidate.resolve())
-        if override and candidate == Path(override):
-            raise FileNotFoundError(
-                f"{NEXRAD_ENV} names a missing file: {candidate}")
+    for attempt in (0, 1):
+        for candidate in nexrad_candidates():
+            if candidate.is_file():
+                return accept_resolved(candidate.resolve())
+            if override and candidate == Path(override):
+                raise FileNotFoundError(
+                    f"{NEXRAD_ENV} names a missing file: {candidate}")
+        # On demand since WOOF 1.1.6 (PyPI per-file limit): staged by the first
+        # radar ingest from this release's bundle (never inside
+        # bridges.inspection_only(), so doctor only reports).
+        from woof.bridges import fetch_on_demand
+        if attempt or override or not fetch_on_demand(NEXRAD_NAME):
+            return None
     return None
 
 

@@ -12,6 +12,8 @@ there is no Cartesian v increment or vertical velocity forcing in MPAS IAU.
 """
 
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from dataclasses import dataclass
@@ -66,6 +68,38 @@ class IAUConfig:
         if not isinstance(mode, str):
             raise TypeError("config_physics_mode must be a character value")
         return cls(option, window, mode.rstrip(" "))
+
+
+def checkpoint_window(config: IAUConfig, position, increments: Mapping[str, str]) -> dict | None:
+    """The correct-mode window state required to continue the same forcing.
+
+    Digests identify the original payload, before any rank projection. A
+    resumed window must not apply its elapsed portion again, or substitute
+    different increments while keeping the old elapsed time.
+    """
+    if not config.correct or config.config_IAU_option != 'on':
+        return None
+    elapsed = float(np.float32(position))
+    if not math.isfinite(elapsed) or elapsed < 0:
+        raise ValueError('IAU checkpoint has an invalid elapsed time')
+    return dict(version=1, elapsed_seconds=elapsed,
+                window_seconds=float(np.float32(config.config_IAU_window_length_s)),
+                increment_digests=dict(increments))
+
+
+def restore_checkpoint_window(config: IAUConfig, checkpoint, increments: Mapping[str, str]) -> np.ndarray:
+    """Validate the carried forcing and recover its exact float32 clock."""
+    if not config.correct:
+        return np.array(0, dtype=np.float32)
+    if not isinstance(checkpoint, dict) or checkpoint.get('version') != 1:
+        raise ValueError('checkpoint carries no IAU window state')
+    if (checkpoint.get('window_seconds') != float(np.float32(config.config_IAU_window_length_s))
+            or checkpoint.get('increment_digests') != dict(increments)):
+        raise ValueError('IAU checkpoint window or increment payload changed')
+    position = checkpoint.get('elapsed_seconds')
+    if position is None or not math.isfinite(position) or position < 0:
+        raise ValueError('IAU checkpoint has an invalid elapsed time')
+    return np.array(position, dtype=np.float32)
 
 
 # Registry.xml:1173-1183,3972-4011; mpas_atm_core.F:222-233.
@@ -433,7 +467,7 @@ def iau_kernels(cache: Any) -> dict[str, Any]:
         with cp.cuda.Device(cache.capability.device_id):
             with NvrtcCompileCapture() as capture:
                 binary,_=compiler.compile_using_nvrtc(_CUDA_SOURCE,options=options,
-                    arch=cp.cuda.Device().compute_capability)
+                    arch=_compilation_target(xp=cp))
             evidence=capture.evidence(hashlib.sha256(_CUDA_SOURCE.encode()).hexdigest())
             if evidence["status"]!="resolved":
                 raise RuntimeError("IAU direct NVRTC compiler flags were not captured")

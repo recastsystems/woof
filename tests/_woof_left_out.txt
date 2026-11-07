@@ -121,3 +121,4 @@ tests/test_pypi_capacity.py
 tests/test_ci_workflow.py
 tests/test_public_ci_contract.py
 tests/test_workflow_rehearsals.py
+docs/licence-audit-20261101.md

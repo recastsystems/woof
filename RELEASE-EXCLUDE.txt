@@ -239,6 +239,7 @@ configs/real74_morrison_d03_pressure_fix_1h.toml
 # re-authors the case on the execution box, as the deck README says, which
 # writes fresh local copies of all three.  The observation case, model object
 # requests, configs and README beside them carry no machine path and ship.
+configs/da_rerun_286/**
 configs/da_rerun_286/recent/active-241/case-plan.json
 configs/da_rerun_286/recent/active-241/authority/authority-receipt.json
 configs/da_rerun_286/recent/large-601-center32p2/case-plan.json
@@ -561,3 +562,26 @@ tests/data/assembled_legacy_proofs/loader-fold-source-replay.json
 # link the system netCDF C library at build time. Development evidence for the module replays, not product
 # (2.9.10 pass 1 R3 and R4). The crate's own tests ship.
 tools/rustwx/crates/rw-mpas/tests/rrfs_native/**
+
+# Private observation workflow instrumentation has no public runtime caller.
+tools/da_case_manifest.py
+
+# Private manifest tooling has no public configuration or test contract.
+tests/test_da_case_manifest.py
+
+# 3.0.0 fix batch (2026-11-02): lane harnesses bound to one lab's data roots and
+# internal ledgers (they append to the integration notes and message lanes);
+# the recapture method and its permanent native evidence are documented in the
+# port reports, and the waves cases ship with relative output paths.
+tools/recapture_wrf471/**
+tools/waves_case.sh
+tools/waves_split_case.sh
+tools/waves_io_smoke.sh
+
+# 2.9.13 (the 2.9.12 sdist leak scan): agent handoff prompts and an internal licence-ruling log name
+# internal lanes, agents and delivery folders.  The seam survey JSON beside the handoffs stays: a test reads it.
+docs/handoffs/LEVEL2-SPECTRAL-NUMERICS-FABLE.md
+docs/handoffs/SPECTRAL-VERIFICATION-FABLE-PROMPT.md
+docs/handoffs/SPECTRAL-VERIFICATION-FABLE.md
+docs/licence-audit-20261101.md
+docs/licence-audit-20261101/**

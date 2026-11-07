@@ -209,10 +209,10 @@ def spawn_land_state_from_parent(child_dc, parent_node, *, static_fields,
     Returns ``{"fields": {name: host ndarray}, "receipt": {...}}``.
     """
     from woof.core.nest_interp import interp_mask_field
-    from woof.ingest.relocation_init import LAND_SURFACE_CONTINUATION_FIELDS
+    from woof.ingest.relocation_init import surface_continuation_fields
 
     if names is None:
-        names = LAND_SURFACE_CONTINUATION_FIELDS
+        names = surface_continuation_fields(child_dc.run, interpolate=True)
     driver = getattr(parent_node.state, "physics", None)
     if driver is None or not getattr(driver, "fields", None):
         raise SpawnInitRefusal(
@@ -429,7 +429,7 @@ def spawned_child_device_bytes(child_dc, parent_dc, *, scratch_arena=None,
     estimate = estimate_domain(
         child_dc, spec_bdy_width=int(run.spec_bdy_width),
         cam_ozone=cam_ozone, parent=parent_dc, urban_columns=urban_columns)
-    shared_state = (shared_dycore_state_symbols()
+    shared_state = (shared_dycore_state_symbols(run)
                     if dycore_state_workspace is not None else frozenset())
 
     def arena_backed(slot: str) -> bool:

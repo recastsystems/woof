@@ -201,9 +201,11 @@ def test_every_registered_anchor_occurs_as_declared():
 
 def test_registry_defaults_are_the_literals_in_the_kernels():
     rows = pp.registry()
-    assert set(rows) == {
+    assert {n for n in rows if not n.startswith("sas.")} == {
         "mynn.czil", "mynn.prandtl", "mynn.cns", "mynn.alp1",
-        "mynn.edmf_entrainment", "ruc.z0.tall", "ruc.z0.short", "ruc.rs"}
+        "mynn.edmf_entrainment", "ruc.z0.tall", "ruc.z0.short", "ruc.rs",
+        "boulac.ceps_b", "boulac.ck_b", "boulac.temin", "boulac.th0",
+        "boulac.third", "boulac.ep", "boulac.dthv_min", "boulac.exch_min"}
     for row in rows.values():
         for site in row.sites:
             assert pp._literal_value(site.literal) == pp._float32(row.default)

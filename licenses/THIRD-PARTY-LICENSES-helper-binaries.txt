@@ -20,27 +20,22 @@ notices below travelling with the copy; this file is that.
   [H]  rw_hex_chem_sources: the chemistry source preparer (rust/chem-sources)
   [E]  rw_s2s_energy: the S2S energy tables' reducer (crate rw-s2s-energy, this tree's tools/rustwx)
   [U]  rw_hex_ugwp_oro: the GSL orographic drag statistics builder (rust/ugwp-oro)
+  [V]  rw_hex_wave_products and wave_audit: the wave maps and audit (rust/wave-products)
 
 The remaining Rust helpers link the Rust standard library only.
 NOTICE section 12 also names the C libraries the helpers link.
 
 WHAT IT COVERS
 --------------
-  gpuwm commit             aaec6b4be30ddc8f416f44cbc0fecf9244459f5e
-  tools/rustwx/Cargo.lock  sha256 124aeed826f08c404df231e049442d5a15656dde6451ea98c63ea9852f9f2c78
-  engine-bridges.json      sha256 cc7cb6af84aa9c6c5a95938c89a00f808609e0c0841a4bf227fcd3734bd4694d
+  gpuwm commit             5bf7ed8ca24e0b759c43f987c77fb70496405cf9
+  tools/rustwx/Cargo.lock  sha256 85f14d85e51df49cb1473ea6125567db5ecd109d0fbf7609b30bd8a7206dc1ae
+  engine-bridges.json      sha256 5039be5b3069a17b622c8599e84687f6f338ae5ef579bb13030028ea3a9a2364
   source notice            licenses/THIRD-PARTY-LICENSES-bridge-binaries.txt at that commit,
-                           sha256 efd582033a1db42135d0a837384ef9c332a785ffcdd781e9109ea59822d33063
+                           sha256 b2b009658b863a5b88d8ccead73562203a9ee71c9461df3a941604a2990734e8
 
 The source identity above is the resolved build workspace. The hashed bridge
 manifest retains each binary's own source identity and lock override;
 its top-level identity is the fallback for entries without an override.
-  scorer resolved against  gpuwm commit 82e16d580ae436003d3598a8127baef8b7498519,
-                           Cargo.lock sha256 4c0c6e43d75c94347d1225b91b148c385f9741de4302c067510295779e91ec87
-  [B] also resolved against gpuwm commit 5599a17b919c12cdaf98ebad8d0b08c8e8532e78,
-                           Cargo.lock sha256 4c0c6e43d75c94347d1225b91b148c385f9741de4302c067510295779e91ec87
-  [W][C] resolved against   gpuwm commit 5599a17b919c12cdaf98ebad8d0b08c8e8532e78,
-                           Cargo.lock sha256 4c0c6e43d75c94347d1225b91b148c385f9741de4302c067510295779e91ec87
 
 The crate lists use cargo tree -e normal,no-proc-macro, with all targets
 for the engine workspace and x86_64-unknown-linux-gnu for the separate
@@ -61,11 +56,13 @@ hexcore/data/licenses/rustwx-LICENSE-MIT.
 
 rw-sfc-series is project code with MPAS-derived portions under Apache-2.0
 AND BSD-3-Clause. The Registry pool reader is MIT. rw-s2s, rw-s2s-energy and
-rust/chem-sources (hex-chem-sources) and rust/ugwp-oro (hex-ugwp-oro) are this project's own code (Apache-2.0).
+rust/chem-sources (hex-chem-sources), rust/ugwp-oro (hex-ugwp-oro) and
+rust/wave-products (hex-wave-products) are this project's own code (Apache-2.0).
 
   hex-chem-sources 0.1.0
   hex-physics-pool 0.1.0
   hex-ugwp-oro 0.1.0
+  hex-wave-products 0.1.0
   netcdf-writer 0.1.0
   obs-regrid 0.1.0
   obs-score 0.1.0
@@ -471,7 +468,7 @@ SOFTWARE.
 3.  RUST CRATES -- INVENTORY
 ------------------------------------------------------------------------------
 
-280 crate name-and-version pairs.  The column after the grant
+283 crate name-and-version pairs.  The column after the grant
 names the programs that link the crate (key above); the bracketed numbers
 point at the texts in section 4.  A crate with no number vendored no
 licence file of its own, and its grant is the SPDX expression its
@@ -514,13 +511,14 @@ permissive one is taken; no copyleft branch is taken.
   core-foundation-sys 0.8.7           MIT OR Apache-2.0                                    O,S,W [18,39]
   cpufeatures 0.2.17                  MIT OR Apache-2.0                                    B,C,E,F,O,P,S,W[7,40]
   crc32fast 1.5.0                     MIT OR Apache-2.0                                    B,C,O,S,W[15,41]
-  crc32fast 1.5.2                     MIT OR Apache-2.0                                    E,F   [SOURCE-b40930bbcf80744c,SOURCE-61d383b05b87d78f]
+  crc32fast 1.5.2                     MIT OR Apache-2.0                                    E     [SOURCE-b40930bbcf80744c,SOURCE-61d383b05b87d78f]
+  crc32fast 1.5.3                     MIT OR Apache-2.0                                    F     [SOURCE-b40930bbcf80744c,SOURCE-61d383b05b87d78f]
   crossbeam-deque 0.8.7               MIT OR Apache-2.0                                    B,C,O,S,W[18,42]
-  crossbeam-deque 0.8.8               MIT OR Apache-2.0                                    E,F,H,R,U[SOURCE-a60eea8175145316,SOURCE-5734ed989dfca1f6]
+  crossbeam-deque 0.8.8               MIT OR Apache-2.0                                    E,F,H,R,U,V[SOURCE-a60eea8175145316,SOURCE-5734ed989dfca1f6]
   crossbeam-epoch 0.9.20              MIT OR Apache-2.0                                    B,C,O,S,W[18,42]
-  crossbeam-epoch 0.9.21              MIT OR Apache-2.0                                    E,F,H,R,U[SOURCE-a60eea8175145316,SOURCE-5734ed989dfca1f6]
+  crossbeam-epoch 0.9.21              MIT OR Apache-2.0                                    E,F,H,R,U,V[SOURCE-a60eea8175145316,SOURCE-5734ed989dfca1f6]
   crossbeam-utils 0.8.22              MIT OR Apache-2.0                                    B,C,O,S,W[18,42]
-  crossbeam-utils 0.8.23              MIT OR Apache-2.0                                    E,F,H,R,U[SOURCE-a60eea8175145316,SOURCE-5734ed989dfca1f6]
+  crossbeam-utils 0.8.23              MIT OR Apache-2.0                                    E,F,H,R,U,V[SOURCE-a60eea8175145316,SOURCE-5734ed989dfca1f6]
   crypto-bigint 0.5.5                 Apache-2.0 OR MIT                                    O,S,W [7,43]
   crypto-common 0.1.7                 MIT OR Apache-2.0                                    B,C,E,F,O,P,S,W[7,44]
   ctr 0.9.2                           MIT OR Apache-2.0                                    O,S,W [7,45]
@@ -535,7 +533,7 @@ permissive one is taken; no copyleft branch is taken.
   ed25519 2.2.3                       Apache-2.0 OR MIT                                    O,S,W [54,56]
   ed25519-dalek 2.2.0                 BSD-3-Clause                                         O,S,W [57]
   either 1.17.0                       MIT OR Apache-2.0                                    B,C,O,S,W[18,58]
-  either 1.19.0                       MIT OR Apache-2.0                                    E,F,H,R,U[SOURCE-a60eea8175145316,SOURCE-7576269ea71f767b]
+  either 1.19.0                       MIT OR Apache-2.0                                    E,F,H,R,U,V[SOURCE-a60eea8175145316,SOURCE-7576269ea71f767b]
   elliptic-curve 0.13.8               Apache-2.0 OR MIT                                    O,S,W [7,59]
   equivalent 1.0.2                    Apache-2.0 OR MIT                                    B,C,O,S,W[18,60]
   equivalent 1.0.3                    Apache-2.0 OR MIT                                    E,F   [SOURCE-a60eea8175145316,SOURCE-7365cc8878a1d7ce]
@@ -577,19 +575,19 @@ permissive one is taken; no copyleft branch is taken.
   hyper-util 0.1.21                   MIT                                                  F     [RADAR-DEPS-020]
   iana-time-zone 0.1.65               MIT OR Apache-2.0                                    F,O,S,W[88,89]
   iana-time-zone-haiku 0.1.2          MIT OR Apache-2.0                                    O,S,W [88,89]
-  icu_collections 2.3.0               Unicode-3.0                                          F     [RADAR-DEPS-021]
-  icu_locale_core 2.3.0               Unicode-3.0                                          F     [RADAR-DEPS-021]
-  icu_normalizer 2.3.0                Unicode-3.0                                          F     [RADAR-DEPS-021]
-  icu_normalizer_data 2.3.0           Unicode-3.0                                          F     [RADAR-DEPS-021]
-  icu_properties 2.3.0                Unicode-3.0                                          F     [RADAR-DEPS-021]
-  icu_properties_data 2.3.0           Unicode-3.0                                          F     [RADAR-DEPS-021]
-  icu_provider 2.3.1                  Unicode-3.0                                          F     [RADAR-DEPS-021]
+  icu_collections 2.4.0               Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
+  icu_locale_core 2.4.0               Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
+  icu_normalizer 2.4.0                Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
+  icu_normalizer_data 2.4.0           Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
+  icu_properties 2.4.0                Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
+  icu_properties_data 2.4.0           Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
+  icu_provider 2.4.0                  Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
   idna 1.1.0                          MIT OR Apache-2.0                                    F     [RADAR-DEPS-001,RADAR-DEPS-022]
   idna_adapter 1.2.2                  Apache-2.0 OR MIT                                    F     [RADAR-DEPS-001,RADAR-DEPS-023]
   image 0.25.10                       MIT OR Apache-2.0                                    O,S,W [62,63]
   inout 0.1.4                         MIT OR Apache-2.0                                    O,S,W [7,90]
   ipnet 2.12.2                        MIT OR Apache-2.0                                    F     [RADAR-DEPS-025,RADAR-DEPS-026]
-  itoa 1.0.18                         MIT OR Apache-2.0                                    B,C,E,F,H,O,P,R,S,U,W[2,16]
+  itoa 1.0.18                         MIT OR Apache-2.0                                    B,C,E,F,H,O,P,R,S,U,V,W[2,16]
   js-sys 0.3.103                      MIT OR Apache-2.0                                    O,S,W [18,33]
   lazy_static 1.5.0                   MIT OR Apache-2.0                                    O,S,W [18,91]
   libc 0.2.189                        MIT OR Apache-2.0                                    B,C,O,S,W[16,92]
@@ -604,8 +602,9 @@ permissive one is taken; no copyleft branch is taken.
   lru 0.16.4                          MIT                                                  B,C,E,F,O,S,W[96]
   lz4_flex 0.11.6                     MIT                                                  B,C,E,F,O,S,W[97]
   matrixmultiply 0.3.11               MIT/Apache-2.0                                       B,C,E,F,O,S,W[18,98]
-  memchr 2.8.3                        Unlicense OR MIT                                     B,C,E,F,H,O,P,R,S,U,W[29,30]
-  memmap2 0.9.11                      MIT OR Apache-2.0                                    B,C,E,F,O,S,W[99,100]
+  memchr 2.8.3                        Unlicense OR MIT                                     B,C,E,F,H,O,P,R,S,U,V,W[29,30]
+  memmap2 0.9.11                      MIT OR Apache-2.0                                    B,C,E,O,S,W[99,100]
+  memmap2 0.9.12                      MIT OR Apache-2.0                                    F     [SOURCE-04ea4849dba9dcae,SOURCE-0d25d03b5ab49576]
   metrust 0.3.11                      MIT                                                  O,S,W
   metrust 0.3.9                       MIT                                                  O,S,W
   miniz_oxide 0.8.9                   MIT OR Zlib OR Apache-2.0                            B,C,F,O,S,W[62,101,102,103]
@@ -654,8 +653,8 @@ permissive one is taken; no copyleft branch is taken.
   rand_core 0.6.4                     MIT OR Apache-2.0                                    O,S,W [124,126]
   rawpointer 0.2.1                    MIT/Apache-2.0                                       B,C,E,F,O,S,W[18,58]
   rayon 1.10.0                        MIT OR Apache-2.0                                    R     [SOURCE-a60eea8175145316,SOURCE-0621878e61f0d0fd]
-  rayon 1.12.0                        MIT OR Apache-2.0                                    B,C,E,F,H,O,S,U,W[18,91]
-  rayon-core 1.13.0                   MIT OR Apache-2.0                                    B,C,E,F,H,O,R,S,U,W[18,91]
+  rayon 1.12.0                        MIT OR Apache-2.0                                    B,C,E,F,H,O,S,U,V,W[18,91]
+  rayon-core 1.13.0                   MIT OR Apache-2.0                                    B,C,E,F,H,O,R,S,U,V,W[18,91]
   redox_syscall 0.5.18                MIT                                                  B,C,O,S,W[127]
   regex 1.13.1                        MIT OR Apache-2.0                                    F     [SOURCE-a60eea8175145316,SOURCE-6485b8ed310d3f03]
   regex-automata 0.4.18               MIT OR Apache-2.0                                    F     [SOURCE-a60eea8175145316,SOURCE-6485b8ed310d3f03]
@@ -672,17 +671,17 @@ permissive one is taken; no copyleft branch is taken.
   rustls-rustcrypto 0.0.2-alpha       MIT OR Apache-2.0                                    O,S,W [7,136]
   rustls-webpki 0.102.8               ISC                                                  O,S,W [137]
   rustls-webpki 0.103.13              ISC                                                  O,S,W [137]
-  rustls-webpki 0.103.15              ISC                                                  F     [SOURCE-5b698ca13897be3a]
+  rustls-webpki 0.103.16              ISC                                                  F     [SOURCE-5b698ca13897be3a]
   rusttype 0.9.3                      MIT / Apache-2.0                                     O,S,W [138,139]
   ryu 1.0.23                          Apache-2.0 OR BSL-1.0                                F,R   [RADAR-DEPS-011,RADAR-DEPS-047]
   scopeguard 1.2.0                    MIT OR Apache-2.0                                    B,C,E,F,O,S,W[18,140]
   sec1 0.7.3                          Apache-2.0 OR MIT                                    O,S,W [7,141]
   serde 1.0.218                       MIT OR Apache-2.0                                    R     [SOURCE-62c7a1e35f564068,SOURCE-23f18e03dc49df91]
   serde 1.0.229                       MIT OR Apache-2.0                                    B,C,E,F,H,O,P,S,W[2,16]
-  serde_core 1.0.229                  MIT OR Apache-2.0                                    B,C,E,F,H,O,P,S,U,W[2,16]
+  serde_core 1.0.229                  MIT OR Apache-2.0                                    B,C,E,F,H,O,P,S,U,V,W[2,16]
   serde_json 1.0.140                  MIT OR Apache-2.0                                    R     [SOURCE-62c7a1e35f564068,SOURCE-23f18e03dc49df91]
-  serde_json 1.0.151                  MIT OR Apache-2.0                                    B,C,F,O,P,S,W[2,16]
-  serde_json 1.0.154                  MIT OR Apache-2.0                                    E,H,U [SOURCE-62c7a1e35f564068,SOURCE-23f18e03dc49df91]
+  serde_json 1.0.151                  MIT OR Apache-2.0                                    B,C,O,P,S,W[2,16]
+  serde_json 1.0.154                  MIT OR Apache-2.0                                    E,F,H,U,V[SOURCE-62c7a1e35f564068,SOURCE-23f18e03dc49df91]
   serde_urlencoded 0.7.1              MIT/Apache-2.0                                       F     [RADAR-DEPS-011,RADAR-DEPS-048]
   sha2 0.10.9                         MIT OR Apache-2.0                                    B,C,E,F,O,P,S,W[7,142]
   shapefile 0.7.0                     MIT                                                  O,S,W [47]
@@ -690,7 +689,8 @@ permissive one is taken; no copyleft branch is taken.
   simd-adler32 0.3.10                 MIT                                                  B,C,E,F,O,S,W[145]
   slab 0.4.12                         MIT                                                  F,O,S,W[146]
   smallvec 1.15.2                     MIT OR Apache-2.0                                    B,C,O,S,W[18,147]
-  smallvec 1.16.3                     MIT OR Apache-2.0                                    E,F   [SOURCE-a60eea8175145316,SOURCE-0b28172679e0009b]
+  smallvec 1.16.3                     MIT OR Apache-2.0                                    E     [SOURCE-a60eea8175145316,SOURCE-0b28172679e0009b]
+  smallvec 1.16.4                     MIT OR Apache-2.0                                    F     [SOURCE-a60eea8175145316,SOURCE-0b28172679e0009b]
   socket2 0.6.5                       MIT OR Apache-2.0                                    F     [RADAR-DEPS-001,RADAR-DEPS-049]
   spin 0.9.9                          MIT                                                  O,S,W [148]
   spki 0.7.3                          Apache-2.0 OR MIT                                    O,S,W [7,116]
@@ -702,8 +702,8 @@ permissive one is taken; no copyleft branch is taken.
   thiserror 2.0.21                    MIT OR Apache-2.0                                    E,F   [SOURCE-62c7a1e35f564068,SOURCE-23f18e03dc49df91]
   time 0.3.54                         MIT OR Apache-2.0                                    O,S,W [62,152]
   time-core 0.1.9                     MIT OR Apache-2.0                                    O,S,W [62,152]
-  tinystr 0.8.4                       Unicode-3.0                                          F     [RADAR-DEPS-021]
-  tokio 1.53.3                        MIT                                                  F     [SOURCE-253cd04c6714889d]
+  tinystr 0.8.5                       Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
+  tokio 1.54.1                        MIT                                                  F     [SOURCE-253cd04c6714889d]
   tokio-rustls 0.26.6                 MIT OR Apache-2.0                                    F     [RADAR-DEPS-056,RADAR-DEPS-057]
   tower 0.5.3                         MIT                                                  F     [RADAR-DEPS-058]
   tower-http 0.6.11                   MIT                                                  F     [RADAR-DEPS-059]
@@ -744,15 +744,15 @@ permissive one is taken; no copyleft branch is taken.
   wx-math 0.3.6                       MIT                                                  O,S,W
   wx-radar 0.3.6                      MIT                                                  O,S,W
   x25519-dalek 2.0.1                  BSD-3-Clause                                         O,S,W [170]
-  yoke 0.8.3                          Unicode-3.0                                          F     [RADAR-DEPS-021]
+  yoke 0.8.4                          Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
   zerocopy 0.8.55                     BSD-2-Clause OR Apache-2.0 OR MIT                    O,S,W [171,172,173]
   zerofrom 0.1.8                      Unicode-3.0                                          F     [RADAR-DEPS-021]
   zeroize 1.9.0                       Apache-2.0 OR MIT                                    O,S,W [174,175]
   zeroize 1.9.1                       Apache-2.0 OR MIT                                    F     [SOURCE-cfc7749b96f63bd3,SOURCE-8c7516d4b27b1e49]
   zerotrie 0.2.5                      Unicode-3.0                                          F     [RADAR-DEPS-021]
-  zerovec 0.11.8                      Unicode-3.0                                          F     [RADAR-DEPS-021]
-  zlib-rs 0.6.8                       Zlib                                                 B,C,S,W[RADAR-DEPS-068]
-  zmij 1.0.23                         MIT                                                  B,C,E,F,H,O,P,S,U,W[2]
+  zerovec 0.11.9                      Unicode-3.0                                          F     [SOURCE-f367c1b8e1aa2624]
+  zlib-rs 0.6.8                       Zlib                                                 B,C,F,O,S,W[RADAR-DEPS-068]
+  zmij 1.0.23                         MIT                                                  B,C,E,F,H,O,P,S,U,V,W[2]
   zstd 0.13.3                         MIT                                                  B,C,E,F,O,S,W[177]
   zstd-safe 7.2.4                     MIT OR Apache-2.0                                    B,C,E,O,S,W[62,177,178]
   zstd-safe 7.3.0                     BSD-3-Clause                                         F     [SOURCE-ce4868c8e4ebe47a]
@@ -800,13 +800,13 @@ macros and what they alone need):
   zerocopy-derive 0.8.55
   zerofrom-derive 0.1.8
   zeroize_derive 1.5.0
-  zerovec-derive 0.11.6
+  zerovec-derive 0.11.7
 
 ==============================================================================
 4.  RUST CRATES -- LICENCE TEXTS
 ------------------------------------------------------------------------------
 
-242 distinct texts.  Each is headed by the crates here that carried it
+245 distinct texts.  Each is headed by the crates here that carried it
 and the SHA-256 of the file as the crate vendored it.
 
 ------------------------------------------------------------------------------
@@ -13184,7 +13184,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[RADAR-DEPS-021]  as carried by: icu_collections 2.3.0, icu_locale_core 2.3.0, icu_normalizer 2.3.0, icu_normalizer_data 2.3.0, icu_properties 2.3.0, icu_properties_data 2.3.0, icu_provider 2.3.1, litemap 0.8.3, potential_utf 0.1.6, tinystr 0.8.4, writeable 0.6.4, yoke 0.8.3, zerofrom 0.1.8, zerotrie 0.2.5, zerovec 0.11.8
+[RADAR-DEPS-021]  as carried by: litemap 0.8.3, potential_utf 0.1.6, writeable 0.6.4, zerofrom 0.1.8, zerotrie 0.2.5
      sha256 f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2
 ------------------------------------------------------------------------------
 UNICODE LICENSE V3
@@ -14781,6 +14781,212 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
+[SOURCE-04ea4849dba9dcae]  as carried by: memmap2 0.9.12
+     sha256 04ea4849dba9dcae07113850c6f1b1a69052c625210639914eee352023f750ad
+------------------------------------------------------------------------------
+                              Apache License
+                        Version 2.0, January 2004
+                     http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+   "License" shall mean the terms and conditions for use, reproduction,
+   and distribution as defined by Sections 1 through 9 of this document.
+
+   "Licensor" shall mean the copyright owner or entity authorized by
+   the copyright owner that is granting the License.
+
+   "Legal Entity" shall mean the union of the acting entity and all
+   other entities that control, are controlled by, or are under common
+   control with that entity. For the purposes of this definition,
+   "control" means (i) the power, direct or indirect, to cause the
+   direction or management of such entity, whether by contract or
+   otherwise, or (ii) ownership of fifty percent (50%) or more of the
+   outstanding shares, or (iii) beneficial ownership of such entity.
+
+   "You" (or "Your") shall mean an individual or Legal Entity
+   exercising permissions granted by this License.
+
+   "Source" form shall mean the preferred form for making modifications,
+   including but not limited to software source code, documentation
+   source, and configuration files.
+
+   "Object" form shall mean any form resulting from mechanical
+   transformation or translation of a Source form, including but
+   not limited to compiled object code, generated documentation,
+   and conversions to other media types.
+
+   "Work" shall mean the work of authorship, whether in Source or
+   Object form, made available under the License, as indicated by a
+   copyright notice that is included in or attached to the work
+   (an example is provided in the Appendix below).
+
+   "Derivative Works" shall mean any work, whether in Source or Object
+   form, that is based on (or derived from) the Work and for which the
+   editorial revisions, annotations, elaborations, or other modifications
+   represent, as a whole, an original work of authorship. For the purposes
+   of this License, Derivative Works shall not include works that remain
+   separable from, or merely link (or bind by name) to the interfaces of,
+   the Work and Derivative Works thereof.
+
+   "Contribution" shall mean any work of authorship, including
+   the original version of the Work and any modifications or additions
+   to that Work or Derivative Works thereof, that is intentionally
+   submitted to Licensor for inclusion in the Work by the copyright owner
+   or by an individual or Legal Entity authorized to submit on behalf of
+   the copyright owner. For the purposes of this definition, "submitted"
+   means any form of electronic, verbal, or written communication sent
+   to the Licensor or its representatives, including but not limited to
+   communication on electronic mailing lists, source code control systems,
+   and issue tracking systems that are managed by, or on behalf of, the
+   Licensor for the purpose of discussing and improving the Work, but
+   excluding communication that is conspicuously marked or otherwise
+   designated in writing by the copyright owner as "Not a Contribution."
+
+   "Contributor" shall mean Licensor and any individual or Legal Entity
+   on behalf of whom a Contribution has been received by Licensor and
+   subsequently incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of
+   this License, each Contributor hereby grants to You a perpetual,
+   worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+   copyright license to reproduce, prepare Derivative Works of,
+   publicly display, publicly perform, sublicense, and distribute the
+   Work and such Derivative Works in Source or Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of
+   this License, each Contributor hereby grants to You a perpetual,
+   worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+   (except as stated in this section) patent license to make, have made,
+   use, offer to sell, sell, import, and otherwise transfer the Work,
+   where such license applies only to those patent claims licensable
+   by such Contributor that are necessarily infringed by their
+   Contribution(s) alone or by combination of their Contribution(s)
+   with the Work to which such Contribution(s) was submitted. If You
+   institute patent litigation against any entity (including a
+   cross-claim or counterclaim in a lawsuit) alleging that the Work
+   or a Contribution incorporated within the Work constitutes direct
+   or contributory patent infringement, then any patent licenses
+   granted to You under this License for that Work shall terminate
+   as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the
+   Work or Derivative Works thereof in any medium, with or without
+   modifications, and in Source or Object form, provided that You
+   meet the following conditions:
+
+   (a) You must give any other recipients of the Work or
+       Derivative Works a copy of this License; and
+
+   (b) You must cause any modified files to carry prominent notices
+       stating that You changed the files; and
+
+   (c) You must retain, in the Source form of any Derivative Works
+       that You distribute, all copyright, patent, trademark, and
+       attribution notices from the Source form of the Work,
+       excluding those notices that do not pertain to any part of
+       the Derivative Works; and
+
+   (d) If the Work includes a "NOTICE" text file as part of its
+       distribution, then any Derivative Works that You distribute must
+       include a readable copy of the attribution notices contained
+       within such NOTICE file, excluding those notices that do not
+       pertain to any part of the Derivative Works, in at least one
+       of the following places: within a NOTICE text file distributed
+       as part of the Derivative Works; within the Source form or
+       documentation, if provided along with the Derivative Works; or,
+       within a display generated by the Derivative Works, if and
+       wherever such third-party notices normally appear. The contents
+       of the NOTICE file are for informational purposes only and
+       do not modify the License. You may add Your own attribution
+       notices within Derivative Works that You distribute, alongside
+       or as an addendum to the NOTICE text from the Work, provided
+       that such additional attribution notices cannot be construed
+       as modifying the License.
+
+   You may add Your own copyright statement to Your modifications and
+   may provide additional or different license terms and conditions
+   for use, reproduction, or distribution of Your modifications, or
+   for any such Derivative Works as a whole, provided Your use,
+   reproduction, and distribution of the Work otherwise complies with
+   the conditions stated in this License.
+
+5. Submission of Contributions. Unless You explicitly state otherwise,
+   any Contribution intentionally submitted for inclusion in the Work
+   by You to the Licensor shall be under the terms and conditions of
+   this License, without any additional terms or conditions.
+   Notwithstanding the above, nothing herein shall supersede or modify
+   the terms of any separate license agreement you may have executed
+   with Licensor regarding such Contributions.
+
+6. Trademarks. This License does not grant permission to use the trade
+   names, trademarks, service marks, or product names of the Licensor,
+   except as required for reasonable and customary use in describing the
+   origin of the Work and reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or
+   agreed to in writing, Licensor provides the Work (and each
+   Contributor provides its Contributions) on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+   implied, including, without limitation, any warranties or conditions
+   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+   PARTICULAR PURPOSE. You are solely responsible for determining the
+   appropriateness of using or redistributing the Work and assume any
+   risks associated with Your exercise of permissions under this License.
+
+8. Limitation of Liability. In no event and under no legal theory,
+   whether in tort (including negligence), contract, or otherwise,
+   unless required by applicable law (such as deliberate and grossly
+   negligent acts) or agreed to in writing, shall any Contributor be
+   liable to You for damages, including any direct, indirect, special,
+   incidental, or consequential damages of any character arising as a
+   result of this License or out of the use or inability to use the
+   Work (including but not limited to damages for loss of goodwill,
+   work stoppage, computer failure or malfunction, or any and all
+   other commercial damages or losses), even if such Contributor
+   has been advised of the possibility of such damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing
+   the Work or Derivative Works thereof, You may choose to offer,
+   and charge a fee for, acceptance of support, warranty, indemnity,
+   or other liability obligations and/or rights consistent with this
+   License. However, in accepting such obligations, You may act only
+   on Your own behalf and on Your sole responsibility, not on behalf
+   of any other Contributor, and only if You agree to indemnify,
+   defend, and hold each Contributor harmless for any liability
+   incurred by, or claims asserted against, such Contributor by reason
+   of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+
+APPENDIX: How to apply the Apache License to your work.
+
+   To apply the Apache License to your work, attach the following
+   boilerplate notice, with the fields enclosed by brackets "[]"
+   replaced with your own identifying information. (Don't include
+   the brackets!)  The text should be enclosed in the appropriate
+   comment syntax for the file format. We also recommend that a
+   file or class name and description of purpose be included on the
+   same "printed page" as the copyright notice for easier
+   identification within third-party archives.
+
+Copyright [2015] [Dan Burkert]
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+------------------------------------------------------------------------------
 [SOURCE-0621878e61f0d0fd]  as carried by: rayon 1.10.0
      sha256 0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720
 ------------------------------------------------------------------------------
@@ -14854,10 +15060,41 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 ------------------------------------------------------------------------------
-[SOURCE-0b28172679e0009b]  as carried by: smallvec 1.16.3
+[SOURCE-0b28172679e0009b]  as carried by: smallvec 1.16.3, smallvec 1.16.4
      sha256 0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9
 ------------------------------------------------------------------------------
 Copyright (c) 2018 The Servo Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------------
+[SOURCE-0d25d03b5ab49576]  as carried by: memmap2 0.9.12
+     sha256 0d25d03b5ab49576178ad0cae7a2648d12c17ad0452fe49c07e55e4b59aa5257
+------------------------------------------------------------------------------
+Copyright (c) 2020 Yevhenii Reizner
+Copyright (c) 2015 Dan Burkert
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -15394,7 +15631,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[SOURCE-253cd04c6714889d]  as carried by: tokio 1.53.3
+[SOURCE-253cd04c6714889d]  as carried by: tokio 1.54.1
      sha256 253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552
 ------------------------------------------------------------------------------
 MIT License
@@ -15777,7 +16014,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[SOURCE-5b698ca13897be3a]  as carried by: rustls-webpki 0.103.15
+[SOURCE-5b698ca13897be3a]  as carried by: rustls-webpki 0.103.16
      sha256 5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a
 ------------------------------------------------------------------------------
 Except as otherwise noted, this project is licensed under the following
@@ -15801,7 +16038,7 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 
 ------------------------------------------------------------------------------
-[SOURCE-61d383b05b87d78f]  as carried by: crc32fast 1.5.2
+[SOURCE-61d383b05b87d78f]  as carried by: crc32fast 1.5.2, crc32fast 1.5.3
      sha256 61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf
 ------------------------------------------------------------------------------
 MIT License
@@ -16262,7 +16499,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[SOURCE-a60eea8175145316]  as carried by: bitflags 2.13.2, cfg-if 1.0.5, crossbeam-deque 0.8.8, crossbeam-epoch 0.9.21, crossbeam-utils 0.8.23, either 1.19.0, equivalent 1.0.3, flate2 1.1.10, log 0.4.34, rayon 1.10.0, regex 1.13.1, regex-automata 0.4.18, regex-syntax 0.8.11, rustix 1.1.5, rustls 0.23.46, smallvec 1.16.3
+[SOURCE-a60eea8175145316]  as carried by: bitflags 2.13.2, cfg-if 1.0.5, crossbeam-deque 0.8.8, crossbeam-epoch 0.9.21, crossbeam-utils 0.8.23, either 1.19.0, equivalent 1.0.3, flate2 1.1.10, log 0.4.34, rayon 1.10.0, regex 1.13.1, regex-automata 0.4.18, regex-syntax 0.8.11, rustix 1.1.5, rustls 0.23.46, smallvec 1.16.3, smallvec 1.16.4
      sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
 ------------------------------------------------------------------------------
                               Apache License
@@ -16692,7 +16929,7 @@ the License, but only in their entirety and only with respect to the Combined
 Software.
 
 ------------------------------------------------------------------------------
-[SOURCE-b40930bbcf80744c]  as carried by: crc32fast 1.5.2
+[SOURCE-b40930bbcf80744c]  as carried by: crc32fast 1.5.2, crc32fast 1.5.3
      sha256 b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1
 ------------------------------------------------------------------------------
                                  Apache License
@@ -17173,6 +17410,57 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+------------------------------------------------------------------------------
+[SOURCE-f367c1b8e1aa2624]  as carried by: icu_collections 2.4.0, icu_locale_core 2.4.0, icu_normalizer 2.4.0, icu_normalizer_data 2.4.0, icu_properties 2.4.0, icu_properties_data 2.4.0, icu_provider 2.4.0, tinystr 0.8.5, yoke 0.8.4, zerovec 0.11.9
+     sha256 f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2
+------------------------------------------------------------------------------
+UNICODE LICENSE V3
+
+COPYRIGHT AND PERMISSION NOTICE
+
+Copyright © 2020-2024 Unicode, Inc.
+
+NOTICE TO USER: Carefully read the following legal agreement. BY
+DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING DATA FILES, AND/OR
+SOFTWARE, YOU UNEQUIVOCALLY ACCEPT, AND AGREE TO BE BOUND BY, ALL OF THE
+TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT
+DOWNLOAD, INSTALL, COPY, DISTRIBUTE OR USE THE DATA FILES OR SOFTWARE.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of data files and any associated documentation (the "Data Files") or
+software and any associated documentation (the "Software") to deal in the
+Data Files or Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, and/or sell
+copies of the Data Files or Software, and to permit persons to whom the
+Data Files or Software are furnished to do so, provided that either (a)
+this copyright and permission notice appear with all copies of the Data
+Files or Software, or (b) this copyright and permission notice appear in
+associated Documentation.
+
+THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+THIRD PARTY RIGHTS.
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS NOTICE
+BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES,
+OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
+FILES OR SOFTWARE.
+
+Except as contained in this notice, the name of a copyright holder shall
+not be used in advertising or otherwise to promote the sale, use or other
+dealings in these Data Files or Software without prior written
+authorization of the copyright holder.
+
+SPDX-License-Identifier: Unicode-3.0
+
+—
+
+Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
+ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
 
 ------------------------------------------------------------------------------
 [SOURCE-f59bcb1c02654665]  as carried by: twox-hash 2.1.5

@@ -146,7 +146,7 @@ by omission.
 - Distribution and command: `woof hex`. Import namespace: `woof.hex`,
   renamed from `mpas_port` at 0.2.0 and settled there (README, *The import
   namespace*). There is no alias shim.
-- Engine range: `woof>=2.9.4,<2.10` is what pip enforces, inside the 2.9
+- Engine range: `gpuwm>=2.9.12,<2.10` is what pip enforces, inside the 2.9
   minor, derived from a measured table in `woof.hex.engine_pin` rather than
   typed. The floor is the engine whose bytes this release measured against
   the sixteen-file seam manifest; an engine inside the minor whose radiation

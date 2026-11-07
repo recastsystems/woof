@@ -5,7 +5,7 @@ process has fewer active contexts than the host has cores, which is every
 WOOF run.  So a GPU-bound forecast held one host core at 100 % for its whole
 step loop while the card did the work: every ``synchronize``, ``.get()``,
 event wait and ``cudaFree`` busy-polled.  Measured on an RTX 5070 Ti host (
-woof 2.9.8, a 3 km GFS nest forecast, card at 100 %): the forecast's main
+gpuwm 2.9.8, a 3 km GFS nest forecast, card at 100 %): the forecast's main
 thread sat at 99.9 % of one core, ``perf`` put 67 % of it in libcuda, 16 % in
 the kernel (``sched_yield``) and 5 % in the vDSO clock -- the spin loop.  On
 a box running many members or ranks per host (mass ensembles, co-resident
@@ -135,6 +135,13 @@ def apply(*, environ: Any = None, driver: Any = None) -> dict[int, str]:
     mode = requested(environ)
     if mode == "auto":
         return {}
+    from woof.gpu_smi import is_amd
+    if driver is None and is_amd():
+        from woof.hip_runtime import wait_mode
+        result = wait_mode(mode)
+        with _lock:
+            _applied.update(result)
+        return result
     cu = driver if driver is not None else _load_driver()
     if cu is None:
         return {}

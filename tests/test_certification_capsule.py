@@ -482,7 +482,7 @@ def test_the_digest_is_computed_after_the_final_sync_and_the_writer_drain():
 
     # run_experiment delegates ordinary singles to integrate_prepared_case,
     # and both adaptive singles and domain trees to _run_built_experiment.
-    # Since the simulated-radar merge (lane/284-simradar, e4d945f49, merged
+    # Since the simulated-radar merge (development branch, e4d945f49, merged
     # at 794dafd16) the single arm hands integrate_prepared_case to
     # woof.simulated_radar.run_with_radar as its runner rather than calling
     # it by name.  The wrapper only calls it; its radar thread reads history

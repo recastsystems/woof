@@ -966,7 +966,7 @@ class AnalysisInitialization:
         # What apply_door_plan reads from the door's files (the increment split; on a restart start, the rebuilt
         # background's dycore fields for the background match), read on a host thread from here, beside the
         # model's construction and the restore, instead of on the stepping thread after them.  Breakage it
-        # prevents (single-core law, 2026-10-29: DA member legs on woof 2.9.9
+        # prevents (single-core law, 2026-10-29: DA member legs on gpuwm 2.9.9
         # spent ~26 s at ~1 core before the engine started; the split's npz read and the background's decode
         # were two of the serial reads).  The same functions read the same files; a failure is raised where the
         # read used to be.

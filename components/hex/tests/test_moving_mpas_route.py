@@ -193,3 +193,11 @@ def test_the_controller_reads_the_mpas_route_receipt(tmp_path):
     out = Controller.segment_receipt(None, tmp_path)
     assert out["control"] == control and out["route"] == "mpas-suite"
     assert out["conservation"] == {"mass": 1e-12} and out["physics_carry"] == {"role_mismatch_cells": 4}
+
+
+@pytest.mark.parametrize("name", ["GPUWM_HEX_MOVING_ANALYSIS", "GPUWM_HEX_MOVING_BACKGROUND"])
+def test_mpas_route_never_silently_ignores_moving_analysis(name):
+    from woof.hex.fullstep_lts_admission import MOVING_ROUTE_REFUSAL
+    with pytest.raises(ValueError, match='analysis insertion') as error:
+        mv.MovingRoute.from_environ(SimpleNamespace(), {name:'request.json'})
+    assert str(error.value).startswith(MOVING_ROUTE_REFUSAL)

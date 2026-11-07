@@ -51,6 +51,8 @@ def assigned_cards(monkeypatch, tmp_path):
     cupy = ModuleType("cupy")
     cupy.cuda = cuda
     cupy.__version__ = "test runtime"
+    # Array ownership now goes through the shared CPU/CUDA/HIP dispatcher.
+    monkeypatch.setattr("woof.backend.array_module", lambda: cupy)
     monkeypatch.setitem(sys.modules, "cupy", cupy)
     monkeypatch.setitem(sys.modules, "cupy.cuda", cuda)
     monkeypatch.setitem(sys.modules, "cupy.cuda.nvrtc", nvrtc)

@@ -35,8 +35,12 @@ def ocean_namelist_defaults():
 
 def drop_inert_ocean(values):
     if not values.get("sf_ocean_physics", 0):
+        active = ({name: values[name] for name in
+                   ("ocean_analysis", "ocean_analysis_source", "ocean_levels")
+                   if name in values} if values.get("ocean_analysis") else {})
         for name in ("sf_ocean_physics", "ocean_levels", "ocean_analysis", "ocean_analysis_source", "ocean_mld_climatology", "omdt", "ocean_z", "ocean_t", "ocean_s", *ocean_namelist_defaults()):
             values.pop(name, None)
+        values.update(active)
 
 def validate_pwp_profile(cfg):
     """Check configuration metadata before allocating the ocean device state."""

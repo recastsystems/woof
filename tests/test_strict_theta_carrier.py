@@ -56,3 +56,28 @@ def test_default_mode_leaves_the_prepared_state_alone(monkeypatch):
     assert state.thp.tobytes() == thp.tobytes()
     assert not hasattr(state, "_setup_thb")
     assert setup_core_fingerprint(state) == fingerprint
+
+
+def test_moist_previous_thermal_carrier_survives_rebasing(monkeypatch):
+    monkeypatch.setattr(wrf_exact, "ENABLED", True)
+    state = _prepared_like_state()
+    state.use_theta_m = 1
+    state.thp0 = state.thp + np.float32(2.0)
+    previous = (state.thb + state.thp0) - np.float32(300.0)
+    adopt_wrf_theta_carrier(state)
+    np.testing.assert_array_equal(state.thp0.view(np.uint32), previous.view(np.uint32))
+    assert not np.array_equal(state.thp0, state.thp)
+
+
+def test_previous_thermal_is_carried_only_for_moist_theta():
+    from woof.io.restart import classify_state_attr
+    from woof.state_serialization_contract import serialized_state_attrs
+    from woof.core.preflight import shared_dycore_state_symbols
+    dry = SimpleNamespace(use_theta_m=0)
+    moist = SimpleNamespace(use_theta_m=1)
+    assert classify_state_attr("thp0", dry) == "rebuild"
+    assert classify_state_attr("thp0", moist) == "serialize"
+    assert "thp0" not in serialized_state_attrs(dry)
+    assert "thp0" in serialized_state_attrs(moist)
+    assert "thp0" in shared_dycore_state_symbols(dry)
+    assert "thp0" not in shared_dycore_state_symbols(moist)

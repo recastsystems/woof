@@ -31,8 +31,8 @@ renormalized outflow, in cells the limiter already drove to ~0) at zero,
 which perturbs total scalar mass far below the 1e-6 relative conservation
 gate.
 
-Thermodynamics (ARW Tech Note ch. 2; dry-theta prognostic, WRF
-``use_theta_m=0`` style): the EOS diagnostics use ``theta_m = theta *
+Thermodynamics (ARW Tech Note ch. 2): the default dry-theta prognostic
+(``use_theta_m=0``) forms the EOS variable ``theta_m = theta *
 (1 + Rv/Rd*qv)`` (diagnostics.cu; the ratio comes from the constants), the
 w-equation buoyancy takes WRF's full moist ``pg_buoy_w`` form -- the
 ``1/(1+q_tot)`` factor on the vertical p' gradient plus the hydrometeor/
@@ -41,6 +41,9 @@ vapor loading ``-q_tot/(1+q_tot)*(c1f*mub+c2f)`` with ``q_tot = qv+qc+qr``
 theta_m through the moist pressure in ``c2a = gamma*p/alpha``.  The
 linearized-EOS ratios ``(mu*theta)''/theta_ref`` remain invariant under the
 per-cell ``(1 + Rv/Rd*qv)`` factor while qv is frozen over the substeps.
+With ``use_theta_m=1``, the selected thermal carrier already is theta_m;
+pressure uses it directly, and physics receives dry theta. The acoustic
+operators transport the selected carrier and retain the same water loading.
 
 The acoustic path also matches WRF ``calc_cq`` each RK stage: ``cqu`` and
 ``cqv`` scale the horizontal acoustic pressure gradients, while ``cqw``
@@ -76,14 +79,15 @@ import numpy as np
 from woof.config import RunConfig
 from woof.wrf_exact import ENABLED as WRF_EXACT
 from woof.core import constants as c
-from woof.core.advection import launch_flux_div_scalar, vertical_orders
+from woof.core.advection import launch_flux_div_scalar, vertical_orders, scalar_horizontal_order
 from woof.core.grid import BaseState, VerticalCoord
 from woof.grid_requirements import FIFTH_ORDER_STENCIL_AXIS
-from woof.core.kernels import get_kernel
+from woof.core.kernels import get_kernel, get_kernel_int_defines
 from woof.microphysics_schemes import scheme_for_state as _named_scheme_for_state
 from woof.core.state import DTYPE, DomainState, init_at_rest
-from woof.core.wdm6_constants import WDM6_NUMBER_SPECIES
+from woof.core.wdm6_constants import WDM6_NUMBER_SPECIES, WDM_SCHEMES
 from woof.core import tke_budget
+from woof.core.passive_tracer_contract import TRACER_NAMES, TR17_NAMES
 
 _TPB = 128  # threads per block along i (i fastest)
 
@@ -184,6 +188,35 @@ P3_SPECIES = ("qi", "ni", "nr", "qir", "qib")
 # fields are WRF state, never advected.  One ice mass and no qs/qg, so the
 # arm sits before the generic filter for P3's reason.
 FERRIER_SPECIES = ("qi",)
+# P3 with predicted droplet number (mp=51, Registry.EM_COMMON:3039,
+# ``moist:qv,qc,qr,qi;scalar:qnc,qni,qnr,qir,qib``): the same package plus
+# the cloud droplet number, in WRF's scalar order (qnc first).  ``nc`` is a
+# number moment, so like qni/qnr it stays out of WRF_MOIST_ARRAY_SPECIES,
+# calc_cq and the qtot sum.
+P3_NC_SPECIES = ("qi", "nc", "ni", "nr", "qir", "qib")
+
+#: Every transported scalar a P3 variant may add beyond :data:`P3_SPECIES`,
+#: in WRF's scalar-package order: mp=53 (``p3_1cat_3mom``,
+#: Registry.EM_COMMON:3041, ``scalar:qnc,qni,qnr,qir,qib,qzi``) adds the
+#: prognostic droplet number and the advected three-moment ice moment
+#: (N*Z)**0.5.  The row is woof.config.P3Variant.extra_species.
+P3_VARIANT_EXTRA_SPECIES = ("nc", "qzi", "qi2", "ni2", "qir2", "qib2")
+
+
+def p3_extra_species_present(state) -> tuple[str, ...]:
+    """The P3 variant scalars this (P3) state allocated."""
+    return tuple(name for name in P3_VARIANT_EXTRA_SPECIES
+                 if getattr(state, name, None) is not None)
+# NTU multi-moment (mp=56) transports its four moist masses and the
+# 21-field Registry scalar package (Registry.EM_COMMON:3044); the tuple
+# lives in woof.core.ntu beside the kernel's field table.  Only qi, qs,
+# qg and qh are water mass (WRF_MOIST_ARRAY_SPECIES); every scalar is a
+# number, aerosol, volume or moment mixing ratio.
+from woof.core.ntu import NTU_SPECIES  # noqa: E402
+# Eta Ferrier adv_moist_cond=False: transport qv and total condensate qt.
+# qc, qr and qs retain the previous microphysics partition during dynamics.
+# WRF module_physics_init.F:4491 and solve_em.F:2200.
+ETAMPNEW_SPECIES = ("qt",)
 
 #: The scratch slot holding a zero plane for a moist-array mass species the
 #: active scheme does not allocate.  See :func:`absent_mass_plane`.
@@ -236,7 +269,7 @@ def absent_mass_plane(state) -> cp.ndarray:
 #: took woof's whole transported set for "moisture" would silently turn off
 #: a filter WRF leaves on.
 WRF_MOIST_ARRAY_SPECIES = frozenset(
-    SPECIES + ICE_MASS_SPECIES + ("qh",))
+    SPECIES + ICE_MASS_SPECIES + ("qh", "qi2", "qi3"))
 
 
 def _extra_water_species(state: DomainState) -> tuple[str, ...]:
@@ -262,25 +295,49 @@ def _extra_water_species(state: DomainState) -> tuple[str, ...]:
     Milbrandt-Yau state NSSL's nine-scalar package and advect nine fields
     that do not exist.
 
-    P3 (mp=50) is selected on ``state.qir`` for the same reason: rime mass
+    P3 (mp=50, 51) is selected on ``state.qir`` for the same reason: rime mass
     is allocated by exactly one scheme.  Its arm must also sit before the
     generic filter, because that filter starts from
     :data:`ICE_MASS_SPECIES` and P3 is the first scheme with ``qi`` and no
     ``qs``/``qg`` -- see :data:`P3_SPECIES`.  It is independent of the mp=9
     arm beside it: no state allocates both ``nh`` and ``qir``.
     """
+    if getattr(state, "etanew_restart_state", None) is not None:
+        return ETAMPNEW_SPECIES
     if getattr(state,"fast_sbm_bins",None) is not None:
         from woof.core.fast_sbm_contract import EXTRA_SPECIES
         return EXTRA_SPECIES
+    registered = getattr(state, "_registered_transport_species", ())
+    if registered:
+        return tuple(n for n in registered if n not in SPECIES)
     if getattr(state, "qi", None) is None:
         return ()
+    fields = getattr(state, "_scheme_transport_fields", None)
+    if fields is not None:
+        return fields
     if getattr(state, "qir", None) is not None:
-        return P3_SPECIES
+        if getattr(state, "qi2", None) is not None:
+            from woof.core.p3_tables import P3_TRANSPORT_FIELDS
+            return P3_TRANSPORT_FIELDS[52]
+        return P3_SPECIES + p3_extra_species_present(state)
     if getattr(state, "f_rimef", None) is not None:
         # Ferrier-Aligo: f_rimef is allocated by exactly one scheme.
         return FERRIER_SPECIES
+    # NTU (mp=56) also allocates qh and nh, so it must be told apart
+    # before the Milbrandt-Yau (nh) and NSSL (qh) arms: i3m, the pristine
+    # ice third moment, is allocated by no other scheme.
+    if getattr(state, "i3m", None) is not None:
+        return NTU_SPECIES
     if getattr(state, "nh", None) is not None:
         return MY2_SPECIES
+    # WDM schemes alone allocate ``nn`` (NSSL spells its CCN ``qnn``).
+    # Their Registry scalar package is qnn/qnc/qnr (Registry.EM_COMMON:3030,
+    # :3031, :3035); WDM7's moist package adds one hail mass, so this test must
+    # precede the ``qh`` test that selects NSSL's package -- reversed, a
+    # WDM7 state would be handed NSSL's nine scalars.
+    if getattr(state, "nn", None) is not None:
+        hail = ("qh",) if getattr(state, "qh", None) is not None else ()
+        return tuple(n for n in ICE_MASS_SPECIES if getattr(state, n, None) is not None) + hail + WDM6_NUMBER_SPECIES
     if getattr(state, "qh", None) is not None:
         # Hail mass with NO NSSL number set is the single-moment hail
         # family (mp=24); NSSL alone allocates ``qnh`` beside ``qh``.
@@ -296,12 +353,11 @@ def _extra_water_species(state: DomainState) -> tuple[str, ...]:
         return (named.ice_mass_species + named.moment_species
                 + named.aerosol_species)
     if getattr(state, "nwfa", None) is not None:
-        return ICE_MASS_SPECIES + THOMPSON_AERO_NUMBER_SPECIES
-    # WDM6 alone allocates nn. Its complete Registry scalar package is
-    # qnn/qnc/qnr (Registry.EM_COMMON:3031); the generic Morrison presence
-    # filter below intentionally excludes diagnostic nc and cannot own it.
-    if getattr(state, "nn", None) is not None:
-        return ICE_MASS_SPECIES + WDM6_NUMBER_SPECIES
+        return (ICE_MASS_SPECIES + THOMPSON_AERO_NUMBER_SPECIES
+                + tuple(name for name in ("ng", "qvolg")
+                        if getattr(state, name, None) is not None))
+    if getattr(state, "ccn1_gs", None) is not None:
+        return MORRISON_SPECIES + ("nc",)
     numbers = tuple(name for name in TRANSPORTED_NUMBER_SPECIES
                     if getattr(state, name, None) is not None)
     return tuple(n for n in ICE_MASS_SPECIES
@@ -316,8 +372,10 @@ def extra_moist_species(state: DomainState) -> tuple[str, ...]:
     from woof.core.physics_inventory import PBL_SCALAR_NAMES
     carried = tuple(name for name in PBL_SCALAR_NAMES
                     if getattr(state, name, None) is not None)
+    tracers = tuple(name for name in TRACER_NAMES
+                    if getattr(state, name, None) is not None)
     return _extra_water_species(state) + (
-        ("qke_adv",) if getattr(state, "qke_adv", None) is not None else ()) + carried
+        ("qke_adv",) if getattr(state, "qke_adv", None) is not None else ()) + carried + tracers
 
 
 def moist_species(state: DomainState) -> tuple[str, ...]:
@@ -327,7 +385,9 @@ def moist_species(state: DomainState) -> tuple[str, ...]:
     exposing the exact prognostic mass/number moments carried by the active
     mixed-phase scheme.
     """
-    return tuple(name for name in SPECIES if getattr(state, name, None) is not None) + extra_moist_species(state)
+    if getattr(state, "etanew_restart_state", None) is not None:
+        return ("qv", "qt")
+    return tuple(name for name in getattr(state, "_scheme_base_fields", SPECIES) if getattr(state, name, None) is not None) + extra_moist_species(state)
 
 
 def _mut2d(mu, ny: int, nx: int) -> cp.ndarray:
@@ -340,7 +400,7 @@ def _mut2d(mu, ny: int, nx: int) -> cp.ndarray:
 def launch_pd_fluxes(q, q0, ru, rv, rw, mut, coord, dx, dy, dt,
                      fxl, fxc, fyl, fyc, fzl, fzc,
                      msft=None, has_msf=None,
-                     open_x=False, open_y=False, vorder=3) -> None:
+                     open_x=False, open_y=False, vorder=3, horder=5) -> None:
     """Fill the six PD flux arrays for scalar ``q`` (see pd_advection.cu).
 
     ``q`` is the RK stage estimate (high-order fluxes), ``q0`` the time-t
@@ -362,9 +422,9 @@ def launch_pd_fluxes(q, q0, ru, rv, rw, mut, coord, dx, dy, dt,
     final clamp turned that into mass). Order 3 never loads that kernel.
     """
     nz, ny, nx = q.shape
-    if vorder not in (3, 5):
+    if vorder not in (2, 3, 4, 5, 6):
         raise ValueError(
-            f"vorder must be 3 or 5 (WRF vert_order ladders the PD kernel "
+            f"vorder must be 2, 3, 4, 5 or 6 (WRF vert_order ladders the PD kernel "
             f"carries), got {vorder!r}")
     if open_x and nx < FIFTH_ORDER_STENCIL_AXIS:
         raise ValueError(f"open_x PD advection needs nx >= 7, got {nx}")
@@ -374,7 +434,11 @@ def launch_pd_fluxes(q, q0, ru, rv, rw, mut, coord, dx, dy, dt,
         has_msf = msft is not None
     if msft is None:
         msft = cp.ones((ny, nx), dtype=DTYPE)
-    kern = get_kernel("pd_advection", "pd_fluxes")
+    if horder not in (2, 3, 4, 5, 6):
+        raise ValueError("WRF advect_scalar_pd admits horder 2, 3, 4, 5 or 6")
+    kern = (get_kernel("pd_advection", "pd_fluxes") if horder == 5 else
+            get_kernel_int_defines("pd_advection", "pd_fluxes",
+                                   (("GPUWM_HORDER", int(horder)),)))
     grid = ((nx + 1 + _TPB - 1) // _TPB, ny + 1, nz + 1)
     args = (q, q0, ru, rv, rw, _mut2d(mut, ny, nx),
           cp.asarray(coord.c1h, dtype=DTYPE),
@@ -662,7 +726,8 @@ def _capture_advective_qv_forcing(state: DomainState, tend, mu0, *, cfg=None) ->
     """
     if getattr(state, "rqvften", None) is None:
         return
-    if WRF_EXACT and getattr(cfg, "cu_physics", 0) in (3, 6):
+    if getattr(cfg, "cu_physics", 0) == 16 or (
+            WRF_EXACT and getattr(cfg, "cu_physics", 0) in (3, 6)):
         # WRF set_tend saves each RK stage, including the final PD stage.
         # phy_prep_part2 divides the last coupled value by carried MUTS.
         state.rqvften[...] = (tend * state.msft[None]
@@ -704,6 +769,11 @@ def _wrf_scalar_source(state: DomainState, name: str, physics_tendencies,
     return out
 
 
+def _fold_wrf_pd_sources(q0, chm0, source, dt_eff: float, out):
+    """WRF rk_update_scalar_pd's source fold, before PD advection."""
+    out[...] = ((chm0 * q0) + (DTYPE(dt_eff) * source)) / chm0
+
+
 def _advance_species_wrf(state: DomainState, cfg: RunConfig, name: str, q, q0,
                          tend, held, *, ru, rv, ww, implicit, pd, bufs,
                          mu0, mu, mu0_row, mu_row, chm0, dt_eff: float,
@@ -739,27 +809,27 @@ def _advance_species_wrf(state: DomainState, cfg: RunConfig, name: str, q, q0,
     ww_explicit = ww if implicit is None else implicit[0]
     if pd:
         q0_eff = state.scratch((nz, ny, nx), "moist_pd_q0")
-        q0_eff[...] = ((chm0 * q0) + (DTYPE(dt_eff) * source)) / chm0
+        _fold_wrf_pd_sources(q0, chm0, source, dt_eff, q0_eff)
         tend[...] = 0
         # advect_scalar_pd's mut is rk_scalar_tend's grid%muts, the
         # acoustic loop's MUT + MU'' (the ring its own carrier), not
         # mub + mu_2 after small_step_finish: 1674 interior words of the
         # final-stage qv advection differed by that rounding.
-        from woof.core.dycore import WRF_MUTS_SLOT
-        muts = state.existing_scratch(WRF_MUTS_SLOT)
+        from woof.state_serialization_contract import carried_wrf_muts
+        muts = carried_wrf_muts(state)
         launch_pd_fluxes(q, q0_eff, ru, rv, ww_explicit,
                          mu if muts is None else muts, state,
                          cfg.dx, cfg.dy, dt_eff, *bufs,
                          msft=state.msft, has_msf=state.has_msf,
                          open_x=boundary_x, open_y=boundary_y,
-                         vorder=vertical_orders(cfg)[0])
+                         vorder=vertical_orders(cfg)[0], horder=scalar_horizontal_order(cfg))
         launch_pd_renorm_apply(q0_eff, mu0, *bufs, tend=tend, coord=state,
                                dx=cfg.dx, dy=cfg.dy, dt=dt_eff,
                                msft=state.msft, has_msf=state.has_msf,
                                open_x=boundary_x, open_y=boundary_y)
         if implicit is not None:
             _ieva_scalar(state, tend, q0_eff, implicit, mu0, mu, dt_eff)
-        if name == "qv" and WRF_EXACT and cfg.cu_physics in (3, 6):
+        if name == "qv" and WRF_EXACT and cfg.cu_physics in (3, 6, 16):
             _capture_advective_qv_forcing(state, tend, mu0, cfg=cfg)
         if boundary_forced:
             _exclude_specified_ring_advection(tend, cfg.spec_zone)
@@ -773,10 +843,10 @@ def _advance_species_wrf(state: DomainState, cfg: RunConfig, name: str, q, q0,
                            cfg.dx, cfg.dy, open_x=boundary_x,
                            open_y=boundary_y, msf=state.msft,
                            has_msf=state.has_msf, spec=boundary_forced,
-                           vorder=vertical_orders(cfg)[0])
+                           vorder=vertical_orders(cfg)[0], horder=scalar_horizontal_order(cfg))
     if implicit is not None:
         _ieva_scalar(state, tend, q0, implicit, mu0, mu, dt_eff)
-    if name == "qv" and (export_advective_forcing or (WRF_EXACT and cfg.cu_physics in (3, 6))):
+    if name == "qv" and (export_advective_forcing or (WRF_EXACT and cfg.cu_physics in (3, 6, 16))):
         _capture_advective_qv_forcing(state, tend, mu0, cfg=cfg)
     if boundary_forced:
         # flux_div_scalar fills the specified ring; rk_update_scalar's
@@ -874,14 +944,18 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
     # woof deviation (open-BC benchmark pins).
     pd = (final and cfg.moist_adv_opt == 1
           and not (cfg.open_x or cfg.open_y))
-    scalar_pd = (final and getattr(state, "qke_adv", None) is not None
+    eeps_scalars = pbl_scalar_species(state)
+    scalar_pd = (final and (getattr(state, "qke_adv", None) is not None
+                            or bool(eeps_scalars))
                  and cfg.scalar_adv_opt == 1
+                 and not (cfg.open_x or cfg.open_y))
+    tracer_pd = (final and (cfg.tracer_opt == 2 or cfg.madwrf_opt == 2) and cfg.tracer_adv_opt == 1
                  and not (cfg.open_x or cfg.open_y))
     # The coupled update rebuilds both column masses per element, so the only
     # consumer left of a materialized ``chm0`` is the PD source fold; ``chm``
     # has none at all.
     chm0 = (state.c1h[:, None, None] * mu0[None] + state.c2h[:, None, None]
-            if pd or scalar_pd else None)
+            if pd or scalar_pd or tracer_pd else None)
     # WRF captures qv's lateral spec+relax tendency ONCE per model step,
     # on RK step 1 from the time-t scalar (relax_bdy_scalar +
     # spec_bdy_scalar into moist_tend, solve_em.F:2255-2292, gated
@@ -945,15 +1019,19 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
             recomputed_lbc = frozenset(
                 name for name in supplied
                 if name in COUPLED_SCALAR_STATE_FIELDS
+                # Non-Chem EM always uses zero-inflow flow_dep_bdy for
+                # root tracers, even when wrfbdy contains tracer arrays.
+                and name not in TRACER_NAMES
                 and name not in HELD_BOUNDARY_FIELDS)
-    if pd or scalar_pd:
+    if pd or scalar_pd or tracer_pd:
         bufs = (state.scratch((nz, ny, nx + 1), "pd_fxl"),
                 state.scratch((nz, ny, nx + 1), "pd_fxc"),
                 state.scratch((nz, ny + 1, nx), "pd_fyl"),
                 state.scratch((nz, ny + 1, nx), "pd_fyc"),
                 state.scratch((nz + 1, ny, nx), "pd_fzl"),
                 state.scratch((nz + 1, ny, nx), "pd_fzc"))
-    for name in (name for name in SPECIES if getattr(state, name, None) is not None):
+    for name in (("qv",) if getattr(state, "etanew_restart_state", None) is not None
+                 else (name for name in getattr(state, "_scheme_base_fields", SPECIES) if getattr(state, name, None) is not None)):
         q = getattr(state, name)
         q0 = getattr(state, name + "0")
         if WRF_EXACT:
@@ -998,7 +1076,7 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                              cfg.dx, cfg.dy, dt_eff, *bufs,
                              msft=state.msft, has_msf=state.has_msf,
                              open_x=boundary_x, open_y=boundary_y,
-                             vorder=vertical_orders(cfg)[0])
+                             vorder=vertical_orders(cfg)[0], horder=scalar_horizontal_order(cfg))
             launch_pd_renorm_apply(q0_eff, mu0, *bufs, tend=tend,
                                    coord=state,
                                    dx=cfg.dx, dy=cfg.dy, dt=dt_eff,
@@ -1006,6 +1084,8 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                                    open_x=boundary_x, open_y=boundary_y)
             if implicit is not None:
                 _ieva_scalar(state, tend, q0_eff, implicit, mu0, mu, dt_eff)
+            if name == "qv" and cfg.cu_physics == 16:
+                _capture_advective_qv_forcing(state, tend, mu0, cfg=cfg)
             if boundary_forced:
                 _exclude_specified_ring_advection(tend, cfg.spec_zone)
             # ``msft`` carries WRF rk_update_scalar's
@@ -1024,7 +1104,7 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                                    open_x=boundary_x, open_y=boundary_y,
                                    msf=state.msft, has_msf=state.has_msf,
                                    spec=boundary_forced,
-                                   vorder=vertical_orders(cfg)[0])
+                                   vorder=vertical_orders(cfg)[0], horder=scalar_horizontal_order(cfg))
             if implicit is not None:
                 _ieva_scalar(state, tend, q0, implicit, mu0, mu, dt_eff)
             if export_advective_forcing and name == "qv":
@@ -1037,7 +1117,7 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                 # Uncoupled by the same time-t column mass the theta
                 # export uses (dycore.capture_advective_theta_forcing), so
                 # the pair is one consistent rate set.
-                _capture_advective_qv_forcing(state, tend, mu0)
+                _capture_advective_qv_forcing(state, tend, mu0, cfg=cfg)
             held = held_lbc.get(name)
             # A lateral tendency landing in ``tend`` below would be scaled a
             # second time if the msf coupling waited for the fused update, so
@@ -1075,11 +1155,13 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                        if fixed_tendencies is not None else None),
                 clamp=final)
 
+    # () for a state with neither qi nor mp=95's qt.
     if extra_moist_species(state):
         for name in extra_moist_species(state):
-            # QKE follows scalar_adv_opt. Preserve every pre-existing
+            # QKE and EEPS follow scalar_adv_opt. Preserve every pre-existing
             # field's selector when the new carrier is absent.
-            pd = (scalar_pd if name == "qke_adv" else
+            pd = (tracer_pd if name in TRACER_NAMES else
+                  scalar_pd if name == "qke_adv" or name in eeps_scalars else
                   (final and cfg.moist_adv_opt == 1
                    and not (cfg.open_x or cfg.open_y)))
             q = getattr(state, name)
@@ -1121,7 +1203,7 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                                  cfg.dx, cfg.dy, dt_eff, *bufs,
                                  msft=state.msft, has_msf=state.has_msf,
                                  open_x=boundary_x, open_y=boundary_y,
-                                 vorder=vertical_orders(cfg)[0])
+                                 vorder=vertical_orders(cfg)[0], horder=scalar_horizontal_order(cfg))
                 launch_pd_renorm_apply(q0_eff, mu0, *bufs, tend=tend,
                                        coord=state,
                                        dx=cfg.dx, dy=cfg.dy, dt=dt_eff,
@@ -1136,7 +1218,12 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                 _update_scalar_in_place(
                     q, q0_eff, tend, state.c1h, state.c2h, mu0_row, mu_row,
                     dt_eff,
-                    msft=(msft_row if state.has_msf else None), clamp=True)
+                    msft=(msft_row if state.has_msf else None),
+                    # Fast water-carrying MAD tracers use the same
+                    # nonnegative rounding-residual floor as hydrometeors.
+                    # The strict _advance_species_wrf path above retains
+                    # native signed tracer words for exact replay.
+                    clamp=name not in TR17_NAMES)
             else:
                 # flux_div_scalar accumulates; start from a clean buffer.
                 tend[...] = 0
@@ -1146,7 +1233,7 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                                        msf=state.msft,
                                        has_msf=state.has_msf,
                                        spec=boundary_forced,
-                                       vorder=vertical_orders(cfg)[0])
+                                       vorder=vertical_orders(cfg)[0], horder=scalar_horizontal_order(cfg))
                 if implicit is not None:
                     _ieva_scalar(state, tend, q0, implicit, mu0, mu, dt_eff)
                 held = held_lbc.get(name)
@@ -1176,7 +1263,7 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                              if physics_tendencies is not None else None),
                     fixed=(fixed_tendencies.get(name)
                            if fixed_tendencies is not None else None),
-                    clamp=final)
+                    clamp=(final and name not in TR17_NAMES))
     if cfg.specified:
         _apply_specified_scalar_flow_boundaries(
             state, cfg, ru, rv, {*held_lbc, *recomputed_lbc})
@@ -1189,17 +1276,17 @@ def _apply_specified_scalar_flow_boundaries(state, cfg, ru, rv, held_lbc):
     take no flow-dependent boundary (solve_em.F:2346 under
     have_bcs_moist, :2912-2917 under have_bcs_scalar).
     """
-    from woof.core.microphysics_transition import NSSL2_BACKGROUND_CCN_PER_KG
+    from woof.core.nssl2_contract import nssl2_background_ccn_per_kg
     from woof.ingest.lateral_bc import apply_flow_dependent_boundaries
 
     species = moist_species(state)
-    qnn_name = "nn" if cfg.mp_physics == 16 else "qnn"
+    qnn_name = "nn" if (cfg.mp_physics in WDM_SCHEMES or cfg.mp_physics == 27) else "qnn"
     if qnn_name in species:
         # start_em.F:1750-1760 leaves WDM6's namelist ccn_conc intact but
         # replaces NSSL's grid value with nssl_cccn/1.225. NSSL's admitted
         # parameter identity pins that result to this FP32 concentration.
-        inflow = (cfg.wdm6_ccn_conc if cfg.mp_physics == 16
-                  else NSSL2_BACKGROUND_CCN_PER_KG)
+        inflow = (cfg.wdm6_ccn_conc if (cfg.mp_physics in WDM_SCHEMES or cfg.mp_physics == 27)
+                  else nssl2_background_ccn_per_kg(cfg.nssl_cccn))
         apply_flow_dependent_boundaries(
             (getattr(state, qnn_name),), ru, rv, cfg.spec_zone,
             inflow_value=inflow)
@@ -1293,6 +1380,11 @@ def init_moist_balanced(cfg: RunConfig, coord: VerticalCoord,
     s.thp[...] = cp.asarray(thp, dtype=DTYPE)
     s.php[...] = cp.asarray(php, dtype=DTYPE)
     s.qv[...] = cp.asarray(qv3, dtype=DTYPE)
+    if cfg.use_theta_m:
+        base_theta = s.thb[:, None, None] if s.thb.ndim == 1 else s.thb
+        s.thp[...] = ((base_theta + s.thp)
+                      * (DTYPE(1.0) + DTYPE(c.RVOVRD) * s.qv) - base_theta)
+        s.thp0[...] = s.thp
     # Idealized cases always use hypsometric_opt=1, regardless of namelist
     # setting (WRF share/input_wrf.F:1038); the php recurrence above is the
     # opt-1 discrete hydrostatic inversion, so the default key matches.
@@ -1303,13 +1395,14 @@ def init_moist_balanced(cfg: RunConfig, coord: VerticalCoord,
 def advance_tke_stage(state: DomainState, cfg: RunConfig,
                       ru, rv, ww, dt_eff: float, final: bool,
                       fixed_tendency=None, implicit=None) -> None:
-    """Advance the km_opt=2 prognostic TKE one RK stage from ``tke0``.
+    """Advance km_opt=2/5 prognostic TKE one RK stage from ``tke0``.
 
     WRF advects tke through ``rk_scalar_tend``/``rk_update_scalar[_pd]``
     exactly like a moist scalar (solve_em.F:2362-2399, PD update at
     :2100-2119 under tke_adv_opt=1), with the once-per-step forward
     source (tke_rhs + self-diffusion, held in ``smag_rtke``) folded on
-    every stage and into the PD budget on the final stage.
+    every stage. Only km_opt=2 folds it into the final PD budget; WRF's
+    km_opt=5 adds the held source after that transport budget.
 
     Two WRF steps follow every ``rk_update_scalar`` pass, in this order
     (solve_em.F:2432-2451):
@@ -1356,14 +1449,33 @@ def advance_tke_stage(state: DomainState, cfg: RunConfig,
                 state.scratch((nz, ny + 1, nx), "pd_fyc"),
                 state.scratch((nz + 1, ny, nx), "pd_fzl"),
                 state.scratch((nz + 1, ny, nx), "pd_fzc"))
-        q0_eff = _pd_fold_sources(
-            state, cfg, "tke", q0, chm0, dt_eff, None,
-            fixed_tendency=fixed_tendency)
-        launch_pd_fluxes(q, q0_eff, ru, rv, ww, mu, state,
+        # solve_em.F:2100 folds TKE sources before PD transport only for
+        # km_opt=2. SMS-3DTKE keeps its source in rk_update_scalar instead.
+        if cfg.km_opt == 5:
+            q0_eff = q0
+        elif WRF_EXACT:
+            # rk_update_scalar_pd retains the coupled multiply and divide.
+            # q0 + dt*source/chm0 loses that rounding once TKE is nonzero.
+            q0_eff = state.scratch((nz, ny, nx), "moist_pd_q0")
+            source = DTYPE(0) if fixed_tendency is None else fixed_tendency
+            q0_eff[...] = (chm0 * q0 + DTYPE(dt_eff) * source) / chm0
+        else:
+            q0_eff = _pd_fold_sources(
+                state, cfg, "tke", q0, chm0, dt_eff, None,
+                fixed_tendency=fixed_tendency)
+        pd_mu = mu
+        if WRF_EXACT:
+            # rk_scalar_tend consumes the acoustic MUTS carrier, whose
+            # rounding can differ from mub + the finished mu perturbation.
+            from woof.core.dycore import WRF_MUTS_SLOT
+            muts = state.existing_scratch(WRF_MUTS_SLOT)
+            if muts is not None:
+                pd_mu = muts
+        launch_pd_fluxes(q, q0_eff, ru, rv, ww, pd_mu, state,
                          cfg.dx, cfg.dy, dt_eff, *bufs,
                          msft=state.msft, has_msf=state.has_msf,
                          open_x=boundary_x, open_y=boundary_y,
-                         vorder=vertical_orders(cfg)[0])
+                         vorder=vertical_orders(cfg)[0], horder=scalar_horizontal_order(cfg))
         launch_pd_renorm_apply(q0_eff, mu0, *bufs, tend=tend,
                                coord=state,
                                dx=cfg.dx, dy=cfg.dy, dt=dt_eff,
@@ -1373,9 +1485,11 @@ def advance_tke_stage(state: DomainState, cfg: RunConfig,
             _ieva_scalar(state, tend, q0_eff, implicit, mu0, mu, dt_eff)
         if state.has_msf:
             tend *= state.msft[None]
-        # WRF's PD fold moved the sources into q0_eff, so ``tend`` here is
-        # the pure advective flux divergence -- the budget's transport term.
+        # The source has either moved into q0_eff (km=2) or remains held
+        # for the update below (km=5). This is pure advective divergence.
         _tke_budget_transport(state, cfg, tend, final=final)
+        if cfg.km_opt == 5 and fixed_tendency is not None:
+            tend += fixed_tendency
         q[...] = (chm0 * q0_eff + dt_eff * tend) / chm
     else:
         launch_flux_div_scalar(q, ru, rv, ww, tend, state,
@@ -1383,7 +1497,7 @@ def advance_tke_stage(state: DomainState, cfg: RunConfig,
                                open_x=boundary_x, open_y=boundary_y,
                                msf=state.msft, has_msf=state.has_msf,
                                spec=(cfg.specified or cfg.nested),
-                               vorder=vertical_orders(cfg)[0])
+                               vorder=vertical_orders(cfg)[0], horder=scalar_horizontal_order(cfg))
         if implicit is not None:
             _ieva_scalar(state, tend, q0, implicit, mu0, mu, dt_eff)
         if state.has_msf:
@@ -1405,6 +1519,9 @@ def advance_tke_stage(state: DomainState, cfg: RunConfig,
     # Resolved from module globals at call time, so a mutation control can
     # replace exactly this step (tests/test_tke_budget.py).
     bound_tke(q, cfg.tke_upper_bound)
+    if WRF_EXACT and cfg.km_opt == 2:
+        # WRF's MAX(tke, 0.) publishes positive zero after the PD update.
+        cp.copyto(q, DTYPE(0), where=q == DTYPE(0))
 
     # WRF flow_dep_bdy (module_bc.F:2335-2456): the entire lateral-boundary
     # treatment TKE gets, applied every stage after the bound.  Nothing
@@ -1438,3 +1555,10 @@ def _tke_budget_transport(state, cfg, tend, *, final: bool) -> None:
     slot = tke_budget.term(state, cfg, "transport")
     if slot is not None:
         slot[...] = tend
+
+
+def pbl_scalar_species(state: DomainState) -> tuple[str, ...]:
+    """Directly updated EEPS scalars whose RK base follows the PBL call."""
+    from woof.core.pbl_scalar_inventory import PBL_TRANSPORTED_SCALARS
+    return tuple(name for names in PBL_TRANSPORTED_SCALARS.values()
+                 for name in names if getattr(state, name, None) is not None)

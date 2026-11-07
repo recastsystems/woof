@@ -1,0 +1,7 @@
+powf call in <__module_bl_acm_MOD_acmm>:
+powf call in <__module_bl_acm_MOD_acm>:
+powf call in <__module_bl_acm_MOD_eddyx>:
+powf call in <__module_bl_acm_MOD_acm2d>:
+powf call in <__module_bl_acm_MOD_acm2d>:
+powf call sites: 5
+U powf

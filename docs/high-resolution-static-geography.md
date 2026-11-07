@@ -9,7 +9,7 @@ TOML block:
 [static.highres]
 enabled = true
 cache_root = "/data/highres-cache"
-on_refuse = "error"          # or "fallback-30s"
+on_refuse = "error"          # unavailable required land coverage stops the run
 landcover_source = "auto"    # or "cglc-modis-lcz", "annual-nlcd"
 ```
 
@@ -49,8 +49,9 @@ not refused: CGLC-MODIS-LCZ separates the sea from inland water itself,
 and NLCD's single open-water class is split against the domain's own 30s
 baseline water field, so the sea stays WRF ocean category 17 and inland
 water becomes lake category 21, with the cell counts and the rule in the
-receipt.  `on_refuse = "fallback-30s"` proceeds on the unchanged baseline
-beneath a receipt that names the refusal; the default stops the case.  A
+receipt. An all-water footprint is valid even with zero terrain cells replaced.
+The former `fallback-30s` workaround is retired; required land coverage still
+stops the case when unavailable.  A
 case far from the land-cover map's year (2018 for CGLC-MODIS-LCZ, before
 1985 or after 2024 for NLCD) takes the nearest map and the receipt names
 the anachronism in years.

@@ -13,6 +13,7 @@ from woof.core import constants as c
 from woof.core.grid import make_vertical_coord
 from woof.ingest.real import (
     HRRR_ANALYZED_HYDROMETEORS,
+    DECLARED_ANALYZED_HYDROMETEORS,
     HRRR_ANALYZED_HYDROMETEOR_MOIST_PACKAGE,
     HRRR_ANALYZED_HYDROMETEOR_MP_PHYSICS,
     _WRF_QV_MIN_VALUE,
@@ -1258,7 +1259,9 @@ def _host_array(value):
     return np.asarray(value.get() if hasattr(value, "get") else value)
 
 
-def test_mp28_real_ingest_retains_every_analyzed_hydrometeor():
+@pytest.mark.parametrize("mp_physics", (28, 38))
+def test_mp28_real_ingest_retains_every_analyzed_hydrometeor(mp_physics,
+                                                             monkeypatch):
     """mp=28's Registry moist list is character for character mp=8's.
 
     Registry.EM_COMMON:3024 gives ``thompson`` moist:qv,qc,qr,qi,qs,qg and
@@ -1268,17 +1271,32 @@ def test_mp28_real_ingest_retains_every_analyzed_hydrometeor():
     28 from the three mp tuples this state was identically zero and nothing
     raised.
     """
-    result, _ = _analyzed_hrrr_real_init(28, mp28_aerosol_source="synthetic")
+    if mp_physics == 38:
+        # initialize_real asks the machine floor (validate_run_preparation)
+        # first, and under WRF's write_thompson_mp38table=false that floor
+        # refuses where the 674 MB native hail table is not staged, so this
+        # case passed only on machines that had staged it.  Ingest never
+        # reads that table; the floor and the table policy have their own
+        # tests (tests/test_thompson_hail_port.py).
+        import woof.ingest.real as real_ingest
+        monkeypatch.setattr(real_ingest, "validate_run_preparation",
+                            lambda cfg: None)
+    result, _ = _analyzed_hrrr_real_init(mp_physics, mp28_aerosol_source="synthetic")
     state = result.state
 
     evidence = result.hydrometeor_initialization
+    if mp_physics == 38:
+        # Unlike 28, native real.exe leaves all five GH number/volume
+        # moments at their allocation zeros, even where mass is present.
+        for name in ("nc", "nr", "ni", "ng", "qvolg"):
+            assert not _host_array(getattr(state, name)).view(np.uint32).any(), name
     # v2 since the 1.4.1 merge: the HRRR vertical-disposition work on the
     # release line moved the correspondence schema while the port was off
     # the line, and woof/ingest/real.py now emits v2 for every scheme.  The
     # mp=28 claim this test makes -- that a 28 run retains every analyzed
     # hydrometeor -- is unchanged; only the schema stamp moved.
     assert evidence["schema"] == "gpuwm-real-hydrometeor-correspondence-v2"
-    assert evidence["mp_physics"] == 28
+    assert evidence["mp_physics"] == mp_physics
     assert set(evidence["retained_correspondence"]) == {
         "QC", "QR", "QI", "QS", "QG"}
     assert evidence["discarded_source_species"] == {}
@@ -1399,14 +1417,15 @@ def test_the_analyzed_inventory_tuple_and_its_moist_packages_agree():
         # depend on it, and a reordered or invented name would silently
         # change which field a decoded species lands in.
         assert tuple(
-            name for name in HRRR_ANALYZED_HYDROMETEORS if name in retained
+            name for name in DECLARED_ANALYZED_HYDROMETEORS if name in retained
         ) == tuple(retained), f"mp={mp_physics} retention is not decoded order"
         # A named scheme cites its own capability row; it has no WRF
         # Registry package.  FAST_SBM's package line lives in WRF's
         # registry.sbm (:318).
+        # UDM (mp=27) cites its package line in the WRF 4.7.1 Registry by version.
         assert package["registry_citation"].startswith(
             ("Registry/Registry.EM_COMMON:", "woof.microphysics_schemes:",
-             "Registry/registry.sbm:"))
+             "Registry/registry.sbm:", "WRF 4.7.1 Registry/Registry.EM_COMMON:"))
 
 
 def test_mp50_real_ingest_retains_the_condensate_p3_can_hold():
@@ -1713,7 +1732,7 @@ def test_mp28_real_ingest_refuses_an_aerosol_source_it_cannot_read():
     metgrid WIF stream this module cannot read and then hand the microphysics
     an all-zero aerosol field as if it were the requested climatology.
     """
-    # RE-BASELINED (lane/wif-default).  Two of the four rows moved and two
+    # RE-BASELINED (development branch).  Two of the four rows moved and two
     # did not, and the split is the whole point: the CLIMATOLOGY selectors
     # are now implemented, so refusing them would be refusing the default;
     # the FIRST-GUESS and qnbca selectors are still unimplemented
@@ -1905,7 +1924,7 @@ def test_mp28_real_ingest_receipt_announces_the_synthetic_fallback(
         monkeypatch, tmp_path):
     """A run on the synthetic profile SAYS SO, by name, in its receipt.
 
-    RE-BASELINED (lane/wif-default).  This test used to assert that the
+    RE-BASELINED (development branch).  This test used to assert that the
     ingest receipt agreed with the published DEVIATION -- that WOOF had no
     QNWFA/QNIFA ingest lane and that real.exe FATALs the configuration.
     Both clauses are now false of the default, so pinning them would pin the
@@ -1997,7 +2016,7 @@ def test_mp28_real_ingest_defaults_to_the_wif_climatology(
     assert receipt["awaiting_profile_fill"] is False
     assert receipt["dataset"]["resolved"] is True
     assert receipt["dataset"]["sha256"]
-    # STALE PIN, CORRECTED IN THE MERGE.  lane/wif-default wrote "...-v1"
+    # STALE PIN, CORRECTED IN THE MERGE.  development branch wrote "...-v1"
     # here, but woof/ingest/wif_climatology.py has stamped "...-v2" since
     # 474e0e9a0 ("the WIF climatology data path moves onto the project's Rust"),
     # an ANCESTOR of that commit -- so this assertion was already false of
@@ -2222,7 +2241,7 @@ def test_mp28_real_ingest_state_is_shaped_typed_and_physical():
 
 
 #: What the refusing d02 actually held, and what its healthy neighbours
-#: held, from the woof 1.8.4 nested HRRR tree at 39.0,-103.0 on cycle
+#: held, from the gpuwm 1.8.4 nested HRRR tree at 39.0,-103.0 on cycle
 #: 2026-08-08T09.  216x272 cells; exactly two below zero.
 _SAN_JUAN_SURFACE_QV = (-1.785645637e-05, -1.478747851e-05)
 _SAN_JUAN_SURFACE_QV_MAX = 0.0176926
@@ -2650,3 +2669,26 @@ def test_closure_keeps_an_analysed_number_above_zero_and_seeds_the_rest():
                                       expected[~keep].view(np.uint32))
         assert receipt[f"{species}_number_seed"]["seeded_cells"] == int(
             np.count_nonzero(~keep & (mass > 0.0)))
+
+
+def test_ntu_real_ingest_retains_analyzed_mass_and_source_absent_moments():
+    result,_=_analyzed_hrrr_real_init(56)
+    control,_=_analyzed_hrrr_real_init(10)
+    assert set(result.hydrometeor_initialization['retained_correspondence'])==set(HRRR_ANALYZED_HYDROMETEORS)
+    assert result.hydrometeor_initialization['discarded_source_species']=={}
+    for name in ('qc','qr','qi','qs','qg'):
+        got=_host_array(getattr(result.state,name))
+        assert np.count_nonzero(got)>0
+        assert got.tobytes()==_host_array(getattr(control.state,name)).tobytes()
+    from woof.core.ntu import NTU_SCALAR_ATTRS
+    for name in ('qh',)+NTU_SCALAR_ATTRS:
+        assert not _host_array(getattr(result.state,name)).view('u4').any(),name
+    with pytest.raises(KeyError,match=r'missing real-data field\(s\).*QI'):
+        _analyzed_hrrr_real_init(56,drop=('QI',))
+
+
+def test_ntu_real_ingest_retains_declared_hail_mass():
+    result,_=_analyzed_hrrr_real_init(56,analyzed_species=DECLARED_ANALYZED_HYDROMETEORS,
+                                    extra_fields={'QH':np.float32(3e-5)})
+    assert result.hydrometeor_initialization['retained_correspondence']['QH']=='qh'
+    assert np.count_nonzero(_host_array(result.state.qh))>0

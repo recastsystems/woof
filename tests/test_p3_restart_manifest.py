@@ -99,7 +99,7 @@ def test_a_config_key_absent_on_one_side_is_named_not_repr_ed():
 
     Not a P3 test in substance.  Every RunConfig field added after a
     checkpoint was written takes this path, and ``p3_backend`` is simply
-    the first one measured doing it (lane/p3-cuda-verify, 2026-08-29).
+    the first one measured doing it (development branch, 2026-08-29).
     """
     import pytest
 

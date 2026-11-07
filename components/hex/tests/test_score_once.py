@@ -63,3 +63,27 @@ def test_shared_inputs_are_fetched_once_across_threads(tmp_path):
     with ThreadPoolExecutor(8) as pool:
         got = list(pool.map(lambda _: commands.once(("reference", "same"), fetch), range(8)))
     assert got == ["object"] * 8 and calls == [1]
+
+
+def test_door_without_a_forecast_hook_queues_cpu_scoring(tmp_path, monkeypatch):
+    run = tmp_path / 'forecast'
+    config = tmp_path / 'config.json'
+    config.write_text('{}')
+    monkeypatch.setattr(scorecard, 'join_automatic_scorer', lambda *a: None)
+    monkeypatch.setattr(scorecard, 'completed_scorecard', lambda *a: None)
+    monkeypatch.setattr(scorecard, 'discover', lambda *a: ({'init': 'init', 'grid': 'grid', 'start': 'clock'}, []))
+    calls = []
+    def hook(output, **kwargs):
+        calls.append((output, kwargs))
+        return {'status': 'QUEUED', 'path': 'scorecard.json'}
+    monkeypatch.setattr(scorecard, 'forecast_hook', hook)
+    assert scorecard.door_scorecard(run, config)['status'] == 'QUEUED'
+    assert calls == [(run, {'init': 'init', 'grid': 'grid', 'start': 'clock', 'config_path': config})]
+
+
+def test_future_card_without_a_retry_plan_is_returned_at_once(tmp_path, monkeypatch):
+    run, config, root = _queued_run(tmp_path, monkeypatch, json.dumps({'region': {'west': -180.0}}))
+    (root / 'automatic-retry.json').unlink()
+    (root / 'automatic-retry-receipt.json').write_text(json.dumps({'status': 'NOT_YET_OBSERVABLE'}))
+    (root / 'scorecard.json').write_text(json.dumps({'status': 'NOT_YET_OBSERVABLE'}))
+    assert scorecard.join_automatic_scorer(run, config)['status'] == 'NOT_YET_OBSERVABLE'

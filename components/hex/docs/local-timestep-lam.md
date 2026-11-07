@@ -1,7 +1,7 @@
 # Local time stepping on limited-area culls: what it is worth, measured
 
 The local-time-stepping part of the 2026-09-13 performance campaign,
-measured 2026-09-14 on an RTX 5090 (170 SMs, 32 GB) with public woof 2.7.3 as the
+measured 2026-09-14 on an RTX 5090 (170 SMs, 32 GB) with public gpuwm 2.7.3 as the
 engine. Two culls, both 1 h = 720 steps of 5 s, full physics, radiation
 every 600 s, surface/PBL welded to every step:
 

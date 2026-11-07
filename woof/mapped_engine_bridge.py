@@ -1809,6 +1809,7 @@ def run_engine(
     engine: str | Path | None = None,
     on_progress: Callable[[dict], None] | None = None,
     atmospheric_grids=(),
+    full_initial_frame: bool = False,
     threads: int | None = None,
     lead_batch: bool = False,
     memory_budget_bytes: int | None = None,
@@ -1910,7 +1911,8 @@ def run_engine(
         if memory_budget_bytes is not None:
             environment[ENGINE_MEMORY_BUDGET_ENV] = str(memory_budget_bytes)
     if window_enabled:
-        completed = _run_window_engine(command, grids, env=environment)
+        completed = _run_window_engine(command, grids, env=environment,
+                                       **({"full_initial_frame": True} if full_initial_frame else {}))
     else:
         completed = subprocess.run(
             command, capture_output=True, text=True, check=False,
@@ -1942,7 +1944,7 @@ def run_engine(
     }
 
 
-def _run_window_engine(command, grids, env=None):
+def _run_window_engine(command, grids, env=None, *, full_initial_frame=False):
     """One owned process; metadata replies precede atmospheric publication.
 
     Stderr goes to a real file so decoder diagnostics cannot deadlock the
@@ -1967,6 +1969,11 @@ def _run_window_engine(command, grids, env=None):
                 if isinstance(event, dict) and event.get("schema") == PROGRESS_SCHEMA \
                         and event.get("event") == "atmospheric_window_request":
                     response = window_request_response(event, grids)
+                    # The initial transform needs complete pressure columns.
+                    # Later forcing frames retain their ordinary bounded window.
+                    if full_initial_frame and event["geometry"]["frame_index"] == 0:
+                        response = {"schema": response["schema"],
+                                    "geometry": response["geometry"], "mode": "full"}
                     child.stdin.write(json.dumps(response, allow_nan=False) + "\n")
                     child.stdin.flush()
             code = child.wait()

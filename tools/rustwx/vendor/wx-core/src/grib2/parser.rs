@@ -718,7 +718,7 @@ fn parse_section5(sec: &[u8]) -> Result<DataRepresentation, String> {
         0 => parse_drtemplate_simple(sec, &mut dr)?,
         2 => parse_drtemplate_complex(sec, &mut dr)?,
         3 => parse_drtemplate_complex_spatial(sec, &mut dr)?,
-        4 => parse_drtemplate_simple(sec, &mut dr)?, // IEEE float (uses bits_per_value)
+        4 => parse_drtemplate_ieee(sec, &mut dr)?,
         40 => parse_drtemplate_simple(sec, &mut dr)?,
         41 => parse_drtemplate_simple(sec, &mut dr)?,
         42 => parse_drtemplate_ccsds(sec, &mut dr)?,
@@ -733,6 +733,20 @@ fn parse_section5(sec: &[u8]) -> Result<DataRepresentation, String> {
     }
 
     Ok(dr)
+}
+
+/// Template 5.4: IEEE floating point. Its only field is octet 12, the
+/// precision (code table 5.7: 1 = 32-bit, 2 = 64-bit, 3 = 128-bit); the
+/// section is 12 octets long. Reading it with the 5.0 layout (reference,
+/// scales and width at octets 12-20) refused every real 5.4 message as
+/// too short.
+fn parse_drtemplate_ieee(sec: &[u8], dr: &mut DataRepresentation) -> Result<(), String> {
+    dr.bits_per_value = match read_u8(sec, 11)? {
+        1 => 32,
+        2 => 64,
+        p => return Err(format!("IEEE precision {p} (code table 5.7) is not decoded here")),
+    };
+    Ok(())
 }
 
 /// Common simple packing fields (Template 5.0, also base for 5.40, 5.41).

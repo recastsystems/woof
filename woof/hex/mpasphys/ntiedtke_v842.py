@@ -11,6 +11,8 @@ interface arrays have one extra level. All physics arithmetic runs on CUDA.
 MPAS framework packing into this layout belongs to the common physics seam.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from dataclasses import dataclass
@@ -198,8 +200,12 @@ def cuda_source() -> str:
     """
     from woof.core.kernels import module_source
 
+    # The upstream compile-time third is the same rounded float32 on every target.
+    # Spell its exact word so it cannot be mistaken for a runtime literal divisor.
+    upstream = module_source("ntiedtke").replace(
+        "#define NT_T13     (1.0f / 3.0f)", "#define NT_T13     0x1.555556p-2f")
     source = _preserve_native_float_words(
-        _adapt_scheme_source(module_source("ntiedtke")) + DRIVER_CUDA)
+        _adapt_scheme_source(upstream) + DRIVER_CUDA)
     # Retain the shared glibc algorithms. Its invalid/NaN special cases
     # must preserve the native operand and invalid sign as well.
     source = source.replace(
@@ -425,7 +431,7 @@ def _module(device: int):
     with cp.cuda.Device(device):
         # RawModule's cache compiler appends FTZ after caller options.
         # Compile directly so native subnormal words survive unchanged.
-        arch = cp.cuda.Device(device).compute_capability
+        arch = _compilation_target(device, xp=cp)
         artifact = os.environ.get('MPAS_NTIEDTKE_ARTIFACT')
         if artifact:
             root = Path(artifact)
@@ -537,7 +543,7 @@ def _pipeline(ncol: int, nz: int, dt: float, stepcu: int, initflag: int, constan
             if stage == "ntiedtke_cuascn":
                 args[signature.index("llo3")] = self._ascent_start
             if stage in ("ntiedtke_mfub", "ntiedtke_closure"):
-                # woof 2.9.9 calls this argument ztmst; newer launchers use
+                # gpuwm 2.9.9 calls this argument ztmst; newer launchers use
                 # dt. Both kernels receive the MPAS convection timestep.
                 timestep = next((name for name in ("dt", "ztmst") if name in signature), None)
                 if timestep is None:

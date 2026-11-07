@@ -363,7 +363,9 @@ def resume_zone_host(host, payload, *, zone_path, receipt_path):
     scaled = ConservativeMap(generator.overlap * radius ** 2, generator.source_area * radius ** 2,
                              generator.target_area * radius ** 2,
                              dict(generator.receipt, effective_area_radius_m=radius))
-    zone_physical = scaled.with_physical_areas(source_area[zone.zone_source], target_area[zone.zone_target])
+    zone_physical = scaled.with_physical_areas(source_area[zone.zone_source], target_area[zone.zone_target],
+                                               generator_areas=(generator.source_area, generator.target_area),
+                                               generator_area_scale=radius ** 2)
     sub = zone.remapped_operator(zone_physical, source_area, target_area)
     composite = CompositeMap(zone, sub, source_area, target_area)
     print('[moving-zone] transferring atmosphere', flush=True)

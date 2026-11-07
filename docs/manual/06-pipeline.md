@@ -396,7 +396,7 @@ true-sounding sentence behind [commit 6e23bb3e4].
 
 ## 6.8 Launch-to-first-step cost
 
-The prep scaling study (a development machine, engine 2.5.0 at `ed4c0ef69`, GFS, 6 h
+The prep scaling study (test host 1, gpuwm 2.5.0 at `ed4c0ef69`, GFS, 6 h
 forcing, single domain, wizard defaults, warm caches, cold download) gives the
 launch-to-model-step-1 law by size: 0.14 M cells 15 s; 4.39 M 37 s; 12.6 M 79 s;
 largest card-resident 16.8 M 100 s; massive tile-streamed 41.6 M

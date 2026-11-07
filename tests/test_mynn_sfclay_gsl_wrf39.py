@@ -26,7 +26,7 @@ sys.path.insert(0, str(TOOLS))
 import compare_fork_oracle as cmp  # noqa: E402
 
 #: Maximum FP32 ULP distance of the CPU reference from the fork oracle, per
-#: output, over all 1704 (step, column) words, measured on a development machine (Ubuntu,
+#: output, over all 1704 (step, column) words, measured on test host 1 (Ubuntu,
 #: glibc 2.39) 2026-10-03.  The column solver's own np.log/np.exp/** sites
 #: (shared with the wrf_461 reference) are the residue; the search, the
 #: psi tables and the fork's new log terms are glibc-routed.
@@ -280,7 +280,7 @@ extern "C" __global__ void probe_zolri(const real *x, real *y, int n) {
 
 
 # ---------------------------------------------------------------------------
-# Word-for-word column oracle (lane/verify-mynn-sfclay-gsl-wrf39-generation).
+# Word-for-word column oracle (development branch).
 #
 # tools/mynn_gsl_wrf39_column_oracle: the unmodified fork module compiled by
 # gfortran 13.3 (-O0 and -O2, byte-identical outputs) on an FMA host with

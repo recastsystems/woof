@@ -97,7 +97,7 @@ def test_offline_child_capabilities_are_warning_only_and_exact(capsys):
     # refused by name in their registry rows (rime factor, bin spectra,
     # graupel volume), so none of them is a same-scheme offline parent.
     assert capability["same_scheme_mp_physics"] == [
-        0, 1, 2, 3, 4, 6, 8, 9, 10, 16, 18, 24, 28, 50, 106]
+        0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 13, 14, 15, 16, 18, 24, 26, 28, 40, 50, 51, 53, 55, 56, 97, 106]
     assert capability["cross_scheme_transitions"]["mp_physics"] == list(_INTAKE_EDGES)
     assert capability["cross_scheme_transitions"]["order"] == (
         "diagnose-parent-then-spatially-interpolate")

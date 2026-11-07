@@ -120,6 +120,9 @@ def test_fork_workspace_prices_ten_plume_classes_without_changing_default():
         assert after[slot] == before[slot]
     # The generation's own working sets exist only under the key.
     assert set(after) - set(before) == {
-        "mynn_pbl_gsd41_condensation_work", "mynn_pbl_gsd41_thvl"}
+        "mynn_pbl_gsd41_condensation_work", "mynn_pbl_gsd41_thvl",
+        "mynn_pbl_gsd41_diagnostics"}
+    # Five native driver diagnostics per column (6d79b6e9c5d).
+    assert after["mynn_pbl_gsd41_diagnostics"] == (5 * 32,)
     assert after["mynn_pbl_gsd41_condensation_work"] == (5 * 32 * 50,)
     assert after["mynn_pbl_gsd41_thvl"] == (32 * 50,)

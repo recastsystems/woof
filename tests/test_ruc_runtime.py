@@ -964,7 +964,7 @@ def test_the_snow_mass_budget_closes_and_a_cold_pack_persists():
         melt = _land(cp.asnumpy(driver.fields["acsnom"]), cfg)
         # WRF accumulates SFCEVP twice per land step (module_sf_ruclsm.F
         # :1095 and :1116), so its water budget only closes on half of it.
-        # WOOF counts it once (lane/verify-ruc-lsm), so the budget closes on
+        # WOOF counts it once (development branch), so the budget closes on
         # SFCEVP itself; a doubled SFCEVP fails this by the evaporated mass.
         evap = _land(cp.asnumpy(driver.fields["sfcevp"]), cfg)
         closure = float((swe + melt + evap).mean()) - swe0

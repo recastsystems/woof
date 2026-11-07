@@ -1,0 +1,147 @@
+{
+  "source_commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+  "native_flags": "REAL32 GNU -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize",
+  "paper": "~/weather/data/datasets/paper/wrf-ports/port-mynn-subopts/",
+  "raw_replay": {
+    "rows": 14,
+    "columns_per_row": 90,
+    "compared_per_row": 234270,
+    "differing": 0,
+    "exclusions": []
+  },
+  "forecast_status": "All 14 real fast option forecasts completed and meet the 1.2x stage bar. Two-minute cases do not establish option skill.",
+  "report": "<reports>/WRF-PORTS-2026-11-01/port-mynn-subopts.md",
+  "adapter_replay": {
+    "rows": 14,
+    "columns_per_row": 90,
+    "compared_per_row": 185670,
+    "differing": 0,
+    "exclusions": []
+  },
+  "native_undefined_cold_local": {
+    "field": "rmol",
+    "source": "module_bl_mynnedmf.F:473,719,879",
+    "witness": "evidence/port-mynn-subopts/remote/native-forecast-vs-standalone.json",
+    "whole_forecast_vs_fresh_referee_differing": 1953,
+    "words": 287730,
+    "columns": 9,
+    "policy": "Match the retained fresh-process native referee frame (zero); no replay output exclusions."
+  },
+  "fold_ready": {
+    "bl_mynn_closure=2.5": {
+      "stage_ratio_to_default": 0.672889,
+      "stage_median_ms": 9.859,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_closure=3.0": {
+      "stage_ratio_to_default": 0.723775,
+      "stage_median_ms": 10.604564,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_cloudmix=0": {
+      "stage_ratio_to_default": 0.845831,
+      "stage_median_ms": 12.392899,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_cloudpdf=0": {
+      "stage_ratio_to_default": 0.77864,
+      "stage_median_ms": 11.408431,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_cloudpdf=1": {
+      "stage_ratio_to_default": 0.797019,
+      "stage_median_ms": 11.67771,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_edmf=0": {
+      "stage_ratio_to_default": 0.530594,
+      "stage_median_ms": 7.77412,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_edmf_mom=0": {
+      "stage_ratio_to_default": 0.816536,
+      "stage_median_ms": 11.963668,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_edmf_tke=1": {
+      "stage_ratio_to_default": 0.796636,
+      "stage_median_ms": 11.672101,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_mixlength=0": {
+      "stage_ratio_to_default": 0.669771,
+      "stage_median_ms": 9.81331,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_mixqt=1": {
+      "stage_ratio_to_default": 0.785404,
+      "stage_median_ms": 11.507532,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_mixscalars=1": {
+      "stage_ratio_to_default": 0.861203,
+      "stage_median_ms": 12.61812,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "bl_mynn_output=1": {
+      "stage_ratio_to_default": 0.781494,
+      "stage_median_ms": 11.450244,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "icloud_bl=0": {
+      "stage_ratio_to_default": 0.705998,
+      "stage_median_ms": 10.344105,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    },
+    "tke_budget=1": {
+      "stage_ratio_to_default": 0.77421,
+      "stage_median_ms": 11.343518,
+      "source_commit": "84abfa1af54e2401b6dade700f4df1d08e285291",
+      "whole_forecast_steps": 10,
+      "whole_forecast_seconds": 120
+    }
+  },
+  "speed_unqualified": [],
+  "speed_scope": "Six ordinary MYNN WRF 4.6.1/default-suboption arms interleaved with 14 option arms on one shared-wrapper-admitted RTX 4090, same commit and card. Median wall time of steps 2\u201310; all 54 default samples retained. No native-cost speed exception.",
+  "speed_evidence": "evidence/port-mynn-subopts/final-evidence/timing/summary.json",
+  "runtime_source_sha256": "4a4cd949cb3676a633b210db89db8f91ed64ef278928f737ae1cfc020102a3bc",
+  "strict_runtime_paths": {
+    "single_kernel": {
+      "rows": 14,
+      "all_slabs_compared_per_row": 234270,
+      "differing": 0
+    },
+    "phases_graph": {
+      "rows": 14,
+      "all_slabs_compared_per_row": 234270,
+      "differing": 0
+    },
+    "receipts": "evidence/port-mynn-subopts/shipped-fold/shipped-{single,phases}-<row>.json"
+  }
+}

@@ -163,7 +163,7 @@ def run_with_shared_cpu_bridge_binding(binding, function, *args, **kwargs):
     job that runs beside its caller (the HRRR hydrometeor disposition
     receipt) is not one of many: pinned to one thread, its 50 per-level
     replays of the CPU vertical operator ran on one core for 120-170 s of a
-    full-CONUS start while the start waited for it (V58, 2026-10-21).
+    full-CONUS start while the start waited for it (test host, 2026-10-21).
     Native results do not depend on the worker count.
     """
     from woof.ingest.cpu_backend import cpu_bridge_scope as native_bridge_scope

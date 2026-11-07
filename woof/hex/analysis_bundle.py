@@ -791,7 +791,7 @@ def write_increment(analysis: str | Path, background: str | Path, out: str | Pat
     edges by levels) that differs, w and number concentrations among them; "mpas" writes the
     MPAS iau stream fields only.  The MPAS stream's required four are always written.
 
-    THE COST THIS REMOVES (own24 zoom globe, 167,254 cells x 55 levels, DA member leg on an RTX 5090,
+    THE COST THIS REMOVES (own24 zoom globe, 167,254 cells x 55 levels, state analysis member leg on an RTX 5090,
     hex 0.4.9, 2026-10-28): the forecast door built every member's increment here on one thread for 7.5 s
     while the card waited.  The file was defined variable by variable after data had been written, so each
     ``createVariable`` and ``setncattr`` reopened the classic header, grew it and moved every word already

@@ -698,7 +698,7 @@ def test_feedback_zero_output_is_pinned_and_costs_nothing(monkeypatch):
 def test_check_advises_on_two_way_before_the_tree_refuses_it():
     """`woof check` passed feedback=1 in silence, identically to fb0.
 
-    A a development machine validation run authored a matched A/B pair differing only
+    A test host 7 validation run authored a matched A/B pair differing only
     in the feedback value, ran `woof check` on the two-way half, got a
     clean PASS and exit 0, and learned only at prepare -- after a 26 s
     hierarchy build -- that the prepared-hierarchy route refused two-way

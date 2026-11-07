@@ -824,7 +824,8 @@ class TilePlan:
 
         parms = self._parms
         addr = self._parms_addr
-        memcpy3d = rt.memcpy3DAsync
+        from woof.hip_runtime import memcpy3d_function
+        memcpy3d = memcpy3d_function(rt)
         for copy in self.copies:
             src_arr = src[copy.name]
             dst_arr = dst[copy.name]

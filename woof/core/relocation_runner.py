@@ -960,7 +960,7 @@ class RelocationRunner:
 
     # -- the track leg ----------------------------------------------------
 
-    def _track_opportunity(self, model, elapsed, *, locate: bool):
+    def _track_opportunity(self, model, elapsed, *, locate: bool, force=False):
         """Render one consultation into the configured track streams.
 
         ``locate=False`` is the boundary the mover was consulted on: the
@@ -1012,6 +1012,26 @@ class RelocationRunner:
                               refinement=refinement)
             refine_node = (None if fix is None or fix.refined_on is None
                            else model.node(int(fix.refined_on)))
+            diagnostic_nodes = None
+            swath_grid = None
+            if not getattr(writer, "position_only", False) and getattr(writer, "surface", False):
+                diagnostic_nodes = sorted(
+                    (n for n in model.walk_parent_first()
+                     if bool(getattr(n, "_started", True)) and getattr(n, "grid", None) is not None),
+                    key=lambda n: float(n.cfg.run.dx))
+                if not hasattr(self, "_tc_swath_grid"):
+                    root = next(iter(model.walk_parent_first()))
+                    g = root.grid
+                    points = [g.ij_to_latlon(x, y)
+                              for x in (1., g.e_we/2., g.e_we-1.)
+                              for y in (1., g.e_sn/2., g.e_sn-1.)]
+                    anchor = float(points[4][1])
+                    longitudes = [anchor+(float(p[1])-anchor+180.)%360.-180. for p in points]
+                    self._tc_swath_grid = dict(
+                        path=str(writer.stream.path.with_suffix('.swath.f32')),
+                        south=min(float(p[0]) for p in points), north=max(float(p[0]) for p in points),
+                        west=min(longitudes), east=max(longitudes), spacing_deg=0.025)
+                swath_grid = self._tc_swath_grid
             row = writer.emit(
                 fix, t=float(elapsed),
                 parent_state=node.parent.state,
@@ -1022,7 +1042,9 @@ class RelocationRunner:
                 refine_state=(None if refine_node is None
                               else refine_node.state),
                 refine_grid=(None if refine_node is None
-                             else getattr(refine_node, "grid", None)))
+                             else getattr(refine_node, "grid", None)),
+                diagnostic_nodes=diagnostic_nodes, swath_grid=swath_grid,
+                **({"force": True} if force else {}))
         except Exception as error:                   # noqa: BLE001
             return self._record(model, {
                 "event": "track_faulted",
@@ -1108,10 +1130,10 @@ class RelocationRunner:
         does not advance, and the receipt is its own event.  The storm
         did not move here; the run is being put back where it was.
 
-        The transplant of the outgoing child's overlap runs and is then
-        overwritten wholesale by the restore.  That is wasted work, not
-        wrong work, and it keeps this on the one audited path rather than
-        a second one that could drift from it.
+        Temporary state is rebuilt without carrying a live-move overlap.
+        The complete checkpoint supplies continuation. Descendants can be disjoint from their
+        cold-start ground after a long storm track; they still rebuild
+        their statics and donor geometry before checkpoint restoration.
         """
         from dataclasses import replace as _replace
 
@@ -1133,6 +1155,9 @@ class RelocationRunner:
         # the numbers say.
         preparer = (self.containment_preparer if int(self.config.grid_id) != grid_id
                     and self.containment_preparer is not None else self.on_child_built)
+        for_restore = getattr(preparer, "for_checkpoint_restore", None)
+        if callable(for_restore):
+            preparer = for_restore()
         capture = getattr(preparer, "capture_outgoing", None)
         if callable(capture):
             capture(node)
@@ -1185,6 +1210,7 @@ class RelocationRunner:
                 model, "_dycore_state_workspace", None),
             staging=self.staging,
             reground_descendant=self.reground_descendant,
+            restoring_checkpoint=True,
             **reconstruction_args)
         self._segment = receipt["segment_state"]
         refresh_model_time(node.state, node.clock)
@@ -1511,6 +1537,19 @@ class RelocationRunner:
             # whose clamped_by names reach_speed_m_s says what it was.
             summary["reach"] = self.reach_clamp.receipt()
         if self.track_writer is not None:
+            # Consultations happen before integration. Without this final
+            # diagnostic, a completed forecast's ATCF/CSV ends one cadence
+            # early even though its final history frame exists.
+            stream = getattr(self.track_writer, "stream", None)
+            handle = getattr(stream, "handle", None)
+            root = getattr(model, "root", None)
+            if handle is not None and not handle.closed and root is not None:
+                elapsed = float(root.clock.elapsed_seconds)
+                last = getattr(stream, "_last_emit_t", None)
+                synchronized = all(abs(float(n.clock.elapsed_seconds)-elapsed)<1.e-6
+                    for n in model.walk_parent_first() if bool(getattr(n,"_started",True)))
+                if synchronized and (last is None or elapsed>last+1.e-6):
+                    self._track_opportunity(model,elapsed,locate=True,force=True)
             # How many records, how many emissions were skipped, and the
             # first few faults if any.  A track file that quietly wrote
             # nothing is a finding, and a summary that only counted

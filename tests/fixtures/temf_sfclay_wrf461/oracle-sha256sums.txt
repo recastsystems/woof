@@ -1,0 +1,11 @@
+70f2ed6bc48aad5b1bf68be4e01753a132f2ecdb4fa6d95c0ecce5d5554fcd94  /work/wrf/src/WRF-4.6.1/phys/module_sf_temfsfclay.F
+2cc5d9bb3da1d7600966550304becc868d11cc36732e5db94cc37e48910cb53a  /work/port-sfclay10-temf/src/tools/temf_sfclay_wrf461_oracle/run_temf_sfclay.F90
+ccb27b6cfb94731764811b220048b72c93356e2206ac89ad3b8e8b8902492db7  /work/port-sfclay10-temf/src/tools/temf_sfclay_wrf461_oracle/stub_wrf.F90
+707b5dff50e2f901685af25cceecc0f2779cf5e8558e5aff1396c349dc5cdd27  /work/port-sfclay10-temf/src/tools/temf_sfclay_wrf461_oracle/log10f_correctly_rounded.c
+b6f51fc7ff9f2f25b1ef83ea19583946615b12d9d7615fbe8252f88344029009  temf-inputs-wrf.csv
+ad5a6b95e851d7e9aba4c18035cf7e99f649ad5914239b692d1c082fcedfd22c  temf-outputs-wrf.csv
+35c164781447f594881d65cd2781d7268f8ff1a357c8096a0d67ef1613b69760  temf-inputs-wrf-crlog10.csv
+11adddc35038b44c94a83b8d974e10d31ae85c5ed9cc4e5953ceaae799b200ed  temf-outputs-wrf-crlog10.csv
+0615c4bac9213c133c97a90414c8d508cc3fc782b96068fb4c9abc513cfbf66f  log10-probe.txt
+71c940fdc82691abcd7132ddd46075abe7062c621210655081ea8fae6d3f62c2  log10-exhaustive.txt
+61c2596ef9b7456c1328eb5b9064c84b72f15acad698b084b87a831c478bb69f  /work/port-sfclay10-temf/src/tools/temf_sfclay_wrf461_oracle/../../gpuwm/core/kernels/log10_flt32.cuh

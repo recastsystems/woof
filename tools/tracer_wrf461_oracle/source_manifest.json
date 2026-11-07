@@ -1,0 +1,60 @@
+{
+  "pin": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "license": "WRF public domain: permission for any purpose without restriction; retain requested notice",
+  "sources": [
+    {
+      "path": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "copied_native_equal": true
+    },
+    {
+      "path": "Registry/Registry.EM",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/Registry/Registry.EM",
+      "sha256": "2bcaf5871914ad7f4683f2bc0a5f8ada5b1199915f3263d1e4c5b1d3986bdff8",
+      "copied_native_equal": true
+    },
+    {
+      "path": "dyn_em/module_advect_em.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/dyn_em/module_advect_em.F",
+      "sha256": "58253bdbeb188dd47ed0579fcd2891086be1889b75c0c7d3696c9ad1d213559d",
+      "copied_native_equal": true
+    },
+    {
+      "path": "dyn_em/solve_em.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/dyn_em/solve_em.F",
+      "sha256": "e42df5d7db4b6ec4a3b8e2f228a8ec8f9a4c426656093bfcebe58a8de6c3e8f4",
+      "copied_native_equal": true
+    },
+    {
+      "path": "dyn_em/module_initialize_real.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/dyn_em/module_initialize_real.F",
+      "sha256": "b4199371567369fa93471f66eef60cb63a55407718b828d724e43587bc4dc82e",
+      "copied_native_equal": true
+    },
+    {
+      "path": "phys/module_pbl_driver.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/phys/module_pbl_driver.F",
+      "sha256": "90336e30296991fb397ffde87649a4bd20eaa2b7dc6e90639b043810c8420b56",
+      "copied_native_equal": true
+    },
+    {
+      "path": "share/module_trajectory.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/share/module_trajectory.F",
+      "sha256": "de63008a5a5dc179692ae79266f2729425d5e6b5422c4f4a60aa4e2310661b12",
+      "copied_native_equal": true
+    },
+    {
+      "path": "dyn_em/module_em.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/dyn_em/module_em.F",
+      "sha256": "7695bfb05a7f99763334a6e69523bbcc1de0f2c659177a18c10a6e1cf530a0c7",
+      "copied_native_equal": true
+    },
+    {
+      "path": "dyn_em/module_first_rk_step_part1.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/dyn_em/module_first_rk_step_part1.F",
+      "sha256": "41a92b60e588590f8b2227f8fa67289a4404cddf8d77831c6a6ae23b04b87058",
+      "copied_native_equal": true
+    }
+  ]
+}

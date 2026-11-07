@@ -213,7 +213,7 @@ SOILPROP_LINEAGE_EDITS = (
 )
 
 
-#: RUC's float32 libm words (lane/verify-ruc-lsm): every EXP, LOG, LOG10,
+#: RUC's float32 libm words (development branch): every EXP, LOG, LOG10,
 #: TANH, COS and REAL**REAL in ruc.cu moved from float64-rounded-once (and
 #: CUDA's logf/cosf) to WOOF's float32 routines, each hunk with the text it
 #: replaced, generated from the diff.  Oracle-verified on its own

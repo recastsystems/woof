@@ -105,8 +105,10 @@ def test_bl_pbl_config_default_and_toml(tmp_path):
         "sf_sfclay_physics=91\n")
     assert load_config(cfg_file).bl_pbl_physics == 1
     assert load_config(cfg_file).ysu_topdown_pblmix == 0
+    # 6 (MYNN3) is a WRF selector with no port; 7 served here until the
+    # ACM2 port made it a valid value.
     cfg_file.write_text(cfg_file.read_text().replace("bl_pbl_physics=1",
-                                                      "bl_pbl_physics=7"))
+                                                      "bl_pbl_physics=6"))
     with pytest.raises(ValueError, match="bl_pbl_physics"):
         load_config(cfg_file)
 
@@ -548,7 +550,7 @@ def _single_column_device(args):
 
 @pytest.mark.gpu
 @requires_gpu
-# Over WATER (2.8.9's form of this test, lane/parity-286) both generations
+# Over WATER (2.8.9's form of this test, development branch) both generations
 # keep momentum finite under a NaN HFX: vconv is 0 there, and the WRF 4.8
 # kernel (graded word for word against WRF 4.8 by
 # tools/ysu_generations_oracle/gate.py) passes HFX to no momentum term on a
@@ -590,7 +592,7 @@ def test_nonfinite_hfx_surfaces_as_dtheta_and_the_refusal_names_hfx(version, fir
     Part 1 reproduces it against the real kernel.  Part 2 pins the
     refusal to naming HFX, which is what the shipped message did not do.
 
-    WATER, since lane/parity-286.  Every YSU column now takes WRF's default
+    WATER, since development branch.  Every YSU column now takes WRF's default
     ctopo surface-drag arm (bl_ysu.F90:1308; module_bl_ysu.F:404 passes
     ctopo = 1 on every WRF run), whose drag weight vconvlim reads the surface
     buoyancy flux through the Beljaars vconv on LAND (bl_ysu.F90:1295-1298,

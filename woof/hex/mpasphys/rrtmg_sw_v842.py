@@ -12,6 +12,12 @@ untouched. Source comparison is recorded in the lane source-diff receipt.
 """
 from __future__ import annotations
 from woof.hex.device_memory_release import shared_card_memory
+
+
+def _ranks_on_card(cp):
+    """Same-host ranks sharing the calling thread's card (1 on the one-card route; woof.hex.device_share)."""
+    from woof.hex.device_share import ranks_on_device
+    return ranks_on_device(cp=cp)
 from woof.hex import numerics as _hex_numerics
 
 import numpy as np
@@ -483,7 +489,8 @@ class MPASShortwave(CudaSW):
 
     def sunlit_column_chunk(self, nd, nl, aerosol=False, column_chunk=None):
         """Sunlit columns per wrapper batch: what half the free device memory
-        holds of one batch's wrapper transients, capped at SUNLIT_CHUNK_CAP,
+        holds of one batch's wrapper transients, capped at SUNLIT_CHUNK_CAP
+        (both divided among the same-host ranks on this card),
         a multiple of the solver's own chunk when it is at least that wide,
         and never below SUNLIT_CHUNK_QUANTUM. Batch width is memory shape
         only: per-column words are the same at any width."""
@@ -495,10 +502,14 @@ class MPASShortwave(CudaSW):
         # aerosol slabs, and the solver's per-column flux outputs.
         per_column = 4 * (8 * nl * 112 + 15 * nl + 2 * (nl + 1)
                           + (3 * 14 * nl if aerosol else 0) + 16 * (nl + 1))
+        # Same-host ranks on this card run this batch at the same radiation step: each gets its share
+        # of the cap and of the free memory (woof.hex.device_share names the breakage).
+        ranks = _ranks_on_card(cp)
+        cap = max(quantum, cap // ranks // quantum * quantum)
         try:
             free = int(cp.cuda.runtime.memGetInfo()[0])
             free += int(cp.get_default_memory_pool().free_bytes())
-            width = (free // 2) // per_column
+            width = (free // 2 // ranks) // per_column
         except Exception:
             width = cap
         width = max(quantum, min(cap, width) // quantum * quantum)
@@ -514,17 +525,22 @@ class MPASShortwave(CudaSW):
         Batch width changes storage only, not any per-column arithmetic.
         Leave half the available budget for other live allocations and pool
         fragmentation; a configured member pool limit is a hard upper bound.
+        The cap and the card's free memory are divided among the same-host
+        ranks on this card (woof.hex.device_share names the breakage).
         """
         from woof.core.rrtmg_sw import sw_batched_vram_bytes
         cp = self.cp
-        quantum, cap = self.SUNLIT_CHUNK_QUANTUM, self.SUNLIT_CHUNK_CAP
+        quantum, cap = self.SUNLIT_CHUNK_QUANTUM, min(self.SUNLIT_CHUNK_CAP, 1024)
         wrapper_column = 4 * (8 * nl * 112 + 15 * nl + 2 * (nl + 1)
                               + (3 * 14 * nl if aerosol else 0) + 16 * (nl + 1))
         solver_bytes = sw_batched_vram_bytes(quantum, nl, mcica_layout="column")
         per_column = wrapper_column + (solver_bytes + quantum - 1) // quantum
+        ranks = _ranks_on_card(cp)
+        cap = max(quantum, cap // ranks // quantum * quantum)
         try:
             pool = cp.get_default_memory_pool()
-            free = int(cp.cuda.runtime.memGetInfo()[0]) + int(pool.free_bytes())
+            # The card's free memory is every rank's; this process's own pool limit is its own.
+            free = (int(cp.cuda.runtime.memGetInfo()[0]) + int(pool.free_bytes())) // ranks
             limit = int(pool.get_limit())
             if limit > 0:
                 free = min(free, max(0, limit - int(pool.used_bytes())))

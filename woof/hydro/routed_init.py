@@ -20,7 +20,7 @@ to the per-step sequence. One launch with a barrier per level instead would
 still be 82 dependent stages per step on the measured basin (19.8 s on the
 5070 Ti); dataflow is 0.33 s there. The host sleeps on a blocking event.
 
-A continental payload arrives in day chunks (lane/hydro-conus-route): the whole
+A continental payload arrives in day chunks (development branch): the whole
 catchment x hour matrix of a CONUS fabric does not fit on a card or in pinned
 host memory. Each chunk is one launch of the same kernel, continuing from the
 state the previous one wrote back, so the routed state is the same as one
@@ -147,7 +147,8 @@ def _resident_blocks(kernel):
     """Blocks of BLOCK threads the whole card holds at once for this kernel."""
     import cupy as cp
     from cupy_backends.cuda.api import driver
-    return (driver.occupancyMaxActiveBlocksPerMultiprocessor(kernel.function.ptr, BLOCK, 0)
+    from woof.backend import active_blocks_per_multiprocessor
+    return (active_blocks_per_multiprocessor(kernel.function.ptr, BLOCK, 0)
             * cp.cuda.Device().attributes['MultiProcessorCount'])
 
 

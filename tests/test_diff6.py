@@ -10,6 +10,7 @@ monotonic option (diff_6th_opt=2) creates no new extrema on a sharp front
 configured rate and the moisture scalars at three times it (WRF normalizes
 the scalar rows by the RK sub-step -- see :data:`SCALAR_FACTOR`).
 """
+import dataclasses
 import numpy as np
 import pytest
 from conftest import requires_gpu
@@ -279,7 +280,7 @@ def test_apply_diff6_matches_mirror_on_random_state():
     from woof.verify.npref import np_diff6, random_acoustic_state
 
     s, cfg0 = random_acoustic_state(seed=11, nz=8, ny=6, nx=12)
-    cfg = RunConfig(**{**cfg0.__dict__, "diff_6th_opt": 2,
+    cfg = dataclasses.replace(cfg0, **{"diff_6th_opt": 2,
                        "diff_6th_factor": 0.3})
     for name in _PROGNOSTICS:
         getattr(s, name + "0")[...] = getattr(s, name)
@@ -343,7 +344,7 @@ def test_apply_diff6_shared_alias_poison_is_bitwise_exact():
         seed=711, nz=8, ny=10, nx=12, moist=True, mp_physics=10)
     aliased, _ = random_acoustic_state(
         seed=711, nz=8, ny=10, nx=12, moist=True, mp_physics=10)
-    cfg = RunConfig(**{**cfg0.__dict__, "diff_6th_opt": 2,
+    cfg = dataclasses.replace(cfg0, **{"diff_6th_opt": 2,
                        "diff_6th_factor": 0.3})
     for state in (reference, aliased):
         for name in ("u", "v", "w", "thp"):
@@ -503,7 +504,7 @@ def test_apply_diff6_slopeopt_uses_state_terrain():
     def run(slopeopt):
         s, cfg0 = random_acoustic_state(seed=11, nz=8, ny=6, nx=12,
                                         hybrid_opt=2, hill_height=800.0)
-        cfg = RunConfig(**{**cfg0.__dict__, "diff_6th_opt": 2,
+        cfg = dataclasses.replace(cfg0, **{"diff_6th_opt": 2,
                            "diff_6th_factor": 0.3,
                            "diff_6th_slopeopt": slopeopt})
         for name in _PROGNOSTICS:

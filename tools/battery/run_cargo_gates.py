@@ -687,6 +687,15 @@ def row_environment(entry: Entry, *, target_dir: Path, binary_pool=None, cargo_t
     # Rows of one workspace still share their folder and its incremental reuse; serial shards keep the one folder.
     environment["CARGO_TARGET_DIR"] = str(cargo_target or (workspace_target_dir(target_dir, entry) if binary_pool else target_dir))
     environment.setdefault("CARGO_BUILD_JOBS", str(available_cores()))
+    # A library that is also a cdylib (static-fields, netcdf-writer, obs-score, ...) is written UNHASHED,
+    # deps/libstatic_fields.rlib, so every dependency variant of it shares one file in the shared workspace
+    # folder.  Breakage it prevents (3.0.0 seal pass 1, 2026-11-02): the static-fields rows rebuilt that file
+    # against serde_json without float_roundtrip, and the rw-wrfbatch row then compiled against it with its own
+    # serde_json (float_roundtrip on): E0308 "expected serde_json::value::Value, found serde_json::Value" in
+    # src/fire_observations.rs, a red no source change caused.  Cargo's own switch (the one the Rust
+    # bootstrap uses for std) gives those artifacts a hashed name too, so each variant has its own file; the
+    # uplifted target/<profile>/libX.so keeps its plain name.  The same value on every row keeps reuse.
+    environment["__CARGO_DEFAULT_LIB_METADATA"] = "gpuwm-cargo-gate"
     for assignment in entry.env:
         key, _, value = assignment.partition("=")
         # Worker integration tests need the same installed Python as this

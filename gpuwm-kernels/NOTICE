@@ -1,0 +1,1546 @@
+WOOF (Python package "gpuwm", preprocessor "rw-wps")
+Copyright 2026 WOOF contributors
+
+woof/core/gsfcgce_constants.py and kernels/gsfcgce.cu and
+kernels/gsfcgce_refl.cu transcribe the Goddard GCE microphysics and radar
+operators in WRF phys/module_mp_gsfcgce.F and module_mp_radar.F, pinned in
+tools/gsfcgce_wrf461_oracle/SOURCE.md. The embedded coefficient tables
+share that source's public-domain terms. The WRF notice below and
+licenses/LICENSE-WRF-public-domain.txt apply to these transcriptions.
+woof/core/kernels/slab.cu, the slab soil preparation in
+tools/grib1_bridge/src/slab_init.rs, and tools/slab_wrf461_oracle implement
+WRF's five-layer thermal diffusion scheme and its native replay. The
+v4.7.1 module_sf_slab.F and LANDUSE.TBL are byte-identical to v4.6.1.
+The WRF public-domain notice below and
+licenses/LICENSE-WRF-public-domain.txt apply to those portions.
+
+woof/core/kernels/gsfcgce4ice.cu, gsfcgce4ice_aux.cu and
+radar_backscatter_common.cuh transcribe WRF v4.6.1
+phys/module_mp_gsfcgce_4ice_nuwrf.F and phys/module_mp_radar.F.
+The WRF public-domain notice below and licenses/LICENSE-WRF-public-domain.txt
+apply. Source pins, the per-file licence review and table provenance are in
+tools/gsfcgce4ice_wrf461_oracle/SOURCE.md.
+The cu_physics=93 CUDA column kernel transcribes WRF phys/module_cu_gd.F.
+The source is identical in WRF v4.6.1 and v4.7.1. The WRF public-domain
+notice below and licenses/LICENSE-WRF-public-domain.txt apply. It uses no
+external coefficient tables. The existing shared float32 math headers keep
+their own notices and licences.
+
+
+woof/core/boulac.py and woof/core/kernels/boulac.cu transcribe the
+BouLac PBL from WRF v4.7.1 phys/module_bl_boulac.F. Its source is identical
+to the pinned v4.6.1 module used by tools/boulac_wrf461_oracle. The WRF
+public-domain notice below and licenses/LICENSE-WRF-public-domain.txt
+apply. tools/boulac_wrf471_oracle/PIN.json records the source and licence.
+
+woof/core/kernels/tiedtke.cu and tiedtke_routines.cuh implement the original
+cumulus scheme from WRF v4.6.1 phys/module_cu_tiedtke.F. The WRF public-domain
+notice below and licenses/LICENSE-WRF-public-domain.txt apply to those
+equations and tools/tiedtke_wrf461_oracle/oracle.F90.
+
+woof/core/kernels/bmj.cu transcribes BMJDRV, BMJ, TTBLEX, BMJINIT and
+SPLINE from WRF v4.6.1 phys/module_cu_bmj.F. Its sole model dependency is
+share/module_model_constants.F. Both files are covered by the WRF public
+domain statement below and licenses/LICENSE-WRF-public-domain.txt.
+BMJINIT generates its lookup tables on the GPU; no separate table asset
+is redistributed. The pinned source and licence hashes are recorded by
+tools/bmj_wrf461_oracle/build.sh and instrument_native.py.
+
+woof/ensemble/stochastic.py and
+woof/core/kernels/ensemble_stochastic.cu implement Philox4x32-10 using
+Random123's algorithm. Its BSD-3-Clause notice is reproduced in
+licenses/LICENSE-Random123.txt. The spectral stochastic equations in those
+files come from WRF v4.6.1 dyn_em/module_stoch.F, covered by the WRF notice
+below and licenses/LICENSE-WRF-public-domain.txt. GPU counter generation
+and cuFFT replace the compiler-dependent RNG and FFTPACK; the implementation
+does not claim bitwise identity with WRF.
+
+woof/core/spp_kernel_sources.py restores stochastic parameter consumers
+from WRF v4.6.1 module_cu_gf_deep.F, module_bl_mynn.F and module_sf_mynn.F.
+The WRF public-domain notice below and licenses/LICENSE-WRF-public-domain.txt
+apply to these expressions and the native captures in woof/data/spp/.
+
+woof/core/ruc_spp.py and woof/core/kernels/ruc_spp.cu restore the hydraulic
+conductivity perturbation operator from WRF V3.9.1 phys/module_sf_ruclsm.F.
+It runs inside the current RUC soil and snow-soil ports. WRF 4.6.1 and 4.7.1
+retain the parameter arguments but omit this historical operator. The WRF
+public-domain notice below and licenses/LICENSE-WRF-public-domain.txt apply.
+
+tools/grib1_bridge/src/aerosol_emission.rs and
+tests/oracles/aerosol_surface_mass.f90 transcribe the surface aerosol source
+in NOAA-EMC/HRRR WRFV3.9 dyn_em/module_initialize_real.F:4428-4430.
+The WRF public-domain notice is retained in
+licenses/LICENSE-WRF-public-domain.txt. The source's scalar field identities
+are also documented in the RAP native mapping provenance.
+The nearest-neighbor entry in tools/grib1_bridge/src/wps_masked.rs follows
+WPS v4.6.0 geogrid/src/interp_module.F:402-438 and falls through to the
+existing WPS four-point and average operators when its donor is missing.
+
+woof/core/kernels/portable_libm64.cuh transcribes Rust libm 0.2.16
+exp.rs, log.rs, log1p.rs, pow.rs and generic/scalbn.rs, and glibc 2.39
+s_log1pf.c through woof/core/noahmp_libm.py. The Rust crate's MIT grant
+and MIT OR Apache-2.0 contributor grant are preserved in
+licenses/LICENSE-rust-libm.txt. The Sun notices for the algorithms are
+preserved in the header and licenses/LICENSE-FDLIBM-SunPro.txt.
+
+The CPU preparation bridge's tools/grib1_bridge/src/glibc239_math.rs
+transcribes the pinned FP32 powf implementation and tables in
+woof/core/noahmp_libm.py. These are Arm optimized-routines under MIT,
+Copyright (c) 2017-2018, Arm Limited. The complete grant is reproduced
+beside the Rust code and in licenses/LICENSE-Arm-optimized-routines-MIT.txt.
+The binary-form bridge notice covers this compiled copy too. The separate
+host FP64 entries call the platform C library; they do not transcribe it.
+
+The native regular-grid Zarr reader's locked dependencies, including codec
+and TLS libraries, are inventoried with their licence texts in
+licenses/THIRD-PARTY-LICENSES-zarr-binary.txt. That notice also accompanies
+the bridge bundle's map-asset tree.
+
+The Icechunk native-history writer (rw_icechunk, in the bridge bundle and
+fetched on demand) is built from tools/rw_icechunk/Cargo.lock. Its locked
+dependencies are inventoried with their licence texts in
+licenses/RW-ICECHUNK-THIRD-PARTY.txt.
+
+Licensed under the Apache License, Version 2.0. Third-party datasets,
+tables, vendored components, and dependencies retain their own licenses
+and notices. Per-asset provenance (sources, generation recipes, SHA-256
+pins) is recorded in PROVENANCE.md and in the woof/data/*/PROVENANCE.md
+files beside each packaged asset.
+
+Where a licence requires its text to be reproduced rather than merely
+named, this file reproduces it. Short texts appear in the sections
+below; longer ones are in the licenses/ directory, which ships in every
+source and binary distribution through the license-files declaration in
+pyproject.toml and lands in an installed wheel at
+recast_woof-<version>.dist-info/licenses/licenses/ (PEP 639 keeps the source
+path, hence the doubled component). Every section below names the file
+that carries its text.
+
+Notices also sit beside the code they belong to, which is what several of
+these licences ask for and what a reader looking at one file rather than
+at the whole distribution will find first. Each shipped Python module
+that carries transcribed work opens with the notice for what it carries;
+so do woof/core/kernels/glibc_flt32.cuh,
+woof/core/kernels/glibc_trig_flt32.cuh,
+woof/core/kernels/thompson_aerosol_common.cuh and
+tools/rustwx/crates/rw-libm/src/lib.rs. Other CUDA translation
+units and prepended headers are covered by the source-freeze manifests
+checked by tests/test_mp8_frozen.py and
+tests/test_kernel_source_freeze_per_module.py; adding a notice comment
+would change their pinned source bytes. Their adjacent notice is
+woof/core/kernels/LICENSE-third-party.txt, which sits in the same
+directory, covers all six grants present there, and is named explicitly
+in pyproject.toml's package-data so that it ships with the code it
+belongs to. Packaged data assets carry theirs the same way, in
+LICENSE*.txt files beside them.
+
+One carve-out, stated at the top because a blanket claim would be wrong:
+the two Source Sans 3 font files embedded in the renderer binaries are
+under the SIL Open Font License 1.1 and are NOT offered under Apache-2.0.
+See "Source Sans 3" below.
+
+--------------------------------------------------------------------------
+
+The Pleim-Xiu land-surface column in woof/core/kernels/pxlsm.cu and the
+land-use tables in woof/data/pxlsm/pxlsm_tables.json derive from WRF
+phys/module_sf_pxlsm.F and phys/module_sf_pxlsm_data.F. The standalone
+oracle also compiles share/module_model_constants.F and
+frame/module_wrf_error.F. These four source files are byte-identical in
+WRF v4.6.1 and v4.7.1. Their source and license hashes are retained in
+tools/pxlsm_wrf461_oracle/source-pin.json. The WRF public-domain notice
+below and licenses/LICENSE-WRF-public-domain.txt apply to these copies
+and derived tables. No competitor implementation was used.
+The PX coupled driver, initialization and lifecycle bindings also follow
+WRF's public-domain module_surface_driver.F, module_physics_init.F,
+module_soil_pre.F, module_check_a_mundo.F and Registry.EM_COMMON; hashes
+and source licence review are retained in
+tools/pxlsm_wrf461_oracle/coupling-source-pin.json.
+
+WRF / NCAR / UCAR
+
+The MYNN mixing-length option 2 and post-PBL scalar diffusion in
+woof/core/mynn_pbl.py, mynn_scalar_mix.py and their CUDA companions
+transcribe WRF v4.6.1 phys/module_bl_mynn.F and phys/module_pbl_driver.F.
+Their Fortran oracle tools retain the same public-domain source notice.
+The full WRF notice below and licenses/LICENSE-WRF-public-domain.txt apply.
+
+WOOF is an independent implementation. It is not affiliated with or
+endorsed by the National Center for Atmospheric Research (NCAR) or the
+University Corporation for Atmospheric Research (UCAR). The Weather
+Research and Forecasting (WRF) model, developed at NCAR, is the
+transcription and verification authority for WOOF's WRF-derived
+mechanisms (WRF v4.6.1, https://github.com/wrf-model/WRF). 167 of the
+shipped source files under woof/ cite a WRF Fortran path by name and
+line.
+
+WRF is not released under an open-source licence: UCAR places it in the
+public domain and requests a notice. That request is honoured here by
+reproduction rather than paraphrase. WRF v4.6.1 LICENSE.txt, in full:
+
+    WRF was developed at the National Center for Atmospheric Research
+    (NCAR) which is operated by the University Corporation for
+    Atmospheric Research (UCAR). NCAR and UCAR make no proprietary
+    claims, either statutory or otherwise, to this version and release
+    of WRF and consider WRF to be in the public domain for use by any
+    person or entity for any purpose without any fee or charge. UCAR
+    requests that any WRF user include this notice on any partial or
+    full copies of WRF. WRF is provided on an "AS IS" basis and any
+    warranties, either express or implied, including but not limited to
+    implied warranties of non-infringement, originality, merchantability
+    and fitness for a particular purpose, are disclaimed. In no event
+    shall UCAR be liable for any damages, whatsoever, whether direct,
+    indirect, consequential or special, that arise out of or in
+    connection with the access, use or performance of WRF, including
+    infringement actions.
+
+    WRF(R) is a registered trademark of the University Corporation for
+    Atmospheric Research (UCAR).
+
+The CUDA cloud-fraction, FARMS, cumulus-radiation merge, stock aerosol
+optics and eclipse routines in woof/core/kernels/{cldfra3,farms,
+cu_radiation,wrf_stock_aer3,solar_eclipse}.cu transcribe public WRF source.
+The distributed eclipse_besselian_elements.dat table is also from WRF.
+Source and table pins and individual licence checks are retained in
+tools/cloud_aerosol_wrf471_oracle/sources.json. The WRF notice applies.
+The isolated strict log10 helper retains the CORE-MATH MIT notice in
+licenses/LICENSE-CORE-MATH-MIT.txt. The external CESM aerosol dataset is
+not distributed by this port.
+
+The unwrapped text, byte-identical to WRF v4.6.1's own LICENSE.txt
+(md5 ea0d72123846bafa972b29ca41f89b1a) and carrying the registered
+trademark symbol as UCAR writes it, is at
+licenses/LICENSE-WRF-public-domain.txt and beside each packaged
+WRF-derived asset directory.
+
+The UW moist-turbulence boundary layer (bl_pbl_physics = 9) is transcribed
+from WRF v4.7.1 instead (tag commit f52c197ed39d12e087d02c50f412d90d418f6186):
+phys/module_bl_camuwpbl_driver.F and the CAM modules it calls
+(module_cam_*.F). Those files carry no copyright line and no licence
+clause, so they fall under the same declaration, and v4.7.1's LICENSE.txt
+is byte-identical to the text above (sha256
+b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6, the
+digest of licenses/LICENSE-WRF-public-domain.txt).
+
+The implicit vertical-advection kernels in woof/core/kernels/ieva.cu
+transcribe WRF v4.7.1 dyn_em/module_ieva_em.F at that same tag commit.
+Their wrf_legacy variant transcribes the earlier dyn_em/module_advect_em.F
+and WW_SPLIT in dyn_em/module_big_step_utilities_em.F distributed in
+NOAA-EMC/HRRR, sorc/hrrr_wrfarw.fd/WRFV3.9, at commit
+40ee6058c2fc6624cbfbbe8cf1c20c59e6a45827. The source hashes, extracted
+routine hashes, hybrid-coordinate macro expansion and the declared lower
+w-boundary correction are recorded by tools/ieva_wrf_oracle/legacy_build.py
+and the retained native Fortran fixture. These WRF-derived portions carry
+the same reproduced WRF notice above and in
+licenses/LICENSE-WRF-public-domain.txt.
+
+The renderer's WRF-file reader (tools/rustwx/crates/rw-wrfbatch) cites
+share/output_wrf.F, the WRF source that writes a history file's
+START_DATE and SIMULATION_START_DATE, for how it reads those two stamps.
+That file is WRF's, so the citation sits inside the declaration above.
+
+UCAR's declaration disclaims UCAR's own claims. It cannot and does not
+dispose of anyone else's, and WRF says so itself by preserving foreign
+notices inside phys/. WOOF transcribes two of those bodies of code and
+reproduces both notices below: AER's RRTMG, and Numerical Recipes'
+GAMMLN. It transcribes neither of the other two -- the Mersenne Twister
+in module_ra_rrtmg_lw.F (WOOF's McICA implements the kissvec path only;
+a repository-wide search for the Mersenne Twister constant 0x9908b0df
+finds it nowhere but in this sentence) nor Ooura's derf in
+module_cu_mskf.F (the MSKF cumulus scheme is not ported, and the string
+"mskf" appears nowhere under woof/).
+
+The WRF Preprocessing System (WPS) is the transcription authority for the
+preprocessing half in the same way, and is named here so that a reader who
+greps for it finds an answer rather than a silence. WPS ships no LICENSE
+file; its sources carry no copyright line, no licence statement and no
+author attribution. UCAR distributes it as part of the WRF modelling
+system, and the declaration above is the only statement either half of that
+system carries.
+
+Ten WPS sources with no WRF counterpart -- rrpr.F, gribcode.F, output.F,
+rd_grib1.F, rd_grib2.F, new_storage.F, process_tile_module.F,
+interp_module.F, smooth_module.F and read_met_module.F90 -- are cited 57
+times across four first-party Rust crates, 49 of those in
+tools/grib1_bridge, whose met_intermediate reimplements ungrib: it decodes
+GRIB by the user's own Vtable, applies ungrib's repairs, derives the fields
+ungrib derives, and writes the version-5 intermediate format. The terrain
+smoothing in tools/rustwx/crates/static-fields transcribes geogrid's
+smooth_module.F for the GEOGRID.TBL terrain smoothers (smooth_option 1-2-1,
+smth-desmth and smth-desmth_special), graded bit for bit against WPS
+v4.6.0's own geogrid.exe. The projection math in
+tools/rustwx/crates/static-fields and tools/rw_wps/crates/mapped-engine is a
+separate case: it comes from module_llxy.F, which is a WRF file --
+share/module_llxy.F -- so it sits inside the declaration above, and its own
+header records that it was adapted from NCEP's w3 library, a work of the
+United States Government.
+
+This distribution packages certain data assets generated with or copied
+from the WRF v4.6.1 distribution, including: Thompson microphysics
+lookup tables (generated with WRF's own table generator and
+SHA-256-pinned), Noah and Noah-MP land-surface parameter tables
+(VEGPARM.TBL, SOILPARM.TBL, GENPARM.TBL, LANDUSE.TBL, MPTABLE.TBL;
+byte-identical to WRF's run directory), the Kain-Fritsch lookup table,
+the P3 lookup table, an ERA5 Vtable, two WRF Fortran radiation sources
+kept as transcription authorities, and the RRTMG radiation data files
+named below.
+
+The operational WRF 3.9 Thompson generation (thompson_version =
+"wrf_39_noaa", the HRRR configurations) reads four lookup tables that
+are distributed as release assets of this project, not inside the
+package, and staged by `gpuwm fetch-tables --thompson-fork` or on first
+use. They are generated from the HRRR fork of WRF's Thompson
+microphysics, NOAA GSL and NCAR work on the same public-domain WRF
+module: NOAA-EMC/HRRR tag v4.1.21 (commit
+a131d6c7f6ebf57ae3c43f198229ad6afdf4d886),
+sorc/hrrr_wrfarw.fd/WRFV3.9/phys/module_mp_thompson.F (sha256
+4d60011188443eb432294f7693beb64bdbc8f812541a15c7800013060c877283) and
+module_mp_radar.F (sha256
+08329c87604b234efab53f7986163a4f6050f58823da9099cb464163c1920f08). That
+fork's own WRFV3.9/README opens with the WRF Public Domain Notice, word
+for word the notice reproduced below, and neither source file carries a
+copyright line or a licence clause of its own. The fork's thompson_init,
+compiled unmodified, writes the tables;
+tools/thompson_fork_oracle/generate_tables.F90 calls it and
+tools/thompson_fork_oracle/build.sh builds and runs it (harness commit
+43d87c73cf72554044108c74bb647d79a415916f). The assets, each pinned in
+woof/core/thompson_contract.py (FORK_TABLE_ASSETS):
+
+    thompson-wrf39-noaa-qr_acr_qg.dat            51,518,256 bytes
+      sha256 8b9b5039ec560748c6261cc9ecbc4366332473a9a1d0666ee5a7f04686abf402
+    thompson-wrf39-noaa-qr_acr_qs.dat            33,118,944 bytes
+      sha256 39b4fd363d440a867cc8c37a22ebf2651c8ffcf54f8c05ab7a6f5e753e630ac0
+    thompson-wrf39-noaa-freezeH2O.dat           254,944,848 bytes
+      sha256 28c12192251969cd79a02e08e3174f26113de51490689f728cfc44af9cf76b2c
+    thompson-wrf39-noaa-thompson_aux_tables.dat   6,164,536 bytes
+      sha256 13d304911e5322fb5bcc2a0639effc20ad5381c59f076ced2386b56f2fb441ae
+
+They are covered by the WRF notice below and
+licenses/LICENSE-WRF-public-domain.txt. PROVENANCE.md records how they
+were generated and reproduced.
+
+The HRRR CONUS static file that the HRRR configurations take their
+geography from (static-source row hrrr-conus-v4,
+woof/data/static_sources/static-sources.v1.toml) is NOAA/NCEP
+operational HRRR v4 static data, a work of the United States Government
+and in the public domain. It is downloaded on first use from NCO's
+production tree,
+https://www.nco.ncep.noaa.gov/pmb/codes/nwprod/hrrr.v4.1.21/fix/conus/hrrr_geo_em.d01.nc,
+and is redistributed unmodified as an asset of the v2.8.7 release of this
+project, so the download survives NCO's version folders moving:
+
+    hrrr-conus-v4-hrrr_geo_em.d01.nc         1,112,724,420 bytes
+      sha256 a785b53fdb8493e376b88ece6e166ddd8046588dd1c0062181141bf2b012f6e2
+
+Either copy is installed only when its size and SHA-256 match these
+pins. PROVENANCE.md records its source.
+
+--------------------------------------------------------------------------
+
+RRTMG (Atmospheric and Environmental Research, Inc.)
+
+The legacy-RRTMG radiation option transcribes WRF v4.6.1's RRTMG
+longwave and shortwave schemes -- about 18,800 lines across thirteen
+shipped files, beginning with woof/core/rrtmg_lw.py, whose docstring
+names phys/module_ra_rrtmg_lw.F and its source SHA-256 -- and packages
+the RRTMG_LW_DATA and RRTMG_SW_DATA coefficient files and the ozone
+climatology files distributed with WRF.
+
+RRTMG is the work of Atmospheric and Environmental Research, Inc.
+(AER), not of UCAR. WRF's copy carries AER's own notice: "Copyright
+2002-2008, Atmospheric & Environmental Research, Inc. (AER). This
+software may be used, copied, or redistributed as long as it is not
+sold and this copyright notice is reproduced on each copy made." That
+notice appears seven times in module_ra_rrtmg_lw.F and nine times in
+module_ra_rrtmg_sw.F, in three copyright-year spans. All three spans
+are reproduced verbatim in
+licenses/NOTICE-AER-RRTMG-as-distributed-with-WRF.txt and beside the
+packaged data in woof/data/wrf_radiation/.
+
+WOOF takes this material under AER's own current grant instead. AER
+publishes RRTMG_LW and RRTMG_SW at https://github.com/AER-RC under the
+BSD 3-Clause licence, "Copyright (c) 2020, Atmospheric and
+Environmental Research"; that offer is public, current and
+unconditional, and a copyright holder may licence its own work on any
+terms it chooses. The BSD-3-Clause text is reproduced in full at
+licenses/LICENSE-AER-RRTMG-BSD-3-Clause.txt, which is how its clause 1
+(source) and clause 2 (binary) notice conditions are performed.
+
+The four legacy non-RRTMG files (woof/core/rrtm_lw.py, rrtm_taumol.py,
+rrtm_tables.py, rrtm.py) transcribe WRF's phys/module_ra_rrtm.F, and
+the packaged RRTM_DATA belongs with them. That WRF file carries AER
+banner blocks and author names -- Eli J. Mlawer, Steven J. Taubman,
+Shepard A. Clough -- but no copyright line and no
+licence clause, so it falls under WRF's public-domain declaration. AER
+is credited here as a matter of accuracy rather than of condition.
+
+An earlier version of this file said that AER's "code and data carry
+AER's copyright and license notices, which are retained with the
+assets". That was not true: RRTMG_LW_DATA and RRTMG_SW_DATA are
+unformatted Fortran binaries that carry no notice, and no AER notice
+existed anywhere in the distribution. The sentence is withdrawn and
+replaced by the reproductions named above.
+
+--------------------------------------------------------------------------
+
+RTE+RRTMGP
+
+Two separate works, with two different copyright lines, are involved
+and both are reproduced.
+
+The software: about 5,700 lines in woof/core/rrtmgp.py and the
+rrtmgp_*.cu / rrtmgp_planck_common.cuh kernels transcribe
+earth-system-radiation/rte-rrtmgp at the commit their headers cite.
+That project is BSD 3-Clause, "Copyright (c) 2015-2025, Atmospheric and
+Environmental Research, Regents of the University of Colorado, Trustees
+of Columbia University in the City of New York". Its text is at
+licenses/LICENSE-RTE-RRTMGP-BSD-3-Clause.txt.
+
+The data: the k-distribution files packaged by the companion recast-woof-data
+distribution come from the rrtmgp-data repository and are BSD 3-Clause
+under a different copyright line, "Copyright (c) 2015-2018, Atmospheric
+and Environmental Research and Regents of the University of Colorado".
+That text ships beside the data at woof_data/data/rrtmgp/LICENSE with
+a per-file PROVENANCE.md giving URLs, tag, commit and SHA-256.
+
+--------------------------------------------------------------------------
+
+NOAA GSL smoke and dust (ccpp-physics)
+
+The smoke option's fire preparation, fire emission unit conversion,
+diurnal injection and FRP plume rise (woof/core/chem_fire.py,
+woof/core/chem_plumerise.py, woof/core/chem_plumerise_cache.py and the
+chem_fire.cu and chem_plumerise.cu kernels) transcribe NOAA GSL's RRFS
+smoke and dust code, ccpp-physics physics/smoke_dust at commit
+3e6660c6df54e95a0871e990c2294dd397ae3860
+(https://github.com/ufs-community/ccpp-physics). That project is
+"Copyright 2017, NOAA, UCAR/NCAR CU/CIRES" and licensed under the Apache
+License, Version 2.0, the licence WOOF itself carries. Its LICENSE file
+is reproduced at licenses/NOTICE-NOAA-GSL-ccpp-physics.txt. The GOCART
+option's aerosol-aware Thompson coupling (woof/core/chem_mp_coupling.py
+and the chem_mp_coupling.cu kernel) transcribes get_niwfa from the same
+project's physics/MP/Thompson/mp_thompson.F90 at the same commit. The smoke
+option's WRF-Chem transcriptions (the Freitas plume solver and the
+large-scale wet removal, from WRF v4.7.1's chem/ directory) are WRF code
+under the WRF notice above.
+
+The scale-aware TKE moist EDMF boundary layer (bl_pbl_physics = 901;
+woof/core/satmedmf.py and the satmedmf.cu kernel with its GFS constant
+headers) transcribes satmedmfvdifq from the same project, ccpp-physics at
+commit 1d9b076503c27cd4cfa8b22a977a71e889cbb149 (tag GFSv17.HR4),
+"Copyright 2017, NOAA, UCAR/NCAR CU/CIRES" under the Apache License,
+Version 2.0. Its pinned source and licence text are reproduced at
+licenses/NOTICE-CCPP-SATMEDMF.txt.
+
+--------------------------------------------------------------------------
+
+TEMPO microphysics (NCAR/TEMPO)
+
+The TEMPO microphysics kernels (woof/core/kernels/tempo/) and the rw-tempo
+crate's tempo_init and table readers (tools/rustwx/crates/rw-tempo)
+transcribe TEMPO, the Thompson-Eidhammer Microphysics Parameterization for
+Operations, https://github.com/NCAR/TEMPO at commit
+9adf9ef2827104640125f0c322e1218fce74e94c (tag tempo_v3.0.3). That project is
+"Copyright 2026, NOAA, UCAR/NCAR CU/CIRES" and licensed under the Apache
+License, Version 2.0, the licence WOOF itself carries. The notice and the
+list of modifications ship beside the kernels at
+woof/core/kernels/tempo/NOTICE-TEMPO.txt. TEMPO's lookup tables are not
+packaged; woof.tempo_assets fetches TEMPO's published tempo_v3.1.0 release
+assets and checks them against pinned SHA-256 digests.
+
+--------------------------------------------------------------------------
+
+NOAA EMC Unified Post Processor (UPP)
+
+HRRR's MASSDEN smoke field is written by UPP's sorc/ncep_post.fd/MDLFLD.f
+as (1/RD)(P/T) times the smoke mixing ratio over 1e9, with RD = 287.04 from
+params.F (https://github.com/NOAA-EMC/UPP, commit
+1296eebb295251d0fe1cc697f47058c62d887977). The smoke option's decode
+(tools/grib1_bridge/src/chem_conversions.rs) cites those two files so a
+reader can check the field definition it inverts; the inverse is WOOF's
+own algebra and no UPP source ships with WOOF. The oracle harness
+(tools/chem_wrf471_oracle/build_source_conversion.sh) downloads the two
+pinned files at build time to compile that one statement. UPP is
+distributed under the GNU Lesser General Public License, version 3.
+
+--------------------------------------------------------------------------
+
+Numerical Recipes Software
+
+WRF's phys/module_mp_thompson.F carries "(C) Copr. 1986-92 Numerical
+Recipes Software 2.02" immediately above and below its REAL FUNCTION
+GAMMLN(XX). WOOF transcribes that routine's Lanczos coefficients and
+evaluation in three shipped files -- thompson_aerosol_contract.py and
+milbrandt2_constants.py under woof/core/, and
+woof/core/kernels/nssl2_fused_gs.cu -- and bakes its values into the
+tables in woof/core/kernels/thompson_aerosol_common.cuh.
+
+The notice is reproduced, and WOOF's position on it is stated rather
+than left silent, at licenses/NOTICE-Numerical-Recipes.txt.
+
+--------------------------------------------------------------------------
+
+FP32 libm transcriptions -- Arm optimized-routines
+
+Several schemes are graded bitwise against a gfortran/glibc reference,
+so WOOF carries hand transcriptions of the standard single-precision
+libm routines rather than calling CUDA's, whose expf, powf and tgammaf
+are measurably different functions. The transcriptions live in
+woof/core/noahmp_libm.py, woof/core/mynn_pbl.py, woof/core/ruc.py,
+in woof/core/kernels/glibc_flt32.cuh, and -- duplicated per kernel,
+because CUDA translation units do not share device code -- in the .cu
+files under woof/core/kernels/.
+tests/test_cuda_libm_table_copies.py enumerates the table copies and
+holds them to one spelling, so the scope of this section is
+machine-checkable rather than prose.
+
+The logf, expf, exp2f and powf cores, and their data tables, are Arm's
+work. They were written by Szabolcs Nagy and published at
+https://github.com/ARM-software/optimized-routines (math/logf.c,
+math/expf.c, math/exp2f.c, math/powf.c and the corresponding
+math/*_data.c) in August 2017, then imported into glibc for 2.27/2.28
+by their own author. WOOF transcribed them from glibc's copy at
+sysdeps/ieee754/flt-32/, which reproduces Arm's text unchanged apart
+from symbol renaming, branch-hint and cast macro spellings, and
+symbol-versioning declarations -- none of which WOOF reproduces. Those
+transcriptions appear under woof/core/kernels/ in 22 files: glibc_flt32.cuh,
+glibc_trig_flt32.cuh, mynn_libm.cuh, mynn_pbl.cu, mynn_surface_libm.cuh,
+noahmp_bareflux.cu, noahmp_bareflux_options.cuh, noahmp_fluxprep.cu,
+noahmp_leaves.cu, noahmp_radiation.cu, noahmp_snow.cu, noahmp_soilwater.cu,
+noahmp_vegeflux.cu, noahmp_vegprecip.cu, noahmp_water.cu,
+noahmp_water_options.cuh, rrtmg_lw.cu, rrtmg_sw.cu, rrtmgp_libm.cuh,
+thompson_aerosol_libm.cuh, tiedtke_support.cuh, vert_interp.cu. The scope is
+generated by tools/update_kernel_license_scopes.py from the coefficient
+tables. The Python log/exp/pow copy in woof/core/noahmp_libm.py is separate.
+
+vert_interp.cu's wrf_vi_pressure_log uses the Arm logf tables from
+glibc_flt32.cuh and reproduces its range reduction and polynomial with
+fused binary64 operations.
+
+The sinf / cosf cores and their tables in
+woof/core/kernels/glibc_trig_flt32.cuh are also Arm's work. Their sources
+are math/sinf.c, math/cosf.c, math/sincosf.h and math/sincosf_data.c.
+The 2018 Arm revision 5e8389113b47a48622d1de8beb9a4adc2b332694
+predates glibc's imports ea5c662c623125ad39fc43d5b9224150256407a9
+(shared data and helpers, 2018-08-10) and
+599cf3976679e1b345307d9c02057f02aa95528f (sinf/cosf, 2018-08-14).
+Arm's MIT relicensing at 11253b0b9d6b covers the same algorithms and
+constants; current Arm fe09d4e7ed62aa24c81b5791c810bc9de70006e9
+still offers MIT. Its source notices read:
+
+    Copyright (c) 2018-2024, Arm Limited.
+    Copyright (c) 2018-2019, Arm Limited.
+
+The transcription follows glibc 2.43 sysdeps/ieee754/flt-32/s_sinf.c,
+s_cosf.c, s_sincosf.h, sincosf_poly.h and s_sincosf_data.c, selected
+as the x86 FMA IFUNC variant. The generic sine/cosine bodies, both range
+reductions, polynomials and tables reproduce Arm's code apart from
+renamings, qualifiers, macro spellings and splitting polynomial helpers
+into sincosf_poly.h. Integration aliases and IFUNC wrappers are not copied.
+The MIT branch is elected for these parts too; the full Arm permission
+notice below and licenses/LICENSE-Arm-optimized-routines-MIT.txt apply.
+The generated scope above includes this trig header.
+
+The grant WOOF elects is Arm's MIT, and the sequence matters enough to
+state exactly rather than compress. At the vintage glibc imported -- Arm
+86067a740541, 2017-08-11, taken into glibc at 4ea49f4c08ee on 2017-09-04
+-- those files read "Copyright (C) 2017, ARM Limited" under Apache-2.0.
+Arm relicensed the same work to MIT fifteen months later, at 11253b0b9d6b
+on 2018-11-12, and from there each file carries
+
+    Copyright (c) 2017-2018, Arm Limited.
+    SPDX-License-Identifier: MIT
+
+A copyright holder may licence its own work on any terms it chooses, and
+Arm's MIT offer over this code is public, current, and made by the
+retained copyright holder; that is the offer WOOF takes. (Current Arm
+upstream offers it under MIT OR Apache-2.0 WITH LLVM-exception. MIT is
+elected over the Apache branch because the LLVM exception waives
+Apache-2.0's notice duties only for object code, whereas WOOF ships
+these transcriptions as source. The Apache-2.0 the 2017 files carried
+would also have been compatible with this distribution, so nothing turns
+on the election except which text this file has to reproduce.) Arm's
+LICENSE, reproduced in full as MIT requires -- the same text is at
+licenses/LICENSE-Arm-optimized-routines-MIT.txt and beside the code at
+woof/core/kernels/LICENSE-third-party.txt:
+
+    MIT License
+
+    Copyright (c) 1999-2019, Arm Limited.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+--------------------------------------------------------------------------
+
+FP32 libm transcriptions -- CORE-MATH
+
+The glibc_tanf, glibc_asinf, glibc_acosf and glibc_atanf functions in
+woof/core/kernels/glibc_trig_flt32.cuh transcribe the CORE-MATH
+correctly-rounded binary32 implementations distributed in glibc 2.43.
+Their sources under glibc's sysdeps/ieee754/flt-32/ record these upstream
+CORE-MATH paths and revisions:
+
+    s_tanf.c: src/binary32/tan/tanf.c, 59d21d7
+    e_asinf.c: src/binary32/asin/asinf.c, bc385c2
+    e_acosf.c: src/binary32/acos/acosf.c, 56dd347
+    s_atanf.c: src/binary32/atan/atanf.c, a8066a5
+    s_asincosf_data.c: src/binary32/asin/asinf.c, bc385c2
+
+The common asinf/acosf coefficient tables are included in that scope.
+These files carry MIT permission directly, including in glibc's copies.
+The atanf here is CORE-MATH; the older FDLIBM atanf transcriptions in
+other files remain covered by the separate Sun notice. No FDLIBM code
+is transcribed in glibc_trig_flt32.cuh.
+
+The ubm_log10f and ubm_log10f_special functions in
+woof/core/kernels/urban_bem.cuh transcribe CORE-MATH's correctly-rounded
+binary32 log10f as glibc 2.43 carries it (sysdeps/ieee754/flt-32/
+e_log10f.c: src/binary32/log10/log10f.c, bc385c2), Copyright (c)
+2022-2023 Alexei Sibidanov, under the same MIT permission. That file
+carries the copyright line and the permission notice beside the code.
+ubm_atanf there is a call to glibc_atanf above, not a transcription.
+
+The noah_log10 and noah_log10_special functions in
+woof/core/kernels/noah_mosaic.cu transcribe the same CORE-MATH log10f
+(bc385c2, Copyright (c) 2022-2023 Alexei Sibidanov, the same MIT
+permission) for the Noah mosaic column, whose TDFCND takes LOG10 of the
+soil saturation ratio; that file too carries the copyright line and the
+permission notice beside the code.
+
+The sfire_tanhf function in woof/core/kernels/sfire_libm.cuh transcribes
+CORE-MATH's correctly-rounded binary32 tanhf as glibc 2.43 carries it
+(sysdeps/ieee754/flt-32/s_tanhf.c: src/binary32/tanh/tanhf.c, b1ecd83),
+Copyright (c) 2022-2024 Alexei Sibidanov, under the same MIT permission, for
+the native SFIRE fire state; that file carries the copyright line and the
+permission notice beside the code.
+
+Both upstream copyright-year lines and the exact common permission text
+are reproduced in licenses/LICENSE-CORE-MATH-MIT.txt, in the header and
+beside the code in woof/core/kernels/LICENSE-third-party.txt. MIT
+requires the copyright and permission notice in copies or substantial
+portions of this work:
+
+    Copyright (c) 2022-2024 Alexei Sibidanov.
+    Copyright (c) 2023-2024 Alexei Sibidanov.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+--------------------------------------------------------------------------
+
+FP32 libm transcriptions -- FDLIBM (Sun Microsystems, Inc.)
+
+The expm1f, tanhf, atanf, log10f and log1pf reductions descend from FDLIBM,
+developed at SunPro, a Sun Microsystems, Inc. business, and converted to
+single precision at Cygnus Support by Ian Lance Taylor; glibc carries them
+substantially unmodified and presents them, in its own LICENSES file, as
+Sun's code. They appear under woof/core/kernels/ in 29 audited files:
+atan_scalar_flt32.cuh, dudhia_sw.cu, flt32_log10_tanh.cuh,
+gf_wrf_normalization.cuh, km5_math.cuh, log10_flt32.cuh, mynn_libm.cuh,
+mynn_pbl.cu, mynn_surface_libm.cuh, noahmp_bareflux.cu, noahmp_energy.cu,
+noahmp_fluxprep.cu, noahmp_glacier.cu, noahmp_leaves.cu, noahmp_vegeflux.cu,
+nssl2_diagnostics.cu, nssl2_shape_diagnostics.cu, portable_libm64.cuh, ruc.cu,
+scalar_atan.cuh, sfclay.cu, sfclay_classic.cuh, shinhong.cu,
+tempo/tempo_common.cuh, terrain_drag.cu, thompson_aerosol_libm.cuh,
+thompson_classic.cu, thompson_fork.cu, ysu_480_topo.cuh. The scope is
+generated by tools/update_kernel_license_scopes.py. The Python copies are
+woof/core/noahmp_libm.py, woof/core/mynn_pbl.py and
+woof/core/ruc.py. thompson_aerosol_libm.cuh also carries FDLIBM's binary64
+log10, log1p, atan and atan2 (e_log10.c, s_log1p.c, s_atan.c and
+e_atan2.c), for the mp28 units' LOG10 and the complex arithmetic of their
+melting-snow reflectivity, and woof/core/kernels/tempo/tempo_common.cuh
+carries FDLIBM's binary64 log10 (e_log10.c) as TEMPO's device log10; the
+same notice covers them. woof/core/kernels/portable_libm64.cuh, which
+carries FDLIBM's log1p through Rust libm and glibc's log1pf, has its own
+paragraph above.
+
+Two entries left that list during WOOF 2.6.6 development, included in
+2.7.0, and the reason is recorded here rather than left as a silent
+shrinkage. woof/core/kernels/glibc_flt32.cuh carried FDLIBM's expm1f
+(s_expm1f.c) and lgammaf reduction (e_lgammaf_r.c) as helper routines of
+WOOF's earlier Grell-Freitas gamma. When that gamma was replaced at 2.6.6
+nothing called them any more, and they were removed. That removal took out
+the only transcription of e_lgammaf_r.c anywhere in this repository, which
+is why lgammaf no longer appears in the list of routines above. The notice
+below is unchanged and still required by the carriers listed above.
+
+(log10_flt32.cuh joined in 2.8.7 as the
+Milbrandt-Yau scheme's log10, the same reduction as mynn_pbl.cu's, and as
+dudhia_sw.cu's). thompson_aerosol_libm.cuh, mynn_libm.cuh, sfclay.cu and
+sfclay_classic.cuh shipped these reductions in 2.8.8 and 2.8.9, and
+tempo/tempo_common.cuh its binary64 log10 in 2.8.9, without being named on
+this list; they joined it in 2.9.0, with ysu_480_topo.cuh and
+dudhia_sw.cu.
+
+FDLIBM's notice, preserved here as its sole condition requires, and
+also at licenses/LICENSE-FDLIBM-SunPro.txt and beside the code at
+woof/core/kernels/LICENSE-third-party.txt:
+
+    Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+
+    Developed at SunPro, a Sun Microsystems, Inc. business.
+    Permission to use, copy, modify, and distribute this
+    software is freely granted, provided that this notice
+    is preserved.
+
+Where WOOF must match a glibc 2.39 reference bit for bit, these
+transcriptions follow glibc's versions of these files, which differ from
+other FDLIBM descendants at a small number of points. Through 2.6.5 there
+were three: atanf's 2**25 large-argument threshold, the fabsf spelling in
+log10f's zero path, and a redundant zero guard in tanhf. Two of the three
+are gone at 2.6.6, because neither did any work. tanhf's guard is
+unreachable -- the |x| < 2**-55 branch below it returns x*(1+x), which is x
+for both signed zeros -- and log10f's zero path divided -2**25 by |x| only
+to raise divide-by-zero on the way to -inf, where WOOF now returns the -inf.
+Both forms were compiled side by side against the shipped kernel bodies and
+compared on all 4,294,967,296 float32 bit patterns: zero differ. Nothing in
+this distribution reproduces either spelling any more.
+
+atanf's threshold stays, and the reason is the opposite one: it is a fact a
+black-box measurement recovers, not a spelling read from a source. It was
+measured from the running library, and woof/core/noahmp_libm.py records the
+measurement at the point of use. lgammaf's 2**26 and 2**-30 thresholds were
+on the list until 2.6.6 as well; the lgammaf transcription is deleted, so
+nothing reproduces them either.
+
+The two grants above are scoped by function name on purpose. They
+cover the routines named in them and nothing else; no other code in
+those files takes anything from Arm or from Sun, and none of it is
+offered to a reader on the strength of these two notices.
+
+--------------------------------------------------------------------------
+
+FP64 libm transcriptions -- Arm optimized-routines and CORE-MATH
+
+The UW moist-turbulence boundary layer computes in binary64 and is graded
+bit for bit against a gfortran/glibc build of WRF, so it carries its own
+binary64 libm rather than calling CUDA's: woof/core/kernels/glibc_flt64.cuh,
+prepended to uwpbl.cu by the kernel loader. The header opens with its
+notice. It transcribes two bodies of third-party work, each by routine.
+
+The binary64 exp, log and pow cores and their data tables are Arm's
+optimized-routines (math/exp.c, math/exp_data.c, math/log.c,
+math/log_data.c, math/pow.c, math/pow_log_data.c and the parts of
+math/math_config.h they use), the same algorithms glibc 2.43 carries in
+sysdeps/ieee754/dbl-64/. Their source notices read "Copyright (c)
+2018-2026, Arm Limited." under "SPDX-License-Identifier: MIT"; the MIT
+permission text is the one reproduced in the Arm section above and at
+licenses/LICENSE-Arm-optimized-routines-MIT.txt.
+
+The binary64 cos and acos are CORE-MATH's correctly rounded functions
+(https://core-math.gitlabpages.inria.fr/): cos is "Copyright (c) 2022-2025
+Paul Zimmermann and Tom Hubrecht" and acos "Copyright (c) 2024-2025 Alexei
+Sibidanov.", both under MIT. glibc's own binary64 cos and acos, which are
+the IBM Accurate Mathematical Library under the LGPL, are NOT transcribed
+anywhere in this repository; that is why the kernel's cos and acos are
+different functions from WRF's, a residual measured and stated in the
+header and in the UW registry option. The copyright lines and the
+permission text are at licenses/LICENSE-CORE-MATH-binary64-MIT.txt and
+beside the code in woof/core/kernels/LICENSE-third-party.txt.
+
+The upstream files are kept verbatim, sha256-pinned, beside the proof
+harness at tools/uwpbl_wrf471_oracle/libm64/upstream/. The two grants are
+scoped by routine: they cover exp, log, pow, cos and acos in
+glibc_flt64.cuh and nothing else in the UW kernel, whose remaining code is
+a transcription of WRF.
+
+--------------------------------------------------------------------------
+
+Portable libm in Rust -- Arm optimized-routines and CORE-MATH
+
+The WPS default-REAL orographic projection in the static_fields library
+(tools/rustwx/crates/static-fields/src/projection/orographic.rs, the
+terrain-drag statics) is graded bit for bit against a WPS oracle built
+with glibc 2.43, and the platform C library's single-precision
+transcendentals differ in the last bit between glibc 2.43, glibc 2.39 and
+the Windows UCRT.  It therefore calls its own transcriptions instead, in
+the first-party crate tools/rustwx/crates/rw-libm, whose
+src/lib.rs opens with the notice below.  Each function transcribes the
+code glibc 2.43 itself runs for it, so the results are glibc 2.43's on
+every platform. The crate is compiled into the static_fields library and
+into the executables that link it (the rw_mpas_* tools and rw_mlexport).
+
+The sinf, cosf, expf, logf and powf bodies and their tables are Arm's
+optimized-routines (math/sinf.c, math/cosf.c, math/sincosf.h,
+math/sincosf_data.c, math/expf.c, math/exp2f_data.c, math/logf.c,
+math/logf_data.c, math/powf.c, math/powf_log2_data.c), the same
+algorithms glibc 2.43 carries in sysdeps/ieee754/flt-32/, in the form of
+glibc's x86-64 FMA IFUNC variants.  Their source notices read
+"Copyright (c) 2017-2018, Arm Limited.", "Copyright (c) 2018-2024, Arm
+Limited." and "Copyright (c) 2018-2019, Arm Limited." under
+"SPDX-License-Identifier: MIT"; the MIT permission text is the one
+reproduced in the Arm section above and at
+licenses/LICENSE-Arm-optimized-routines-MIT.txt.
+
+The tanf, atanf, atan2f and log10f bodies (binary32) and the asin and acos
+bodies (binary64) are CORE-MATH's correctly rounded functions
+(https://core-math.gitlabpages.inria.fr/), transcribed from revision
+284b3b0e198042c38f5c30316f696786b10816b0 of
+https://gitlab.inria.fr/core-math/core-math (src/binary32/tan/tanf.c,
+src/binary32/atan/atanf.c, src/binary32/atan2/atan2f.c,
+src/binary32/log10/log10f.c, src/binary64/asin/asin.c,
+src/binary64/acos/acos.c).  glibc 2.43 distributes the binary32 four;
+glibc's own binary64 asin and acos are the IBM Accurate Mathematical
+Library under the LGPL and are NOT transcribed.  The copyright lines and
+the permission text are at licenses/LICENSE-CORE-MATH-rw-libm-MIT.txt:
+
+    Copyright (c) 2022-2025 Alexei Sibidanov.
+    Copyright (c) 2022-2025 Alexei Sibidanov and Paul Zimmermann.
+    Copyright (c) 2022-2026 Alexei Sibidanov <sibid@uvic.ca>.
+    Copyright (c) 2024-2025 Alexei Sibidanov.
+
+The two grants are scoped by routine: they cover the eleven functions
+named here and the tables they use, and nothing else in rw-libm or in
+static_fields.  The verification record (every binary32 argument for the
+univariate functions, a billion random pairs for powf and atan2f, and the
+CORE-MATH worst-case files) is tools/rw_libm_proof/verification.log, beside
+the harness that produced it.
+
+--------------------------------------------------------------------------
+
+Material removed during 2.6.6 development and included in 2.7.0
+
+Through WOOF 2.6.5, woof/core/kernels/glibc_flt32.cuh carried WOOF's
+earlier float32 gamma for Grell-Freitas, together with three helper
+routines that nothing else called: expm1f and lgammaf (FDLIBM, above) and
+exp2f (Arm, above). At 2.6.6 that gamma was replaced by the current one,
+which is correctly rounded on every float32 argument the scheme can reach,
+where the reference it is measured against is not, and the three helpers
+were removed because nothing called them any more. The gamma in
+glibc_flt32.cuh, the earlier one and the current one alike, is WOOF's own
+work under this distribution's licence, and no third-party notice in this
+file applies to it. Earlier releases of this file described the earlier
+gamma as derived from glibc and advised against redistributing 2.6.5 and
+earlier; that description was wrong, and the advice built on it is
+withdrawn. The replacement, and the deliberate divergence from WRF it
+creates, are documented in docs/gf_gamma_known_delta.md.
+
+--------------------------------------------------------------------------
+
+Py-ART (UChicago Argonne, LLC)
+
+tools/region_global_dealias/ is a Rust port of Py-ART's
+dealias_region_based, driven from woof/obs/dealias_region.py and
+shipped as a compiled library in the release bridge bundles and in
+platform wheels. Py-ART is "Copyright (c) 2013, UChicago Argonne, LLC",
+produced under U.S. Government contract DE-AC02-06CH11357 for Argonne
+National Laboratory, and is BSD 3-Clause with an added government-rights
+paragraph requiring that modified derivatives be clearly marked so as
+not to be confused with the version available from ANL. WOOF's port is
+a modified derivative and is named accordingly: it is
+region_global_dealias, not Py-ART.
+
+The full text is at licenses/LICENSE-PyART-Argonne-BSD-3-Clause.txt and
+in the port's own tree at tools/region_global_dealias/PYART-LICENSE.txt.
+Because the library ships COMPILED, and BSD-3-Clause clause 2 attaches to
+that form separately, the same text is reproduced in the binary-form
+notice described under "Compiled artifacts" below -- which is what the
+port's own THIRD-PARTY-NOTICES.md asks for in terms. The port is offered
+under (MIT OR Apache-2.0) AND BSD-3-Clause; its LICENSE-MIT,
+LICENSE-APACHE, THIRD-PARTY-NOTICES.md and VENDORED.md sit beside it.
+
+--------------------------------------------------------------------------
+
+MPAS (Los Alamos National Security, LLC and UCAR)
+
+tools/rustwx/crates/rw-mpas is a Rust port of parts of MPAS-Atmosphere
+v8.4.1. It is 44,768 lines and it names what it takes: init_atm_case_lbc
+from core_init_atmosphere/mpas_init_atm_cases.F, the vertical
+interpolation of mpas_init_atm_vinterp.F, the horizontal interpolation and
+latlon_to_ij of mpas_init_atm_hinterp.F and mpas_init_atm_llxy.F, the
+gravity-wave-drag fields of mpas_init_atm_gwd.F, the deformation and
+advection weights of mpas_atm_advection.F and core_sw/mpas_sw_advection.F,
+mpas_in_cell from mpas_geometry_utils.F, the constants of mpas_constants.F,
+and the soil and surface companions of
+core_atmosphere/physics/mpas_atmphys_initialize_real.F. It builds the five
+rw_mpas_* executables -- mesh, static, init, convert, lbc -- which are
+distributed COMPILED, in the release bridge bundles and in platform wheels
+at woof/libexec/bridges/.
+
+MPAS-Model is BSD 3-Clause, "Copyright (c) 2013-2019, Los Alamos National
+Security, LLC (LANS) ... and the University Corporation for Atmospheric
+Research (UCAR)", with a U.S. Government rights paragraph that additionally
+requires a modified derivative to be clearly marked so as not to be
+confused with the version available from LANS and UCAR. WOOF's port is
+such a derivative and is named accordingly: it is rw_mpas, not MPAS, and
+the binaries, the crate and the CLI all carry that name. Clause 3 forbids
+using the names of LANS, UCAR or their contributors to endorse or promote;
+MPAS is named here only to say what was transcribed, and the WRF section
+above already records that WOOF is not affiliated with or endorsed by
+UCAR.
+
+The full text is at licenses/LICENSE-MPAS-BSD-3-Clause.txt and beside the
+code at tools/rustwx/crates/rw-mpas/LICENSE-MPAS-BSD-3-Clause.txt. Because
+the port ships compiled and clause 2 attaches to that form separately, the
+same text is reproduced in the binary-form notice described under
+"Compiled artifacts" below.
+
+Two neighbours are NOT covered by this and the difference is worth stating.
+The MPAS column-batch physics seam -- woof/core/mpas_column_batch.py,
+mpas_cycle_bridge/ and MPAS-SEAM-CONTRACT.md -- transcribes no MPAS code
+at all: it presents an MPAS-shaped interface onto WOOF's own physics, and
+its only references to the MPAS sources are three citations of file and
+line for behavioural facts (mpas_atmphys_vars.F:340,
+mpas_atmphys_driver_convection.F:718, mpas_atmphys_interface.F:653-702).
+And WOOF writes MPAS-format NetCDF files and reads MPAS meshes; a file
+format is not expression and no notice is owed for speaking one.
+
+--------------------------------------------------------------------------
+
+NumPy
+
+tools/rustwx/crates/static-fields/src/projection/npmath.rs ports four of
+NumPy's own float32 SIMD kernels -- sin, cos, exp and log. The static-field
+builder's contract is byte parity with NumPy on the deployment platform,
+and NumPy does not route those four through libm; it routes them through
+its own kernels, so parity means porting them. The port is deliberate
+reproduction and says so: same constants, same fused-multiply-add
+sequence, from numpy/_core/src/umath/loops_trigonometric.dispatch.cpp and
+numpy/_core/src/umath/loops_exponent_log.dispatch.c.src at v2.2.6, with
+coefficients from npy_simd_data.h. Verbatim reference copies of those
+three upstream files, 1,973 lines, are kept at
+tools/static_rust_port/numpy_src/.
+
+NumPy is BSD 3-Clause, "Copyright (c) 2005-2024, NumPy Developers" at
+v2.2.6. Both notice clauses attach and both are performed. Clause 1,
+source form: the text is at licenses/LICENSE-NumPy-BSD-3-Clause.txt and
+beside the code at tools/static_rust_port/numpy_src/ and
+tools/rustwx/crates/static-fields/. Clause 2, binary form: static_fields
+is one of the artifacts named in woof.bridge_assets.BUNDLED_ARTIFACTS and
+the rw_mpas_* executables link it, so it reaches users compiled, in the
+release bridge bundles and in platform wheels; the same text is reproduced
+in the binary-form notice described under "Compiled artifacts" below.
+
+This entry arrived late and the reason is recorded because it is the shape
+of gap a licence census misses. The census sorted third-party code into
+vendored crates and pip dependencies. NumPy is a pip dependency, so it was
+classified as installed rather than redistributed -- true of the Python
+package, false of a first-party crate that ports NumPy's kernels into
+itself. A file carrying third-party expression while belonging to no
+dependency tree is in neither bucket. MPAS above was found the same way and
+in the same pass.
+
+--------------------------------------------------------------------------
+
+WMO BUFR master tables, as distributed by ECMWF ecCodes
+
+tools/rustwx/crates/rw-obs/tables/bufr/element.table and sequence.def are
+Table B and Table D of the WMO FM 94 BUFR master tables, version 46, as
+distributed in ECMWF's ecCodes (definitions/bufr/tables/0/wmo/46/), which
+is licensed under the Apache License, Version 2.0, Copyright 2005- ECMWF.
+They are compiled into the rw-obs
+library, and the rw_wis2 decoder reads WIS2 BUFR messages through them. The provenance
+note beside them, tools/rustwx/crates/rw-obs/tables/bufr/NOTICE.md, says the
+same and travels with the tables; the Apache-2.0 text is this distribution's
+own LICENSE.
+
+--------------------------------------------------------------------------
+
+Source Sans 3 (Adobe) -- SIL Open Font License 1.1
+
+tools/rustwx/crates/rustwx-render/assets/fonts/SourceSans3-Regular.ttf
+and SourceSans3-Semibold.ttf are compiled into the renderer binaries
+with include_bytes!, so every distributed renderer contains them.
+They are "Copyright 2010-2024 Adobe (http://www.adobe.com/), with
+Reserved Font Name 'Source'", licensed under the SIL Open Font License,
+Version 1.1.
+
+The OFL requires its notice and licence to accompany every copy, source
+or binary, and clause 5 forbids releasing the Font Software under any
+other licence. The Apache-2.0 grant this distribution makes over its own
+work therefore does not extend to these two files: they remain under the
+OFL alone. Their text is at
+licenses/LICENSE-SIL-OFL-1.1-SourceSans3.txt and beside the fonts at
+tools/rustwx/crates/rustwx-render/assets/fonts/SourceSans3-LICENSE.md.
+Because the fonts travel inside a compiled binary, the same text is also
+reproduced in the binary-form notice described under "Compiled artifacts"
+below; a renderer shipped without it would satisfy clause 2 nowhere.
+
+--------------------------------------------------------------------------
+
+Compiled artifacts (release bridge bundles and platform wheels)
+
+86 Rust executables and libraries (woof.bridge_assets
+.BUNDLED_ARTIFACTS) are distributed in compiled form: as GitHub release
+bridge bundles, and staged into platform wheels at woof/libexec/bridges/.
+A platform wheel carries all of them except the on-demand set
+(woof.bridge_assets.on_demand_artifacts: the observation-stream and
+observation readers, the sounding renderer and the gauge verifier), which
+are fetched from the bundle on first use. Renderer tools share the rw_wrfbatch
+executable through native launchers under their original names.
+They are built from the three bridge dependency trees and the terminal
+dependency tree below, and from
+first-party crates that carry ported third-party expression of their own:
+they statically link the Py-ART-derived dealiaser, the rw_mpas_* five are
+built from the MPAS port, static_fields carries the NumPy kernel port, and
+the renderer among them embeds two Source Sans 3 fonts with include_bytes!.
+The vendored trees are not the whole of what a binary here contains, and
+reading them as if they were is what left MPAS and NumPy unnotified until
+the 2.6.6 development lane, included in 2.7.0.
+
+Every licence involved conditions redistribution IN BINARY FORM on the
+notice accompanying the distribution -- BSD-3-Clause clause 2, Apache-2.0
+section 4, MIT, ISC, Zlib, the Unicode licence, SIL OFL 1.1 clause 2. That
+is a separate condition from the source-form one, and until now nothing
+performed it: the bundles carried no licence text at all.
+
+They do now. licenses/THIRD-PARTY-LICENSES-bridge-binaries.txt reproduces,
+in one file, the licence texts of the 264 original bridge dependencies (179 distinct
+texts, deduplicated by SHA-256 so that no copyright line is lost), the
+Py-ART/Argonne notice, the MPAS and NumPy notices for the first-party
+ports, and the SIL OFL. Section 5 adds the locked terminal dependency
+inventory and its licence and attribution texts. That inventory is
+resolved for the supported Linux and Windows targets and includes build
+dependencies; it is not a count of linked runtime crates. Regenerate or
+check it with tools/update_tui_license_notice.py (use --check to verify).
+Each inventory says which text belongs to which crate.
+The same bytes reach a bundle consumer at
+assets/basemap/THIRD-PARTY-LICENSES.txt inside the archive -- that
+directory is what tools/build_bridge_bundle.py walks, so the notice
+travels with the binaries -- and a wheel consumer at
+recast_woof-<version>.dist-info/licenses/licenses/, under the same file name.
+The two copies are generated together and are byte-identical; the file
+carries its own regeneration recipe.
+
+The sounding window renderer, rw_soundings (tools/rustwx/crates/rw-soundings
+and rustwx-sounding, Apache-2.0), carries its own locked dependency closure:
+the egui/wgpu window, sharprs/sharppyrs and their platform back ends. The
+PUBLIC SOUNDING WINDOW section of the same binary-form notice, generated by
+tools/update_soundings_license_notice.py, inventories that closure for every
+platform variant and reproduces each grant. Crates in it that ship no licence
+file of their own are covered by the declared grant text kept under
+licenses/soundings/: licenses/soundings/LICENSE-CC0-1.0.txt (hexf-parse,
+CC0-1.0), licenses/soundings/LICENSE-clipboard-win-BSL-1.0.txt (clipboard-win,
+Boost Software License 1.0) and licenses/soundings/LICENSE-objc2-MIT.txt (the
+objc2 and block2 crates, MIT).
+
+--------------------------------------------------------------------------
+
+Vendored Rust crates
+
+Sixteen Rust consumer workspaces share one checked-in offline registry at
+tools/rustwx/vendor/crates-io. It holds 734 crate directories, including
+the pinned git packages resolved through that directory source, among
+them the one wrf-core revision every consumer resolves; path
+dependencies retain their source and provenance trees.
+The former private registry trees of grib1_bridge, rw_wps, zarr_bridge
+and arwen-ui-vendor have been folded into this shared source. No existing
+rustwx crate was overwritten; duplicate copies retain one canonical copy.
+Each crate retains its own licence and upstream notice files. Those files
+are also reproduced, deduplicated and indexed in the binary-form notices,
+because a compiled consumer never sees the vendor tree.
+
+The terminal dependencies' target-resolved inventory remains in section 5
+of the binary-form notice, with its lock/checksum inventory retained at
+tools/arwen-ui-vendor/manifest.json. The Zarr inventory remains at
+tools/zarr_bridge/vendor-manifest.json. Shared packages are listed in each
+applicable product inventory.
+
+The following grant census and missing-text record describe the original
+348-directory, 264-name-and-version bridge inventory; the shared-registry
+fold does not replace those historical grant declarations. Product
+inventories and their reproduced texts remain the current per-build record.
+
+The census contains no GPL, LGPL, AGPL, SSPL, CDDL, EPL or MPL grant.
+The single copyleft token anywhere in it is r-efi's disjunctive
+"MIT OR Apache-2.0 OR LGPL-2.1-or-later"; WOOF elects MIT and the
+copyleft branch is not taken.
+
+Two facts are recorded here because they are gaps rather than
+performances, and a notice that omitted them would be worth less:
+
+  * Twenty of the 348 crate directories carry no licence text file.
+    Twelve of those directories hold the project's own crates
+    (metrust x2, wx-core x2, wx-field x2, wx-math x2, wx-radar x2,
+    wrf-core, grib-core), where the only obligation is to ourselves.
+    The other eight hold four genuine third-party upstreams, and their
+    text is therefore not being reproduced in the vendored tree:
+    puffin (Embark Studios, MIT OR Apache-2.0), r-efi (MIT elected from
+    its disjunction), and netcdf-reader and hdf5-reader (roteiro-gis,
+    https://github.com/roteiro-gis/netcdf-rust, MIT OR Apache-2.0).
+    Their grants are stated here, which is the substance of what those
+    grants ask for; restoring the files themselves is a re-vendor
+    operation rather than an edit, because six of those eight
+    directories carry a .cargo-checksum.json that writing into them
+    would invalidate, breaking the locked offline build.
+  * wrf-core 0.1.0 and grib-core 0.1.0 declare no licence field. Both
+    are Fahrenheit Research's own work. grib-core is an export of
+    https://github.com/FahrenheitResearch/rusty-weather, MIT as
+    declared by that workspace's Cargo.toml at the pinned revision
+    recorded in tools/grib1_bridge/vendor/VENDOR.md; wrf-core is the
+    core of wrf-rust, MIT as published on PyPI. Those declarations are
+    reproduced rather than invented here, and the crate metadata is
+    deliberately left as vendored so that the vendored tree stays a
+    faithful copy of what was vendored.
+
+tools/rustwx and tools/rw_wps declare license = "MIT" in their own
+Cargo.toml files, with the text at tools/rustwx/LICENSE. Those subtrees
+are MIT-licensed inside an Apache-2.0 repository; MIT permits that, and
+this sentence is here so the root LICENSE is not read as overriding
+them. tools/grib1_bridge declares no licence field of its own and takes
+the repository's Apache-2.0 grant, as any subtree that declares nothing
+does.
+
+--------------------------------------------------------------------------
+
+wrf-rust and wrf-core
+
+Product rendering (gpuwm render) uses the "wrf-rust" Python package
+(imported as "wrf") as its diagnostic core. wrf-rust is a separate
+project with its own MIT licence and is installed via the optional
+[render] extra; the Python package is not vendored.
+
+An earlier version of this file said wrf-rust "is not vendored in this
+distribution" without qualification. That was inaccurate: the Rust
+crate wrf-core 0.1.0, the library underneath it, IS vendored, at
+tools/rustwx/vendor/crates-io/wrf-core. See "Vendored Rust crates".
+
+--------------------------------------------------------------------------
+
+Observation network and radar site tables
+
+woof/obs/data/surface_networks.json is frozen from the Iowa
+Environmental Mesonet's networks feed at Iowa State University
+(https://mesonet.agron.iastate.edu/geojson/networks.geojson), with the
+source URL, byte count and SHA-256 recorded in the file itself. IEM
+data are made freely available and attribution is requested; this is
+that attribution.
+
+woof/obs/data/radar_sites_odim.json is frozen from the EUMETNET
+weather-radar locations collection served by MeteoGate
+(https://api.meteogate.eu/), with the same provenance fields. The
+elevations were harvested separately from ODIM polar volumes, as the
+file records. EUMETNET and MeteoGate are credited as the source; the
+terms of the underlying feed are between the user and the provider for
+any further retrieval.
+
+--------------------------------------------------------------------------
+
+GRIB parameter tables
+
+The vendored grib-core decoder carries ECMWF GRIB1 local table 128
+parameter rows and NCEP GRIB2 Code Table 4.2 entries in
+src/grib1/tables.rs and src/grib2/tables.rs. The ECMWF parameter
+database is published by the European Centre for Medium-Range Weather
+Forecasts under CC-BY-4.0 and is credited here; the NCEP and WMO tables
+are United States Government work. Parameter names, abbreviations and
+units are facts about a published standard rather than expression, but
+the attribution costs nothing and its absence would be noticed.
+
+--------------------------------------------------------------------------
+
+Map and boundary data
+
+The renderer's basemap assets, carried in the release bridge bundles,
+are Natural Earth 110m and 10m vector layers (public domain,
+https://www.naturalearthdata.com/) and the U.S. Census Bureau
+cartographic boundary file cb_2023_us_county_5m (a work of the United
+States Government, not subject to copyright under 17 U.S.C. 105).
+Neither carries a redistribution condition. Source URLs and status are
+recorded in the asset directories' README files.
+
+The web page's Create map (woof/gui/static/map/basemap.json) is built
+by tools/build_gui_basemap.py from the Natural Earth 1:50m coastline,
+lakes, admin 0 boundary lines and admin 1 states and provinces lines
+(public domain, https://www.naturalearthdata.com/), simplified and
+delta-coded. The file carries the same notice in its "notice" field.
+
+The Weather Library's seed pages (woof/gui/seed/wiki-seed.json) are built by
+tools/wiki_seed/build_seed.py from rows and statistics of public records:
+IBTrACS v04r01 (NOAA NCEI, a work of the United States Government; NCEI
+asks users to cite Knapp et al. 2010, doi:10.1175/2009BAMS2755.1, and
+the dataset, doi:10.25921/82ty-9e16), the SPC tornado database and the
+National Weather Service glossary (NOAA, works of the United States
+Government), the Census Bureau's 2020 county codes (a work of the United
+States Government) and Natural Earth 1:110m countries and states (public
+domain). Every record carries its source, licence and retrieval date in
+the file, and each Weather Library page shows them in its references.
+
+The map of the gpuwm gui page (woof/gui/static/map/basemap.bin) is
+built from the same Natural Earth and Census layers by
+tools/gui_basemap.py: simplified and quantized, public domain and a US
+Government work as above.
+
+--------------------------------------------------------------------------
+
+RFMIP data
+
+No RFMIP file is in this repository or in any gpuwm or recast-woof-data
+artifact. The four RFMIP clear-sky reference results are CC-BY-NC-SA-4.0
+(non-commercial) and the input file's embedded licence attribute names
+CC-BY-SA-4.0 while linking CC-BY-4.0; the tests that read them fetch them
+at test time from rrtmgp-data v1.9, SHA-256 verified
+(woof/core/rfmip_upstream.py).
+
+RRTMGP reads 136 numbers derived from that input file (produced by the
+University of Colorado for RFMIP, CMIP6 input4MIPs UColorado-RFMIP-1-2):
+woof_data/data/rrtmgp/rrtmgp-trace-gas-climatology.json in recast-woof-data,
+offered under CC-BY-SA-4.0, the stricter of the two readings, with its
+text beside it. The Apache-2.0 grant in the root LICENSE does not extend
+to that table.
+
+--------------------------------------------------------------------------
+
+Optional NVIDIA components
+
+The gpu, gpu-cu12 and gpu-cu13 extras install CuPy (MIT) with its
+[ctk] marker, which pulls the NVIDIA CUDA redistributable wheels
+(nvidia-*) as dependencies. Those NVIDIA components are
+proprietary and are governed by the NVIDIA Software License Agreement,
+not by this distribution's Apache-2.0 grant. They are installed by the
+user's package manager and are not redistributed here; the extra is
+named so that "open licence" is not read as covering the whole install.
+
+--------------------------------------------------------------------------
+
+Data services (not redistributed)
+
+WOOF downloads or templates requests for data from NOAA (GFS via the
+NOMADS filter service and AWS Open Data; HRRR via AWS Open Data), from
+the Copernicus Climate Data Store (ERA5; use is subject to the
+Copernicus license and requires the user's own account), and relies on
+the user-staged NCAR WPS geographical dataset (WPS_GEOG) for static
+fields. None of these datasets are redistributed by this repository;
+their terms are between the user and the provider.
+
+`gpuwm fetch-geog` downloads WPS_GEOG by default from a byte-for-byte
+mirror of the NCAR tarballs (tools/publish_geog_mirror.py writes its
+provenance page). The default set carries only permissively licensed
+sources; these carry terms of their own:
+
+  * soilgrids.tar.bz2 (the default soil categories, texture_top and
+    texture_bot, and the Noah-MP soil archive) is derived from
+    SoilGrids250m by ISRIC -- World Soil Information (Hengl T. et al.
+    2017, "SoilGrids250m: Global gridded soil information based on
+    machine learning", PLOS ONE 12(2): e0169748), licensed CC BY 4.0
+    (https://creativecommons.org/licenses/by/4.0/); NCAR generated the
+    WPS tiles and the mirror does not modify them.
+  * soiltemp_era5_1deg (the default deep-soil temperature) is built on
+    the user's machine from the ERA5 1990-2019 hourly climatology
+    published by WeatherBench 2 (Rasp et al. 2024, doi:10.1029/
+    2023MS004019) under the Licence to Use Copernicus Products. Credit:
+    Contains modified Copernicus Climate Change Service information
+    (ERA5, Hersbach et al. 2020, doi:10.1002/qj.3803). Neither the
+    European Commission nor ECMWF is responsible for any use of this
+    information.
+
+Held out of the default set and fetched from NCAR only when named:
+
+  * soiltype_top_30s and soiltype_bot_30s use the FAO-UNESCO Digital Soil
+    Map of the World outside the United States (STATSGO, USDA public
+    domain, inside it). Its notes (Version 3.6, Jan 2003,
+    https://swat.tamu.edu/media/116411/notes.txt) say "(C) FAO/UNESCO,
+    1995 All rights reserved worldwide" and "The user shall not reproduce
+    for the benefit of third parties the data"; not permissive.
+  * soiltemp_1deg is ISLSCP-I's 1987-88 ECMWF annual-mean temperature;
+    the ISLSCP-I Vol. 4 record at CEDA states Permitted Use "Unstated" and
+    NCAR states none; licence unclear.
+
+With `[static.highres]` enabled, WOOF downloads high-resolution static
+sources into the user's own cache_root; none is redistributed here and
+each run's receipt carries its source's attribution. The default land
+cover carries terms of its own:
+
+  * CGLC-MODIS-LCZ, the 100 m global land cover WRF and WPS ship from
+    version 4.5:
+    Demuzere M., He C., Martilli A. and Zonato A. (2023),
+    doi:10.5281/zenodo.7670653, licensed CC BY 4.0
+    (https://creativecommons.org/licenses/by/4.0/). It is built from the
+    Copernicus Global Land Service LC100 v3 (Buchhorn et al. 2020) and
+    the global Local Climate Zone map (Demuzere et al. 2022, Earth Syst.
+    Sci. Data 14, 3835). WOOF fetches the published GeoTIFF whole from
+    Zenodo, unmodified, and maps its classes into WRF's MODIS categories
+    at preparation time.
+
+
+--------------------------------------------------------------------------
+
+WOOF simulated radar
+
+The native simulated radar path uses BowEcho's simulation library and
+recast-radar-tools 0.1.3 volume writers. The source trees are retained at
+tools/rustwx/vendor/bowecho and tools/rustwx/vendor/recast-radar-tools.
+Their SOURCE.json records identify the exact source revisions and files.
+Both projects are licensed under MIT OR Apache-2.0. Their unmodified grants
+are reproduced at:
+
+  licenses/LICENSE-BowEcho-MIT.txt
+  licenses/LICENSE-BowEcho-Apache-2.0.txt
+  licenses/LICENSE-recast-radar-tools-MIT.txt
+  licenses/LICENSE-recast-radar-tools-Apache-2.0.txt
+
+BowEcho's PYART-LICENSE.txt is byte-identical to the grant already retained
+at licenses/LICENSE-PyART-Argonne-BSD-3-Clause.txt. The compiled radar
+bridge's notices accompany both bridge bundles and platform wheels in
+licenses/THIRD-PARTY-LICENSES-bridge-binaries.txt. No optional scattering
+lookup-table pack is included in these source trees or binary notices.
+
+The radar dependency extension adds 83 source packages, including build
+and platform-specific dependencies. Their inventory and grant hashes are
+recorded in tools/rustwx/crates/rw-simradar/data/dependency-licenses.json.
+The binary-form notice reproduces their 69 distinct grant and attribution
+texts, including nested native-library notices. The radar crates resolve
+the same wrf-core revision as the renderer,
+93bd2ca670c13fec35bcfc27a58108e6fd71c627; its pyproject.toml declares MIT
+and the source has no standalone grant file, as with the wrf-core
+declaration described above.
+
+The scoped vendor notices are retained in the source trees and reproduced at:
+
+  licenses/NOTICE-BowEcho.txt
+  licenses/NOTICE-recast-radar-tools.txt
+
+The recast-radar-bzip2 randomisation table derives from libbzip2 1.0.8
+randtable.c. Its upstream grant is retained at:
+
+  licenses/LICENSE-recast-radar-tools-bzip2.txt
+
+Both binary-form notice copies reproduce these notices and the table grant.
+The upstream notice collections remain beside each SOURCE.json. Exact build
+resolution is documented in tools/rustwx/vendor/SIMULATED-RADAR.md.
+
+--------------------------------------------------------------------------
+
+RUC mosaic and CLM lake transcriptions
+
+woof/core/ruc_mosaic.py, the mosaic sections of woof/core/ruc.py,
+woof/core/kernels/ruc.cu and ruc_fused_driver.cuh, and the corresponding
+driver generator transcribe SOILVEGIN and LSMRUC from WRF v4.6.1
+phys/module_sf_ruclsm.F. The generated lake.cu and lake_wrf.cuh transcribe
+the complete WRF v4.6.1 phys/module_sf_lake.F. Reproducible source and
+oracle notices are retained under tools/ruc_mosaic_wrf461_oracle and
+tools/lake_wrf461_oracle. The WRF public-domain notice above and in
+licenses/LICENSE-WRF-public-domain.txt applies to these transcriptions.
+
+The lake-depth row in woof/static/lake.py and the bounded default-REAL
+search in tools/rustwx/crates/static-fields/src/interp.rs follow WPS
+v4.6.0 GEOGRID.TBL.ARW and geogrid/src/interp_module.F. WPS's source
+download page points to the WRF public-domain notice reproduced above:
+https://www2.mmm.ucar.edu/wrf/site/wps_source.html.
+
+TEMPO (Thompson-Eidhammer Microphysics Parameterization for Operations)
+------------------------------------------------------------------------
+woof/core/kernels/tempo/ and tools/rustwx/crates/rw-tempo port NCAR/TEMPO,
+https://github.com/NCAR/TEMPO, commit 9adf9ef2827104640125f0c322e1218fce74e94c
+(tag tempo_v3.0.3): Copyright 2026, NOAA, UCAR/NCAR CU/CIRES, licensed under
+the Apache License, Version 2.0.  The port's own notice, with the
+modification statement, is woof/core/kernels/tempo/NOTICE-TEMPO.txt.
+tempo/tempo_common.cuh's device log10 is not TEMPO's code: it transcribes
+FDLIBM's e_log10.c and is covered by the FDLIBM notice above.
+
+The NextGen example manifest woof/data/hydro/demos.v1.json identifies inputs
+from NOAA-OWP/t-route at 12a8eae0cdfed437143c590659fa7077605a5e70.
+The repository software Apache-2.0 licence and NOAA disclaimer are retained in
+licenses/LICENSE-t-route-Apache-2.0.txt and
+licenses/NOTICE-t-route-NOAA-terms.md. Dataset-specific licence verification
+is recorded separately in the example receipt; no NOAA endorsement is implied.
+No native t-route source or executable is included with this example manifest.
+The v201 example dataset has no verified source-specific licence here and its
+acquisition is held. Lynker hydrofabric v2.2 data is CC BY-NC-SA 4.0 and is
+restricted to noncommercial development/referee work, excluded from shipped
+data, demo kits and default downloads. The public demo awaits a separately
+verified public-domain hydrofabric recipe or NOAA dataset.
+
+NextGen reservoir kernels
+------------------------
+woof/core/kernels/nextgen_reservoirs.cu and nextgen_reservoirs.cuh adapt
+NOAA-OWP/t-route at 12a8eae0cdfed437143c590659fa7077605a5e70 under
+Apache-2.0. The complete licence is licenses/LICENSE-t-route.txt; the
+source-file attribution, modification statement and NOAA non-endorsement
+notice are licenses/NOTICE-t-route-reservoirs.txt.
+These texts and the NOAA disclaimer are also reproduced in the binary-form
+bridge notice for compiled consumers.
+
+NextGen realization configuration metadata in woof/data/hydro/configurations.v1.json
+is reorganized from NOAA-OWP/ngen be11a180565a78ff069d855b0b5dbfc23845e7d8
+and NOAA-OWP/t-route 12a8eae0cdfed437143c590659fa7077605a5e70.
+Changes: table rows, provenance hashes and GPU setup settings added; native
+reference metadata retained. Apache-2.0 LICENSE and NOAA TERMS are preserved
+in woof/data/hydro/nextgen-config/. No NOAA endorsement is implied.
+These software notices do not establish a licence for hydrofabric datasets.
+The ngen-shipped-pet-cfe-48h reference records the referee's adaptation of
+the same pinned ngen example: Noah and catchment overrides omitted, native
+paths parameterized, interval shortened to 48 hours. This configuration
+metadata does not install or execute native model libraries.
+
+NextGen catchment PET
+--------------------
+woof/hydro/pet_numeric.cuh derives from NOAA-OWP/evapotranspiration,
+commit 6c410f2a8bc843043ad25e13239928031b8c5e64 (Apache-2.0).
+F. L. Ogden, NOAA National Weather Service, 2020. WOOF changes: numerical
+functions run on CUDA; device status replaces host diagnostics and process
+exits; resident catchment state replaces native BMI orchestration. The complete
+licence and NOAA disclaimer are woof/hydro/PET-LICENSE and PET-TERMS.md.
+The forcing field table follows NOAA-OWP/ngen commit
+be11a180565a78ff069d855b0b5dbfc23845e7d8 (Apache-2.0),
+include/forcing/AorcForcing.hpp. No native NextGen module runtime is shipped.
+
+Excluded NextGen dependency: NOAA-OWP/topmodel
+------------------------------------------------------------------------
+TOPMODEL is excluded; no TOPMODEL source or translated numerical code is
+included in the NextGen port. At revision
+89e4dc529dfdf7f23b7365530973e9f238fb740d, src/topmodel.c states:
+"In any use for commercial or paid consultancy purposes a suitable royalty
+agreement must be negotiated with Lancaster University".
+The repository-level Apache-2.0 notice does not resolve that source restriction.
+Source: https://github.com/NOAA-OWP/topmodel/blob/89e4dc529dfdf7f23b7365530973e9f238fb740d/src/topmodel.c
+
+The t-route diffusive locate/rtsafe helpers remain excluded pending their
+Numerical Recipes provenance review. Software licences do not clear the
+hydrofabric v2.2 data: the source bucket's CC BY-NC-SA 4.0 notice conflicts
+with the repository README's ODbL description. No v2.2 dataset is included
+or selected as a public default by these configuration rows.
+The coordinator permits this non-commercial data only for internal referee
+and development work; it is never bundled in a wheel/demo kit or presented
+in public docs as the way to run. Product datasets need independent clearance.
+
+The native WBGT implementation in rustwx-calc includes software produced by
+UChicago Argonne, LLC under Contract No. DE-AC02-06CH11357 with the
+Department of Energy. Its BSD-style redistribution terms and the WRF
+public-domain notice for the native PR92 implementation are retained in
+licenses/derived-diagnostics.txt.
+
+WRF HAILCAST
+------------
+woof/core/kernels/hailcast_wrf.cuh is generated from WRF v4.6.1
+phys/module_diag_hailcast.F, and woof/core/kernels/hail.cu and
+hailcast_support.cuh carry the surrounding WRF public-domain hail
+diagnostics. The pinned source, generator and comparison tools are
+tools/hail_wrf461. woof/core/kernels/hailcast_wrf39.cuh is generated
+the same way from the operational HRRR branch's copy of that module,
+NOAA-EMC/HRRR tag v4.1.21 (commit
+40ee6058c2fc6624cbfbbe8cf1c20c59e6a45827),
+sorc/hrrr_wrfarw.fd/WRFV3.9/phys/module_diag_hailcast.F (sha256
+4c43129a05b9a4686be08682ddf2d6b664e7c22bcf588e70acc58208baa491b1,
+kept byte for byte in tools/hail_wrf461/upstream_hrrr_v4121). That
+branch's WRFV3.9/README opens with the same WRF public-domain notice and
+the file carries no other terms. WRF's public-domain notice for this code
+ships in licenses/WRF-HAILCAST.txt.
+
+Solar products
+--------------
+tools/rustwx/crates/rustwx-calc/src/solar.rs implements public solar
+equations (NOAA solar position, Erbs decomposition, isotropic transposition,
+single-axis backtracking, Faiman module temperature, Haurwitz clear sky,
+PVWatts v5). It calls no pvlib code; pvlib-python's equation implementations
+were consulted, and its BSD 3-Clause notice is reproduced in
+licenses/solar-pvlib-BSD-3-Clause.txt. Each reference and its terms are
+listed in licenses/solar-sources.md.
+
+Hub-height wind turbine power curves
+------------------------------------
+The three IEC class rows in woof/data/turbine_power_curves.json are
+normalized industry composites from NREL/turbine-models, revision
+e9e4ccc6a87f50c0c65d236154a2897e752c47c9, Copyright (c) 2020, Alliance for
+Sustainable Energy, LLC, under the BSD 3-Clause licence reproduced in
+licenses/turbine-models-BSD-3-Clause.txt.
+
+Hydro projection libraries
+-------------------------
+The hydro bridges include PROJ 9.7.1 and its embedded resource database under
+the MIT-style terms reproduced in licenses/HYDRO-PROJ-COPYING.txt. They also
+include the public-domain SQLite 3.46.1 amalgamation. Pinned source archives,
+checksums and build options are documented in tools/hydro_proj/README.md.
+
+Prebuilt forecast startup kernels
+--------------------------------
+The startup kernel packs include generated CuPy and CUDA C++ Core Libraries
+(CCCL) code. Their upstream notices and terms are reproduced verbatim in
+licenses/LICENSE-CuPy-MIT.txt and licenses/LICENSE-CCCL.txt.
+
+The EEPS CUDA transcription in woof/core/kernels/eeps.cu derives from
+WRF v4.7.1 phys/module_bl_eepsilon.F and share/module_model_constants.F.
+Both files are byte-identical to their WRF v4.6.1 pins. The public-domain
+statement in licenses/LICENSE-WRF-public-domain.txt applies. No external
+EEPS table is required. See tools/eeps_wrf461_oracle/SOURCE.json.
+
+MP7 strict logarithm
+--------------------
+woof/core/kernels/gsfcgce4ice_log10.cuh adapts CORE-MATH's binary32 log10f
+at revision 284b3b0e198042c38f5c30316f696786b10816b0, under the MIT licence.
+Its full copyright and permission notice are preserved in that header.
+Source and licence review are recorded in
+tools/gsfcgce4ice_wrf461_oracle/SOURCE.md. This math helper is selected only
+by the MP7 strict replay path for glibc 2.41 or newer referees.
+
+KSAS cumulus (cu_physics=14), woof/core/kernels/ksas.cu, transcribes
+WRF phys/module_cu_ksas.F. Source and licence pins are retained in
+licenses/NOTICE-KSAS-WRF.txt. The WRF public-domain statement and
+licenses/LICENSE-WRF-public-domain.txt apply to that transcription.
+WRF GFS PBL and surface layer
+------------------------------------------------------------------------
+woof/core/kernels/gfs_pbl.cu and sf_gfs.cu, their launchers and CPU
+references, the packaged gfs_pbl constants and sfgfs FPVS table, and the
+two tools/*gfs*_wrf461_oracle directories transcribe WRF v4.6.1's
+phys/module_bl_gfs.F, module_sf_gfs.F, module_gfs_machine.F,
+module_gfs_physcons.F, module_gfs_funcphys.F and the reachable
+module_surface_driver.F wrapper statements. The WRF public-domain
+notice above and licenses/LICENSE-WRF-public-domain.txt apply. The
+source and table construction pins are recorded by the oracle build
+scripts. The shared exp/log/pow CUDA adaptations retain their upstream
+MIT grants in glibc_flt64.cuh and glibc_flt32.cuh. The package's own
+transcription and integration code is Apache-2.0.
+
+WRF native port source notices
+------------------------------
+The Held-Suarez radiation port retains its source grant in
+licenses/NOTICE-WRF-HS31.txt. The WRF transcriptions of solve_em.F and
+wrf_fddaobs_in.F use the same pinned WRF public-domain source declaration
+in licenses/LICENSE-WRF-public-domain.txt.
+
+The noahmp_log10_profile.cuh and wrf471_log10f.cuh headers transcribe
+CORE-MATH log10f and retain its full MIT notice in each header. The copy
+of those terms is licenses/LICENSE-CORE-MATH-MIT.txt. cldfra3.cu and
+farms.cu call that separately noticed helper. nssl2_shape_diagnostics.cu
+retains the same Sun FDLIBM e_log10f reduction as nssl2_diagnostics.cu;
+the generated FDLIBM scope below the existing libm notice includes both.
+Independently written snow optics and layered snow/ice transfer
+---------------------------------------------------------------
+Written from papers, not bitwise to WRF. New code uses Apache-2.0.
+Ice refractive indices: Warren and Brandt (2008), doi:10.1029/2007JD009744,
+via refractiveindex.info database commit c5c2f188e848453def5970e347399d653df2ffc2,
+CC0-1.0 (licenses/LICENSE-refractiveindex-CC0.txt).
+Mineral indices: Zhang, Z.; Saito, M.; Yang, P.; Schuster, G.; Trepte, C.
+(2024), Mineral spectral refractive index and bulk optical property dataset
+for aerosol studies, version 1.3, doi:10.5281/zenodo.14171144, CC-BY-4.0
+(https://creativecommons.org/licenses/by/4.0/).
+CoarseModeRefInd.dat is included; first three columns are interpolated and
+new Mie coefficients are generated for an explicitly specified size
+distribution. The source's bulk optics are not used. The derived dust
+portion of optics.bin retains CC-BY-4.0.
+ASTM G173 spectra: credit U.S. Department of Energy (DOE)/NLR/ALLIANCE.
+The entire data-use notice is in licenses/LICENSE-NLR-solar.txt and
+accompanies the raw and generated spectra. Bin integration and diffuse
+separation are modifications, not an endorsement by these organisations.
+Source URLs, input hashes, parameter choices and modifications are in
+tools/snicar_optics/data/source-pin.json and docs/SNOW-PAPERS.md.

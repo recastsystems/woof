@@ -137,7 +137,7 @@ G3_GATE = 2.0e-6
 #: (module_mp_thompson.F:465, :607-615, :2527-2545) and WOOF reads the slab
 #: the tables hold; with WRF's read emulated in a measurement copy of the
 #: tree the fixture clears the gate.  Measured on an RTX PRO 6000 Blackwell
-#: (sm_120).  Re-measured by lane/mp28-exact after WRF's snow and graupel
+#: (sm_120).  Re-measured by development branch after WRF's snow and graupel
 #: accumulators (:4054-4059): qs 2.2658e-06 -> 1.9259e-06 (inside the gate),
 #: qg 8.7700e-05 -> 8.7763e-05, effs_m 4.6974e-06 -> 6.5743e-06.
 _PUBLISHED_G3: dict[str, dict[str, float]] = {

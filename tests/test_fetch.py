@@ -2863,7 +2863,7 @@ def test_live_latest_hrrr_index_is_a_canonical_noaa_index():
 
 
 def test_a_named_incomplete_cycle_refuses_with_the_complete_one(monkeypatch):
-    """A development machine #7: 20 lines of raw urllib.HTTPError for an early cycle.
+    """test host 3 #7: 20 lines of raw urllib.HTTPError for an early cycle.
 
     `--cycle 2026-07-30T00` an hour before that cycle exists dumped a
     traceback from inside the downloader, in a product that names the

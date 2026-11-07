@@ -1,6 +1,6 @@
 """The forecast-time physics init names an engine that predates suite-aware init.
 
-THE BREAKAGE (golden 0.4.0 round 2, install gate on the woof 2.9.0
+THE BREAKAGE (golden 0.4.0 round 2, install gate on the gpuwm 2.9.0
 candidate b32d6fa48): `--physics config_convection_scheme=off` (Noah-MP land)
 stopped at the door with an unnamed "Command [... rw_mpas_init
 --aerosol-status ...] returned non-zero exit status 1".  An rw_mpas_init
@@ -22,13 +22,15 @@ OLD_USAGE = "rw_mpas_init: --met was not given, and it has no default\n\nusage: 
 NEW_USAGE = OLD_USAGE + "  --aerosol-status INIT.nc\n  --augment-init INIT.nc --scalar-names A,B\n"
 
 
-def _init(path, soil_levels=4):
+def _init(path, soil_levels=4, scheme="mp_wsm6"):
     with netCDF4.Dataset(path, "w") as ds:
         ds.createDimension("Time", None)
         ds.createDimension("nCells", 2)
         ds.createDimension("nSoilLevels", soil_levels)
         ds.setncattr("config_start_time", "2026-10-11_12:00:00")
-        ds.createVariable("qv", "f4", ("Time", "nCells"))[0] = np.zeros(2, np.float32)
+        from woof.hex.species_row import species_row_for_scheme
+        for name in species_row_for_scheme(scheme).names():
+            ds.createVariable(name, "f4", ("Time", "nCells"))[0] = np.zeros(2, np.float32)
     return path
 
 
@@ -59,7 +61,8 @@ def _physics(lsm, mp="mp_wsm6"):
 def test_engine_only_thompson_needs_no_legacy_carried_metadata(monkeypatch, tmp_path):
     from woof.hex import init_physics
 
-    init = _init(tmp_path / "init.nc")
+    # A complete Thompson init already carries every scalar; incomplete inits now augment them.
+    init = _init(tmp_path / "init.nc", scheme="mp_thompson")
     calls = _engine(monkeypatch, tmp_path, NEW_USAGE)
     monkeypatch.setattr(init_physics, "_synthetic_source",
                         lambda path: pytest.fail("non-aerosol Thompson asked for climatology"))
@@ -93,13 +96,14 @@ def test_a_soil_level_change_on_an_older_engine_is_refused_by_name(monkeypatch, 
 
     init = _init(tmp_path / "init.nc")
     _engine(monkeypatch, tmp_path, OLD_USAGE)
-    with pytest.raises(ValueError, match="ruc with 9 soil levels needs woof 2.9.0"):
+    with pytest.raises(ValueError, match="ruc with 9 soil levels needs gpuwm 2.9.0"):
         prepare_forecast_init(init, tmp_path / "out.nc", _physics("sf_ruc"), None)
 
 
 def test_a_suite_aware_engine_is_asked_for_the_status(monkeypatch, tmp_path):
     from woof.hex.init_physics import prepare_forecast_init
 
+    # A complete WSM6 init isolates the status probe from missing-scalar augmentation.
     init = _init(tmp_path / "init.nc")
     calls = _engine(monkeypatch, tmp_path, NEW_USAGE)
     assert prepare_forecast_init(init, tmp_path / "out.nc", _physics("sf_noahmp"), None) == (init, None)

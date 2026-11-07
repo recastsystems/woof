@@ -128,7 +128,7 @@ MYNN_LEVEL2_CUDA_ULP = {
 # libm difference that no amount of arithmetic pinning removes.  The CPU
 # transcription, which reproduces glibc's tanhf/powf explicitly, is 0 ULP on
 # all three outputs.
-# lane/mynn-exact: 0 on the RTX 5090 (sm_120, NVRTC 12.9) after the YSU recipe (--fmad=false, glibc 2.39 libm incl. the FMA-ifunc logf/powf/expf); tools/mynn_pbl_wrf461_oracle/ulp_census.py.
+# development branch: 0 on the RTX 5090 (sm_120, NVRTC 12.9) after the YSU recipe (--fmad=false, glibc 2.39 libm incl. the FMA-ifunc logf/powf/expf); tools/mynn_pbl_wrf461_oracle/ulp_census.py.
 MYNN_PBLH_CUDA_ULP = {"zi": 0, "psig_bl": 0, "psig_shcu": 0}
 
 # Ordinary length now calls initialization's rounded column helper. Both
@@ -155,7 +155,7 @@ MYNN_MIXLENGTH_CUDA_ULP = {"el": 0, "qkw": 0}
 #     sm/sh arriving as an input" was false.  Under ``-fmad=false`` level-2 is
 #     bitwise on every output, and sm/sh here still measure 2.  That 2 belongs
 #     to mym_length's el or to this kernel's own level-2.5 branch.
-# lane/mynn-exact: 0 on the RTX 5090 (sm_120, NVRTC 12.9) after the YSU recipe (--fmad=false, glibc 2.39 libm incl. the FMA-ifunc logf/powf/expf); tools/mynn_pbl_wrf461_oracle/ulp_census.py.
+# development branch: 0 on the RTX 5090 (sm_120, NVRTC 12.9) after the YSU recipe (--fmad=false, glibc 2.39 libm incl. the FMA-ifunc logf/powf/expf); tools/mynn_pbl_wrf461_oracle/ulp_census.py.
 MYNN_TURBULENCE_CUDA_ULP = {
     "dfm": 0, "dfh": 0, "dfq": 0, "tcd": 0, "qcd": 0, "pdk": 0, "pdt": 0,
     "pdq": 0, "pdc": 0, "el": 0, "sm": 0, "sh": 0,
@@ -167,7 +167,7 @@ MYNN_PREDICT_CUDA_ULP = {"qke": 0, "tsq": 0, "qsq": 0, "cov": 0}
 # above it and reach the qsat_tk*0.666 clip and the coarse-dz inflation ramp.
 # The two groups are budgeted separately so a regression on the original four
 # cannot hide behind the wider high-variance allowance.
-# lane/mynn-exact: 0 on the RTX 5090 (sm_120, NVRTC 12.9) after the YSU recipe (--fmad=false, glibc 2.39 libm incl. the FMA-ifunc logf/powf/expf); tools/mynn_pbl_wrf461_oracle/ulp_census.py.
+# development branch: 0 on the RTX 5090 (sm_120, NVRTC 12.9) after the YSU recipe (--fmad=false, glibc 2.39 libm incl. the FMA-ifunc logf/powf/expf); tools/mynn_pbl_wrf461_oracle/ulp_census.py.
 MYNN_CONDENSATION_FLOOR_CUDA_ULP = {
     "qc_bl": 0, "qi_bl": 0, "cldfra": 0, "vt": 0, "vq": 0, "sgm": 0,
 }

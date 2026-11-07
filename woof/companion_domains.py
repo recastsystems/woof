@@ -56,7 +56,7 @@ VORTEX_PRESET = {
     "cadence_seconds": 900.0, "max_move_parent_cells": 12,
     "min_overlap_fraction": 0.7,
     # MSLP minimum, with the 850 hPa circulation as fallback when no
-    # qualifying minimum is found (parked lane lane-trailer-ian).
+    # qualifying minimum is found (the parked trailer-tracking study).
     "pressure_center": "minimum", "fallback_level_hpa": 850.0,
     "fallback_deficit_m": 25.0,
 }
@@ -727,7 +727,7 @@ def physics_components():
             settings.update(option.get("constraints", {}).get("required_settings", {}))
             # A conditional rule whose settings clause holds at the
             # registry's own defaults asks, of the option as offered, what
-            # a required setting asks: lane/282-namelist-tolerance moved the
+            # a required setting asks: development branch moved the
             # 1.5-order TKE closure's bl_pbl_physics = 0 out of
             # required_settings into a diff_opt = 2 rule, and without this
             # the option stopped carrying it, so choosing TKE on a PBL

@@ -213,8 +213,9 @@ def test_concurrent_cold_install_does_not_wrap_its_own_funnel(monkeypatch, plan_
         thread.join(3)
         assert not thread.is_alive(), "cold physics factory deadlocked"
     assert not errors
+    from woof.numerics import effective_options
     expected = _StubCompiler()._compile_using_nvrtc_no_warning(
-        "cold", ("--std=c++17",), None, "cold.cu", ["k"])
+        "cold", effective_options(("--std=c++17",)), None, "cold.cu", ["k"])
     assert results == [expected, expected]
     assert len(here.calls) == 1
 

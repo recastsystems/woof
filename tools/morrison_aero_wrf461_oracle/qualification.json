@@ -1,0 +1,89 @@
+{
+  "schema": "gpuwm-mp40-qualification/v1",
+  "date": "2026-11-01",
+  "native_pin": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "native_run_version": "WRF v4.7.1; MP40 source is byte-identical to pinned v4.6.1",
+  "native_mp40_sha256": "d512aa16ad862b04c7278540a207a56aa10955e052bd9b9bc870e9a4f0812180",
+  "qualified_settings": {
+    "mp_physics": 40,
+    "aercu_opt": 0,
+    "morr_rimed_ice": 1
+  },
+  "native_replay": {
+    "columns": 726,
+    "levels": 44,
+    "words": 516186,
+    "differing_words": 0,
+    "negative_control_differing_words": 1,
+    "radar_flag": 0,
+    "native_undefined_residue_claimed": false
+  },
+  "forecast": {
+    "start": "2021-06-27T12:00:00Z",
+    "end": "2021-06-27T18:00:00Z",
+    "grid": [
+      199,
+      199,
+      44
+    ],
+    "dx_m": 3000,
+    "dt_s": 18,
+    "steps": 1200,
+    "gpuwm_go": "PASS",
+    "native_wrf": "SUCCESS COMPLETE WRF",
+    "maps_inspected_utc_hours": [
+      13,
+      15,
+      18
+    ],
+    "observations": "MRMS composite reflectivity; coverage and placement errors remain"
+  },
+  "timing": {
+    "gpu": "RTX 5090",
+    "shape": [
+      44,
+      199,
+      199
+    ],
+    "repetitions": 30,
+    "mp40_median_ms": 2.845487952232361,
+    "mp10_median_ms": 6.44211220741272,
+    "ratio": 0.4417010850817151
+  },
+  "lifecycle": {
+    "real_checkpoint_arrays": 201,
+    "real_checkpoint_elements": 110794444,
+    "real_checkpoint_differing_words": 0,
+    "same_scheme_feedback_modes": [
+      0,
+      1
+    ],
+    "nest_words_per_mode": 1373272,
+    "nest_differing_words": 0,
+    "offline_nonzero_qnc_words": 9216,
+    "offline_differing_words": 0,
+    "ensemble_members": 2,
+    "ensemble_backend": "ordinary CUDA member executor; packed adapter not qualified",
+    "default_off_mp10_words": 21616,
+    "default_off_mp9_words": 22048,
+    "default_off_differing_words": 0
+  },
+  "holds": {
+    "aercu_opt_1_2": "Exact licence/provenance of external CESM_RCP4.5_Aerosol_Data.dat not established. Native pairing is cu_physics=11 and mp_physics=40. No aerosol table is shipped.",
+    "mixed_scheme_nests": "MP40 passive QNC cross-scheme closure has no validated native authority."
+  },
+  "evidence_directory": "<reports>/WRF-PORTS-2026-11-01/evidence/port-mp40-morrison-aero/",
+  "evidence_files": [
+    "resume-replay-native-final.json",
+    "resume-native-completion.json",
+    "resume-go-completion.json",
+    "map-inspection.json",
+    "resume-mp40-timing.json",
+    "resume-real-checkpoint.json",
+    "resume-mp40-nests.json",
+    "resume-offline-cloud-mp40.json",
+    "resume-offline-qnc.json",
+    "resume-mp40-ensemble.json",
+    "resume-default-off.json"
+  ]
+}

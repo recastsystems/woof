@@ -1,6 +1,6 @@
 """The wheel carries woof.hex.native_libm_batch's bridge, addressed by the module's own source key, without a GPU.
 
-THE BREAKAGE THIS PREVENTS (30 km globe over 4 cards, V5090 box, 2026-10-27): the bridge was only ever built on first
+THE BREAKAGE THIS PREVENTS (30 km globe over 4 cards, reference system box, 2026-10-27): the bridge was only ever built on first
 use with rustc, which no run box carries, so every GNU float batch fell back to one ctypes call per element on the GIL
 (the vertical velocity damping: ~25 s of each rank's dycore build at 30 km, and every new region mesh paid it).
 """

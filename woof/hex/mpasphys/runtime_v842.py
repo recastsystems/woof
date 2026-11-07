@@ -241,6 +241,14 @@ class ResidentNativeCoupling:
             diabatic=self.cp.ascontiguousarray(self.cp.asarray(
                 self.session.field('tend','rt_diabatic_tend')))
             scalar_sources=self.cp.ascontiguousarray(self.cp.asarray(sources.scalars))
+            # Compact resident assembly lends Registry publication its scalar
+            # allocation. Preserve those pre-forcing words when either forcing
+            # path modifies the dynamics source in place.
+            from ..device_memory_release import shared_card_memory
+            if (shared_card_memory() and
+                    (getattr(self, 'stochastic', None) is not None
+                     or getattr(self, 'iau', None) is not None)):
+                scalar_sources = scalar_sources.copy()
             if getattr(self, 'chemistry', None) is not None:
                 scalar_sources=self.chemistry.pad_sources(self.cp,scalar_sources)
             self.sources=CudaMpasStageSourcesV842(*(self.cp.ascontiguousarray(self.cp.asarray(value))
@@ -446,7 +454,7 @@ class SuiteIau:
     (NINT step count, IN1 and IN2 as native); correct mode applies IN1-IN3 (overlap weights, a window position).
     """
 
-    def __init__(self, *, layout, payload, config, mesh, dycore, dt):
+    def __init__(self, *, layout, payload, config, mesh, dycore, dt, checkpoint=None):
         import numpy as np
         from ..iau_v842 import IAUConfig, iau_window_position
 
@@ -457,7 +465,8 @@ class SuiteIau:
         self.dt = float(dt)
         cp = dycore.cp
         # The four tend_iau words the pinned pool reader decoded (the same payload the hydration checked).
-        manifest = json.loads((Path(payload) / 'manifest.json').read_text())
+        from .pool_v842 import payload_manifest
+        manifest = payload_manifest(payload)
         records = {(r['pool'], r['name']): r for r in manifest['fields']}
         names = {'u': 'u_amb', 'rho': 'rho_amb', 'theta': 'theta_amb', 'scalars': 'scalars_amb'}
         read = [name for name in names.values()
@@ -486,6 +495,8 @@ class SuiteIau:
 
         self.increments = {key: held(name) for key, name in names.items()}
         self.sources_read = sorted(read)
+        self.increment_digests = {name: records['tend_iau', name].get('unpartitioned_sha256')
+                                 or records['tend_iau', name]['sha256'] for name in sorted(read)}
         n_cells = int(layout.dimensions['nCells'])
         cells_on_edge = np.asarray(mesh.arrays['cellsOnEdge'], dtype=np.int64)
         if cells_on_edge.shape[0] == 2 and cells_on_edge.shape[1] != 2:
@@ -499,13 +510,30 @@ class SuiteIau:
         self.position = np.array(0.0, dtype=np.float32)
         self.rule = 'exact mode: MPAS-A v8.4.2 begins the window at the start of every run'
         if self.config.correct:
-            start = iau_window_position(self.config, restart=bool(configs.get('config_do_restart', False)),
-                                        stored=None, da_cycling=bool(configs.get('config_do_DAcycling', False)))
-            self.position, self.rule = start.position, start.rule
+            if checkpoint is not None:
+                from ..iau_v842 import restore_checkpoint_window
+                self.position = restore_checkpoint_window(self.config, checkpoint, self.increment_digests)
+                self.rule = 'checkpoint continues the saved IAU window'
+            else:
+                start = iau_window_position(self.config, restart=bool(configs.get('config_do_restart', False)),
+                                            stored=None, da_cycling=bool(configs.get('config_do_DAcycling', False)))
+                self.position, self.rule = start.position, start.rule
+        self.start_position = float(self.position)
         self.calls = self.active_calls = 0
         self.weight_seconds = 0.0
         from .iau_witness import IauWitness
         self.witness = IauWitness(cp)
+
+    def checkpoint_state(self):
+        from ..iau_v842 import checkpoint_window
+        return checkpoint_window(self.config, self.position, self.increment_digests)
+
+    def expected_fraction(self):
+        import numpy as np
+        window = float(np.float32(self.config.config_IAU_window_length_s))
+        if window <= 0:
+            return 0.0
+        return max(0.0, min(float(self.position), window) - min(self.start_position, window)) / window
 
     def apply(self, *, itimestep, sources, state, saved, diagnostics, cache, solve=None):
         import numpy as np
@@ -702,10 +730,15 @@ def restore_state_time(native, *, pool='state'):
     PARITY run group 6 #21).  The straight run's float32 sum of whole-second steps is exact, so this word is too.
     """
     import numpy as np
+    from ..restart_v842 import initial_time_or_blank
     if getattr(native, 'clock_state', None) is None:
         return None     # the native referee library keeps MPAS's own restart stream and clock
-    initial = datetime.strptime(str(native.get_text_field(pool, 'initial_time', level=1)).strip(),
-                                '%Y-%m-%d_%H:%M:%S')
+    initial = initial_time_or_blank(native.get_text_field(pool, 'initial_time', level=1))
+    if initial is None:
+        # A blank initial_time names no epoch to count from. Native keeps the Time word its restart stream
+        # carried (Registry.xml restart stream; mpas_atm_core.F:264-277), which the restore already put in
+        # the pool. THE BREAKAGE THIS FIXES: the restart parsed the blank as a date and refused (paper B-1).
+        return float(np.asarray(native.get_field(pool, 'Time', level=1)).reshape(-1)[0])
     start = datetime.strptime(native.clock_state.start_time.stamp(), '%Y-%m-%d_%H:%M:%S')
     seconds = np.float32((start - initial).total_seconds())
     for level in (1, 2):
@@ -953,10 +986,36 @@ def keeps_initialized_deformation(row):
     THIS PREVENTS: the same-host, launch, LTS and feature paths passed ``row.get('dycore') is not None``, so the
     rrfs-44c0849 row (dycore keep_initialized_deformation false: 44c0849's Registry has no mesh defc_a/defc_b)
     asked the pool for words it does not hold; NOAA conus3km hrrrv5 on 8 cards stopped in the input loader with
-    KeyError ('mesh', 'defc_a') (V8X6000, rrfs/one-tree, 2026-10-29). The one-card path read the flag already.
+    KeyError ('mesh', 'defc_a') (eight-card system, rrfs/one-tree, 2026-10-29). The one-card path read the flag already.
     """
     entry = row.get('dycore')
     return entry is not None and bool(entry.get('keep_initialized_deformation', True))
+
+
+def native_state_sources(arguments, layout):
+    """(state file, mesh overlay, invariant file, cold_start) for the dycore loaders.
+
+    The state file is the selected initial stream (``--init`` after ``forecast_v842.initial_state_input``). The
+    vertical grid and the initialized mesh fields come from it when it carries them (an init, an MPAS-A restart),
+    else from the invariant stream, which the core reads first (MPAS-Model-rrfs mpas_atm_core.F:120-133;
+    Registry.xml invariant stream). A warm start (a restart, not a DA cycle) keeps the restart's coupled words
+    (``cold_start=False``; mpas_atm_core.F:542). THE BREAKAGE THIS FIXES: the loaders read the vertical grid and
+    the mesh overlay only from ``--init``, so with the restart selected an RRFS restart (no zgrid) was refused
+    "zgrid=None ... native vertical authority is incomplete" (restart-check, x1.163842 hrrrv5, 2026-11-06).
+    A cold start (initial stream ``input``) is unchanged: init, init, no invariant, cold.
+    """
+    init = Path(arguments.init)
+    cold_start = getattr(arguments, '_initial_state_cold_start',
+                         not bool(layout.configs.get('config_do_restart', False)))
+    invariant = getattr(arguments, '_initial_state_invariant', None)
+    if invariant is None:
+        return init, init, None, cold_start
+    from netCDF4 import Dataset
+    with Dataset(init, 'r') as dataset:
+        carries_grid = 'zgrid' in dataset.variables
+    if carries_grid:
+        return init, init, None, cold_start
+    return init, Path(invariant), Path(invariant), cold_start
 
 
 def load_native_dynamics_inputs(arguments, layout, payload, *, keep_initialized_deformation=False):
@@ -971,7 +1030,7 @@ def load_native_dynamics_inputs(arguments, layout, payload, *, keep_initialized_
     from ..vector import initialize_reconstruction_coefficients
     from ..driver import load_mpas_vertical_grid,load_mpas_initial_state
     from ..dynamics_v841 import load_v841_reference_wind_profiles
-    init=Path(arguments.init)
+    init,overlay,invariant,cold_start=native_state_sources(arguments,layout)
     hydration=NativePoolHydration(None,layout,payload)
     # The native input stream overlays the grid with initialized mesh fields,
     # including fEdge/fVertex; Registry.xml:498-545; mpas_atm_core.F:116-151.
@@ -979,7 +1038,7 @@ def load_native_dynamics_inputs(arguments, layout, payload, *, keep_initialized_
     # lineage is independent of whether this dycore retains deformation.
     mesh_options={'native_parent_chain':True}
     mesh_options['exclude_variables']=native_mesh_state_exclusions(layout)
-    mesh=Mesh.from_netcdf(getattr(arguments,'grid',None) or init,init,**mesh_options)
+    mesh=Mesh.from_netcdf(getattr(arguments,'grid',None) or overlay,overlay,**mesh_options)
     # Native MPAS (single precision) reads a double-precision coordinate into RKIND on input
     # (mpas_io_streams.F:925-1023). An init_atmosphere init stores them single already, so this is a
     # no-op there (x1.2562: no double array remains after the init overlay). THE BREAKAGE IT PREVENTS:
@@ -998,12 +1057,13 @@ def load_native_dynamics_inputs(arguments, layout, payload, *, keep_initialized_
     mesh.arrays['edgeNormalVectors']=vectors.edge_normal_vectors
     mesh.arrays['localVerticalUnitVectors']=vectors.local_vertical_unit_vectors
     mesh.arrays['cellTangentPlane']=vectors.cell_tangent_plane
-    grid=load_mpas_vertical_grid(init,mesh,config_coef_3rd_order=layout.configs['config_coef_3rd_order'])
+    grid=load_mpas_vertical_grid(init,mesh,config_coef_3rd_order=layout.configs['config_coef_3rd_order'],
+                                 invariant_path=invariant)
     profiles=load_v841_reference_wind_profiles(init,n_vert_levels=grid.vertical_grid.n_vert_levels)
     names=next(r['components'] for r in layout.fields if r['pool']=='state' and r['name']=='scalars')
     state,reference,saved=load_mpas_initial_state(init,mesh,grid.vertical_grid,
             scalar_names=(),reference_path=init,terrain_metrics=grid.terrain_metrics,
-            return_saved_diagnostics=True,cold_start=True)
+            return_saved_diagnostics=True,cold_start=cold_start)
     # Native allocates every selected carrier, including absent input species;
     # Registry.xml:1701-1754; mpas_atmphys_init_microphysics.F:98-226. Rust already
     # applied their Registry defaults while decoding the complete scalar buffer.
@@ -1046,8 +1106,8 @@ def _regional_source_inputs(arguments, layout):
     from ..driver import load_mpas_vertical_grid, load_mpas_initial_state
     from ..dynamics_v841 import load_v841_reference_wind_profiles
     from ..rust_geometry import _run
-    init = Path(arguments.init)
-    mesh = Mesh.from_netcdf(getattr(arguments, 'grid', None) or init, init,
+    init, overlay, invariant, cold_start = native_state_sources(arguments, layout)
+    mesh = Mesh.from_netcdf(getattr(arguments, 'grid', None) or overlay, overlay,
                             native_parent_chain=True,
                             exclude_variables=native_mesh_state_exclusions(layout))
     for name, value in list(mesh.arrays.items()):
@@ -1059,11 +1119,11 @@ def _regional_source_inputs(arguments, layout):
                             'coeffs_reconstruct'), values):
         mesh.arrays[name] = value
     grid = load_mpas_vertical_grid(init, mesh, config_coef_3rd_order=layout.configs['config_coef_3rd_order'],
-                                   allow_regional_sentinels=True)
+                                   allow_regional_sentinels=True, invariant_path=invariant)
     profiles = load_v841_reference_wind_profiles(init, n_vert_levels=grid.vertical_grid.n_vert_levels)
     state, reference, saved = load_mpas_initial_state(init, mesh, grid.vertical_grid,
             scalar_names=(), reference_path=init, terrain_metrics=grid.terrain_metrics,
-            return_saved_diagnostics=True, cold_start=True, allow_regional_sentinels=True)
+            return_saved_diagnostics=True, cold_start=cold_start, allow_regional_sentinels=True)
     return mesh, grid, profiles, state, reference, saved, keys_at_nominal
 
 
@@ -1082,7 +1142,7 @@ def _set_at(arrays, name, value, keys_before):
 def start_regional_inputs(arguments, layout):
     """Read a limited-area run's payload-free inputs on a side thread while the pool transport runs.
 
-    THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 8 x RTX PRO 6000, V8X6000, 2026-10-29): the same-host start ran
+    THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 8 x RTX PRO 6000, eight-card system, 2026-10-29): the same-host start ran
     the pool transport (34-36 s, bound by its two 7.2 GB scalar fields: 8, 16 or 32 reader processes all took 34 s)
     and then, one after the other, the mesh read (8.3 s), geometry (3.1 s), vertical grid (10.4 s) and initial state
     (16.9 s) on the main thread, 39 s more, while all 8 cards sat at 0 %.  Those four read only the grid and init
@@ -1142,7 +1202,7 @@ def load_native_regional_inputs(arguments, layout, payload, *, keep_initialized_
     from ..dynamics_v841 import load_v841_reference_wind_profiles
     from ..host_parallel import contiguous_copy
     from ..rust_geometry import _run
-    init = Path(arguments.init)
+    init, overlay, invariant, cold_start = native_state_sources(arguments, layout)
 
     # THE COST THIS REMOVES (mv3km 3 km limited area, 206,726 cells, V6000, 2026-10-28): this loader ran
     # 10-13 s on one host thread while the card waited (about 80-100 s at e3km/conus3km).  The Rust pool
@@ -1174,7 +1234,7 @@ def load_native_regional_inputs(arguments, layout, payload, *, keep_initialized_
 
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-pool-words') as side:
         hydration_future = side.submit(NativePoolHydration, None, layout, payload)
-        mesh = Mesh.from_netcdf(getattr(arguments, 'grid', None) or init, init,
+        mesh = Mesh.from_netcdf(getattr(arguments, 'grid', None) or overlay, overlay,
                                 native_parent_chain=True,
                                 exclude_variables=native_mesh_state_exclusions(layout))
         for name, value in list(mesh.arrays.items()):
@@ -1189,12 +1249,12 @@ def load_native_regional_inputs(arguments, layout, payload, *, keep_initialized_
                                 'coeffs_reconstruct'), values):
             mesh.arrays[name] = value
         grid = load_mpas_vertical_grid(init, mesh, config_coef_3rd_order=layout.configs['config_coef_3rd_order'],
-                                       allow_regional_sentinels=True)
+                                       allow_regional_sentinels=True, invariant_path=invariant)
         profiles = load_v841_reference_wind_profiles(init, n_vert_levels=grid.vertical_grid.n_vert_levels)
         names = next(r['components'] for r in layout.fields if r['pool'] == 'state' and r['name'] == 'scalars')
         state, reference, saved = load_mpas_initial_state(init, mesh, grid.vertical_grid,
                 scalar_names=(), reference_path=init, terrain_metrics=grid.terrain_metrics,
-                return_saved_diagnostics=True, cold_start=True, allow_regional_sentinels=True)
+                return_saved_diagnostics=True, cold_start=cold_start, allow_regional_sentinels=True)
         scalars, deformation = words_future.result()
     return _finish_regional_inputs(mesh, grid, profiles, state, reference, saved, names, scalars, deformation,
                                    keep_initialized_deformation)
@@ -1220,7 +1280,7 @@ def _finish_regional_inputs(mesh, grid, profiles, state, reference, saved, names
 MODIS_LAKE_CLASS = 21
 
 
-def fold_lake_class(native, layout):
+def fold_lake_class(native, layout, *, preserve_tc_mask=False):
     """Lake cells become water when no lake model runs, as WRF real does (module_initialize_real.F, islake).
 
     THE BREAKAGE THIS PREVENTS: a hex-door static (every moving member, any ``rw_mpas_static`` mesh) takes its
@@ -1242,6 +1302,15 @@ def fold_lake_class(native, layout):
         return 0    # the class table is unknown: class 21 is a land class in USGS, so nothing is folded
     if 'MODIS' not in mminlu.upper():
         return 0
+    if preserve_tc_mask:
+        # Retain the geography before the native 20-class table folds lakes
+        # into water. This is initialization only, with no per-step host work.
+        vegetation = native.get_field('sfc_input', names['ivgtyp'])
+        lake = vegetation[..., :layout.dimensions['nCellsSolve']] == MODIS_LAKE_CLASS
+        # A 20-class static has erased lake identity. Zero matches do not
+        # establish an ocean-only domain: require an explicit mask below.
+        if lake.any():
+            native.tc_lakemask = np.asarray(lake, dtype=np.float32).reshape(-1)
     water = int(np.asarray(native.get_field('sfc_input', water_name)).reshape(-1)[0])
     folded = 0
     for name in (names.get('ivgtyp'), names.get('lu_index')):
@@ -1255,6 +1324,26 @@ def fold_lake_class(native, layout):
             native.put_field('sfc_input', name, values, nlevels=fields['sfc_input', name][2])
             folded = max(folded, int(lake.sum()))
     return folded
+
+
+def bind_tc_lake_mask(native, mesh, layout):
+    """Bind target-member geography, including after a moving-mesh restart."""
+    import numpy as np
+    source = 'unfolded MODIS category 21'
+    mask = mesh.arrays.get('tc_lakemask')
+    if mask is None:
+        mask = getattr(native, 'tc_lakemask', None)
+    else:
+        source = 'tc_lakemask static field'
+    if mask is None:
+        raise ValueError('native TC exchange needs tc_lakemask; prepare the native static '
+                         'with --preserve-lake-mask (moving case preserve_lake_mask=true)')
+    mask = np.asarray(mask)
+    count = layout.dimensions['nCellsSolve']
+    if mask.ndim != 1 or mask.size < count or not np.isin(mask, [0, 1]).all():
+        raise ValueError('tc_lakemask must be a binary nCells vector in target mesh order')
+    native.tc_lakemask = np.ascontiguousarray(mask[:count], dtype=np.float32)
+    return dict(source=source, cells=count, lake_cells=int(native.tc_lakemask.sum()))
 
 
 def native_table_roots(source,config,extra=None):
@@ -1515,7 +1604,8 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
     # again and admit the increment a second time. A DA-cycling restart (config_do_DAcycling) begins a new
     # window by rule and runs; exact mode runs MPAS-A v8.4.2's own behaviour (a new window every run).
     if (str(layout.configs.get('config_IAU_option','off')).strip()=='on' and layout.configs['config_do_restart']
-            and getattr(config,'mode','exact')=='correct' and not layout.configs.get('config_do_DAcycling',False)):
+            and getattr(config,'mode','exact')=='correct' and not layout.configs.get('config_do_DAcycling',False)
+            and not resumed):
         raise ValueError('a native-file restart with IAU on in correct mode would admit the window again: the '
                          'pristine restart stream holds no IAU window position. Restart with config_do_DAcycling '
                          '= true (a new DA cycle, a new window), in exact mode, or start the window on a cold start')
@@ -1558,8 +1648,12 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
             # The fork source the backend reads its tables from: the row's bound resource and pin set (the 44c0849
             # row binds its own), so the read-ahead takes the files read_tempo_lookup_files will ask for.
             bound = backend_type.keywords if isinstance(backend_type, partial) else {}
-            prefetch_tables(layout.configs, named_tables,
-                            **{name: bound[name] for name in ('resource', 'pin_set') if name in bound})
+            source = {name: bound[name] for name in ('resource', 'pin_set') if name in bound}
+            read_ahead = prefetch_tables(layout.configs, named_tables, **source)
+            # Strict numerics checks the lookup files' digests against the strict packet before the run starts.
+            verify_tables = getattr(framework_entry(config, 'initialization'), 'verify_strict_tables', None)
+            if verify_tables is not None:
+                verify_tables(layout.configs, named_tables, cuda_resources, future=read_ahead, **source)
     with timed_stage(timings, 'dycore-inputs', parallelism={'device':'CPU','host_threads':host_threads(),
                      'host_schedule':'main-thread chain (mesh, vertical grid, state) with threaded reads and copies; payload on a side thread'},
                      timeline='prep.native.dycore_inputs'):
@@ -1687,6 +1781,14 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
             raise RuntimeError('execution-built dycore lacks the required physics callback interface') from error
     if execution is not None:
         execution.bind_dycore(dycore)
+    from woof.hip_backend import active as hip_active
+    if hip_active():
+        # from_host has finished uploading these initial conditions. No later
+        # stage reads these locals: it reads dycore.atmosphere instead. Keeping
+        # both the tuple and its unpacked names held the original host state,
+        # reference and saved diagnostics throughout a full-CONUS forecast.
+        # Mesh/grid/profiles have separate owners below and remain available.
+        del inputs, state, reference, saved
     # --fullstep-local-timestep in shadow mode: the ArWen route's observer on this dycore (woof.hex.mpasphys.lts_v842).
     fullstep_shadow=None
     if execution is None and moving is None and getattr(arguments,'fullstep_local_timestep',False):
@@ -1814,7 +1916,7 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
         # A rank's scheme initialisation takes global extrema across ranks, as native's mpas_dmpar_min/max_real
         # (RRFS TEMPO aerosols, framework_init_rrfs); None on one card.
         session.rank_reduce=getattr(execution,'reduce',None)
-        if not ported_framework and getattr(config,'pin_set',None)=='rrfs':
+        if not ported_framework:
             # The native library's physics_run_init reads the output and diagnostics stream intervals from the
             # native stream manager (MPAS-Model-rrfs mpas_atmphys_manager.F:646-665), which MPAS's subdriver fills
             # before core init.  THE BREAKAGE THIS PREVENTS: with no stream registered there the fork logged
@@ -1824,7 +1926,10 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
             # registers them at the same point (cuda_regional_forecast_v842).  The ported framework reads the
             # intervals from the Python stream list instead and needs no native stream manager.
             receipt['native_stream_missing_fields']=_configure_streams(native,streams,out,layout)
-        receipt['lake_cells_folded_to_water']=fold_lake_class(native,layout)
+        receipt['lake_cells_folded_to_water']=fold_lake_class(
+            native,layout,preserve_tc_mask=bool(getattr(config, 'tc_surface', None)))
+        if getattr(config, 'tc_surface', None):
+            receipt['tc_lake_mask'] = bind_tc_lake_mask(native, mesh, layout)
         if limited_area:
             receipt['limited_area_sentinels']=remap_limited_area_sentinels(native,layout)
         from .streams_output_v842 import PhysicsStreams, output_inventory
@@ -1833,10 +1938,12 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
         if chemistry is not None:
             coupling.chemistry=chemistry
             dycore.chemistry=chemistry
-        from ..stochastic import resolve_options, StochasticPhysics
+        from ..stochastic import resolve_options, StochasticPhysics, RRFS_V2_ENSEMBLE
         stochastic_path = getattr(arguments, 'physics_namelist', None)
+        # The RRFS suite route resolves --sppt/--skeb from NOAA's RRFS v2 ensemble settings.
         stochastic_config = resolve_options(getattr(arguments, 'stochastic', None),
-            None if stochastic_path is None else Path(stochastic_path).read_text())
+            None if stochastic_path is None else Path(stochastic_path).read_text(),
+            base=RRFS_V2_ENSEMBLE if getattr(config, 'table_key', None) == 'mpasphys_rrfs' else None)
         stochastic_restart = None if not resumed else moving.carrier.get('stochastic')
         if stochastic_config.enabled:
             partition = getattr(execution, 'stochastic_partition', None)
@@ -1858,7 +1965,14 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
             raise ValueError('checkpoint stochastic physics must remain enabled on resume')
 
         if str(layout.configs.get('config_IAU_option','off')).strip()!='off':
-            coupling.iau=SuiteIau(layout=layout,payload=payload,config=config,mesh=mesh,dycore=dycore,dt=dt)
+            carried_window = None
+            if resumed and getattr(moving, 'resume_continues', False):
+                carried_window = ((moving.carrier.get('physics') or {}).get('continuation') or {}).get('iau_window')
+                if getattr(config, 'mode', 'exact') == 'correct' and carried_window is None:
+                    raise ValueError('checkpoint carries no IAU window state')
+            coupling.iau=SuiteIau(layout=layout,payload=payload,config=config,mesh=mesh,dycore=dycore,dt=dt,
+                                  checkpoint=carried_window)
+            session.iau_window = coupling.iau
             receipt['iau']=coupling.iau.receipt()
             print(json.dumps({'iau':receipt['iau']}),flush=True)
         from .diagnostics_v842 import initialize_thermodynamics
@@ -1944,8 +2058,15 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
             # The writer binds the stream contract of the session's route row (route_table.stream_contract).
             streams_type = getattr(execution, 'streams_type', None) or PhysicsStreams
             output=output_lifetime.enter_context(streams_type(session,streams,out,final_time=stop,
-                                                              diagnostics=diagnostics))
-            if (getattr(config,'mode',None)=='correct' and moving is None
+                diagnostics=diagnostics,
+                history_from_minutes=getattr(arguments, 'history_from_minutes', 0.0)))
+            # A fresh run on its own mesh that only writes checkpoints (checkpoint_v842 CheckpointRoute.fixed_mesh, no
+            # carrier) moves nothing: correct mode completes its initial frame like a plain run.  THE BREAKAGE THIS
+            # FIXES (fix/hex-ckpt-surface-fields): every fresh --checkpoint-hours run, DA background forecasts included,
+            # wrote hpbl, hfx, qfx, lh, th2m and refl10cm* as zeros in its initial frame, because the completion was
+            # skipped for any route object.  A resumed run (carrier) and a moving run keep their own first frame.
+            fresh_fixed = moving is not None and getattr(moving,'fixed_mesh',False) and not resumed
+            if (getattr(config,'mode',None)=='correct' and (moving is None or fresh_fixed)
                     and (halo is None or getattr(output,'gathers_first_call',False))
                     and hasattr(output,'first_frame_from_first_call')):
                 # Correct mode completes the initial frame's surface-layer diagnostics from
@@ -1954,6 +2075,12 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
                 # frame (samehost_v842 GatheredPhysicsStreams._read_first_call).
                 output.first_frame_from_first_call=True
             receipt['missing_fields'] = output.missing
+            if os.environ.get('WOOF_HEX_UH_LAYERS','').strip().lower() in ('1','on','true','yes'):
+                # Running-max 0-1/0-2/0-3/2-5 km updraft helicity (woof.hex.uh_layers); imported only when asked.
+                from ..uh_layers import attach_mpas as attach_uh_layers
+                uh_layers_row=attach_uh_layers(diagnostics,output,halo=halo)
+                if uh_layers_row is not None:
+                    receipt['uh_layers']=uh_layers_row
             session.output_streams=output
             restore_continuation=getattr(moving,'restore_continuation',None) if resumed else None
             if callable(restore_continuation):
@@ -1981,6 +2108,15 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
                     ResidentPhysicsGlue(session, coupling, mesh)
                 else:
                     ResidentPhysicsGlue(session, coupling, mesh, halo=halo)
+            from ..waves import attach_mpas
+            wave_carrier = None if not resumed else moving.carrier.get('waves')
+            wave_offset = float(getattr(moving, 'offset_seconds', 0.))
+            wave_binding = attach_mpas(session, mesh, arguments, start=start, dt=dt,
+                steps=steps, out=out, execution=execution, carried=wave_carrier,
+                weights=physics_map if physics_map is not None else getattr(moving, 'wave_weights', None),
+                source_carrier=None if not resumed else moving.carrier, clock_offset=wave_offset)
+            if (wave_binding is None) != (wave_carrier is None) and resumed:
+                raise ValueError('wave mode differs between checkpoint and resumed forecast')
             if getattr(arguments, 'wind_farms', None) not in (None, '', 'off'):
                 from ..wind_farm import attach_native
                 wind = attach_native(arguments, session, mesh, output, dt=dt, resident=resident, coupling=coupling, halo=halo)
@@ -2101,6 +2237,8 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
                         # clock word using the same native RKIND operation on that level.
                         native.update_state_time(dt,source_level=1,target_level=1)
                         native.advance_clock()
+                        if wave_binding is not None:
+                            wave_binding.after_mpas_step(session, wave_offset+step*dt)
                         if nest_look is not None:
                             nest_look.after_step(step, dycore)
                         deferred_checks.flush(step)
@@ -2166,6 +2304,8 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
                             timing['pools_downloaded'] = True
                         write_native_output(native,streams,step=step,receipt=receipt,session=session,
                                             time_seconds=step*dt,output=output,dt=dt)
+                        if wave_binding is not None:
+                            wave_binding.service.output(wave_offset+step*dt)
                     elif diagnostics is not None:
                         diagnostics.defer(step=step, when=output.current_time(step=step,dt=dt))
                     publication['published' if publish else 'deferred'] += 1
@@ -2180,6 +2320,8 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
                             reads.append(dict(record=record, timestamp=surface_record_reader.times[record].strftime('%Y-%m-%d_%H:%M:%S'),
                                               model_clock=session.arguments.calendar['current_date'], step=step,
                                               callback_execution=receipt['surface_service']['operations']['physics_update_sst']))
+                if wave_binding is not None:
+                    receipt['waves'] = wave_binding.service.receipt()
                 if resident:
                     receipt['resident_physics']['transfers'] = dict(session.device_pools.transfers)
                 stop=False
@@ -2204,6 +2346,12 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
                               names=names,layout=layout,dt=dt)
                 receipt.update(moving.receipt())
             output.close()
+            if getattr(session, 'ocean_pwp', None) is not None:
+                receipt['ocean_pwp'] = session.ocean_pwp.receipt()
+            tc = getattr(session.device_pools, 'tc_exchange', None)
+            if tc is not None:
+                from woof.tc.receipt import receipt as tc_receipt
+                receipt['tc_flux'] = tc_receipt(tc, steps=step)
             if chemistry is not None:
                 ledger=chemistry.write_ledger(out)
                 receipt['chemistry']={k:ledger[k] for k in ('schema','config_sha256','committed_steps',
@@ -2216,8 +2364,7 @@ def _run_native_dynamics(arguments, config, layout, payload, streams, library,
         # Correct mode admits exactly one increment over a window the run covers (IN3); exact mode keeps
         # native's NINT step count, which IN3 names.
         if (coupling.iau.config.correct and coupling.iau.config.config_IAU_option=='on'
-                and steps*dt>=coupling.iau.config.config_IAU_window_length_s
-                and abs(receipt['iau']['fraction_admitted']-1.0)>1e-5):
+                and abs(receipt['iau']['fraction_admitted']-coupling.iau.expected_fraction())>1e-5):
             raise RuntimeError(f"IAU window not fully applied: {receipt['iau']}")
     if execution is not None:
         receipt['rank_execution']=execution.receipt()

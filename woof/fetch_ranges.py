@@ -11,6 +11,19 @@ CHUNK = 1024 * 1024
 MIN_PART = 16 * 1024 * 1024
 
 
+class RangeRefused(ValueError):
+    """A host answered a byte-range request with something else.
+
+    A 200 with the whole representation, a 206 whose Content-Range names
+    other bytes, or an encoded body.  Named breakage (WOOF incident
+    2026-11-04, fix/ecmwf-open-data-range): a customer start from the
+    2026-10-21 06Z IFS 0.1-degree cycle failed in 41 s because the one
+    mirror that still kept that cycle "ignored or changed the requested
+    byte range" on all five rounds, although the whole object was
+    there.  The callers move the object whole on one plain GET instead.
+    """
+
+
 def download(url, part, *, user_agent, streams=1, timeout=300, opener=None,
              progress=None, declared_size=None):
     """Write one identity representation, validating every returned range.
@@ -18,7 +31,24 @@ def download(url, part, *, user_agent, streams=1, timeout=300, opener=None,
     The initial GET doubles as the range-capability probe. Small objects
     and origins without byte ranges or a generation validator keep it.
     Large objects use long disjoint streams, avoiding repeated TCP starts.
+    A host that refuses a range mid-transfer (:class:`RangeRefused`) gets
+    the object again on one stream without a Range header, so a mirror
+    that ignores Range costs one transfer, never the run.
     """
+    try:
+        return _download(url, part, user_agent=user_agent, streams=streams,
+                         timeout=timeout, opener=opener, progress=progress,
+                         declared_size=declared_size)
+    except RangeRefused:
+        if streams <= 1:
+            raise
+        return _download(url, part, user_agent=user_agent, streams=1,
+                         timeout=timeout, opener=opener, progress=progress,
+                         declared_size=declared_size)
+
+
+def _download(url, part, *, user_agent, streams, timeout, opener, progress,
+              declared_size):
     headers = {"User-Agent": user_agent, "Accept-Encoding": "identity"}
     kwargs = {} if opener is None else {"opener": opener}
     response = paced_urlopen(Request(url, headers=headers), timeout=timeout, **kwargs)
@@ -73,7 +103,7 @@ def download(url, part, *, user_agent, streams=1, timeout=300, opener=None,
                     if (getattr(body, "status", None) != 206 or
                             body.headers.get("Content-Range") != f"bytes {start}-{stop}/{length}" or
                             body.headers.get("Content-Encoding", "identity") != "identity"):
-                        raise ValueError(f"{part.name}: host ignored or changed the requested byte range {start}-{stop}")
+                        raise RangeRefused(f"{part.name}: host ignored or changed the requested byte range {start}-{stop}")
                     if etag and body.headers.get("ETag") != etag:
                         raise ValueError(f"{part.name}: object ETag changed between range streams")
                     if not etag and modified and body.headers.get("Last-Modified") != modified:

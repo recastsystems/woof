@@ -12,6 +12,7 @@ scalars get K_m/prandtl = 3x the momentum diffusivity), the WRF v4.6.1
 solid-body rotation, and the dycore wiring (compute once on RK stage 1,
 apply every stage; moisture mixing).
 """
+import dataclasses
 import numpy as np
 import pytest
 from conftest import requires_gpu
@@ -649,11 +650,12 @@ def test_wrf_smag_pbl_off_surface_flux_policy():
 @requires_gpu
 def test_step_rejects_unsupported_km_opt():
     # km_opt=3 joined the admitted set with the 3-D Smagorinsky port
-    # (tests/test_smag3d.py) and km_opt=2 with the prognostic-TKE port
-    # (tests/test_tke_km2.py); km_opt=5 (SMS-3DTKE) remains refused.
+    # (tests/test_smag3d.py), km_opt=2 with the prognostic-TKE port
+    # (tests/test_tke_km2.py) and km_opt=5 with the SMS-3DTKE port, so every
+    # WRF value runs; a value WRF does not define is still refused.
     from woof.core.dycore import step
     from woof.core.state import init_at_rest
-    cfg, vc, b = _flat_setup(8, 1, 8, km_opt=5)
+    cfg, vc, b = _flat_setup(8, 1, 8, km_opt=6)
     s = init_at_rest(cfg, vc, b)
     with pytest.raises(ValueError, match="km_opt"):
         step(s, cfg)
@@ -756,7 +758,7 @@ def test_step_km_opt4_moist_mixing():
         cfg, vc, b = _flat_setup(
             nx, ny, nz, km_opt=km_opt, moist=True,
             bl_pbl_physics=(1 if km_opt == 4 else 0))
-        cfg = RunConfig(**{**cfg.__dict__, "dt": 2.0})
+        cfg = dataclasses.replace(cfg, **{"dt": 2.0})
 
         def qv_func(z):
             q = np.zeros((nz, ny, nx))
@@ -858,7 +860,7 @@ def test_smag_diff6_alias_poison_is_bitwise_exact(diff6):
     nz = 8
     cfg, vc, base = _flat_setup(
         nx, ny, nz, km_opt=4, moist=True, bl_pbl_physics=1)
-    cfg = RunConfig(**{**cfg.__dict__, "dt": 2.0,
+    cfg = dataclasses.replace(cfg, **{"dt": 2.0,
                        "diff_6th_opt": diff6,
                        "diff_6th_factor": 0.12 if diff6 else 0.0})
 
@@ -889,7 +891,7 @@ def test_smag_diff6_alias_poison_is_bitwise_exact(diff6):
     if not diff6:
         # Exercise the cross-domain case: another domain contributes z/m to
         # the shared arena even though this Smag domain itself is diff6-off.
-        diff_cfg = RunConfig(**{**cfg.__dict__, "km_opt": 1,
+        diff_cfg = dataclasses.replace(cfg, **{"km_opt": 1,
                                 "diff_6th_opt": 2,
                                 "diff_6th_factor": 0.12})
         arena_domains.append(types.SimpleNamespace(run=diff_cfg))
@@ -933,7 +935,7 @@ def test_smag_acoustic_alias_poison_is_bitwise_exact():
     nz = 8
     cfg, vc, base = _flat_setup(
         nx, ny, nz, km_opt=4, moist=True, bl_pbl_physics=1)
-    cfg = RunConfig(**{**cfg.__dict__, "dt": 2.0})
+    cfg = dataclasses.replace(cfg, **{"dt": 2.0})
 
     class _ZeroPBL:
         def __init__(self, state):

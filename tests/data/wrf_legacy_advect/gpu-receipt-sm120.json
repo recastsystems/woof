@@ -327228,10 +327228,10 @@
   "fixture_manifest_sha256": "e6ca54054d518a7615bf12f46dd68a074776ceec74118ca292c96695c95e4bad",
   "gpu": "NVIDIA GeForce RTX 5090",
   "kernels": {
-    "advection": "ba500e338d41859b88351ca8014921381c2a33a78b9d56ec66d351a3ccdc073c",
+    "advection": "075f8edde330612422da3a096fb83f882920449da97162d51d9c0a7b3457211d",
     "openbc": "5bf7babe4a953b1a12f8ddca403f04d86fa0aed0f7684992b5eabb5d82cbca57",
-    "pd_advection": "9011930b5b510770f81e11c56a7fd6764233e1592127edc05c1d9c20f7e5142b",
-    "pd_vertical_sl": "929291a52c94c01fc7a3c648d867e26f0339b84865a24445911d8f7b2f862222"
+    "pd_advection": "59139c1b2c592a4f3b098976ef11d5a749d93f7ec29f2cd7b2c7332db5767766",
+    "pd_vertical_sl": "dad6c8c0d6c5bf32a602d324c88685dd788faedfe2a44368df32623782cd9733"
   },
   "mutation_rejected": true,
   "schema_version": 1,

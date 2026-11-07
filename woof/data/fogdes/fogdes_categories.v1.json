@@ -1,0 +1,60 @@
+{
+  "schema": "gpuwm.fogdes_categories.v1",
+  "source": "WRF v4.6.1 phys/module_sf_fogdes.F, lines 113-214 (sha256 288a8619c24821700d8e347950e07630e886846ffbd32502e4333dfbe3c5765b). WRF writes these as literals inside the routine and keeps no table file; this is that code's land-use dependence, transcribed as data.",
+  "class_note": "A class's spcfct and vegh are the float32 values WRF's compiled sf_fogdes holds (module_sf_fogdes.o .rodata, scalar referee build): f32_bits is authoritative, decimal and wrf_expression say where it comes from. The two mixed classes are WRF's own float32 expressions, folded by the compiler.",
+  "classes": {
+    "CROP_GRASS": {
+      "spcfct": {"decimal": "0.2170", "f32_bits": "0x3e5e353f", "wrf_expression": "0.2170"},
+      "vegh": {"decimal": "3.0", "f32_bits": "0x40400000", "wrf_expression": "3.0"}
+    },
+    "MIXED_CROP_GRASS_WOOD": {
+      "spcfct": {"decimal": "0.6085", "f32_bits": "0x3f1bc6a8", "wrf_expression": "( 1.0 + 0.2170 )/2.0"},
+      "vegh": {"decimal": "11.5", "f32_bits": "0x41380000", "wrf_expression": "(20.0 + 3.0 )/2.0"}
+    },
+    "SHRUB": {
+      "spcfct": {"decimal": "1.0", "f32_bits": "0x3f800000", "wrf_expression": "1.0"},
+      "vegh": {"decimal": "4.0", "f32_bits": "0x40800000", "wrf_expression": "4.0"}
+    },
+    "BROAD_FOREST": {
+      "spcfct": {"decimal": "0.8255", "f32_bits": "0x3f5353f8", "wrf_expression": "0.8255"},
+      "vegh": {"decimal": "20.0", "f32_bits": "0x41a00000", "wrf_expression": "20.0"}
+    },
+    "MIXED_FOREST": {
+      "spcfct": {"decimal": "0.91275", "f32_bits": "0x3f69a9fc", "wrf_expression": "( 1.0 + 0.8255 )/2.0"},
+      "vegh": {"decimal": "20.0", "f32_bits": "0x41a00000", "wrf_expression": "20.0"}
+    },
+    "CONIFER_FOREST_ETC": {
+      "spcfct": {"decimal": "1.0", "f32_bits": "0x3f800000", "wrf_expression": "1.0"},
+      "vegh": {"decimal": "20.0", "f32_bits": "0x41a00000", "wrf_expression": "20.0"}
+    }
+  },
+  "others_note": "Every category a dataset does not list is OTHERS: settling of the Katata et al. (2008) mean droplet only, no canopy, no wind (lines 182-184).",
+  "datasets": {
+    "USGS": {
+      "num_land_cat": [24, 28],
+      "mminlu": ["USGS", "USGS-RUC"],
+      "wrf_lines": "module_sf_fogdes.F:128-151",
+      "classes": {
+        "CROP_GRASS": [2, 3, 4, 5, 7, 17, 20],
+        "MIXED_CROP_GRASS_WOOD": [6, 9],
+        "SHRUB": [8],
+        "BROAD_FOREST": [11, 13],
+        "MIXED_FOREST": [15, 22],
+        "CONIFER_FOREST_ETC": [10, 12, 14, 18, 21]
+      }
+    },
+    "MODIS": {
+      "num_land_cat": [20, 21],
+      "mminlu": ["MODIFIED_IGBP_MODIS_NOAH", "MODI-RUC"],
+      "wrf_lines": "module_sf_fogdes.F:152-176",
+      "classes": {
+        "CROP_GRASS": [10, 12],
+        "MIXED_CROP_GRASS_WOOD": [14],
+        "SHRUB": [6, 7],
+        "BROAD_FOREST": [2, 4],
+        "MIXED_FOREST": [5, 19],
+        "CONIFER_FOREST_ETC": [1, 3, 8, 9, 18]
+      }
+    }
+  }
+}

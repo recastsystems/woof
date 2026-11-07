@@ -286,10 +286,31 @@ def test_missing_ccn_activate_fails_closed_with_an_actionable_error(tmp_path):
 
 
 def test_ccn_activation_path_resolution_precedence(tmp_path, monkeypatch):
+    from woof import physics_compat
+
     monkeypatch.delenv(AEROSOL_TABLE_PATH_ENV, raising=False)
     monkeypatch.delenv(AEROSOL_TABLE_ROOT_ENV, raising=False)
-    assert resolve_aerosol_table_root() == packaged_aerosol_table_root()
-    assert packaged_aerosol_table_root() == _TABLES
+    packaged = tmp_path / "packaged"
+    fetched = tmp_path / "fetched"
+    for directory in (packaged, fetched):
+        directory.mkdir()
+        for asset in (*CLASSIC_TABLE_ASSETS, *AEROSOL_TABLE_ASSETS):
+            (directory / asset.filename).touch()
+    monkeypatch.setattr(physics_compat, "packaged_thompson_table_root", lambda: packaged)
+    monkeypatch.setattr(physics_compat, "user_thompson_table_root", lambda: fetched)
+    assert packaged_aerosol_table_root() == packaged
+    assert Path(physics_compat.thompson_table_root(env={})) == packaged
+    assert resolve_aerosol_table_root(env={}) == packaged
+    assert resolve_ccn_activation_path(env={}) == packaged / AEROSOL_TABLE_FILE
+
+    # Both schemes prefer the complete fetched set over an incomplete package,
+    # even if that package still contains the activation file itself.
+    missing = next(asset for asset in CLASSIC_TABLE_ASSETS
+                   if asset.filename != AEROSOL_TABLE_FILE)
+    (packaged / missing.filename).unlink()
+    assert Path(physics_compat.thompson_table_root(env={})) == fetched
+    assert resolve_aerosol_table_root(env={}) == fetched
+    assert resolve_ccn_activation_path(env={}) == fetched / AEROSOL_TABLE_FILE
 
     root_a = tmp_path / "root_a"
     root_b = tmp_path / "root_b"
@@ -301,7 +322,7 @@ def test_ccn_activation_path_resolution_precedence(tmp_path, monkeypatch):
 
     env = {AEROSOL_TABLE_ROOT_ENV: str(root_a),
            AEROSOL_TABLE_PATH_ENV: str(loose)}
-    # File override beats root override beats explicit root beats packaged.
+    # Explicit file, file override, explicit root, root override, shared fallback.
     assert resolve_ccn_activation_path(env=env) == loose
     assert resolve_ccn_activation_path(loose, root_b, env={}) == loose
     assert resolve_ccn_activation_path(
@@ -935,3 +956,22 @@ def test_device_cache_is_keyed_by_the_resolved_ccn_path(tmp_path):
                 require_classic_assets=False)
     finally:
         thompson_aerosol_runtime._DEVICE_CACHE.clear()
+
+
+def test_both_thompson_schemes_select_the_complete_fetched_cache(tmp_path, monkeypatch):
+    from woof import physics_compat
+    from woof.core.thompson_contract import CLASSIC_TABLE_ASSETS
+
+    packaged = tmp_path / "package"
+    staged = tmp_path / "fetched"
+    packaged.mkdir()
+    staged.mkdir()
+    for asset in CLASSIC_TABLE_ASSETS:
+        (staged / asset.filename).touch()
+    monkeypatch.setattr(physics_compat, "packaged_thompson_table_root", lambda: packaged)
+    monkeypatch.setattr(physics_compat, "user_thompson_table_root", lambda: staged)
+    assert Path(physics_compat.thompson_table_root(env={})) == staged
+    assert resolve_aerosol_table_root(env={}) == staged
+    explicit = tmp_path / "explicit"
+    assert resolve_aerosol_table_root(explicit, env={}) == explicit
+    assert resolve_aerosol_table_root(env={AEROSOL_TABLE_ROOT_ENV: str(explicit)}) == explicit

@@ -50,10 +50,11 @@ def required_scratch_slots(cfg):
 
 class _MemberHeldPhysics:
     """Persistent outermost carriers for the packed column driver's rates."""
-    def __init__(self, state, sample):
+    def __init__(self, state, sample, *, components=()):
         self.state = state
         self.active = {name for name in ('ru','rv','rw','rtheta','rqv','rqc','rqr','rqi','rqs')
-                       if getattr(sample,name,None) is not None}
+                       if any(getattr(source,name,None) is not None
+                              for source in (sample, *components))}
     def update(self, packed):
         import cupy as cp
         for name in self.active:
@@ -143,7 +144,14 @@ def prepare_moist_step(state, *, physics_adapter=None, tables=None, boundary_clo
     zero = prepare_bookkeeping(tuple((getattr(state, name), getattr(state, name))
         for name in dycore._TENDENCIES), members=state.members, zero=True)
     diagnostics = prepare_update_diagnostics(state, cfg.hypsometric_opt)
-    held = None if physics_adapter is None else _MemberHeldPhysics(state,physics_adapter.driver.tendencies)
+    # CU99 adds rain/snow forcing when the first call composes its target.
+    # The cold target alone therefore cannot describe the scalar inventory
+    # of the prepared RK graph. Its separately retained coupling is already
+    # bound and species-gated by the ordinary driver before preparation.
+    components = (() if physics_adapter is None or cfg.cu_physics != 99 else
+                  (physics_adapter.driver.cumulus_tendencies,))
+    held = None if physics_adapter is None else _MemberHeldPhysics(
+        state, physics_adapter.driver.tendencies, components=components)
     fixed_mixing = add_mixing = None
     fixed_scalars = None
     if cfg.km_opt == 4 or cfg.diff_6th_opt > 0:
@@ -153,6 +161,8 @@ def prepare_moist_step(state, *, physics_adapter=None, tables=None, boundary_clo
         fixed_scalars = fixed_mixing.scalar_tendencies
     mass, faces, theta = (batch_glue.prepare_total_mass(state), batch_glue.prepare_face_masses(state),
                           batch_glue.prepare_total_theta(state))
+    physics_theta = (batch_glue.prepare_total_theta(state, perturbation="thp0")
+                     if cfg.use_theta_m else None)
     ru, rv, ww = (state.existing_scratch(name) for name in ('rk_ru', 'rk_rv', 'rk_ww'))
     couple_u = prepare_couple_momentum(state.u, state.batch_mux, ru, state.c1h, state.c2h,
                                       has_msf=state.has_msf, msf=state.msfu)
@@ -164,10 +174,14 @@ def prepare_moist_step(state, *, physics_adapter=None, tables=None, boundary_clo
     from woof.core.advection import vertical_orders
     vsca, vmom = vertical_orders(cfg)
     row_orders = {'': vsca, 'x': vmom, 'y': vmom, 'z': vsca}
+    from woof.ensemble.batch_operators import flux_row_horizontal_orders
+    row_horders = flux_row_horizontal_orders(cfg)
+    theta_offset = not dycore.WRF_EXACT and cfg.h_sca_adv_order == 0
     advection = tuple(prepare_flux_div(field, ru, rv, ww, tendency, spacing, state.fnm, state.fnp,
         msf, dx=cfg.dx, dy=cfg.dy, stagger=stagger, has_msf=state.has_msf,
         open_x=dycore._boundary_x(cfg),open_y=dycore._boundary_y(cfg),spec=dycore._boundary_forced(cfg),
-        vorder=row_orders[stagger])
+        vorder=row_orders[stagger], horder=row_horders[stagger],
+        theta_offset=theta_offset and stagger == '')
         for field, tendency, spacing, msf, stagger in (
             (state.batch_theta, state.rth_t, state.rdnw, state.msft, ''),
             (state.u, state.ru_t, state.rdnw, state.msfu, 'x'),
@@ -207,10 +221,23 @@ def prepare_moist_step(state, *, physics_adapter=None, tables=None, boundary_clo
         fixed_tendencies=fixed_scalars) for index, (nsub, dtau) in enumerate(stages)) if tables is None else None
     def step(*,refl_10cm_due=False):
         check()
+        if physics_adapter is not None and physics_theta is not None:
+            # Native first_rk_step_part2 converts with grid%t_1 before
+            # small_step_prep replaces it with this step's entry state.
+            # Preserve the old thp0 sum in the existing batch workspace.
+            physics_theta()
         save()
         if physics_adapter is not None:
             diagnostics()
             held.update(physics_adapter.compute())
+            if cfg.use_theta_m:
+                # Convert the summed dry-physics rates once, before mixing.
+                # batch_theta is already admitted with member-major layout.
+                from woof.core.theta_m_physics import _kernel
+                from woof.core import constants as c
+                _kernel("physics_tendency")(
+                    state.batch_theta, state.qv0, state.storage.arrays["batch_phys_rqv"],
+                    np.float32(c.RVOVRD), state.storage.arrays["batch_phys_rtheta"])
         if fixed_mixing is not None:
             if cfg.km_opt == 4:
                 diagnostics()

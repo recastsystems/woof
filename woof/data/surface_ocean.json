@@ -57,7 +57,8 @@
         "om_density",
         "om_tini",
         "om_sini",
-        "om_ml"
+        "om_ml",
+        "om_active"
       ],
       "input_fields": [
         "OM_TMP",

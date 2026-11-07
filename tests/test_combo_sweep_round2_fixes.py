@@ -21,6 +21,7 @@ from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pytest
+from _run_config_fake import run_config_fake
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -153,7 +154,7 @@ def test_wrf_file_door_runs_with_every_physics_scheme_off(monkeypatch):
     monkeypatch.setattr(physics, "initialize_physics",
                         lambda *a, **k: pytest.fail("no driver is attached when every scheme is off"))
     restored = SimpleNamespace(raw={}, global_attributes={})
-    every_scheme_off = SimpleNamespace(mp_physics=0, sf_sfclay_physics=0, sf_surface_physics=0,
+    every_scheme_off = run_config_fake(mp_physics=0, sf_sfclay_physics=0, sf_surface_physics=0,
                                        bl_pbl_physics=0, cu_physics=0, ra_physics=0)
     assert wrfinput.initialize_wrfinput_physics(object(), restored, every_scheme_off) is None
     assert called == ["validated"]

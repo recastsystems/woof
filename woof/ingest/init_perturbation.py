@@ -383,8 +383,11 @@ class InitialStatePerturbation:
 
         thb = profile(state.thb)          # flat base state: 1-D column
         theta = thb + host(state.thp)
-        theta_before = theta.copy()
         qv = host(state.qv)
+        use_theta_m = int(getattr(state, "use_theta_m", 0))
+        if use_theta_m:
+            theta = theta / (1.0 + c.RVOVRD * qv)
+        theta_before = theta.copy()
         qv_before = qv.copy()
         pressure = host(state.p)
         php = host(state.php)
@@ -411,7 +414,12 @@ class InitialStatePerturbation:
             rise = np.zeros_like(php)
             np.cumsum(thickness * (ratio - 1.0), axis=0, out=rise[1:])
             _write_cells(state.php, php + rise, rise != 0.0)
-        _write_cells(state.thp, theta - thb, changed)
+        if use_theta_m:
+            _write_cells(state.thp, theta * (1.0 + c.RVOVRD * qv) - thb,
+                         changed | qv_changed)
+            state.thp0[...] = state.thp
+        else:
+            _write_cells(state.thp, theta - thb, changed)
         _write_cells(state.qv, qv, qv_changed)
         return receipt
 

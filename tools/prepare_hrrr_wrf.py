@@ -403,7 +403,7 @@ def _bridge_manifest_extension(*, predecessor: Path, suffix: Path,
     }
 
 from woof.ingest.microphysics_cold_start import (
-    cold_start_contract, cold_start_seeded_numbers,
+    cold_start_contract, cold_start_ndcnst_numbers, cold_start_seeded_numbers,
 )
 from woof.physics_compat import single_domain_runtime_switches
 
@@ -1152,9 +1152,25 @@ def _validated_physics_receipt(
     # where the paired mass is zero and a finite seeded number above zero,
     # counted against the closure's seed receipt, where it is not.
     seeded_numbers = cold_start_seeded_numbers(selection)
+    ndcnst_numbers = cold_start_ndcnst_numbers(selection)
     for name, (expected_float32, expected_uint32_bits) \
             in expected_state_fields.items():
         observed = initialization["state_source_absent_fields"][name]
+        if name in ndcnst_numbers:
+            # Correct-mode HN1 Morrison: the producer
+            # (tools/hrrr_single_domain_benchmark._initial_hrrr_microphysics_
+            # receipt) proves nc is the scheme's finite, positive NDCNST
+            # droplet number everywhere, not the allocation zero.  THE
+            # BREAKAGE THIS FIXES: every HRRR start on a Morrison profile
+            # fetched its whole window (11.8 GB) and then failed here with
+            # "omitted deterministic cold-start evidence" on a complete,
+            # correct receipt (IFS-9KM-DEFAULT-2026-11-04).
+            if observed != {"ndcnst_droplet_number": True,
+                            "all_finite_above_zero": True}:
+                raise RuntimeError(
+                    "HRRR preparation omitted deterministic cold-start "
+                    "evidence")
+            continue
         if name in seeded_numbers:
             mass_name, seed_key = seeded_numbers[name]
             seeded_cells = (observed.get("seeded_cells")

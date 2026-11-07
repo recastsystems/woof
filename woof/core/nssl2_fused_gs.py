@@ -14,10 +14,12 @@ remains a transport-free numerical stage and never dispatches itself.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Lock
 
 import numpy as np
 
 from woof.core.kernels import get_kernel
+from woof.core.nssl2_shape import DEFAULT_SHAPES, shape_kernel
 from woof.core.nssl2_driver_support import (
     NSSL2DriverWorkspace, _step32, _validate_surface_fields,
 )
@@ -65,10 +67,11 @@ def _validate_vertical_velocity(
         raise ValueError("vertical_velocity must be C-contiguous")
 
 
-_TABLES_READY: set[int] = set()
+_TABLES_READY: dict[tuple, object] = {}
+_TABLES_INIT_LOCK = Lock()
 
 
-def _ensure_init_tables() -> None:
+def _ensure_init_tables(shapes=DEFAULT_SHAPES) -> None:
     """Build WRF's init-time tables (nssl_2mom_init) in the GS module once.
 
     The fused kernel reads WRF's Seifert collection coefficients, its
@@ -80,11 +83,25 @@ def _ensure_init_tables() -> None:
     import cupy as cp
 
     device = cp.cuda.runtime.getDevice()
-    if device in _TABLES_READY:
-        return
-    get_kernel("nssl2_fused_gs", "nssl2_gs_init_tables")((4,), (256,), ())
-    if not cp.cuda.get_current_stream().is_capturing():
-        _TABLES_READY.add(device)
+    stream = cp.cuda.get_current_stream()
+    key = (device, shapes)
+    ready = _TABLES_READY.get(key)
+    if ready is None:
+        if stream.is_capturing():
+            shape_kernel("nssl2_fused_gs", "nssl2_gs_init_tables", shapes)(
+                (4,), (256,), ())
+            return
+        # The cache is shared by ensemble streams. Publish a device event,
+        # rather than a host flag that could expose unfinished table writes.
+        with _TABLES_INIT_LOCK:
+            ready = _TABLES_READY.get(key)
+            if ready is None:
+                shape_kernel("nssl2_fused_gs", "nssl2_gs_init_tables", shapes)(
+                    (4,), (256,), ())
+                ready = cp.cuda.Event(disable_timing=True)
+                ready.record(stream)
+                _TABLES_READY[key] = ready
+    stream.wait_event(ready)
 
 
 def launch_fused_gs(
@@ -101,6 +118,7 @@ def launch_fused_gs(
     *,
     hail_on: bool = True,
     loaded_vapor=None,
+    shapes=DEFAULT_SHAPES,
 ) -> None:
     """Advance the complete default option-18 GS slab exactly once.
 
@@ -173,14 +191,14 @@ def launch_fused_gs(
     blocks = (size + _THREADS - 1) // _THREADS
     launch = ((blocks,), (_THREADS,))
     from woof.wrf_exact import ENABLED
-    if ENABLED:
-        _ensure_init_tables()
-    get_kernel("nssl2_fused_gs", "nssl2_prepare_fused_gs")(
+    if ENABLED or shapes != DEFAULT_SHAPES:
+        _ensure_init_tables(shapes)
+    shape_kernel("nssl2_fused_gs", "nssl2_prepare_fused_gs", shapes)(
         *launch,
         (
             temperature_k,
             primary_ice_target_m3,
-            loaded_vapor if ENABLED else workspace.state,
+            loaded_vapor if ENABLED or shapes != DEFAULT_SHAPES else workspace.state,
             full_theta,
             air_density,
             pressure_pa,
@@ -188,7 +206,23 @@ def launch_fused_gs(
             np.int32(size),
         ),
     )
-    get_kernel("nssl2_fused_gs", "nssl2_fused_gs")(
+    from woof.core.nssl2_shape import requires_cd_carry
+    carry=requires_cd_carry(shapes)
+    if carry:
+        cd=workspace.drag_cd
+        if cd is None:raise ValueError("NSSL gathered CD scratch was not prepared")
+        groups=(nz*nx+63)//64
+        cd[5].view(np.int32).reshape(-1)[:2*ny*groups].fill(-1)
+        shape_kernel("nssl2_fused_gs","nssl2_cd_gs_prefix",shapes)(
+            ((nz*nx+127)//128,ny),(128,),(workspace.state,air_density,temperature_k,pressure_pa,
+                         cd,np.int32(nz),np.int32(ny),np.int32(nx),np.int32(hail_on)))
+        shape_kernel("nssl2_fused_gs","nssl2_cd_gs_counts",shapes)(
+            (ny,),(128,),(cd,np.int32(nz),np.int32(ny),np.int32(nx)))
+        shape_kernel("nssl2_fused_gs","nssl2_cd_gs_groups",shapes)(
+            ((nz*nx+127)//128,ny),(128,),(cd,np.int32(nz),np.int32(ny),np.int32(nx)))
+        shape_kernel("nssl2_fused_gs","nssl2_cd_gs_finish",shapes)(
+            *launch,(cd,np.int32(nz),np.int32(ny),np.int32(nx)))
+    shape_kernel("nssl2_fused_gs", "nssl2_fused_gs", shapes)(
         *launch,
         (
             workspace.state,
@@ -205,6 +239,7 @@ def launch_fused_gs(
             np.int32(ny * nx),
             np.int32(size),
             np.int32(1 if hail_on else 0),
+            *((workspace.drag_cd,np.int32(nx)) if carry else ()),
         ),
     )
 
@@ -217,6 +252,7 @@ class NSSL2FusedGS:
     primary_ice_target_m3: object
     dt_s: float
     hail_on: bool = True
+    shapes: tuple[float, float] = DEFAULT_SHAPES
 
     def __call__(self, workspace: NSSL2DriverWorkspace, fields, /) -> None:
         launch_fused_gs(
@@ -231,6 +267,7 @@ class NSSL2FusedGS:
             fields.dz,
             self.dt_s,
             hail_on=self.hail_on,
+            shapes=self.shapes,
             loaded_vapor=getattr(fields, "qv", None),
         )
 

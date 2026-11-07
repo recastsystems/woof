@@ -113,6 +113,9 @@ def broken_executor(tmp_path,end):
     c=object.__new__(moving_run.Controller)
     c.a=SimpleNamespace(resume=False,max_retries=2,member_fallback=False)
     c.duration=21600; c.interior_km=100
+    # 9e662b5b: run() asks the track session for a startup member; a session with no
+    # move policy prepares none, which keeps this model to the executor contract.
+    c.session=SimpleNamespace(policy=None)
     c.state=dict(t=0,boundary=None,segments=[],frames=[],events=[])
     c.save=lambda:None;c.drop_prelaunch=lambda reason:None
     c.event=lambda kind,**data:c.state['events'].append(dict(kind=kind,**data))

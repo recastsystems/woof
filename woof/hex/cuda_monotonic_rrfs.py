@@ -10,6 +10,16 @@ from .cuda_fp32 import CUDA_FTZ_HELPERS
 from .cuda_compile_rrfs import kernel
 
 _CUDA_SOURCE = CUDA_FTZ_HELPERS + r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_41400000_DEFINED
+#define HEX_DIVISOR_41400000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_41400000 = 12.0f;
+#else
+static const float hex_divisor_41400000 = 12.0f;
+#endif
+#endif
+
 #define C(k,c) ((k)*nc+(c))
 #define E(k,e) ((k)*ne+(e))
 #define S(k,j,c) (((k)*2+(j))*nc+(c))
@@ -55,8 +65,8 @@ extern "C" __global__ void mono_vertical_rrfs(int nl,int nc,int me,int lo,int hi
  float qi=n[C(k,c)],qm=n[C(k-1,c)],u=ww[C(k,c)];
  if(k==1||k==nl-1)w[C(k,c)]=mpas_mul(u,mpas_add(mpas_mul(fnm[k],qi),mpas_mul(fnp[k],qm)));
  else {float qp=n[C(k+1,c)],qmm=n[C(k-2,c)];
- float centered=mpas_div(mpas_mul(u,mpas_sub(mpas_mul(7.0f,mpas_add(qi,qm)),mpas_add(qp,qmm))),12.0f);
- float up=mpas_div(mpas_mul(mpas_mul(coef,fabsf(u)),mpas_sub(mpas_sub(qp,qmm),mpas_mul(3.0f,mpas_sub(qi,qm)))),12.0f);
+ float centered=mpas_div(mpas_mul(u,mpas_sub(mpas_mul(7.0f,mpas_add(qi,qm)),mpas_add(qp,qmm))),hex_divisor_41400000);
+ float up=mpas_div(mpas_mul(mpas_mul(coef,fabsf(u)),mpas_sub(mpas_sub(qp,qmm),mpas_mul(3.0f,mpas_sub(qi,qm)))),hex_divisor_41400000);
  w[C(k,c)]=mpas_add(centered,up);}}
 }
 // MPAS-Model-rrfs/src/core_atmosphere/dynamics/mpas_atm_time_integration.F:4180-4902 at 1d6e370e.

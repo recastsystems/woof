@@ -293,7 +293,7 @@ def trace_gas_override_status(cfg, overrides):
 
 def make_radiation(cfg, start_time, latitude_deg, longitude_deg, *,
                    p_top=None, column_chunk=None, trace_gas_overrides=None,
-                   ozone_parent=None, ozone_routing=None):
+                   ozone_parent=None, ozone_routing=None, center_lat=None):
     """Construct the requested spectra without substituting another selector.
 
     ``ozone_routing`` is the constructing route's own name for how a legacy
@@ -307,12 +307,26 @@ def make_radiation(cfg, start_time, latitude_deg, longitude_deg, *,
     trace_gas_override_status(cfg, trace_gas_overrides)
     from woof.core.trace_gases import (
         CLASSIC_GASES, LEGACY_LW_GASES, LEGACY_SW_GASES, trace_gas_subset)
+    if (lw, sw) == (31, 0):
+        return NewtonianRelaxationRadiation(start_time, latitude_deg, longitude_deg)
     if not (lw or sw):
         return None
     args = (start_time, latitude_deg, longitude_deg)
+    # Additional paired column engines are declared by their registry row.
+    from woof import physics_registry
+    for option in physics_registry.physics_registry()['components']['radiation']['options'].values():
+        if option.get('runtime_factory') and option.get('selectors') == {'ra_lw_physics':lw,'ra_sw_physics':sw}:
+            from importlib import import_module
+            module,name=option['runtime_factory'].rsplit('.',1)
+            # A paired engine sizes its own concurrent columns, priced by
+            # preflight from its own row; the shared RRTMGP chunk is not its
+            # knob (it held CAM ra 3/3 to 98 blocks of 32 threads).
+            return getattr(import_module(module),name)(*args,icloud=cfg.icloud)
     def engine(selector, longwave, shortwave):
         if selector == 0:
             return None
+        if selector == 31 and longwave:
+            return NewtonianRelaxationRadiation(*args)
         if selector == 1 and longwave:
             from woof.core.rrtm_lw import RRTMLongwaveRadiation
             return RRTMLongwaveRadiation(*args, p_top=p_top, icloud=cfg.icloud,
@@ -323,8 +337,29 @@ def make_radiation(cfg, start_time, latitude_deg, longitude_deg, *,
         if selector == 1:
             from woof.core.dudhia import DudhiaShortwaveRadiation
             return DudhiaShortwaveRadiation(*args, swrad_scat=cfg.swrad_scat, icloud=cfg.icloud)
+        if selector == 3:
+            from woof.core.cam3 import Cam3Radiation
+            # CAM sizes its own concurrent columns: one private workspace per
+            # worker, priced by preflight at cam3_memory.DEFAULT_WORKERS.  The
+            # shared RRTMGP chunk (3125 by default) cut the RTX 4090 12 km
+            # forecast to 98 blocks of 32 threads and 88 ms per call instead
+            # of 51 ms (2026-11-02, cam-speed receipts).
+            return Cam3Radiation(*args,icloud=cfg.icloud,
+                                 longwave=longwave,shortwave=shortwave)
         if selector == 5:
             return ColumnTableRadiation(*args, selector=selector, column_chunk=column_chunk)
+        if selector == 7:
+            from woof.core.flg_radiation import FLGRadiation
+            return FLGRadiation(*args, column_chunk=column_chunk)
+        if selector == 99:
+            from woof.core.gfdleta import GFDLEtaRadiation
+            return GFDLEtaRadiation(*args,p_top=p_top,co2tf=cfg.co2tf,
+                                   longwave=longwave,shortwave=shortwave,
+                                   column_chunk=column_chunk)
+        if selector == 2:
+            from woof.core.gsfcsw import GSFCSWShortwaveRadiation
+            return GSFCSWShortwaveRadiation(*args, icloud=cfg.icloud,
+                                           center_lat=center_lat)
         if selector == 90:
             from woof.core.analytic_radiation import AnalyticClearSkyRadiation
             return AnalyticClearSkyRadiation(*args)
@@ -391,6 +426,12 @@ def make_radiation(cfg, start_time, latitude_deg, longitude_deg, *,
         if column_chunk is not None:
             options["column_chunk"] = column_chunk
         return RRTMGPRadiation(*args, **options)
+    if lw != sw and 7 in (lw, sw):
+        from woof.core.flg_composition import NativeFLGComposition
+        return NativeFLGComposition(*args,
+            longwave_adapter=engine(lw, True, False),
+            shortwave_adapter=None if sw == 7 else engine(sw, False, True),
+            flg_longwave=lw == 7)
     if (lw, sw) == (1, 1):
         from woof.core.rrtm_lw import RRTMDudhiaRadiation
         return RRTMDudhiaRadiation(*args, p_top=p_top,
@@ -457,22 +498,45 @@ class ColumnTableRadiation:
         t,p=grid(atmosphere['temperature']),grid(atmosphere['pressure'])
         fqi,fqs=((True,True) if int(cfg.mp_physics)==7 else
                  legacy_cloud_fraction_flags(int(cfg.mp_physics)))
-        cf=(cal_cldfra1(moist['qv'],moist['qc'],moist['qi'],moist['qs'],t,p,
-                       f_qc=True,f_qi=fqi,f_qs=fqs) if cfg.icloud else zeros)
+        cup_active=int(getattr(cfg,'cu_physics',0)) == 10
+        flags=None
+        if 'radiation_cldfra3' in fields:
+            cf = fields['radiation_cldfra3'].reshape(nz,ncol)
+        elif cup_active and cfg.icloud == 1:
+            cf,flags=cal_cldfra1(moist['qv'],moist['qc'],moist['qi'],moist['qs'],t,p,
+                f_qc=True,f_qi=fqi,f_qs=fqs,return_flags=True,
+                mp_physics=95 if int(cfg.mp_physics)==95 else None,
+                f_ice_phy=grid(state.f_ice_phy) if int(cfg.mp_physics)==95 else None)
+        elif cup_active and cfg.icloud == 2:
+            from woof.core.rrtmgp import cal_cldfra2
+            cf=cal_cldfra2(moist['qc'],moist['qi'],f_qc=True,f_qi=fqi)
+        else:
+            cf=(cal_cldfra1(moist['qv'],moist['qc'],moist['qi'],moist['qs'],t,p,
+                           f_qc=True,f_qi=fqi,f_qs=fqs,
+                           f_ice_phy=grid(state.f_ice_phy) if int(cfg.mp_physics)==95 else None) if cfg.icloud else zeros)
+        if cup_active:
+            from woof.core.kfcup_radiation import merge_kfcup_clouds
+            moist['qc'],cf=merge_kfcup_clouds(moist['qc'].copy(),cf,flags,fields,cfg,level_major=True)
         from woof.core.mynn_radiation import merge_mynn_bl_clouds, mynn_bl_cloud_active, wrf_itimestep
-        active_bl=mynn_bl_cloud_active(getattr(cfg,'bl_pbl_physics',0),getattr(cfg,'icloud_bl',0))
+        active_bl=(int(cfg.icloud)!=3 and mynn_bl_cloud_active(
+            getattr(cfg,'bl_pbl_physics',0),getattr(cfg,'icloud_bl',0)))
         if active_bl:
             moist['qc']=moist['qc'].copy();moist['qi']=moist['qi'].copy()
         moist['qc'],moist['qi'],cf=merge_mynn_bl_clouds(moist['qc'],moist['qi'],cf,
             qc_bl=grid(fields['qc_bl']) if active_bl else None,
             qi_bl=grid(fields['qi_bl']) if active_bl else None,
             cldfra_bl=grid(fields['cldfra_bl']) if active_bl else None,
-            bl_pbl_physics=getattr(cfg,'bl_pbl_physics',0),icloud_bl=getattr(cfg,'icloud_bl',0),
+            bl_pbl_physics=getattr(cfg,'bl_pbl_physics',0),
+            icloud_bl=0 if int(cfg.icloud)==3 else getattr(cfg,'icloud_bl',0),
             itimestep=wrf_itimestep(state.elapsed_seconds,cfg.dt) if active_bl else 1,
             bl_mynn_version=getattr(cfg,'bl_mynn_version','wrf_461'),
             temperature=t if active_bl else None)
+        from woof.core.column_cumulus import merge_column_cumulus_clouds
+        moist['qc'],moist['qi'],cf=merge_column_cumulus_clouds(
+            moist['qc'],moist['qi'],cf,fields=fields,cfg=cfg,columns=grid)
         values,direct_gsfc=radiation_radius_provider_fields(
-            state,int(cfg.mp_physics),getattr(cfg,'use_mp_re',1))
+            state,int(cfg.mp_physics),getattr(cfg,'use_mp_re',1),
+            nssl_2moment_on=getattr(cfg,'nssl_2moment_on',1))
         radii=[zeros if value is None else grid(value) if direct_gsfc else
                grid(value)*np.float32(1.e-6)*np.float32(1.e6) for value in values]
         julian,xtime,gmt=calendar_scalars(self.start_time,state.elapsed_seconds)
@@ -530,7 +594,7 @@ class ColumnTableRadiation:
             cldfra=cf.reshape(nz,ny,nx),flux_diagnostics=diagnostics)
 
 
-def radiation_radius_provider_fields(state, mp_physics, use_mp_re=1):
+def radiation_radius_provider_fields(state, mp_physics, use_mp_re=1, *, nssl_2moment_on=1):
     """Resolve WRF's six GSFC radius carriers in ice/cloud/rain/snow/graupel/hail order."""
     if int(mp_physics)==7:
         names=tuple('re_'+species+'_gsfc' for species in
@@ -541,7 +605,8 @@ def radiation_radius_provider_fields(state, mp_physics, use_mp_re=1):
                 raise ValueError(f'mp=7 radiation requires state.{name}; missing cloud optics radius')
         return values,True
     from woof.core.rrtmg_legacy import legacy_scheme_has_req
-    hc,hi,hs=legacy_scheme_has_req(int(mp_physics),use_mp_re)
+    hc,hi,hs=legacy_scheme_has_req(int(mp_physics),use_mp_re,
+                                nssl_2moment_on=nssl_2moment_on)
     names=(('effi',hi),('effc',hc),(None,0),('effs',hs),(None,0),(None,0))
     values=[]
     for name,declared in names:
@@ -552,3 +617,65 @@ def radiation_radius_provider_fields(state, mp_physics, use_mp_re=1):
     # With no WRF radius provider, the GSFC Registry carriers stay zero.
     # The cloud LUT owns its documented lower-radius clipping, including zero.
     return tuple(values),False
+
+
+class NewtonianRelaxationRadiation:
+    """WRF selector 31 temperature forcing, on the shared radiation clock."""
+    publishes_olr = False
+    publishes_cldfra = False
+    glw_provenance = 'scheme'
+
+    def __init__(self, start_time, latitude_deg, longitude_deg):
+        import cupy as cp
+        self.start_time = start_time
+        self.latitude_deg = cp.ascontiguousarray(cp.asarray(latitude_deg, dtype=cp.float32))
+        self.longitude_deg = cp.ascontiguousarray(cp.asarray(longitude_deg, dtype=cp.float32))
+        if self.latitude_deg.shape != self.longitude_deg.shape:
+            raise ValueError('radiation latitude and longitude shapes differ')
+        # Native damping excludes the physical v boundary faces. Gather
+        # this geography into tiles; window boundaries are not domain bounds.
+        ny, nx = self.latitude_deg.shape
+        self.momentum_v_active = cp.ones((ny+1, nx), dtype=cp.float32)
+        self.momentum_v_active[0] = 0
+        self.momentum_v_active[-1] = 0
+        self.update_count = 0
+
+    def restart_identity(self):
+        return {'algorithm': 'wrf-v4.6.1-relaxation-31-v1',
+                'momentum': 'wrf-v4.6.1-sigma-rayleigh-31-v1'}
+
+    def __call__(self, *, atmosphere, fields, state, cfg):
+        import cupy as cp
+        import numpy as np
+        from woof.core import constants as c
+        from woof.core.kernels import load_module_no_ftz
+        from woof.core.physics import RadiationResult
+        p = cp.ascontiguousarray(atmosphere['pressure'], dtype=cp.float32)
+        nz, ny, nx = p.shape
+        if self.latitude_deg.shape != (ny,nx):
+            raise ValueError('radiation latitude shape differs from the mass grid')
+        # hsinit starts RTHRATEN at zero; radiation_driver clears it on
+        # every due call. This kernel adds to that freshly cleared rate.
+        # Allocate once per grid shape. These arrays remain on the device
+        # between radiation calls; clearing the held rate needs no host read.
+        if getattr(self, '_shape', None) != p.shape:
+            self._shape = p.shape
+            self._relaxation_heating = cp.empty_like(p)
+            self._relaxation_shortwave = cp.zeros_like(p)
+            self._relaxation_surface_zero = cp.zeros((ny,nx),dtype=cp.float32)
+        heating = self._relaxation_heating
+        heating.fill(0)
+        kernel = load_module_no_ftz('idealized_forcing', no_fmad=True).get_function('relax_temperature')
+        kernel(((p.size+255)//256,), (256,), (
+            np.int32(nx),np.int32(ny),np.int32(nz),self.latitude_deg,p,
+            cp.ascontiguousarray(atmosphere['p_interface'][0]),
+            cp.ascontiguousarray(atmosphere['exner']),
+            cp.ascontiguousarray(atmosphere['temperature']),
+            np.float32(np.float32(np.pi)/np.float32(180.)),
+            np.float32(c.RD),np.float32(c.CP),heating))
+        zero = self._relaxation_surface_zero
+        self.update_count += 1
+        # This leaf supplies no optical flux. An independently selected
+        # shortwave leaf owns SW heating and fluxes in ComposedRadiation.
+        return RadiationResult(rthratenlw=heating,rthratensw=self._relaxation_shortwave,
+                               swdown=zero,glw=zero,gsw=zero,coszen=zero)

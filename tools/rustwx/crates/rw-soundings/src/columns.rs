@@ -10,7 +10,14 @@
 //! The fields are the store's canonical ones (`rw_store::columns::FIELDS_3D`, `FIELDS_2D`): hPa, m MSL, C, m/s
 //! (earth-relative), Pa/s; degrees. By default the 3-D fields are quantized (`QUANTA_3D`: 0.05 hPa, 0.5 m, 0.02 C,
 //! 0.05 C, 0.05 m/s, 0.01 Pa/s), about 250 bytes a column; `"exact": true` stores every value's f32 instead.
+//!
+//! Every file also carries the SURFACE SECTION (rw-store `SurfaceWrite`, ABI `columns-surface-v1`): the planes a
+//! point forecast or a meteogram reads (precipitation, sea-level pressure, cloud, gust, CAPE and the rest,
+//! [`crate::surface`]), exact f32, computed here from the full-precision frame by the map renderer's own functions.
+//! The main tiles are unchanged, so soundings read every file as before. At a grid's finish, `--series` folds its
+//! hourly files' surface sections into one time-major file (rw-store `series`), so a whole meteogram is three reads.
 use crate::input::{self, RunInfo, Source, WrfGrid};
+use crate::surface;
 use crate::store::Res;
 use rw_store::columns::{self as cs, ColumnsWrite, Field2, Field3, Values};
 use serde::Deserialize;
@@ -86,19 +93,23 @@ pub fn run(req: ColumnsRequest) -> Res<Vec<Written>> {
                 req.out.join("members").join(&source.member).join(&source.domain)
             };
             let path = dir.join(format!("{}.wcol", stamp(valid)));
-            let bytes = pool.install(|| {
-                write_file(&path, &grid, &source.domain, &source.member, valid, req.tile, req.exact, &run_info)
+            let w = pool.install(|| {
+                write_frame(&path, grid, &f, &source.path, ti, &source.domain, &source.member, valid, req.tile, req.exact, &run_info)
             })?;
-            let write_ms = started.elapsed().as_secs_f64() * 1e3 - read_ms;
-            // Freed on the pool too: a 1 km globe's grid is tens of GB of pages to hand back.
-            pool.install(|| free_grid(grid));
+            f.clear_cache();
+            let bytes = w.bytes;
             let ms = started.elapsed().as_secs_f64() * 1e3;
             // Stage times for the caller's receipt (stderr: stdout's COLUMNS rows are parsed).
             eprintln!(
-                "COLUMNS-STAGES {} grid_ms={read_ms:.0} encode_write_ms={write_ms:.0} free_ms={:.0} threads={}",
+                "COLUMNS-STAGES {} grid_ms={read_ms:.0} encode_write_ms={:.0} surface_ms={:.0} free_ms={:.0} threads={} \
+                 surface_planes={} surface_stages={}",
                 path.display(),
-                ms - read_ms - write_ms,
-                pool.current_num_threads()
+                w.encode_ms + w.write_ms,
+                w.surface_ms,
+                (ms - read_ms - w.encode_ms - w.write_ms - w.surface_ms).max(0.0),
+                pool.current_num_threads(),
+                w.planes,
+                w.stages.iter().map(|(k, v)| format!("{k}={v:.0}")).collect::<Vec<_>>().join(",")
             );
             println!("COLUMNS {} bytes={} ms={:.0}", path.display(), bytes, ms);
             written.push(Written { path, bytes, ms });
@@ -107,11 +118,107 @@ pub fn run(req: ColumnsRequest) -> Res<Vec<Written>> {
     Ok(written)
 }
 
-/// Drop the grid's fields side by side.
-fn free_grid(g: WrfGrid) {
+/// One frame's file as written, with its stage times.
+pub struct FrameWritten {
+    pub bytes: u64,
+    pub encode_ms: f64,
+    pub surface_ms: f64,
+    pub write_ms: f64,
+    pub planes: usize,
+    pub stages: Vec<(&'static str, f64)>,
+}
+
+/// The six sounding surface planes as the main tiles store them: pressure Pa -> hPa, 2 m temperature K -> C by
+/// scale and offset, the 2 m dewpoint derived per grid point, the 10 m wind earth-relative.
+fn sounding_planes<'a>(ps: &'a [f64], terrain: &'a [f64], t2: &'a [f64], td2: &'a [f64], u10: &'a [f64], v10: &'a [f64]) -> Vec<Field2<'a>> {
+    let data2: [(&'a [f64], f64, f64); 6] =
+        [(ps, 0.01, 0.0), (terrain, 1.0, 0.0), (t2, 1.0, -273.15), (td2, 1.0, 0.0), (u10, 1.0, 0.0), (v10, 1.0, 0.0)];
+    data2
+        .iter()
+        .enumerate()
+        .map(|(i, (a, scale, offset))| Field2 {
+            name: cs::FIELDS_2D[i + 2],
+            units: cs::UNITS_2D[i + 2],
+            data: Values::F64(a),
+            scale: *scale,
+            offset: *offset,
+        })
+        .collect()
+}
+
+/// Write one frame's file with its surface section: the main tiles from the grid, then (the grid's winds, dewpoint
+/// and omega freed, its pressure, temperature and height handed on) the surface planes, then the layout. A surface
+/// plane that cannot be computed is left out and named; a surface section that cannot be computed at all leaves the
+/// six sounding planes and the reason, and the file is still written.
+#[allow(clippy::too_many_arguments)]
+pub fn write_frame(
+    path: &Path,
+    g: WrfGrid,
+    f: &WrfFile,
+    src: &Path,
+    ti: usize,
+    domain: &str,
+    member: &str,
+    valid: i64,
+    tile: usize,
+    exact: bool,
+    run: &RunInfo,
+) -> Res<FrameWritten> {
     use rayon::prelude::*;
-    let WrfGrid { lat, lon, p, z, t, td, u, v, omega, ps, terrain, t2, q2, u10, v10, .. } = g;
-    vec![lat, lon, p, z, t, td, u, v, omega, ps, terrain, t2, q2, u10, v10].into_par_iter().for_each(drop);
+    let started = std::time::Instant::now();
+    let td2: Vec<f64> = (0..g.nx * g.ny).into_par_iter().map(|i| g.td2(i)).collect();
+    let encoded = cs::encode_main(&columns_write(&g, &td2, domain, member, valid, tile, exact, run))
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let encode_ms = started.elapsed().as_secs_f64() * 1e3;
+    let WrfGrid { nx, ny, nz, lat, lon, p, z, t, td, u, v, omega, ps, terrain, t2, q2, u10, v10 } = g;
+    // Freed side by side: a 1 km globe's grid is tens of GB of pages to hand back.
+    vec![td, u, v, omega].into_par_iter().for_each(drop);
+    let started = std::time::Instant::now();
+    let kept = surface::Kept {
+        nx, ny, nz, p, t_c: t, z, lat: &lat, lon: &lon, ps: &ps, terrain: &terrain, t2: &t2, q2: &q2, u10: &u10, v10: &v10,
+    };
+    let (planes, notes, stages) = match surface::compute(f, src, ti, kept) {
+        Ok(s) => (s.planes, s.notes, s.stages),
+        Err(e) => (vec![], json!({"absent": {"surface": format!("no surface planes: {e}")}}), vec![]),
+    };
+    f.clear_cache();
+    let surface_ms = started.elapsed().as_secs_f64() * 1e3;
+    let started = std::time::Instant::now();
+    let mut fields = sounding_planes(&ps, &terrain, &t2, &td2, &u10, &v10);
+    fields.extend(planes.iter().map(|p| Field2 { name: p.name, units: p.units, data: Values::F32(&p.data), scale: 1.0, offset: 0.0 }));
+    let count = fields.len();
+    let s = cs::SurfaceWrite { lat: Values::F64(&lat), lon: Values::F64(&lon), fields, notes };
+    let out = cs::finish(encoded, Some(&s)).map_err(|e| format!("{}: {e}", path.display()))?;
+    let bytes = cs::write_bytes(path, &out).map_err(|e| format!("{}: {e}", path.display()))?;
+    let write_ms = started.elapsed().as_secs_f64() * 1e3;
+    Ok(FrameWritten { bytes, encode_ms, surface_ms, write_ms, planes: count, stages })
+}
+
+/// `rw_soundings --series STORE_DIR [DOMAIN...]`: each fixed grid's time series file from its hourly files'
+/// surface sections (every grid of the store when none is named). One `SERIES <path> bytes=.. ms=..` line per file
+/// written and one `SERIES-SKIP <domain> <reason>` per grid that gets none (a moving grid, a store written before
+/// the surface section).
+pub fn series(store: &Path, domains: &[String], threads: usize) -> Res<Vec<rw_store::series::SeriesWritten>> {
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(threads.max(1)).build().map_err(err)?;
+    let domains: Vec<String> = if domains.is_empty() { rw_store::series::grids(store) } else { domains.to_vec() };
+    let mut out = vec![];
+    for d in &domains {
+        let w = pool.install(|| rw_store::series::write_series(store, d, 4)).map_err(|e| format!("{d}: {e}"))?;
+        match (&w.path, &w.skipped) {
+            (Some(p), _) => println!(
+                "SERIES {} bytes={} ms={:.0} members={} times={} fields={}",
+                p.display(),
+                w.bytes,
+                w.ms,
+                w.members,
+                w.times,
+                w.fields
+            ),
+            (None, why) => println!("SERIES-SKIP {d} {}", why.as_deref().unwrap_or("nothing to write")),
+        }
+        out.push(w);
+    }
+    Ok(out)
 }
 
 /// The version 2 description of one WRF-shaped grid: the canonical fields, pressure Pa -> hPa and 2 m

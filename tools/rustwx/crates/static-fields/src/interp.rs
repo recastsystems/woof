@@ -32,6 +32,12 @@ pub(crate) fn orographic_real(
         return search_real(tile, vals, x, y, depth);
     }
     let (sx,sy,ex,ey)=(tile.x0,tile.y0,tile.x1(),tile.y1());
+    // WPS v4.6.0 interp_module.F:nearest_neighbor, default REAL/NINT.
+    if op == InterpOp::NearestNeighbor {
+        let (i, j) = (x.round() as i64, y.round() as i64);
+        return if i < sx || i > ex || j < sy || j > ey { f32::NAN }
+            else { vals[(j-sy) as usize*tile.nx+(i-sx) as usize] };
+    }
     let (mut ix,mut jx,mut iy,mut jy)=(x.floor() as i64,x.ceil() as i64,
                                     y.floor() as i64,y.ceil() as i64);
     if op == InterpOp::Average4Pt {
@@ -64,6 +70,7 @@ pub(crate) fn orographic_real(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InterpOp {
+    NearestNeighbor,
     FourPt,
     Average4Pt,
     Average16Pt,
@@ -378,6 +385,12 @@ pub fn search_nearest(win: &WindowView<'_>, xi: f64, yi: f64) -> f64 {
 
 fn apply(op: InterpOp, win: &WindowView<'_>, xi: f64, yi: f64) -> f64 {
     match op {
+        InterpOp::NearestNeighbor => {
+            let (i,j)=((xi.round()-win.x0) as i64,(yi.round()-win.y0) as i64);
+            if i < 0 || j < 0 || i >= win.nx as i64 || j >= win.ny as i64 {
+                f64::NAN
+            } else { win.at(j,i) }
+        },
         InterpOp::FourPt => four_pt(win, xi, yi),
         InterpOp::Average4Pt => average_4pt(win, xi, yi),
         InterpOp::Average16Pt => average_16pt(win, xi, yi),
@@ -412,6 +425,22 @@ pub fn interp_one(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn nearest_preserves_half_ties_missing_and_bounds() {
+        use crate::geog::{GeogIndex,GeogWindow};
+        let index=GeogIndex::parse(&std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("golden/orographic/index")).unwrap();
+        let tile=GeogWindow{index,x0:1,y0:1,first_plane:0,nz:1,ny:2,nx:3,
+            raw:vec![0;6],coverage:None};
+        let v=[11.0,12.0,f32::NAN,21.0,22.0,23.0];
+        for (x,y,want) in [(0.5,1.0,11.0),(1.5,1.0,12.0),(3.49,2.0,23.0),
+            (1.0,1.5,21.0),(3.0,1.0,f32::NAN),(0.49,1.0,f32::NAN),
+            (3.5,2.0,f32::NAN),(1.0,2.5,f32::NAN)] {
+            let got=super::orographic_real(&tile,&v,x,y,super::InterpOp::NearestNeighbor);
+            if want.is_nan(){assert!(got.is_nan());}else{assert_eq!(got,want);}
+        }
+    }
+
     #[test]
     fn bounded_search_matches_unmodified_wps_fortran() {
         use crate::geog::{GeogIndex,GeogWindow};

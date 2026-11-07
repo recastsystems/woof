@@ -21,7 +21,7 @@ def physical_renderer():
     return renderer
 
 
-def write_plane(path, cp, lat, lon, valid, fields):
+def write_plane(path, cp, lat, lon, valid, fields, *, source="Coupled mixed-layer ocean and sea ice"):
     import numpy as np
     from woof.io.nc_writer_bridge import ClassicSchema
     schema = ClassicSchema()
@@ -29,7 +29,7 @@ def write_plane(path, cp, lat, lon, valid, fields):
     y = schema.def_dim("lat", lat.shape[0])
     x = schema.def_dim("lon", lat.shape[1])
     schema.put_global_attr("Conventions", "CF-1.8")
-    schema.put_global_attr("source", "Coupled mixed-layer ocean and sea ice")
+    schema.put_global_attr("source", source)
     payloads = []
     def variable(name, units, data, dims, standard=None):
         number = schema.def_var(name, "f4", dims)

@@ -12,7 +12,7 @@ SUITE_INIT_FLAG = "--aerosol-status"
 
 def engine_has_suite_init(engine) -> bool:
     """Whether this rw_mpas_init carries the suite-aware entries
-    (``--aerosol-status``, ``--augment-init``) that woof 2.9.0's init brings.
+    (``--aerosol-status``, ``--augment-init``) that gpuwm 2.9.0's init brings.
 
     An older binary has no such entry and answers either flag with its usage
     ("--met was not given"), exit 1, which reached the user as an unnamed
@@ -47,7 +47,7 @@ def _engine_requirement() -> str:
 
 
 def _predates_suite_init(engine, need: str) -> str:
-    return (f"{need} needs woof 2.9.0's suite-aware native initializer, and the installed "
+    return (f"{need} needs gpuwm 2.9.0's suite-aware native initializer, and the installed "
             f"rw_mpas_init ({engine}) predates it (its usage lists no {SUITE_INIT_FLAG}). "
             f"Install an engine inside this release's range (pip install '{_engine_requirement()}') or build the init for the suite "
             "with an engine that carries it")
@@ -281,7 +281,7 @@ def prepare_forecast_init(init, destination, physics, start_time):
         state = aerosol_status(engine, init)
         if state is None:
             # THE BREAKAGE THIS PREVENTS (golden 0.4.0 round 2, install
-            # gate on the woof 2.9.0 candidate b32d6fa48): every --physics
+            # gate on the gpuwm 2.9.0 candidate b32d6fa48): every --physics
             # selection with a non-Noah land model, convection off included,
             # stopped at the door with an unnamed "Command [... rw_mpas_init
             # --aerosol-status ...] returned non-zero exit status 1"; the same
@@ -295,12 +295,12 @@ def prepare_forecast_init(init, destination, physics, start_time):
                 raise ValueError(_predates_suite_init(
                     engine, f"{land['land_surface_scheme']} with {land['n_soil_levels']} soil levels"))
             print(f"PHYSICS-INIT shoreline soil-category check not run: the installed rw_mpas_init ({engine}) "
-                  f"predates {SUITE_INIT_FLAG} (woof 2.9.0's suite-aware init); the init's categories are "
+                  f"predates {SUITE_INIT_FLAG} (gpuwm 2.9.0's suite-aware init); the init's categories are "
                   "used as written, as a bare default run uses them", flush=True)
             return init, None
         aerosol_change = "nwfa" in names and (bool(missing) or not state["analysis_pair"] or synthetic_source)
         category_change = land["land_surface_scheme"] != "noah" and state.get("soil_category_mismatches", 0) > 0
-    if not soil_change and not aerosol_change and not category_change:
+    if not missing and not soil_change and not aerosol_change and not category_change:
         return init, None
     if not start_time:
         raise ValueError("physics initialization needs the initial state's valid time for source analysis and monthly climatology")

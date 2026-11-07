@@ -138,7 +138,7 @@ class StandInWriter:
 
 
 class StandInStore:
-    def history_fields(self):
+    def history_fields(self, *, state=None):
         return {"T": np.zeros(1024 * 1024, dtype=np.float32)}
 
 

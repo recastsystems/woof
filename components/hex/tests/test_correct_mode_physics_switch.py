@@ -89,7 +89,7 @@ def test_engine_accepts_reads_the_seam_signature():
 
 def _no_engine(monkeypatch):
     # An engine without correct mode: importing woof.correct_mode fails.  The release engine
-    # (woof 2.9.0) carries that module, and once anything has imported it the woof package holds it
+    # (gpuwm 2.9.0) carries that module, and once anything has imported it the woof package holds it
     # as an attribute, which `from woof import correct_mode` returns without consulting sys.modules;
     # so the binding is hidden too (on 2.9.0 these tests otherwise saw the real engine and no gap).
     monkeypatch.setitem(sys.modules, "woof.correct_mode", None)
@@ -190,7 +190,7 @@ def test_the_arwen_backend_keeps_mode_keywords_out_of_an_old_engine(monkeypatch)
     batch = types.ModuleType("woof.core.mpas_column_batch")
     batch.MpasColumnBatchPhysics = OldBatch
     monkeypatch.setitem(sys.modules, "woof.core.mpas_column_batch", batch)
-    # `import woof.core.mpas_column_batch as m` reads the package attribute first: on woof 2.9.0 an
+    # `import woof.core.mpas_column_batch as m` reads the package attribute first: on gpuwm 2.9.0 an
     # earlier test binds the real batch there, whose constructor takes the mode keywords.
     monkeypatch.setattr(sys.modules["woof.core"], "mpas_column_batch", batch, raising=False)
     constructor = types.SimpleNamespace(

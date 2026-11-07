@@ -118,12 +118,12 @@ def load_row(name: str | None, table: Path = TABLE) -> tuple[dict[str, Any], Pat
     return row, table.parent
 
 
-def resolve_regional_source(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def resolve_regional_source(name: str, source_table=None) -> tuple[dict[str, Any], dict[str, Any]]:
     """A limited-area row, or a global row: a global model covers any region, so it initialises and drives a cull
     the way GFS drives a WRF domain (its Vtable intermediates, one per boundary time)."""
     from .init_sources import _norm, load_table, resolve_source
 
-    table = load_table()
+    table = source_table if source_table is not None else load_table()
     held = next((row.get("coverage", "global") for row in table["sources"]
                  if _norm(name) in {_norm(n) for n in (row["id"], *row.get("aliases", ()))}), "limited_area")
     source = resolve_source(table, name, coverage=held)
@@ -162,6 +162,66 @@ def _boundary_step(cadence: Mapping[str, Any], cycle_hour: int, lead: int, hours
 
 def _stamp(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%d_%H:%M:%S")
+
+
+def boundary_plan(source, cycle, lead, hours, *, name=None, boundary_cycle=None, requested=None, source_table=None):
+    """Resolve boundary clocks before work starts. An older cycle must reach every endpoint."""
+    from .init_sources import admit_cycle
+
+    allowed = source.get("boundaries") or {}
+    wanted = name or allowed.get("default") or source["id"]
+    _, boundary = resolve_regional_source(wanted, source_table)
+    if allowed.get("selectable") and boundary["id"] not in allowed["selectable"]:
+        raise RegionalRefusal(f"{source['id']} cannot use {boundary['id']} boundaries; choose "
+                              + ", ".join(allowed["selectable"]))
+    text = boundary_cycle or cycle.strftime("%Y-%m-%dT%H")
+    try:
+        issued = datetime.strptime(text, "%Y-%m-%dT%H")
+    except ValueError:
+        raise RegionalRefusal(f"--boundary-cycle {text!r} is not YYYY-MM-DDTHH") from None
+    admit_boundary_cycle(boundary, issued)
+    start = cycle + timedelta(hours=lead)
+    offset = int((start - issued).total_seconds() // 3600)
+    if offset < 0:
+        raise RegionalRefusal(f"{boundary['id']} boundary cycle {text} is later than the run's start "
+                              f"{start:%Y-%m-%dT%H}; choose an earlier boundary cycle")
+    cadence = boundary.get("forecast") or {}
+    step = None
+    if cadence:
+        step = _boundary_step(cadence, issued.hour, offset, hours, requested)
+        if not step:
+            raise RegionalRefusal(
+                (f"--boundary-interval-hours {requested}: " if requested is not None else "")
+                + f"{boundary['id']} boundary cycle {text} writes no lead at every boundary time from "
+                f"{offset} h to {offset + hours} h through the run's end "
+                f"{start + timedelta(hours=hours):%Y-%m-%dT%H}; choose a newer boundary cycle, "
+                "a shorter run or a boundary source that reaches it")
+    elif not (boundary.get("intermediate") or {}).get("row"):
+        raise RegionalRefusal(f"{boundary['id']} declares no forecast cadence for its boundaries")
+    elif requested is not None:
+        raise RegionalRefusal(f"--boundary-interval-hours {requested} would be ignored: {boundary['id']} "
+                              "reads its hourly series through its own intermediate door")
+    elif offset:
+        raise RegionalRefusal(f"{boundary['id']} reaches the region through its own intermediate door, "
+                              "which reads one cycle's lead hours from 0; its boundary cycle must match the start")
+    return boundary, issued, offset, step
+
+
+def admit_boundary_cycle(source, issued):
+    """Refuse a cycle the boundary row does not publish before any download is started."""
+    from .init_sources import admit_cycle
+    admit_cycle(source, issued)
+    hours = (source.get("posting") or {}).get("cycle_hours")
+    when = getattr(issued, "when", issued)
+    if hours and (when.hour not in hours or when.minute or when.second):
+        raise RegionalRefusal(f"{source['id']} boundary cycle {when:%Y-%m-%dT%H} is not published; "
+                              f"choose UTC hours {hours}")
+
+
+def _source_summary(source):
+    return {"id": source["id"], "display_name": source.get("display_name"),
+            "intermediate_row": (source.get("intermediate") or {}).get("row"),
+            "first_guess": source["first_guess"]}
 
 
 def parent_frames(directory: Path) -> list[tuple[datetime, Path]]:
@@ -260,6 +320,21 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     if lead and parent is not None:
         raise RegionalRefusal("--lead-hours applies to a source cycle; a region cut from a kept hex run starts at "
                               "--parent-start")
+    # A global source keeps its table-driven boundary cadence unless the run requests composition selectors or
+    # a storm merge. Otherwise adding a TC composition to a source row silently bypasses its posted leads and
+    # makes --boundary-interval-hours unusable. Composition keeps its own humidity convention; ordinary table
+    # decoding keeps the source's first guess. Limited-area composition-only sources still use their own door.
+    composition = (source.get("intermediate") or {}).get("backend") == "mapped-composition"
+    if parent is None and composition:
+        requested_composition = bool(getattr(args, "source_parameters", None) or getattr(args, "storm_merge", None))
+        if source.get("coverage", "global") == "global" and (lead or not requested_composition):
+            if lead and requested_composition:
+                raise RegionalRefusal(
+                    f"--lead-hours runs {source['id']!r} from its table leads; --source-parameters and the storm "
+                    "merge belong to its composition door, which reads one cycle's hours from 0")
+            source = {**source, "intermediate": {"row": None}}
+        else:
+            source = {**source, "first_guess": source["intermediate"].get("first_guess", source["first_guess"])}
     hours = args.hours if args.hours is not None else row["hours"]
     if float(hours) != int(hours) or int(hours) < 1:
         raise RegionalRefusal(
@@ -267,41 +342,43 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
             "series is one file per source hour, and a run ending between two of them "
             "would have no boundary file for its last stretch")
     hours = int(hours)
-    # INIT FROM A FORECAST LEAD: the source's fields at cycle + lead are the start state, valid
-    # at cycle + lead, and the boundaries are the same cycle's later leads.  Lead 0 is the analysis, as before.
-    interval = None
     requested = getattr(args, "boundary_interval_hours", None)
-    if parent is None and not (source.get("intermediate") or {}).get("row"):
-        cadence = source.get("forecast") or {}
-        interval = int(cadence.get("interval_hours") or 0)
-        if not interval:
-            raise RegionalRefusal(
-                f"source {source['id']!r} declares no forecast cadence; its boundaries are its own later leads, "
-                "so a region driven by it has no boundary file to read")
-        step = _boundary_step(cadence, cycle.hour, lead, hours, requested)
-        if not step and requested is not None:
-            raise RegionalRefusal(
-                f"--boundary-interval-hours {requested}: --hours {hours} is not a whole number of {requested} h steps, "
-                f"or {source['id']} writes no lead at some boundary time from {lead} h to {lead + hours} h on that "
-                f"step (its leads: {cadence.get('ladders') or f'every {interval} h'}, to {cadence.get('max_hours')} h); "
-                "a boundary time between two of its leads has no file")
-        if not step:
-            raise RegionalRefusal(
-                f"--lead-hours {lead} and --hours {hours}: {source['id']} writes no lead at every boundary time "
-                f"from {lead} h to {lead + hours} h on its {interval} h step or any divisor of it (its leads end at "
-                f"{cadence.get('max_hours')} h); a boundary time between two of its leads has no file")
-        interval = step
-    elif lead:
-        raise RegionalRefusal(
-            f"--lead-hours needs a source that writes forecast leads through its table row; {source['id']!r} "
-            "reaches the region through its own intermediate door, which reads one cycle's hours from 0")
-    elif requested is not None:
-        raise RegionalRefusal(
-            f"--boundary-interval-hours {requested}: "
-            + ("a region cut from a kept hex run takes its boundaries from every parent frame"
-               if parent is not None else
-               f"{source['id']!r} reaches the region through its own intermediate door, which writes every hour")
-            + "; the step would be ignored")
+    if parent is None:
+        if lead < 0:
+            raise RegionalRefusal(f"--lead-hours {lead} is negative; choose a posted start lead")
+        boundary, issued, boundary_lead, interval = boundary_plan(
+            source, cycle, lead, hours, name=getattr(args, "boundary_source", None),
+            boundary_cycle=getattr(args, "boundary_cycle", None), requested=requested)
+        split = source["id"] != boundary["id"] or cycle != issued
+        if (source.get("intermediate") or {}).get("row") and lead:
+            raise RegionalRefusal(f"--lead-hours needs a source that writes forecast leads through its table row; "
+                                  f"{source['id']!r} reaches the region through its own intermediate door")
+    else:
+        if getattr(args, "boundary_source", None) or getattr(args, "boundary_cycle", None) or requested is not None:
+            raise RegionalRefusal("a region cut from a kept hex run takes its boundaries from every parent frame")
+        boundary, issued, boundary_lead, interval, split = source, cycle, lead, None, False
+    # Before mesh generation or prefetch: case 7 cannot extrapolate beyond a finite source map.
+    if parent is None:
+        from .packaged_intermediate import coverage_refusal
+        from .mesh_point import (DEFAULT_BACKGROUND_KM, DEFAULT_CULL_PAD_SCALE, ladder_spec,
+                                 predicted_cull_cells)
+        radius = float(args.radius_km if args.radius_km is not None else row["radius_km"])
+        if drawn is not None:
+            import numpy as np
+            vertices = mesh_shape._ring(drawn)
+            a, b = np.radians(vertices[:, 0]), np.radians(vertices[:, 1])
+            c, d = np.radians(point)
+            radius = float(6371.229 * np.arccos(np.clip(
+                np.sin(a)*np.sin(c)+np.cos(a)*np.cos(c)*np.cos(b-d), -1, 1)).max())
+        fine = float(args.fine_dx_m if args.fine_dx_m is not None else row["fine_dx_m"])
+        background = float(getattr(args, "background_km", None) or row.get("background_km") or DEFAULT_BACKGROUND_KM)
+        spec = ladder_spec(point, fine_dx_m=fine, radius_km=radius, background_km=background)
+        cut = predicted_cull_cells(spec=spec, radius_km=radius, pad_scale=DEFAULT_CULL_PAD_SCALE)
+        reach = cut["cut_radius_km"] + cut["halo_km"]
+        for candidate in (source, boundary):
+            refusal = coverage_refusal(candidate, point, reach, margin_km=30)
+            if refusal:
+                raise RegionalRefusal(refusal)
     start = cycle + timedelta(hours=lead)
     stop = start + timedelta(hours=hours)
     vertical = Path(args.vertical_spec) if args.vertical_spec else (data_dir / row["vertical_spec"])
@@ -310,6 +387,10 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     switches = table["run_switches"]
     from .global_door import forecast_arg_physics
     physics_flags = _physics_default_flags(args, source=source["id"], cold=parent is None)
+    if parent is None:
+        from .mpasphys.rrfs.cold_start_rrfs import require_boundary_producer
+        require_boundary_producer(getattr(args, "boundary_recipe", None),
+                                  _producer_suite({"forecast_args": physics_flags}))
     return {
         "schema": "gpuwm-hex.regional-plan/v1",
         "row": row,
@@ -317,6 +398,10 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
                    "intermediate_row": (source.get("intermediate") or {}).get("row"),
                    "first_guess": first_guess},
         "lead_hours": lead,
+        "boundary_source": _source_summary(boundary),
+        "boundary_cycle": issued.strftime("%Y-%m-%dT%H"),
+        "boundary_lead_hours": boundary_lead,
+        "split_boundary": split,
         "boundary_interval_hours": interval,
         "point_deg": list(point),
         "drawn_shape": drawn,
@@ -334,6 +419,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         # The hex default physics (MPAS suite by mesh, woof.hex.physics_default) is written into the region's
         # forecast flags here, so the init, step and species rules below see the suite the forecast runs.
         "forecast_args": physics_flags,
+        "boundary_recipe": getattr(args, "boundary_recipe", None) or "default",
         "physics": forecast_arg_physics(physics_flags),
         "hours": hours,
         "history_every_minutes": int(args.history_every_minutes
@@ -347,6 +433,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
             "mesh": str(root / "mesh"),
             "grib": str(Path(args.grib_dir).expanduser().absolute() if args.grib_dir else root / "grib"),
             "met": str(root / "met"),
+            "lbc_met": str(root / "lbc-met" if split else root / "met"),
             "init": str(root / "init" / "init.nc"),
             "analysis": str(root / "parent-analysis" / "analysis.nc"),
             "contract": str(root / "contract"),
@@ -377,7 +464,163 @@ def _cli(argv: list[str], status) -> int:
     return cli.run_stage([str(item) for item in argv])
 
 
+#: Source downloads running beside their run's mesh stage, by met directory; the intermediate stage joins them.
+_PREFETCHES: dict[str, Any] = {}
+#: Byte-range streams per source file for the download beside the mesh stage (at least; ``--workers`` if more).
+PREFETCH_STREAMS = 16
+
+
+def _met_series(value):
+    """Views for separate receipts, downloads and decode jobs. Same-source runs keep their old view."""
+    if not value.get("split_boundary"):
+        return [value]
+    start = dict(value, hours=0, boundary_interval_hours=1)
+    boundary = dict(value, source=value["boundary_source"], cycle=value["boundary_cycle"],
+                    lead_hours=value["boundary_lead_hours"])
+    boundary["paths"] = dict(value["paths"], met=value["paths"]["lbc_met"],
+                              grib=str(Path(value["paths"]["grib"]) / "boundaries"))
+    return [start, boundary]
+
+
+def _start_source_prefetch(args, value, status) -> None:
+    for series in _met_series(value):
+        _start_one_prefetch(args, series, status)
+
+
+def _start_one_prefetch(args, value, status) -> None:
+    """Start the source's GRIB download beside the mesh stage; :func:`_stage_intermediate` joins it.
+
+    THE BREAKAGE THIS PREVENTS (region door, 2026-10-29): a polygon region from HRRR downloaded its GRIB hours only
+    after the mesh and cut had finished (MESHES.md: 21.2 s mesh + cut, then 86.3 s HRRR download and decode; the
+    integrator's build host run 82 s, then 136 s), although the download needs only the source row, the cycle and the
+    hours. Only the decode needs the cut. The background stage runs the intermediate stage's own fetch
+    (``hrrr_intermediate._ensure_hour``) into the same ``<met>/fetch/fNN`` roots, so the stage's own call finds each
+    hour complete: woof's HRRR fetch keeps a file only when it passes the completeness bar and recorded digest of a
+    fresh download, and moves anything else aside. A download that fails is named in the receipt, and the stage
+    fetches the missing hours itself as before.
+
+    Every hour downloads at once, each on at least :data:`PREFETCH_STREAMS` byte-range streams: the polygon's two
+    HRRR hours took 48.1 s and 69.9 s one after the other on the stage's 4 streams (6.1-6.7 MiB/s aggregate,
+    build host, 2026-10-29), longer than the 72.2 s mesh stage they ran beside. The stream count changes only how the
+    same bytes arrive; the fetch verifies each file as above.
+    """
+    row = (value.get("source") or {}).get("intermediate_row")
+    met = Path(value["paths"]["met"])
+    if (value.get("parent") or getattr(args, "stage", "all") != "all"
+            or "intermediate" in (getattr(args, "skip", None) or [])
+            or (met / "intermediate-receipt.json").is_file() or str(met) in _PREFETCHES):
+        return
+    from . import card_fit
+
+    from .hrrr_intermediate import SOURCE_ROWS
+    if row not in SOURCE_ROWS:
+        # Packaged mapped sources need the generated mesh for interpolation support.
+        # Only a source without an intermediate row can decode beside mesh creation.
+        if row is None:
+            _start_table_decode(args, value, status)
+        return
+    hours = [str(hour) for hour in range(0, int(value["lead_hours"]) + int(value["hours"]) + 1)]
+    argv = [sys.executable, "-m", "woof.hex.regional_door", "--prefetch-source", row, value["paths"]["grib"],
+            value["cycle"], str(met), str(max(PREFETCH_STREAMS, int(getattr(args, "workers", 4) or 4))), *hours]
+    _PREFETCHES[str(met)] = card_fit.start_stage(argv, name="source-prefetch",
+                                                 directory=Path(value["paths"]["work"]) / "logs")
+    status.note(f"{row} {value['cycle']} hours 0-{hours[-1]}: download started beside the mesh stage")
+
+
+def _start_table_decode(args, value, status) -> None:
+    """Start a table source's whole intermediates stage (GFS, IFS, ...) beside the mesh stage.
+
+    THE BREAKAGE THIS PREVENTS (hrrrv5 regional region from GFS, build host, 2026-10-31): the stage table ran mesh 84 s,
+    then intermediates 82 s, then init 81 s, then boundaries 40 s, although a table source's fetch and Vtable decode
+    read no mesh at all (``init-source --stop-after decode`` is given the source, the cycle and the lead). The
+    first map waited for the sum. The background stage writes the same files and the same receipt, so the stage only
+    joins it; one that fails leaves no receipt and the stage runs as before, so its refusal is the one a user sees.
+    """
+    from . import card_fit
+
+    plan = Path(value["paths"]["work"]) / "regional-plan.json"
+    if value.get("split_boundary"):
+        plan = plan.with_name(Path(value["paths"]["met"]).name + "-decode-plan.json")
+        plan.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    argv = [sys.executable, "-m", "woof.hex.regional_door", "--decode-table-source", str(plan),
+            str(_table_decode_workers(args, value))]
+    _PREFETCHES[str(value["paths"]["met"])] = card_fit.start_stage(argv, name="source-decode" + ("-" + Path(value["paths"]["met"]).name if value.get("split_boundary") else ""),
+                                                                   directory=Path(value["paths"]["work"]) / "logs")
+    status.note(f"{value['source']['id']} {value['cycle']}: fetch and decode started beside the mesh stage")
+
+
+def _table_decode_workers(args, value) -> int:
+    """Leads at once beside the mesh: ``--workers`` when asked for more, else half the CPUs, at most 8.
+
+    A lead's decode is one core and its fetch is network, so half the cores leaves the mesh its threads while every
+    lead of a short run goes at once."""
+    from .cpu_budget import available_cpus
+
+    leads = 1 + int(value["hours"]) // max(1, int(value["boundary_interval_hours"]))
+    return max(1, min(leads, max(int(getattr(args, "workers", 4) or 4), min(8, available_cpus() // 2))))
+
+
+def _decode_table_source(argv: list[str]) -> int:
+    """``python -m woof.hex.regional_door --decode-table-source PLAN WORKERS``: the background half of
+    :func:`_start_table_decode`, the stage's own function on the plan the door wrote."""
+    from types import SimpleNamespace
+
+    plan, workers = argv
+    value = json.loads(Path(plan).read_text(encoding="utf-8"))
+
+    class Notes:
+        @staticmethod
+        def note(text: str) -> None:
+            print(text, flush=True)
+
+    _stage_intermediate_from_table(SimpleNamespace(workers=int(workers)), value, Notes)
+    return 0
+
+
+def _join_source_prefetch(met: Path, status) -> dict[str, Any] | None:
+    prefetch = _PREFETCHES.pop(str(met), None)
+    if prefetch is None:
+        return None
+    row = prefetch.finish()
+    joined = {key: row[key] for key in ("returncode", "wall_seconds", "cpu_seconds", "average_cpu_cores", "log")}
+    if row["returncode"]:
+        status.note(f"the source download beside the mesh stage exited {row['returncode']} (log {row['log']}); "
+                    "the intermediate stage fetches the missing hours itself")
+    return joined
+
+
+def _prefetch_source(argv: list[str]) -> int:
+    """``python -m woof.hex.regional_door --prefetch-source ROW GRIB CYCLE MET WORKERS HOUR...``.
+
+    The background half of :func:`_start_source_prefetch`: the same request fields the ``intermediate`` command
+    builds from the stage's own arguments, and its own per-hour fetch.
+    """
+    from types import SimpleNamespace
+
+    from .hrrr_intermediate import _ensure_hour, parse_cycle, source_row
+
+    row, grib, cycle, met, workers, *hours = argv
+    from .packaged_intermediate import handles as has_packaged_intermediate, source_table_row
+    if has_packaged_intermediate(row):
+        declaration = source_table_row(row)
+        command = [sys.executable, "-m", "woof.cli", "fetch", "--source", declaration["engine_source_id"],
+                   "--cycle", cycle, "--hours", str(max(map(int, hours))), "--out", grib]
+        profile = (declaration.get("intermediate") or {}).get("profile")
+        if profile:
+            command += ["--record-profile", profile]
+        return subprocess.run(command).returncode
+    request = SimpleNamespace(source=source_row(row), grib_dir=Path(grib), cycle=parse_cycle(cycle),
+                              out_dir=Path(met), workers=int(workers))
+    from concurrent.futures import ThreadPoolExecutor
+
+    # Each hour has its own fetch root (<met>/fetch/fNN) and its own output lock, so the hours download at once.
+    with ThreadPoolExecutor(max_workers=max(1, len(hours)), thread_name_prefix="source-hour") as pool:
+        list(pool.map(lambda hour: _ensure_hour(request, int(hour), lambda text: print(text, flush=True)), hours))
+    return 0
+
+
 def _stage_mesh(args, value, status) -> dict[str, Any]:
+    _start_source_prefetch(args, value, status)
     mesh_dir = Path(value["paths"]["mesh"])
     if list(mesh_dir.glob("*.point-generate.json")):
         status.note(f"mesh already generated in {mesh_dir}")
@@ -390,7 +633,9 @@ def _stage_mesh(args, value, status) -> dict[str, Any]:
         drawn.write_text(json.dumps(value["drawn_shape"], indent=2) + "\n", encoding="utf-8")
         core = ["--shape", str(drawn)]
     else:
-        core = ["--point", f"{lat},{lon}", "--radius-km", repr(value["radius_km"])]
+        # "--point=" because argparse before Python 3.14 reads "-12.46,130.84" as an unknown option and stops a southern
+        # region at this stage ("--point: expected one argument"); requires-python allows 3.11 and up.
+        core = [f"--point={lat},{lon}", "--radius-km", repr(value["radius_km"])]
     argv = ["mesh-plan", *core, "--fine-dx-m", repr(value["fine_dx_m"]),
             "--generate", "--out-dir", str(mesh_dir),
             "--vertical-spec", value["paths"]["vertical_spec"]]
@@ -404,8 +649,23 @@ def _stage_mesh(args, value, status) -> dict[str, Any]:
 
 
 def _stage_intermediate(args, value, status) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor
+
+    series = _met_series(value)
+    if len(series) == 1:
+        return _stage_one_intermediate(args, value, status)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda item: _stage_one_intermediate(args, item, status), series))
+    return {"returncode": next((r["returncode"] for r in results if r["returncode"]), 0),
+            "start": results[0], "boundaries": results[1]}
+
+
+def _stage_one_intermediate(args, value, status) -> dict[str, Any]:
     met = Path(value["paths"]["met"])
+    prefetch = _join_source_prefetch(met, status)
     if (met / "intermediate-receipt.json").is_file():
+        if prefetch is not None:
+            return {"returncode": 0, "source_prefetch": prefetch}
         status.note(f"intermediates already written in {met}")
         return {"returncode": 0, "reused": True}
     if value["source"]["intermediate_row"] is None:
@@ -414,9 +674,22 @@ def _stage_intermediate(args, value, status) -> dict[str, Any]:
     Path(value["paths"]["grib"]).mkdir(parents=True, exist_ok=True)
     argv = ["intermediate", "--source", value["source"]["intermediate_row"],
             "--from-plan", generated["_path"], "--grib-dir", value["paths"]["grib"],
-            "--cycle", value["cycle"], "--hours", f"0-{value['hours']}", "--out-dir", str(met),
+            "--cycle", value["cycle"], "--hours", f"0-{int(value['lead_hours']) + int(value['hours'])}", "--out-dir", str(met),
             "--workers", str(args.workers)]
-    return {"returncode": _cli(argv, status)}
+    if getattr(args, "source_parameters", None):
+        argv += ["--source-parameters", args.source_parameters]
+    from woof.storm_merge import command_arguments
+    argv += command_arguments(args)
+    from .packaged_intermediate import handles as has_packaged_intermediate
+    suite = (value.get("physics") or {}).get("suite")
+    if (suite and has_packaged_intermediate(value["source"]["intermediate_row"])
+            and (value.get("split_boundary") or int(value["source"]["first_guess"]["nfgsoillevels"]) > 4)):
+        argv += ["--physics-suite", suite]
+    started = time.monotonic()
+    result = {"returncode": _cli(argv, status), "seconds": round(time.monotonic() - started, 3)}
+    if prefetch is not None:
+        result["source_prefetch"] = prefetch
+    return result
 
 
 def _stage_intermediate_from_table(args, value, status) -> dict[str, Any]:
@@ -458,23 +731,35 @@ def _stage_intermediate_from_table(args, value, status) -> dict[str, Any]:
 
     status.note(f"{value['source']['id']} {value['cycle']} leads {leads[0]}-{leads[-1]} h every {step} h")
     workers = max(1, min(len(leads), int(getattr(args, "workers", 4) or 4)))
+    started = time.monotonic()
     with ThreadPoolExecutor(max_workers=workers) as pool:
         files = list(pool.map(one, leads))
+    # The level counts each decode actually wrote (a row's declared upper-air donor adds levels above its top);
+    # the init and boundaries read the largest, which every file fits under.
+    receipts = [Path(item["source_dir"]) / "init-source-receipt.json" for item in files]
+    guesses = [json.loads(path.read_text(encoding="utf-8")).get("effective_first_guess") or {}
+               if path.is_file() else {} for path in receipts]
+    levels = {}
+    if guesses and all(guess.get("nfglevels") for guess in guesses):
+        levels = {"levels": {"count": max(int(guess["nfglevels"]) for guess in guesses)}}
     (met / "intermediate-receipt.json").write_text(json.dumps(
         {"schema": "gpuwm-hex.table-intermediates/v1", "source": value["source"]["id"], "cycle": value["cycle"],
-         "files": files}, indent=2) + "\n", encoding="utf-8")
-    return {"returncode": 0, "files": len(files)}
+         "files": files, **levels}, indent=2) + "\n", encoding="utf-8")
+    return {"returncode": 0, "files": len(files), "workers": workers,
+            "seconds": round(time.monotonic() - started, 3)}
 
 
-def _first_guess(value: Mapping[str, Any]) -> dict[str, Any]:
+def _first_guess(value: Mapping[str, Any], *, boundary: bool = False) -> dict[str, Any]:
     """The first-guess switches the init and boundaries read: the source row's, with the level counts the
     intermediate door measured on the files it wrote when its receipt carries them.
 
     THE BREAKAGE IT PREVENTS: a composition's declared donor adds levels to every file, and an init told the
     row's count would read fewer levels than the file holds."""
 
-    guess = dict(value["source"]["first_guess"])
-    receipt = Path(value["paths"]["met"]) / "intermediate-receipt.json"
+    source = value.get("boundary_source", value["source"]) if boundary else value["source"]
+    met = value["paths"].get("lbc_met", value["paths"]["met"]) if boundary else value["paths"]["met"]
+    guess = dict(source["first_guess"])
+    receipt = Path(met) / "intermediate-receipt.json"
     if receipt.is_file():
         levels = (json.loads(receipt.read_text(encoding="utf-8")).get("levels") or {})
         if levels.get("count"):
@@ -607,7 +892,10 @@ def _stage_lbc_from_parent(args, value, status) -> dict[str, Any]:
         target_init=Path(value["paths"]["init"]), operator=lbc_dir.with_name(lbc_dir.name + ".operator.npz"),
         numbers=_region_numbers(value)[0], number_scheme=_region_numbers(value)[1],
         jobs=int(getattr(args, "lbc_jobs", None) or max(1, min(8, (os.cpu_count() or 2) // 2)))))
-    return {"returncode": 0, "frames": len(records)}
+    return {"returncode": 0, "frames": len(records),
+            "boundary_recipe": {"name": getattr(args, "boundary_recipe", None) or "default",
+                                "applied": False, "reason": "kept parent frames transfer existing species; "
+                                "no first-guess boundary recipe is run"}}
 
 
 def _stage_init(args, value, status) -> dict[str, Any]:
@@ -700,6 +988,12 @@ def _stage_init_state(args, value, status) -> dict[str, Any]:
         if source.get("cold_soil"):
             argv += cold_soil_init_flags(decoded["products"], source["cold_soil"])
         argv += surface_input_init_flags(decoded.get("surface_input"))
+    deep = source.get("deep_soil")
+    if deep:
+        # The row's soil below its published layer comes from a declared donor (woof deep_soil_donor, written into
+        # the WPS box); the init moves that donor's moisture onto the suite's own land model.
+        argv += ["--deep-soil-keep-above-m", repr(float(deep["keep_above_m"])),
+                 "--deep-soil-model", str(deep["soil_model"]), "--deep-soil-donor", str(deep["source_id"])]
     return {"returncode": _cli(argv, status)}
 
 
@@ -718,20 +1012,27 @@ def _init_suite_argv(value: Mapping[str, Any]) -> list[str]:
     from a Noah four-level init.  MPAS-A's own suites start from the init with no suite flag (case 7, Noah), which
     the init door requires, so they add nothing here."""
     from .physics_default import init_flags
-    return init_flags(value.get("forecast_args") or [])
+    flags = value.get("forecast_args") or []
+    selected = init_flags(flags)
+    if _producer_suite(value):
+        from .mpasphys.rrfs.cold_start_rrfs import producer_pin_arguments
+        selected += producer_pin_arguments(flags)
+    return selected
 
 
 def _stage_lbc(args, value, status) -> dict[str, Any]:
     generated = _generated(value)
     lbc_dir = Path(generated["cull"]["lbc_dir"])
-    if (lbc_dir / "lbc-door-receipt.json").is_file():
+    receipt = lbc_dir / "lbc-door-receipt.json"
+    if receipt.is_file() and json.loads(receipt.read_text()).get("boundary_recipe", {}).get("name", "default") \
+            == (getattr(args, "boundary_recipe", None) or "default"):
         status.note(f"boundary files already written in {lbc_dir}")
         return {"returncode": 0, "reused": True}
     if value.get("parent"):
         return _stage_lbc_from_parent(args, value, status)
-    guess = _first_guess(value)
+    guess = _first_guess(value, boundary=True)
     switches = value["run_switches"]
-    argv = ["lbc", "--grid", value["paths"]["init"], "--met-dir", value["paths"]["met"],
+    argv = ["lbc", "--grid", value["paths"]["init"], "--met-dir", value["paths"].get("lbc_met", value["paths"]["met"]),
             "--out-dir", str(lbc_dir), "--start-time", value["start_time"],
             "--stop-time", value["stop_time"], "--nfglevels", str(guess["nfglevels"]),
             "--extrap-airtemp", switches["extrap_airtemp"], "--use-spechumd", guess["use_spechumd"],
@@ -739,10 +1040,14 @@ def _stage_lbc(args, value, status) -> dict[str, Any]:
             "--coef-3rd-order", repr(float(switches["coef_3rd_order"])),
             "--oned-underflow", switches["oned_underflow"]]
     suite = _producer_suite(value)
+    from .mpasphys.rrfs.cold_start_rrfs import require_boundary_producer
+    require_boundary_producer(getattr(args, "boundary_recipe", None), suite)
+    if getattr(args, "boundary_recipe", None):
+        argv += ["--boundary-recipe", args.boundary_recipe]
     if suite:
         # A producer suite's boundaries are its producer's case 9 on the init's own grid and fields (hrrrv5:
         # the fork's L60, hydrometeors and aerosols), not rw_mpas_lbc's v8.4.2 series.
-        argv += ["--physics-suite", suite]
+        argv += _init_suite_argv(value)
     return {"returncode": _cli(argv, status)}
 
 
@@ -844,6 +1149,8 @@ def _stage_forecast(args, value, status) -> dict[str, Any]:
     argv += samehost_argv(args)
     from woof.output_formats import argument_values
     argv += argument_values(args)
+    from .wave_options import argument_values as wave_arguments
+    argv += wave_arguments(args)
     # The caller's forecast flags (--forecast-arg) come last, so a --physics-suite given here wins.  `--dt row` stays
     # even then: the contract stage minted and admitted the class at the row step (Courant-stepped on the real min
     # dcEdge), and without it the suite route took the bare 6 s/km rule, so the forecast measured an unminted class and
@@ -1003,6 +1310,12 @@ def run_regional(args: argparse.Namespace) -> int:
     receipt: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "plan": str(root / "regional-plan.json"),
                                "row": value["row"]["id"], "source": value["source"]["id"],
                                "point_deg": value["point_deg"], "cycle": value["cycle"],
+                               "boundary_source": value["boundary_source"]["id"],
+                               "boundary_cycle": value["boundary_cycle"],
+                               "boundary_lead_hours": value["boundary_lead_hours"],
+                               "parallelism": {"workers": args.workers,
+                                               "met_series": len(_met_series(value)),
+                                               "rayon_threads": os.environ.get("RAYON_NUM_THREADS", "engine default")},
                                "started_utc": utc_now(), "outcome": "running", "mesh": None,
                                "products": None, "stages": {}}
 
@@ -1036,6 +1349,9 @@ def run_regional(args: argparse.Namespace) -> int:
             try:
                 result = _RUNNERS[name](args, value, status)
                 timing.update(result)
+                if name == "intermediate" and not value.get("parent") and result["returncode"] == 0:
+                    receipt["first_guess"] = _first_guess(value)
+                    receipt["boundary_first_guess"] = _first_guess(value, boundary=True)
                 timing["outcome"] = "done" if result["returncode"] == 0 else "failed"
             except BaseException as error:
                 timing.update(outcome="failed", error=f"{type(error).__name__}: {error}")
@@ -1076,6 +1392,11 @@ def run_regional(args: argparse.Namespace) -> int:
         receipt.update(outcome="interrupted", error=f"{type(error).__name__}: {error}")
         raise
     finally:
+        # A door that stopped before its intermediate stage stops the download it started beside the mesh.
+        for met in {value["paths"].get("met"), value["paths"].get("lbc_met")}:
+            leftover = _PREFETCHES.pop(str(met), None)
+            if leftover is not None:
+                leftover.cancel()
         for key, previous in saved.items():
             if previous is None:
                 os.environ.pop(key, None)
@@ -1094,6 +1415,8 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
     )
     from woof.output_formats import add_arguments
     add_arguments(parser)
+    from .wave_options import add_arguments as add_wave_arguments
+    add_wave_arguments(parser)
     parser.add_argument("--point", default=None, metavar="LAT,LON",
                         help="centre of a circular fine core (or draw one: --shape, --ellipse)")
     parser.add_argument("--shape", type=Path, default=None, metavar="FILE",
@@ -1113,10 +1436,16 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
                         help="init-source row (default: the row's init_source): a limited-area row, or a global "
                              "row such as gfs, which drives the region from its own later leads; "
                              "`woof hex sources` lists them")
+    parser.add_argument("--source-parameters", help="table-declared KEY=VALUE selectors")
+    from woof.storm_merge import add_arguments
+    add_arguments(parser)
     parser.add_argument("--lead-hours", type=int, default=0, metavar="L",
                         help="start from the source cycle's forecast at lead L: its fields at cycle + L are the "
                              "start state, valid at cycle + L, and its later leads drive the boundary (table "
                              "sources; default 0, the analysis)")
+    parser.add_argument("--boundary-source", help="source for lateral boundaries (the start row's default)")
+    parser.add_argument("--boundary-cycle", metavar="YYYY-MM-DDTHH",
+                        help="boundary source cycle, possibly earlier than the start cycle")
     parser.add_argument("--boundary-interval-hours", type=int, default=None, metavar="H",
                         help="boundary step of a table source (gfs, ifs, gefs ...). Default: the finest step the "
                              "source posts over the run (GFS 1 h to 120 h, IFS and GEFS 3 h); a coarser H reads "
@@ -1137,6 +1466,8 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
     parser.add_argument("--deep-soil-temperature", choices=("era5", "islscp-i"), default=None,
                         help="a producer suite (hrrrv5): the deep-soil temperature its static is built with "
                              "(default era5; islscp-i is NOAA's soiltemp_1deg, licence unclear)")
+    from .mpasphys.rrfs.cold_start_rrfs import add_boundary_recipe_argument
+    add_boundary_recipe_argument(parser)
     add_samehost_arguments(parser)
     parser.add_argument("--workers", type=int, default=4, help="intermediate decoder workers")
     parser.add_argument("--gpuwm-checkout", type=Path, default=None,
@@ -1167,3 +1498,9 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
 
 __all__ = ["PARENT_STAGES", "STAGES", "RegionalRefusal", "add_regional_parser", "load_row", "parent_frames", "plan",
            "regional_class_key", "run_regional"]
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--prefetch-source"]:
+    raise SystemExit(_prefetch_source(sys.argv[2:]))
+if __name__ == "__main__" and sys.argv[1:2] == ["--decode-table-source"]:
+    raise SystemExit(_decode_table_source(sys.argv[2:]))

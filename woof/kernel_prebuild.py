@@ -159,7 +159,10 @@ def build(record_paths, arches, *, cache_dir) -> dict:
         built = loaded_here = 0
         for row in unique.values():
             try:
-                if row["route"] == "cupy":
+                from woof.hip_backend import active,compile_aot
+                if active():
+                    compile_aot(row["source"],tuple(row["options"]),arch)
+                elif row["route"] == "cupy":
                     compiler._compile_with_cache_cuda(
                         row["source"], tuple(row["options"]), arch,
                         row.get("extra_source"), row.get("backend", "nvrtc"),

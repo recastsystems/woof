@@ -8,6 +8,8 @@ Arrays use level-major (levels, columns) contiguous single precision storage.
 PINT includes the top interface. LOWLYR is native one-based indexing.
 """
 from __future__ import annotations
+
+from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -27,6 +29,24 @@ SFC_STATE = ("ustar", "znt", "thz0", "qz0", "uz0", "vz0", "qsfc", "akhs", "akms"
 SFC_OUTPUTS = ("rmol", "ct", "pblh", "rib", "chs", "chs2", "cqs2", "hfx", "qfx", "flx_lh", "flhc", "flqc", "qgh", "cpm", "u10", "v10", "t02", "th02", "tshltr", "th10", "q02", "qshltr", "q10", "pshltr")
 
 INIT_SOURCE = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_40000000_DEFINED
+#define HEX_DIVISOR_40000000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40000000 = 2.0f;
+#else
+static const float hex_divisor_40000000 = 2.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_461C4000_DEFINED
+#define HEX_DIVISOR_461C4000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_461c4000 = 10000.0f;
+#else
+static const float hex_divisor_461c4000 = 10000.0f;
+#endif
+#endif
+
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_bl_myjpbl.F:351-351
 extern "C" __global__ void myj_clear_el(float* memory, int first, int active,
     int columns, int count) {
@@ -54,16 +74,16 @@ extern "C" __global__ void myj_driver_tke_init(float* tke,int count) {
 extern "C" __global__ void myjsfc_tables(float* psim1, float* psih1,
     float* psim2, float* psih2, float* scalars) {
     if (blockIdx.x || threadIdx.x) return;
-    float dzeta = (1.0f - (-5.0f)) / 10000.0f;
+    float dzeta = (1.0f - (-5.0f)) / hex_divisor_461c4000;
     float zeta = -5.0f, ztmax = -5.0f;
     for (int k = 0; k < 10001; ++k) {
         float pm, ph;
         if (zeta < 0.0f) {
             float x = sqrtf(sqrtf(1.0f - 16.0f * zeta));
-            pm = -2.0f * gfk_log((x + 1.0f) / 2.0f)
-                 - gfk_log((x * x + 1.0f) / 2.0f)
-                 + 2.0f * glibc_atanf(x) - (3.1415926f / 2.0f);
-            ph = -2.0f * gfk_log((x * x + 1.0f) / 2.0f);
+            pm = -2.0f * gfk_log((x + 1.0f) / hex_divisor_40000000)
+                 - gfk_log((x * x + 1.0f) / hex_divisor_40000000)
+                 + 2.0f * glibc_atanf(x) - (3.1415926f / hex_divisor_40000000);
+            ph = -2.0f * gfk_log((x * x + 1.0f) / hex_divisor_40000000);
         } else {
             pm = 0.7f * zeta + 0.75f * zeta * (6.0f - 0.35f * zeta)
                  * gfk_exp_fma(-0.35f * zeta);
@@ -126,6 +146,40 @@ __device__ void myj_vdifx(float dt, int lmh, float rkhs, float ct,
 '''
 
 PBL_SOURCE = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_40000000_DEFINED
+#define HEX_DIVISOR_40000000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40000000 = 2.0f;
+#else
+static const float hex_divisor_40000000 = 2.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40400000_DEFINED
+#define HEX_DIVISOR_40400000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40400000 = 3.0f;
+#else
+static const float hex_divisor_40400000 = 3.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_43888000_DEFINED
+#define HEX_DIVISOR_43888000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_43888000 = 273.0f;
+#else
+static const float hex_divisor_43888000 = 273.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_438F8000_DEFINED
+#define HEX_DIVISOR_438F8000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_438f8000 = 287.0f;
+#else
+static const float hex_divisor_438f8000 = 287.0f;
+#endif
+#endif
+
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_bl_myjpbl.F:141-784
 #ifndef MYJ_KMAX
 #define MYJ_KMAX MYJ_LEVELS
@@ -134,10 +188,10 @@ PBL_SOURCE = r'''
 // MPAS-Model-rrfs/src/framework/mpas_constants.F:46-51
 #define MYJP_G       9.80616f
 #define MYJP_RD      287.0f
-#define MYJP_CP      (7.0f * 287.0f / 2.0f)
+#define MYJP_CP      (7.0f * 287.0f / hex_divisor_40000000)
 #define MYJP_XLV     2.5e6f
 #define MYJP_XLS     2.85e6f
-#define MYJP_P608    (461.6f / 287.0f - 1.0f)
+#define MYJP_P608    (461.6f / hex_divisor_438f8000 - 1.0f)
 #define MYJP_PQ0     379.90516f
 #define MYJP_A2      17.2693882f
 #define MYJP_A3      273.16f
@@ -157,7 +211,7 @@ PBL_SOURCE = r'''
 #define PBL_EPSTRB   1.0e-24f
 #define PBL_FH       1.01f
 #define PBL_ALPH     0.30f
-#define PBL_BETA     (1.0f / 273.0f)
+#define PBL_BETA     (1.0f / hex_divisor_43888000)
 #define PBL_EL0MAX   1000.0f
 #define PBL_EL0MIN   1.0f
 #define PBL_ELFC     (0.23f * 0.5f)
@@ -433,7 +487,7 @@ mixlen_110:
                 el[m] = PBL_EPSL;
             }
         } // lower boundary, left-to-right (B1**(2./3.)*USTAR)*USTAR.
-        q2[lmh - 1] = fmaxf(gfk_pow(PBL_B1, 2.0f / 3.0f) * ustar * ustar,
+        q2[lmh - 1] = fmaxf(gfk_pow(PBL_B1, 2.0f / hex_divisor_40400000) * ustar * ustar,
                             MYJP_EPSQ2);
     }
     kpbl_a[col] = nz - lpbl + 1; // KPBL=KTE-LPBL+1
@@ -772,6 +826,32 @@ extern "C" __global__ void myjpbl_row(
 '''
 
 SFC_SOURCE = r'''
+// Keep divisors in constant memory so every target retains division.
+#ifndef HEX_DIVISOR_40000000_DEFINED
+#define HEX_DIVISOR_40000000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40000000 = 2.0f;
+#else
+static const float hex_divisor_40000000 = 2.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_40400000_DEFINED
+#define HEX_DIVISOR_40400000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_40400000 = 3.0f;
+#else
+static const float hex_divisor_40400000 = 3.0f;
+#endif
+#endif
+#ifndef HEX_DIVISOR_438F8000_DEFINED
+#define HEX_DIVISOR_438F8000_DEFINED
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+__device__ __constant__ float hex_divisor_438f8000 = 287.0f;
+#else
+static const float hex_divisor_438f8000 = 287.0f;
+#endif
+#endif
+
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_sf_myjsfc.F:76-365,369-1062
 #ifndef MYJSFC_KZTM
 #define MYJSFC_KZTM 10001
@@ -782,9 +862,9 @@ SFC_SOURCE = r'''
 #define MYJ_G        9.80616f
 #define MYJ_RD       287.0f
 #define MYJ_RV       461.6f
-#define MYJ_CP       (7.0f * 287.0f / 2.0f)
+#define MYJ_CP       (7.0f * 287.0f / hex_divisor_40000000)
 #define MYJ_XLV      2.5e6f
-#define MYJ_P608     (461.6f / 287.0f - 1.0f)
+#define MYJ_P608     (461.6f / hex_divisor_438f8000 - 1.0f)
 #define MYJ_PQ0      379.90516f
 #define MYJ_A2       17.2693882f
 #define MYJ_A3       273.16f
@@ -1067,7 +1147,7 @@ extern "C" __global__ void myjsfc_column(
             akhs = fmaxf(ustark / simh, cxchs);
             if (dthv <= 0.0f) {
                 wstar2 = SFC_WWST2
-                    * gfk_pow(fabsf(btgh * akhs * dthv), 2.0f / 3.0f);
+                    * gfk_pow(fabsf(btgh * akhs * dthv), 2.0f / hex_divisor_40400000);
             } else {
                 wstar2 = 0.0f;
             }
@@ -1135,7 +1215,7 @@ extern "C" __global__ void myjsfc_column(
             akhs = fmaxf(ustark / simh, cxchl);
             if (dthv <= 0.0f) {
                 wstar2 = SFC_WWST2
-                    * gfk_pow(fabsf(btgh * akhs * dthv), 2.0f / 3.0f);
+                    * gfk_pow(fabsf(btgh * akhs * dthv), 2.0f / hex_divisor_40400000);
             } else {
                 wstar2 = 0.0f;
             }
@@ -1320,7 +1400,7 @@ def _module(device_id, levels):
     with cp.cuda.Device(device_id):
         binary, _ = compiler.compile_using_nvrtc(
             cuda_source(levels), options=_hex_numerics.options(CUDA_OPTIONS),
-            arch=cp.cuda.Device(device_id).compute_capability)
+            arch=_compilation_target(device_id, xp=cp))
         module = cp.cuda.function.Module()
         module.load(binary)
         return module

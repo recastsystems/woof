@@ -74,6 +74,7 @@ class _Cfg:
 
     def __init__(self, nz=NZ, ny=NY, nx=NX):
         self.nz, self.ny, self.nx = int(nz), int(ny), int(nx)
+        self.mp_physics = 6  # WSM6 carrier inventory used by these fixtures.
 
 
 def _ramp(shape, seed):
@@ -384,6 +385,34 @@ def test_the_frame_is_at_domain_extents_and_the_carriers_are_views():
     assert frame["QVAPOR"] is store["state/qv"]
 
 
+def test_moist_theta_history_downloads_vapour_and_keeps_thm_prognostic():
+    """The real two-rank run wrote THM words into T despite exact dynamics."""
+    cfg = _Cfg()
+    cfg.use_theta_m = 1
+    store = carried_store()
+    store["state/qv"].fill(np.float32(0.01))
+    plan = carried(domain_plan())
+    # A thermal-only output must still download qv for its dry conversion.
+    plan.order = ("T", "THM")
+    plan.source = {name: tsout.SOURCE_DERIVED for name in plan.order}
+    plan.origin = {name: "thermal" for name in plan.order}
+    plan.shape = {name: (NZ, NY, NX) for name in plan.order}
+    plan.dtype = {name: np.dtype("float32") for name in plan.order}
+    setup = domain_setup(cfg)
+    writer = tsout.StoreFrame(plan, store, setup, cfg)
+    assert writer.store_keys() == ("state/thp", "state/qv")
+    frame = writer.fields()
+    moist = setup.thb[:, None, None] + store["state/thp"]
+    np.testing.assert_array_equal(frame["THM"], moist - np.float32(300))
+    # Recover the prognostic from the emitted dry field within its FP32
+    # rounding; T cannot be the same array/value as THM at nonzero vapour.
+    from woof.core.constants import RVOVRD
+    reconstructed = (frame["T"] + np.float32(300)) * (
+        np.float32(1) + np.float32(RVOVRD) * store["state/qv"])
+    np.testing.assert_allclose(reconstructed, moist, rtol=2e-7, atol=0)
+    assert np.all(frame["T"] < frame["THM"])
+
+
 def test_the_store_direct_road_may_not_publish_a_short_frame():
     """The two laws, held together, on the road this lane added.
 
@@ -461,6 +490,10 @@ class _StandInState:
 
     physics = None
     elapsed_seconds = 3600.0
+    # The streamed driver walk sizes its owners from the pressure field's
+    # shape (carrier_manifest, 86c86ab7875); on the class, so vars() stays
+    # exactly the arrays under test.
+    p = np.empty((NZ, NY, NX), np.float32)
 
     def __init__(self, arrays, scratch):
         self._scratch = dict(scratch)
@@ -586,7 +619,7 @@ def test_active_cam_owner_is_hashed_once_on_both_roads(monkeypatch):
     # The driver walker owns this canonical key; carrier_manifest decides
     # whether this explicit owner belongs in the actual store inventory.
     monkeypatch.setattr(restart_io, "_driver_manifest",
-                        lambda driver: {"radiation/o33d_grid": driver.o3rad})
+                        lambda driver, **_: {"radiation/o33d_grid": driver.o3rad})
     store = {key: value.copy() for key, value in streaming_inventory(state).items()}
     scalars = _driver_scalars(state)
     resident = canonical_state_digest(state, _Clock())
@@ -733,7 +766,8 @@ class _RunStub:
     def __init__(self, store, cfg):
         self.store = store
         self.cfg = cfg
-        self.tiles = ()
+        from types import SimpleNamespace
+        self.tiles = (SimpleNamespace(existing_scratch=lambda *_: None),)
 
     def drain(self):
         pass

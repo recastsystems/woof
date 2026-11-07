@@ -199,7 +199,7 @@ def test_glibc_seam_is_the_libm_alone(fx):
     assert diffs == GLIBC_SEAM, diffs
 
 
-#: What stock glibc 2.43 (gfortran 15.2, a development machine's x86-64, where glibc
+#: What stock glibc 2.43 (gfortran 15.2, test host 2's x86-64, where glibc
 #: dispatches its FMA variants of sinf/cosf/expf/powf) gives differently
 #: from the correctly rounded build, as ``array: (values that differ,
 #: largest difference in ulp)``: 333 of 189,080 values, no shadow mask

@@ -262,3 +262,20 @@ tests/test_moving_saturation_cuda.py
 tests/test_moving_surface_cuda.py
 tests/test_moving_upload_cache.py
 tests/test_moving_velocity_cuda.py
+
+# Release 0.5.0 allocation and continuation checks.
+tests/test_acoustic_recovery_reuse.py
+tests/test_ozone_streamed_months.py
+tests/test_pv_gradient_storage.py
+tests/test_tempo_streamed_tables.py
+tests/test_public_continuation_defects.py
+
+# Release 0.5.0 folds: CUDA TC surface flux, moving CUDA ocean, CUDA PWP and the TC climate field
+# reduction; the CPU members of the last three are tier 1.
+tests/test_tc_flux_cuda.py
+tests/test_moving_ocean_gpu.py
+tests/test_ocean_pwp.py
+tests/test_tc_climate.py
+# Checkpoint runs complete their initial frame like a plain run (fix/hex-ckpt-surface-fields b58ba34d): a whole
+# x1.2562 run straight vs checkpointed vs resumed on one card; inputs from WOOF_HEX_CKPT_INIT / WOOF_HEX_CKPT_GRID.
+tests/test_checkpoint_first_frame_v842.py

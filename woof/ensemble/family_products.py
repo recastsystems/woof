@@ -188,7 +188,8 @@ def _read_history(path):
         names = dataset.variables
         result = {}
         for field, candidates in {"refl": ("REFD_MAX", "REFL_10CM"),
-                "uh": ("UH", "UP_HELI_MAX"), "rain_total": ("RAINNC",)}.items():
+                "uh": ("UH", "UP_HELI_MAX"), "uh01": ("UP_HELI_MAX01",), "uh02": ("UP_HELI_MAX02",),
+                "uh03": ("UP_HELI_MAX03",), "rain_total": ("RAINNC",)}.items():
             for name in candidates:
                 if name in names:
                     values = np.asarray(names[name][:], np.float32)

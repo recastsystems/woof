@@ -1,0 +1,42 @@
+NOAA GSL ccpp-physics, physics/smoke_dust: the notice its LICENSE carries
+=========================================================================
+
+WOOF's smoke option transcribes part of NOAA GSL's RRFS smoke and dust code
+from ccpp-physics (https://github.com/ufs-community/ccpp-physics) at commit
+3e6660c6df54e95a0871e990c2294dd397ae3860: the fire preparation, the fire
+emission unit conversion and diurnal injection of rrfs_smoke_wrapper.F90 and
+module_add_emiss_burn.F90, and the FRP plume-rise wrapper and plume solver of
+module_plumerise.F90 and module_smoke_plumerise.F90.  The transcriptions are
+woof/core/chem_fire.py, woof/core/chem_plumerise.py,
+woof/core/chem_plumerise_cache.py and woof/core/kernels/chem_fire.cu and
+chem_plumerise.cu, with the fire rule table under woof/data/chem/fire/.
+The GOCART option's aerosol-aware Thompson coupling transcribes get_niwfa
+from physics/MP/Thompson/mp_thompson.F90 at the same commit:
+woof/core/chem_mp_coupling.py and woof/core/kernels/chem_mp_coupling.cu.
+
+The project's LICENSE file at that commit reads, in full (line endings and
+trailing spaces normalised, words unchanged):
+
+    Copyright 2017, NOAA, UCAR/NCAR CU/CIRES
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+The Apache License, Version 2.0 it names is also the licence WOOF is
+distributed under; its full text is the repository's LICENSE file.
+
+The CPU composition preparation implementation in
+ tools/grib1_bridge/src/aerosol_numbers.rs
+also transcribes get_niwfa at this same pinned commit and carries the same
+Apache-2.0 grant. Its arithmetic order is checked against the pinned GSL
+oracle in tests/test_chem_mp_coupling.py. Source licence rechecked 2026-10-20:
+https://raw.githubusercontent.com/NCAR/ccpp-physics/3e6660c6df54e95a0871e990c2294dd397ae3860/LICENSE

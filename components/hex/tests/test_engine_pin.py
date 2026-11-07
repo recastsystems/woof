@@ -164,8 +164,8 @@ def test_installation_policy_does_not_relabel_measured_bytes(
 
 
 def test_shipped_installation_minimum_keeps_the_release_range():
-    assert engine_pin.GPUWM_INSTALL_MINIMUM == "2.9.11"
-    assert engine_pin.gpuwm_requirement() == f"{DIST}>=2.9.11,<2.10"
+    assert engine_pin.GPUWM_INSTALL_MINIMUM == "2.9.12"
+    assert engine_pin.gpuwm_requirement() == f"{DIST}>=2.9.12,<2.10"
 
 
 def _repin_documents() -> dict[str, dict]:
@@ -374,7 +374,7 @@ def test_a_moved_engine_runs_and_the_door_records_what_moved(
     pinned to woof X ... running against moved bytes would be running
     physics nobody proved", which names missing evidence and no breakage,
     and it closed the forecast on every engine newer than the pin (8-card RTX PRO 6000 host:
-    woof 2.8.9 against the 2.8.7 pin).  The match is recorded instead.
+    gpuwm 2.8.9 against the 2.8.7 pin).  The match is recorded instead.
     """
 
     root, manifest = _seam_tree(tmp_path, "2.5.7")

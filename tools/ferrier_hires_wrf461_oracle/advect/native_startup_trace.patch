@@ -1,0 +1,21 @@
+diff --git a/dyn_em/start_em.F b/dyn_em/start_em.F
+index 96057eb..9441633 100644
+--- a/dyn_em/start_em.F
++++ b/dyn_em/start_em.F
+@@ -1015,6 +1015,16 @@ endif
+ 
+    DO ij = 1, grid%num_tiles
+ 
++     IF (config_flags%mp_physics .EQ. 15) THEN
++       WRITE(message,'(a,3(i0,1x))') 'MP15_ACTUAL_FRACTION_SIZES ', &
++         SIZE(grid%f_ice_phy), SIZE(grid%f_rain_phy), SIZE(grid%f_rimef_phy)
++       CALL wrf_message(TRIM(message))
++       WRITE(message,'(a,6(i0,1x))') 'MP15_INIT_TILE_I_J_K ', &
++         grid%i_start(ij), grid%i_end(ij), grid%j_start(ij), grid%j_end(ij), kts, kte
++       CALL wrf_message(TRIM(message))
++       WRITE(message,'(a,6(i0,1x))') 'MP15_INIT_MEMORY_I_J_K ', ims,ime,jms,jme,kms,kme
++       CALL wrf_message(TRIM(message))
++     ENDIF
+      CALL phy_init (  grid%id , config_flags, grid%DT, grid%RESTART, grid%znw, grid%znu,   &
+                       grid%p_top, grid%tsk, grid%RADT,grid%BLDT,grid%CUDT, MPDT, &
+                       grid%rucuten, grid%rvcuten, grid%rthcuten,             &

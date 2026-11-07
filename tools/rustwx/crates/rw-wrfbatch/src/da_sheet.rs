@@ -56,8 +56,8 @@ use std::sync::Arc;
 use rayon::prelude::*;
 use rustwx_core::{CanonicalField, FieldSelector, GridProjection, ModelId};
 use rustwx_ensemble::{
-    MemberStack, NanPolicy, PmmTieRule, ensemble_mean, ensemble_spread, member_color,
-    probability_matched_mean,
+    MemberStack, NanPolicy, PmmTieRule, ensemble_max, ensemble_mean, ensemble_spread,
+    member_color, probability_matched_mean,
 };
 use rustwx_products::geographic_overlays::{ValuePointLayer, ValuePointSpec};
 use rustwx_products::viewer::StoreVariableStyle;
@@ -1647,14 +1647,7 @@ fn spread_sheet(options: &Options, scratch: &Path) -> Result<Drawn, String> {
                 .unwrap_or_default();
             let pmm = probability_matched_mean(&stack, NanPolicy::Mask, PmmTieRule::FlatIndex)
                 .map_err(|e| e.to_string())?;
-            let max: Vec<f64> = (0..stack.points())
-                .map(|point| {
-                    (0..stack.len())
-                        .map(|member| stack.member(member)[point])
-                        .filter(|value| value.is_finite())
-                        .fold(f64::NAN, |best, value| if best.is_nan() || value > best { value } else { best })
-                })
-                .collect();
+            let max = ensemble_max(&stack, NanPolicy::Mask).map_err(|e| e.to_string())?;
             let field_planes: Vec<&[f64]> = options
                 .columns
                 .iter()

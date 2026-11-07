@@ -272,7 +272,8 @@ def test_supplied_workspace_reuses_buffers_and_allocates_no_zero_rate(
             launches.append((module, name, args))
         return launch
 
-    monkeypatch.setattr(driver_support, "get_kernel", get_kernel)
+    monkeypatch.setattr(driver_support, "shape_kernel",
+                        lambda module, name, shapes: get_kernel(module, name))
     result = driver_support.gather_initialize_and_sediment(
         density, dz, *fields, 1.0, temperature_k=density,
         workspace=workspace, cu_used=False)
@@ -307,8 +308,8 @@ def test_reusable_workspace_cu_path_requires_and_uses_canonical_rates(
     launches = []
     monkeypatch.setitem(sys.modules, "cupy", SimpleNamespace())
     monkeypatch.setattr(
-        driver_support, "get_kernel",
-        lambda module, name: (
+        driver_support, "shape_kernel",
+        lambda module, name, shapes: (
             lambda grid, block, args: launches.append((name, args))))
     driver_support.gather_initialize_and_sediment(
         density, dz, *fields, 1.0, temperature_k=density,

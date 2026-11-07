@@ -7,7 +7,7 @@ The breakage each one prevents, named:
    live in the per-thread local frame, and CUDA sizes ONE per-context
    local-memory backing store to the widest frame it LAUNCHES times the
    card's RESIDENT-THREAD CAPACITY, not times the occupancy the kernel
-   achieves.  MEASURED on a development machine (RTX 5070 Ti, 70 SMs x 1,536,
+   achieves.  MEASURED on test host 1 (RTX 5070 Ti, 70 SMs x 1,536,
    sm_120) through the real launcher at nz=49: a 9,232 B frame took 842.0
    MiB at launch and never gave it back.  ``bl_pbl_physics = 1`` is the
    wizard's default (woof/domain_wizard.py:714), so that was the widest

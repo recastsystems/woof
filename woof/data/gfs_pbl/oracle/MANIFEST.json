@@ -1,0 +1,26 @@
+{
+ "records": {
+  "cases-g16-ice60.out": "ed291973a9d0c08573791096e62dd45e0ebe76e8def30d09a91946e94dfd6b3b",
+  "cases-g16-noice180.out": "ae4c207ce75729e44cec87ac25c9f86a6a575c66e66790c34b81523af7486da2",
+  "cases-g40-ice60.out": "871098420378f15dc666184a786b417681b33a9064a30c4e7390d6f82948eae3",
+  "cases-g40-noice180.out": "039b022415b2d47c2d66e35916fa932517e9ebb4f86d79c9042e79e1ea3d9b98",
+  "cases-g61-ice60.out": "97f8cea23aba277f453d0164064881631479e4f2829e877c69d56c5cd37feee1",
+  "cases-g61-noice180.out": "94cb918fe2dd2be7cdf23ead3dc39fc42ac4f8bfa5184df9df4b9b3373b933b5",
+  "cases-g16top-ice60.out": "68a939a92ea87c600944210adce0a54d5b60940832056441a0c40db72aec10d3",
+  "cases-g16top-noice180.out": "35558135b551590e451acd085209b1c044cb27727c9244b55d324a9fc71668d0"
+ },
+ "toolchain": [
+  "gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "glibc: ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39",
+  "flags: -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize -w -ffree-form -ffree-line-length-none",
+  "cpp: /lib/cpp -P -nostdinc -traditional-cpp -DEM_CORE=1 -DNMM_CORE=0 -DNMM_MAX_DIM=2600 -DDA_CORE=0 -DWRFPLUS=0 -DCOAMPS_CORE=0 -DEXP_CORE=0 -DIWORDSIZE=4 -DDWORDSIZE=8 -DRWORDSIZE=4 -DLWORDSIZE=4",
+  "libm calls in module_bl_gfs.o: free malloc memcpy memset pow powf ",
+  "sha256 phys/module_gfs_physcons.F 2b8ef99663ba62748b57c7002f5e5b8c9338f2a825c1d32c113bd4e3bff2eb52",
+  "sha256 phys/module_gfs_machine.F 300ee4f75663e89d34c8a9b8733cc07a5dd48c3d973da019d31cb76524babe25",
+  "sha256 phys/module_bl_gfs.F a3898642ee386d60a74af2ef45867e6b5f7df518eef9543ae91586d00372b71c",
+  "sha256 share/module_model_constants.F 5b80377fecdc18a5f0ad38d3b6c15cfc86ad5d76701adbbbb08a08698d0f7062"
+ ],
+ "generator": "tools/gfs_pbl_wrf461_oracle/make_cases.py",
+ "driver": "tools/gfs_pbl_wrf461_oracle/run_bl_gfs.F90",
+ "wrf_tree": "WRF v4.6.1 d66e442fccc04111067e29274c9f9eaccc3cef28"
+}

@@ -14,7 +14,7 @@
   "NVIDIA GeForce RTX 4090"
  ],
  "kernels_new": {
-  "advection": "ba500e338d41859b88351ca8014921381c2a33a78b9d56ec66d351a3ccdc073c",
+  "advection": "af8f5c6cb0441dcdc8198ac7453bca539edaaf56aa1d450e9ab0fb7d1d8de66e",
   "openbc": "5bf7babe4a953b1a12f8ddca403f04d86fa0aed0f7684992b5eabb5d82cbca57",
   "pd_advection": "9011930b5b510770f81e11c56a7fd6764233e1592127edc05c1d9c20f7e5142b"
  },

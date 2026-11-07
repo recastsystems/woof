@@ -1,0 +1,55 @@
+{
+  "pin": "d66e442fccc04111067e29274c9f9eaccc3cef28",
+  "license": "WRF public domain: permission for any purpose without restriction; retain requested notice",
+  "sources": [
+    {
+      "path": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/LICENSE.txt",
+      "sha256": "b30611d35ad1922bc741e86d21e1a897234c1a9c9e2af28076e021f565dfbec6",
+      "copied_native_equal": true
+    },
+    {
+      "path": "share/module_trajectory.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/share/module_trajectory.F",
+      "sha256": "de63008a5a5dc179692ae79266f2729425d5e6b5422c4f4a60aa4e2310661b12",
+      "copied_native_equal": true
+    },
+    {
+      "path": "dyn_em/module_em.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/dyn_em/module_em.F",
+      "sha256": "7695bfb05a7f99763334a6e69523bbcc1de0f2c659177a18c10a6e1cf530a0c7",
+      "copied_native_equal": true
+    },
+    {
+      "path": "share/module_llxy.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/share/module_llxy.F",
+      "sha256": "0c777e66ffbb0602479cadcc0ab484769a140c4cb2b3e9a8f757597086f0c76b",
+      "copied_native_equal": true
+    },
+    {
+      "path": "Registry/Registry.EM_COMMON",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/Registry/Registry.EM_COMMON",
+      "sha256": "28cf7a2d369e898217d7231f4ed19310af7f0bec920f3cb57831e3dc4c80beec",
+      "copied_native_equal": true
+    },
+    {
+      "path": "external/RSL_LITE/feedback_domain_em_part2.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/external/RSL_LITE/feedback_domain_em_part2.F",
+      "sha256": "48f6c902bf0acafc7b8e894295d2fb07b8c9d3186ce09067c5de275a2970a541",
+      "copied_native_equal": true
+    },
+    {
+      "path": "dyn_em/module_big_step_utilities_em.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/dyn_em/module_big_step_utilities_em.F",
+      "sha256": "8f0649b458fceabd5c31c87ec9f266840fb164e2629322904a3f6ee04c72331a",
+      "copied_native_equal": true
+    },
+    {
+      "path": "frame/wrf_num_bytes_between.c",
+      "url": "https://raw.githubusercontent.com/wrf-model/WRF/d66e442fccc04111067e29274c9f9eaccc3cef28/frame/wrf_num_bytes_between.c",
+      "sha256": "291cc24b6c9a4c1f3a2a9fb2ca1b56c66894feaeebc47b925aba11c72de593bd",
+      "copied_native_equal": true
+    }
+  ],
+  "licence_review": "Read each source header and LICENSE.txt at the pinned public WRF distribution. No additional restriction or external table in these files. module_llxy records NCEP w3 origins and is distributed by WRF under its unrestricted public-domain statement."
+}

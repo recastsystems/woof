@@ -64,7 +64,7 @@ def test_every_gocart_process_names_its_kernels_and_each_has_a_ceiling():
     process's KERNEL_MODULES and refuses a process without one; every
     module a GOCART set launches must also carry a shipped frame ceiling,
     or pricing fails closed.  (wetdep.ls, whose module lands with
-    lane/aq-smoke, is dropped from the rows here.)"""
+    development branch, is dropped from the rows here.)"""
     import dataclasses
 
     from woof.chem_table import chem_names, load_sets

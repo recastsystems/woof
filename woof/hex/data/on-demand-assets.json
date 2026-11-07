@@ -1,7 +1,7 @@
 {
   "assets": {
     "kernel-pack-cuda12.json": {
-      "bytes": 157829251,
+      "bytes": 143713363,
       "compiler": {
         "cache_key": "87417f5ddafec4c853dab1863f8bb308dafc152c",
         "cupy": "14.2.0",
@@ -20,10 +20,10 @@
       "select": {
         "nvrtc_major": 12
       },
-      "sha256": "bffad2b599bf040c5c682a7e035b40fb09ff81beaf762275ee412e151f7d82ec"
+      "sha256": "dd8691470fd94bb2796f1e7bcb86ddb832755e3acf22f867370710d006aa2a5d"
     },
     "kernel-pack-cuda13.0.json": {
-      "bytes": 166564762,
+      "bytes": 148866824,
       "compiler": {
         "cache_key": "87417f5ddafec4c853dab1863f8bb308dafc152c",
         "cupy": "14.2.0",
@@ -42,21 +42,21 @@
       "select": {
         "nvrtc_major": 13
       },
-      "sha256": "25f8003c1c741b54f4bda27267326c4e726e171f73cd566593c5c5d317b8d9ff"
+      "sha256": "0be578e00496a940d6b7005cd8c2d0d6b324a6ce47e06cd285468e2aca65bc52"
     },
     "kernel-pack-cuda13.2.json": {
-      "bytes": 162101631,
+      "bytes": 144425867,
       "compiler": {
         "cache_key": "87417f5ddafec4c853dab1863f8bb308dafc152c",
         "cupy": "14.2.0",
-        "cupy_package": "cupy-cuda12x==14.2.0",
+        "cupy_package": "cupy-cuda13x==14.2.0",
         "debug": "0",
         "nvrtc": [
           13,
           2
         ],
         "nvrtc_library_sha256": "b93dae6f3435a5b7b52a689af7f769cc7876fcfd7b01381ca7d6a3814d405c89",
-        "nvrtc_package": "nvidia-cuda-nvrtc-cu12==12.9.86",
+        "nvrtc_package": null,
         "use_pch": false,
         "use_ptx": false
       },
@@ -64,10 +64,32 @@
       "select": {
         "nvrtc_major": 13
       },
-      "sha256": "0d1dbb5a71675aa5837b1b4e799e007b7a5e1decddb63cbbcd35bcfdd676da22"
+      "sha256": "8d4d1b2b1b971942590b5929a00008557206172040c916bb5a1b425353aade5b"
     },
-    "kernel-pack-cuda13.json": {
-      "bytes": 160669054,
+    "kernel-pack-cuda13.4.59.json": {
+      "bytes": 145630406,
+      "compiler": {
+        "cache_key": "87417f5ddafec4c853dab1863f8bb308dafc152c",
+        "cupy": "14.2.0",
+        "cupy_package": "cupy-cuda13x==14.2.0",
+        "debug": "0",
+        "nvrtc": [
+          13,
+          4
+        ],
+        "nvrtc_library_sha256": "5fc18c75a772c5fe0684d2a1bf3fa6ea964b6a71d0caaa828e5e1785dc16daba",
+        "nvrtc_package": "nvidia-cuda-nvrtc==13.4.59",
+        "use_pch": false,
+        "use_ptx": false
+      },
+      "kind": "kernel-pack",
+      "select": {
+        "nvrtc_major": 13
+      },
+      "sha256": "ca0316aa525f8fcec07d03ad2c59650dfa293160d5097ae37567720b89b6da96"
+    },
+    "kernel-pack-cuda13.4.json": {
+      "bytes": 145613922,
       "compiler": {
         "cache_key": "87417f5ddafec4c853dab1863f8bb308dafc152c",
         "cupy": "14.2.0",
@@ -86,13 +108,35 @@
       "select": {
         "nvrtc_major": 13
       },
-      "sha256": "8041f30dfc48652801d7f38c43a91072e82ef8635c950752e353538b07af3233"
+      "sha256": "21fd89f92d67e60ceee887ba24682900ab99ac6411143dd5fb730544d5f9a38d"
+    },
+    "kernel-pack-cuda13.json": {
+      "bytes": 146692010,
+      "compiler": {
+        "cache_key": "87417f5ddafec4c853dab1863f8bb308dafc152c",
+        "cupy": "14.2.0",
+        "cupy_package": "cupy-cuda13x==14.2.0",
+        "debug": "0",
+        "nvrtc": [
+          13,
+          5
+        ],
+        "nvrtc_library_sha256": "98a317ff5d2176dee5a04235c6663f8d553d5ed95b3104cbf7fb198cbf76a10d",
+        "nvrtc_package": "nvidia-cuda-nvrtc==13.5.37",
+        "use_pch": false,
+        "use_ptx": false
+      },
+      "kind": "kernel-pack",
+      "select": {
+        "nvrtc_major": 13
+      },
+      "sha256": "c58b79a1cd8e85ab3ae7ab93a6b098847c84e98f28e3bfc2dba00f352be9a4c6"
     }
   },
   "breakage": "The 169 MB gpuwm-hex 0.4.1 wheel exceeds the PyPI 100,000,000 B per-file cap.",
   "release_assets": {
     "repository": "FahrenheitResearch/gpuwm-hex",
-    "tag": "kernel-packs-v0.4.10"
+    "tag": "kernel-packs-v0.4.14"
   },
   "schema": "gpuwm-hex.on-demand-assets/v1"
 }

@@ -1,0 +1,10 @@
+same    mf0-s1.bin
+same    mf0-s2.bin
+same    mf0-s3.bin
+same    mf0-s4.bin
+same    mf0-static.bin
+same    mf1-s1.bin
+same    mf1-s2.bin
+same    mf1-s3.bin
+same    mf1-s4.bin
+same    mf1-static.bin

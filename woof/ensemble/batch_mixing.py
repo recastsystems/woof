@@ -67,6 +67,7 @@ def _scalar_smag_ptx(audit_options):
     options = module_options("smag2d")
     if wrf_exact.ENABLED:
         options = wrf_exact.effective_options(options)
+    options += tuple(option for option in audit_options if option == "-DGPUWM_USE_THETA_M=1")
     options += (audit_options[-1], "--device-as-default-execution-space")
     if getattr(compiler, "_use_pch", False):
         options += ("--pch",)
@@ -432,9 +433,14 @@ def _prefix(state, slot):
 
 def _raw(state, module, entry, fields, args, grid):
     """Prepare original handles at N=1 and checked member-local raw handles."""
+    defines = (("GPUWM_USE_THETA_M", 1),) if (module == "smag2d"
+        and getattr(state.cfg, "use_theta_m", 0) == 1) else ()
+    options = ("-std=c++17",)
+    if defines and state.members > 1:
+        options += ("-DGPUWM_USE_THETA_M=1",)
     spec = KernelSpec(module, entry, tuple(
         PointerSpec(parameter, state.storage.specs[name].ownership)
-        for parameter, name in fields))
+        for parameter, name in fields), options=options)
     strides = {parameter: state.storage.pointer_stride_bytes(name)
                for parameter, name in fields}
     if state.members == 1:
@@ -442,8 +448,9 @@ def _raw(state, module, entry, fields, args, grid):
         scalar_args = tuple(value[0] if hasattr(value, "__cuda_array_interface__")
                             and state.storage.specs[dict(fields)[parameter]].ownership == "member"
                             else value
-                            for parameter, value in _named_arguments(module, entry, spec, args))
-        launch = prepare_batch_kernel_launch(spec, 1, grid, (_TPB, 1, 1), scalar_args)
+                            for parameter, value in _named_arguments(module, entry, spec, args, defines))
+        launch = prepare_batch_kernel_launch(spec, 1, grid, (_TPB, 1, 1), scalar_args,
+                                             defines=defines)
     elif module != "smag2d":
         launch = prepare_batch_kernel_launch(spec, state.members, grid, (_TPB, 1, 1),
                                              args, pointer_strides=strides)
@@ -453,9 +460,10 @@ def _raw(state, module, entry, fields, args, grid):
     return launch
 
 
-def _named_arguments(module, entry, spec, args):
+def _named_arguments(module, entry, spec, args, defines=()):
     from woof.core.kernels import module_source
     source = normalized_smag_source() if module == "smag2d" else module_source(module)
+    source = "".join(f"#define {key} {value}\n" for key, value in defines) + source
     names = _entry_parts(source, spec, _runtime_audit_options(spec))[-2]
     if len(names) != len(args):
         raise ValueError(f"mixing argument count differs from {entry}'s installed signature")
@@ -523,7 +531,7 @@ def _smag_w_launches(state, common, dims, km, tend, fx, fy):
     from woof.core.dycore import WRF_EXACT, DIFFUSION_ENABLED
     cfg = state.cfg
     entries = metric_w_entry_family(exact=WRF_EXACT or DIFFUSION_ENABLED,
-        compute_capability=tend.device.compute_capability)
+        compute_capability=None)
     fields = _common_fields(state)
     grid = _grid(state.storage.specs["w0"].shape)
     if entries == ("wrf_smag_hd_w",):
@@ -622,14 +630,22 @@ def _smag_launches(state):
                 payload = (_array(state, "mup0"), np.int32(0), value)
             vertical.append(_raw(state, "smag2d", entry, _common_fields(state) + fields,
                                  common + payload + dims, ((nxs + _TPB - 1) // _TPB, nys, 1)))
+        theta_fields = ()
+        theta_args = ()
+        if getattr(cfg, "use_theta_m", 0) == 1:
+            theta_fields = (("thp", "thp0"), ("thb", "thb"))
+            theta_args = (_array(state, "thp0"), _array(state, "thb"),
+                          np.int32(len(state.storage.specs["thb"].shape) == 3))
         if cfg.isfflx in (0, 2):
+            heat_fields = theta_fields + ((("qfx", "mup0"),) if theta_args else ())
+            heat_args = theta_args + ((_array(state, "mup0"), np.int32(0)) if theta_args else ())
             vertical.append(_raw(state, "smag2d", "wrf_smag_surface_heat_const", _common_fields(state) +
-                                 (("hfx", "mup0"), ("rth", "scratch:smag_rth")),
-                                 common + (_F(cfg.tke_heat_flux), _array(state, "mup0"), np.int32(0), rth) + dims,
+                                 (("hfx", "mup0"), ("rth", "scratch:smag_rth")) + heat_fields,
+                                 common + (_F(cfg.tke_heat_flux), _array(state, "mup0"), np.int32(0), rth) + heat_args + dims,
                                  ((cfg.nx + _TPB - 1) // _TPB, cfg.ny, 1)))
         vertical.append(_raw(state, "smag2d", "wrf_smag_surface_scalars", _common_fields(state) +
-                             (("hfx", "mup0"), ("qfx", "mup0"), ("rth", "scratch:smag_rth"), ("rqv", "scratch:smag_rth")),
-                             common + (_array(state, "mup0"), _array(state, "mup0"), np.int32(0), np.int32(0), rth, rth) + dims,
+                             (("hfx", "mup0"), ("qfx", "mup0"), ("rth", "scratch:smag_rth"), ("rqv", "scratch:smag_rth")) + theta_fields,
+                             common + (_array(state, "mup0"), _array(state, "mup0"), np.int32(0), np.int32(0), rth, rth) + theta_args + dims,
                              ((cfg.nx + _TPB - 1) // _TPB, cfg.ny, 1)))
     launches.extend(vertical)
     ru, rv = (_array(state, "scratch:" + slot, output=True) for slot in ("smag_ru", "smag_rv"))

@@ -382,7 +382,7 @@ def test_tree_public_dispatch_preserves_cold_machine_and_domain_options(tmp_path
     machine = ap.Machine(24 * GIB, 256 * GIB)
     model = SimpleNamespace(_input_catalog=object())
     # run_experiment writes report.json from the summary since 384a7aa6c9a
-    # (lane/improve-2-era5-hydro-receipt), so the stub carries the summary
+    # (development branch), so the stub carries the summary
     # fields that report reads, as RealCaseRunSummary and ExperimentRunSummary do.
     data = object()
     result = SimpleNamespace(completed_seconds=float(exp.run_seconds), wrfout_paths=(),
